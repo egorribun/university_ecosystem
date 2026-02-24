@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     import uuid
     from collections.abc import Mapping, Sequence
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ def _build_delivery_row(
 
 
 async def _fetch_active_user_ids(
-    db: AsyncSession, *, exclude: Sequence[uuid.UUID] | None = None
+    db: AsyncDatabaseSession, *, exclude: Sequence[uuid.UUID] | None = None
 ) -> list[uuid.UUID]:
     """Fetch IDs of all active users, optionally excluding some."""
     stmt = select(User.id).where(User.is_active.is_(True))

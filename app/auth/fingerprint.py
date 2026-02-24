@@ -82,21 +82,18 @@ class SessionFingerprint:
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP address from request, handling proxies."""
-    # Check for forwarded headers (from reverse proxy)
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        # Take the first IP (original client)
-        return forwarded_for.split(",")[0].strip()
+    """Extract client IP from the request.
 
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
-
-    # Fall back to direct connection IP
+    ``ProxyHeadersMiddleware`` (configured in middleware.py) rewrites
+    ``request.client.host`` to the true client IP using trusted-proxy-sourced
+    forwarded headers **before** this function runs.  Reading
+    ``X-Forwarded-For`` or ``X-Real-IP`` directly here would allow an
+    attacker who can craft arbitrary headers to spoof their IP address and
+    bypass IP-based rate limiting and fingerprinting.
+    (RZ-1b: audit 2026-02-24)
+    """
     if request.client:
         return request.client.host
-
     return "unknown"
 
 
@@ -163,10 +160,19 @@ class SuspiciousActivityEvent:
 
 
 class SuspiciousActivityDetector:
-    """Detects and logs suspicious session activity."""
+    """Detects and logs suspicious session activity.
+
+    Events are stored in a bounded ring buffer (``deque(maxlen=_MAX_EVENTS)``)
+    to prevent unbounded memory growth under sustained attack traffic.
+    At 10 000 entries × ~600 bytes each the ceiling is ~6 MB.
+    (RZ-1a: audit 2026-02-24)
+    """
+
+    _MAX_EVENTS: int = 10_000
 
     def __init__(self) -> None:
-        self._events: list[SuspiciousActivityEvent] = []
+        from collections import deque
+        self._events: deque[SuspiciousActivityEvent] = deque(maxlen=self._MAX_EVENTS)
 
     def check_fingerprint_mismatch(
         self,
@@ -272,8 +278,14 @@ class SuspiciousActivityDetector:
         user_id: int | None = None,
         limit: int = 100,
     ) -> list[SuspiciousActivityEvent]:
-        """Get recent suspicious activity events."""
-        events = self._events[-limit:]
+        """Return up to *limit* most-recent suspicious activity events.
+
+        ``deque`` does not support negative-index slicing, so we convert to
+        a list first.  The deque is already bounded (maxlen=10_000) so this
+        materialisation is O(min(limit, len(deque))) and safe.
+        """
+        # Take the last `limit` events from the ring buffer.
+        events: list[SuspiciousActivityEvent] = list(self._events)[-limit:]
         if user_id is not None:
             events = [e for e in events if e.user_id == user_id]
         return events

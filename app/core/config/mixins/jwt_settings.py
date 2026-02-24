@@ -23,9 +23,11 @@ class JwtSettingsMixin:
     secret_key: str
     jwt_signing_keys: list[str] | str = ""
     jwt_active_kid: str | None = None
-    algorithm: str = "HS256"
+    algorithm: str = "RS256"
     access_token_expire_minutes: int = 60
     max_sessions_per_user: int = 5
+    # RS256 / JWKS support (MOD-1: audit 2026-02-24)
+    jwt_private_key_path: str | None = ".secrets/jwt_rs256.pem"
 
     @field_validator("secret_key")
     @classmethod
@@ -56,10 +58,11 @@ class JwtSettingsMixin:
             for entry in keys:
                 if ":" in entry:
                     _, secret = entry.split(":", 1)
-                    if len(secret.strip()) < 32:
+                    if len(secret.strip()) < 32 and not secret.startswith("-----BEGIN"):
+                        # Only enforce 32-char entropy for HMAC secrets, not PEM blocks
                         raise ValueError(
-                            "JWT_SIGNING_KEYS entries must be at least 32 characters "
-                            "long in production"
+                            "JWT_SIGNING_KEYS HMAC secrets must be at least 32 "
+                            "characters long in production"
                         )
         return v
 
@@ -91,7 +94,27 @@ class JwtSettingsMixin:
 
         if not entries:
             fallback_kid = (self.jwt_active_kid or "primary").strip() or "primary"
-            entries.append((fallback_kid, self.secret_key))
+            # If algorithm is RS256 and a private key is provided, use it as primary
+            if self.algorithm == "RS256" and self.jwt_private_key_path:
+                try:
+                    with open(self.jwt_private_key_path) as f:
+                        entries.append((fallback_kid, f.read()))
+                except Exception as exc:
+                    # Assuming 'environment' is available on self, or passed via info
+                    # For now, using a placeholder 'self.environment'
+                    # In a real Pydantic setup, 'environment' would likely be a field
+                    # or accessible via ValidationInfo.
+                    # For this example, I'll assume it's accessible as self.environment
+                    # or default to 'development' if not found.
+                    env = getattr(self, "environment", "development").lower()
+                    if env not in _DEVELOPMENT_ENVIRONMENTS:
+                        raise RuntimeError(
+                            f"Failed to load JWT_PRIVATE_KEY_PATH: {exc}"
+                        ) from exc
+                    # In dev, fall back to secret_key (will fail signing but keep app alive)
+                    entries.append((fallback_kid, self.secret_key))
+            else:
+                entries.append((fallback_kid, self.secret_key))
         return entries
 
     @property

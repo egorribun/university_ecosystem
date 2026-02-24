@@ -1,7 +1,7 @@
 import uuid
 
 from app.core.database import async_session
-from app.core.tkq import broker
+from app.core.nats_broker import broker
 from app.models.models import Event, News
 from app.services.notifications.news_events import (
     notify_about_event as _notify_about_event,
@@ -11,7 +11,7 @@ from app.services.notifications.news_events import (
 )
 
 
-@broker.task
+@broker.task()
 async def enqueue_news_notification_task(
     news_id: uuid.UUID,
     locale: str | None = None,
@@ -24,7 +24,7 @@ async def enqueue_news_notification_task(
             await db.commit()
 
 
-@broker.task
+@broker.task()
 async def enqueue_event_notification_task(
     event_id: uuid.UUID,
     locale: str | None = None,

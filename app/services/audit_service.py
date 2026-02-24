@@ -23,9 +23,8 @@ from app.repositories.audit_repository import AuditRepository
 
 if TYPE_CHECKING:
     from uuid import UUID
-
     from fastapi import Request
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
     from app.schemas.dtos import DataAccessLogDTO
 
@@ -372,7 +371,7 @@ class SecureAuditService:
 
     async def create_log(
         self,
-        db: AsyncSession,
+        db: AsyncDatabaseSession,
         *,
         actor_user_id: UUID | None = None,
         subject_user_id: UUID | None = None,
@@ -426,7 +425,7 @@ class SecureAuditService:
         return True
 
     async def verify_batch(
-        self, db: AsyncSession, *, limit: int = 1000
+        self, db: AsyncDatabaseSession, *, limit: int = 1000
     ) -> tuple[int, int, list[UUID]]:
         """Verify integrity of a batch of audit logs."""
         repo = AuditRepository(db)

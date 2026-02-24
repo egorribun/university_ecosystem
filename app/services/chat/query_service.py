@@ -1,0 +1,192 @@
+from __future__ import annotations
+
+import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.protocols import AsyncDatabaseSession
+    from app.models.models import User
+    from app.schemas.chat import ChatsListOut, ChatResponse, MessagesListOut
+
+from app.api.validation import ensure_exists, raise_forbidden
+from app.api.websocket import build_presence_map
+from app.repositories.chat_repository import ChatRepository
+from app.schemas.chat import (
+    ChatResponse,
+    ChatsListOut,
+    MessageResponse,
+    MessagesListOut,
+    PresenceStatus,
+)
+
+
+class ChatQueryService:
+    """Handles read-only operations for chats and messages. (TD-1)"""
+
+    def __init__(self, session: AsyncDatabaseSession):
+        self.session = session
+        self.repository = ChatRepository(session)
+
+    async def get_chats(
+        self, user: User, cursor: str | None, limit: int
+    ) -> ChatsListOut:
+        """Fetch chat list for a user, including metadata and last messages."""
+        rows, has_more, next_cursor = await self.repository.get_chats_for_user(
+            user.id, cursor, limit
+        )
+
+        participant_ids: set[uuid.UUID] = set()
+        chat_data_map: dict[str, dict] = {}
+
+        for row in rows:
+            chat = row[0]
+            unread_count = row[1] or 0
+            last_message_id = row[2]
+
+            for participant in chat.participants:
+                participant_ids.add(participant.id)
+
+            chat_data_map[str(chat.id)] = {
+                "chat": chat,
+                "unread_count": unread_count,
+                "last_message_id": last_message_id,
+            }
+
+        last_message_ids = [
+            d["last_message_id"] for d in chat_data_map.values() if d["last_message_id"]
+        ]
+        last_messages_map = await self.repository.get_last_messages(last_message_ids)
+
+        pre_responses = []
+        for chat_id, data in chat_data_map.items():
+            chat = data["chat"]
+            last_message = last_messages_map.get(data["last_message_id"])
+
+            pre_responses.append(
+                ChatResponse(
+                    id=chat.id,
+                    participants=chat.participants,
+                    last_message=last_message,
+                    unread_count=data["unread_count"],
+                    created_at=chat.created_at,
+                    updated_at=chat.updated_at,
+                )
+            )
+
+        presence_map = await build_presence_map(participant_ids, session=self.session)
+
+        enriched_chats = []
+        for chat_resp in pre_responses:
+            l_msg = chat_resp.last_message
+            if l_msg is not None:
+                l_msg = MessageResponse(
+                    id=l_msg.id,
+                    chat_id=l_msg.chat_id,
+                    sender_id=l_msg.sender_id,
+                    content=l_msg.content,
+                    created_at=l_msg.created_at,
+                    read_status=l_msg.read_status,
+                    sender=l_msg.sender,
+                    attachments=l_msg.attachments,
+                    sender_presence=presence_map.get(l_msg.sender_id),
+                )
+
+            participant_status = {}
+            for p_item in chat_resp.participants:
+                participant_status[p_item.id] = presence_map.get(
+                    p_item.id, PresenceStatus()
+                )
+
+            enriched_chats.append(
+                ChatResponse(
+                    **chat_resp.model_dump(exclude={"last_message", "presence"}),
+                    last_message=l_msg,
+                    presence=participant_status,
+                )
+            )
+
+        return ChatsListOut(
+            items=enriched_chats,
+            has_more=has_more,
+            next_cursor=next_cursor,
+        )
+
+    async def get_chat_details(
+        self, chat_id: uuid.UUID, user: User, locale: str
+    ) -> ChatResponse:
+        """Get details for a specific chat."""
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        unread_count = await self.repository.get_unread_count(chat_id, user.id)
+        last_message = await self.repository.get_last_message(chat_id)
+
+        presence_map = await build_presence_map(
+            [p.id for p in chat.participants], session=self.session
+        )
+        participant_status = {
+            p.id: presence_map.get(p.id, PresenceStatus()) for p in chat.participants
+        }
+
+        return ChatResponse(
+            id=chat.id,
+            participants=chat.participants,
+            last_message=last_message,
+            unread_count=unread_count,
+            created_at=chat.created_at,
+            updated_at=chat.updated_at,
+            presence=participant_status,
+        )
+
+    async def get_messages(
+        self,
+        chat_id: uuid.UUID,
+        user: User,
+        cursor: str | None,
+        limit: int,
+        locale: str,
+    ) -> MessagesListOut:
+        """Fetch messages for a chat."""
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        messages, has_more, next_cursor = await self.repository.get_messages(
+            chat_id, cursor, limit
+        )
+
+        messages = list(reversed(messages))
+
+        presence_map = await build_presence_map(
+            {msg.sender_id for msg in messages}, session=self.session
+        )
+
+        response_items = [
+            MessageResponse(
+                id=msg.id,
+                chat_id=msg.chat_id,
+                sender_id=msg.sender_id,
+                content=msg.content,
+                created_at=msg.created_at,
+                read_status=msg.read_status,
+                sender=None,
+                attachments=msg.attachments,
+                sender_presence=presence_map.get(msg.sender_id),
+            )
+            for msg in messages
+        ]
+
+        return MessagesListOut(
+            items=response_items,
+            has_more=has_more,
+            next_cursor=next_cursor,
+        )

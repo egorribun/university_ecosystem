@@ -8,7 +8,7 @@ Tests cover:
 Uses actual SQLAlchemy models (User) for realistic testing.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 from pydantic import BaseModel, ConfigDict
@@ -84,19 +84,15 @@ def test_repository_init(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_found(repository, mock_db):
     """Test get returns record when found."""
-    mock_user = MagicMock(spec=User)
-    mock_user.id = 1
-    mock_user.email = "test@example.com"
-    # Ensure it doesn't return mocks for these fields
-    type(mock_user).id = PropertyMock(return_value=1)
-    type(mock_user).email = PropertyMock(return_value="test@example.com")
+    mock_user = User(id=1, email="test@example.com")
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
 
     result = await repository.get(1)
 
-    assert result is mock_user
+    assert result.id == 1
+    assert result.email == "test@example.com"
     mock_db.execute.assert_called_once()
 
 
@@ -234,6 +230,13 @@ async def test_repository_create_with_pydantic(repository, mock_db):
     data = MagicMock()
     data.model_dump.return_value = {"email": "test@example.com"}
 
+    # Simulate DB assigning an ID
+    def mock_add(obj):
+        obj.id = 1
+        obj.email = "test@example.com"
+
+    mock_db.add.side_effect = mock_add
+
     await repository.create(data)
 
     data.model_dump.assert_called_once()
@@ -243,17 +246,15 @@ async def test_repository_create_with_pydantic(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_update_found(repository, mock_db):
     """Test update modifies existing record."""
-    mock_user = MagicMock(spec=User)
-    mock_user.id = 1
-    mock_user.name = "old"
+    mock_user = User(id=1, email="old@example.com")
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
 
-    update_data = {"name": "new"}
+    update_data = {"email": "new@example.com"}
     result = await repository.update(1, update_data)
 
-    assert result is mock_user
+    assert result.email == "new@example.com"
     mock_db.flush.assert_called_once()
 
 
@@ -272,18 +273,18 @@ async def test_repository_update_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_update_with_pydantic(repository, mock_db):
     """Test update with Pydantic-like object."""
-    mock_user = MagicMock(spec=User)
+    mock_user = User(id=1, email="old@example.com")
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
 
     update_data = MagicMock()
-    update_data.model_dump.return_value = {"name": "updated"}
+    update_data.model_dump.return_value = {"email": "updated@example.com"}
 
     result = await repository.update(1, update_data)
 
     update_data.model_dump.assert_called_once_with(exclude_unset=True)
-    assert result is mock_user
+    assert result.email == "updated@example.com"
 
 
 @pytest.mark.asyncio
@@ -366,20 +367,23 @@ async def test_repository_exists_none(repository, mock_db):
 @pytest.mark.asyncio
 async def test_readonly_repository_get(readonly_repository, mock_db):
     """Test ReadOnlyRepository get method."""
-    mock_user = MagicMock(spec=User)
+    mock_user = User(id=1, email="test@example.com")
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
 
     result = await readonly_repository.get(1)
 
-    assert result is mock_user
+    assert result.id == 1
 
 
 @pytest.mark.asyncio
 async def test_readonly_repository_list(readonly_repository, mock_db):
     """Test ReadOnlyRepository list method."""
-    mock_users = [MagicMock(spec=User), MagicMock(spec=User)]
+    mock_users = [
+        User(id=1, email="u1@example.com"),
+        User(id=2, email="u2@example.com"),
+    ]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users
     mock_db.execute.return_value = mock_result

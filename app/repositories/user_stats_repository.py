@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import and_, case, func, literal, select, true
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 from sqlalchemy.orm import aliased
 
 from app.models import models
@@ -214,5 +214,5 @@ class UserStatsRepository(ReadOnlyRepository[models.User, UserDTO]):
         ]
 
 
-def get_user_stats_repository(db: AsyncSession) -> UserStatsRepository:
+def get_user_stats_repository(db: AsyncDatabaseSession) -> UserStatsRepository:
     return UserStatsRepository(db)

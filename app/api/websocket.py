@@ -38,7 +38,7 @@ from app.utils.logging import redact_sensitive_mapping
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -535,7 +535,7 @@ async def _update_last_seen(session_jti: str | None) -> datetime:
 
 
 async def build_presence_map(
-    user_ids: Iterable[uuid.UUID], session: AsyncSession | None = None
+    user_ids: Iterable[uuid.UUID], db: AsyncDatabaseSession | None = None
 ) -> dict[uuid.UUID, PresenceStatus]:
     """Return presence info for a set of users."""
 
@@ -543,9 +543,9 @@ async def build_presence_map(
     if not ids:
         return {}
 
-    if session:
+    if db:
         # Use provided session
-        result = await session.execute(
+        result = await db.execute(
             select(ActiveSession.user_id, func.max(ActiveSession.last_seen_at))
             .where(ActiveSession.user_id.in_(ids))
             .group_by(ActiveSession.user_id)
@@ -672,15 +672,21 @@ async def websocket_chat(websocket: WebSocket):
             logger.warning("Token auth failed: invalid token")
 
     # Fallback to cookie-based auth
-    if not user and feature_flags.is_enabled("websocket_query_param_compat"):
-        token = websocket.query_params.get("token")
-        if token:
-            logger.info("Attempting token auth from query params (compat mode)")
-            user, session_jti = await get_user_from_token(token)
-            if user:
-                logger.info("Token auth successful: user_id=%s", user.id)
-            else:
-                logger.warning("Token auth failed: invalid token")
+    if not user:
+        # MOD-6: Use OpenFeature client for evaluations
+        is_query_param_enabled = feature_flags.of_client.get_boolean_value(
+            "websocket_query_param_compat",
+            default_value=False,
+        )
+        if is_query_param_enabled:
+            token = websocket.query_params.get("token")
+            if token:
+                logger.info("Attempting token auth from query params (compat mode)")
+                user, session_jti = await get_user_from_token(token)
+                if user:
+                    logger.info("Token auth successful: user_id=%s", user.id)
+                else:
+                    logger.warning("Token auth failed: invalid token")
 
     if not user:
         access_token = websocket.cookies.get("access_token_v2")

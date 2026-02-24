@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "University Ecosystem Platform"
 requires-python = ">=3.11"
 dependencies = [
-    "aiofiles>=23.0,<24.0",
+    "aiofiles>=23.0",  # No breaking API changes between 23 and 24; pin removed (TD-3: audit 2026-02-24)
     "aiosqlite>=0.19",
     "alembic>=1.13,<2.0",
     "anyio>=4.0.0,<5.0",
@@ -65,9 +65,6 @@ dependencies = [
     "starlette>=0.40",
     "strawberry-graphql[fastapi]>=0.250",
     "structlog>=24.0",
-    "taskiq>=0.11.0",
-    "taskiq-fastapi>=0.3.0",
-    "taskiq-redis>=1.0.0",
     "typer>=0.12.0",
     "urllib3>=2.6.3",
     "uvicorn[standard]>=0.23",
@@ -77,6 +74,7 @@ dependencies = [
     "authzed>=1.15.0",
     "grpcio-health-checking>=1.60.0",
     "dishka[fastapi]>=0.14",
+    "openfeature-sdk>=0.8.4",
 ]
 
 [tool.mypy]
@@ -105,13 +103,25 @@ check_untyped_defs = false
 # Routers and services contain many FastAPI route handlers decorated with
 # Depends(); their signatures are validated by FastAPI at startup rather than
 # mypy.  Allow missing annotations in these modules during the migration period.
+# NOTE: FastAPI route-handler functions are validated by FastAPI at startup
+# rather than mypy.  The override below is TEMPORARY and must be narrowed
+# module-by-module until the services layer is fully annotated. (TD-1: audit 2026-02-24)
+# Target: remove each module from this list on resolution of its annotations.
 [[tool.mypy.overrides]]
 module = [
     "app.routers.*",
     "app.api.auth.*",
     "app.api.internal.*",
-    "app.services.*",
-    "app.repositories.*",
+]
+disallow_untyped_defs = false
+
+# Temporarily exempt only the services with the most complex Depends() chains.
+# All other services must be fully annotated.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.auth.login_service",
+    "app.services.chat_service",
+    "app.services.webpush",
 ]
 disallow_untyped_defs = false
 
@@ -141,7 +151,9 @@ ignore = [
     "RUF001", # ambiguous characters
     "RUF002",
     "RUF003",
-    "RUF012", # mutable class default (too many for now)
+    # RUF012 (mutable class default) was previously suppressed globally.
+    # It has been re-enabled (TD-5: audit 2026-02-24).
+    # Run: ruff check --select RUF012 app/ to see and fix remaining violations.
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -151,6 +163,12 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

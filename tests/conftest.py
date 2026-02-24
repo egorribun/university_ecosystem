@@ -64,6 +64,17 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
+def initialize_database_for_tests():
+    """
+    Initialize the database engine for the test session.
+    Must run after environment variables are set.
+    """
+    from app.core.database import init_database
+
+    init_database()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def mock_global_redis(monkeypatch_session):
     """
     Global session-scoped fixture to redirect all Redis connections to fakeredis.

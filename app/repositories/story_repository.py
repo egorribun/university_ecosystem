@@ -15,8 +15,7 @@ from app.schemas.dtos import StoryDTO
 
 if TYPE_CHECKING:
     import uuid
-
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class StoryRepository(BaseRepository[Story, StoryDTO, dict, dict]):
@@ -94,7 +93,7 @@ class StoryRepository(BaseRepository[Story, StoryDTO, dict, dict]):
         return True
 
 
-def get_story_repository(db: AsyncSession) -> StoryRepository:
+def get_story_repository(db: AsyncDatabaseSession) -> StoryRepository:
     """Factory function for dependency injection."""
     return StoryRepository(db)
 

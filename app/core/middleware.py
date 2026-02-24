@@ -35,6 +35,12 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
     Provides defence-in-depth on top of upstream proxy limits (nginx / caddy).
     Handles both Content-Length and chunked Transfer-Encoding so attackers
     cannot bypass the check by omitting the header.
+
+    Body replay: when the body is streamed (no Content-Length), this middleware
+    buffers the chunks, enforces the limit, and then replaces the ASGI `receive`
+    callable with a replay that returns the buffered body.  Without this, the
+    downstream handler would receive an already-exhausted stream (empty body),
+    which is a silent, hard-to-debug data-loss bug. (TD-2: audit 2026-02-24)
     """
 
     _BAD_CONTENT_LENGTH = JSONResponse(
@@ -56,16 +62,33 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
             if cl > self._max_bytes:
                 return self._oversized_response(self._max_bytes)
 
-        # Slow path: chunked / unknown length — stream and accumulate byte count.
+        # Slow path: chunked / unknown length — stream, accumulate, replay.
+        # Extend to DELETE because RFC 9110 permits DELETE with a body, and
+        # payloads without Content-Length would bypass the fast path.
         method = request.method.upper()
         path = request.url.path or ""
-        has_body = method in {"POST", "PUT", "PATCH"} and not path.startswith("/ws")
+        has_body = (
+            method in {"POST", "PUT", "PATCH", "DELETE"}
+            and not path.startswith("/ws")
+        )
         if has_body and cl_header is None:
+            body_chunks: list[bytes] = []
             accumulated = 0
             async for chunk in request.stream():
                 accumulated += len(chunk)
                 if accumulated > self._max_bytes:
                     return self._oversized_response(self._max_bytes)
+                body_chunks.append(chunk)
+
+            # Re-inject the accumulated body so downstream handlers can read it.
+            # BaseHTTPMiddleware wraps the scope/receive, so we re-create the
+            # request with a synthetic receive callable.
+            body_bytes = b"".join(body_chunks)
+
+            async def _replay_receive() -> dict:
+                return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+            request = Request(request.scope, receive=_replay_receive)
 
         return await call_next(request)
 

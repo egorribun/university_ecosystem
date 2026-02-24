@@ -4,14 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import settings
-from app.core.database import Base, engine, wait_db
+from app.core.database import Base, engine, init_database, wait_db
 from app.core.events import register_event_listeners
+from app.core.nats_broker import broker as nats_broker
 from app.core.observability import shutdown_observability
-from app.core.rate_limit import (
-    start_memory_cleanup_task,
-    stop_memory_cleanup_task,
-)
-from app.core.tkq import broker
 from app.deps.cache import shutdown_cache
 from app.services import notification_queue, webpush
 from app.services.cache_warmup import warm_cache
@@ -34,7 +30,10 @@ async def lifespan(app: FastAPI):
 
     from app.core.di_provider import create_dishka_container
 
-    setup_dishka(create_dishka_container(), app)
+    # (TD-4) Guard: setup_dishka adds middleware, which can only be done once.
+    # In tests, lifespan may be called multiple times on the same app instance.
+    if not hasattr(app.state, "dishka_container"):
+        setup_dishka(create_dishka_container(), app)
 
     import app.api.websocket as _ws_module
     from app.api.websocket import (
@@ -43,6 +42,10 @@ async def lifespan(app: FastAPI):
         stop_presence_pubsub,
     )
     from app.core.feature_flags import feature_flags
+    from app.core.rate_limit import (
+        start_memory_cleanup_task,
+        stop_memory_cleanup_task,
+    )
 
     # Initialise the WebSocket ConnectionManager and expose it via app.state so
     # that route handlers can inject it through get_connection_manager() and
@@ -51,7 +54,12 @@ async def lifespan(app: FastAPI):
     app.state.connection_manager = _cm
     _ws_module.manager = _cm  # Keep module-level alias for pubsub / background tasks
 
-    await broker.startup()
+    # MOD-3: NATS Task Broker initialization
+    await nats_broker.connect()
+    # In development or if explicitly allowed, we can run the worker in-process.
+    # In production, a separate worker process would call broker.run_worker().
+    worker_task = asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
+
     await feature_flags.initialize()
     await start_presence_pubsub()
     await wait_db(max_attempts=10, delay=0.5)
@@ -134,6 +142,52 @@ async def lifespan(app: FastAPI):
 
     await setup_periodic_cleanups()
 
+    async def _periodic_scheduler():
+        """Lightweight background loop for periodic tasks. (MOD-3)"""
+        from app.tasks.cleanups import (
+            cleanup_notifications_task,
+            cleanup_dead_letter_jobs_task,
+            cleanup_sessions_task,
+            cleanup_stories_task,
+            cleanup_password_reset_tokens_task,
+            cleanup_email_change_tokens_task,
+            cleanup_mfa_challenges_task,
+            cleanup_privacy_artifacts_task,
+            manage_partitions_task,
+        )
+
+        # Initial delay to let the app warm up
+        await asyncio.sleep(60)
+
+        while True:
+            try:
+                # Every 1 hour: most cleanups
+                await cleanup_stories_task.kick()
+                await cleanup_password_reset_tokens_task.kick()
+                await cleanup_email_change_tokens_task.kick()
+                await cleanup_mfa_challenges_task.kick()
+
+                # Every 6 hours: sessions
+                cur_hour = datetime.now(UTC).hour
+                if cur_hour % 6 == 0:
+                    await cleanup_sessions_task.kick()
+
+                # Every 24 hours: heavy/daily tasks (at ~2 AM or similar)
+                if cur_hour == 2:
+                    await cleanup_notifications_task.kick()
+                    await cleanup_dead_letter_jobs_task.kick()
+                    await cleanup_privacy_artifacts_task.kick()
+                    await manage_partitions_task.kick()
+
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Periodic scheduler error: {e}")
+
+            # Sleep for 1 hour between checks
+            await asyncio.sleep(3600)
+
+    scheduler_task = asyncio.create_task(_periodic_scheduler(), name="periodic_scheduler")
+
     if settings.partition_management_enabled:
         import logging
 
@@ -181,7 +235,11 @@ async def lifespan(app: FastAPI):
 
         await outbox_worker.stop()
         await outbox_task
+
+        # Shutdown NATS broker
+        worker_task.cancel()
+        await nats_broker.close()
+
         await feature_flags.shutdown()
-        await broker.shutdown()
         await stop_memory_cleanup_task()
         shutdown_observability()

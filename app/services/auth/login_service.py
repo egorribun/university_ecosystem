@@ -18,16 +18,13 @@ from app.core.database import async_session
 from app.core.localization import resolve_locale
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import ensure_mfa_relationships_loaded
-from app.repositories.auth_repository import AuthRepository
-from app.schemas import schemas
+from app.core.protocols import AsyncDatabaseSession
 from app.schemas.dtos import ActiveSessionDTO, UserAuthDTO, UserDTO
 from app.tasks.email import send_lockout_alert
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.services.audit_service import AuditService
     from app.services.auth.lockout import LockoutService
@@ -40,7 +37,7 @@ logger = logging.getLogger(__name__)
 class LoginService:
     def __init__(
         self,
-        db: AsyncSession,
+        db: AsyncDatabaseSession,
         user_service: UserService,
         session_service: SessionService,
         lockout_service: LockoutService,
@@ -168,6 +165,12 @@ class LoginService:
 
         self._set_access_token_cookie(response, token)
 
+        # Rotate the CSRF token on every successful auth event (login, MFA step-up).
+        # A CSRF token that was valid before authentication must not remain valid
+        # after privilege escalation. (RZ-5: audit 2026-02-24)
+        from app.core.csrf import signal_csrf_rotation
+        signal_csrf_rotation(request)
+
         bg_tasks.add_task(
             self.record_login_history_bg,
             user.id,
@@ -204,6 +207,7 @@ class LoginService:
         metrics.record_login_success(method=method)
 
         return await self.build_token_response(user, token, session)
+
 
     async def build_token_response(
         self,
@@ -395,7 +399,7 @@ class LoginService:
         attempts: int,
         locale: str,
     ) -> None:
-        await send_lockout_alert.kiq(email, full_name, locale)
+        await send_lockout_alert.kick(email, full_name, locale)
         # We don't log to audit again here as it's already logged in the caller
         # but we could add more metadata if needed.
 

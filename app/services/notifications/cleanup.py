@@ -18,7 +18,7 @@ from app.core.database import async_session as _async_session
 from app.models.models import Notification, NotificationDelivery
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = logging.getLogger(__name__)
 

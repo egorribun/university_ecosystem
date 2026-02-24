@@ -17,7 +17,7 @@ from fastapi import (
 )
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import exists, func, literal, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.api.deps import (
     get_current_user,
@@ -218,7 +218,7 @@ async def get_news(
     response: Response,
     if_none_match: str | None = Header(default=None),
     user: models.User | None = Depends(get_current_user_optional),
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(get_read_db),
     service: NewsService = Depends(get_read_news_service),
 ):
     """
@@ -492,7 +492,7 @@ async def semantic_search(
     limit: int = Query(5, ge=1, le=20),
     min_score: float = Query(0.7, ge=0.0, le=1.0),
     if_none_match: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(get_read_db),
     vector_service: Any = Depends(get_vector_service),
     service: NewsService = Depends(get_read_news_service),
 ):

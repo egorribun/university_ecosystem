@@ -7,7 +7,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles
 
-from app.core.database import Base, async_session, engine
+from app.core import database
+from app.core.database import Base, init_database
 from app.models import models
 
 
@@ -18,6 +19,7 @@ def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
+    init_database()
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = database_url.startswith("postgresql")
 
@@ -50,7 +52,7 @@ async def prepare_database() -> AsyncIterator[None]:
         models.EventFile.__table__.name,
     }
 
-    async with engine.begin() as conn:
+    async with database.engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
 
@@ -211,14 +213,14 @@ async def prepare_database() -> AsyncIterator[None]:
         )
 
     yield
-    async with engine.begin() as conn:
+    async with database.engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     """Get a fresh database session for each test."""
-    async with async_session() as session:
+    async with database.async_session() as session:
         yield session
         await session.rollback()
 
@@ -241,7 +243,7 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
 
     database_url = os.environ.get("DATABASE_URL", "")
-    is_postgresql = engine.dialect.name == "postgresql" or database_url.startswith(
+    is_postgresql = database.engine.dialect.name == "postgresql" or database_url.startswith(
         "postgresql"
     )
 
@@ -249,7 +251,7 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     delay = 0.1
     for attempt in range(1, attempts + 1):
         try:
-            async with engine.begin() as conn:
+            async with database.engine.begin() as conn:
                 if is_postgresql:
                     # Get existing tables to avoid UndefinedTableError
                     result = await conn.exec_driver_sql(

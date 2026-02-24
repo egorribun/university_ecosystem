@@ -15,8 +15,7 @@ from app.schemas.dtos.notification import NotificationDTO
 
 if TYPE_CHECKING:
     import uuid
-
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class NotificationRepository(BaseRepository[Notification, NotificationDTO, dict, dict]):
@@ -131,7 +130,7 @@ class NotificationRepository(BaseRepository[Notification, NotificationDTO, dict,
         return {row[0] or "unknown": row[1] for row in result.all()}
 
 
-def get_notification_repository(db: AsyncSession) -> NotificationRepository:
+def get_notification_repository(db: AsyncDatabaseSession) -> NotificationRepository:
     """Factory function for dependency injection."""
     return NotificationRepository(db)
 

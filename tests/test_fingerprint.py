@@ -136,23 +136,38 @@ class TestSessionFingerprint:
 class TestGetClientIp:
     """Tests for _get_client_ip function."""
 
-    def test_x_forwarded_for(self):
+    def test_x_forwarded_for_is_ignored(self):
+        """X-Forwarded-For must NOT be read directly.
+
+        ProxyHeadersMiddleware rewrites request.client.host before
+        _get_client_ip runs.  Reading XFF here would allow spoofing.
+        (RZ-1b: audit 2026-02-24)
+        """
         request = MagicMock()
         request.headers.get.side_effect = lambda key, default="": {
-            "x-forwarded-for": "1.2.3.4, 5.6.7.8",
+            "x-forwarded-for": "attacker-injected, 5.6.7.8",
         }.get(key, default)
+        request.client.host = "10.0.0.1"  # Real IP set by ProxyHeadersMiddleware
 
         result = _get_client_ip(request)
-        assert result == "1.2.3.4"
+        # Must return the value from client.host, NOT from the XFF header.
+        assert result == "10.0.0.1"
 
-    def test_x_real_ip(self):
+    def test_x_real_ip_is_ignored(self):
+        """X-Real-IP must NOT be read directly for the same reason as XFF.
+
+        After ProxyHeadersMiddleware runs, client.host already holds the
+        correct client IP.  Trusting X-Real-IP here allows spoofing.
+        (RZ-1b: audit 2026-02-24)
+        """
         request = MagicMock()
         request.headers.get.side_effect = lambda key, default="": {
-            "x-real-ip": "1.2.3.4",
+            "x-real-ip": "attacker-injected",
         }.get(key, default)
+        request.client.host = "10.0.0.2"
 
         result = _get_client_ip(request)
-        assert result == "1.2.3.4"
+        assert result == "10.0.0.2"
 
     def test_direct_connection(self):
         request = MagicMock()

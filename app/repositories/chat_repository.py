@@ -9,6 +9,7 @@ from app.models.models import User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+from app.core.protocols import AsyncDatabaseSession
 
 
 class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
@@ -323,6 +324,9 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
     async def get_user(self, user_id: uuid.UUID) -> User | None:
         """Fetch a User by primary key — used by ChatService to resolve participants."""
         return await self.db.get(User, user_id)
+
+def get_chat_repository(db: AsyncDatabaseSession) -> ChatRepository:
+    return ChatRepository(db)
 
     async def check_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         """Return True iff user_id is a participant of chat_id.

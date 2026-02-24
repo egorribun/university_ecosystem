@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import Request
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.core.database import async_session
 from app.models.models import DataAccessLog
@@ -23,7 +23,7 @@ def _normalize_time(value: datetime | None) -> datetime | None:
 
 
 async def log_data_access(
-    db: AsyncSession,
+    db: AsyncDatabaseSession,
     *,
     actor_user_id: uuid.UUID | int | None,
     subject_user_id: uuid.UUID | int | None,
@@ -72,7 +72,7 @@ async def log_data_access(
 
 
 async def batch_log_data_access(
-    db: AsyncSession,
+    db: AsyncDatabaseSession,
     *,
     entries: list[dict],
     request: Request,
@@ -130,7 +130,7 @@ async def batch_log_data_access(
 
 
 async def cleanup_access_logs(
-    *, db: AsyncSession | None = None, retention_days: int = 180
+    *, db: AsyncDatabaseSession | None = None, retention_days: int = 180
 ) -> int:
     owns_session = db is None
     retention = max(0, int(retention_days))
@@ -147,7 +147,7 @@ async def cleanup_access_logs(
 
 
 async def export_access_logs(
-    db: AsyncSession,
+    db: AsyncDatabaseSession,
     *,
     start_at: datetime | None = None,
     end_at: datetime | None = None,

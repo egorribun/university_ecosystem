@@ -64,13 +64,16 @@ func (c *Client) ReadPump() {
 		case "leave":
 			c.LeaveRoom(msg.Room)
 		case "message":
+			// Publish to NATS only. The hub's NATS subscriber will fan the
+			// message out to all connected clients via the Broadcast channel.
+			// Direct Broadcast <- &msg is intentionally removed to prevent
+			// duplicate delivery (RZ-6: audit 2026-02-24).
 			if js, err := c.Hub.Nats.JetStream(); err == nil {
 				_, _ = js.PublishAsync("chat."+msg.Room, data)
 			} else {
 				c.Hub.Logger.Error("Failed to init JetStream, falling back to core NATS", zap.Error(err))
 				_ = c.Hub.Nats.Publish("chat."+msg.Room, data)
 			}
-			c.Hub.Broadcast <- &msg
 		}
 	}
 }
@@ -109,12 +112,17 @@ func (c *Client) JoinRoom(room string) {
 		return
 	}
 
-	c.Hub.mu.Lock()
-	defer c.Hub.mu.Unlock()
-
+	// Acquire client-local lock before hub-global lock to establish a
+	// consistent total lock order (client.mu → hub.mu) across all paths.
+	// Inverting this order versus Hub.Run()'s Unregister path would create
+	// a deadlock risk under concurrent room-join and client-eviction.
+	// (RZ-2: audit 2026-02-24)
 	c.mu.Lock()
 	c.Rooms[room] = true
 	c.mu.Unlock()
+
+	c.Hub.mu.Lock()
+	defer c.Hub.mu.Unlock()
 
 	if c.Hub.Rooms[room] == nil {
 		c.Hub.Rooms[room] = make(map[*Client]bool)
@@ -125,12 +133,13 @@ func (c *Client) JoinRoom(room string) {
 }
 
 func (c *Client) LeaveRoom(room string) {
-	c.Hub.mu.Lock()
-	defer c.Hub.mu.Unlock()
-
+	// Same lock order as JoinRoom: client.mu before hub.mu.
 	c.mu.Lock()
 	delete(c.Rooms, room)
 	c.mu.Unlock()
+
+	c.Hub.mu.Lock()
+	defer c.Hub.mu.Unlock()
 
 	if clients, ok := c.Hub.Rooms[room]; ok {
 		delete(clients, c)

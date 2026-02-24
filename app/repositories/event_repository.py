@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import aliased, selectinload
 
+from app.core.protocols import AsyncDatabaseSession
 from app.core.config import settings
 from app.models import models
 from app.models.models import Event
@@ -21,11 +22,14 @@ from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventSearchResultDTO
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
     """Repository for Event model operations."""
+
+    def __init__(self, db: AsyncDatabaseSession):
+        self.db = db
 
     @property
     def model(self) -> type[Event]:
@@ -407,7 +411,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
         return result.fetchall(), list(result.keys())
 
 
-def get_event_repository(db: AsyncSession) -> EventRepository:
+def get_event_repository(db: AsyncDatabaseSession) -> EventRepository:
     """Factory function for dependency injection."""
     return EventRepository(db)
 

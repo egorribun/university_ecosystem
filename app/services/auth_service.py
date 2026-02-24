@@ -10,17 +10,19 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import inspect
+from sqlalchemy import exc as sa_exc, inspect
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
+    from app.models import models as _models
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
-    _AnyUser = models.User | UserAuthDTO | UserDTO
+    _AnyUser = _models.User | UserAuthDTO | UserDTO
 
 from app.api.validation import raise_validation_error
 from app.auth.security import get_password_hash
+from app.core.protocols import AsyncDatabaseSession
 from app.core.config import settings
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import resolve_locale
@@ -77,7 +79,7 @@ class AuthService:
             base = settings.app_base_url_clean
             reset_link = f"{base}/reset-password?token={token}"
             locale = resolve_locale(request=request, user=user)
-            await send_auth_email.kiq(
+            await send_auth_email.kick(
                 str(user.email),
                 reset_link,
                 user.full_name or "",
@@ -233,7 +235,7 @@ class AuthService:
 
         base = settings.app_base_url_clean
         confirm_link = f"{base}/settings/email-confirm?token={token}"
-        await send_auth_email.kiq(
+        await send_auth_email.kick(
             validated_email,
             confirm_link,
             user.profile.full_name if user.profile else "",
@@ -403,8 +405,18 @@ async def attach_pending_email(
             insp = inspect(user)
             if insp is not None and "email_change_tokens" not in insp.unloaded:
                 return cast("_AnyUser", attach_pending_email_sync(user, None))
-        except Exception:
+        except sa_exc.DetachedInstanceError:
+            # Expected: object is detached from its session (e.g. in a background
+            # task).  Fall through to the DB query path below.
             pass
+        except Exception:
+            # Unexpected inspect error — log but do not propagate so that the
+            # caller still gets a result.  (RZ-6: audit 2026-02-24)
+            logger.warning(
+                "attach_pending_email: unexpected inspect error for user %s",
+                getattr(user, "id", "unknown"),
+                exc_info=True,
+            )
 
     repo = AuthRepository(db)
     pending = await repo.get_active_email_change_request(user.id)
@@ -417,8 +429,9 @@ def attach_pending_email_sync(user: Any, email: str | None) -> Any:
     if hasattr(user, "model_copy"):
         from typing import cast
 
-        typed_user = cast(UserDTO, user)
-        return cast(Any, typed_user.model_copy(update={"pending_email": email}))
+        # (audit 2026-02-24) use string for cast to avoid runtime NameError
+        # as UserDTO is only available under TYPE_CHECKING.
+        return cast(Any, user).model_copy(update={"pending_email": email})
 
     if email is not None:
         user.pending_email = email

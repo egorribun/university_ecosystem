@@ -3,8 +3,9 @@ from typing import Any
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
+from app.models.news import News
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 class VectorService:
     """Service for handling embeddings and semantic search."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
         self._client = httpx.AsyncClient(
             base_url=settings.embedding_api_base,

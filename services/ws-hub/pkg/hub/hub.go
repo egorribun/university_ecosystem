@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -33,19 +34,54 @@ type Hub struct {
 	// authClient authorizes room-join requests against the Python backend.
 	// If nil, all room-join attempts are denied (fail-closed).
 	authClient RoomAuthClient
+	// subs holds active NATS subscriptions for graceful Drain on shutdown.
+	subs []*nats.Subscription
+	// UpgradeLimiter caps per-IP WebSocket upgrade attempts. (RZ-2)
+	UpgradeLimiter *WSUpgradeRateLimiter
+	// jwksCache stores public keys fetched via MOD-1 / JWKS URL.
+	jwksCache *jwk.Cache
 }
 
-func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient) *Hub {
+func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
 	return &Hub{
-		Clients:    make(map[string]*Client),
-		Rooms:      make(map[string]map[*Client]bool),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		Broadcast:  make(chan *Message, 4096), // sized for NATS burst peaks
-		Nats:       nc,
-		Logger:     logger,
-		authClient: authClient,
+		Clients:        make(map[string]*Client),
+		Rooms:          make(map[string]map[*Client]bool),
+		Register:       make(chan *Client),
+		Unregister:     make(chan *Client),
+		Broadcast:      make(chan *Message, cfg.BroadcastBufferSize),
+		Nats:           nc,
+		Logger:         logger,
+		authClient:     authClient,
+		// 10 upgrade attempts per 60-second window per IP.
+		// At ~1 KB/handshake this limits the surface area for JWT-brute-force
+		// DDoS without affecting legitimate reconnect scenarios.
+		UpgradeLimiter: NewWSUpgradeRateLimiter(10, 60),
+		jwksCache:      nil, // Initialised via SetupJWKS()
 	}
+}
+
+// SetupJWKS initialises the JWKS cache for RS256 token verification.
+// It fetches public keys from jwksURL and refreshes them periodically. (MOD-1)
+func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
+	if jwksURL == "" {
+		return nil
+	}
+
+	h.jwksCache = jwk.NewCache(ctx)
+	// Refresh the cache every hour.
+	err := h.jwksCache.Register(jwksURL, jwk.WithMinRefreshInterval(time.Hour))
+	if err != nil {
+		return fmt.Errorf("failed to register JWKS URL %s: %w", jwksURL, err)
+	}
+
+	// Initial fetch to ensure we have keys at startup.
+	_, err = h.jwksCache.Refresh(ctx, jwksURL)
+	if err != nil {
+		h.Logger.Warn("Initial JWKS fetch failed; will retry in background", zap.Error(err))
+	}
+
+	h.Logger.Info("JWKS cache initialised", zap.String("url", jwksURL))
+	return nil
 }
 
 func (h *Hub) Run() {
@@ -96,62 +132,75 @@ func (h *Hub) broadcastMessage(msg *Message) {
 
 	data, _ := json.Marshal(msg)
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	// PERF-3: snapshot recipients under the read lock, then release
+	// the lock before writing to channels.
+	//
+	// Holding RLock for the entire send loop forces every Register/Unregister
+	// (which need the write lock) to queue behind ALL channel writes — O(N)
+	// critical section under contention.  Snapshotting first reduces the lock
+	// hold time to O(1) (just map iteration + slice append), making channel
+	// writes contention-free.
+	type recipient struct {
+		client   *Client
+		evictOnFull bool // true only for global broadcast where we auto-evict
+	}
+	var recipients []recipient
 
-	var recipientCount int
+	h.mu.RLock()
 	if msg.Room != "" {
 		if clients, ok := h.Rooms[msg.Room]; ok {
-			recipientCount = len(clients)
-			span.SetAttributes(attribute.Int("recipient.count", recipientCount))
-			for client := range clients {
-				select {
-				case client.Send <- data:
-				default:
-				}
+			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
+			for c := range clients {
+				recipients = append(recipients, recipient{client: c})
 			}
 		}
 	} else if msg.To != "" {
-		if client, ok := h.Clients[msg.To]; ok {
-			recipientCount = 1
-			span.SetAttributes(attribute.Int("recipient.count", recipientCount))
-			select {
-			case client.Send <- data:
-			default:
-			}
+		if c, ok := h.Clients[msg.To]; ok {
+			span.SetAttributes(attribute.Int("recipient.count", 1))
+			recipients = append(recipients, recipient{client: c})
 		}
 	} else {
-		recipientCount = len(h.Clients)
-		span.SetAttributes(attribute.Int("recipient.count", recipientCount))
-		for _, client := range h.Clients {
-			select {
-			case client.Send <- data:
-			default:
-				// Client's send buffer is full — evict via the Unregister channel.
-				// The Unregister handler holds hub.mu.Lock() exclusively and is the
-				// sole owner responsible for close(client.Send). WritePump detects
-				// the closed channel and exits cleanly, then closes Conn.
-				// Calling Conn.Close() here would race with WritePump — do NOT do it.
-				h.Logger.Warn("Client buffer full, evicting", zap.String("id", client.ID))
-				go func(c *Client) { h.Unregister <- c }(client)
+		// Global broadcast — evict slow consumers.
+		span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
+		for _, c := range h.Clients {
+			recipients = append(recipients, recipient{client: c, evictOnFull: true})
+		}
+	}
+	h.mu.RUnlock() // released before any channel writes
+
+	// Fan-out happens outside the lock — Register/Unregister can now proceed
+	// concurrently without blocking on our channel writes.
+	for _, r := range recipients {
+		select {
+		case r.client.Send <- data:
+		default:
+			if r.evictOnFull {
+				// Buffer full: schedule eviction via the Unregister channel.
+				// Unregister handler is the sole owner of close(client.Send).
+				h.Logger.Warn("Client buffer full, evicting", zap.String("id", r.client.ID))
+				go func(c *Client) { h.Unregister <- c }(r.client)
 			}
+			// For room/direct messages, silently drop — the client has an
+			// application-level reconnect mechanism.
 		}
 	}
 }
 
+// SubscribeToNATS registers NATS subscriptions and stores them for graceful
+// shutdown via Stop().  Fatals on subscription error (RZ-4): a hub that
+// cannot receive NATS messages delivers no messages — better to fail loudly
+// at startup than silently serve a broken system.
 func (h *Hub) SubscribeToNATS() {
-	_, _ = h.Nats.Subscribe("chat.>", func(msg *nats.Msg) {
-		// Attempt to extract context from NATS message headers if present
+	chatSub, err := h.Nats.Subscribe("chat.>", func(msg *nats.Msg) {
+		// Attempt to extract trace context from NATS message headers if present.
 		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
 		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.Chat")
 		defer span.End()
 
 		var wsMsg Message
 		if err := json.Unmarshal(msg.Data, &wsMsg); err == nil {
-			// Non-blocking push: if the Broadcast channel is full we drop
-			// the message rather than blocking the NATS subscriber goroutine.
-			// A blocked subscriber would exceed NATS MaxPending and close
-			// the subscription, causing a full WebSocket service outage.
+			// Non-blocking push: dropping here is safer than blocking the NATS
+			// subscriber goroutine (blocked goroutine → MaxPending exceeded → sub closed).
 			select {
 			case h.Broadcast <- &wsMsg:
 			default:
@@ -160,8 +209,13 @@ func (h *Hub) SubscribeToNATS() {
 			}
 		}
 	})
+	if err != nil {
+		h.Logger.Fatal("NATS chat subscription failed — hub cannot deliver messages",
+			zap.Error(err))
+	}
+	h.subs = append(h.subs, chatSub)
 
-	_, _ = h.Nats.Subscribe("notifications.>", func(msg *nats.Msg) {
+	notifSub, err := h.Nats.Subscribe("notifications.>", func(msg *nats.Msg) {
 		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
 		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.Notifications")
 		defer span.End()
@@ -177,8 +231,27 @@ func (h *Hub) SubscribeToNATS() {
 			}
 		}
 	})
+	if err != nil {
+		h.Logger.Fatal("NATS notifications subscription failed — hub cannot deliver messages",
+			zap.Error(err))
+	}
+	h.subs = append(h.subs, notifSub)
 
 	h.Logger.Info("Subscribed to NATS topics")
+}
+
+// Stop drains all NATS subscriptions (flushing in-flight messages) and
+// stops the per-IP upgrade rate limiter GC goroutine.  Call this from
+// the application shutdown path before closing the NATS connection.
+func (h *Hub) Stop() {
+	for _, sub := range h.subs {
+		if err := sub.Drain(); err != nil {
+			h.Logger.Warn("NATS subscription drain error", zap.Error(err))
+		}
+	}
+	if h.UpgradeLimiter != nil {
+		h.UpgradeLimiter.Stop()
+	}
 }
 
 // AuthorizeRoomJoin verifies that userID is a participant of the given room

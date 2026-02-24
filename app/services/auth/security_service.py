@@ -2,7 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.api.validation import raise_unauthorized
 from app.core.config import settings
@@ -12,7 +12,7 @@ logger = logging.getLogger("app.auth.security")
 
 
 class AuthSecurityService:
-    def __init__(self, db: AsyncSession, locale: str):
+    def __init__(self, db: AsyncDatabaseSession, locale: str):
         self.db = db
         self.locale = locale
 

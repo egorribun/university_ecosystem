@@ -13,7 +13,7 @@ T = TypeVar("T")
 
 if TYPE_CHECKING:
     from sqlalchemy import Select
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 
 class CursorParams(BaseModel):

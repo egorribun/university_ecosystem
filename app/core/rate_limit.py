@@ -691,26 +691,49 @@ async def enforce_rate_limit(
 
 
 async def _cleanup_expired_memory_buckets() -> int:
-    """
-    Remove expired entries from in-memory counters.
+    """Remove expired entries from in-memory rate-limit counters.
 
-    Acquires all shards sequentially to get a consistent snapshot;
-    this runs in a background task at most once per minute so the
-    brief sequential acquisition is not a performance concern.
+    Algorithm (PERF-1: audit 2026-02-24):
+    1. Snapshot expired keys from the dict *without* holding any lock —
+       a stale snapshot is safe; we re-verify under each shard lock below.
+    2. Group keys by shard index to minimise lock acquisitions.
+    3. Acquire each affected shard lock exactly once and bulk-delete.
+
+    This replaces the previous 256-sequential-await loop (one ``async with``
+    per shard) with at most ``len(expired_keys) // avg_keys_per_shard`` awaits,
+    and eliminates the holding of unrelated shard locks during cleanup.
     """
     now = time.time()
     cleaned = 0
-    for lock in _memory_locks:
-        async with lock:
-            keys_to_delete = [
-                k
-                for k, (_, expiry) in _memory_counters.items()
-                if now > expiry + 60  # Buffer to avoid thrashing
-            ]
-            for k in keys_to_delete:
-                del _memory_counters[k]
-                cleaned += 1
+
+    # Step 1: lock-free snapshot — may contain false positives (recently updated
+    # keys); those are harmlessly skipped in step 3.
+    expired_keys = [
+        k
+        for k, (_, expiry) in _memory_counters.items()
+        if now > expiry + 60  # 60-second grace buffer to avoid thrashing
+    ]
+    if not expired_keys:
+        return 0
+
+    # Step 2: group by shard to minimise lock acquisitions.
+    shard_groups: dict[int, list[str]] = {}
+    for k in expired_keys:
+        shard_idx = hash(k) & (_LOCK_SHARD_COUNT - 1)
+        shard_groups.setdefault(shard_idx, []).append(k)
+
+    # Step 3: one lock acquisition per shard that has work to do.
+    for shard_idx, keys in shard_groups.items():
+        async with _memory_locks[shard_idx]:
+            for k in keys:
+                entry = _memory_counters.get(k)
+                # Re-verify: key may have been refreshed since the snapshot.
+                if entry is not None and now > entry[1] + 60:
+                    del _memory_counters[k]
+                    cleaned += 1
+
     return cleaned
+
 
 
 async def cleanup_all_memory_stores() -> dict[str, int]:
@@ -737,21 +760,31 @@ async def _periodic_memory_cleanup() -> None:
             # Priority-Queue based eviction if too big.
             # We pop the oldest items from the heap. Stale entries (keys updated
             # with new expiry) are naturally skipped if their expiry doesn't match.
-            if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES:
-                evict_count = max(1, int(len(_memory_counters) * 0.2))
+            # (PERF-2: audit 2026-02-24) Cap heap growth to 3x active counters.
+            heap_cap = max(100, len(_memory_counters) * 3)
+            if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES or len(_memory_expiry_heap) > heap_cap:
+                evict_count = max(1, int(len(_memory_expiry_heap) * 0.2))
                 evicted = 0
                 while evicted < evict_count and _memory_expiry_heap:
                     expiry, key = heapq.heappop(_memory_expiry_heap)
                     # Check if this entry is still the current authoritative one
                     current = _memory_counters.get(key)
                     if current is not None and current[1] == expiry:
-                        # Acquire shard lock before deletion
-                        async with _shard_lock(key):
-                            # Double check after lock
-                            actual = _memory_counters.get(key)
-                            if actual is not None and actual[1] == expiry:
-                                _memory_counters.pop(key, None)
-                                evicted += 1
+                        # Only evict if we are over the canonical counter limit.
+                        # If we are just over the heap cap, we just discard the
+                        # stale heap entry (which happens anyway by popping).
+                        if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES:
+                            # Acquire shard lock before deletion
+                            async with _shard_lock(key):
+                                # Double check after lock
+                                actual = _memory_counters.get(key)
+                                if actual is not None and actual[1] == expiry:
+                                    _memory_counters.pop(key, None)
+                                    evicted += 1
+                    else:
+                        # Stale entry popped from heap — counts as "evicted" from heap
+                        # but doesn't increment the 'evicted' counter for DB/memory items.
+                        pass
 
         except asyncio.CancelledError:
             break

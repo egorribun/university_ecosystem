@@ -19,7 +19,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.api.deps import get_current_user
 from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
@@ -182,7 +182,7 @@ def _localized_notification_field(
     return ru_value or en_value
 
 
-async def _existing_notification_columns(db: AsyncSession) -> set[str]:
+async def _existing_notification_columns(db: AsyncDatabaseSession) -> set[str]:
     def _sync_get_columns(sync_session) -> set[str]:
         bind = sync_session.bind
         if bind is None:  # pragma: no cover - defensive guard
@@ -198,7 +198,7 @@ async def _existing_notification_columns(db: AsyncSession) -> set[str]:
 
 
 async def _fetch_notification_rows(
-    db: AsyncSession,
+    db: AsyncDatabaseSession,
     user_id: uuid.UUID | int | str,
     limit: int,
     cursor_info: tuple[datetime, str] | None,
@@ -249,7 +249,7 @@ async def _fetch_notification_rows(
 
 
 async def _fetch_notification_rows_fallback(
-    db: AsyncSession,
+    db: AsyncDatabaseSession,
     user_id: uuid.UUID | int | str,
     limit: int,
     cursor_info: tuple[datetime, str] | None,
@@ -374,7 +374,7 @@ async def list_notifications(
     response: Response,
     cursor: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(get_read_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -445,7 +445,7 @@ async def list_notifications(
 async def mark_read_single(
     notif_id: uuid.UUID,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -470,7 +470,7 @@ async def mark_read_single(
 
 @router.post("/read-all")
 async def mark_all_read(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     now = datetime.now(UTC)
@@ -488,7 +488,7 @@ async def mark_all_read(
 async def delete_notification(
     notif_id: uuid.UUID,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -509,7 +509,7 @@ async def delete_notification(
 
 @router.delete("")
 async def clear_notifications(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(
@@ -525,7 +525,7 @@ async def check_schedule_and_generate(
     request: Request,
     response: Response,
     lookahead_minutes: int = Query(15, ge=1, le=180),
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(get_read_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)

@@ -24,7 +24,7 @@ from app.services.notifications.core import (
 from app.services.notifications.delivery import create_notifications_for_users
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
     from app.models.models import Event, News
 

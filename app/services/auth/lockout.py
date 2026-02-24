@@ -4,8 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.core.config import settings
 from app.core.localization import translate
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class LockoutService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncDatabaseSession):
         self.db = db
         self.repo = AuthRepository(db)
 
@@ -120,11 +119,13 @@ class LockoutService:
         now = datetime.now(UTC)
 
         # Serialize all operations for this email within the transaction.
-        # hashtext() maps the email string to a stable 32-bit int.
-        await self.db.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext(:email))"),
-            {"email": email},
-        )
+        # hashtext() and pg_advisory_xact_lock() are PostgreSQL-specific.
+        # SQLite (used in tests) doesn't support them, so we skip it there.
+        if self.db.bind and self.db.bind.dialect.name == "postgresql":
+            await self.db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:email))"),
+                {"email": email},
+            )
 
         await self._prune_stale_attempts(email)
         # for_update=True is now redundant given the advisory lock,

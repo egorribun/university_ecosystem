@@ -16,9 +16,12 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from redis.asyncio import Redis
-
 from app.core.config import settings
+
+from openfeature import api
+from openfeature.evaluation_context import EvaluationContext
+from openfeature.flag_evaluation import FlagResolutionDetails, Reason
+from openfeature.provider import AbstractProvider, Metadata
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +91,89 @@ class FeatureFlag:
         return cls(**data)
 
 
+class UniversityFeatureProvider(AbstractProvider):
+    """OpenFeature Provider for University Ecosystem. (MOD-6)
+
+    Wraps the existing FeatureFlagService to provide a standardized API.
+    """
+
+    def __init__(self, service: FeatureFlagService) -> None:
+        self._service = service
+
+    def get_metadata(self) -> Metadata:
+        return Metadata(name="UniversityFeatureProvider")
+
+    def resolve_boolean_details(
+        self,
+        flag_key: str,
+        default_value: bool,
+        evaluation_context: EvaluationContext | None = None,
+    ) -> FlagResolutionDetails[bool]:
+        user_id = None
+        if evaluation_context and evaluation_context.targeting_key:
+            try:
+                user_id = int(evaluation_context.targeting_key)
+            except (ValueError, TypeError):
+                pass
+
+        is_enabled = self._service.is_enabled(flag_key, user_id=user_id, default=default_value)
+        return FlagResolutionDetails(
+            value=is_enabled,
+            reason=Reason.STATIC,  # Simplified for now
+        )
+
+    def resolve_string_details(
+        self,
+        flag_key: str,
+        default_value: str,
+        evaluation_context: EvaluationContext | None = None,
+    ) -> FlagResolutionDetails[str]:
+        # String flags can be stored in metadata if needed
+        flag = self._service.get(flag_key)
+        if flag and "value" in flag.metadata:
+            return FlagResolutionDetails(value=str(flag.metadata["value"]))
+        return FlagResolutionDetails(value=default_value, reason=Reason.DEFAULT)
+
+    def resolve_integer_details(
+        self,
+        flag_key: str,
+        default_value: int,
+        evaluation_context: EvaluationContext | None = None,
+    ) -> FlagResolutionDetails[int]:
+        flag = self._service.get(flag_key)
+        if flag and "value" in flag.metadata:
+            try:
+                return FlagResolutionDetails(value=int(flag.metadata["value"]))
+            except (ValueError, TypeError):
+                pass
+        return FlagResolutionDetails(value=default_value, reason=Reason.DEFAULT)
+
+    def resolve_float_details(
+        self,
+        flag_key: str,
+        default_value: float,
+        evaluation_context: EvaluationContext | None = None,
+    ) -> FlagResolutionDetails[float]:
+        flag = self._service.get(flag_key)
+        if flag and "value" in flag.metadata:
+            try:
+                return FlagResolutionDetails(value=float(flag.metadata["value"]))
+            except (ValueError, TypeError):
+                pass
+        return FlagResolutionDetails(value=default_value, reason=Reason.DEFAULT)
+
+    def resolve_object_details(
+        self,
+        flag_key: str,
+        default_value: Any,
+        evaluation_context: EvaluationContext | None = None,
+    ) -> FlagResolutionDetails[Any]:
+        flag = self._service.get(flag_key)
+        if flag and "value" in flag.metadata:
+            return FlagResolutionDetails(value=flag.metadata["value"])
+        return FlagResolutionDetails(value=default_value, reason=Reason.DEFAULT)
+
+
 class FeatureFlagService:
     """
     Service for managing feature flags.
@@ -147,7 +233,12 @@ class FeatureFlagService:
                 pass
 
         self._is_initialized = True
-        logger.info("Feature flag service initialized (%d flags)", len(self._flags))
+
+        # MOD-6: Set OpenFeature provider
+        api.set_provider(UniversityFeatureProvider(self))
+        self._of_client = api.get_client()
+
+        logger.info("Feature flag service initialized (%d flags and OpenFeature)", len(self._flags))
 
     async def shutdown(self) -> None:
         """Shutdown the service."""

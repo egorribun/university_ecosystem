@@ -10,6 +10,7 @@ from collections.abc import AsyncGenerator
 
 import strawberry
 from fastapi import Request
+from strawberry.extensions import QueryDepthLimiter
 from strawberry.fastapi import GraphQLRouter
 
 from app.graphql.context import GraphQLContext
@@ -77,9 +78,15 @@ async def get_context(
 
 
 # Create the schema
+# QueryDepthLimiter prevents deeply-nested query DoS attacks (GraphQL batching
+# attack / introspection amplification). max_depth=8 is generous for this
+# read-heavy schema while blocking abuse. (MOD-3: audit 2026-02-24)
 schema = strawberry.Schema(
     query=Query,
     # mutation=Mutation,  # Add when mutations are implemented
+    extensions=[
+        QueryDepthLimiter(max_depth=8),
+    ],
 )
 
 # Create the router for FastAPI

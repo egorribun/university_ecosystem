@@ -361,12 +361,6 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
         WHERE attrelid = 'events'::regclass AND attname = 'search_vector'
     """)
     )
-    print(f"DEBUG: pg_attribute: {info.all()}")
-
-    # DEBUG ROWS
-    rows = await db_session.execute(text("SELECT id, title, search_vector FROM events"))
-    for r in rows:
-        print(f"DEBUG ROW: {r}")
 
     # Now search - PostgreSQL has computed search_vector
     from app.repositories.event_repository import EventRepository

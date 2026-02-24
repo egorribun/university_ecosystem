@@ -27,13 +27,14 @@ from app.repositories.auth_repository import AuthRepository
 from app.schemas.dtos import UserDTO
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
+    from app.models.webauthn import WebAuthnCredential
 
 logger = logging.getLogger(__name__)
 
 
 class WebAuthnService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
         self.repo = AuthRepository(db)
 

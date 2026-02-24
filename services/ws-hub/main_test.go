@@ -12,24 +12,48 @@ func TestLoadConfig_ReturnsDefaultValues(t *testing.T) {
 	t.Setenv("WS_HUB_PORT", "")
 	t.Setenv("NATS_URL", "")
 	t.Setenv("JWT_SECRET", "")
+	t.Setenv("JWT_SECRETS", "")
 
 	cfg := config.LoadConfig()
 
 	assert.Equal(t, "8081", cfg.Port)
 	assert.Equal(t, "nats://nats:4222", cfg.NatsURL)
-	assert.Empty(t, cfg.JWTSecret)
+	assert.Empty(t, cfg.JWTSecrets)
 }
 
-func TestLoadConfig_ReadsEnvValues(t *testing.T) {
+func TestLoadConfig_ReadsLegacyJWTSecret(t *testing.T) {
 	t.Setenv("WS_HUB_PORT", "9999")
 	t.Setenv("NATS_URL", "nats://custom:4222")
+	t.Setenv("JWT_SECRETS", "")
 	t.Setenv("JWT_SECRET", "super-secret")
 
 	cfg := config.LoadConfig()
 
 	assert.Equal(t, "9999", cfg.Port)
 	assert.Equal(t, "nats://custom:4222", cfg.NatsURL)
-	assert.Equal(t, "super-secret", cfg.JWTSecret)
+	assert.Equal(t, []string{"super-secret"}, cfg.JWTSecrets)
+}
+
+func TestLoadConfig_ReadsMultipleJWTSecrets(t *testing.T) {
+	t.Setenv("JWT_SECRETS", "new-key, old-key")
+	t.Setenv("JWT_SECRET", "")
+
+	cfg := config.LoadConfig()
+
+	// JWT_SECRETS takes precedence; both secrets loaded for rotation support.
+	assert.Equal(t, []string{"new-key", "old-key"}, cfg.JWTSecrets)
+}
+
+func TestConfig_StructFields(t *testing.T) {
+	cfg := config.Config{
+		Port:       "8080",
+		NatsURL:    "nats://localhost:4222",
+		JWTSecrets: []string{"secret"},
+	}
+
+	assert.Equal(t, "8080", cfg.Port)
+	assert.Equal(t, "nats://localhost:4222", cfg.NatsURL)
+	assert.Equal(t, []string{"secret"}, cfg.JWTSecrets)
 }
 
 func TestMessage_JSONTags(t *testing.T) {
@@ -45,18 +69,6 @@ func TestMessage_JSONTags(t *testing.T) {
 	assert.Equal(t, "room-1", msg.Room)
 	assert.Equal(t, "user-1", msg.From)
 	assert.Equal(t, "user-2", msg.To)
-}
-
-func TestConfig_StructFields(t *testing.T) {
-	cfg := config.Config{
-		Port:      "8080",
-		NatsURL:   "nats://localhost:4222",
-		JWTSecret: "secret",
-	}
-
-	assert.Equal(t, "8080", cfg.Port)
-	assert.Equal(t, "nats://localhost:4222", cfg.NatsURL)
-	assert.Equal(t, "secret", cfg.JWTSecret)
 }
 
 func TestClient_InitialState(t *testing.T) {
