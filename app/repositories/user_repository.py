@@ -11,6 +11,7 @@ from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.models import models
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import User, UserProfile
 from app.models.user_loaders import USER_MFA_LOAD_OPTIONS, USER_MFA_RELATIONSHIP_NAMES
 from app.repositories.base import BaseRepository
@@ -18,7 +19,7 @@ from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
@@ -27,6 +28,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
     @property
     def model(self) -> type[User]:
         return User
+
+    def __init__(self, db: AsyncDatabaseSession):
+        self.db = db
 
     @property
     def dto_class(self) -> type[UserDTO]:
@@ -396,7 +400,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         return list(result.scalars().all())
 
 
-def get_user_repository(db: AsyncSession) -> UserRepository:
+def get_user_repository(db: AsyncDatabaseSession) -> UserRepository:
     """Factory function for dependency injection."""
     return UserRepository(db)
 

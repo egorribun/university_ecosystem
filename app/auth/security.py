@@ -16,6 +16,9 @@ from argon2.exceptions import VerifyMismatchError
 from jwt import PyJWTError as JWTError
 from zxcvbn import zxcvbn
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
 from app.core.config import settings
 from app.core.localization import translate
 
@@ -396,7 +399,26 @@ def decode_token(token: str) -> dict | None:
 
     for secret in candidates:
         try:
-            payload = jwt.decode(token, secret, algorithms=[settings.algorithm])
+            # RZ-3: Strict algorithm check (audit 2026-02-24)
+            # If RS256 is used, the secret should be the public key (PEM).
+            # If the secret is a private key, jwt.decode usually handles it by extraction.
+            # But we can be explicit if we find it's a PEM block.
+            verification_key: Any = secret
+            if settings.algorithm == "RS256" and secret.startswith("-----BEGIN"):
+                 try:
+                     # If it's a private key, extract public key for verification.
+                     # This is standard practice to separate signing/verifying.
+                     if "PRIVATE KEY" in secret:
+                         key = serialization.load_pem_private_key(secret.encode(), password=None)
+                         if hasattr(key, "public_key"):
+                             verification_key = key.public_key().public_bytes(
+                                 encoding=serialization.Encoding.PEM,
+                                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                             ).decode()
+                 except Exception:
+                     pass
+
+            payload = jwt.decode(token, verification_key, algorithms=[settings.algorithm])
             return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:
             continue

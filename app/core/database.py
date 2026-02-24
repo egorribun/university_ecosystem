@@ -23,6 +23,7 @@ from sqlalchemy.pool import NullPool
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+    from app.core.protocols import AsyncDatabaseSession
 
     from app.core.config import Settings
 from app.core.config import settings
@@ -94,15 +95,29 @@ class PoolHealthMetrics:
             self.failed_checkouts += 1
 
     def get_snapshot(self) -> dict[str, int]:
+        """Return a consistent point-in-time copy of all counters.
+
+        Lock scope is deliberately narrowed to the six integer reads only.
+        Dict construction (allocation + hashing) happens outside the lock to
+        reduce contention with pool event callbacks that call record_checkout/
+        record_checkin under the same lock at high QPS. (PERF-4: audit 2026-02-24)
+        """
         with self._lock:
-            return {
-                "total_checkouts": self.total_checkouts,
-                "total_checkins": self.total_checkins,
-                "total_invalidations": self.total_invalidations,
-                "active_connections": self.active_connections,
-                "peak_active_connections": self.peak_active_connections,
-                "failed_checkouts": self.failed_checkouts,
-            }
+            checkouts = self.total_checkouts
+            checkins = self.total_checkins
+            invalidations = self.total_invalidations
+            active = self.active_connections
+            peak = self.peak_active_connections
+            failed = self.failed_checkouts
+        # Build the dict outside the critical section.
+        return {
+            "total_checkouts": checkouts,
+            "total_checkins": checkins,
+            "total_invalidations": invalidations,
+            "active_connections": active,
+            "peak_active_connections": peak,
+            "failed_checkouts": failed,
+        }
 
 
 # Global pool metrics instance
@@ -282,38 +297,101 @@ def create_session_factory(
     return engine, session_factory, read_replica_engine
 
 
-engine, async_session, read_replica_engine = create_session_factory()
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
-# Specialized sessionmaker for read operations to avoid allocation overhead in
-# get_read_db
-read_session_factory: async_sessionmaker[AsyncSession]
-if read_replica_engine:
-    read_session_factory = async_sessionmaker(
-        read_replica_engine,
+T = TypeVar("T")
+
+class _LazyProxy:
+    """A proxy that delegates all attribute access and calls to an underlying
+    object that is initialized later. (TD-4)
+    """
+    __slots__ = ("_get_target", "_name")
+
+    def __init__(self, get_target: Callable[[], Any], name: str):
+        object.__setattr__(self, "_get_target", get_target)
+        object.__setattr__(self, "_name", name)
+
+    def _get_current_object(self) -> Any:
+        obj = self._get_target()
+        if obj is None:
+            raise RuntimeError(
+                f"Database {self._name} contacted before init_database(). "
+                "Ensure init_database() is called early in the application lifespan."
+            )
+        return obj
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_current_object(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(self._get_current_object(), name, value)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self._get_current_object()(*args, **kwargs)
+
+    def __repr__(self) -> str:
+        try:
+            return repr(self._get_current_object())
+        except RuntimeError:
+            return f"<_LazyProxy for {self._name} (uninitialized)>"
+
+# ── Private storage for actual engines/factories ───────────────────────────
+_engine: AsyncEngine | None = None
+_async_session: async_sessionmaker[AsyncSession] | None = None
+_read_replica_engine: AsyncEngine | None = None
+_read_session_factory: async_sessionmaker[AsyncSession] | None = None
+
+# ── Public module-level proxies ──────────────────────────────────────────────
+# These proxies allow direct imports (from app.core.database import engine) to
+# work even if imported before init_database() is called.
+engine: Any = _LazyProxy(lambda: _engine, "engine")
+async_session: Any = _LazyProxy(lambda: _async_session, "async_session")
+read_replica_engine: Any = _LazyProxy(lambda: _read_replica_engine, "read_replica_engine")
+read_session_factory: Any = _LazyProxy(lambda: _read_session_factory, "read_session_factory")
+
+if TYPE_CHECKING:
+    # Tell type checkers these are the real types for better IDE support
+    engine: AsyncEngine
+    async_session: async_sessionmaker[AsyncDatabaseSession]
+    read_replica_engine: AsyncEngine | None
+    read_session_factory: async_sessionmaker[AsyncDatabaseSession]
+
+
+def init_database(current_settings: "Settings | None" = None) -> None:
+    """Initialise database engines from *current_settings* (defaults to the global
+    ``settings`` singleton).
+    """
+    global _engine, _async_session, _read_replica_engine, _read_session_factory
+
+    s = current_settings or settings
+    _engine, _async_session, _read_replica_engine = create_session_factory(s)
+
+    _read_session_factory = async_sessionmaker(
+        _read_replica_engine if _read_replica_engine is not None else _engine,
         expire_on_commit=False,
         class_=AsyncSession,
     )
-else:
-    # Fallback to primary if no replica is configured
-    read_session_factory = async_sessionmaker(
-        engine,
-        expire_on_commit=False,
-        class_=AsyncSession,
+
+    logger.info(
+        "Database initialised: %s (replica: %s)",
+        s.database_url,
+        s.read_replica_url if getattr(s, "read_replica_url", None) else "none",
     )
 
 
 def get_read_engine() -> AsyncEngine:
     """Get the engine for read operations (replica if available, otherwise primary)."""
-    return read_replica_engine if read_replica_engine is not None else engine
+    return _read_replica_engine if _read_replica_engine is not None else _engine  # type: ignore[return-value]
 
 
 class Base(DeclarativeBase):
     id: Any
 
 
-async def get_db() -> AsyncGenerator[AsyncSession]:
+async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:
     for _ in range(3):
         try:
+            # Usage through the proxy
             async with async_session() as session:
                 yield session
             return
@@ -326,7 +404,7 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
     raise RuntimeError("Database connection unavailable after retries")
 
 
-async def get_read_db() -> AsyncGenerator[AsyncSession]:
+async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:
     """Get a read-only session (uses replica if configured, otherwise primary)."""
     # Use the pre-allocated read_session_factory for efficiency
     async with read_session_factory() as session:

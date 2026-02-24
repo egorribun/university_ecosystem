@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.api.validation import raise_forbidden
 from app.auth.fingerprint import (
@@ -27,7 +27,7 @@ class AuthFingerprintService:
         self,
         user: User,
         session: ActiveSession,
-        db: AsyncSession,
+        db: AsyncDatabaseSession,
         redis_service: Any = None,
     ) -> None:
         if not session.fingerprint_hash:

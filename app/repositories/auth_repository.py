@@ -2,10 +2,11 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.protocols import AsyncDatabaseSession
 from app.models import models
+from app.models.models import User
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import EmailChangeTokenDTO, PasswordResetTokenDTO
@@ -20,6 +21,9 @@ class AuthRepository(
     ]
 ):
     """Repository for Authentication-related tokens (Password Reset, Email Change)."""
+
+    def __init__(self, session: AsyncDatabaseSession):
+        self.session = session
 
     @property
     def model(self) -> type[models.PasswordResetToken]:
@@ -320,5 +324,5 @@ class AuthRepository(
         return int(getattr(result, "rowcount", 0) or 0)
 
 
-def get_auth_repository(db: AsyncSession) -> AuthRepository:
+def get_auth_repository(db: AsyncDatabaseSession) -> AuthRepository:
     return AuthRepository(db)

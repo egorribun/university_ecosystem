@@ -1,8 +1,8 @@
-from app.core.tkq import broker
+from app.core.nats_broker import broker
 from app.utils.email import send_reset_email
 
 
-@broker.task
+@broker.task()
 def send_auth_email(
     to_email: str,
     link: str,

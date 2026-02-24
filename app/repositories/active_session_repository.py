@@ -12,7 +12,7 @@ from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
 
 if TYPE_CHECKING:
-    pass
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class ActiveSessionRepository(
@@ -108,3 +108,5 @@ class ActiveSessionRepository(
         if not row:
             return None
         return row[0], row[1]
+def get_active_session_repository(db: AsyncDatabaseSession) -> ActiveSessionRepository:
+    return ActiveSessionRepository(db)

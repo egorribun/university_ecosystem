@@ -22,6 +22,7 @@ from app.api.admin import router as admin_api_router
 from app.api.health import router as health_router
 from app.api.internal import router as internal_api_router
 from app.api.public import router as public_api_router
+from app.api.well_known import router as well_known_router
 from app.api.websocket import router as websocket_router
 from app.core.config import settings
 from app.core.database import engine
@@ -111,6 +112,7 @@ async def get_root():
 
 # Routers
 app.include_router(health_router)
+app.include_router(well_known_router, prefix="/.well-known", include_in_schema=False)
 app.include_router(public_api_router)
 app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)

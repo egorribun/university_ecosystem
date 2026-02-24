@@ -9,18 +9,22 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, delete, func, select, update
 
-from app.models.auth import ActiveSession
+from app.core.protocols import AsyncDatabaseSession
+from app.models.models import ActiveSession
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.session import ActiveSessionDTO
 
 if TYPE_CHECKING:
     import uuid
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class SessionRepository(BaseRepository[ActiveSession, ActiveSessionDTO, dict, dict]):
     """Repository for ActiveSession model operations."""
+
+    def __init__(self, db: AsyncDatabaseSession):
+        super().__init__(db)
 
     @property
     def model(self) -> type[ActiveSession]:
@@ -163,7 +167,7 @@ class SessionRepository(BaseRepository[ActiveSession, ActiveSessionDTO, dict, di
         await self.db.flush()
 
 
-def get_session_repository(db: AsyncSession) -> SessionRepository:
+def get_session_repository(db: AsyncDatabaseSession) -> SessionRepository:
     """Factory function for dependency injection."""
     return SessionRepository(db)
 

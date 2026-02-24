@@ -14,7 +14,7 @@ from app.models.models import PushSubscription, UserPushTopic
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 
 def get_allowed_topics(settings_obj: Settings | None = None) -> list[str]:

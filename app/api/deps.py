@@ -2,16 +2,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
-from app.core.config import settings
 from app.core.container import get_vector_service
 from app.core.database import get_db, get_read_db
+from app.core.protocols import AsyncDatabaseSession
 from app.core.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import (
@@ -24,13 +20,14 @@ from app.services.auth.fingerprint_service import AuthFingerprintService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
 
+from fastapi.security import OAuth2PasswordBearer
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 async def get_current_user(
     request: Request,
     token: Annotated[str | None, Depends(oauth2_scheme)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> User:
     locale = resolve_locale(request=request)
 
@@ -101,6 +98,8 @@ async def get_current_user(
 
     # Ensure we have a session object (required for downstream logic)
     if not session:
+        # SQLA Select is fine to use with protocol if it matches
+        from sqlalchemy import select
         res_s = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
         session = res_s.scalars().first()
         if not session or session.revoked_at:
@@ -139,7 +138,7 @@ async def get_current_user_auth_dto(
 async def get_current_user_optional(
     request: Request,
     token: Annotated[str | None, Depends(oauth2_scheme)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> User | None:
     """Optional version of get_current_user that returns None instead of raising 401."""
     try:
@@ -150,7 +149,7 @@ async def get_current_user_optional(
 
 async def get_current_user_full(
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> User:
     """
     Get current user with ALL MFA and Profile relationships loaded.
@@ -227,7 +226,7 @@ def _enforce_fresh_mfa(request: Request) -> None:
 async def require_fresh_mfa(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> None:
     await ensure_mfa_relationships_loaded(db, user)
     if not mfa.user_has_confirmed_interactive_factor(user):
@@ -238,7 +237,7 @@ async def require_fresh_mfa(
 async def require_fresh_mfa_for_enrollment(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> None:
     await ensure_mfa_relationships_loaded(db, user)
     if not mfa.user_has_confirmed_interactive_factor(user):
@@ -272,7 +271,7 @@ def get_locale(
 
 
 def get_chat_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "ChatService":  # type: ignore # noqa: F821
     from app.services.chat_service import ChatService
 
@@ -280,14 +279,14 @@ def get_chat_service(
 
 
 def get_read_chat_service(
-    session: Annotated[AsyncSession, Depends(get_read_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
 ) -> "ChatService":  # type: ignore # noqa: F821
     from app.services.chat_service import ChatService
 
     return ChatService(session)
 
 
-def create_event_service(session: AsyncSession, vector_service: Any) -> Any:
+def create_event_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
     from app.repositories.event_repository import EventRepository
     from app.services.event_service import EventService
 
@@ -296,20 +295,20 @@ def create_event_service(session: AsyncSession, vector_service: Any) -> Any:
 
 
 def get_event_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
 ) -> Any:
     return create_event_service(session, vector_service)
 
 
 def get_read_event_service(
-    session: Annotated[AsyncSession, Depends(get_read_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
 ) -> Any:
     return create_event_service(session, vector_service)
 
 
-def create_news_service(session: AsyncSession, vector_service: Any) -> Any:
+def create_news_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
     from app.repositories.news_repository import NewsRepository
     from app.services.news_service import NewsService
 
@@ -318,20 +317,20 @@ def create_news_service(session: AsyncSession, vector_service: Any) -> Any:
 
 
 def get_news_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
 ) -> Any:
     return create_news_service(session, vector_service)
 
 
 def get_read_news_service(
-    session: Annotated[AsyncSession, Depends(get_read_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
 ) -> Any:
     return create_news_service(session, vector_service)
 
 
-def create_story_service(session: AsyncSession) -> Any:
+def create_story_service(session: AsyncDatabaseSession) -> Any:
     from app.repositories.story_repository import StoryRepository
     from app.services.story_service import StoryService
 
@@ -340,18 +339,18 @@ def create_story_service(session: AsyncSession) -> Any:
 
 
 def get_story_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> Any:
     return create_story_service(session)
 
 
 def get_read_story_service(
-    session: Annotated[AsyncSession, Depends(get_read_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
 ) -> Any:
     return create_story_service(session)
 
 
-def create_schedule_service(session: AsyncSession) -> Any:
+def create_schedule_service(session: AsyncDatabaseSession) -> Any:
     from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
     from app.services.schedule_optimizer import ScheduleOptimizerService
     from app.services.schedule_service import ScheduleService
@@ -363,19 +362,19 @@ def create_schedule_service(session: AsyncSession) -> Any:
 
 
 def get_schedule_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> Any:
     return create_schedule_service(session)
 
 
 def get_read_schedule_service(
-    session: Annotated[AsyncSession, Depends(get_read_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
 ) -> Any:
     return create_schedule_service(session)
 
 
 def get_auth_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> Any:
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.session_repository import SessionRepository
@@ -390,7 +389,7 @@ def get_auth_service(
 
 
 def get_session_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> Any:
     from app.repositories.active_session_repository import ActiveSessionRepository
     from app.services.session_service import SessionService
@@ -400,7 +399,7 @@ def get_session_service(
 
 
 def get_user_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> Any:
     from app.repositories.user_repository import UserRepository
     from app.services.audit_service import audit_service
@@ -419,7 +418,7 @@ def get_audit_service() -> Any:
 
 
 def get_login_service(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     user_service: Annotated[Any, Depends(get_user_service)],
     session_service: Annotated[Any, Depends(get_session_service)],
     audit: Annotated[Any, Depends(get_audit_service)],

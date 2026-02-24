@@ -2,7 +2,9 @@ import logging
 import uuid
 
 from fastapi import BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.core.protocols import AsyncDatabaseSession
 
 from app.services import notification_queue
 from app.services.notifications.delivery import create_notifications_for_users
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class NotificationService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
 
     async def dispatch_event_created(

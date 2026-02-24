@@ -29,7 +29,7 @@ from app.services.notifications.delivery import (
 if TYPE_CHECKING:
     import uuid
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 
 def build_schedule_reminder_message(

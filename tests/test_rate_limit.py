@@ -1,5 +1,6 @@
 import httpx
 import pytest
+import asyncio
 from fastapi import Depends, FastAPI, Response, status
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hypo_settings

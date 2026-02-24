@@ -12,7 +12,7 @@ from app.models.models import PushSubscription
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 _async_ready = False
 _async_lock = asyncio.Lock()

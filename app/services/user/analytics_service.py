@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.core.protocols import AsyncDatabaseSession
+from app.models.user import User
 from app.deps.cache import BaseCache
 from app.models import models
 from app.services import stats_cache
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class UserAnalyticsService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncDatabaseSession):
         self.db = db
 
     def _dt_to_iso(self, value: datetime | None) -> str:

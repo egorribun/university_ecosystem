@@ -9,7 +9,7 @@ import httpx
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.api.deps import get_current_user
 from app.api.validation import (
@@ -148,7 +148,7 @@ def _fallback_now_playing(user: User) -> SpotifyNowPlayingOut:
 
 
 async def _save_tokens(
-    db: AsyncSession,
+    db: AsyncDatabaseSession,
     user: User,
     access: str,
     refresh: str | None,
@@ -171,7 +171,7 @@ async def _save_tokens(
 
 
 async def _ensure_access_token(
-    db: AsyncSession, user: User, *, locale: str | None = None
+    db: AsyncDatabaseSession, user: User, *, locale: str | None = None
 ) -> str | None:
     """Return a usable Spotify access token, refreshing it when possible.
 
@@ -262,7 +262,7 @@ async def spotify_callback(
     request: Request,
     code: str = Query(...),
     state: str = Query(...),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
 ):
     locale = resolve_locale(request=request)
     payload = decode_token(state) or {}
@@ -326,7 +326,7 @@ async def spotify_callback(
 @router.get("/now-playing", response_model=SpotifyNowPlayingOut)
 async def now_playing(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -437,7 +437,7 @@ async def now_playing(
 
 @router.post("/disconnect")
 async def disconnect(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncDatabaseSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
     _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
@@ -447,7 +447,7 @@ async def disconnect(
 @router.get("/playlists")
 async def list_playlists(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -468,7 +468,7 @@ async def list_playlists(
 @router.post("/sync-playlists")
 async def sync_playlists(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """

@@ -1,13 +1,15 @@
 from collections.abc import Sequence
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.core.protocols import AsyncDatabaseSession
 
 from app.repositories.schedule_repository import GroupRepository
 from app.schemas.dtos import GroupDTO
 
 
 class GroupService:
-    def __init__(self, db: AsyncSession, repo: GroupRepository) -> None:
+    def __init__(self, db: AsyncDatabaseSession, repo: GroupRepository) -> None:
         self.db = db
         self.repo = repo
 

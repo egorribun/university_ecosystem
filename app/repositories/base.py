@@ -2,11 +2,13 @@ import abc
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+if TYPE_CHECKING:
+    from app.core.protocols import AsyncDatabaseSession
 
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import Base
 
@@ -17,7 +19,7 @@ UpdateT = TypeVar("UpdateT")
 
 
 class ReadOnlyRepository(abc.ABC, Generic[T, DTOT]):
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncDatabaseSession):
         self.db = db
 
     async def commit(self) -> None:

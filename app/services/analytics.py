@@ -28,7 +28,7 @@ from app.repositories.news_repository import get_news_repository
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class AnalyticsService:
 
     async def get_news_stats(
         self,
-        session: AsyncSession,
+        session: AsyncDatabaseSession,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> dict[str, Any]:
@@ -112,7 +112,7 @@ class AnalyticsService:
 
     async def get_events_stats(
         self,
-        session: AsyncSession,
+        session: AsyncDatabaseSession,
         start_date: datetime | None = None,
     ) -> dict[str, Any]:
         """Get event statistics with attendance analysis.
@@ -174,7 +174,7 @@ class AnalyticsService:
 
     async def get_user_activity(
         self,
-        session: AsyncSession,
+        session: AsyncDatabaseSession,
         user_id: uuid.UUID | str,
     ) -> dict[str, Any]:
         """Get user activity summary.

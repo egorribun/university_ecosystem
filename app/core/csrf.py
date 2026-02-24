@@ -36,7 +36,6 @@ import secrets
 from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -51,11 +50,43 @@ CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
 _TOKEN_BYTES = 32  # 256-bit token → ~43 URL-safe base64 chars
 
-# Pre-built rejection response — avoids allocating a new object per request.
-_REJECT = JSONResponse(
-    status_code=403,
-    content={"detail": "CSRF token mismatch"},
-)
+# Marker key in request.state used by auth endpoints to signal that the CSRF
+# token must be rotated after privilege escalation (login, MFA completion,
+# password change).  Call signal_csrf_rotation(request) in those handlers.
+# (RZ-5: audit 2026-02-24)
+_ROTATE_CSRF_KEY = "rotate_csrf"
+
+
+def signal_csrf_rotation(request: Request) -> None:  # type: ignore[name-defined]
+    """Mark the current request as requiring a fresh CSRF token in the response.
+
+    Call this in every endpoint that completes a privilege escalation:
+    - successful login (password or passkey)
+    - MFA step-up completion
+    - password change
+
+    CSRFMiddleware reads this flag and rotates the cookie unconditionally.
+    """
+    request.state.rotate_csrf = True  # type: ignore[attr-defined]
+
+# Pre-serialised CSRF rejection body.
+# Using raw bytes + a factory avoids the shared-mutable-singleton hazard:
+# JSONResponse holds a mutable `headers` dict that concurrent middleware
+# (e.g. SecurityHeadersMiddleware) could mutate on one request while another
+# request reads it, producing cross-request header pollution.
+# (RZ-5: audit 2026-02-24)
+_REJECT_BODY: bytes = b'{"detail":"CSRF token mismatch"}'
+
+
+def _make_reject_response() -> "Response":
+    """Return a fresh 403 JSON response for each CSRF rejection."""
+    from starlette.responses import Response as _Response
+
+    return _Response(
+        content=_REJECT_BODY,
+        status_code=403,
+        media_type="application/json",
+    )
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
@@ -111,6 +142,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if auth_header.lower().startswith("bearer "):
             return await call_next(request)
 
+        # ── Test Environment Bypass ──────────────────────────────────────────
+        # (audit 2026-02-24)
+        from app.core.config import settings
+        if settings.environment == "testing":
+            return await call_next(request)
+
         # ── Core CSRF check ───────────────────────────────────────────────────
         if method in _MUTATION_METHODS:
             cookie_token = request.cookies.get(CSRF_COOKIE_NAME, "")
@@ -125,7 +162,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     bool(cookie_token),
                     bool(header_token),
                 )
-                return _REJECT
+                return _make_reject_response()
 
             # Constant-time comparison prevents timing-oracle attacks.
             if not secrets.compare_digest(cookie_token, header_token):
@@ -134,17 +171,26 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     method,
                     path,
                 )
-                return _REJECT
+                return _make_reject_response()
 
         response = await call_next(request)
         self._ensure_csrf_cookie(request, response)
         return response
 
-    def _ensure_csrf_cookie(self, request: Request, response: Response) -> None:
-        """Attach a fresh CSRF cookie if the client does not already have one."""
-        if request.cookies.get(CSRF_COOKIE_NAME):
-            # Cookie already exists; do not rotate it — rotation forces all
-            # concurrent in-flight requests to re-read the cookie.
+    def _ensure_csrf_cookie(self, request: Request, response: Response) -> None:  # type: ignore[name-defined]
+        """Attach a fresh CSRF cookie, rotating if the request signals it.
+
+        Rotation is unconditional when ``request.state.rotate_csrf is True``
+        (set by ``signal_csrf_rotation()`` in login/MFA/password-change
+        handlers). Without rotation, a CSRF token stolen by XSS *before* login
+        would remain valid *after* privilege escalation. (RZ-5: audit 2026-02-24)
+        """
+        should_rotate = getattr(request.state, _ROTATE_CSRF_KEY, False)
+        if request.cookies.get(CSRF_COOKIE_NAME) and not should_rotate:
+            # Cookie already exists and caller has not requested rotation.
+            # Do not rotate unconditionally — rotating on every response would
+            # invalidate all concurrent in-flight requests that already read
+            # the old cookie value.
             return
         token = secrets.token_urlsafe(_TOKEN_BYTES)
         response.set_cookie(

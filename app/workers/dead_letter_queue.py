@@ -32,7 +32,7 @@ from sqlalchemy import (
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = logging.getLogger(__name__)
 

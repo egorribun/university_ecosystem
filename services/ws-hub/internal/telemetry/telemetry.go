@@ -45,10 +45,21 @@ func InitTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 		return nil, err
 	}
 
+	// ParentBased sampler respects the sampling decision propagated from
+	// upstream services via NATS/HTTP headers.  For root spans (no parent),
+	// TraceIDRatioBased(0.01) samples 1% — sufficient for capacity planning
+	// and P99 latency tracking at high fan-out without Jaeger write amplification.
+	// broadcastMessage creates one span per NATS message; at 1000 msg/s in a
+	// popular room this would generate ~1000 spans/s without sampling.
+	// (PERF-3: audit 2026-02-24)
+	sampler := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.01))
+
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sampler),
 	)
 	otel.SetTracerProvider(tp)
 	return tp, nil
 }
+

@@ -8,8 +8,8 @@ from uuid import UUID, uuid4
 import jwt
 from fastapi import BackgroundTasks
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.core.protocols import AsyncDatabaseSession
+from app.models.session import UserSession
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
 from app.repositories.active_session_repository import ActiveSessionRepository
@@ -51,7 +51,7 @@ async def register_session_bg(
 
 
 class SessionService:
-    def __init__(self, db: AsyncSession, repo: ActiveSessionRepository):
+    def __init__(self, db: AsyncDatabaseSession, repo: ActiveSessionRepository):
         self.db = db
         self.repo = repo
 

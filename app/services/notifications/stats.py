@@ -15,7 +15,7 @@ from app.models.models import NotificationDelivery
 if TYPE_CHECKING:
     import datetime as dt
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 
 async def aggregate_notification_delivery_stats(

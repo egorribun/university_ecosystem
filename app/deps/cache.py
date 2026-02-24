@@ -748,6 +748,21 @@ def set_cache_backend(cache: BaseCache | None) -> None:
     _cache_backend = cache
 
 
+async def get_cache_client() -> Redis:
+    """Get the underlying Redis client from the global cache backend.
+
+    Used for features not exposed by BaseCache, like distributed locks. (RZ-1)
+    """
+    cache = get_cache()
+    if hasattr(cache, "_get_client"):
+        return await cache._get_client()
+    if hasattr(cache, "l2") and hasattr(cache.l2, "_get_client"):
+        return await cache.l2._get_client()
+    raise RuntimeError(
+        f"Cache backend {type(cache)} does not support direct Redis client access."
+    )
+
+
 async def shutdown_cache() -> None:
     global _cache_backend
     backend = _cache_backend

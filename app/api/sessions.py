@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.api.deps import get_current_user, require_fresh_mfa
 from app.api.validation import ensure_exists, require_admin, require_owner_or_admin
@@ -50,7 +50,7 @@ def _extract_jti(request: Request) -> str | None:
 
 async def _resolve_target_user(
     *,
-    db: AsyncSession,
+    db: AsyncDatabaseSession,
     current_user: User,
     requested_user_id: uuid.UUID | None,
     locale: str,
@@ -69,7 +69,7 @@ async def _resolve_target_user(
 async def list_sessions(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_read_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
     user_id: uuid.UUID | None = None,
 ) -> list[schemas.ActiveSessionOut]:
     locale = resolve_locale(request=request, user=current_user)
@@ -101,7 +101,7 @@ async def revoke_session(
     request: Request,
     mfa_check: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> schemas.ActiveSessionOut:
     locale = resolve_locale(request=request, user=current_user)
     session = await db.get(ActiveSession, session_id)
@@ -127,7 +127,7 @@ async def revoke_other_sessions(
     request: Request,
     mfa_check: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     user_id: uuid.UUID | None = None,
 ) -> schemas.SessionBulkRevokeOut:
     locale = resolve_locale(request=request, user=current_user)

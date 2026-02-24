@@ -15,6 +15,7 @@ from sqlalchemy import and_, exists, func, or_, select
 from app.core.cache import news_cache
 from app.core.config import settings
 from app.models import models
+from app.core.protocols import AsyncDatabaseSession
 from app.models.news import News
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import (
@@ -28,11 +29,14 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
     """Repository for News model operations."""
+
+    def __init__(self, db: AsyncDatabaseSession):
+        super().__init__(db)
 
     @property
     def model(self) -> type[News]:
@@ -369,7 +373,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
         return result.fetchall(), list(result.keys())
 
 
-def get_news_repository(db: AsyncSession) -> NewsRepository:
+def get_news_repository(db: AsyncDatabaseSession) -> NewsRepository:
     """Factory function for dependency injection."""
     return NewsRepository(db)
 

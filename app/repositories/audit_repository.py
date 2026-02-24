@@ -5,8 +5,7 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.core.protocols import AsyncDatabaseSession
 from app.models.logs import DataAccessLog
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.audit import DataAccessLogDTO
@@ -75,5 +74,5 @@ class AuditRepository(BaseRepository[DataAccessLog, DataAccessLogDTO, dict, dict
         self.db.add_all(logs)
 
 
-def get_audit_repository(db: AsyncSession) -> AuditRepository:
+def get_audit_repository(db: AsyncDatabaseSession) -> AuditRepository:
     return AuditRepository(db)

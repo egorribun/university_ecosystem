@@ -115,6 +115,7 @@ jobs:
                   format: "sarif"
                   output: "trivy-fs.sarif"
                   severity: "CRITICAL,HIGH"
+                  exit-code: "1"
 
             - name: Upload Trivy scan results
               uses: github/codeql-action/upload-sarif@v4
@@ -170,3 +171,38 @@ jobs:
                   name: sbom-spdx-json
                   path: sbom.spdx.json
                   retention-days: 90
+
+    # ── Semgrep SAST ───────────────────────────────────────────────────────────
+    # Uses the official semgrep/semgrep Docker image so no binary installation
+    # is required.  Runs diff-aware analysis on PRs and full-scan on main.
+    # Results are uploaded to GitHub Advanced Security as SARIF so findings
+    # appear in the Security → Code Scanning tab.
+    # SEMGREP_APP_TOKEN secret: Settings → Secrets → Actions → New repository secret.
+    # Without the token Semgrep falls back to OSS rules (still useful, no fail).
+    # (MOD-5: audit 2026-02-24)
+    semgrep:
+        name: Semgrep SAST
+        runs-on: ubuntu-latest
+        if: github.actor != 'dependabot[bot]'
+        permissions:
+            contents: read
+            security-events: write
+            actions: read
+        container:
+            image: semgrep/semgrep
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Run Semgrep SAST
+              # --sarif-output writes to a file instead of stdout so the exit
+              # code only reflects scan errors, not finding count.
+              run: semgrep ci --sarif --sarif-output=semgrep.sarif
+              env:
+                  SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+            - name: Upload SARIF to GitHub Advanced Security
+              uses: github/codeql-action/upload-sarif@v4
+              if: always()
+              continue-on-error: true
+              with:
+                  sarif_file: semgrep.sarif

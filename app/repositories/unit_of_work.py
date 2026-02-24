@@ -1,12 +1,6 @@
-"""
-Unit of Work pattern for transactional boundaries.
-
-Provides a single point of commit/rollback for multiple repository operations.
-"""
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
@@ -17,8 +11,7 @@ from app.repositories.user_repository import UserRepository
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class UnitOfWork:
@@ -32,15 +25,15 @@ class UnitOfWork:
             await uow.commit()
     """
 
-    def __init__(self, session_factory: Callable[[], AsyncSession]) -> None:
+    def __init__(self, session_factory: Callable[[], AsyncDatabaseSession]) -> None:
         """
         Initialize Unit of Work.
 
         Args:
-            session_factory: Callable that returns an AsyncSession
+            session_factory: Callable that returns an AsyncDatabaseSession
         """
         self._session_factory = session_factory
-        self._session: AsyncSession | None = None
+        self._session: AsyncDatabaseSession | None = None
 
     async def __aenter__(self) -> UnitOfWork:
         """Enter async context and initialize repositories."""
@@ -56,7 +49,7 @@ class UnitOfWork:
 
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Exit async context, rollback if exception occurred."""
         if exc_type is not None:
             await self.rollback()
@@ -84,14 +77,14 @@ class UnitOfWork:
             self._session = None
 
     @property
-    def session(self) -> AsyncSession:
+    def session(self) -> AsyncDatabaseSession:
         """Get the underlying session (for advanced use cases)."""
         if self._session is None:
             raise RuntimeError("UnitOfWork not initialized. Use 'async with' context.")
         return self._session
 
 
-def get_unit_of_work(session_factory: Callable[[], AsyncSession]) -> UnitOfWork:
+def get_unit_of_work(session_factory: Callable[[], AsyncDatabaseSession]) -> UnitOfWork:
     """Factory function for creating UnitOfWork instances."""
     return UnitOfWork(session_factory)
 

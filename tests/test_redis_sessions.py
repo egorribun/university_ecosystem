@@ -37,26 +37,22 @@ async def test_redis_session_lifecycle_v2(monkeypatch):
     )
     now = datetime.now(UTC)
 
-    print(f"DEBUG: Service TTL: {service.ttl_seconds}")
 
     # 4. Create
     await service.create_session(jti, user_id, fingerprint, now)
 
     # Check raw redis
     raw_exists = await fake_client.exists(f"session:{jti}")
-    print(f"DEBUG: Raw Exists after create: {raw_exists}")
     assert raw_exists
 
     # 5. Get
     session = await service.get_session(jti)
-    print(f"DEBUG: Session retrieved: {session}")
     assert session is not None
     assert session["user_id"] == str(user_id)
 
     # 6. Update Activity
     await service.update_last_seen(jti)
     raw_exists_2 = await fake_client.exists(f"session:{jti}")
-    print(f"DEBUG: Raw Exists after update: {raw_exists_2}")
     assert raw_exists_2
 
     # 7. Revoke

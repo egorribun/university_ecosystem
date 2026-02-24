@@ -16,7 +16,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import Response
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.protocols import AsyncDatabaseSession
 
 from app.api import deps
 from app.api.deps import (
@@ -143,7 +143,7 @@ async def reset_password(
 @users_router.get("/me", response_model=schemas.UserOut, summary="Me")
 async def me(
     request: Request,
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(get_read_db),
     user: models.User = Depends(get_current_user_full),
     auth_service: AuthService = Depends(get_auth_service),
 ):
@@ -308,7 +308,7 @@ async def get_users(
     filters: schemas.UserSearchFilter = Depends(),
     current_user: UserDTO = Depends(deps.get_current_user_dto),
     service: UserProfileService = Depends(get_user_profile_service),
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(get_read_db),
 ):
     """
     Search for users.
@@ -348,7 +348,7 @@ async def export_access_audit(
     request: Request,
     start_at: datetime | None = Query(None),
     end_at: datetime | None = Query(None),
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(get_read_db),
     user: models.User = Depends(get_current_user),
     audit: AuditService = Depends(get_audit_service),
 ):

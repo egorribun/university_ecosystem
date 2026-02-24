@@ -95,3 +95,9 @@ class ScheduleRepository(
         data["end_time"] = self._ensure_utc(data["end_time"])
 
         return await super().create(data)
+def get_group_repository(db: AsyncDatabaseSession) -> GroupRepository:
+    return GroupRepository(db)
+
+
+def get_schedule_repository(db: AsyncDatabaseSession) -> ScheduleRepository:
+    return ScheduleRepository(db)

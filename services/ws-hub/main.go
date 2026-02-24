@@ -52,7 +52,15 @@ func main() {
 	defer nc.Close()
 
 	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL)
-	h := hub.NewHub(nc, logger, authClient)
+	h := hub.NewHub(nc, logger, authClient, cfg)
+
+	// MOD-1: initialize JWKS cache for RS256 support.
+	if cfg.JWKSURL != "" {
+		if err := h.SetupJWKS(ctx, cfg.JWKSURL); err != nil {
+			logger.Fatal("Failed to setup JWKS", zap.Error(err))
+		}
+	}
+
 	go h.Run()
 	h.SubscribeToNATS()
 
@@ -72,6 +80,15 @@ func main() {
 		Addr:         ":" + cfg.Port,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
+		// IdleTimeout limits how long a keep-alive connection may sit idle.
+		// Without this, Slowloris-style attackers can exhaust file descriptors
+		// by holding many connections open indefinitely. (RZ-4: audit 2026-02-24)
+		IdleTimeout: 120 * time.Second,
+		// ReadHeaderTimeout prevents Slowloris on the HTTP header phase.
+		// After the WebSocket upgrade, gorilla/websocket manages its own deadlines.
+		ReadHeaderTimeout: 5 * time.Second,
+		// 8 KiB is ample for WebSocket upgrade headers; caps header-flood attacks.
+		MaxHeaderBytes: 1 << 13,
 	}
 
 	go func() {
@@ -88,6 +105,10 @@ func main() {
 	logger.Info("Shutting down...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
+
+	// Drain NATS subscriptions before closing the HTTP server so that
+	// in-flight messages are flushed to clients rather than dropped.
+	h.Stop()
 
 	_ = server.Shutdown(shutdownCtx)
 }
