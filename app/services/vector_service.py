@@ -3,10 +3,9 @@ from typing import Any
 
 import httpx
 from sqlalchemy import select
-from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-from app.models.news import News
 from app.core.config import settings
+from app.core.database import AsyncDatabaseSession
 
 logger = logging.getLogger(__name__)
 

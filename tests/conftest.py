@@ -175,6 +175,64 @@ def link_read_db_to_write_db():
 
 
 @pytest.fixture(autouse=True)
+def mock_nats_broker(monkeypatch):
+    """Mock the NATS broker so tests using LifespanManager don't hang on connect()."""
+    from app.core.nats_broker import broker
+
+    async def mock_connect(*args, **kwargs):
+        pass
+
+    async def mock_close(*args, **kwargs):
+        pass
+
+    async def mock_run_worker(*args, **kwargs):
+        import asyncio
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            pass
+
+    async def mock_enqueue(*args, **kwargs):
+        return "mocked_task_id"
+
+    monkeypatch.setattr(broker, "connect", mock_connect)
+    monkeypatch.setattr(broker, "close", mock_close)
+    monkeypatch.setattr(broker, "run_worker", mock_run_worker)
+    monkeypatch.setattr(broker, "enqueue", mock_enqueue)
+
+
+@pytest.fixture(autouse=True)
+def mock_spicedb_permissions():
+    """
+    Global mock for SpiceDB permissions to prevent 503 errors in integration tests.
+    Returns True for all permission checks if user.role == 'admin'.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.auth.rbac import PermissionChecker
+    from app.main import app
+
+    mock_checker = MagicMock(spec=PermissionChecker)
+
+    async def mock_check_admin(user_id: str, *, user=None) -> bool:
+        if user and hasattr(user, "role"):
+            return user.role == "admin"
+        return True  # Default fallback for legacy calls
+
+    async def mock_check_permission(
+        resource_type, resource_id, permission, user_id
+    ) -> bool:
+        return True
+
+    mock_checker.check_admin = AsyncMock(side_effect=mock_check_admin)
+    mock_checker.check_permission = AsyncMock(side_effect=mock_check_permission)
+
+    app.dependency_overrides[PermissionChecker] = lambda: mock_checker
+    yield mock_checker
+
+
+@pytest.fixture(autouse=True)
 def clear_dependency_overrides():
     """
     Aggressively clear any leftover dependency overrides after each test.

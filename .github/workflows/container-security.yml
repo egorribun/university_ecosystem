@@ -75,6 +75,7 @@ jobs:
           output: trivy-image.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
+          exit-code: '1'
 
       - name: Trivy filesystem scan
         id: trivy_fs
@@ -86,6 +87,7 @@ jobs:
           output: trivy-fs.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
+          exit-code: '1'
 
       - name: Upload SARIF (image)
         if: always()

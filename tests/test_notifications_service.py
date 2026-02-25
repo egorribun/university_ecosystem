@@ -495,24 +495,14 @@ async def test_event_creation_enqueues_notifications(
     delivery_started = asyncio.Event()
     calls = 0
 
-    async def _fake_create(*args, **kwargs):
+    async def _fake_enqueue(event_id, *, locale=None):
         nonlocal calls
         calls += 1
         delivery_started.set()
-        return 0
-
-    async def _fake_fetch_ids(*args, **kwargs):
-        return [admin.id]
 
     monkeypatch.setattr(
-        notifications_news_events,
-        "create_notifications_for_users",
-        _fake_create,
-    )
-    monkeypatch.setattr(
-        notifications_news_events,
-        "_fetch_active_user_ids",
-        _fake_fetch_ids,
+        "app.services.notification_queue.enqueue_event_notification",
+        _fake_enqueue,
     )
 
     starts_at = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
@@ -551,16 +541,14 @@ async def test_news_creation_enqueues_notifications(
     delivery_started = asyncio.Event()
     calls = 0
 
-    async def _fake_create(*args, **kwargs):
+    async def _fake_enqueue(news_id, *, locale=None):
         nonlocal calls
         calls += 1
         delivery_started.set()
-        return 0
 
     monkeypatch.setattr(
-        notifications_news_events,
-        "create_notifications_for_users",
-        _fake_create,
+        "app.services.notification_queue.enqueue_news_notification",
+        _fake_enqueue,
     )
 
     response = await async_client.post(

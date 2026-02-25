@@ -5,9 +5,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
+
     from app.core.protocols import AsyncDatabaseSession
     from app.models.models import User
-    from app.models.chat import ChatMessage
+    from app.repositories.chat_repository import ChatRepository
     from app.schemas.chat import (
         ChatMaintenanceResult,
         ChatResponse,
@@ -25,14 +26,23 @@ from .chat.query_service import ChatQueryService
 class ChatService:
     """Facade for chat operations, delegating to specialized sub-services. (TD-1)"""
 
-    def __init__(self, session: AsyncDatabaseSession):
+    def __init__(
+        self,
+        session: AsyncDatabaseSession,
+        attachments: ChatAttachmentService,
+        notifications: ChatNotificationService,
+        queries: ChatQueryService,
+        commands: ChatCommandService,
+    ):
         self.session = session
-        self.attachments = ChatAttachmentService()
-        self.notifications = ChatNotificationService(session)
-        self.queries = ChatQueryService(session)
-        self.commands = ChatCommandService(
-            session, self.attachments, self.notifications
-        )
+        self.attachments = attachments
+        self.notifications = notifications
+        self.queries = queries
+        self.commands = commands
+
+    @property
+    def repository(self) -> ChatRepository:
+        return self.queries.repository
 
     # ── Queries ──
 

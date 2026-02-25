@@ -61,7 +61,7 @@ class JwtSettingsMixin:
                     if len(secret.strip()) < 32 and not secret.startswith("-----BEGIN"):
                         # Only enforce 32-char entropy for HMAC secrets, not PEM blocks
                         raise ValueError(
-                            "JWT_SIGNING_KEYS HMAC secrets must be at least 32 "
+                            "JWT_SIGNING_KEYS entries must be at least 32 "
                             "characters long in production"
                         )
         return v

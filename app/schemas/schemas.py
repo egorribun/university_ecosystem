@@ -76,7 +76,7 @@ class UserProfileBase(BaseModel):
 
 
 class UserPreferencesBase(OrmModel):
-    dnd_enabled: bool = False
+    dnd_enabled: bool | None = None
     dnd_start: time | None = None
     dnd_end: time | None = None
     timezone: str | None = None
@@ -761,11 +761,11 @@ class EventAttendanceOut(OrmModel):
 
 
 class Token(BaseModel):
-    access_token: str
+    access_token: str | None = None
     token_type: str = "bearer"
 
 
-class TokenWithProfile(BaseModel):
+class TokenWithProfile(Token):
     user: UserOut
     session: "SessionSigningKeyOut | None" = None
 

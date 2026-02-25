@@ -3,12 +3,13 @@ import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import normalize_locale
+from app.models.models import Event
 from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
@@ -40,7 +41,7 @@ class EventService:
 
     def serialize_event(
         self,
-        record: EventDTO,
+        record: Event | EventDTO,
         locale: str | None,
         *,
         participant_count: int = 0,
@@ -60,27 +61,27 @@ class EventService:
             "id": record.id,
             "title": _localized_event_field(
                 normalized_locale,
-                record.title,
-                record.title_en,
+                cast(str, record.title),
+                cast(str, record.title_en),
                 required=True,
             ),
             "description": _localized_event_field(
                 normalized_locale,
-                record.description,
-                record.description_en,
+                cast(str, record.description),
+                cast(str, record.description_en),
             ),
             "title_en": record.title_en,
             "description_en": record.description_en,
             "location": _localized_event_field(
                 normalized_locale,
-                record.location,
-                record.location_en,
+                cast(str, record.location),
+                cast(str, record.location_en),
             ),
             "location_en": record.location_en,
             "event_type": _localized_event_field(
                 normalized_locale,
-                record.event_type,
-                record.event_type_en,
+                cast(str, record.event_type),
+                cast(str, record.event_type_en),
             ),
             "event_type_en": record.event_type_en,
             "starts_at": record.starts_at,
@@ -92,8 +93,8 @@ class EventService:
             "image_url": record.image_url,
             "about": _localized_event_field(
                 normalized_locale,
-                record.about,
-                record.about_en,
+                cast(str, record.about),
+                cast(str, record.about_en),
             ),
             "about_en": record.about_en,
             "files": prepared_files,
@@ -325,7 +326,7 @@ class EventService:
             )
             return enriched_exist
 
-        await self.repo.refresh(record)
+        # record is already refreshed in repo.create_attendance
         enriched_record = record.model_copy(
             update={"qr_token": attendance_tokens.issue_token(record)}
         )

@@ -25,8 +25,8 @@ def test_repository_pattern_generics():
     base_params = BaseRepository.__parameters__
     readonly_params = ReadOnlyRepository.__parameters__
 
-    assert len(base_params) == 3  # T, CreateT, UpdateT
-    assert len(readonly_params) == 1  # T
+    assert len(base_params) == 4  # T, DTOT, CreateT, UpdateT
+    assert len(readonly_params) == 2  # T, DTOT
 
 
 def test_user_repository_import():

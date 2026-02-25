@@ -16,29 +16,44 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, HTTPException
 from redis.asyncio import Redis
-from sqlalchemy import func, select
 
 from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.feature_flags import feature_flags
 from app.core.metrics import record_presence_event, record_presence_throttled
+from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import get_cache, versioned_key
-from app.models.chat import Message, chat_participants
+from app.models.chat import Message
 from app.models.enums import UserRole
-from app.models.models import ActiveSession, User
+from app.models.models import User
+from app.repositories.chat_repository import ChatRepository
+from app.repositories.session_repository import SessionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.chat import ChatParticipant, PresenceStatus
+from app.schemas.dtos import UserDTO
 from app.services.audit_service import SecurityEvent, audit_service
 from app.utils.logging import redact_sensitive_mapping
+
+# PyJWT exception base — catch all JWT-specific errors without swallowing
+# infrastructure failures (DB timeouts, programming errors).
+try:
+    import jwt as _jwt_lib
+    _JWT_DECODE_ERRORS: tuple[type[Exception], ...] = (
+        _jwt_lib.exceptions.DecodeError,
+        _jwt_lib.exceptions.InvalidTokenError,
+        _jwt_lib.exceptions.ExpiredSignatureError,
+    )
+except ImportError:  # pragma: no cover
+    _JWT_DECODE_ERRORS = (ValueError,)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +79,8 @@ async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
             return set(entry.payload)
 
     async with async_session() as session:
-        chat_ids = select(chat_participants.c.chat_id).where(
-            chat_participants.c.user_id == user_id
-        )
-        result = await session.execute(
-            select(chat_participants.c.user_id)
-            .distinct()
-            .where(chat_participants.c.chat_id.in_(chat_ids))
-        )
-        audience = {row[0] for row in result.all()}
-
-    audience.discard(user_id)
+        repo = ChatRepository(session)
+        audience = await repo.get_presence_audience(user_id)
 
     if cache.enabled:
         await cache.set(cache_key, list(audience), ttl=3600)
@@ -285,11 +291,8 @@ class ConnectionManager:
                 return [uuid.UUID(uid) for uid in entry.payload]
 
         async with async_session() as session:
-            stmt = select(chat_participants.c.user_id).where(
-                chat_participants.c.chat_id == chat_id
-            )
-            result = await session.execute(stmt)
-            participants = [row[0] for row in result.all()]
+            repo = ChatRepository(session)
+            participants = await repo.get_participants(chat_id)
 
         if cache.enabled:
             await cache.set(cache_key, participants, ttl=3600)
@@ -379,7 +382,7 @@ class ConnectionManager:
 manager: ConnectionManager = ConnectionManager()  # default replaced at startup
 
 
-def get_connection_manager(request: Request) -> ConnectionManager:  # type: ignore[name-defined]
+def get_connection_manager(request: Request) -> ConnectionManager:
     """FastAPI dependency — returns the app-state ConnectionManager.
 
     Usage::
@@ -388,7 +391,7 @@ def get_connection_manager(request: Request) -> ConnectionManager:  # type: igno
         async def example(cm: Annotated[ConnectionManager, Depends(get_connection_manager)]):
             ...
     """
-    return request.app.state.connection_manager
+    return cast("ConnectionManager", request.app.state.connection_manager)
 
 
 async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
@@ -421,7 +424,7 @@ async def stop_presence_pubsub() -> None:
     await presence_pubsub.shutdown()
 
 
-async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
+async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | None]:
     """Validate JWT token and return the user and session identifier."""
     from app.auth.security import decode_token
 
@@ -436,23 +439,24 @@ async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
             return None, None
 
         async with async_session() as session:
-            user = await session.get(User, uuid.UUID(user_id))
+            user_repo = UserRepository(session)
+            session_repo = SessionRepository(session)
+
+            user = await user_repo.get(uuid.UUID(user_id))
             if not user or not user.is_active:
                 return None, None
 
             if not session_jti:
                 return None, None
 
-            result = await session.execute(
-                select(ActiveSession).where(ActiveSession.jti == session_jti)
-            )
-            active_session = result.scalars().first()
+            active_session = await session_repo.get_by_jti(session_jti)
+            # active_session is ActiveSessionDTO if using repository
             if not active_session or active_session.user_id != user.id:
                 return None, None
 
             expires_at = active_session.expires_at
             if expires_at is None:
-                return None, None  # type: ignore[unreachable]
+                return None, None
 
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=UTC)
@@ -462,21 +466,23 @@ async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
 
             if active_session.revoked_at is not None:
                 return None, None
-            return user, session_jti
-    except Exception as e:
-        logger.warning("Token validation failed: %s", e)
+            return cast("User | UserDTO", user), session_jti
+    except _JWT_DECODE_ERRORS as exc:
+        # Expected path: token is malformed, expired, or has invalid claims.
+        # Log at DEBUG — this is normal traffic, not an error.
+        logger.debug("WebSocket token validation: invalid JWT — %s", type(exc).__name__)
+        return None, None
+    except Exception:
+        # Unexpected failure: DB connection lost, programming error, etc.
+        # Log at ERROR so Sentry / alerting sees the outage.
+        logger.exception("WebSocket token validation: unexpected infrastructure failure")
         return None, None
 
 
 async def get_user_from_cookie(cookie_value: str) -> tuple[User | None, str | None]:
     """Validate session cookie and return the user."""
-
-    try:
-        # The cookie contains the JWT token directly
-        return await get_user_from_token(cookie_value)
-    except Exception as e:
-        logger.warning("Cookie validation failed: %s", e)
-        return None, None
+    # Delegate entirely — error handling is in get_user_from_token.
+    return await get_user_from_token(cookie_value)
 
 
 def _extract_bearer_token(header_value: str | None) -> str | None:
@@ -523,13 +529,9 @@ async def _update_last_seen(session_jti: str | None) -> datetime:
         return now
 
     async with async_session() as session:
-        result = await session.execute(
-            select(ActiveSession).where(ActiveSession.jti == session_jti)
-        )
-        active_session = result.scalars().first()
-        if active_session:
-            active_session.last_seen_at = now
-            await session.commit()
+        repo = SessionRepository(session)
+        await repo.touch_by_jti(session_jti)
+        await session.commit()
 
     return now
 
@@ -545,21 +547,13 @@ async def build_presence_map(
 
     if db:
         # Use provided session
-        result = await db.execute(
-            select(ActiveSession.user_id, func.max(ActiveSession.last_seen_at))
-            .where(ActiveSession.user_id.in_(ids))
-            .group_by(ActiveSession.user_id)
-        )
-        last_seen_map = {row[0]: row[1] for row in result.all()}
+        repo = SessionRepository(db)
+        last_seen_map = await repo.get_last_seen_map(list(ids))
     else:
         # Create new session
         async with async_session() as new_session:
-            result = await new_session.execute(
-                select(ActiveSession.user_id, func.max(ActiveSession.last_seen_at))
-                .where(ActiveSession.user_id.in_(ids))
-                .group_by(ActiveSession.user_id)
-            )
-            last_seen_map = {row[0]: row[1] for row in result.all()}
+            repo = SessionRepository(new_session)
+            last_seen_map = await repo.get_last_seen_map(list(ids))
 
     presence: dict[uuid.UUID, PresenceStatus] = {}
     for uid in ids:
@@ -573,9 +567,9 @@ async def build_presence_map(
 def serialize_message(
     message: Message, presence: dict[uuid.UUID, PresenceStatus] | None = None
 ) -> dict[str, Any]:
-    """Serialize a Message object for WebSocket transmission."""
+    """Serialize a Message object or DTO for WebSocket transmission."""
     sender_data = None
-    if message.sender:
+    if getattr(message, "sender", None):
         sender_data = ChatParticipant.model_validate(message.sender).model_dump()
 
     sender_presence = None
@@ -752,10 +746,11 @@ async def websocket_chat(websocket: WebSocket):
                         chat_uuid = (
                             uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
                         )
-                        participants = await manager._get_chat_participants_cached(
-                            chat_uuid
-                        )
-                        if user.id not in participants:
+                        async with async_session() as session:
+                            repo = ChatRepository(session)
+                            is_participant = await repo.check_participant(chat_uuid, user.id)
+
+                        if not is_participant:
                             logger.warning(
                                 f"Access denied: User {user.id} tried to send typing "
                                 f"indicator to chat {chat_id} without being a participant"
@@ -788,14 +783,10 @@ async def websocket_chat(websocket: WebSocket):
                 if chat_id and message_id:
                     # Update message read status in DB
                     async with async_session() as session:
+                        repo = ChatRepository(session)
                         # Verify that the user is a participant of the chat (Fix IDOR)
-                        is_participant_stmt = select(chat_participants).where(
-                            chat_participants.c.chat_id == chat_id,
-                            chat_participants.c.user_id == user.id,
-                        )
-                        is_participant = (
-                            await session.execute(is_participant_stmt)
-                        ).first()
+                        is_participant = await repo.check_participant(chat_id, user.id)
+
                         if not is_participant:
                             logger.warning(
                                 f"User {user.id} tried to mark message {message_id} "
@@ -806,9 +797,9 @@ async def websocket_chat(websocket: WebSocket):
                             )
                             continue
 
-                        msg = await session.get(Message, message_id)
+                        msg = await repo.get_message_by_id(message_id)
                         if msg and msg.chat_id == chat_id and msg.sender_id != user.id:
-                            msg.read_status = True
+                            await repo.mark_single_message_read(message_id)
                             await session.commit()
 
                             # Notify sender that message was read
@@ -863,8 +854,10 @@ async def websocket_chat(websocket: WebSocket):
             force=True,
         )
         logger.info("WebSocket disconnected for user %s", user.id)
-    except Exception as e:
-        logger.error("WebSocket error for user %s: %s", user.id, e)
+    except Exception:
+        # Unexpected error in the WebSocket loop: log at ERROR so Sentry captures
+        # the full traceback. The connection is cleaned up regardless.
+        logger.exception("WebSocket unexpectedly closed for user %s", user.id)
         manager.disconnect(websocket)
         last_seen = await _update_last_seen(session_jti)
         await manager.broadcast_presence(
@@ -901,6 +894,4 @@ async def notify_new_message(
     )
 
 
-def get_connection_manager() -> ConnectionManager:
-    """Get the global connection manager instance."""
-    return manager
+

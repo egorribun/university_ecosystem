@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
     from app.models.models import User
-    from app.schemas.chat import ChatsListOut, ChatResponse, MessagesListOut
+    from app.schemas.chat import ChatResponse, ChatsListOut, MessagesListOut
 
 from app.api.validation import ensure_exists, raise_forbidden
 from app.api.websocket import build_presence_map
@@ -23,9 +23,9 @@ from app.schemas.chat import (
 class ChatQueryService:
     """Handles read-only operations for chats and messages. (TD-1)"""
 
-    def __init__(self, session: AsyncDatabaseSession):
+    def __init__(self, session: AsyncDatabaseSession, repository: ChatRepository):
         self.session = session
-        self.repository = ChatRepository(session)
+        self.repository = repository
 
     async def get_chats(
         self, user: User, cursor: str | None, limit: int
@@ -73,7 +73,7 @@ class ChatQueryService:
                 )
             )
 
-        presence_map = await build_presence_map(participant_ids, session=self.session)
+        presence_map = await build_presence_map(participant_ids, db=self.session)
 
         enriched_chats = []
         for chat_resp in pre_responses:
@@ -127,7 +127,7 @@ class ChatQueryService:
         last_message = await self.repository.get_last_message(chat_id)
 
         presence_map = await build_presence_map(
-            [p.id for p in chat.participants], session=self.session
+            [p.id for p in chat.participants], db=self.session
         )
         participant_status = {
             p.id: presence_map.get(p.id, PresenceStatus()) for p in chat.participants
@@ -167,7 +167,7 @@ class ChatQueryService:
         messages = list(reversed(messages))
 
         presence_map = await build_presence_map(
-            {msg.sender_id for msg in messages}, session=self.session
+            {msg.sender_id for msg in messages}, db=self.session
         )
 
         response_items = [

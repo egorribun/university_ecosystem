@@ -12,7 +12,9 @@ from app.services.schedule_optimizer import (
 
 @pytest_asyncio.fixture
 async def optimizer_service():
-    return ScheduleOptimizerService(base_url="http://test", grpc_addr="test:50051")
+    service = ScheduleOptimizerService(base_url="http://test", grpc_addr="test:50051")
+    yield service
+    await service.close()
 
 
 @pytest_asyncio.fixture
@@ -59,8 +61,8 @@ async def test_batch_detect_conflicts(optimizer_service):
     assert result == []
 
 
-@pytest.mark.skip(reason="gRPC method not yet implemented in ScheduleOptimizerService")
 @pytest.mark.asyncio
-async def test_call_grpc_not_implemented(optimizer_service):
-    with pytest.raises(NotImplementedError):
-        await optimizer_service._call_grpc()
+async def test_find_optimal_slot_fallback(optimizer_service, sample_item):
+    # Verifies fallback when stubs unavailable or connection fails
+    result = await optimizer_service.find_optimal_slot(90, [sample_item])
+    assert result is None

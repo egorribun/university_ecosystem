@@ -28,7 +28,7 @@ from app.schemas.dtos import UserDTO
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
-    from app.models.webauthn import WebAuthnCredential
+    from app.models.webauthn import WebAuthnCredential as _WebAuthnCredential
 
 logger = logging.getLogger(__name__)
 

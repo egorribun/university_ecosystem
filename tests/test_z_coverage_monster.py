@@ -27,6 +27,8 @@ async def test_monster_coverage_run():
 
     # 3. DATABASE MOCKING
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_db.add_all = MagicMock()
     mock_db.execute = AsyncMock()
     mock_db.commit = AsyncMock()
     mock_db.rollback = AsyncMock()
@@ -145,12 +147,19 @@ async def test_monster_coverage_run():
 
     mock_audit = MagicMock()
 
+    mock_profile_service = AsyncMock()
+    mock_profile_service.get_auth_user_by_email.return_value = user
+    mock_profile_service.get_user_by_id.return_value = user
+
     login_service = LoginService(
         db=mock_db,
-        user_service=mock_user_service,
+        user_repo=mock_user_service,
+        profile_service=mock_profile_service,
         session_service=mock_session_service,
         lockout_service=mock_lockout_service,
         audit=mock_audit,
+        redis_session_service=AsyncMock(),
+        geolocation_service=AsyncMock(),
     )
 
     with (
@@ -173,11 +182,13 @@ async def test_monster_coverage_run():
             new_callable=AsyncMock,
             return_value=user,
         ),
-        patch(
-            "app.services.auth_service.attach_pending_email",
-            new_callable=AsyncMock,
-            return_value=user,
-        ),
+                patch("app.core.localization.resolve_locale", return_value="en"),
+                patch(
+                    "app.services.user.profile_service.attach_pending_email",
+                    new_callable=AsyncMock,
+                    return_value=user,
+                ),
+                patch("app.api.validation.raise_http_error"),
     ):
         from fastapi import BackgroundTasks, Request, Response
 

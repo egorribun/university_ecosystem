@@ -16,12 +16,13 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from app.core.config import settings
-
 from openfeature import api
 from openfeature.evaluation_context import EvaluationContext
 from openfeature.flag_evaluation import FlagResolutionDetails, Reason
 from openfeature.provider import AbstractProvider, Metadata
+from redis.asyncio import Redis
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,7 @@ class FeatureFlagService:
         if self._is_initialized:
             return
 
+        from redis.asyncio import Redis
         self._redis = redis or (
             Redis.from_url(settings.cache_redis_url, decode_responses=True)
             if settings.cache_redis_url
@@ -236,7 +238,7 @@ class FeatureFlagService:
 
         # MOD-6: Set OpenFeature provider
         api.set_provider(UniversityFeatureProvider(self))
-        self._of_client = api.get_client()
+        self.of_client = api.get_client()
 
         logger.info("Feature flag service initialized (%d flags and OpenFeature)", len(self._flags))
 

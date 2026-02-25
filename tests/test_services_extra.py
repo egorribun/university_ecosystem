@@ -56,16 +56,19 @@ async def test_user_service_basics():
     AsyncMock()
 
     # Inject Repos
+    user_repo.add = MagicMock()
+    user_repo._to_dto = MagicMock()
     service = UserService(user_repo, audit, notifications)
 
     user = models.User(id=1, email="u@e.com")
+    user.profile = models.UserProfile(user_id=1, full_name="Old Name")
     user.avatar_url = None
     user.cover_url = None
     request = MagicMock()
 
     # Mock repo.get to return user
-    # Note: service.repo is user_repo
     user_repo.get.return_value = user
+    user_repo._get_orm.return_value = user
 
     # Mock db.execute to return a mock result
     # We use MagicMock for the result because scalars() is a
@@ -78,8 +81,8 @@ async def test_user_service_basics():
     # update_user_profile
     data = schemas.UserProfileUpdate(full_name="New Name")
     with (
-        patch("app.services.user_service.resolve_locale", return_value="en"),
-        patch("app.services.user_service.attach_pending_email", new_callable=AsyncMock),
+        patch("app.services.user.profile_service.resolve_locale", return_value="en"),
+        patch("app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock),
     ):
         await service.update_user_profile(user, data, request)
         assert user.profile.full_name == "New Name"
@@ -88,15 +91,11 @@ async def test_user_service_basics():
     user.avatar_url = "/path/to/img"
     with (
         patch(
-            "app.services.user_service.delete_static_file", new_callable=AsyncMock
+            "app.services.user.media_service.delete_static_file", new_callable=AsyncMock
         ) as m_del,
-        patch(
-            "app.services.user_service.ensure_mfa_relationships_loaded",
-            new_callable=AsyncMock,
-        ),
         # Patch attach_pending_email since it's called
         patch(
-            "app.services.user_service.attach_pending_email",
+            "app.services.user.profile_service.attach_pending_email",
             new_callable=AsyncMock,
         ),
     ):
@@ -112,8 +111,9 @@ async def test_auth_service_basics():
     audit = MagicMock()
     auth_repo = AsyncMock()
     user_repo = AsyncMock()
+    session_repo = AsyncMock()
 
-    service = AuthService(audit, auth_repo, user_repo)
+    service = AuthService(audit, auth_repo, user_repo, session_repo)
     user = models.User(id=1, email="u@e.com", hashed_password="old_hash")
     request = MagicMock()
 
@@ -141,11 +141,7 @@ async def test_auth_service_basics():
             new_callable=AsyncMock,
             return_value="new_hash",
         ),
-        patch("app.services.auth_service.resolve_locale", return_value="en"),
-        patch(
-            "app.services.auth_service.ensure_mfa_relationships_loaded",
-            new_callable=AsyncMock,
-        ),
+        patch("app.services.user.profile_service.resolve_locale", return_value="en"),
         patch(
             "app.services.auth_service._validate_password_hibp",
             new_callable=AsyncMock,

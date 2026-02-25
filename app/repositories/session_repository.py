@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 
 from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession
@@ -143,15 +143,34 @@ class SessionRepository(BaseRepository[ActiveSession, ActiveSessionDTO, dict, di
         return int(getattr(result, "rowcount", 0) or 0)
 
     async def cleanup_expired(self, max_age_days: int = 30) -> int:
-        """Delete sessions older than max_age_days. Returns count deleted."""
-        cutoff = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        # Subtract days manually for clarity
+        """Delete truly dormant sessions older than max_age_days.
+
+        A session is considered dormant when BOTH:
+         - created_at is older than the cutoff, AND
+         - last_seen_at is also older than the cutoff (or never set).
+
+        This preserves active long-lived ("trusted device") sessions that
+        were created more than 30 days ago but are still being used today.
+        RZ-TD-5: previous implementation deleted by created_at alone, silently
+        revoking active sessions and causing unexplained 401s for users.
+        """
         from datetime import timedelta
 
+        cutoff = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         cutoff = cutoff - timedelta(days=max_age_days)
 
         result = await self.db.execute(
-            delete(ActiveSession).where(ActiveSession.created_at < cutoff)
+            delete(ActiveSession).where(
+                and_(
+                    ActiveSession.created_at < cutoff,
+                    # Only delete sessions that appear dormant (never seen, or
+                    # last seen before the cutoff). Active sessions are preserved.
+                    or_(
+                        ActiveSession.last_seen_at.is_(None),
+                        ActiveSession.last_seen_at < cutoff,
+                    ),
+                )
+            )
         )
         await self.db.flush()
         return int(getattr(result, "rowcount", 0) or 0)
@@ -165,6 +184,35 @@ class SessionRepository(BaseRepository[ActiveSession, ActiveSessionDTO, dict, di
             .values(last_seen_at=now)
         )
         await self.db.flush()
+
+    async def touch_by_jti(self, jti: str) -> None:
+        """Update last_seen_at timestamp for a session by its JTI."""
+        now = datetime.now(UTC)
+        await self.db.execute(
+            update(ActiveSession)
+            .where(ActiveSession.jti == jti)
+            .values(last_seen_at=now)
+        )
+        await self.db.flush()
+
+    async def get_last_seen_map(
+        self, user_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, datetime | None]:
+        """Get the latest last_seen_at for a group of users."""
+        if not user_ids:
+            return {}
+        stmt = (
+            select(ActiveSession.user_id, func.max(ActiveSession.last_seen_at))
+            .where(
+                and_(
+                    ActiveSession.user_id.in_(user_ids),
+                    ActiveSession.revoked_at.is_(None),
+                )
+            )
+            .group_by(ActiveSession.user_id)
+        )
+        result = await self.db.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
 
 
 def get_session_repository(db: AsyncDatabaseSession) -> SessionRepository:

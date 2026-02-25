@@ -1,22 +1,26 @@
 from __future__ import annotations
 
-import secrets
 import uuid
-from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import and_, select
-from app.core.protocols import AsyncDatabaseSession
+from fastapi import APIRouter, Depends, Request, status
 
-from app.api.deps import get_current_user, require_fresh_mfa
-from app.api.validation import ensure_exists, require_admin, require_owner_or_admin
+from app.api.deps import get_current_user, get_session_service, require_fresh_mfa
+from app.api.validation import (
+    ensure_exists,
+    raise_http_error,
+    require_admin,
+    require_owner_or_admin,
+)
 from app.auth.security import decode_token
 from app.core.database import get_db, get_read_db
 from app.core.localization import resolve_locale
-from app.models.models import ActiveSession, User
+from app.core.protocols import AsyncDatabaseSession
+from app.models.models import User
+from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
-from app.services.session_cleanup import revoke_sessions_matching
+from app.schemas.dtos import UserDTO
+from app.services.session_service import SessionService
 
 router = APIRouter(prefix="/auth/sessions", tags=["auth"])
 
@@ -50,17 +54,17 @@ def _extract_jti(request: Request) -> str | None:
 
 async def _resolve_target_user(
     *,
-    db: AsyncDatabaseSession,
-    current_user: User,
+    user_repo: UserRepository,
+    current_user: User | UserDTO,
     requested_user_id: uuid.UUID | None,
     locale: str,
-) -> tuple[uuid.UUID, User]:
+) -> tuple[uuid.UUID, User | UserDTO]:
     if requested_user_id is None or requested_user_id == current_user.id:
         return current_user.id, current_user
     require_admin(current_user, locale)
-    target = await db.get(User, requested_user_id)
+    target = await user_repo.get(requested_user_id)
     if target is None:
-        raise ValueError("Unreachable")
+        raise_http_error(status.HTTP_404_NOT_FOUND, "errors.auth.user_not_found", locale)
     ensure_exists(target, "users", locale)
     return target.id, target
 
@@ -70,22 +74,18 @@ async def list_sessions(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
+    session_service: Annotated[SessionService, Depends(get_session_service)],
     user_id: uuid.UUID | None = None,
 ) -> list[schemas.ActiveSessionOut]:
     locale = resolve_locale(request=request, user=current_user)
+    user_repo = UserRepository(db)
     target_user_id, _ = await _resolve_target_user(
-        db=db,
+        user_repo=user_repo,
         current_user=current_user,
         requested_user_id=user_id,
         locale=locale,
     )
-    result = await db.execute(
-        select(ActiveSession)
-        .where(ActiveSession.user_id == target_user_id)
-        .where(ActiveSession.revoked_at.is_(None))
-        .order_by(ActiveSession.created_at.desc())
-    )
-    sessions = result.scalars().all()
+    sessions = await session_service.get_active_sessions_for_user(target_user_id)
     current_jti = _extract_jti(request)
     payload: list[schemas.ActiveSessionOut] = []
     for session in sessions:
@@ -102,23 +102,23 @@ async def revoke_session(
     mfa_check: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    session_service: Annotated[SessionService, Depends(get_session_service)],
 ) -> schemas.ActiveSessionOut:
     locale = resolve_locale(request=request, user=current_user)
-    session = await db.get(ActiveSession, session_id)
+    session = await session_service.get_session_by_id(session_id)
     if session is None:
-        raise ValueError("Unreachable")
+        raise_http_error(status.HTTP_404_NOT_FOUND, "errors.auth.session_not_found", locale)
     ensure_exists(session, "sessions", locale)
     require_owner_or_admin(current_user, locale, owner_id=session.user_id)
-    now = datetime.now(UTC)
-    revoked_at = session.revoked_at or now
-    session.revoked_at = revoked_at
-    session.signing_key = secrets.token_urlsafe(32)
+
+    revoked_session = await session_service.revoke_session_by_id(session_id)
+    if not revoked_session:
+        raise ValueError("Unreachable")
+
     current_jti = _extract_jti(request)
-    payload = schemas.ActiveSessionOut.model_validate(session).model_copy(
-        update={"is_current": session.jti == current_jti, "revoked_at": revoked_at}
+    payload = schemas.ActiveSessionOut.model_validate(revoked_session).model_copy(
+        update={"is_current": revoked_session.jti == current_jti}
     )
-    await db.commit()
-    await db.refresh(session)
     return payload
 
 
@@ -128,22 +128,17 @@ async def revoke_other_sessions(
     mfa_check: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    session_service: Annotated[SessionService, Depends(get_session_service)],
     user_id: uuid.UUID | None = None,
 ) -> schemas.SessionBulkRevokeOut:
     locale = resolve_locale(request=request, user=current_user)
+    user_repo = UserRepository(db)
     target_user_id, _ = await _resolve_target_user(
-        db=db,
+        user_repo=user_repo,
         current_user=current_user,
         requested_user_id=user_id,
         locale=locale,
     )
     current_jti = _extract_jti(request)
-    where_parts = [
-        ActiveSession.user_id == target_user_id,
-        ActiveSession.revoked_at.is_(None),
-    ]
-    if current_jti:
-        where_parts.append(ActiveSession.jti != current_jti)
-    revoked = await revoke_sessions_matching(db=db, whereclause=and_(*where_parts))
-    await db.commit()
+    revoked = await session_service.revoke_other_sessions(target_user_id, current_jti)
     return schemas.SessionBulkRevokeOut(revoked=revoked)

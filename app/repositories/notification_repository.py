@@ -15,6 +15,7 @@ from app.schemas.dtos.notification import NotificationDTO
 
 if TYPE_CHECKING:
     import uuid
+
     from app.core.protocols import AsyncDatabaseSession
 
 

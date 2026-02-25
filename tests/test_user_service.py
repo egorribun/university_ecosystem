@@ -90,6 +90,7 @@ def mock_user():
     user.id = uuid.uuid4()
     user.email = "test@example.com"
     user.role = "student"
+    user.hashed_password = "hashed_password"
     # Setup profile mock
     user.profile = MagicMock()
     user.profile.avatar_url = None
@@ -447,16 +448,23 @@ async def test_admin_update_user_success(
     """Test successful admin user update."""
     data = MagicMock()
     updated_user = MagicMock()
-    updated_user.id = 2
+    import uuid
+    target_uuid = uuid.uuid4()
+    updated_user.id = target_uuid
 
     service.repo.get.return_value = updated_user
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
+        # Mock database rowcount for reset_user_mfa check
+        mock_result = MagicMock()
+        type(mock_result).rowcount = 1
+        mock_db.execute.return_value = mock_result
+
         service.repo._get_orm.return_value = updated_user
         service.repo._to_dto.return_value = updated_user
-        result = await service.admin_update_user(2, data, mock_request, mock_admin_user)
+        result = await service.admin_update_user(target_uuid, data, mock_request, mock_admin_user)
 
-    assert result.id == 2
+    assert result.id == target_uuid
     mock_audit.log.assert_called()
 
 
@@ -471,15 +479,22 @@ async def test_admin_update_user_mfa_reset(
     reset_stats = MagicMock()
     reset_stats.changed = True
 
-    updated_user.preferences = None
+    import uuid
+    target_uuid = uuid.uuid4()
+    updated_user.id = target_uuid
     service.repo.get.return_value = updated_user
+
+    # Mock database rowcount for reset_user_mfa check
+    mock_result = MagicMock()
+    type(mock_result).rowcount = 1
+    mock_db.execute.return_value = mock_result
     data.model_dump.return_value = {"reset_mfa": True}
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         with patch("app.auth.mfa.reset_user_mfa", return_value=reset_stats):
             service.repo._get_orm.return_value = updated_user
             service.repo._to_dto.return_value = updated_user
-            await service.admin_update_user(2, data, mock_request, mock_admin_user)
+            await service.admin_update_user(target_uuid, data, mock_request, mock_admin_user)
 
     service.notifications.send_security_notification.assert_called_once()
 
@@ -492,8 +507,10 @@ async def test_admin_update_user_mfa_reset(
 @pytest.mark.asyncio
 async def test_admin_delete_user_forbidden(service, mock_db, mock_user, mock_request):
     """Test admin_delete_user fails for non-admin."""
+    import uuid
+    target_uuid = uuid.uuid4()
     with pytest.raises(PermissionDenied):
-        await service.admin_delete_user(2, mock_request, mock_user)
+        await service.admin_delete_user(target_uuid, mock_request, mock_user)
 
 
 @pytest.mark.asyncio

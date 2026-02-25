@@ -13,11 +13,9 @@ import httpx
 import jwt
 from argon2 import PasswordHasher, Type
 from argon2.exceptions import VerifyMismatchError
+from cryptography.hazmat.primitives import serialization
 from jwt import PyJWTError as JWTError
 from zxcvbn import zxcvbn
-
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.core.config import settings
 from app.core.localization import translate

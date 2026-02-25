@@ -16,10 +16,10 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import Response
-from app.core.protocols import AsyncDatabaseSession
 
 from app.api import deps
 from app.api.deps import (
+    get_current_admin_user,
     get_current_user,
     get_current_user_full,
     require_fresh_mfa,
@@ -35,6 +35,7 @@ from app.core.container import (
 )
 from app.core.database import get_read_db
 from app.core.localization import resolve_locale
+from app.core.protocols import AsyncDatabaseSession
 from app.core.rate_limit import sensitive_route_limit
 from app.models import models
 from app.schemas import schemas
@@ -369,7 +370,9 @@ async def update_user_admin(
     user_id: UUID,
     data: schemas.UserAdminUpdate,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    # TD-6: use the SpiceDB-backed fail-closed dep at the route level so that
+    # authorization is enforced in two layers (route + service).
+    user: models.User = Depends(get_current_admin_user),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.admin_update_user(user_id, data, request, user)  # type: ignore[arg-type]
@@ -379,7 +382,8 @@ async def update_user_admin(
 async def delete_user_admin(
     user_id: UUID,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    # TD-6: same fail-closed SpiceDB check at the route boundary.
+    user: models.User = Depends(get_current_admin_user),
     service: UserComplianceService = Depends(get_user_compliance_service),
 ):
     return await service.admin_delete_user(user_id, request, user)  # type: ignore[arg-type]

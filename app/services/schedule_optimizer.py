@@ -16,6 +16,7 @@ try:
     from gen.python.university_ecosystem.optimizer.v1.optimizer_pb2 import (
         BatchDetectConflictsRequest,
         DetectConflictsRequest,
+        FindOptimalSlotRequest,
         ScheduleItem,
     )
 
@@ -56,6 +57,12 @@ class ScheduleOptimizerService:
             host, port = self.grpc_addr.split(":")
             self._channel = Channel(host, int(port))
         return self._channel
+
+    async def close(self) -> None:
+        """Close the gRPC channel if it exists."""
+        if self._channel is not None:
+            self._channel.close()
+            self._channel = None
 
     async def _to_grpc_item(self, item: ScheduleItemInternal) -> "ScheduleItem":
         from google.protobuf.timestamp_pb2 import Timestamp
@@ -150,3 +157,32 @@ class ScheduleOptimizerService:
         except Exception as e:
             logger.error(f"gRPC batch detection failed: {e}")
             return []
+
+    async def find_optimal_slot(
+        self,
+        duration_minutes: int,
+        existing: list[ScheduleItemInternal],
+        preferred_weekdays: list[str] | None = None,
+    ) -> ScheduleItemInternal | None:
+        """Find an optimal schedule slot via gRPC."""
+        if not HAS_STUBS:
+            logger.warning("Optimal slot detection skipped: gRPC stubs unavailable")
+            return None
+
+        try:
+            stub = OptimizerServiceStub(self._get_channel())
+            existing_grpc = [await self._to_grpc_item(item) for item in existing]
+
+            request = FindOptimalSlotRequest(
+                existing_schedule=existing_grpc,
+                duration_minutes=duration_minutes,
+                preferred_weekdays=preferred_weekdays or [],
+            )
+            response = await stub.FindOptimalSlot(request)
+
+            if response.status == "FOUND" and response.HasField("suggested_slot"):
+                return self._from_grpc_item(response.suggested_slot)
+            return None
+        except Exception as e:
+            logger.error(f"gRPC find_optimal_slot failed: {e}")
+            return None

@@ -3,10 +3,13 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
+	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -40,6 +43,8 @@ type Hub struct {
 	UpgradeLimiter *WSUpgradeRateLimiter
 	// jwksCache stores public keys fetched via MOD-1 / JWKS URL.
 	jwksCache *jwk.Cache
+	// jwksURL is the URL registered with jwksCache; used to retrieve the key set.
+	jwksURL string
 }
 
 func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
@@ -73,6 +78,8 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	if err != nil {
 		return fmt.Errorf("failed to register JWKS URL %s: %w", jwksURL, err)
 	}
+	// Store the URL so ValidateToken can retrieve the correct key set.
+	h.jwksURL = jwksURL
 
 	// Initial fetch to ensure we have keys at startup.
 	_, err = h.jwksCache.Refresh(ctx, jwksURL)
@@ -84,9 +91,19 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	return nil
 }
 
-func (h *Hub) Run() {
+// Run starts the hub's main select loop.
+//
+// The loop is terminated when ctx is cancelled, enabling clean goroutine
+// shutdown without leaking the goroutine after SIGTERM. Callers should
+// pass the application-level context so the hub stops alongside the server.
+func (h *Hub) Run(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			// Application shutdown: exit the loop so the goroutine is reclaimed.
+			h.Logger.Info("Hub.Run: context cancelled, stopping loop")
+			return
+
 		case client := <-h.Register:
 			h.mu.Lock()
 			h.Clients[client.ID] = client

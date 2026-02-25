@@ -25,6 +25,7 @@ class MessageDTO(BaseModel):
     content: str
     created_at: datetime
     read_status: bool = False
+    sender: "ChatParticipantDTO | None" = None
     attachments: list[AttachmentDTO] = []
 
 

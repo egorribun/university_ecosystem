@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
-    from app.models.models import User
     from app.models.chat import Message
+    from app.models.models import User
+    from app.schemas.dtos import ChatParticipantDTO
+    from collections.abc import Sequence
 
 from app.api.websocket import notify_new_message
 from app.services.notifications import create_notifications_for_users
@@ -18,7 +18,12 @@ class ChatNotificationService:
     def __init__(self, session: AsyncDatabaseSession):
         self.session = session
 
-    async def notify_new_message(self, message: Message, chat_participants: list[User], sender: User) -> None:
+    async def notify_new_message(
+        self,
+        message: Message,
+        chat_participants: Sequence[User | ChatParticipantDTO],
+        sender: User,
+    ) -> None:
         """Notify participants about a new message."""
         # WebSocket real-time notification
         await notify_new_message(message, exclude_user_id=sender.id)

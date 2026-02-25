@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.models import models
 from app.core.protocols import AsyncDatabaseSession
+from app.models import models
 from app.models.models import User, UserProfile
 from app.models.user_loaders import USER_MFA_LOAD_OPTIONS, USER_MFA_RELATIONSHIP_NAMES
 from app.repositories.base import BaseRepository
@@ -29,8 +29,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
     def model(self) -> type[User]:
         return User
 
-    def __init__(self, db: AsyncDatabaseSession):
-        self.db = db
+    # Removed redundant __init__ override to use BaseRepository.db.
 
     @property
     def dto_class(self) -> type[UserDTO]:

@@ -78,7 +78,7 @@ def signal_csrf_rotation(request: Request) -> None:  # type: ignore[name-defined
 _REJECT_BODY: bytes = b'{"detail":"CSRF token mismatch"}'
 
 
-def _make_reject_response() -> "Response":
+def _make_reject_response() -> Response:
     """Return a fresh 403 JSON response for each CSRF rejection."""
     from starlette.responses import Response as _Response
 

@@ -17,7 +17,6 @@ from fastapi import (
 )
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import exists, func, literal, select
-from app.core.protocols import AsyncDatabaseSession
 
 from app.api.deps import (
     get_current_user,
@@ -40,6 +39,7 @@ from app.core.localization import (
     SUPPORTED_LOCALES,
     resolve_locale,
 )
+from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas

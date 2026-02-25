@@ -13,7 +13,7 @@ def send_auth_email(
     send_reset_email(to_email, link, full_name, locale=locale)
 
 
-@broker.task
+@broker.task()
 def send_lockout_alert(
     to_email: str,
     full_name: str = "",

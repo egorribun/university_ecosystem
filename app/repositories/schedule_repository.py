@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
@@ -8,6 +9,9 @@ from app.models import models
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO
+
+if TYPE_CHECKING:
+    from app.core.database import AsyncDatabaseSession
 
 
 class GroupRepository(

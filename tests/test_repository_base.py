@@ -8,7 +8,7 @@ Tests cover:
 Uses actual SQLAlchemy models (User) for realistic testing.
 """
 
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import BaseModel, ConfigDict

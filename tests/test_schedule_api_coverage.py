@@ -3,11 +3,13 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from dishka import Provider, Scope, make_async_container, provide
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_current_user
 from app.core.container import get_read_schedule_handler
 from app.core.database import get_db
+from app.cqrs.bus import CommandBus, QueryBus
 from app.main import app
 from app.models import models
 
@@ -118,6 +120,32 @@ async def test_schedule_api_coverage(
     # but schedule endpoints now use service
     app.dependency_overrides[get_db] = lambda: mock_db
 
+    mock_query_bus = AsyncMock(spec=QueryBus)
+    mock_query_bus.execute.side_effect = mock_schedule_handler.handle
+
+    mock_command_bus = AsyncMock(spec=CommandBus)
+    async def mock_command_bus_execute(command):
+        if command.__class__.__name__ == "CreateScheduleCommand":
+            return await mock_schedule_service.create_schedule(user=mock_user, data=command.data)
+        elif command.__class__.__name__ == "UpdateScheduleCommand":
+            return await mock_schedule_service.update_schedule(user=mock_user, schedule_id=command.schedule_id, data=command.data)
+        elif command.__class__.__name__ == "DeleteScheduleCommand":
+            return await mock_schedule_service.delete_schedule(user=mock_user, schedule_id=command.schedule_id)
+        return None
+    mock_command_bus.execute.side_effect = mock_command_bus_execute
+
+    class TestProvider(Provider):
+        @provide(scope=Scope.REQUEST)
+        def query_bus(self) -> QueryBus:
+            return mock_query_bus
+
+        @provide(scope=Scope.REQUEST)
+        def command_bus(self) -> CommandBus:
+            return mock_command_bus
+
+    original_container = getattr(app.state, "dishka_container", None)
+    app.state.dishka_container = make_async_container(TestProvider())
+
     try:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://testserver"
@@ -150,3 +178,6 @@ async def test_schedule_api_coverage(
             assert res.json() == {"ok": True}
     finally:
         app.dependency_overrides.clear()
+        if hasattr(app.state, "dishka_container"):
+            await app.state.dishka_container.close()
+        app.state.dishka_container = original_container

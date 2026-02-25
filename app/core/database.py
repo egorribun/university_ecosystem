@@ -8,7 +8,8 @@ import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
@@ -21,11 +22,10 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-    from app.core.protocols import AsyncDatabaseSession
+from collections.abc import AsyncGenerator
 
-    from app.core.config import Settings
+from app.core.config import Settings
+from app.core.protocols import AsyncDatabaseSession
 from app.core.config import settings
 
 
@@ -297,7 +297,6 @@ def create_session_factory(
     return engine, session_factory, read_replica_engine
 
 
-from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 T = TypeVar("T")
 
@@ -351,13 +350,13 @@ read_session_factory: Any = _LazyProxy(lambda: _read_session_factory, "read_sess
 
 if TYPE_CHECKING:
     # Tell type checkers these are the real types for better IDE support
-    engine: AsyncEngine
-    async_session: async_sessionmaker[AsyncDatabaseSession]
-    read_replica_engine: AsyncEngine | None
-    read_session_factory: async_sessionmaker[AsyncDatabaseSession]
+    engine: AsyncEngine  # type: ignore[no-redef]
+    async_session: async_sessionmaker[AsyncDatabaseSession]  # type: ignore[no-redef]
+    read_replica_engine: AsyncEngine | None  # type: ignore[no-redef]
+    read_session_factory: async_sessionmaker[AsyncDatabaseSession]  # type: ignore[no-redef]
 
 
-def init_database(current_settings: "Settings | None" = None) -> None:
+def init_database(current_settings: Settings | None = None) -> None:
     """Initialise database engines from *current_settings* (defaults to the global
     ``settings`` singleton).
     """
@@ -375,7 +374,7 @@ def init_database(current_settings: "Settings | None" = None) -> None:
     logger.info(
         "Database initialised: %s (replica: %s)",
         s.database_url,
-        s.read_replica_url if getattr(s, "read_replica_url", None) else "none",
+        s.database_read_replica_url if getattr(s, "database_read_replica_url", None) else "none",
     )
 
 

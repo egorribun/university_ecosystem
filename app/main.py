@@ -22,8 +22,8 @@ from app.api.admin import router as admin_api_router
 from app.api.health import router as health_router
 from app.api.internal import router as internal_api_router
 from app.api.public import router as public_api_router
-from app.api.well_known import router as well_known_router
 from app.api.websocket import router as websocket_router
+from app.api.well_known import router as well_known_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import AppException, app_exception_handler
@@ -95,6 +95,12 @@ configure_metrics(app)
 
 # Middlewares
 configure_middleware(app, settings=settings)
+
+from dishka.integrations.fastapi import setup_dishka
+
+from app.core.di_provider import create_dishka_container
+
+setup_dishka(create_dishka_container(), app)
 
 
 # Static files

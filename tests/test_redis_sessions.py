@@ -11,7 +11,7 @@ from app.services.auth.redis_session import RedisSessionService
 
 
 @pytest.mark.asyncio
-async def test_redis_session_lifecycle_v2(monkeypatch):
+async def test_redis_session_lifecycle_v2(monkeypatch, request):
     # 1. Mock parameters
     monkeypatch.setattr(settings, "access_token_expire_minutes", 30)
     monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://localhost")
@@ -22,10 +22,13 @@ async def test_redis_session_lifecycle_v2(monkeypatch):
     async def mock_get_client(url):
         return fake_client
 
-    monkeypatch.setattr(redis_session, "_get_shared_client", mock_get_client)
+    from unittest.mock import patch
+    patcher = patch("app.services.auth.redis_session._get_shared_client", side_effect=mock_get_client)
+    patcher.start()
+    request.addfinalizer(patcher.stop)
 
     # 3. Initialize Service
-    service = RedisSessionService()  # Should pick up mocked settings values
+    service = RedisSessionService(redis_url="redis://localhost")
 
     user_id = uuid4()
     jti = "test-jti-v2"
@@ -42,7 +45,7 @@ async def test_redis_session_lifecycle_v2(monkeypatch):
     await service.create_session(jti, user_id, fingerprint, now)
 
     # Check raw redis
-    raw_exists = await fake_client.exists(f"session:{jti}")
+    raw_exists = await fake_client.exists(f"session:v2:{jti}")
     assert raw_exists
 
     # 5. Get
@@ -52,12 +55,12 @@ async def test_redis_session_lifecycle_v2(monkeypatch):
 
     # 6. Update Activity
     await service.update_last_seen(jti)
-    raw_exists_2 = await fake_client.exists(f"session:{jti}")
+    raw_exists_2 = await fake_client.exists(f"session:v2:{jti}")
     assert raw_exists_2
 
     # 7. Revoke
     await service.revoke_session(jti)
     session_gone = await service.get_session(jti)
     assert session_gone is None
-    raw_exists_3 = await fake_client.exists(f"session:{jti}")
+    raw_exists_3 = await fake_client.exists(f"session:v2:{jti}")
     assert not raw_exists_3

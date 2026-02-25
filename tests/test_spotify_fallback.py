@@ -1,3 +1,4 @@
+import typing
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -164,7 +165,7 @@ async def test_now_playing_returns_401_when_refresh_fails(
 
     class DummyResponse:
         status_code = 400
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {}
@@ -208,14 +209,14 @@ async def test_now_playing_refreshes_when_access_token_missing(
 
     class RefreshResponse:
         status_code = 200
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {"access_token": "fresh", "expires_in": 120}
 
     class NowPlayingResponse:
         status_code = 204
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {}
@@ -270,21 +271,21 @@ async def test_now_playing_retries_after_unauthorized_response(
 
     class UnauthorizedResponse:
         status_code = 401
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {"error": {"status": 401, "message": "The access token expired"}}
 
     class EmptyResponse:
         status_code = 204
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {}
 
     class RefreshResponse:
         status_code = 200
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {
@@ -350,14 +351,14 @@ async def test_now_playing_disconnects_on_unauthorized_response(
 
     class UnauthorizedResponse:
         status_code = 401
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {"error": {"status": 401, "message": "The access token expired"}}
 
     class RefreshResponse:
         status_code = 200
-        headers: dict[str, str] = {}
+        headers: typing.ClassVar[dict[str, str]] = {}
 
         def json(self) -> dict[str, str]:
             return {

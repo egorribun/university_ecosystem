@@ -2,13 +2,16 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer
+
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
-from app.core.container import get_vector_service
+from app.core.config import settings
+from app.core.container import get_audit_service, get_vector_service
 from app.core.database import get_db, get_read_db
-from app.core.protocols import AsyncDatabaseSession
 from app.core.localization import resolve_locale, translate
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import (
     USER_AUTH_LOAD_OPTIONS,
@@ -20,7 +23,6 @@ from app.services.auth.fingerprint_service import AuthFingerprintService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
 
-from fastapi.security import OAuth2PasswordBearer
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
@@ -273,17 +275,39 @@ def get_locale(
 def get_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "ChatService":  # type: ignore # noqa: F821
+    from app.repositories.chat_repository import ChatRepository
+    from app.services.chat.attachment_service import ChatAttachmentService
+    from app.services.chat.command_service import ChatCommandService
+    from app.services.chat.notification_service import ChatNotificationService
+    from app.services.chat.query_service import ChatQueryService
     from app.services.chat_service import ChatService
 
-    return ChatService(session)
+    repo = ChatRepository(session)
+    attachments = ChatAttachmentService()
+    notifications = ChatNotificationService(session)
+    queries = ChatQueryService(session, repo)
+    commands = ChatCommandService(session, repo, attachments, notifications)
+
+    return ChatService(session, attachments, notifications, queries, commands)
 
 
 def get_read_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
 ) -> "ChatService":  # type: ignore # noqa: F821
+    from app.repositories.chat_repository import ChatRepository
+    from app.services.chat.attachment_service import ChatAttachmentService
+    from app.services.chat.command_service import ChatCommandService
+    from app.services.chat.notification_service import ChatNotificationService
+    from app.services.chat.query_service import ChatQueryService
     from app.services.chat_service import ChatService
 
-    return ChatService(session)
+    repo = ChatRepository(session)
+    attachments = ChatAttachmentService()
+    notifications = ChatNotificationService(session)
+    queries = ChatQueryService(session, repo)
+    commands = ChatCommandService(session, repo, attachments, notifications)
+
+    return ChatService(session, attachments, notifications, queries, commands)
 
 
 def create_event_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
@@ -398,36 +422,42 @@ def get_session_service(
     return SessionService(session, repo)
 
 
-def get_user_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
-    from app.repositories.user_repository import UserRepository
-    from app.services.audit_service import audit_service
-    from app.services.notification_service import NotificationService
-    from app.services.user_service import UserService
+async def get_geolocation_service() -> Any:
+    from app.services.geolocation import get_geolocation_service_instance
+    return await get_geolocation_service_instance()
 
-    user_repo = UserRepository(session)
-    notifications = NotificationService(session)
-    return UserService(user_repo, audit_service, notifications)
+async def get_redis_session_service() -> Any:
+    from app.services.auth.redis_session import RedisSessionService
+    return RedisSessionService()
 
-
-def get_audit_service() -> Any:
-    from app.services.audit_service import audit_service
-
-    return audit_service
-
-
-def get_login_service(
+async def get_login_service(
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    user_service: Annotated[Any, Depends(get_user_service)],
     session_service: Annotated[Any, Depends(get_session_service)],
     audit: Annotated[Any, Depends(get_audit_service)],
+    redis_session_service: Annotated[Any, Depends(get_redis_session_service)],
+    geolocation_service: Annotated[Any, Depends(get_geolocation_service)],
 ) -> Any:
+    from app.repositories.user_repository import UserRepository
     from app.services.auth.lockout import LockoutService
     from app.services.auth.login_service import LoginService
+    from app.services.notification_service import NotificationService
+    from app.services.user.profile_service import UserProfileService
 
+    user_repo = UserRepository(db)
+    notifications = NotificationService(db)
+    profile_service = UserProfileService(user_repo, audit, notifications)
     lockout_service = LockoutService(db)
-    return LoginService(db, user_service, session_service, lockout_service, audit)
+
+    return LoginService(
+        db,
+        user_repo,
+        profile_service,
+        session_service,
+        lockout_service,
+        audit,
+        redis_session_service,
+        geolocation_service,
+    )
 
 
 def get_analytics_service() -> Any:

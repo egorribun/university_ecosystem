@@ -10,19 +10,24 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import exc as sa_exc, inspect
+from sqlalchemy import exc as sa_exc
+from sqlalchemy.orm import exc as orm_exc
+from sqlalchemy import inspect
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
-
     from app.models import models as _models
-    from app.schemas.dtos import UserAuthDTO, UserDTO
+    from app.schemas.dtos import UserAuthDTO
 
     _AnyUser = _models.User | UserAuthDTO | UserDTO
 
 from app.api.validation import raise_validation_error
-from app.auth.security import get_password_hash
-from app.core.protocols import AsyncDatabaseSession
+from app.auth.security import (
+    _validate_password_hibp,
+    get_password_hash,
+    verify_password,
+)
+from app.schemas.dtos import UserDTO
 from app.core.config import settings
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import resolve_locale
@@ -79,7 +84,7 @@ class AuthService:
             base = settings.app_base_url_clean
             reset_link = f"{base}/reset-password?token={token}"
             locale = resolve_locale(request=request, user=user)
-            await send_auth_email.kick(
+            await send_auth_email.kick(  # type: ignore[attr-defined]
                 str(user.email),
                 reset_link,
                 user.full_name or "",
@@ -235,7 +240,7 @@ class AuthService:
 
         base = settings.app_base_url_clean
         confirm_link = f"{base}/settings/email-confirm?token={token}"
-        await send_auth_email.kick(
+        await send_auth_email.kick(  # type: ignore[attr-defined]
             validated_email,
             confirm_link,
             user.profile.full_name if user.profile else "",
@@ -250,7 +255,7 @@ class AuthService:
         )
         from typing import cast
 
-        return cast(models.User | UserAuthDTO | UserDTO, enriched_user)
+        return cast(models.User | UserDTO, enriched_user)
 
     async def confirm_email_change(
         self,
@@ -329,7 +334,6 @@ class AuthService:
         request: Request,
     ) -> tuple[bool, int]:
         locale = resolve_locale(request=request, user=user)
-        from app.auth.security import _validate_password_hibp, verify_password
 
         if not await verify_password(
             payload.current_password, str(user.hashed_password)
@@ -405,7 +409,7 @@ async def attach_pending_email(
             insp = inspect(user)
             if insp is not None and "email_change_tokens" not in insp.unloaded:
                 return cast("_AnyUser", attach_pending_email_sync(user, None))
-        except sa_exc.DetachedInstanceError:
+        except orm_exc.DetachedInstanceError:
             # Expected: object is detached from its session (e.g. in a background
             # task).  Fall through to the DB query path below.
             pass

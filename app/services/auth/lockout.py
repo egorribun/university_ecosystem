@@ -4,10 +4,11 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from app.core.protocols import AsyncDatabaseSession
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.localization import translate
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import FailedLoginAttempt
 from app.repositories.auth_repository import AuthRepository
 
@@ -123,7 +124,7 @@ class LockoutService:
         # SQLite (used in tests) doesn't support them, so we skip it there.
         if self.db.bind and self.db.bind.dialect.name == "postgresql":
             await self.db.execute(
-                text("SELECT pg_advisory_xact_lock(hashtext(:email))"),
+                text("SELECT pg_advisory_xact_lock(hashtext(:email), hashtext(reverse(:email)))"),
                 {"email": email},
             )
 

@@ -3,6 +3,7 @@ from fastapi import HTTPException, status
 from starlette.requests import Request
 
 from app.api import sessions
+from app.repositories.user_repository import UserRepository
 
 
 def _make_request(headers: list[tuple[bytes, bytes]] | None = None) -> Request:
@@ -23,7 +24,7 @@ async def test_resolve_target_user_rejects_non_admin(db_session, user_factory):
 
     with pytest.raises(HTTPException) as exc:
         await sessions._resolve_target_user(
-            db=db_session,
+            user_repo=UserRepository(db_session),
             current_user=current_user,
             requested_user_id=target_user.id,
             locale="en",
@@ -38,7 +39,7 @@ async def test_resolve_target_user_allows_admin(db_session, user_factory):
     target_user = await user_factory(role="student")
 
     resolved_id, resolved_user = await sessions._resolve_target_user(
-        db=db_session,
+        user_repo=UserRepository(db_session),
         current_user=admin,
         requested_user_id=target_user.id,
         locale="en",

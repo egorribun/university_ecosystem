@@ -6,7 +6,6 @@ from sqlalchemy import select, update
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
 from app.models import models
-from app.models.models import User
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import EmailChangeTokenDTO, PasswordResetTokenDTO
@@ -22,8 +21,8 @@ class AuthRepository(
 ):
     """Repository for Authentication-related tokens (Password Reset, Email Change)."""
 
-    def __init__(self, session: AsyncDatabaseSession):
-        self.session = session
+    # Removed redundant __init__ override to use BaseRepository.db correctly.
+    # (Fix for AttributeError: 'AuthRepository' object has no attribute 'db')
 
     @property
     def model(self) -> type[models.PasswordResetToken]:

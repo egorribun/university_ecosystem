@@ -4091,8 +4091,15 @@
       "TokenWithProfile": {
         "properties": {
           "access_token": {
-            "title": "Access Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
           },
           "session": {
             "anyOf": [
@@ -4114,7 +4121,6 @@
           }
         },
         "required": [
-          "access_token",
           "user"
         ],
         "title": "TokenWithProfile",

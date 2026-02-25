@@ -13,6 +13,7 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models import models
 from app.repositories.user_repository import UserRepository
+from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
 from app.utils.files import delete_static_file
@@ -114,6 +115,9 @@ async def test_email_change_requires_confirmation(
 
     class FakeTask:
         async def kiq(self, *args, **kwargs):
+            return
+
+        async def kick(self, *args, **kwargs):
             return
 
     monkeypatch.setattr(
@@ -475,6 +479,9 @@ async def test_forgot_password_sends_email_via_thread(
             captured["full_name"] = full_name
             captured["locale"] = locale
             event.set()
+
+        async def kick(self, *args, **kwargs):
+            return await self.kiq(*args, **kwargs)
 
     monkeypatch.setattr("app.services.auth_service.send_auth_email", FakeTask())
 

@@ -11,6 +11,7 @@ from app.repositories.user_repository import UserRepository
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from app.core.protocols import AsyncDatabaseSession
 
 

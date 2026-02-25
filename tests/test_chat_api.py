@@ -9,6 +9,11 @@ from app.auth.security import get_password_hash
 from app.core.database import get_db, get_read_db
 from app.main import app
 from app.models.chat import Chat, Message
+from app.repositories.chat_repository import ChatRepository
+from app.services.chat.attachment_service import ChatAttachmentService
+from app.services.chat.command_service import ChatCommandService
+from app.services.chat.notification_service import ChatNotificationService
+from app.services.chat.query_service import ChatQueryService
 from app.services.chat_service import ChatService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
@@ -248,8 +253,16 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
     headers = await _login(async_client, user.email, password)
 
     # Override read dependencies to use same session
+    def _get_mock_chat_service():
+        repo = ChatRepository(db_session)
+        attachments = ChatAttachmentService()
+        notifications = ChatNotificationService(db_session)
+        queries = ChatQueryService(db_session, repo)
+        commands = ChatCommandService(db_session, repo, attachments, notifications)
+        return ChatService(db_session, attachments, notifications, queries, commands)
+
     app.dependency_overrides[get_read_db] = lambda: db_session
-    app.dependency_overrides[get_read_chat_service] = lambda: ChatService(db_session)
+    app.dependency_overrides[get_read_chat_service] = _get_mock_chat_service
     app.dependency_overrides[get_db] = lambda: db_session
 
     try:

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import delete, select
+
 from app.core.protocols import AsyncDatabaseSession
 from app.models.logs import DataAccessLog
 from app.repositories.base import BaseRepository

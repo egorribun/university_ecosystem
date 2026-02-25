@@ -3,7 +3,6 @@ package hub
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -124,11 +123,11 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 // (RZ-3: audit 2026-02-24, MOD-1)
 func (h *Hub) ValidateToken(tokenStr string, secrets []string) (string, error) {
 	// ── Phase 1: Try RS256 via JWKS ──────────────────────────────────────────
-	if h.jwksCache != nil {
+	if h.jwksCache != nil && h.jwksURL != "" {
 		// Use a background context for cache access; the cache itself handles
 		// the HTTP fetching in its own background goroutine.
 		ctx := context.Background()
-		keySet, err := h.jwksCache.Get(ctx)
+		keySet, err := h.jwksCache.Get(ctx, h.jwksURL)
 		if err == nil {
 			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 				// RZ-3: Pin to exactly RS256 for JWKS verification.

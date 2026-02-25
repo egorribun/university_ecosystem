@@ -32,7 +32,9 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
         ) as ac:
             mock_res = MagicMock()
             mock_res.scalars.return_value.all.return_value = []
+            mock_res.scalars.return_value.first.return_value = None
             mock_db.execute.return_value = mock_res
+            mock_db.get.return_value = None
 
             # get chats
             await ac.get("/api/v1/chats")

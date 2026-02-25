@@ -1,3 +1,5 @@
+import logging
+
 from app.core.config import settings
 from app.core.nats_broker import broker
 from app.services import notification_queue

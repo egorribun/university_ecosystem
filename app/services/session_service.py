@@ -8,10 +8,11 @@ from uuid import UUID, uuid4
 import jwt
 from fastapi import BackgroundTasks
 from sqlalchemy import text
-from app.core.protocols import AsyncDatabaseSession
-from app.models.session import UserSession
+
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
+from app.core.protocols import AsyncDatabaseSession
+from app.models.models import ActiveSession
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.schemas.dtos import ActiveSessionDTO
 
@@ -235,3 +236,57 @@ class SessionService:
             bg_tasks.add_task(register_session_bg, *args)
         else:
             await register_session_bg(*args)
+
+    async def get_active_sessions_for_user(self, user_id: UUID) -> list[ActiveSessionDTO]:
+        from sqlalchemy import select
+        stmt = (
+            select(ActiveSession)
+            .where(ActiveSession.user_id == user_id)
+            .where(ActiveSession.revoked_at.is_(None))
+            .order_by(ActiveSession.created_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return [ActiveSessionDTO.model_validate(s) for s in result.scalars().all()]
+
+    async def get_session_by_id(self, session_id: UUID) -> ActiveSessionDTO | None:
+        session = await self.db.get(ActiveSession, session_id)
+        if not session:
+            return None
+        return ActiveSessionDTO.model_validate(session)
+
+    async def revoke_session_by_id(self, session_id: UUID) -> ActiveSessionDTO | None:
+        now = datetime.now(UTC)
+        session = await self.db.get(ActiveSession, session_id)
+        if not session:
+            return None
+
+        session.revoked_at = session.revoked_at or now
+        session.signing_key = secrets.token_urlsafe(32)
+        await self.db.commit()
+        await self.db.refresh(session)
+
+        # Best effort backend revocation
+        from contextlib import suppress
+
+        from app.auth.redis_session import get_session_backend
+        backend = await get_session_backend()
+        with suppress(Exception):
+            await backend.revoke_session(str(session.jti))
+
+        return ActiveSessionDTO.model_validate(session)
+
+    async def revoke_other_sessions(self, user_id: UUID, current_jti: str | None) -> int:
+        from sqlalchemy import and_
+
+        from app.services.session_cleanup import revoke_sessions_matching
+
+        where_parts = [
+            ActiveSession.user_id == user_id,
+            ActiveSession.revoked_at.is_(None),
+        ]
+        if current_jti:
+            where_parts.append(ActiveSession.jti != current_jti)
+
+        revoked = await revoke_sessions_matching(db=self.db, whereclause=and_(*where_parts))
+        await self.db.commit()
+        return revoked

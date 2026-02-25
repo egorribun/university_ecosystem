@@ -4,12 +4,12 @@ from datetime import datetime
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
 
+from app.core.protocols import AsyncDatabaseSession
 from app.models.chat import Chat, Message, chat_participants
 from app.models.models import User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
-from app.core.protocols import AsyncDatabaseSession
 
 
 class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
@@ -325,9 +325,6 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
         """Fetch a User by primary key — used by ChatService to resolve participants."""
         return await self.db.get(User, user_id)
 
-def get_chat_repository(db: AsyncDatabaseSession) -> ChatRepository:
-    return ChatRepository(db)
-
     async def check_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         """Return True iff user_id is a participant of chat_id.
 
@@ -340,3 +337,51 @@ def get_chat_repository(db: AsyncDatabaseSession) -> ChatRepository:
         )
         result = await self.db.execute(stmt)
         return result.first() is not None
+
+    async def get_participants(self, chat_id: uuid.UUID) -> list[uuid.UUID]:
+        """Fetch all participant IDs for a chat."""
+        stmt = select(chat_participants.c.user_id).where(
+            chat_participants.c.chat_id == chat_id
+        )
+        result = await self.db.execute(stmt)
+        return [row[0] for row in result.all()]
+
+    async def get_message_by_id(self, message_id: uuid.UUID) -> MessageDTO | None:
+        """Fetch a specific message by its ID, converted to DTO."""
+        stmt = (
+            select(Message)
+            .where(Message.id == message_id)
+            .options(selectinload(Message.sender), selectinload(Message.attachments))
+        )
+        result = await self.db.execute(stmt)
+        msg = result.scalars().first()
+        return MessageDTO.model_validate(msg) if msg else None
+
+    async def mark_single_message_read(self, message_id: uuid.UUID) -> bool:
+        """Mark a single message as read. Returns True if successful."""
+        stmt = (
+            update(Message)
+            .where(Message.id == message_id)
+            .values(read_status=True)
+        )
+        result = await self.db.execute(stmt)
+        await self.db.flush()
+        return (int(getattr(result, "rowcount", 0) or 0)) > 0
+
+    async def get_presence_audience(self, user_id: uuid.UUID) -> set[uuid.UUID]:
+        """Resolve user IDs that should receive presence updates for user_id."""
+        chat_ids_subquery = select(chat_participants.c.chat_id).where(
+            chat_participants.c.user_id == user_id
+        )
+        stmt = (
+            select(chat_participants.c.user_id)
+            .distinct()
+            .where(chat_participants.c.chat_id.in_(chat_ids_subquery))
+        )
+        result = await self.db.execute(stmt)
+        audience = {row[0] for row in result.all()}
+        audience.discard(user_id)
+        return audience
+
+def get_chat_repository(db: AsyncDatabaseSession) -> ChatRepository:
+    return ChatRepository(db)

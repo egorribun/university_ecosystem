@@ -1,6 +1,6 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import { QueryClientProvider } from "@tanstack/react-query"
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
 // dayjs removed
 
 import App from "./App"
@@ -8,7 +8,7 @@ import ErrorBoundary from "@/components/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
 import { initObservability } from "./app/observability"
-import { queryClient } from "./app/queryClient"
+import { queryClient, idbPersister } from "./app/queryClient"
 import { initWebVitals, reportBootstrapTTI } from "./app/webVitals"
 import "@fontsource-variable/inter"
 import "@fontsource-variable/outfit"
@@ -55,13 +55,13 @@ const bootstrapStart = performance.now()
 const root = createRoot(rootElement)
 root.render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: idbPersister }}>
       <ThemeProvider>
         <ErrorBoundary>
           <App />
         </ErrorBoundary>
       </ThemeProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   </StrictMode>
 )
 

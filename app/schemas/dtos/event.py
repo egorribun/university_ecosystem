@@ -29,8 +29,6 @@ class EventDTO(DTOModel):
     image_url: str | None
     about: str | None
     about_en: str | None
-    attendance: list[EventAttendanceDTO] = []
-    files_detail: list[EventFileDTO] = []
 
 
 class EventAttendanceDTO(DTOModel):
