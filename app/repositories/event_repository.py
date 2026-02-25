@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import aliased, selectinload
 
-from app.core.protocols import AsyncDatabaseSession
 from app.core.config import settings
+from app.core.protocols import AsyncDatabaseSession
 from app.models import models
 from app.models.models import Event
 from app.repositories.base import BaseRepository
@@ -299,6 +299,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
         record = models.EventAttendance(**kwargs)
         self.db.add(record)
         await self.db.flush()
+        await self.db.refresh(record)
         return EventAttendanceDTO.model_validate(record)
 
     async def delete_attendance(
@@ -347,7 +348,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
 
     async def list_user_attended_events(
         self, user_id: uuid.UUID | int | str
-    ) -> list[EventDTO]:
+    ) -> list[Event]:
         """List all events a user has registered for."""
         if isinstance(user_id, str):
             with contextlib.suppress(ValueError):
@@ -359,8 +360,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
             .options(selectinload(Event.files), selectinload(Event.attendance))
         )
         result = await self.db.execute(stmt)
-        objs = result.scalars().all()
-        return [self._to_dto(obj) for obj in objs]
+        return list(result.scalars().all())
 
     async def get_event_file_urls(self, event_id: uuid.UUID | int | str) -> list[str]:
         """Get all file URLs associated with an event."""

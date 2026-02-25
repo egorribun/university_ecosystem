@@ -1,8 +1,9 @@
 import logging
 import uuid
+from typing import TYPE_CHECKING
 
 from fastapi import BackgroundTasks
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 

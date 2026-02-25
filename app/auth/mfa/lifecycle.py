@@ -47,9 +47,10 @@ class MfaResetStats:
     def changed(self) -> bool:
         return any(
             (
-                self.totp_deleted,
-                self.webauthn_deleted,
-                self.challenges_revoked,
+                self.totp_deleted > 0,
+                self.webauthn_deleted > 0,
+                self.recovery_codes_deleted > 0,
+                self.challenges_revoked > 0,
                 self.fields_cleared,
             )
         )
@@ -218,10 +219,12 @@ async def reset_user_mfa(
     update_stmt = (
         update(User)
         .where(User.id == target_user_id)
+        .where((User.mfa_required) | (User.mfa_default_method.is_not(None)) | (User.mfa_last_verified_at.is_not(None)))
         .values(mfa_required=False, mfa_default_method=None, mfa_last_verified_at=None)
     )
-    await db.execute(update_stmt)
-    stats.fields_cleared = True
+    res = await db.execute(update_stmt)
+    if getattr(res, "rowcount", 0) > 0:
+        stats.fields_cleared = True
 
     if user:
         user.mfa_required = False

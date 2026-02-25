@@ -53,7 +53,7 @@ async def test_service_missing_branches():
     from app.core.exceptions.domain import BusinessRuleViolation, EntityAlreadyExists
 
     repo.get_invite_code.return_value = None
-    with patch("app.services.user_service.resolve_locale", return_value="en"):
+    with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation) as exc:
             await service.register_user(user_in)
     assert any(x in str(exc.value).lower() for x in ["инвайт", "invite"])
@@ -63,7 +63,7 @@ async def test_service_missing_branches():
         role="admin", is_active=True, is_used=False
     )
     repo.check_email_exists.return_value = True
-    with patch("app.services.user_service.resolve_locale", return_value="en"):
+    with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         with pytest.raises(EntityAlreadyExists) as exc:
             await service.register_user(user_in)
     assert any(

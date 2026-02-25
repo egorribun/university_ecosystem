@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from typing import TYPE_CHECKING, Annotated, Any
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -21,9 +21,6 @@ from sqlalchemy import func, select
 from app.api.deps import (
     get_audit_service,
     get_current_user,
-    get_db,
-    get_login_service,
-    get_user_service,
 )
 from app.auth import constants, mfa
 from app.auth.handlers.logout import router as logout_router
@@ -36,6 +33,7 @@ from app.auth.schemas import (
 )
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
+from app.core.protocols import AsyncDatabaseSession
 from app.core.rate_limit import sensitive_route_limit
 from app.core.timing import ensure_minimum_time
 from app.models.models import User
@@ -45,13 +43,11 @@ from app.schemas.schemas import (
     UserCreate,
     WebAuthnAuthenticationOptionsOut,
 )
+from app.services.audit_service import AuditService
+from app.services.auth.login_service import LoginService
+from app.services.user.compliance_service import UserComplianceService
+from app.services.user.profile_service import UserProfileService
 from app.services.webauthn import WebAuthnService
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from app.services.audit_service import AuditService
-    from app.services.auth.login_service import LoginService
 
 logger = logging.getLogger("app.auth.login")
 
@@ -65,23 +61,17 @@ router.include_router(logout_router)
     response_model=WebAuthnAuthenticationOptionsOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def login_passkey_start(
     payload: LoginPasskeyStartIn,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    profile_service: FromDishka[UserProfileService],
+    db: FromDishka[AsyncDatabaseSession],
     audit: AuditService = Depends(get_audit_service),
-    user_service: Annotated[Any, Depends(get_user_service)] = None,
 ):
     normalized_email = payload.email.strip().lower()
 
-    if user_service is None:
-        # Fallback if dependency injection fails/is overridden in test
-        res = await db.execute(
-            select(User).where(func.lower(User.email) == normalized_email)
-        )
-        user = res.scalars().first()
-    else:
-        user = await user_service.get_user_by_email(normalized_email)
+    user = await profile_service.get_user_by_email(normalized_email)
 
     service = WebAuthnService(db)
 
@@ -124,13 +114,14 @@ async def login_passkey_start(
     response_model=TokenWithProfile | PendingMfaResponse,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def login_passkey_verify(
     payload: LoginPasskeyVerifyIn,
     response: Response,
     request: Request,
     bg_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    login_service: LoginService = Depends(get_login_service),
+    login_service: FromDishka[LoginService],
+    db: FromDishka[AsyncDatabaseSession],
 ):
     try:
         challenge = await mfa.get_challenge(
@@ -175,15 +166,17 @@ async def login_passkey_verify(
 @router.post(
     "/login",
     response_model=TokenWithProfile | PendingMfaResponse,
+    response_model_exclude_none=True,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def login(
     response: Response,
     request: Request,
     bg_tasks: BackgroundTasks,
+    login_service: FromDishka[LoginService],
     trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
-    login_service: LoginService = Depends(get_login_service),
 ):
     return await login_service.perform_login(
         email=form_data.username,
@@ -198,14 +191,16 @@ async def login(
 @router.post(
     "/login/json",
     response_model=TokenWithProfile | PendingMfaResponse,
+    response_model_exclude_none=True,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def login_json(
     payload: LoginIn,
     response: Response,
     request: Request,
     bg_tasks: BackgroundTasks,
-    login_service: LoginService = Depends(get_login_service),
+    login_service: FromDishka[LoginService],
 ):
     return await login_service.perform_login(
         email=payload.email,
@@ -217,14 +212,15 @@ async def login_json(
     )
 
 
-@router.post("/mfa/verify", response_model=TokenWithProfile)
+@router.post("/mfa/verify", response_model=TokenWithProfile, response_model_exclude_none=True)
+@inject
 async def verify_mfa_challenge(
     payload: MfaVerifyIn,
     response: Response,
     request: Request,
     bg_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    login_service: LoginService = Depends(get_login_service),
+    login_service: FromDishka[LoginService],
+    db: FromDishka[AsyncDatabaseSession],
 ):
     challenge_type: str | list[str] | None = None
     if payload.method == constants.MFA_METHOD_TOTP:
@@ -267,15 +263,17 @@ async def verify_mfa_challenge(
 
 
 @router.post("/register", dependencies=[Depends(sensitive_route_limit())])
+@inject
 async def register(
     user: UserCreate,
     request: Request,
-    user_service: Annotated[Any, Depends(get_user_service)],
-    db: AsyncSession = Depends(get_db),
+    compliance_service: FromDishka[UserComplianceService],
+    login_service: FromDishka[LoginService],
+    db: FromDishka[AsyncDatabaseSession],
 ):
     locale = resolve_locale(request=request)
     try:
-        new_user = await user_service.register_user(user)
+        new_user = await compliance_service.register_user(user)
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(

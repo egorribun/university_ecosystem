@@ -61,7 +61,7 @@ func main() {
 		}
 	}
 
-	go h.Run()
+	go h.Run(ctx)
 	h.SubscribeToNATS()
 
 	hub.SetAllowedOrigins(cfg.AllowedOrigins)

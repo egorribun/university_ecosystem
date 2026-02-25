@@ -33,14 +33,21 @@ class CspSettingsMixin:
     security_hsts_include_subdomains: bool = True
     security_hsts_preload: bool = True
     security_x_frame_options: str = "DENY"
-    security_permissions_policy: str = "geolocation=(), microphone=(), camera=()"
+    security_permissions_policy: str = (
+        "accelerometer=(), autoplay=(), camera=(), cross-origin-isolated=(), "
+        "display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), "
+        "gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), "
+        "payment=(), picture-in-picture=(), publickey-credentials-get=(), "
+        "screen-wake-lock=(), sync-xhr=(self), usb=(), web-share=(), "
+        "xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=()"
+    )
     security_referrer_policy: str = "no-referrer"
     security_x_content_type_options: str = "nosniff"
     enable_strict_security_headers: bool | None = None
-    enable_coop: bool = False
+    enable_coop: bool = True
     enable_coep: bool = False
     coep_value: str = "require-corp"
-    enable_corp: bool = False
+    enable_corp: bool = True
     corp_value: str = "same-site"
 
     @field_validator("coep_value")

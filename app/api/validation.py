@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, overload
 from fastapi import HTTPException, status
 
 from app.core.localization import translate
+if TYPE_CHECKING:
+    from app.schemas.dtos import UserDTO
 
 if TYPE_CHECKING:
     from app.models.models import User
@@ -109,7 +111,7 @@ def raise_conflict(message_key: str, locale: str, **kwargs: Any) -> NoReturn:
     raise_http_error(status.HTTP_409_CONFLICT, message_key, locale, **kwargs)
 
 
-def require_admin(user: "User", locale: str) -> None:
+def require_admin(user: User | UserDTO, locale: str) -> None:
     """
     Verify user has admin role, raise 403 if not.
     """

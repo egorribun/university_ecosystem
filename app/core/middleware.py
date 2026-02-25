@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from brotli_asgi import BrotliMiddleware
 from fastapi import Request
@@ -90,7 +90,8 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
 
             request = Request(request.scope, receive=_replay_receive)
 
-        return await call_next(request)
+        from fastapi import Response
+        return cast(Response, await call_next(request))
 
     @staticmethod
     def _oversized_response(limit: int) -> JSONResponse:

@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
+
     from app.core.protocols import AsyncDatabaseSession
     from app.models.models import User
-    from app.schemas.chat import ChatResponse, MessageResponse, ChatMaintenanceResult
+    from app.schemas.chat import ChatMaintenanceResult, ChatResponse, MessageResponse
+
     from .attachment_service import ChatAttachmentService
     from .notification_service import ChatNotificationService
 
@@ -21,6 +23,8 @@ from app.api.websocket import (
     build_presence_map,
     invalidate_chat_participants_cache,
     invalidate_presence_audience_cache,
+)
+from app.api.websocket import (
     manager as ws_manager,
 )
 from app.core.config import settings
@@ -28,9 +32,9 @@ from app.core.exceptions import BusinessRuleViolation
 from app.models.chat import Attachment, Message
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
+    ChatMaintenanceResult,
     ChatResponse,
     MessageResponse,
-    ChatMaintenanceResult,
     PresenceStatus,
 )
 
@@ -41,13 +45,14 @@ class ChatCommandService:
     def __init__(
         self,
         session: AsyncDatabaseSession,
+        repository: ChatRepository,
         attachment_service: ChatAttachmentService,
         notification_service: ChatNotificationService,
     ):
         self.session = session
+        self.repository = repository
         self.attachment_service = attachment_service
         self.notification_service = notification_service
-        self.repository = ChatRepository(session)
 
     async def create_chat(
         self, user: User, participant_id: uuid.UUID | None, locale: str
@@ -92,7 +97,7 @@ class ChatCommandService:
         await invalidate_presence_audience_cache(*participant_ids)
 
         presence_map = await build_presence_map(
-            [p.id for p in new_chat.participants], session=self.session
+            [p.id for p in new_chat.participants], db=self.session
         )
 
         return ChatResponse(

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import settings
-from app.core.database import Base, engine, init_database, wait_db
+from app.core.database import Base, engine, wait_db
 from app.core.events import register_event_listeners
 from app.core.nats_broker import broker as nats_broker
 from app.core.observability import shutdown_observability
@@ -26,14 +26,12 @@ async def lifespan(app: FastAPI):
 
     configure_database()
 
-    from dishka.integrations.fastapi import setup_dishka
-
+    # (TD-4) Re-create a fresh Dishka container per lifespan start.
+    # This ensures that Pytest test cycles (which run multiple lifespan contexts)
+    # always have an open container, rather than reusing a closed one from previous tests.
     from app.core.di_provider import create_dishka_container
-
-    # (TD-4) Guard: setup_dishka adds middleware, which can only be done once.
-    # In tests, lifespan may be called multiple times on the same app instance.
-    if not hasattr(app.state, "dishka_container"):
-        setup_dishka(create_dishka_container(), app)
+    if hasattr(app.state, "dishka_container"):
+        app.state.dishka_container = create_dishka_container()
 
     import app.api.websocket as _ws_module
     from app.api.websocket import (
@@ -145,14 +143,14 @@ async def lifespan(app: FastAPI):
     async def _periodic_scheduler():
         """Lightweight background loop for periodic tasks. (MOD-3)"""
         from app.tasks.cleanups import (
-            cleanup_notifications_task,
             cleanup_dead_letter_jobs_task,
-            cleanup_sessions_task,
-            cleanup_stories_task,
-            cleanup_password_reset_tokens_task,
             cleanup_email_change_tokens_task,
             cleanup_mfa_challenges_task,
+            cleanup_notifications_task,
+            cleanup_password_reset_tokens_task,
             cleanup_privacy_artifacts_task,
+            cleanup_sessions_task,
+            cleanup_stories_task,
             manage_partitions_task,
         )
 
@@ -168,7 +166,8 @@ async def lifespan(app: FastAPI):
                 await cleanup_mfa_challenges_task.kick()
 
                 # Every 6 hours: sessions
-                cur_hour = datetime.now(UTC).hour
+                import datetime
+                cur_hour = datetime.datetime.now(datetime.UTC).hour
                 if cur_hour % 6 == 0:
                     await cleanup_sessions_task.kick()
 
@@ -186,7 +185,13 @@ async def lifespan(app: FastAPI):
             # Sleep for 1 hour between checks
             await asyncio.sleep(3600)
 
-    scheduler_task = asyncio.create_task(_periodic_scheduler(), name="periodic_scheduler")
+    # Store a reference to the background task to prevent it from being garbage collected
+    if not hasattr(app.state, "background_tasks"):
+        app.state.background_tasks = set()
+
+    app.state.background_tasks.add(
+        asyncio.create_task(_periodic_scheduler(), name="periodic_scheduler")
+    )
 
     if settings.partition_management_enabled:
         import logging
@@ -243,3 +248,6 @@ async def lifespan(app: FastAPI):
         await feature_flags.shutdown()
         await stop_memory_cleanup_task()
         shutdown_observability()
+
+        from app.services.geolocation import shutdown_geolocation_service
+        shutdown_geolocation_service()

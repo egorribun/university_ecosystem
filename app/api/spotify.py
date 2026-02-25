@@ -9,7 +9,6 @@ import httpx
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
-from app.core.protocols import AsyncDatabaseSession
 
 from app.api.deps import get_current_user
 from app.api.validation import (
@@ -27,6 +26,7 @@ from app.core.circuit_breaker import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import SpotifyIntegration, User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
 

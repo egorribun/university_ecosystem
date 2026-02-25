@@ -28,7 +28,7 @@ class RedisSessionService:
     Key Schema: session:{jti} -> Hash
     """
 
-    KEY_PREFIX = "session:"
+    KEY_PREFIX = "session:v2:"
 
     def __init__(self, redis_url: str | None = None):
         self.redis_url = redis_url or settings.rate_limit_storage_uri

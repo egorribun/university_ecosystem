@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from functools import lru_cache
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     Depends,
@@ -13,15 +14,18 @@ from fastapi import (
     status,
 )
 
-from app.api.deps import get_current_user, get_schedule_service
+from app.api.deps import get_current_user
 from app.api.validation import ensure_exists, require_teacher_or_admin
-from app.core.container import get_read_schedule_handler
 from app.core.localization import resolve_locale
-from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
-from app.deps.cache import get_cache
+from app.cqrs.bus import CommandBus, QueryBus
+from app.cqrs.commands.schedule import (
+    CreateScheduleCommand,
+    DeleteScheduleCommand,
+    UpdateScheduleCommand,
+)
+from app.cqrs.queries import GetScheduleQuery
 from app.models import models
 from app.schemas import schemas
-from app.services.schedule_service import ScheduleService
 
 
 @lru_cache(maxsize=1)
@@ -49,10 +53,11 @@ def _set_schedule_cache_headers(response: Response) -> None:
 
 
 @router.post("", response_model=schemas.ScheduleOut)
+@inject
 async def add_schedule(
     data: schemas.ScheduleCreate,
     request: Request,
-    service: ScheduleService = Depends(get_schedule_service),
+    command_bus: FromDishka[CommandBus],
     user: models.User = Depends(get_current_user),
 ) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
@@ -62,23 +67,23 @@ async def add_schedule(
     from app.core.exceptions.domain import BusinessRuleViolation
 
     try:
-        result = await service.create_schedule(data, locale=locale)
+        command = CreateScheduleCommand(data=data, locale=locale)
+        result = await command_bus.execute(command)
     except BusinessRuleViolation as e:
         # Map domain exception to API conflict error
         raise_conflict(str(e), locale, exact_key="errors.schedule.conflict")
 
-    cache = get_cache()
-    await cache.invalidate(_schedule_cache_key(result.group_id))
-    return result  # type: ignore[return-value]
+    return schemas.ScheduleOut.model_validate(result)
 
 
 @router.get("/{group_id}", response_model=list[schemas.ScheduleOut])
+@inject
 async def get_schedule(
     group_id: uuid.UUID,
     request: Request,
     response: Response,
+    query_bus: FromDishka[QueryBus],
     if_none_match: str | None = Header(default=None),
-    handler: GetScheduleHandler = Depends(get_read_schedule_handler),
 ) -> list[schemas.ScheduleOut] | Response:
     locale = resolve_locale(request=request)
     _get_vary_helper()(response, "Accept-Language")
@@ -90,7 +95,7 @@ async def get_schedule(
         locale=locale,
         if_none_match=if_none_match,
     )
-    result = await handler.handle(query)
+    result = await query_bus.execute(query)
 
     if result.not_modified:
         cached_response = Response(status_code=status.HTTP_304_NOT_MODIFIED)
@@ -108,56 +113,42 @@ async def get_schedule(
 
 
 @router.patch("/{schedule_id}", response_model=schemas.ScheduleOut)
+@inject
 async def update_schedule(
     schedule_id: uuid.UUID,
     data: schemas.ScheduleUpdate,
     request: Request,
-    service: ScheduleService = Depends(get_schedule_service),
+    command_bus: FromDishka[CommandBus],
     user: models.User = Depends(get_current_user),
 ) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
-    # We need previous group ID for cache invalidation
-    sched = await service.get_by_id(schedule_id)
-    ensure_exists(sched, "schedule", locale)
-    assert sched is not None
-    previous_group = sched.group_id
-
     try:
-        updated = await service.update_schedule(schedule_id, data)
+        command = UpdateScheduleCommand(schedule_id=schedule_id, data=data)
+        updated = await command_bus.execute(command)
     except ValueError:
         ensure_exists(None, "schedule", locale)  # Will raise 404
 
-    cache = get_cache()
-    await cache.invalidate(
-        _schedule_cache_key(previous_group),
-        _schedule_cache_key(updated.group_id),
-    )
     return schemas.ScheduleOut.model_validate(updated)
 
 
 @router.delete("/{schedule_id}", response_model=dict)
+@inject
 async def delete_schedule(
     schedule_id: uuid.UUID,
     request: Request,
-    service: ScheduleService = Depends(get_schedule_service),
+    command_bus: FromDishka[CommandBus],
     user: models.User = Depends(get_current_user),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
-    sched = await service.get_by_id(schedule_id)
-    ensure_exists(sched, "schedule", locale)
-    assert sched is not None
-    group_id = sched.group_id
-
-    deleted = await service.delete_schedule(schedule_id)
+    command = DeleteScheduleCommand(schedule_id=schedule_id)
+    deleted = await command_bus.execute(command)
     if not deleted:
         ensure_exists(None, "schedule", locale)
 
-    cache = get_cache()
-    await cache.invalidate(_schedule_cache_key(group_id))
     return {"ok": True}
 
 

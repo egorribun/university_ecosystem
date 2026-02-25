@@ -23,9 +23,10 @@ from app.repositories.audit_repository import AuditRepository
 
 if TYPE_CHECKING:
     from uuid import UUID
-    from fastapi import Request
-    from app.core.protocols import AsyncDatabaseSession
 
+    from fastapi import Request
+
+    from app.core.protocols import AsyncDatabaseSession
     from app.schemas.dtos import DataAccessLogDTO
 
 logger = logging.getLogger("app.audit")

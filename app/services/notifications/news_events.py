@@ -25,7 +25,6 @@ from app.services.notifications.delivery import create_notifications_for_users
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
-
     from app.models.models import Event, News
 
 

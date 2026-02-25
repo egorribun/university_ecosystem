@@ -15,6 +15,12 @@ def mock_db():
 
 
 @pytest.fixture
+def mock_profile_service():
+    service = AsyncMock()
+    return service
+
+
+@pytest.fixture
 def mock_user_service():
     return AsyncMock()
 
@@ -51,13 +57,17 @@ def login_service(
     mock_session_service,
     mock_lockout_service,
     mock_audit_service,
+    mock_profile_service,
 ):
     ls = LoginService(
         db=mock_db,
-        user_service=mock_user_service,
+        user_repo=mock_user_service,
+        profile_service=mock_profile_service,
         session_service=mock_session_service,
         lockout_service=mock_lockout_service,
         audit=mock_audit_service,
+        redis_session_service=AsyncMock(),
+        geolocation_service=AsyncMock(),
     )
     # Mock result chaining globally for this service's repo
     ls.repo.db.execute.return_value = MagicMock()
@@ -82,7 +92,7 @@ def mock_background_tasks():
 
 async def test_perform_login_success_no_mfa(
     login_service,
-    mock_user_service,
+    mock_profile_service,
     mock_request,
     mock_background_tasks,
     mock_session_service,
@@ -95,7 +105,7 @@ async def test_perform_login_success_no_mfa(
     user.hashed_password = "$argon2id$..."  # Mock hash
     user.mfa_required = False
 
-    mock_user_service.get_user_by_email.return_value = user
+    mock_profile_service.get_auth_user_by_email.return_value = user
 
     # Mock password verification
     with patch(
@@ -123,11 +133,11 @@ async def test_perform_login_success_no_mfa(
 
 
 async def test_perform_login_user_not_found(
-    login_service, mock_user_service, mock_request, mock_background_tasks
+    login_service, mock_profile_service, mock_request, mock_background_tasks
 ):
     email = "unknown@example.com"
     password = "password"
-    mock_user_service.get_user_by_email.return_value = None
+    mock_profile_service.get_auth_user_by_email.return_value = None
 
     # Needs to handle the exception raised by _handle_invalid_user
     # The actual implementation raises HTTP 401
@@ -143,13 +153,13 @@ async def test_perform_login_user_not_found(
 
 async def test_perform_login_locked_out(
     login_service,
-    mock_user_service,
+    mock_profile_service,
     mock_lockout_service,
     mock_request,
     mock_background_tasks,
 ):
     email = "locked@example.com"
-    mock_user_service.get_user_by_email.return_value = MagicMock()
+    mock_profile_service.get_auth_user_by_email.return_value = MagicMock()
 
     # Simulate lockout
     lock_until = datetime.now(UTC) + timedelta(minutes=15)
@@ -169,10 +179,10 @@ async def test_perform_login_locked_out(
 
 async def test_perform_login_invalid_password(
     login_service,
-    mock_user_service,
+    mock_lockout_service,
+    mock_profile_service,
     mock_request,
     mock_background_tasks,
-    mock_lockout_service,
 ):
     email = "test@example.com"
     password = "wrongpassword"
@@ -180,7 +190,7 @@ async def test_perform_login_invalid_password(
     user.id = uuid4()
     user.hashed_password = "hash"
 
-    mock_user_service.get_user_by_email.return_value = user
+    mock_profile_service.get_auth_user_by_email.return_value = user
 
     with patch(
         "app.services.auth.login_service.verify_and_update_password",
@@ -201,7 +211,7 @@ async def test_perform_login_invalid_password(
 
 
 async def test_perform_login_mfa_required_no_factors(
-    login_service, mock_user_service, mock_request, mock_background_tasks
+    login_service, mock_profile_service, mock_request, mock_background_tasks
 ):
     email = "test@example.com"
     user = MagicMock()
@@ -210,7 +220,7 @@ async def test_perform_login_mfa_required_no_factors(
     user.mfa_required = True
     user.mfa_default_method = None
 
-    mock_user_service.get_user_by_email.return_value = user
+    mock_profile_service.get_auth_user_by_email.return_value = user
 
     with patch(
         "app.services.auth.login_service.verify_and_update_password",
@@ -241,7 +251,7 @@ async def test_perform_login_mfa_required_no_factors(
 
 
 async def test_perform_login_mfa_required_success(
-    login_service, mock_user_service, mock_request, mock_background_tasks
+    login_service, mock_profile_service, mock_request, mock_background_tasks
 ):
     email = "test@example.com"
     user = MagicMock()
@@ -250,7 +260,7 @@ async def test_perform_login_mfa_required_success(
     user.mfa_required = True  # strict MFA
     user.mfa_default_method = None  # Fix mock
 
-    mock_user_service.get_user_by_email.return_value = user
+    mock_profile_service.get_auth_user_by_email.return_value = user
 
     with patch(
         "app.services.auth.login_service.verify_and_update_password",
@@ -444,8 +454,11 @@ async def test_collect_mfa_challenges_webauthn_flow(login_service):
 
 def test_extract_client_info_forwarded(login_service):
     req = MagicMock()
-    req.headers = {"x-forwarded-for": "10.0.0.1, 10.0.0.2", "user-agent": "client-ua"}
+    req.headers = {"X-Forwarded-For": "10.0.0.1, 10.0.0.2", "user-agent": "client-ua"}
+    req.client.host = "127.0.0.1"
 
-    ip, ua = login_service._extract_client_info(req)
-    assert ip == "10.0.0.1"
-    assert ua == "client-ua"
+    with patch("app.core.rate_limit.settings") as mock_settings:
+        mock_settings.trusted_proxies_list = ["127.0.0.1"]
+        ip, ua = login_service._extract_client_info(req)
+        assert ip == "10.0.0.1"
+        assert ua == "client-ua"

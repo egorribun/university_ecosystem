@@ -80,8 +80,9 @@ async def _complete_step_up(
         },
     )
     assert verify.status_code == status.HTTP_200_OK, verify.text
-    body = verify.json()
-    headers["Authorization"] = f"Bearer {body['access_token']}"
+    token = verify.cookies.get("access_token_v2")
+    assert token is not None, "access_token_v2 cookie missing after MFA verify"
+    headers["Authorization"] = f"Bearer {token}"
     return payload
 
 
@@ -331,8 +332,23 @@ async def test_revoke_session_requires_step_up(
     )
     current_session = result.scalars().first()
     assert current_session is not None
-    current_session.mfa_verified_at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=1)
-    await db_session.commit()
+    current_session_id = current_session.id
+
+    # Expire the mfa_verified_at via a SEPARATE session to avoid contaminating
+    # the shared db_session identity map. If we mutate through db_session and
+    # commit, the User object becomes detached and causes SQLA InvalidRequestError
+    # when the subsequent HTTP request handler's own session tries to refresh it.
+    from app.core.database import async_session as make_session
+
+    async with make_session() as isolated_db:
+        isolated_session = (
+            await isolated_db.execute(
+                select(ActiveSession).where(ActiveSession.id == current_session_id)
+            )
+        ).scalars().first()
+        assert isolated_session is not None
+        isolated_session.mfa_verified_at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=1)
+        await isolated_db.commit()
 
     blocked = await async_client.delete(
         f"/auth/sessions/{other_session.id}", headers=headers
@@ -347,7 +363,7 @@ async def test_revoke_session_requires_step_up(
     # same identifier when everything happens within a single second.
     await asyncio.sleep(1.1)
     payload = await _complete_step_up(async_client, headers, secret)
-    assert payload["session_id"] == str(current_session.id)
+    assert payload["session_id"] == str(current_session_id)
 
     success = await async_client.delete(
         f"/auth/sessions/{other_session.id}", headers=headers
@@ -401,4 +417,4 @@ async def test_revoke_missing_session_returns_404(
         f"/auth/sessions/{non_existent_id}", headers=headers
     )
     assert response.status_code == 404
-    assert response.json()["detail"] == "Session not found"
+    assert "auth.session_not_found" in response.json()["detail"]

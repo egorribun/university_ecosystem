@@ -13,6 +13,10 @@ type Config struct {
 	BackendURL        string
 	RedisURL          string
 	JWTSecret         string
+	// JWKSPublicKeyPEM is the PEM-encoded RSA/EC public key used to verify RS256 tokens.
+	// Optional. When empty, only HS256 tokens are accepted. Set JWKS_PUBLIC_KEY_PEM to
+	// enable RS256 support without a round-trip to the Python JWKS endpoint at startup.
+	JWKSPublicKeyPEM  string
 	FileProcessorAddr string
 	RateLimitRPS      int
 	RateLimitBurst    int
@@ -28,7 +32,8 @@ func Load() (*Config, error) {
 		Port:              getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:        getEnv("BACKEND_URL", "http://backend:8000"),
 		RedisURL:          getEnv("REDIS_URL", "redis://redis:6379/3"),
-		JWTSecret:         os.Getenv("JWT_SECRET"), // No default value for security
+		JWTSecret:         os.Getenv("JWT_SECRET"),       // No default — fail secure
+		JWKSPublicKeyPEM:  os.Getenv("JWKS_PUBLIC_KEY_PEM"), // Optional RS256 public key
 		FileProcessorAddr: getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
 		RateLimitRPS:      getEnvInt("RATE_LIMIT_RPS", 100),
 		RateLimitBurst:    getEnvInt("RATE_LIMIT_BURST", 200),

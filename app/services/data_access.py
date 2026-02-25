@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import Request
 from sqlalchemy import select
-from app.core.protocols import AsyncDatabaseSession
 
 from app.core.database import async_session
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import DataAccessLog
 from app.repositories.audit_repository import AuditRepository
 from app.schemas.dtos.audit import DataAccessLogDTO

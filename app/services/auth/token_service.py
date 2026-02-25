@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, NoReturn, cast
 from uuid import UUID
 
 from fastapi import Request
@@ -7,7 +7,7 @@ from app.api.validation import raise_unauthorized
 from app.auth.security import decode_token
 
 
-def fail_auth(locale: str):
+def fail_auth(locale: str) -> NoReturn:
     raise_unauthorized(
         locale,
         "errors.auth.credentials_invalid",
@@ -25,10 +25,10 @@ class AuthTokenService:
             fail_auth(locale)
 
         payload = decode_token(raw_token)
-        if not payload:
+        if payload is None:
             fail_auth(locale)
 
-        return payload
+        return cast(dict[str, Any], payload)
 
     @staticmethod
     def validate_payload(payload: dict[str, Any], locale: str) -> tuple[UUID, str]:

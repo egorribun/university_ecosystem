@@ -59,7 +59,7 @@ async def test_security_headers_production_mode(monkeypatch):
     assert headers.get("X-Frame-Options") == "DENY"
     assert headers.get("Referrer-Policy") == "no-referrer"
     assert (
-        headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
+        headers.get("Permissions-Policy") == "accelerometer=(), autoplay=(), camera=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(self), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=()"
     )
     assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
@@ -195,9 +195,9 @@ async def test_security_headers_development_report_only(monkeypatch):
     assert "http://127.0.0.1:8000" in report_only
     assert "ws://localhost:5173" in report_only
 
-    assert "Cross-Origin-Opener-Policy" not in headers
+    assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert "Cross-Origin-Embedder-Policy" not in headers
-    assert "Cross-Origin-Resource-Policy" not in headers
+    assert headers.get("Cross-Origin-Resource-Policy") == "same-site"
 
 
 def _parse_csp(header_value: str) -> dict[str, list[str]]:

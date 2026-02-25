@@ -34,6 +34,12 @@ _MAX_STREAM_LEN: int = 50_000
 _STREAM_KEY: str = "security:suspicious_events"
 
 
+
+# TTL for the per-user high-severity counter (seconds).
+# Must be >= the maximum `within_seconds` used in count_recent_high_severity.
+_HIGH_SEVERITY_COUNTER_TTL: int = 3600  # 1 hour
+
+
 class FraudDetectionService:
     """Writes and queries suspicious session activity events in Redis Streams.
 
@@ -45,10 +51,14 @@ class FraudDetectionService:
         self._redis = redis_client
 
     async def record_event(self, event_data: dict[str, str]) -> None:
-        """Append *event_data* to the Redis Stream.
+        """Append *event_data* to the Redis Stream and update the O(1) counter.
 
         Uses ``MAXLEN ~`` (approximate trimming) for O(1) amortised memory
         bounding without blocking the append.
+
+        PERF-1 (audit 2026-02-24): When severity == "high", also increments a
+        dedicated per-user counter key so that count_recent_high_severity can
+        read it in O(1) instead of scanning up to 5 000 stream entries.
         """
         try:
             await self._redis.xadd(
@@ -57,6 +67,16 @@ class FraudDetectionService:
                 maxlen=_MAX_STREAM_LEN,
                 approximate=True,  # Trim ~MAX_STREAM_LEN (O(1) rather than O(N))
             )
+
+            # O(1) fast-path counter for high-severity events per user.
+            if event_data.get("severity") == "high" and (user_id := event_data.get("user_id")):
+                counter_key = f"security:high_count:{user_id}"
+                pipe = self._redis.pipeline(transaction=False)
+                pipe.incr(counter_key)
+                # Refresh TTL on every write; the counter expires after inactivity.
+                pipe.expire(counter_key, _HIGH_SEVERITY_COUNTER_TTL)
+                await pipe.execute()
+
         except Exception:
             # Security events must never crash application code.
             # Log at ERROR but do not propagate.
@@ -71,7 +91,8 @@ class FraudDetectionService:
         """Return up to *count* most-recent events, optionally filtered by user.
 
         Reads in reverse-chronological order using ``XREVRANGE``.
-        (PERF-1: audit 2026-02-24) Uses time-windowing to avoid scanning stale entries.
+        Intended for full audit/admin listing, NOT for threshold counting.
+        Use count_recent_high_severity for O(1) counting.
         """
         import time
 
@@ -108,10 +129,24 @@ class FraudDetectionService:
     ) -> int:
         """Count HIGH-severity events for *user_id* in the last N seconds.
 
-        (PERF-1: audit 2026-02-24) Uses 500-event ceiling but bounds by time.
-        Useful for threshold-based alerting: ≥ 3 HIGH events → block account.
+        PERF-1 (audit 2026-02-24): This now reads a dedicated O(1) Redis counter
+        key (``security:high_count:{user_id}``) instead of scanning up to 5 000
+        stream entries and filtering in Python.
+
+        Note: the counter has a TTL of _HIGH_SEVERITY_COUNTER_TTL seconds
+        (currently 1 h), so callers should use within_seconds <= that TTL.
+        For longer windows, fall back to get_recent_events.
         """
-        events = await self.get_recent_events(
-            user_id=user_id, count=500, within_seconds=within_seconds
-        )
-        return sum(1 for e in events if e.get("severity") == "high")
+        counter_key = f"security:high_count:{user_id}"
+        try:
+            value = await self._redis.get(counter_key)
+            return int(value) if value is not None else 0
+        except Exception:
+            logger.exception("FraudDetectionService: failed to read high_count counter")
+            # Graceful degradation: fall back to stream scan so we don't
+            # silently allow fraudulent accounts on Redis errors.
+            events = await self.get_recent_events(
+                user_id=user_id, count=500, within_seconds=within_seconds
+            )
+            return sum(1 for e in events if e.get("severity") == "high")
+

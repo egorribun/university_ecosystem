@@ -1,8 +1,8 @@
-// Package middleware provides HTTP middleware for the API Gateway.
 package middleware
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"net/http"
 	"strings"
@@ -15,6 +15,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 )
+
+// AccessTokenCookieName is the canonical cookie name shared between the
+// Go gateway and the Python backend. Must match the Python setting
+// `ACCESS_TOKEN_COOKIE_NAME` (currently "access_token_v2").
+const AccessTokenCookieName = "access_token_v2"
 
 // L1CacheConfig holds configuration for the local cache layer
 type L1CacheConfig struct {
@@ -35,11 +40,12 @@ type cacheEntry struct {
 	exists bool
 }
 
-// JWTMiddleware validates JWT tokens
+// JWTMiddleware validates JWT tokens (HS256 and RS256).
 type JWTMiddleware struct {
-	secret  []byte
-	redis   *redis.Client
-	l1cache *expirable.LRU[string, cacheEntry]
+	secret      []byte
+	rsaPublicKey *rsa.PublicKey  // non-nil when RS256/JWKS is configured
+	redis       *redis.Client
+	l1cache     *expirable.LRU[string, cacheEntry]
 }
 
 var (
@@ -71,13 +77,15 @@ type Claims struct {
 	IsActive bool   `json:"is_active,omitempty"`
 }
 
-// NewJWTMiddleware creates a new JWT middleware with default L1 cache settings
+// NewJWTMiddleware creates a new JWT middleware with default L1 cache settings.
 func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
-	return NewJWTMiddlewareWithConfig(secret, redisClient, DefaultL1CacheConfig())
+	return NewJWTMiddlewareWithConfig(secret, "", redisClient, DefaultL1CacheConfig())
 }
 
-// NewJWTMiddlewareWithConfig creates a new JWT middleware with custom L1 cache settings
-func NewJWTMiddlewareWithConfig(secret string, redisClient *redis.Client, config L1CacheConfig) *JWTMiddleware {
+// NewJWTMiddlewareWithConfig creates a new JWT middleware with custom L1 cache settings.
+// rsaPublicKeyPEM is optional; when non-empty, RS256 tokens are accepted using
+// the given PEM-encoded RSA public key alongside HS256 tokens.
+func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig) *JWTMiddleware {
 	metricsRegistered.Do(func() {
 		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors)
 	})
@@ -89,11 +97,25 @@ func NewJWTMiddlewareWithConfig(secret string, redisClient *redis.Client, config
 
 	cache := expirable.NewLRU[string, cacheEntry](config.MaxSize, onEvict, config.TTL)
 
-	return &JWTMiddleware{
+	m := &JWTMiddleware{
 		secret:  []byte(secret),
 		redis:   redisClient,
 		l1cache: cache,
 	}
+
+	// Parse the optional RS256 public key at startup so we fail fast on bad config.
+	if rsaPublicKeyPEM != "" {
+		pubKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(rsaPublicKeyPEM))
+		if err != nil {
+			// Panic at startup rather than silently ignoring a misconfigured key.
+			// A misconfigured key means RS256 tokens will always fail; fail-fast is
+			// safer than silently allowing HS256-only mode when RS256 was intended.
+			panic(fmt.Sprintf("gateway: failed to parse JWKS_PUBLIC_KEY_PEM: %v", err))
+		}
+		m.rsaPublicKey = pubKey
+	}
+
+	return m
 }
 
 // ListenForRevocations starts a background goroutine to listen for session revocations
@@ -181,11 +203,30 @@ func (m *JWTMiddleware) verifySession(ctx context.Context, sessionID string, fai
 	return exists, false, nil
 }
 
+// keyFunc returns the correct verification key based on the token's algorithm.
+// It is the single point of algorithm selection — any alg not explicitly listed
+// is rejected to prevent algorithm-confusion attacks.
+func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
+	switch token.Method.(type) {
+	case *jwt.SigningMethodRSA:
+		// RS256 path — requires a configured public key.
+		if m.rsaPublicKey == nil {
+			return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
+		}
+		return m.rsaPublicKey, nil
+	case *jwt.SigningMethodHMAC:
+		// HS256 path — legacy symmetric signing.
+		return m.secret, nil
+	default:
+		return nil, fmt.Errorf("unexpected signing algorithm: %v", token.Header["alg"])
+	}
+}
+
 // Validate returns a Gin middleware that validates JWT tokens
 func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie (BFF pattern)
-		tokenString, err := c.Cookie("access_token")
+		tokenString, err := c.Cookie(AccessTokenCookieName)
 		if err != nil || tokenString == "" {
 			// 2. Fallback to Authorization header
 			authHeader := c.GetHeader("Authorization")
@@ -202,14 +243,8 @@ func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 			return
 		}
 
-		// Parse and validate token
-		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-			// Validate signing method
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return m.secret, nil
-		})
+		// Parse and validate token — key selection is centralised in keyFunc.
+		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
 
 		if err != nil {
 			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token", "https://api.university.edu/probs/invalid-token")
@@ -260,7 +295,7 @@ func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie
-		tokenString, err := c.Cookie("access_token")
+		tokenString, err := c.Cookie(AccessTokenCookieName)
 		if err != nil || tokenString == "" {
 			// 2. Fallback to Authorization header
 			authHeader := c.GetHeader("Authorization")
@@ -277,12 +312,7 @@ func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 			return
 		}
 
-		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return m.secret, nil
-		})
+		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
 
 		if err != nil {
 			// Invalid token for optional auth: continue as unauthenticated

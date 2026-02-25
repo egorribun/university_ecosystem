@@ -76,6 +76,7 @@ async def test_internal_access_middleware():
     request = MagicMock(spec=Request)
     request.url.path = "/internal/stats"
     request.client.host = "127.0.0.1"
+    request.headers.get.return_value = None
     response = await middleware.dispatch(request, call_next)
     assert response.status_code == 200
 

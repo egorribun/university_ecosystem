@@ -8,7 +8,11 @@ from starlette.datastructures import Headers
 from app.core.config import settings
 from app.core.localization import translate
 from app.models.chat import Attachment, Chat
-from app.services import chat_service
+from app.repositories.chat_repository import ChatRepository
+from app.services.chat.attachment_service import ChatAttachmentService
+from app.services.chat.command_service import ChatCommandService
+from app.services.chat.notification_service import ChatNotificationService
+from app.services.chat.query_service import ChatQueryService
 from app.services.chat_service import ChatService
 from app.utils import files
 
@@ -104,7 +108,12 @@ async def test_send_message_blocks_infected_file(
     monkeypatch.setattr(files, "scan_for_malware", infected_scan)
     monkeypatch.setattr("app.api.websocket.notify_new_message", lambda *_, **__: None)
 
-    service = ChatService(db_session)
+    repo = ChatRepository(db_session)
+    attachments = ChatAttachmentService()
+    notifications = ChatNotificationService(db_session)
+    queries = ChatQueryService(db_session, repo)
+    commands = ChatCommandService(db_session, repo, attachments, notifications)
+    service = ChatService(db_session, attachments, notifications, queries, commands)
 
     with pytest.raises(HTTPException) as excinfo:
         await service.send_message(
@@ -154,7 +163,12 @@ async def test_send_message_generates_public_urls(
 
     monkeypatch.setattr("app.api.websocket.notify_new_message", _noop_notify)
 
-    service = ChatService(db_session)
+    repo = ChatRepository(db_session)
+    attachments = ChatAttachmentService()
+    notifications = ChatNotificationService(db_session)
+    queries = ChatQueryService(db_session, repo)
+    commands = ChatCommandService(db_session, repo, attachments, notifications)
+    service = ChatService(db_session, attachments, notifications, queries, commands)
     message = await service.send_message(
         chat.id,
         user=sender,

@@ -9,13 +9,6 @@ import {
   type WeekdayConfig,
   type LessonTypeConfig,
   scheduleGroupsQueryKey,
-  scheduleQueryKey,
-  groupsStorageKey,
-  scheduleStorageKey,
-  GROUPS_STORAGE_TTL_MS,
-  SCHEDULE_STORAGE_TTL_MS,
-  readFromStorage,
-  writeToStorage,
   minimalWeekdayFallback,
   minimalLessonTypeFallback,
   defaultLessonTypeColor,
@@ -249,16 +242,7 @@ export function useScheduleData() {
   )
 
   // ============================================================================
-  // DATA FETCHING (Groups & Schedule)
   // ============================================================================
-
-  const groupsStorageSnapshot = useMemo(
-    () =>
-      readFromStorage<ScheduleGroup[]>(groupsStorageKey, {
-        maxAgeMs: GROUPS_STORAGE_TTL_MS,
-      }),
-    []
-  )
 
   const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
     queryKey: scheduleGroupsQueryKey,
@@ -266,57 +250,15 @@ export function useScheduleData() {
       const res = await api.get("/groups")
       return Array.isArray(res.data) ? res.data : []
     },
-    enabled: Boolean(user),
     staleTime: QUERY_STALE_TIME_MS,
     gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
     retry: 1,
-    ...(groupsStorageSnapshot && {
-      initialData: groupsStorageSnapshot.value,
-      initialDataUpdatedAt: groupsStorageSnapshot.timestamp,
-    }),
   })
   const groups = groupsQuery.data ?? []
 
-  // Sync groups storage
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    if (!user) return
-    if (!groupsQuery.dataUpdatedAt) return
-    if (groupsQuery.isFetching) return
-    const age = Date.now() - groupsQuery.dataUpdatedAt
-    if (age >= GROUPS_STORAGE_TTL_MS) {
-      queryClient.invalidateQueries({
-        queryKey: scheduleGroupsQueryKey,
-        exact: true,
-        refetchType: "active",
-      })
-      return
-    }
-    const timeout = window.setTimeout(() => {
-      queryClient.invalidateQueries({
-        queryKey: scheduleGroupsQueryKey,
-        exact: true,
-        refetchType: "active",
-      })
-    }, GROUPS_STORAGE_TTL_MS - age)
-    return () => window.clearTimeout(timeout)
-  }, [groupsQuery.dataUpdatedAt, groupsQuery.isFetching, queryClient, user])
-
-  useEffect(() => {
-    if (!groupsQuery.isSuccess) return
-    writeToStorage(groupsStorageKey, groupsQuery.data)
-  }, [groupsQuery.data, groupsQuery.isSuccess])
-
   const activeGroupId = selectedGroup
   const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
-
-  const scheduleStorageSnapshot = useMemo(() => {
-    if (activeGroupId == null) return undefined
-    return readFromStorage<Lesson[]>(scheduleStorageKey(activeGroupId), {
-      maxAgeMs: SCHEDULE_STORAGE_TTL_MS,
-    })
-  }, [activeGroupId])
 
   const scheduleQuery = useQuery<
     Lesson[],
@@ -333,56 +275,17 @@ export function useScheduleData() {
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: activeGroupId != null,
-    placeholderData: (previous) => {
-      if (previous !== undefined) return previous
-      return scheduleStorageSnapshot?.value
-    },
     staleTime: QUERY_STALE_TIME_MS,
     gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
     retry: 1,
-    ...(scheduleStorageSnapshot && {
-      initialData: scheduleStorageSnapshot.value,
-      initialDataUpdatedAt: scheduleStorageSnapshot.timestamp,
-    }),
   })
-
-  // Sync schedule storage
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    if (!scheduleKey) return
-    if (!scheduleQuery.dataUpdatedAt) return
-    if (scheduleQuery.isFetching) return
-    const age = Date.now() - scheduleQuery.dataUpdatedAt
-    if (age >= SCHEDULE_STORAGE_TTL_MS) {
-      queryClient.invalidateQueries({
-        queryKey: scheduleKey,
-        exact: true,
-        refetchType: "active",
-      })
-      return
-    }
-    const timeout = window.setTimeout(() => {
-      queryClient.invalidateQueries({
-        queryKey: scheduleKey,
-        exact: true,
-        refetchType: "active",
-      })
-    }, SCHEDULE_STORAGE_TTL_MS - age)
-    return () => window.clearTimeout(timeout)
-  }, [queryClient, scheduleKey, scheduleQuery.dataUpdatedAt, scheduleQuery.isFetching])
 
   const groupScheduleRaw = scheduleQuery.data ?? []
   const groupSchedule = useMemo(
     () => normalizeLessons(groupScheduleRaw),
     [groupScheduleRaw, normalizeLessons]
   )
-
-  useEffect(() => {
-    if (!scheduleQuery.isSuccess) return
-    if (activeGroupId == null) return
-    writeToStorage(scheduleStorageKey(activeGroupId), groupSchedule)
-  }, [scheduleQuery.isSuccess, activeGroupId, groupSchedule])
 
   // Select group based on user role
   useEffect(() => {
@@ -489,7 +392,6 @@ export function useScheduleData() {
       queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
         const base = Array.isArray(prev) ? [...prev] : []
         const next = normalizeLessons(updater(base))
-        writeToStorage(scheduleStorageKey(activeGroupId), next)
         return next
       })
     },

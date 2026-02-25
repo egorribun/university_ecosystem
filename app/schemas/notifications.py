@@ -96,12 +96,12 @@ class PushSubscriptionOut(BaseModel):
 
     @field_validator("topics", mode="before")
     @classmethod
-    def _topics_before(cls, value: Any) -> list[str]:
-        if not value:
+    def _topics_before(cls, v: Any) -> list[str]:
+        if not v:
             return []
-        if isinstance(value, list):
-            return normalize_topics(value)
-        return value
+        if isinstance(v, list):
+            return normalize_topics(v)
+        return []
 
 
 class PushSubscriptionTopicsUpdate(BaseModel):

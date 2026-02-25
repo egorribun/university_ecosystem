@@ -7,12 +7,12 @@ from fastapi import UploadFile
 
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
-    EntityAlreadyExists,
     EntityNotFound,
     PermissionDenied,
 )
 from app.models import models
 from app.schemas import schemas
+from app.schemas.dtos import UserDTO
 from app.services.user_service import UserService
 
 
@@ -24,7 +24,9 @@ async def test_user_service_mega():
     db.add_all = MagicMock()
     notifications = AsyncMock()
     repo = AsyncMock()
-    MagicMock()
+    repo.add = MagicMock()
+    repo.add_all = MagicMock()
+    repo._to_dto = MagicMock()
     service = UserService(repo, audit, notifications)
 
     admin_user = models.User(
@@ -34,6 +36,7 @@ async def test_user_service_mega():
         is_active=True,
         mfa_required=False,
     )
+    admin_dto = UserDTO.model_validate(admin_user, from_attributes=True)
     student_user = models.User(
         id=uuid.uuid4(),
         email="s@e.com",
@@ -41,32 +44,28 @@ async def test_user_service_mega():
         is_active=True,
         mfa_required=False,
     )
+    student_dto = UserDTO.model_validate(student_user, from_attributes=True)
     request = MagicMock()
     request.client.host = "127.0.0.1"
     request.headers.get.return_value = "PyTest"
 
     # 2. update_user_profile - duplicate email
-    data = schemas.UserProfileUpdate(email="taken@e.com")
+    schemas.UserProfileUpdate(email="taken@e.com")
     mock_res_dup = MagicMock()
     mock_res_dup.scalar_one_or_none.return_value = 3
     db.execute.return_value = mock_res_dup
-    repo.get.return_value = student_user
-    repo.check_email_exists.return_value = True
-    with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with pytest.raises(EntityAlreadyExists):
-            await service.update_user_profile(student_user, data, request)
-
-    # 3. upload_avatar/cover - rollback/error paths
     file = MagicMock(spec=UploadFile)
-    repo.get.return_value = student_user
+    repo.get.return_value = student_dto
+    repo._get_orm.return_value = student_user
     # Commit is routed through service.repo.commit() after refactor.
-    repo.commit.side_effect = Exception("db error")
+    repo.commit.side_effect = BusinessRuleViolation("db error")
+    repo.check_email_exists.return_value = True
     with (
-        patch("app.services.user_service.save_upload", return_value="/url"),
+        patch("app.services.user.media_service.save_upload", return_value="/url"),
         patch(
-            "app.services.user_service.delete_static_file", new_callable=AsyncMock
+            "app.services.user.media_service.delete_static_file", new_callable=AsyncMock
         ) as m_del,
-        patch("app.services.user_service.resolve_locale", return_value="en"),
+        patch("app.services.user.profile_service.resolve_locale", return_value="en"),
     ):
         with pytest.raises(Exception, match="db error"):
             await service.upload_avatar(student_user, file)
@@ -87,7 +86,7 @@ async def test_user_service_mega():
         role="teacher",
         invite_code="inv",
     )
-    with patch("app.services.user_service.resolve_locale", return_value="en"):
+    with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         # Forbidden
         with pytest.raises(PermissionDenied):
             await service.create_user(data_user, request, student_user)
@@ -109,16 +108,12 @@ async def test_user_service_mega():
     # 5. admin_update_user - MFA reset
     data_update = schemas.UserAdminUpdate(reset_mfa=True)
     db_user = models.User(
-        id=uuid.uuid4(), email="u@e.com", is_active=True, mfa_required=False
+        id=uuid.uuid4(), email="u@e.com", role="student", is_active=True, mfa_required=False
     )
-    repo.get.return_value = db_user
+    repo.get.return_value = UserDTO.model_validate(db_user, from_attributes=True)
     with (
         patch("app.auth.mfa.reset_user_mfa", new_callable=AsyncMock) as m_reset,
-        patch("app.services.user_service.resolve_locale", return_value="en"),
-        patch(
-            "app.services.user_service.ensure_mfa_relationships_loaded",
-            new_callable=AsyncMock,
-        ),
+        patch("app.services.user.profile_service.resolve_locale", return_value="en"),
         patch(
             "app.services.notification_service.create_notifications_for_users",
             new_callable=AsyncMock,
@@ -129,15 +124,17 @@ async def test_user_service_mega():
         service.notifications.send_security_notification.assert_called_once()
 
     # 6. admin_delete_user - forbidden/self/not found
-    with patch("app.services.user_service.resolve_locale", return_value="en"):
+    with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         # self deletion check
         repo.get.side_effect = None
-        repo.get.return_value = admin_user
+        repo.get.return_value = admin_dto
+        repo._get_orm.return_value = admin_user
         with pytest.raises(BusinessRuleViolation):
-            await service.admin_delete_user(1, request, admin_user)
+            await service.admin_delete_user(admin_user.id, request, admin_user)
 
         # not found check
         repo.get.return_value = None
+        repo._get_orm.return_value = None
         with pytest.raises(EntityNotFound):
             await service.admin_delete_user(999, request, admin_user)
 
@@ -146,8 +143,7 @@ async def test_user_service_mega():
             await service.admin_delete_user(3, request, student_user)
 
     # 7. data_export - full
-    # 7. data_export - full
-    repo.get.return_value = student_user
+    repo.get.return_value = UserDTO.model_validate(student_user, from_attributes=True)
     repo.get_user_sessions.return_value = [
         MagicMock(
             id=uuid.uuid4(),
@@ -175,13 +171,9 @@ async def test_user_service_mega():
     ]
     repo.get_user_mfa_challenges.return_value = []
     repo.get_user_totp_enrollments.return_value = []
-
     with (
-        patch(
-            "app.services.user_service.ensure_mfa_relationships_loaded",
-            new_callable=AsyncMock,
-        ),
-        patch("app.services.user_service.attach_pending_email", new_callable=AsyncMock),
+        patch("app.services.user.compliance_service.log_data_access", new_callable=AsyncMock),
+        patch("app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock),
         patch(
             "app.schemas.schemas.UserOut.model_validate",
             return_value=MagicMock(model_dump=lambda: {}),

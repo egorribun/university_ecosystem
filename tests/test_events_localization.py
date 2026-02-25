@@ -354,7 +354,7 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
     await db_session.commit()
 
     # DEBUG CHECK
-    info = await db_session.execute(
+    await db_session.execute(
         text("""
         SELECT attname, attgenerated
         FROM pg_attribute

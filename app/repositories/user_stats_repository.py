@@ -4,9 +4,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import and_, case, func, literal, select, true
-from app.core.protocols import AsyncDatabaseSession
 from sqlalchemy.orm import aliased
 
+from app.core.protocols import AsyncDatabaseSession
 from app.models import models
 from app.repositories.base import ReadOnlyRepository
 from app.schemas.dtos import UserDTO

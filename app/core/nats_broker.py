@@ -5,11 +5,13 @@ import functools
 import json
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, TypeVar
+from collections.abc import Callable, Awaitable
+from typing import Any, ParamSpec, TypeVar, cast
 
 import nats
 from nats.js import JetStreamContext
+from opentelemetry import propagate, trace
+from opentelemetry.trace import SpanKind
 
 from app.core.config import settings
 
@@ -17,6 +19,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 _logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
 class NatsTaskBroker:
@@ -69,7 +72,7 @@ class NatsTaskBroker:
             async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 # If we are in 'delay' mode (task.delay()), we push to NATS.
                 # Here we just execute synchronously if called directly.
-                return await func(*args, **kwargs)
+                return await cast("Awaitable[R]", func(*args, **kwargs))
 
             # Add 'kick' method to the wrapper (similar to TaskIQ/Celery 'delay')
             async def kick(*args: P.args, **kwargs: P.kwargs) -> None:
@@ -81,24 +84,38 @@ class NatsTaskBroker:
         return decorator
 
     async def enqueue(self, task_name: str, *args: Any, **kwargs: Any) -> str:
-        """Push a task to the JetStream queue."""
+        """Push a task to the JetStream queue with trace context propagation."""
         if self._js is None:
             await self.connect()
 
-        task_id = str(uuid.uuid4())
-        payload = {
-            "id": task_id,
-            "name": task_name,
-            "args": args,
-            "kwargs": kwargs,
-        }
+        with tracer.start_as_current_span(
+            f"nats.enqueue:{task_name}", kind=SpanKind.PRODUCER
+        ) as span:
+            task_id = str(uuid.uuid4())
 
-        subject = f"{self._subject_prefix}.{task_name}"
-        await self._js.publish(subject, json.dumps(payload).encode())
-        return task_id
+            # Inject trace context into headers/metadata
+            headers: dict[str, str] = {}
+            propagate.inject(headers)
+
+            payload = {
+                "id": task_id,
+                "name": task_name,
+                "args": args,
+                "kwargs": kwargs,
+                "trace_context": headers,
+            }
+
+            span.set_attribute("messaging.system", "nats")
+            span.set_attribute("messaging.destination", task_name)
+            span.set_attribute("messaging.message_id", task_id)
+
+            if self._js:
+                subject = f"{self._subject_prefix}.{task_name}"
+                await self._js.publish(subject, json.dumps(payload).encode())
+            return task_id
 
     async def run_worker(self) -> None:
-        """Run the worker to process tasks from JetStream."""
+        """Run the worker to process tasks from JetStream with trace continuation."""
         if self._js is None:
             await self.connect()
 
@@ -118,24 +135,61 @@ class NatsTaskBroker:
                         task_name = data["name"]
                         args = data.get("args", [])
                         kwargs = data.get("kwargs", {})
+                        trace_context = data.get("trace_context", {})
 
-                        _logger.info("Processing task: %s (id: %s)", task_name, data["id"])
+                        # Extract trace context
+                        context = propagate.extract(trace_context)
 
-                        handler = self._tasks.get(task_name)
-                        if not handler:
-                            _logger.error("No handler registered for task: %s", task_name)
-                            await msg.term() # Terminal failure
-                            continue
+                        with tracer.start_as_current_span(
+                            f"nats.process:{task_name}",
+                            context=context,
+                            kind=SpanKind.CONSUMER,
+                        ) as span:
+                            span.set_attribute("messaging.system", "nats")
+                            span.set_attribute("messaging.operation", "process")
+                            span.set_attribute("messaging.message_id", data["id"])
 
-                        if asyncio.iscoroutinefunction(handler):
-                            await handler(*args, **kwargs)
-                        else:
-                            # MOD-3: Run synchronous handlers in a worker thread to avoid
-                            # blocking the event loop (Zero Faults: 2026-02-24).
-                            import anyio
-                            await anyio.to_thread.run_sync(
-                                functools.partial(handler, *args, **kwargs)
-                            )
+                            _logger.info("Processing task: %s (id: %s)", task_name, data["id"])
+
+                            handler = self._tasks.get(task_name)
+                            if not handler:
+                                _logger.error("No handler registered for task: %s", task_name)
+                                await msg.term() # Terminal failure
+                                continue
+
+                            from app.main import app  # type: ignore
+                            dishka_container = getattr(app.state, "dishka_container", None)
+
+                            from dishka.integrations.base import wrap_injection
+
+                            if request_container_param := dishka_container:
+                                async with request_container_param() as request_container:
+                                    if asyncio.iscoroutinefunction(handler):
+                                        wrapped = wrap_injection(
+                                            func=handler,
+                                            container_getter=lambda _, kwargs: request_container,
+                                            remove_depends=True,
+                                        )
+                                        await wrapped(*args, **kwargs)
+                                    else:
+                                        import anyio
+                                        # For sync funcs, dishka needs sync container which is complex
+                                        wrapped = wrap_injection(
+                                            func=handler,
+                                            container_getter=lambda _, kwargs: request_container,
+                                            remove_depends=True,
+                                        )
+                                        await anyio.to_thread.run_sync(
+                                            functools.partial(wrapped, *args, **kwargs)
+                                        )
+                            else:
+                                if asyncio.iscoroutinefunction(handler):
+                                    await handler(*args, **kwargs)
+                                else:
+                                    import anyio
+                                    await anyio.to_thread.run_sync(
+                                        functools.partial(handler, *args, **kwargs)
+                                    )
 
                         await msg.ack()
                     except Exception as exc:

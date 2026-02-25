@@ -35,7 +35,10 @@ async def test_get_current_user_invalid_token():
     request = MagicMock(spec=Request)
     db = AsyncMock()
 
-    with patch("app.api.deps.decode_token", return_value=None):
+    with patch(
+        "app.api.deps.AuthTokenService.extract_and_decode_token",
+        side_effect=HTTPException(status_code=401),
+    ):
         with pytest.raises(HTTPException) as exc:
             await get_current_user(request, "invalid", db)
     assert exc.value.status_code == 401
@@ -65,7 +68,7 @@ async def test_get_current_user_redis_hit():
 
     with (
         patch(
-            "app.api.deps.decode_token", return_value={"sub": str(user_id), "jti": jti}
+            "app.api.deps.AuthTokenService.extract_and_decode_token", return_value={"sub": str(user_id), "jti": jti}
         ),
         patch("app.services.auth.redis_session.RedisSessionService") as mock_redis_cls,
         patch("app.auth.fingerprint.extract_fingerprint") as mock_fp,

@@ -12,9 +12,10 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from app.core.protocols import AsyncDatabaseSession as AsyncSession
     from sqlalchemy.orm import InstrumentedAttribute, RelationshipProperty
     from sqlalchemy.sql import Select
+
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 T = TypeVar("T", bound=Base)
 

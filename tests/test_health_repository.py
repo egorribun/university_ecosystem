@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.repositories.health_repository import HealthRepository
+from app.schemas.dtos.analytics import HealthStatsDTO
 
 
 @pytest.mark.asyncio
@@ -94,10 +95,10 @@ async def test_get_connection_stats_success():
 
     repo = HealthRepository(mock_conn)
     stats = await repo.get_connection_stats()
-    assert stats["active_connections"] == 10
-    assert stats["commits"] == 100
-    assert stats["rollbacks"] == 5
-    assert stats["cache_hit_ratio"] == 0.9
+    assert stats.active_connections == 10
+    assert stats.commits == 100
+    assert stats.rollbacks == 5
+    assert stats.cache_hit_ratio == 0.9
 
 
 @pytest.mark.asyncio
@@ -106,4 +107,6 @@ async def test_get_connection_stats_failure():
     mock_conn.execute.side_effect = Exception("Not PG")
     repo = HealthRepository(mock_conn)
     stats = await repo.get_connection_stats()
-    assert stats == {}
+    assert stats == HealthStatsDTO(
+        active_connections=0, commits=0, rollbacks=0, cache_hit_ratio=1.0
+    )

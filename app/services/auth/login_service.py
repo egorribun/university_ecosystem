@@ -16,9 +16,10 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.localization import resolve_locale
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import ensure_mfa_relationships_loaded
-from app.core.protocols import AsyncDatabaseSession
+from app.schemas import schemas
 from app.schemas.dtos import ActiveSessionDTO, UserAuthDTO, UserDTO
 from app.tasks.email import send_lockout_alert
 
@@ -26,10 +27,11 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
 
+    from app.repositories.user_repository import UserRepository
     from app.services.audit_service import AuditService
     from app.services.auth.lockout import LockoutService
     from app.services.session_service import SessionService
-    from app.services.user_service import UserService
+    from app.services.user.profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +40,23 @@ class LoginService:
     def __init__(
         self,
         db: AsyncDatabaseSession,
-        user_service: UserService,
+        user_repo: UserRepository,
+        profile_service: UserProfileService,
         session_service: SessionService,
         lockout_service: LockoutService,
         audit: AuditService,
+        redis_session_service: Any,
+        geolocation_service: Any,
     ):
-        self.user_service = user_service
+        self.user_repo = user_repo
+        self.profile_service = profile_service
         self.session_service = session_service
         self.lockout_service = lockout_service
         self.audit = audit
+        from app.repositories.auth_repository import AuthRepository
         self.repo = AuthRepository(db)
+        self.redis_session = redis_session_service
+        self.geolocation = geolocation_service
 
     async def perform_login(
         self,
@@ -61,7 +70,7 @@ class LoginService:
         normalized_email = email.strip().lower()
         base_locale = resolve_locale(request=request)
 
-        user = await self.user_service.get_auth_user_by_email(normalized_email)
+        user = await self.profile_service.get_auth_user_by_email(normalized_email)
         locale = resolve_locale(request=request, user=user) if user else base_locale
 
         # 1. Check Lockout
@@ -93,16 +102,20 @@ class LoginService:
                 duration=duration_text,
             )
 
-        # 2. Timing attack mitigation: always perform password verification
-        target_hash = user.hashed_password if user else settings.auth_dummy_hash
-        verified, new_hash = await verify_and_update_password(
-            password, str(target_hash)
-        )
+        # 2. Timing attack mitigation: constant-time or randomized delay
+        import asyncio
+        import secrets
 
         if not user:
+            # Simulate Bcrypt/Argon2 load (randomized jitter 100-200ms)
+            await asyncio.sleep(0.1 + (secrets.randbelow(100) / 1000.0))
             return await self._handle_invalid_user(  # type: ignore[no-any-return]
                 normalized_email, request, base_locale, bg_tasks
             )
+
+        verified, new_hash = await verify_and_update_password(
+            password, str(user.hashed_password)
+        )
 
         if not verified:
             return await self._handle_invalid_password(  # type: ignore[no-any-return]
@@ -111,8 +124,8 @@ class LoginService:
 
         # 3. Valid credentials, check MFA
         if new_hash:
-            await self.user_service.repo.update(user.id, {"hashed_password": new_hash})
-            await self.user_service.repo.commit()
+            await self.user_repo.update(user.id, {"hashed_password": new_hash})
+            await self.user_repo.commit()
 
         if await self.lockout_service.clear_failed_attempts(normalized_email) > 0:
             self.audit.log(
@@ -180,9 +193,7 @@ class LoginService:
         )
 
         from app.auth.fingerprint import SessionFingerprint
-        from app.services.auth.redis_session import RedisSessionService
 
-        redis_service = RedisSessionService()
         fp = SessionFingerprint(
             user_agent=user_agent or "",
             ip_address=client_ip or "",
@@ -191,7 +202,7 @@ class LoginService:
         )
         # Fire and forget Redis write
         # (or await if critical, here await is fine as it's fast)
-        await redis_service.create_session(
+        await self.redis_session.create_session(
             jti=str(session.jti),
             user_id=user.id,
             fingerprint=fp,
@@ -206,7 +217,7 @@ class LoginService:
         )
         metrics.record_login_success(method=method)
 
-        return await self.build_token_response(user, token, session)
+        return await self.build_token_response(user, token, session, include_token=False)
 
 
     async def build_token_response(
@@ -214,10 +225,14 @@ class LoginService:
         user: User | UserAuthDTO | UserDTO,
         token: str,
         session: ActiveSession | ActiveSessionDTO | None,
+        include_token: bool = True,
     ) -> schemas.TokenWithProfile:
-        # Optimization: use optimized loader
-        user = await ensure_mfa_relationships_loaded(self.repo.db, user)  # type: ignore[assignment]
+        # Ensure that MFA relationships are loaded before validation
+        from app.models.user_loaders import ensure_mfa_relationships_loaded
 
+        user = await ensure_mfa_relationships_loaded(self.repo.db, user)
+
+        # RED-ZONE: Ensure pending email is attached to UserOut if exists
         from app.services.auth_service import attach_pending_email
 
         temp_user = await attach_pending_email(self.repo.db, user)
@@ -232,6 +247,7 @@ class LoginService:
             session_payload = SessionSigningKeyOut(signing_key=signing_key)
 
         return schemas.TokenWithProfile(
+            access_token=token if include_token else None,
             user=UserOut.model_validate(user),
             session=session_payload,
         )
@@ -399,7 +415,7 @@ class LoginService:
         attempts: int,
         locale: str,
     ) -> None:
-        await send_lockout_alert.kick(email, full_name, locale)
+        await send_lockout_alert.kick(email, full_name, locale)  # type: ignore[attr-defined]
         # We don't log to audit again here as it's already logged in the caller
         # but we could add more metadata if needed.
 
@@ -519,11 +535,11 @@ class LoginService:
         is_suspicious: bool = False,
     ) -> None:
         async with async_session() as db:
-            from app.services.geolocation import GeolocationService
+            from app.repositories.auth_repository import AuthRepository
 
             # Geolocation resolution is synchronous and IO-bound, run in thread
             location = await anyio.to_thread.run_sync(
-                GeolocationService().resolve, client_ip or ""
+                self.geolocation.resolve, client_ip or ""
             )
 
             # Use repo for record creation

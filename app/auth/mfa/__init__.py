@@ -11,13 +11,20 @@ work without changes::
     await generate_recovery_codes(db, user=user)
 """
 
+import datetime
+
 from app.auth.constants import (
+    CHALLENGE_TYPE_RECOVERY_CODE,
+    CHALLENGE_TYPE_TOTP_AUTH,
+    CHALLENGE_TYPE_TOTP_ENROLL,
+    CHALLENGE_TYPE_TOTP_VERIFY,
+    CHALLENGE_TYPE_WEBAUTHN_AUTH,
+    CHALLENGE_TYPE_WEBAUTHN_REG,
     MFA_METHOD_RECOVERY_CODE,
     MFA_METHOD_TOTP,
     MFA_METHOD_WEBAUTHN,
 )
 from app.auth.mfa.challenge import (
-    CHALLENGE_TYPE_TOTP_AUTH,
     consume_challenge,
     describe_challenge_attempts,
     get_challenge,
@@ -52,51 +59,62 @@ from app.auth.mfa.totp import (
     verify_totp_for_user,
 )
 from app.auth.mfa.trusted_device import (
+    _base64url_decode,
+    _base64url_encode,
     create_trusted_device_token,
     verify_trusted_device_token,
 )
-from app.models.models import MfaTotpEnrollment, WebAuthnCredential
+from app.models.models import MfaTotpEnrollment, RecoveryCode, WebAuthnCredential
+
+
+def _utcnow() -> datetime.datetime:
+    import datetime
+    return datetime.datetime.now(datetime.UTC)
+
 
 __all__ = [
-    # challenge
+    "CHALLENGE_TYPE_RECOVERY_CODE",
     "CHALLENGE_TYPE_TOTP_AUTH",
-    "consume_challenge",
-    "describe_challenge_attempts",
-    "get_challenge",
-    "issue_challenge",
-    "purge_expired_challenges",
-    # lifecycle
+    "CHALLENGE_TYPE_TOTP_ENROLL",
+    "CHALLENGE_TYPE_TOTP_VERIFY",
+    "CHALLENGE_TYPE_WEBAUTHN_AUTH",
+    "CHALLENGE_TYPE_WEBAUTHN_REG",
+    "MFA_METHOD_RECOVERY_CODE",
+    "MFA_METHOD_TOTP",
+    "MFA_METHOD_WEBAUTHN",
     "MfaResetStats",
+    "MfaTotpEnrollment",
+    "RecoveryCode",
+    "TOTP_ENROLLMENT_LIMIT_ERROR",
+    "TOTP_ENROLLMENT_PENDING_ERROR",
+    "WebAuthnCredential",
+    "_base64url_decode",
+    "_base64url_encode",
+    "_utcnow",
+    "build_totp_uri",
+    "complete_totp_enrollment",
+    "consume_challenge",
+    "count_remaining_recovery_codes",
+    "create_totp_secret",
+    "create_trusted_device_token",
+    "describe_challenge_attempts",
+    "disable_totp",
+    "generate_recovery_codes",
+    "get_challenge",
     "has_totp_enabled",
     "has_webauthn_enabled",
+    "issue_challenge",
+    "mfa_enrollments",
+    "purge_expired_challenges",
     "record_mfa_success",
     "refresh_user_mfa_preferences",
     "reset_user_mfa",
-    "user_has_active_factor",
-    "user_has_confirmed_interactive_factor",
-    # recovery
-    "count_remaining_recovery_codes",
-    "generate_recovery_codes",
-    "verify_recovery_code",
-    # totp
-    "TOTP_ENROLLMENT_LIMIT_ERROR",
-    "TOTP_ENROLLMENT_PENDING_ERROR",
-    "build_totp_uri",
-    "complete_totp_enrollment",
-    "create_totp_secret",
-    "disable_totp",
     "start_totp_enrollment",
     "start_totp_verification",
+    "user_has_active_factor",
+    "user_has_confirmed_interactive_factor",
+    "verify_recovery_code",
     "verify_totp",
     "verify_totp_for_user",
-    # trusted_device
-    "create_trusted_device_token",
     "verify_trusted_device_token",
-    # models
-    "MfaTotpEnrollment",
-    "WebAuthnCredential",
-    # constants
-    "MFA_METHOD_TOTP",
-    "MFA_METHOD_WEBAUTHN",
-    "MFA_METHOD_RECOVERY_CODE",
 ]

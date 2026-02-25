@@ -2,10 +2,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, update
-from app.core.protocols import AsyncDatabaseSession
 
 from app.api.validation import raise_unauthorized
 from app.core.config import settings
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession
 
 logger = logging.getLogger("app.auth.security")

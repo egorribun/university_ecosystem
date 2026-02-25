@@ -38,8 +38,9 @@ from app.services.push_topics import normalize_topic, subscription_supports_topi
 from app.services.webpush import WebPushResult
 
 if TYPE_CHECKING:
-    from app.core.protocols import AsyncDatabaseSession as AsyncSession
     from sqlalchemy.sql import Select
+
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = logging.getLogger(__name__)
 

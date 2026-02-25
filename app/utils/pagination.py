@@ -13,6 +13,7 @@ T = TypeVar("T")
 
 if TYPE_CHECKING:
     from sqlalchemy import Select
+
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 

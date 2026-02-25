@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from fastapi.concurrency import run_in_threadpool
@@ -31,7 +32,7 @@ async def _deliver_to_subscription(
 
 
 async def deliver_push_to_subscriptions(
-    subscriptions: list[PushSubscription],
+    subscriptions: list[PushSubscription] | Sequence[PushSubscription],
     payload: dict[str, Any],
     *,
     topic: str | None,
@@ -89,6 +90,6 @@ async def deliver_push_to_subscriptions(
             results.append(r)
         else:
             logger.warning("push delivery exception: %s", r)
-            results.append(WebPushResult(status="error", detail=str(r)))
+            results.append(WebPushResult(success=False))
 
     return results

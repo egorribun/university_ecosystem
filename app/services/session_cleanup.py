@@ -20,8 +20,9 @@ from app.models.models import ActiveSession, MfaChallenge
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from app.core.protocols import AsyncDatabaseSession as AsyncSession
     from sqlalchemy.sql.elements import ClauseElement
+
+    from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = logging.getLogger(__name__)
 

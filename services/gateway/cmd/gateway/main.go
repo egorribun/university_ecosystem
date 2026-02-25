@@ -123,9 +123,10 @@ func main() {
 			}
 
 			if token, ok := data["access_token"].(string); ok {
-				// Set cookie
+				// Set cookie — name must match middleware.AccessTokenCookieName so the
+				// gateway's auth middleware can read it on subsequent requests.
 				cookie := &http.Cookie{
-					Name:     "access_token",
+					Name:     middleware.AccessTokenCookieName,
 					Value:    token,
 					Path:     "/",
 					HttpOnly: true,
@@ -230,7 +231,8 @@ func main() {
 		redisClient = rateLimiter.GetClient()
 	}
 
-	jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret, redisClient)
+	// Wire RS256 public key if configured (MOD-1 / RZ-6).
+	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
 	jwtMiddleware.ListenForRevocations(ctx)
 
 	// Protected specific routes

@@ -19,12 +19,12 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
-from app.core.protocols import AsyncDatabaseSession
 
 from app.api.deps import get_current_user
 from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
 from app.core.database import get_db, get_read_db
 from app.core.localization import localized_text, resolve_locale, translate
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import (
     NotificationOut,

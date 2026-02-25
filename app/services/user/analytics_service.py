@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
+
 from app.core.protocols import AsyncDatabaseSession
-from app.models.user import User
 from app.deps.cache import BaseCache
 from app.models import models
 from app.services import stats_cache

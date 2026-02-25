@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Request
-from app.core.protocols import AsyncDatabaseSession
 
 from app.api.validation import raise_forbidden
 from app.auth.fingerprint import (
@@ -13,6 +12,7 @@ from app.auth.fingerprint import (
     get_suspicious_activity_detector,
 )
 from app.core.config import settings
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession, User
 
 logger = logging.getLogger("app.auth.security")

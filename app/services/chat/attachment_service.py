@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
+
     from app.schemas.dtos.chat import ChatDTO
 
 from app.api.validation import raise_http_error

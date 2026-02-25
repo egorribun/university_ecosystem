@@ -75,7 +75,6 @@ async def test_update_user_profile_decomposed_fields():
 @pytest.mark.asyncio
 async def test_update_user_profile_email_change():
     # Setup
-    db = AsyncMock()
     repo = AsyncMock()
     audit = MagicMock()
     notifications = MagicMock()

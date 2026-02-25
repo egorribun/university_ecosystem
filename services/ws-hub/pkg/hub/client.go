@@ -112,17 +112,14 @@ func (c *Client) JoinRoom(room string) {
 		return
 	}
 
-	// Acquire client-local lock before hub-global lock to establish a
-	// consistent total lock order (client.mu → hub.mu) across all paths.
-	// Inverting this order versus Hub.Run()'s Unregister path would create
-	// a deadlock risk under concurrent room-join and client-eviction.
-	// (RZ-2: audit 2026-02-24)
+	c.Hub.mu.Lock()
+	defer c.Hub.mu.Unlock()
+
+	// Acquire client-local lock after hub-global lock to establish a
+	// consistent total lock order (hub.mu -> client.mu) matching Unregister.
 	c.mu.Lock()
 	c.Rooms[room] = true
 	c.mu.Unlock()
-
-	c.Hub.mu.Lock()
-	defer c.Hub.mu.Unlock()
 
 	if c.Hub.Rooms[room] == nil {
 		c.Hub.Rooms[room] = make(map[*Client]bool)
@@ -133,13 +130,17 @@ func (c *Client) JoinRoom(room string) {
 }
 
 func (c *Client) LeaveRoom(room string) {
-	// Same lock order as JoinRoom: client.mu before hub.mu.
-	c.mu.Lock()
-	delete(c.Rooms, room)
-	c.mu.Unlock()
+	if room == "" {
+		return
+	}
 
 	c.Hub.mu.Lock()
 	defer c.Hub.mu.Unlock()
+
+	// Same lock order as JoinRoom: hub.mu before client.mu.
+	c.mu.Lock()
+	delete(c.Rooms, room)
+	c.mu.Unlock()
 
 	if clients, ok := c.Hub.Rooms[room]; ok {
 		delete(clients, c)

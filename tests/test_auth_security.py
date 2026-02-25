@@ -1,11 +1,11 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import bcrypt as bcrypt_lib
 import jwt
 import pytest
 from fastapi import status
 from jwt.exceptions import PyJWTError
-from passlib.hash import bcrypt
 from sqlalchemy import select
 
 from app.auth.security import (
@@ -22,9 +22,9 @@ from app.models import models
 
 
 def _make_legacy_hash(password: str) -> str:
-    prepared = _truncate_for_bcrypt(password)
-    # Directly call the legacy handler to avoid deprecated CryptContext APIs
-    return bcrypt.hash(prepared)
+    prepared = _truncate_for_bcrypt(password).encode("utf-8")
+    salt = bcrypt_lib.gensalt()
+    return bcrypt_lib.hashpw(prepared, salt).decode("utf-8")
 
 
 @pytest.mark.asyncio

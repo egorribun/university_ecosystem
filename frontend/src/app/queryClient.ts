@@ -1,4 +1,6 @@
 import { QueryClient } from "@tanstack/react-query"
+import { get, set, del } from "idb-keyval"
+import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client"
 
 const DEFAULT_STALE_MS = 10_000 // 10 seconds - keep data fresh
 const DEFAULT_CACHE_MS = 10 * 60_000
@@ -36,3 +38,19 @@ export const createQueryClient = () =>
   })
 
 export const queryClient = createQueryClient()
+
+export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
+  return {
+    persistClient: async (client: PersistedClient) => {
+      await set(idbValidKey, client)
+    },
+    restoreClient: async () => {
+      return await get<PersistedClient>(idbValidKey)
+    },
+    removeClient: async () => {
+      await del(idbValidKey)
+    },
+  } satisfies Persister
+}
+
+export const idbPersister = createIDBPersister()
