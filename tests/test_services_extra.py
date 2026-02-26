@@ -82,7 +82,10 @@ async def test_user_service_basics():
     data = schemas.UserProfileUpdate(full_name="New Name")
     with (
         patch("app.services.user.profile_service.resolve_locale", return_value="en"),
-        patch("app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock),
+        patch(
+            "app.services.user.profile_service.attach_pending_email",
+            new_callable=AsyncMock,
+        ),
     ):
         await service.update_user_profile(user, data, request)
         assert user.profile.full_name == "New Name"

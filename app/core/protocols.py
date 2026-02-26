@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
-from typing import Any, Protocol, runtime_checkable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -32,6 +31,7 @@ class DatabaseSession(Protocol):
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
     AsyncDatabaseSession = AsyncSession
 else:
     AsyncDatabaseSession = Any

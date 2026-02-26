@@ -6,6 +6,7 @@ import asyncio
 import io
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
@@ -114,9 +115,9 @@ async def test_upload_event_file_offloads_io(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    calls: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
+    calls: list[Any] = []
 
-    async def fake_to_thread(func, /, *args, **kwargs):  # type: ignore[override]
+    async def fake_to_thread(func, /, *args, **kwargs):
         calls.append((func, args, kwargs))
         return func(*args, **kwargs)
 
@@ -528,7 +529,7 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
-    calls: list[tuple[bytes, str | None]] = []
+    calls: list[tuple[bytes, str | None, int | None]] = []
 
     async def fake_scan(
         scanned, *, locale: str | None = None, size_bytes: int | None = None, **kwargs

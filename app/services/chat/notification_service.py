@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from app.core.protocols import AsyncDatabaseSession
     from app.models.chat import Message
     from app.models.models import User
     from app.schemas.dtos import ChatParticipantDTO
-    from collections.abc import Sequence
 
 from app.api.websocket import notify_new_message
 from app.services.notifications import create_notifications_for_users

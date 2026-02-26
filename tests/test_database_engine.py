@@ -9,22 +9,22 @@ from app.core import database as database_module
 
 
 @pytest.fixture(autouse=True)
-def prepare_database():  # type: ignore[override]
+def prepare_database():
     yield
 
 
 @pytest.fixture(autouse=True)
-def clean_database():  # type: ignore[override]
+def clean_database():
     yield
 
 
 @pytest.fixture(autouse=True)
-def configure_rate_limit():  # type: ignore[override]
+def configure_rate_limit():
     yield
 
 
 @pytest.fixture(autouse=True)
-def notification_queue_shutdown():  # type: ignore[override]
+def notification_queue_shutdown():
     yield
 
 

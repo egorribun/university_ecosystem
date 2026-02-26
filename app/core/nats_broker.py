@@ -5,7 +5,7 @@ import functools
 import json
 import logging
 import uuid
-from collections.abc import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar, cast
 
 import nats
@@ -62,8 +62,11 @@ class NatsTaskBroker:
             self._nc = None
             self._js = None
 
-    def task(self, name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def task(
+        self, name: str | None = None
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
         """Decorator to register a function as a background task."""
+
         def decorator(func: Callable[P, R]) -> Callable[P, R]:
             task_name = name or f"{func.__module__}.{func.__name__}"
             self._tasks[task_name] = func
@@ -78,8 +81,8 @@ class NatsTaskBroker:
             async def kick(*args: P.args, **kwargs: P.kwargs) -> None:
                 await self.enqueue(task_name, *args, **kwargs)
 
-            setattr(wrapper, "kick", kick)
-            return wrapper # type: ignore
+            wrapper.kick = kick  # type: ignore[attr-defined]
+            return cast(Callable[P, R], wrapper)
 
         return decorator
 
@@ -120,7 +123,9 @@ class NatsTaskBroker:
             await self.connect()
 
         # Create/use a pull-based durable consumer
-        sub = await self._js.pull_subscribe(
+        js = self._js
+        assert js is not None
+        sub = await js.pull_subscribe(
             subject=f"{self._subject_prefix}.>",
             durable="python-worker",
         )
@@ -149,34 +154,46 @@ class NatsTaskBroker:
                             span.set_attribute("messaging.operation", "process")
                             span.set_attribute("messaging.message_id", data["id"])
 
-                            _logger.info("Processing task: %s (id: %s)", task_name, data["id"])
+                            _logger.info(
+                                "Processing task: %s (id: %s)", task_name, data["id"]
+                            )
 
                             handler = self._tasks.get(task_name)
                             if not handler:
-                                _logger.error("No handler registered for task: %s", task_name)
-                                await msg.term() # Terminal failure
+                                _logger.error(
+                                    "No handler registered for task: %s", task_name
+                                )
+                                await msg.term()  # Terminal failure
                                 continue
 
-                            from app.main import app  # type: ignore
-                            dishka_container = getattr(app.state, "dishka_container", None)
+                            from app.main import app
+
+                            dishka_container = getattr(
+                                app.state, "dishka_container", None
+                            )
 
                             from dishka.integrations.base import wrap_injection
 
                             if request_container_param := dishka_container:
-                                async with request_container_param() as request_container:
+                                async with (
+                                    request_container_param() as request_container
+                                ):
                                     if asyncio.iscoroutinefunction(handler):
                                         wrapped = wrap_injection(
                                             func=handler,
-                                            container_getter=lambda _, kwargs: request_container,
+                                            container_getter=lambda _,
+                                            kwargs: request_container,
                                             remove_depends=True,
                                         )
                                         await wrapped(*args, **kwargs)
                                     else:
                                         import anyio
+
                                         # For sync funcs, dishka needs sync container which is complex
                                         wrapped = wrap_injection(
                                             func=handler,
-                                            container_getter=lambda _, kwargs: request_container,
+                                            container_getter=lambda _,
+                                            kwargs: request_container,
                                             remove_depends=True,
                                         )
                                         await anyio.to_thread.run_sync(
@@ -187,13 +204,16 @@ class NatsTaskBroker:
                                     await handler(*args, **kwargs)
                                 else:
                                     import anyio
+
                                     await anyio.to_thread.run_sync(
                                         functools.partial(handler, *args, **kwargs)
                                     )
 
                         await msg.ack()
                     except Exception as exc:
-                        _logger.exception("Error processing task %s: %s", task_name, exc)
+                        _logger.exception(
+                            "Error processing task %s: %s", task_name, exc
+                        )
                         # Let it retry (standard JetStream behavior for un-acked messages)
                         await msg.nak()
             except nats.errors.TimeoutError:

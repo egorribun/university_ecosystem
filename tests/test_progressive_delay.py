@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import typing
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -50,7 +51,7 @@ class TestProgressiveDelayTrackerMemory:
     """Tests for ProgressiveDelayTracker with memory backend."""
 
     @pytest.fixture(autouse=True)
-    async def clear_memory(self) -> None:
+    async def clear_memory(self) -> typing.AsyncGenerator[None, None]:
         """Clear memory storage before each test."""
         async with _progressive_delay_memory_lock:
             _progressive_delay_memory.clear()

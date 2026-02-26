@@ -99,7 +99,7 @@ async def get_schedule(
 
     if result.not_modified:
         cached_response = Response(status_code=status.HTTP_304_NOT_MODIFIED)
-        cached_response.headers["ETag"] = result.etag  # type: ignore[assignment]
+        cached_response.headers["ETag"] = result.etag
         _get_vary_helper()(cached_response, "Accept-Language")
         _set_schedule_cache_headers(cached_response)
         return cached_response

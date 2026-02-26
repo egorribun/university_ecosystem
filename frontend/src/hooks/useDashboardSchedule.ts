@@ -56,7 +56,7 @@ const createScheduleQueryOptions = (
         signal,
         validateStatus: (status: number) => status >= 200 && status < 400,
         etagCacheKey: etagKey,
-      } as any)
+      } as Parameters<typeof api.get>[1])
 
       if (response.status === 304) {
         return previous ?? []

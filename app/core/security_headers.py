@@ -48,7 +48,8 @@ class SecurityHeadersMiddleware:
                 added_header_names = {
                     name.encode("latin-1").lower() for name, _ in extra_headers
                 }
-                # Also ensure we don't have both CSP and CSP-Report-Only active together from upstream
+                # Prevent both CSP and CSP-Report-Only from upstream
+                # being emitted simultaneously — only our version is sent.
                 added_header_names.add(b"content-security-policy")
                 added_header_names.add(b"content-security-policy-report-only")
 
@@ -83,9 +84,36 @@ class SecurityHeadersMiddleware:
                     await send(message)
                     return
 
-                # HTML is accumulating
+                # Accumulate HTML chunks for nonce injection.
+                # PERF-5 (audit 2026-02-26): Guard against unbounded heap growth
+                # from large HTML responses (SSR pages, error dumps).  At >2 MB
+                # skip nonce injection and flush buffered chunks directly.
                 body_chunk = message.get("body", b"")
+                _HTML_BUFFER_LIMIT = 2 * 1024 * 1024  # 2 MB
                 if body_chunk:
+                    if (
+                        sum(len(c) for c in html_body) + len(body_chunk)
+                        > _HTML_BUFFER_LIMIT
+                    ):
+                        # Exceed limit — disable buffering for this response.
+                        is_html = False
+                        await send(
+                            {
+                                "type": "http.response.start",
+                                "status": html_status,
+                                "headers": html_headers,
+                            }
+                        )
+                        for buffered_chunk in html_body:
+                            await send(
+                                {
+                                    "type": "http.response.body",
+                                    "body": buffered_chunk,
+                                    "more_body": True,
+                                }
+                            )
+                        await send(message)
+                        return
                     html_body.append(body_chunk)
 
                 if not message.get("more_body", False):
@@ -96,7 +124,7 @@ class SecurityHeadersMiddleware:
                         # Attempt to replace nonce placeholder
                         # Will simply fallback to no-op on err/failure to decode
                         html_text = full_body.decode("utf-8")
-                        if "__CSP_NONCE__" in html_text:
+                        if "__CSP_NONCE__" in html_text and nonce is not None:
                             html_text = html_text.replace("__CSP_NONCE__", nonce)
                             full_body = html_text.encode("utf-8")
                     except (LookupError, UnicodeDecodeError):

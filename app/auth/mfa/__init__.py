@@ -69,6 +69,7 @@ from app.models.models import MfaTotpEnrollment, RecoveryCode, WebAuthnCredentia
 
 def _utcnow() -> datetime.datetime:
     import datetime
+
     return datetime.datetime.now(datetime.UTC)
 
 
@@ -82,11 +83,11 @@ __all__ = [
     "MFA_METHOD_RECOVERY_CODE",
     "MFA_METHOD_TOTP",
     "MFA_METHOD_WEBAUTHN",
+    "TOTP_ENROLLMENT_LIMIT_ERROR",
+    "TOTP_ENROLLMENT_PENDING_ERROR",
     "MfaResetStats",
     "MfaTotpEnrollment",
     "RecoveryCode",
-    "TOTP_ENROLLMENT_LIMIT_ERROR",
-    "TOTP_ENROLLMENT_PENDING_ERROR",
     "WebAuthnCredential",
     "_base64url_decode",
     "_base64url_encode",

@@ -93,7 +93,7 @@ class PermissionChecker:
             from authzed.api.v1.permission_service_grpc import PermissionsServiceStub
             from grpclib.client import Channel  # noqa: F401 — validate availability
 
-            stub = PermissionsServiceStub(self._channel)  # type: ignore[arg-type]
+            stub = PermissionsServiceStub(self._channel)
             resp: CheckPermissionResponse = await stub.CheckPermission(
                 CheckPermissionRequest(
                     resource=ObjectReference(
@@ -204,7 +204,7 @@ class PermissionCheckerLegacy:
                         ),
                     )
                 )
-                return (
+                return bool(
                     resp.permissionship
                     == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
                 )

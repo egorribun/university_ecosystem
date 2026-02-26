@@ -7,7 +7,7 @@ from app.deps.cache import NullCache, RedisCache, etag_matches, format_etag
 class _RedisCacheForTests(RedisCache):
     __test__ = False
 
-    async def _get_client(self):  # type: ignore[override]
+    async def _get_client(self):
         if self._client is None:
             self._client = fakeredis.aioredis.FakeRedis(
                 encoding="utf-8", decode_responses=True

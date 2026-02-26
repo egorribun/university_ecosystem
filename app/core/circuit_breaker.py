@@ -320,13 +320,13 @@ class CircuitBreaker:
 
 # Registry for global circuit breaker instances
 _circuit_breakers: dict[str, CircuitBreaker] = {}
-_registry_lock: asyncio.Lock | None = None
+# TD-7 (audit 2026-02-26): Initialise the lock at module load time (not lazily)
+# to eliminate the TOCTOU race where two coroutines could each create a separate
+# Lock object during the first call, defeating the mutual-exclusion guarantee.
+_registry_lock: asyncio.Lock = asyncio.Lock()
 
 
 def _get_registry_lock() -> asyncio.Lock:
-    global _registry_lock
-    if _registry_lock is None:
-        _registry_lock = asyncio.Lock()
     return _registry_lock
 
 

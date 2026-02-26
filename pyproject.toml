@@ -220,6 +220,7 @@ dev = [
     "pytest-cov>=5",
     "pytest-xdist>=3.5",
     "ruff>=0.15",
+    "types-aiofiles>=25.1.0.20251011",
 ]
 
 [tool.bandit]

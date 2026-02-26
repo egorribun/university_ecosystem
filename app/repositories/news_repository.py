@@ -129,7 +129,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
                 and query_embedding
                 and any(abs(v) > 1e-9 for v in query_embedding)
             ):
-                sim_score = 1.0 - News.embedding.cosine_distance(query_embedding)  # type: ignore[attr-defined]
+                sim_score = 1.0 - News.embedding.cosine_distance(query_embedding)
                 rank_expr = sim_score.label("sim_score")
                 stmt = stmt.where(sim_score > 0.45)
             else:
@@ -356,12 +356,23 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
         self, start_date: datetime | None = None, end_date: datetime | None = None
     ) -> tuple[Sequence[Any], Sequence[str]]:
         """Fetch raw news data for high-performance Polars analytics."""
+        likes_sub = (
+            select(func.count(models.NewsLike.id))
+            .where(models.NewsLike.news_id == models.News.id)
+            .scalar_subquery()
+        )
+        comments_sub = (
+            select(func.count(models.NewsComment.id))
+            .where(models.NewsComment.news_id == models.News.id)
+            .scalar_subquery()
+        )
+
         stmt = select(
             models.News.id,
             models.News.title,
             models.News.created_at,
-            models.News.likes_count,
-            models.News.comments_count,
+            likes_sub.label("likes_count"),
+            comments_sub.label("comments_count"),
             func.date_trunc("day", models.News.created_at).label("date"),
         )
         if start_date:

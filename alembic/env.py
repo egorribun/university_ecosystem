@@ -2,19 +2,22 @@ import asyncio
 import os
 import sys
 from logging.config import fileConfig
+from typing import Any, cast
 
 from sqlalchemy import engine_from_config, pool
-from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.engine import make_url, Engine
+from sqlalchemy.ext.asyncio import async_engine_from_config, AsyncEngine
+from sqlalchemy.engine.base import Connection as SyncConnection
 
 from alembic import context
+from alembic.config import Config
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.core.config import Settings
 from app.models import models
 
 _settings = Settings(_allow_missing=True)
-config = context.config
+config: Config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
@@ -34,7 +37,7 @@ def get_url() -> str:
 
 
 def run_migrations_offline() -> None:
-    url = get_url()
+    url: str = get_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -47,7 +50,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def _configure_context(connection) -> None:
+def _configure_context(connection: SyncConnection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -57,25 +60,26 @@ def _configure_context(connection) -> None:
 
 
 def run_migrations_online() -> None:
-    url = get_url()
-    config_options = {"sqlalchemy.url": url}
+    url: str = get_url()
+    config_options: dict[str, Any] = {"sqlalchemy.url": url}
     url_obj = make_url(url)
 
     if _settings.has_development_fallbacks:
         print("Skipping Alembic migrations while using development fallback settings.")
         return
 
-    def run_sync_migrations(connection) -> None:
+    def run_sync_migrations(connection: SyncConnection) -> None:
         _configure_context(connection)
         with context.begin_transaction():
             context.run_migrations()
 
-    connection = config.attributes.get("connection")
+    connection: Any = config.attributes.get("connection")
     if connection:
         print(f"DEBUG: Using injected connection: {connection}")
         run_sync_migrations(connection)
         return
 
+    connectable: Engine | AsyncEngine
     if url_obj.get_dialect().is_async:
         connectable = async_engine_from_config(
             config_options,
@@ -84,7 +88,11 @@ def run_migrations_online() -> None:
         )
 
         async def async_run_migrations() -> None:
-            async with connectable.connect() as connection:
+            # Cast connectable to AsyncEngine to ensure connect() returns AsyncConnection
+            engine = cast(AsyncEngine, connectable)
+            async with engine.connect() as connection:
+                # connection is AsyncConnection, run_sync_migrations expects SyncConnection
+                # The connection.run_sync method handles this conversion internally.
                 await connection.run_sync(run_sync_migrations)
 
         try:

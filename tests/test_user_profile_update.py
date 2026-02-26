@@ -13,7 +13,6 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models import models
 from app.repositories.user_repository import UserRepository
-from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
 from app.utils.files import delete_static_file

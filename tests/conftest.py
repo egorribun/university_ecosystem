@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -14,10 +15,10 @@ from sqlalchemy.ext.compiler import compiles
 
 if not hasattr(bcrypt, "__about__"):
     try:
-        bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
+        bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})  # type: ignore[attr-defined]
     except AttributeError:
         # Fallback if __version__ is also missing or other issues
-        bcrypt.__about__ = type("about", (object,), {"__version__": "4.0.0"})
+        bcrypt.__about__ = type("about", (object,), {"__version__": "4.0.0"})  # type: ignore[attr-defined]
 
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
@@ -187,6 +188,7 @@ def mock_nats_broker(monkeypatch):
 
     async def mock_run_worker(*args, **kwargs):
         import asyncio
+
         try:
             while True:
                 await asyncio.sleep(3600)
@@ -215,9 +217,9 @@ def mock_spicedb_permissions():
 
     mock_checker = MagicMock(spec=PermissionChecker)
 
-    async def mock_check_admin(user_id: str, *, user=None) -> bool:
+    async def mock_check_admin(user_id: str, *, user: Any = None) -> bool:
         if user and hasattr(user, "role"):
-            return user.role == "admin"
+            return cast(bool, user.role == "admin")
         return True  # Default fallback for legacy calls
 
     async def mock_check_permission(

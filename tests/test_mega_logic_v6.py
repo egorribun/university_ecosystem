@@ -108,7 +108,11 @@ async def test_user_service_mega():
     # 5. admin_update_user - MFA reset
     data_update = schemas.UserAdminUpdate(reset_mfa=True)
     db_user = models.User(
-        id=uuid.uuid4(), email="u@e.com", role="student", is_active=True, mfa_required=False
+        id=uuid.uuid4(),
+        email="u@e.com",
+        role="student",
+        is_active=True,
+        mfa_required=False,
     )
     repo.get.return_value = UserDTO.model_validate(db_user, from_attributes=True)
     with (
@@ -172,8 +176,14 @@ async def test_user_service_mega():
     repo.get_user_mfa_challenges.return_value = []
     repo.get_user_totp_enrollments.return_value = []
     with (
-        patch("app.services.user.compliance_service.log_data_access", new_callable=AsyncMock),
-        patch("app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock),
+        patch(
+            "app.services.user.compliance_service.log_data_access",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.user.profile_service.attach_pending_email",
+            new_callable=AsyncMock,
+        ),
         patch(
             "app.schemas.schemas.UserOut.model_validate",
             return_value=MagicMock(model_dump=lambda: {}),

@@ -455,7 +455,7 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
 async def test_enforce_rate_limit_falls_back_on_redis_error(monkeypatch):
     monkeypatch.setattr(rate_limit, "_memory_counters", {})
 
-    async def failing_redis(*args, **kwargs):  # type: ignore[no-untyped-def]
+    async def failing_redis(*args, **kwargs):
         raise RedisError("unknown command EVAL")
 
     monkeypatch.setattr(rate_limit, "_redis_rate_limit", failing_redis)
@@ -494,7 +494,7 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     async def _ping():  # pragma: no cover - simple response
         return {"ok": True}
 
-    async def fail_check(self, identifier, limit=None, window_seconds=None):  # type: ignore[no-untyped-def]
+    async def fail_check(self, identifier, limit=None, window_seconds=None):
         raise RedisError("boom")
 
     monkeypatch.setattr(RateLimitMiddleware, "_check_limit", fail_check)

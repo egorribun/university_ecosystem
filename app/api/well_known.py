@@ -37,9 +37,7 @@ def _get_jwk_from_pem(kid: str, pem_content: str, alg: str) -> JWK | None:
         if not pem_content.strip().startswith("-----BEGIN"):
             return None
 
-        key = serialization.load_pem_private_key(
-            pem_content.encode(), password=None
-        )
+        key = serialization.load_pem_private_key(pem_content.encode(), password=None)
         if not isinstance(key, rsa.RSAPrivateKey):
             return None
 
@@ -74,7 +72,7 @@ async def get_jwks(s: Settings = Depends(lambda: settings)) -> JWKS:
 
     # We only expose keys if we are using an asymmetric algorithm
     if s.algorithm != "RS256":
-         return JWKS(keys=[])
+        return JWKS(keys=[])
 
     registry = s.jwt_signing_key_registry
     for kid, secret in registry.items():

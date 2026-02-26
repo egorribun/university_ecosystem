@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 class RedisSessionData(TypedDict):
     user_id: str
+    # RZ-3: session_id cached alongside user_id so the auth hot-path (cache-hit)
+    # can load ActiveSession via O(1) pk lookup instead of an extra WHERE-jti query.
+    session_id: str | None
     fingerprint_hash: str | None
     mfa_verified_at: str | None  # ISO format
     last_seen_at: str | None  # ISO format
@@ -40,6 +43,7 @@ class RedisSessionService:
         user_id: UUID,
         fingerprint: SessionFingerprint | None,
         mfa_verified_at: datetime | None,
+        session_id: UUID | None = None,
     ) -> None:
         """Cache a newly created session in Redis."""
         if not self.redis_url:
@@ -50,6 +54,9 @@ class RedisSessionService:
 
         data = {
             "user_id": str(user_id),
+            # RZ-3: Store session_id so deps.py cache-hit path avoids a second
+            # DB round-trip (WHERE jti = ...) on every authenticated request.
+            "session_id": str(session_id) if session_id else "",
             "fingerprint_hash": fingerprint.fingerprint_hash if fingerprint else "",
             "mfa_verified_at": mfa_verified_at.isoformat() if mfa_verified_at else "",
             "last_seen_at": now.isoformat(),
@@ -100,6 +107,7 @@ class RedisSessionService:
 
             return RedisSessionData(
                 user_id=data.get("user_id", ""),
+                session_id=data.get("session_id") or None,
                 fingerprint_hash=data.get("fingerprint_hash") or None,
                 mfa_verified_at=data.get("mfa_verified_at") or None,
                 last_seen_at=data.get("last_seen_at") or None,

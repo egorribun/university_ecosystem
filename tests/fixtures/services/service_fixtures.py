@@ -11,7 +11,7 @@ from app.models import models
 
 
 class _TestingRedisCache(cache_module.RedisCache):
-    async def _get_client(self):  # type: ignore[override]
+    async def _get_client(self):
         if self._client is None:
             self._client = fakeredis.aioredis.FakeRedis(
                 encoding="utf-8", decode_responses=True

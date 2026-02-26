@@ -12,8 +12,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
-    Text,
     func,
 )
 
@@ -133,6 +133,13 @@ class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "failed_login_attempts"
 
     email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # TD-3 (audit 2026-02-26): Added ip_address and user_agent for distributed
+    # brute-force analysis. Without ip_address it was impossible to detect an
+    # attacker rotating through multiple email addresses from one IP.
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45), nullable=True, index=True
+    )
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     attempted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -144,6 +151,12 @@ class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
         Index(
             "ix_failed_login_attempts_email_attempted_at",
             "email",
+            "attempted_at",
+        ),
+        # Allow brute-force detection by IP across multiple target emails.
+        Index(
+            "ix_failed_login_attempts_ip_attempted_at",
+            "ip_address",
             "attempted_at",
         ),
     )
@@ -218,7 +231,10 @@ class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "webauthn_credentials"
 
     credential_id = Column(String, unique=True, index=True, nullable=False)
-    public_key = Column(Text, nullable=False)  # Base64 encoded public key
+    # OZ-1 (audit 2026-02-26): Bound public_key to String(4096). Without a limit
+    # an attacker could write multi-MB values during registration, causing OOM on
+    # bulk credential list queries. COSE EC key ≈ 512 B base64, RSA-4096 ≈ 736 B base64.
+    public_key: Mapped[str] = mapped_column(String(4096), nullable=False)
     sign_count = Column(Integer, default=0, nullable=False)
     transports = Column(JSON, nullable=True)  # List of allowed transports
     created_at = Column(
@@ -252,8 +268,11 @@ class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
     user_agent = Column(String(512), nullable=True)
     country = Column(String(2))  # ISO 3166-1 alpha-2
     city = Column(String(128))
-    latitude = Column(String(20))
-    longitude = Column(String(20))
+    # TD-2 (audit 2026-02-26): Changed from String(20) to Numeric(9,6) to enable
+    # PostGIS spatial queries and correct numeric comparisons.
+    # Numeric(9,6) supports ±179.999999° without floating-point imprecision.
+    latitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     status = Column(String(20), nullable=False)  # success, failed, locked
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True

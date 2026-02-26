@@ -22,6 +22,7 @@ class QueryHandler(ABC, Generic[TQuery, TResult]):
 
 class Command(ABC):  # noqa: B024
     """Base class for all commands."""
+
     pass
 
 

@@ -1,5 +1,6 @@
 import json
 import uuid
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -97,7 +98,7 @@ async def _login_for_token(async_client, email: str, password: str) -> str:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert response.status_code == status.HTTP_200_OK
-    return response.cookies.get("access_token_v2")
+    return cast(str, response.cookies.get("access_token_v2"))
 
 
 @pytest.mark.asyncio

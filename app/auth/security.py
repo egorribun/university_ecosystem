@@ -30,11 +30,36 @@ LEGACY_SCHEME = "bcrypt"
 
 _logger = logging.getLogger(__name__)
 
+
 # Executor for CPU-bound auth operations (Argon2 hashing).
 # Argon2 at ARGON2_MEMORY_COST_KIB=65536 uses 64 MB per concurrent hash call;
 # bounding pool size to cpu_count prevents memory exhaustion under login bursts.
 # Python's default (cpu_count + 4) is designed for I/O-bound work — not suitable here.
-_AUTH_EXECUTOR_WORKERS: int = max(2, os.cpu_count() or 2)
+# PERF-2: os.cpu_count() returns HOST core count inside containers; use
+# sched_getaffinity (cgroups v2) or cfs_quota (cgroups v1) for correctness.
+# A 2-CPU container on a 32-core host would otherwise spin up 32 Argon2
+# threads × 64 MB = 2 GB RAM instead of the expected 128 MB.
+def _container_cpu_count() -> int:
+    """Return cgroup-aware CPU count for container environments."""
+    try:
+        sched = getattr(os, "sched_getaffinity", None)
+        if sched:
+            return len(sched(0))  # Linux cgroups v2 — most accurate
+    except (AttributeError, NotImplementedError):
+        pass
+    try:  # Fallback for cgroups v1 (Docker legacy)
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:
+            quota = int(_f.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as _f:
+            period = int(_f.read().strip())
+        if quota > 0 and period > 0:
+            return max(1, quota // period)
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return os.cpu_count() or 2
+
+
+_AUTH_EXECUTOR_WORKERS: int = max(2, _container_cpu_count())
 _auth_executor = ThreadPoolExecutor(
     max_workers=_AUTH_EXECUTOR_WORKERS,
     thread_name_prefix="auth_worker",
@@ -104,6 +129,39 @@ def _calculate_lookup_hash(input_data: str) -> str:
     )
 
 
+# RZ-4: Module-level shared HTTPX client with connection pooling.
+# Creating a new AsyncClient per request burns a TCP handshake (~50-150 ms)
+# and bypasses keep-alive reuse. Closed in app lifespan (app/core/lifespan.py).
+_hibp_client: httpx.AsyncClient | None = None
+
+
+def _get_hibp_client() -> httpx.AsyncClient:
+    """Return (or lazily create) the shared HIBP AsyncClient."""
+    global _hibp_client
+    if _hibp_client is None:
+        _hibp_client = httpx.AsyncClient(
+            timeout=settings.password_hibp_timeout_seconds,
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+                keepalive_expiry=30.0,
+            ),
+            headers={
+                "User-Agent": "UniversityEcosystem/1.0",
+                "Add-Padding": "true",
+            },
+        )
+    return _hibp_client
+
+
+async def close_hibp_client() -> None:
+    """Close the shared HIBP client — call from app lifespan shutdown."""
+    global _hibp_client
+    if _hibp_client is not None:
+        await _hibp_client.aclose()
+        _hibp_client = None
+
+
 async def _validate_password_hibp(password: str, *, locale: str | None = None) -> None:
     # SHA-1 is required by the "Have I Been Pwned" API for their k-Anonymity model.
     # We only send the first 5 characters of the hash prefix to the API.
@@ -113,25 +171,30 @@ async def _validate_password_hibp(password: str, *, locale: str | None = None) -
     prefix = sha1[:5]
     suffix = sha1[5:]
     url = f"{settings.password_hibp_api_url.rstrip('/')}/{prefix}"
+
+    # RZ-2: fail_open mode allows password operations to succeed when HIBP is
+    # unreachable. Default is fail-closed (False) for maximum security; set
+    # PASSWORD_HIBP_FAIL_OPEN=true in environments with strict availability SLAs.
+    fail_open: bool = getattr(settings, "password_hibp_fail_open", False)
+
     try:
-        async with httpx.AsyncClient(
-            timeout=settings.password_hibp_timeout_seconds
-        ) as client:
-            response = await client.get(
-                url,
-                headers={
-                    "User-Agent": "UniversityEcosystem/1.0",
-                    "Add-Padding": "true",
-                },
-            )
+        response = await _get_hibp_client().get(url)
     except httpx.RequestError as exc:
-        _logger.warning("HIBP password check failed: %s", exc)
+        _logger.warning(
+            "HIBP password check failed (fail-%s): %s",
+            "open" if fail_open else "closed",
+            exc,
+        )
+        if fail_open:
+            return
         raise ValueError(
             translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
         ) from exc
 
     if response.status_code != httpx.codes.OK:
         _logger.warning("HIBP password check returned status %s", response.status_code)
+        if fail_open:
+            return
         raise ValueError(
             translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
         )

@@ -66,6 +66,8 @@ async def test_generate_recovery_codes_unit(
     assert not any(c.is_used for c in user_codes)
 
     # Verify hash
+    from typing import cast
+
     from app.auth.security import verify_password
 
     # Check that at least one code matches
@@ -73,7 +75,7 @@ async def test_generate_recovery_codes_unit(
     # To be precise: valid_code = codes[0]. We need to find the corresponding record.
     match = None
     for c in user_codes:
-        if await verify_password(codes[0], c.code_hash):
+        if await verify_password(codes[0], cast(str, c.code_hash)):
             match = c
             break
     assert match is not None

@@ -1,7 +1,9 @@
 import asyncio
 import datetime as dt
+import typing
 import unittest.mock
 from contextlib import contextmanager
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import delete, event, select
@@ -27,7 +29,6 @@ from app.services.notifications import (
 )
 from app.services.notifications import core as notifications_core
 from app.services.notifications import delivery as notifications_delivery
-from app.services.notifications import news_events as notifications_news_events
 from app.services.notifications import (
     schedule_reminders as notifications_schedule_reminders,
 )
@@ -63,7 +64,9 @@ def _count_queries(session):
 
 
 @pytest.fixture
-def configured_push_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def configured_push_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Generator[None, None, None]:
     _reset_vapid_cache()
     monkeypatch.setattr(settings, "vapid_public_key", "test-public-key")
     monkeypatch.setattr(settings, "vapid_private_key", "test-private-key")
@@ -73,7 +76,7 @@ def configured_push_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-async def reset_notification_queue_state() -> None:
+async def reset_notification_queue_state() -> typing.AsyncGenerator[None, None]:
     await notification_queue.shutdown_notification_queue()
     await notification_queue.reset_testing_state()
     yield
@@ -191,7 +194,7 @@ async def test_create_notifications_records_webpush_deliveries(
     def _fake_send(sub: PushSubscription, payload: dict[str, object]) -> WebPushResult:
         return WebPushResult(
             subscription_id=sub.id,
-            endpoint=sub.endpoint,
+            endpoint=cast(str, sub.endpoint),
             user_id=sub.user_id,
             status="sent",
             status_code=201,
@@ -314,7 +317,7 @@ async def test_generate_schedule_reminders_query_count_constant(
             await notifications_module.generate_schedule_reminders(
                 db_session, window_minutes=15
             )
-        return get_count()
+        return cast(int, get_count())
 
     single_count = await _run_with_count(1)
     many_count = await _run_with_count(5)
@@ -460,7 +463,7 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
         poll_seconds=3,
         window_minutes=1,
         max_backoff_seconds=30,
-        metrics=metrics,
+        metrics=cast(Any, metrics),
     )
 
     with pytest.raises(asyncio.CancelledError):

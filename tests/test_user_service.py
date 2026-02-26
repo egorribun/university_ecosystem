@@ -454,6 +454,7 @@ async def test_admin_update_user_success(
     data = MagicMock()
     updated_user = MagicMock()
     import uuid
+
     target_uuid = uuid.uuid4()
     updated_user.id = target_uuid
 
@@ -467,7 +468,9 @@ async def test_admin_update_user_success(
 
         service.repo._get_orm.return_value = updated_user
         service.repo._to_dto.return_value = updated_user
-        result = await service.admin_update_user(target_uuid, data, mock_request, mock_admin_user)
+        result = await service.admin_update_user(
+            target_uuid, data, mock_request, mock_admin_user
+        )
 
     assert result.id == target_uuid
     mock_audit.log.assert_called()
@@ -485,6 +488,7 @@ async def test_admin_update_user_mfa_reset(
     reset_stats.changed = True
 
     import uuid
+
     target_uuid = uuid.uuid4()
     updated_user.id = target_uuid
     service.repo.get.return_value = updated_user
@@ -499,7 +503,9 @@ async def test_admin_update_user_mfa_reset(
         with patch("app.auth.mfa.reset_user_mfa", return_value=reset_stats):
             service.repo._get_orm.return_value = updated_user
             service.repo._to_dto.return_value = updated_user
-            await service.admin_update_user(target_uuid, data, mock_request, mock_admin_user)
+            await service.admin_update_user(
+                target_uuid, data, mock_request, mock_admin_user
+            )
 
     service.notifications.send_security_notification.assert_called_once()
 
@@ -513,6 +519,7 @@ async def test_admin_update_user_mfa_reset(
 async def test_admin_delete_user_forbidden(service, mock_db, mock_user, mock_request):
     """Test admin_delete_user fails for non-admin."""
     import uuid
+
     target_uuid = uuid.uuid4()
     with pytest.raises(PermissionDenied):
         await service.admin_delete_user(target_uuid, mock_request, mock_user)

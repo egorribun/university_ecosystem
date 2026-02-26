@@ -64,7 +64,9 @@ async def _resolve_target_user(
     require_admin(current_user, locale)
     target = await user_repo.get(requested_user_id)
     if target is None:
-        raise_http_error(status.HTTP_404_NOT_FOUND, "errors.auth.user_not_found", locale)
+        raise_http_error(
+            status.HTTP_404_NOT_FOUND, "errors.auth.user_not_found", locale
+        )
     ensure_exists(target, "users", locale)
     return target.id, target
 
@@ -107,7 +109,9 @@ async def revoke_session(
     locale = resolve_locale(request=request, user=current_user)
     session = await session_service.get_session_by_id(session_id)
     if session is None:
-        raise_http_error(status.HTTP_404_NOT_FOUND, "errors.auth.session_not_found", locale)
+        raise_http_error(
+            status.HTTP_404_NOT_FOUND, "errors.auth.session_not_found", locale
+        )
     ensure_exists(session, "sessions", locale)
     require_owner_or_admin(current_user, locale, owner_id=session.user_id)
 

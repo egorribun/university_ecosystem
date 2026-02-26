@@ -10,13 +10,13 @@ from app.repositories.base import BaseRepository, ReadOnlyRepository
 def test_base_repository_is_abstract():
     """Verify BaseRepository requires model property."""
     with pytest.raises(TypeError):
-        BaseRepository(MagicMock())  # type: ignore
+        BaseRepository(MagicMock())
 
 
 def test_readonly_repository_is_abstract():
     """Verify ReadOnlyRepository requires model property."""
     with pytest.raises(TypeError):
-        ReadOnlyRepository(MagicMock())  # type: ignore
+        ReadOnlyRepository(MagicMock())
 
 
 def test_repository_pattern_generics():

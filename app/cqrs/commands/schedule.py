@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from app.cqrs.base import Command, CommandHandler
 from app.deps.cache import BaseCache
-from app.models import models
 from app.schemas import schemas
 from app.schemas.dtos import ScheduleDTO
 from app.services.schedule_service import ScheduleService
@@ -13,6 +12,7 @@ from app.services.schedule_service import ScheduleService
 class CreateScheduleCommand(Command):
     data: schemas.ScheduleCreate
     locale: str
+
 
 class CreateScheduleHandler(CommandHandler[CreateScheduleCommand, ScheduleDTO]):
     def __init__(self, service: ScheduleService, cache: BaseCache):
@@ -24,10 +24,12 @@ class CreateScheduleHandler(CommandHandler[CreateScheduleCommand, ScheduleDTO]):
         await self.cache.invalidate(f"schedule:group:{result.group_id}")
         return result
 
+
 @dataclass
 class UpdateScheduleCommand(Command):
     schedule_id: uuid.UUID
     data: schemas.ScheduleUpdate
+
 
 class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
     def __init__(self, service: ScheduleService, cache: BaseCache):
@@ -48,9 +50,11 @@ class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
         )
         return updated
 
+
 @dataclass
 class DeleteScheduleCommand(Command):
     schedule_id: uuid.UUID
+
 
 class DeleteScheduleHandler(CommandHandler[DeleteScheduleCommand, bool]):
     def __init__(self, service: ScheduleService, cache: BaseCache):

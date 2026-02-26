@@ -125,7 +125,7 @@ async def generate_event_embedding(event: EventCreated) -> None:
             f"{db_event.title} {db_event.description or ''} {db_event.location or ''}"
         )
         embedding = await vector_service.get_embedding(text_to_embed)
-        db_event.embedding = embedding  # type: ignore[assignment]
+        db_event.embedding = embedding
         await db.commit()
 
 
@@ -139,7 +139,7 @@ async def generate_news_embedding(event: NewsCreated) -> None:
 
         text_to_embed = f"{db_news.title} {db_news.content}"
         embedding = await vector_service.get_embedding(text_to_embed)
-        db_news.embedding = embedding  # type: ignore[assignment]
+        db_news.embedding = embedding
         await db.commit()
 
 

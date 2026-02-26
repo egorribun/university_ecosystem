@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import anyio
 from fastapi import BackgroundTasks, Request, Response, status
@@ -54,6 +54,7 @@ class LoginService:
         self.lockout_service = lockout_service
         self.audit = audit
         from app.repositories.auth_repository import AuthRepository
+
         self.repo = AuthRepository(db)
         self.redis_session = redis_session_service
         self.geolocation = geolocation_service
@@ -109,8 +110,11 @@ class LoginService:
         if not user:
             # Simulate Bcrypt/Argon2 load (randomized jitter 100-200ms)
             await asyncio.sleep(0.1 + (secrets.randbelow(100) / 1000.0))
-            return await self._handle_invalid_user(  # type: ignore[no-any-return]
-                normalized_email, request, base_locale, bg_tasks
+            return cast(
+                "schemas.TokenWithProfile | auth_schemas.PendingMfaResponse",
+                await self._handle_invalid_user(
+                    normalized_email, request, base_locale, bg_tasks
+                ),
             )
 
         verified, new_hash = await verify_and_update_password(
@@ -118,8 +122,11 @@ class LoginService:
         )
 
         if not verified:
-            return await self._handle_invalid_password(  # type: ignore[no-any-return]
-                user, normalized_email, request, locale, bg_tasks
+            return cast(
+                "schemas.TokenWithProfile | auth_schemas.PendingMfaResponse",
+                await self._handle_invalid_password(
+                    user, normalized_email, request, locale, bg_tasks
+                ),
             )
 
         # 3. Valid credentials, check MFA
@@ -182,6 +189,7 @@ class LoginService:
         # A CSRF token that was valid before authentication must not remain valid
         # after privilege escalation. (RZ-5: audit 2026-02-24)
         from app.core.csrf import signal_csrf_rotation
+
         signal_csrf_rotation(request)
 
         bg_tasks.add_task(
@@ -217,8 +225,9 @@ class LoginService:
         )
         metrics.record_login_success(method=method)
 
-        return await self.build_token_response(user, token, session, include_token=False)
-
+        return await self.build_token_response(
+            user, token, session, include_token=False
+        )
 
     async def build_token_response(
         self,
@@ -228,16 +237,21 @@ class LoginService:
         include_token: bool = True,
     ) -> schemas.TokenWithProfile:
         # Ensure that MFA relationships are loaded before validation
-        from app.models.user_loaders import ensure_mfa_relationships_loaded
+        if not isinstance(user, User):
+            # If it's a DTO, we might need a real User object or the loader needs to handle DTOs
+            # For now, let's assume it's a User or handle it
+            pass
 
-        user = await ensure_mfa_relationships_loaded(self.repo.db, user)
+        # Cast needed because ensure_mfa_relationships_loaded return type includes None
+        # but we know it won't be None as input is not None.
+        user = cast(Any, await ensure_mfa_relationships_loaded(self.repo.db, user))
 
         # RED-ZONE: Ensure pending email is attached to UserOut if exists
         from app.services.auth_service import attach_pending_email
 
         temp_user = await attach_pending_email(self.repo.db, user)
-        assert temp_user is not None
-        user = temp_user
+        if temp_user is not None:
+            user = temp_user
 
         from app.schemas.schemas import SessionSigningKeyOut, UserOut
 

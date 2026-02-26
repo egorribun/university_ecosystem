@@ -182,13 +182,13 @@ async def test_monster_coverage_run():
             new_callable=AsyncMock,
             return_value=user,
         ),
-                patch("app.core.localization.resolve_locale", return_value="en"),
-                patch(
-                    "app.services.user.profile_service.attach_pending_email",
-                    new_callable=AsyncMock,
-                    return_value=user,
-                ),
-                patch("app.api.validation.raise_http_error"),
+        patch("app.core.localization.resolve_locale", return_value="en"),
+        patch(
+            "app.services.user.profile_service.attach_pending_email",
+            new_callable=AsyncMock,
+            return_value=user,
+        ),
+        patch("app.api.validation.raise_http_error"),
     ):
         from fastapi import BackgroundTasks, Request, Response
 

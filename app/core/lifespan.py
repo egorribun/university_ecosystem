@@ -28,8 +28,9 @@ async def lifespan(app: FastAPI):
 
     # (TD-4) Re-create a fresh Dishka container per lifespan start.
     # This ensures that Pytest test cycles (which run multiple lifespan contexts)
-    # always have an open container, rather than reusing a closed one from previous tests.
+    # always have an open container, not a closed one from a previous test.
     from app.core.di_provider import create_dishka_container
+
     if hasattr(app.state, "dishka_container"):
         app.state.dishka_container = create_dishka_container()
 
@@ -62,7 +63,49 @@ async def lifespan(app: FastAPI):
     await start_presence_pubsub()
     await wait_db(max_attempts=10, delay=0.5)
 
-    # Register domain event persistence listeners
+    # MOD-4 (audit 2026-02-26): Fail fast if the DB schema is not at the
+    # migration head.  Without this check a deployment that skips ``alembic
+    # upgrade head`` silently serves requests against a mismatched schema,
+    # causing cryptic SQLAlchemy errors hours later.
+    #
+    # Skipped for non-Postgres dialects (e.g. SQLite used in tests) because
+    # the alembic_version table may not exist in ephemeral test databases.
+    if settings.environment not in {"testing", "test"}:
+        import logging as _log
+
+        _migration_logger = _log.getLogger(__name__)
+        try:
+            from alembic.config import Config as AlembicConfig
+            from alembic.runtime.migration import MigrationContext
+            from alembic.script import ScriptDirectory
+
+            _alembic_cfg = AlembicConfig("alembic.ini")
+            _scripts = ScriptDirectory.from_config(_alembic_cfg)
+            _head = _scripts.get_current_head()
+
+            async with engine.connect() as _conn:
+                _dialect = _conn.dialect.name
+                if _dialect == "postgresql":
+                    _ctx = await _conn.run_sync(
+                        lambda sync_conn: MigrationContext.configure(sync_conn)
+                    )
+                    _current = _ctx.get_current_revision()
+                    if _current != _head:
+                        raise RuntimeError(
+                            f"DB schema mismatch — current={_current!r}, "
+                            f"head={_head!r}. Run 'alembic upgrade head' before "
+                            "starting the application."
+                        )
+                    _migration_logger.info(
+                        "DB schema check passed: revision=%s", _current
+                    )
+        except ImportError:
+            _migration_logger.warning(
+                "alembic not importable — skipping migration head check"
+            )
+        except RuntimeError:
+            raise  # Re-raise schema mismatch error — must not be swallowed
+
     register_event_listeners()
 
     # Configure domain event handlers
@@ -126,8 +169,10 @@ async def lifespan(app: FastAPI):
                             sql_text = str(column.computed.sqltext)
                             if "to_tsvector" in sql_text:
                                 logger.info(
-                                    f"Patching out computed column {table.name}.{column.name} "
-                                    f"for dialect {conn.dialect.name}"
+                                    "Patching out computed column %s.%s for dialect %s",
+                                    table.name,
+                                    column.name,
+                                    conn.dialect.name,
                                 )
                                 column.computed = None
 
@@ -157,35 +202,46 @@ async def lifespan(app: FastAPI):
         # Initial delay to let the app warm up
         await asyncio.sleep(60)
 
-        while True:
+        # TD-4: Each task is wrapped individually so a failure in one cleanup
+        # never prevents subsequent cleanups from running.
+        import logging as _log
+
+        _sched_logger = _log.getLogger(__name__)
+
+        async def _kick(task) -> None:
             try:
-                # Every 1 hour: most cleanups
-                await cleanup_stories_task.kick()
-                await cleanup_password_reset_tokens_task.kick()
-                await cleanup_email_change_tokens_task.kick()
-                await cleanup_mfa_challenges_task.kick()
+                await task.kick()
+            except Exception:
+                _sched_logger.exception(
+                    "Periodic cleanup failed", extra={"task": task.__class__.__name__}
+                )
 
-                # Every 6 hours: sessions
-                import datetime
-                cur_hour = datetime.datetime.now(datetime.UTC).hour
-                if cur_hour % 6 == 0:
-                    await cleanup_sessions_task.kick()
+        while True:
+            import datetime
 
-                # Every 24 hours: heavy/daily tasks (at ~2 AM or similar)
-                if cur_hour == 2:
-                    await cleanup_notifications_task.kick()
-                    await cleanup_dead_letter_jobs_task.kick()
-                    await cleanup_privacy_artifacts_task.kick()
-                    await manage_partitions_task.kick()
+            cur_hour = datetime.datetime.now(datetime.UTC).hour
 
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Periodic scheduler error: {e}")
+            # Every 1 hour: most cleanups
+            await _kick(cleanup_stories_task)
+            await _kick(cleanup_password_reset_tokens_task)
+            await _kick(cleanup_email_change_tokens_task)
+            await _kick(cleanup_mfa_challenges_task)
+
+            # Every 6 hours: sessions
+            if cur_hour % 6 == 0:
+                await _kick(cleanup_sessions_task)
+
+            # Every 24 hours: heavy/daily tasks (at ~2 AM or similar)
+            if cur_hour == 2:
+                await _kick(cleanup_notifications_task)
+                await _kick(cleanup_dead_letter_jobs_task)
+                await _kick(cleanup_privacy_artifacts_task)
+                await _kick(manage_partitions_task)
 
             # Sleep for 1 hour between checks
             await asyncio.sleep(3600)
 
-    # Store a reference to the background task to prevent it from being garbage collected
+    # Store a reference to prevent background tasks from being garbage collected
     if not hasattr(app.state, "background_tasks"):
         app.state.background_tasks = set()
 
@@ -198,7 +254,8 @@ async def lifespan(app: FastAPI):
 
         logger = logging.getLogger(__name__)
         logger.info(
-            "Synchronously warming up PostgreSQL partitions to prevent cold start failures..."
+            "Synchronously warming up PostgreSQL partitions "
+            "to prevent cold start failures..."
         )
         await ensure_partitions_exist()
         stop_partitions = await start_partition_management_scheduler(
@@ -209,7 +266,7 @@ async def lifespan(app: FastAPI):
     outbox_worker = OutboxWorker()
     outbox_task = asyncio.create_task(outbox_worker.run_forever(), name="outbox_worker")
 
-    def _on_outbox_done(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+    def _on_outbox_done(task: asyncio.Task) -> None:
         """Log unexpected OutboxWorker exits so they are never silently swallowed."""
         if task.cancelled():
             return
@@ -250,4 +307,10 @@ async def lifespan(app: FastAPI):
         shutdown_observability()
 
         from app.services.geolocation import shutdown_geolocation_service
+
         shutdown_geolocation_service()
+
+        # RZ-4: Close the shared HIBP HTTP client (connection pooling cleanup).
+        from app.auth.security import close_hibp_client
+
+        await close_hibp_client()

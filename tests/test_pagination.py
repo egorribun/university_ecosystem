@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -85,7 +86,8 @@ async def news_factory(db_session: AsyncSession):
             }
             # Vary created_at for pagination testing
             news = models.News(**data)
-            news.created_at = datetime.now(UTC) - timedelta(hours=count - i)
+            # Use setattr for created_at to bypass Mypy Column/datetime mismatch
+            news.created_at = datetime.now(UTC) - timedelta(hours=count - i)  # type: ignore[assignment]
             db_session.add(news)
             items.append(news)
         await db_session.commit()
@@ -370,7 +372,7 @@ class TestGenericPagination:
         stmt = select(models.News)
         params = CursorParams(limit=2)
 
-        result = await paginate_cursor(db_session, stmt, models.News.id, params)
+        result: Any = await paginate_cursor(db_session, stmt, models.News.id, params)
 
         assert len(result.items) == 2
         assert result.has_more is True
@@ -388,7 +390,7 @@ class TestGenericPagination:
         stmt = select(models.News)
         params = CursorParams(limit=2)
 
-        result = await paginate_cursor(
+        result: Any = await paginate_cursor(
             db_session, stmt, models.News.id, params, include_total=True
         )
 
@@ -409,7 +411,7 @@ class TestGenericPagination:
         stmt = select(models.News)
         params = CursorParams(limit=2)
 
-        result = await paginate_cursor(
+        result: Any = await paginate_cursor(
             db_session, stmt, models.News.id, params, descending=False
         )
 
@@ -439,11 +441,11 @@ class TestGenericPagination:
 
         # Get first page
         params1 = CursorParams(limit=2)
-        result1 = await paginate_cursor(db_session, stmt, models.News.id, params1)
+        result1: Any = await paginate_cursor(db_session, stmt, models.News.id, params1)
 
         # Get second page
         params2 = CursorParams(limit=2, cursor=result1.next_cursor)
-        result2 = await paginate_cursor(db_session, stmt, models.News.id, params2)
+        result2: Any = await paginate_cursor(db_session, stmt, models.News.id, params2)
 
         assert len(result2.items) == 2
         assert result1.items[-1].id > result2.items[0].id  # Descending

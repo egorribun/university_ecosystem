@@ -1,10 +1,35 @@
 import asyncio
 import hashlib
 import logging
-import pickle
 from io import BytesIO
 from pathlib import Path
 from typing import Literal
+
+# msgspec is used for safe binary serialization of Redis cache payloads.
+# Unlike pickle, msgspec cannot execute arbitrary code on deserialization —
+# a compromised Redis cannot achieve RCE. (RZ-1: audit 2026-02-26)
+try:
+    import msgspec.msgpack as _msgpack
+
+    def _cache_encode(data: bytes, mime: str) -> bytes:
+        return _msgpack.encode({"d": data, "m": mime})  # type: ignore[no-any-return]
+
+    def _cache_decode(payload: bytes) -> tuple[bytes, str]:
+        obj = _msgpack.decode(payload)
+        return bytes(obj["d"]), str(obj["m"])
+
+except ImportError:  # pragma: no cover — fallback if msgspec not installed
+    # json + base64 as a safe fallback (no pickle in any code path)
+    import base64
+    import json
+
+    def _cache_encode(data: bytes, mime: str) -> bytes:
+        return json.dumps({"d": base64.b64encode(data).decode(), "m": mime}).encode()
+
+    def _cache_decode(payload: bytes) -> tuple[bytes, str]:
+        obj = json.loads(payload)
+        return base64.b64decode(obj["d"]), str(obj["m"])
+
 
 from PIL import Image
 
@@ -45,8 +70,8 @@ async def get_transformed_image(
         redis_client = await get_cache_client()
         cached_payload = await redis_client.get(redis_key)
         if cached_payload:
-            # We use pickle to store the tuple (bytes, str) safely as this is an internal cache
-            data, mime = pickle.loads(cached_payload)
+            # Safe deserialization via msgspec — no code execution risk.
+            data, mime = _cache_decode(cached_payload)
             return data, mime
     except Exception as exc:
         logger.warning("Redis cache read failed for %s: %s", path, exc)
@@ -82,7 +107,7 @@ async def get_transformed_image(
             from app.deps.cache import get_cache_client
 
             redis_client = await get_cache_client()
-            payload = pickle.dumps((transformed_data, mime))
+            payload = _cache_encode(transformed_data, mime)
             await redis_client.setex(redis_key, _CACHE_TTL, payload)
         except Exception as exc:
             logger.warning("Redis cache write failed for %s: %s", path, exc)

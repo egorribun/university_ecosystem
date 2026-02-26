@@ -17,16 +17,19 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 _HEADERS = {"Content-Type": "application/x-www-form-urlencoded"}
 
 
-def _find_event(caplog, event: str) -> dict | None:
+from typing import Any
+
+
+def _find_event(caplog: Any, event: str) -> dict[Any, Any] | None:
     for record in reversed(caplog.records):
         if record.name != "app.auth":
             continue
         try:
             payload = json.loads(record.message)
+            if isinstance(payload, dict) and payload.get("event") == event:
+                return payload
         except json.JSONDecodeError:  # pragma: no cover - defensive guard
             continue
-        if payload.get("event") == event:
-            return payload
     return None
 
 
