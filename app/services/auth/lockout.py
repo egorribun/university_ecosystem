@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import math
 from collections.abc import Sequence
@@ -124,7 +126,9 @@ class LockoutService:
         # SQLite (used in tests) doesn't support them, so we skip it there.
         if self.db.bind and self.db.bind.dialect.name == "postgresql":
             await self.db.execute(
-                text("SELECT pg_advisory_xact_lock(hashtext(:email), hashtext(reverse(:email)))"),
+                text(
+                    "SELECT pg_advisory_xact_lock(hashtext(:email), hashtext(reverse(:email)))"
+                ),
                 {"email": email},
             )
 

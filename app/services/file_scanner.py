@@ -333,14 +333,19 @@ async def _scan_bytes_with_clamd(data: bytes) -> _ScanResult:
 async def _scan_upload_with_clamd(
     upload: UploadFile, *, size_limit: int
 ) -> _ScanResult:
+    """Scan an uploaded file for malware via ClamAV.
+
+    The file content is read fully in the async context before being passed
+    to asyncio.to_thread. This avoids cross-thread access to the underlying
+    SpooledTemporaryFile/BytesIO which is not thread-safe.
+    (PERF-5: audit 2026-02-26)
+    """
     await upload.seek(0)
-
-    def _runner() -> tuple[str | None, int]:
-        stream = _UploadStream(upload.file, limit=size_limit)
-        signature = _scan_with_clamd_stream(stream)  # type: ignore[arg-type]
-        return signature, stream.bytes_scanned
-
-    return await _run_scan(_runner)
+    # Read fully here — in async context, before handing off to thread pool.
+    data = await upload.read()
+    if size_limit and len(data) > size_limit:
+        raise FileScannerPayloadTooLarge(len(data), limit_bytes=size_limit)
+    return await _scan_bytes_with_clamd(data)
 
 
 async def _run_scan(

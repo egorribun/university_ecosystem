@@ -16,7 +16,6 @@ from fastapi import (
     status,
 )
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import func, select
 
 from app.api.deps import (
     get_audit_service,
@@ -212,7 +211,9 @@ async def login_json(
     )
 
 
-@router.post("/mfa/verify", response_model=TokenWithProfile, response_model_exclude_none=True)
+@router.post(
+    "/mfa/verify", response_model=TokenWithProfile, response_model_exclude_none=True
+)
 @inject
 async def verify_mfa_challenge(
     payload: MfaVerifyIn,
@@ -260,6 +261,15 @@ async def verify_mfa_challenge(
         mfa_completed=True,
         method=str(challenge.challenge_type),
     )
+
+
+@router.get(
+    "/csrf-cookie",
+    summary="Initialize CSRF token",
+    description="This endpoint sets a new robust CSRF cookie and is intended for SPAs to call before attempting a login.",
+)
+async def get_csrf_cookie() -> dict[str, str]:
+    return {"detail": "CSRF cookie set"}
 
 
 @router.post("/register", dependencies=[Depends(sensitive_route_limit())])

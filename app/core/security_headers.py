@@ -1,178 +1,190 @@
 from __future__ import annotations
 
-import contextlib
 import secrets
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import FileResponse, Response
+from fastapi import Request
 
 if TYPE_CHECKING:
-    from fastapi import Request
-    from starlette.types import ASGIApp
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
     from app.core.config import Settings
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
+    """Pure ASGI security headers injector — never buffers response body."""
+
     def __init__(self, app: ASGIApp, *, settings: Settings) -> None:
-        super().__init__(app)
+        self._app = app
         self._settings = settings
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
         nonce: str | None = None
         if self._settings.should_inject_csp_nonce:
-            # Generate a fresh nonce only when strict headers are active.
             nonce = secrets.token_urlsafe(16)
             request.state.csp_nonce = nonce
-        response = await call_next(request)
-        if nonce and self._settings.should_inject_csp_nonce:
-            # Inject nonce placeholder into HTML served by FastAPI templates.
-            response = self._inject_nonce_into_html(response, nonce)
-        self._apply_csp(response, nonce=nonce)
-        self._apply_hsts(response)
-        self._apply_frame_options(response)
-        self._apply_permissions_policy(response)
-        self._apply_content_type_options(response)
-        self._apply_referrer_policy(response)
-        self._apply_cross_origin_policies(response)
-        return response
 
-    def _apply_hsts(self, response: Response) -> None:
-        headers = response.headers
-        if not self._settings.security_hsts_enabled_effective:
-            with contextlib.suppress(KeyError):
-                del headers["Strict-Transport-Security"]
-            return
-        value = f"max-age={int(self._settings.security_hsts_max_age)}"
-        if self._settings.security_hsts_include_subdomains:
-            value += "; includeSubDomains"
-        if self._settings.security_hsts_preload:
-            value += "; preload"
-        headers["Strict-Transport-Security"] = value
+        # Build a frozen set of headers to inject
+        extra_headers = self._build_security_headers(nonce=nonce)
 
-    def _apply_csp(self, response: Response, *, nonce: str | None) -> None:
-        headers = response.headers
+        # State block for handling HTML body injection
+        is_html = False
+        html_body: list[bytes] = []
+        html_status = 200
+        html_headers: list[tuple[bytes, bytes]] = []
+
+        async def send_with_security_headers(message: Message) -> None:
+            nonlocal is_html, html_body, html_status, html_headers
+
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+
+                # Strip conflicting headers and pre-calculate extra headers
+                added_header_names = {
+                    name.encode("latin-1").lower() for name, _ in extra_headers
+                }
+                # Also ensure we don't have both CSP and CSP-Report-Only active together from upstream
+                added_header_names.add(b"content-security-policy")
+                added_header_names.add(b"content-security-policy-report-only")
+
+                headers_out = [
+                    (k, v) for k, v in headers if k.lower() not in added_header_names
+                ]
+
+                for name, value in extra_headers:
+                    headers_out.append(
+                        (name.encode("latin-1"), value.encode("latin-1"))
+                    )
+
+                # Determine if HTML needs nonce injection
+                if nonce and self._settings.should_inject_csp_nonce:
+                    for name_b, value_b in headers_out:
+                        if (
+                            name_b.lower() == b"content-type"
+                            and b"text/html" in value_b.lower()
+                        ):
+                            is_html = True
+                            html_status = message["status"]
+                            html_headers = headers_out
+                            break
+
+                if not is_html:
+                    message = {**message, "headers": headers_out}
+                    await send(message)
+                return
+
+            if message["type"] == "http.response.body":
+                if not is_html:
+                    await send(message)
+                    return
+
+                # HTML is accumulating
+                body_chunk = message.get("body", b"")
+                if body_chunk:
+                    html_body.append(body_chunk)
+
+                if not message.get("more_body", False):
+                    # End of stream, process HTML
+                    full_body = b"".join(html_body)
+
+                    try:
+                        # Attempt to replace nonce placeholder
+                        # Will simply fallback to no-op on err/failure to decode
+                        html_text = full_body.decode("utf-8")
+                        if "__CSP_NONCE__" in html_text:
+                            html_text = html_text.replace("__CSP_NONCE__", nonce)
+                            full_body = html_text.encode("utf-8")
+                    except (LookupError, UnicodeDecodeError):
+                        pass
+
+                    # Compute new bounds
+                    new_headers = []
+                    for n, v in html_headers:
+                        if n.lower() == b"content-length":
+                            new_headers.append(
+                                (
+                                    b"content-length",
+                                    str(len(full_body)).encode("latin-1"),
+                                )
+                            )
+                        else:
+                            new_headers.append((n, v))
+
+                    # Transmit buffered output
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": html_status,
+                            "headers": new_headers,
+                        }
+                    )
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": full_body,
+                            "more_body": False,
+                        }
+                    )
+                return
+
+            # Passthrough for other events
+            await send(message)
+
+        await self._app(scope, receive, send_with_security_headers)
+
+    def _build_security_headers(self, *, nonce: str | None) -> list[tuple[str, str]]:
+        headers: list[tuple[str, str]] = []
+
+        # CSP
         report_only = self._settings.security_csp_report_only_effective
         policy = self._settings.build_csp_policy(nonce=nonce, report_only=report_only)
-        header_name = "Content-Security-Policy"
-        if report_only:
-            header_name = "Content-Security-Policy-Report-Only"
-            with contextlib.suppress(KeyError):
-                del headers["Content-Security-Policy"]
-        headers[header_name] = policy
-        other_header = (
-            "Content-Security-Policy"
-            if header_name == "Content-Security-Policy-Report-Only"
-            else "Content-Security-Policy-Report-Only"
+        header_name = (
+            "Content-Security-Policy-Report-Only"
+            if report_only
+            else "Content-Security-Policy"
         )
-        with contextlib.suppress(KeyError):
-            del headers[other_header]
+        headers.append((header_name, policy))
 
-    def _inject_nonce_into_html(self, response: Response, nonce: str) -> Response:
-        content_type = response.headers.get("content-type", "")
-        if "text/html" not in content_type.lower():
-            return response
-        body_bytes: bytes | None = None
-        if isinstance(response, FileResponse):
-            path = Path(response.path)
-            try:
-                body_bytes = path.read_bytes()
-            except OSError:
-                return response
-            charset = getattr(response, "charset", "utf-8") or "utf-8"
-        else:
-            body = getattr(response, "body", b"")
-            if isinstance(body, memoryview):
-                body_bytes = body.tobytes()
-            elif isinstance(body, bytes):
-                body_bytes = body
-            else:
-                body_bytes = bytes(body or b"")
-            charset = getattr(response, "charset", "utf-8") or "utf-8"
-        if not body_bytes:
-            return response
-        placeholder = "__CSP_NONCE__"
-        try:
-            html = body_bytes.decode(charset)
-        except (LookupError, UnicodeDecodeError):
-            return response
-        if placeholder not in html:
-            return response
-        updated_html = html.replace(placeholder, nonce)
-        if updated_html == html:
-            return response
-        updated_body = updated_html.encode(charset)
-        media_type = content_type or response.media_type or "text/html"
-        new_response = Response(
-            content=updated_body,
-            status_code=response.status_code,
-            media_type=media_type,
-            background=response.background,
-        )
-        new_response.charset = charset
-        raw_headers = [
-            (name, value)
-            for name, value in getattr(response, "raw_headers", [])
-            if name.lower() not in {b"content-length", b"content-type"}
-        ]
-        new_response.raw_headers.extend(raw_headers)
-        return new_response
+        # HSTS
+        if self._settings.security_hsts_enabled_effective:
+            value = f"max-age={int(self._settings.security_hsts_max_age)}"
+            if self._settings.security_hsts_include_subdomains:
+                value += "; includeSubDomains"
+            if self._settings.security_hsts_preload:
+                value += "; preload"
+            headers.append(("Strict-Transport-Security", value))
 
-    def _apply_cross_origin_policies(self, response: Response) -> None:
-        headers = response.headers
+        # Cross Origin
         if self._settings.coop_enabled:
-            headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        else:
-            with contextlib.suppress(KeyError):
-                del headers["Cross-Origin-Opener-Policy"]
+            headers.append(("Cross-Origin-Opener-Policy", "same-origin"))
         if self._settings.coep_enabled:
-            # Allow switching between require-corp and credentialless.
-            headers["Cross-Origin-Embedder-Policy"] = self._settings.coep_header_value
-        else:
-            with contextlib.suppress(KeyError):
-                del headers["Cross-Origin-Embedder-Policy"]
+            headers.append(
+                ("Cross-Origin-Embedder-Policy", self._settings.coep_header_value)
+            )
         if self._settings.corp_enabled:
-            headers["Cross-Origin-Resource-Policy"] = self._settings.corp_header_value
-        else:
-            with contextlib.suppress(KeyError):
-                del headers["Cross-Origin-Resource-Policy"]
+            headers.append(
+                ("Cross-Origin-Resource-Policy", self._settings.corp_header_value)
+            )
 
-    def _apply_frame_options(self, response: Response) -> None:
-        headers = response.headers
-        value = self._settings.security_x_frame_options.strip()
-        if value:
-            headers["X-Frame-Options"] = value
-        else:
-            with contextlib.suppress(KeyError):
-                del headers["X-Frame-Options"]
+        # Frame Options
+        if value := self._settings.security_x_frame_options.strip():
+            headers.append(("X-Frame-Options", value))
 
-    def _apply_permissions_policy(self, response: Response) -> None:
-        headers = response.headers
-        value = self._settings.security_permissions_policy.strip()
-        if value:
-            headers["Permissions-Policy"] = value
-        else:
-            with contextlib.suppress(KeyError):
-                del headers["Permissions-Policy"]
+        # Permissions-Policy
+        if value := self._settings.security_permissions_policy.strip():
+            headers.append(("Permissions-Policy", value))
 
-    def _apply_content_type_options(self, response: Response) -> None:
-        headers = response.headers
-        value = self._settings.security_x_content_type_options.strip()
-        if value:
-            headers["X-Content-Type-Options"] = value
-        else:
-            with contextlib.suppress(KeyError):
-                del headers["X-Content-Type-Options"]
+        # X-Content-Type-Options
+        if value := self._settings.security_x_content_type_options.strip():
+            headers.append(("X-Content-Type-Options", value))
 
-    def _apply_referrer_policy(self, response: Response) -> None:
-        headers = response.headers
-        value = self._settings.security_referrer_policy.strip()
-        if value:
-            headers["Referrer-Policy"] = value
-        else:
-            with contextlib.suppress(KeyError):
-                del headers["Referrer-Policy"]
+        # Referrer-Policy
+        if value := self._settings.security_referrer_policy.strip():
+            headers.append(("Referrer-Policy", value))
+
+        return headers

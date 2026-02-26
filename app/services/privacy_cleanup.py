@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Retention helpers for privacy-sensitive artifacts."""
 
 import asyncio

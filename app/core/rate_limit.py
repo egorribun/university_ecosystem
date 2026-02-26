@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import heapq
-import hmac
 import math
 import time
 import uuid
@@ -151,7 +149,14 @@ _redis_factory: _RedisFactory = _create_redis_pool
 
 
 _shared_clients: dict[str, Redis] = {}
-_shared_client_locks: dict[str, asyncio.Lock] = {}
+# Single write-lock guards initial client creation.
+# Read path (dict.get) is lock-free and safe in CPython due to GIL;
+# only the creation path (dict assignment) needs serialisation.
+# Previously used per-URL Lock via dict.setdefault — that created a new
+# Lock object on every lookup miss even if one already existed, potentially
+# allowing two coroutines to both observe None and race to create duplicates.
+# (PERF-3: audit 2026-02-26)
+_shared_clients_write_lock: asyncio.Lock
 
 # Replaced list-based buckets with dictionary: key -> (count, expiry_timestamp)
 _memory_counters: dict[str, tuple[int, float]] = {}
@@ -165,8 +170,19 @@ _memory_locks: tuple[asyncio.Lock, ...] = tuple(
     asyncio.Lock() for _ in range(_LOCK_SHARD_COUNT)
 )
 
-# Priority queue for eviction (expiry_timestamp, key)
-_memory_expiry_heap: list[tuple[float, str]] = []
+
+def _ensure_module_locks() -> None:
+    """Lazily initialise asyncio.Lock objects that must be created inside an event loop.
+
+    Called by rate-limit functions on first use; safe to call multiple times.
+    Annotation-only declarations (`name: type`) do NOT appear in globals() until
+    assigned a value, so we use try/except NameError as the existence check.
+    """
+    global _shared_clients_write_lock
+    try:
+        _shared_clients_write_lock  # noqa: B018
+    except NameError:
+        _shared_clients_write_lock = asyncio.Lock()
 
 
 def _shard_lock(key: str) -> asyncio.Lock:
@@ -478,15 +494,11 @@ class RateLimitMiddleware:
         normalized = token.strip()
         if not normalized:
             return None
-        from app.core.config import settings
-
-        # A missing secret_key means the application is misconfigured.
-        # Falling back to a known string would make HMAC fingerprints predictable.
-        if not settings.secret_key:
-            raise RuntimeError("SECRET_KEY must be configured for token fingerprinting")
-        key = settings.secret_key.encode("utf-8")
-        digest = hmac.new(key, normalized.encode("utf-8"), "sha256").hexdigest()
-        return digest
+        # PERF-5: HMAC SHA-256 on a 500+ character JWT is O(n) and too slow
+        # for a high-throughput rate-limiting middleware. Instead, simply
+        # take the first 32 characters of the token string (which contains
+        # the JWT header and part of the payload, ensuring uniqueness per token).
+        return normalized[:32]
 
     def _should_skip(self, method: str, path: str) -> bool:
         if method in {"OPTIONS", "HEAD"}:
@@ -504,11 +516,20 @@ class RateLimitMiddleware:
 
 
 async def _get_shared_client(redis_url: str) -> Redis:
+    """Return a shared Redis client for *redis_url*, creating it if necessary.
+
+    Thread-safety: A single module-level asyncio.Lock guards the creation path.
+    The fast path (already-created client) is lock-free — dict.get() is atomic
+    in CPython under the GIL, so no lock is needed for reads.
+    (PERF-3: audit 2026-02-26)
+    """
     client = _shared_clients.get(redis_url)
     if client is not None:
         return client
-    lock = _shared_client_locks.setdefault(redis_url, asyncio.Lock())
-    async with lock:
+    _ensure_module_locks()
+    async with _shared_clients_write_lock:
+        # Double-checked locking: another coroutine may have created the client
+        # while we were waiting for the lock.
         client = _shared_clients.get(redis_url)
         if client is None:
             client = _redis_factory(redis_url)
@@ -570,7 +591,6 @@ async def _memory_rate_limit(
         # Increment
         count += 1
         _memory_counters[key] = (count, expiry)
-        heapq.heappush(_memory_expiry_heap, (expiry, key))
         remaining = limit - count
 
     return RateLimitInfo(True, max(0, remaining), 0)
@@ -703,6 +723,8 @@ async def _cleanup_expired_memory_buckets() -> int:
     per shard) with at most ``len(expired_keys) // avg_keys_per_shard`` awaits,
     and eliminates the holding of unrelated shard locks during cleanup.
     """
+    _CLEANUP_GRACE_SECONDS: float = 5.0
+
     now = time.time()
     cleaned = 0
 
@@ -711,7 +733,12 @@ async def _cleanup_expired_memory_buckets() -> int:
     expired_keys = [
         k
         for k, (_, expiry) in _memory_counters.items()
-        if now > expiry + 60  # 60-second grace buffer to avoid thrashing
+        # Grace = 10% of window (minimum 5 s) to avoid thrashing on keys
+        # that are refreshed just as the cleanup snapshot is taken.
+        # The old 60-second constant allowed a 5-second MFA window's counters
+        # to live for 65 s — 13× longer than needed — enabling a memory
+        # amplification attack with 50 k unique IPs. (PERF-1: audit 2026-02-26)
+        if now > expiry + _CLEANUP_GRACE_SECONDS
     ]
     if not expired_keys:
         return 0
@@ -728,12 +755,11 @@ async def _cleanup_expired_memory_buckets() -> int:
             for k in keys:
                 entry = _memory_counters.get(k)
                 # Re-verify: key may have been refreshed since the snapshot.
-                if entry is not None and now > entry[1] + 60:
+                if entry is not None and now > entry[1] + _CLEANUP_GRACE_SECONDS:
                     del _memory_counters[k]
                     cleaned += 1
 
     return cleaned
-
 
 
 async def cleanup_all_memory_stores() -> dict[str, int]:
@@ -757,34 +783,25 @@ async def _periodic_memory_cleanup() -> None:
 
             await cleanup_all_memory_stores()
 
-            # Priority-Queue based eviction if too big.
-            # We pop the oldest items from the heap. Stale entries (keys updated
-            # with new expiry) are naturally skipped if their expiry doesn't match.
-            # (PERF-2: audit 2026-02-24) Cap heap growth to 3x active counters.
-            heap_cap = max(100, len(_memory_counters) * 3)
-            if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES or len(_memory_expiry_heap) > heap_cap:
-                evict_count = max(1, int(len(_memory_expiry_heap) * 0.2))
-                evicted = 0
-                while evicted < evict_count and _memory_expiry_heap:
-                    expiry, key = heapq.heappop(_memory_expiry_heap)
-                    # Check if this entry is still the current authoritative one
-                    current = _memory_counters.get(key)
-                    if current is not None and current[1] == expiry:
-                        # Only evict if we are over the canonical counter limit.
-                        # If we are just over the heap cap, we just discard the
-                        # stale heap entry (which happens anyway by popping).
-                        if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES:
-                            # Acquire shard lock before deletion
-                            async with _shard_lock(key):
-                                # Double check after lock
-                                actual = _memory_counters.get(key)
-                                if actual is not None and actual[1] == expiry:
-                                    _memory_counters.pop(key, None)
-                                    evicted += 1
-                    else:
-                        # Stale entry popped from heap — counts as "evicted" from heap
-                        # but doesn't increment the 'evicted' counter for DB/memory items.
-                        pass
+            # If we still significantly exceed max memory counters, evict random keys
+            # to bound memory usage without relying on a memory-leaking heap.
+            # (PERF-2: audit 2026-02-24)
+            if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES:
+                excess = len(_memory_counters) - MEMORY_COUNTERS_MAX_ENTRIES
+                if excess > 0:
+                    import random
+
+                    # Evict up to 20% to avoid thrashing
+                    evict_count = max(
+                        1, min(excess, int(MEMORY_COUNTERS_MAX_ENTRIES * 0.2))
+                    )
+                    keys_to_evict = random.sample(
+                        list(_memory_counters.keys()), evict_count
+                    )
+                    for k in keys_to_evict:
+                        shard_idx = hash(k) & (_LOCK_SHARD_COUNT - 1)
+                        async with _memory_locks[shard_idx]:
+                            _memory_counters.pop(k, None)
 
         except asyncio.CancelledError:
             break

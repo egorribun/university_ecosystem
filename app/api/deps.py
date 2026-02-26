@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
@@ -102,6 +104,7 @@ async def get_current_user(
     if not session:
         # SQLA Select is fine to use with protocol if it matches
         from sqlalchemy import select
+
         res_s = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
         session = res_s.scalars().first()
         if not session or session.revoked_at:
@@ -274,7 +277,7 @@ def get_locale(
 
 def get_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatService":  # type: ignore # noqa: F821
+) -> ChatService:  # type: ignore # noqa: F821
     from app.repositories.chat_repository import ChatRepository
     from app.services.chat.attachment_service import ChatAttachmentService
     from app.services.chat.command_service import ChatCommandService
@@ -293,7 +296,7 @@ def get_chat_service(
 
 def get_read_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> "ChatService":  # type: ignore # noqa: F821
+) -> ChatService:  # type: ignore # noqa: F821
     from app.repositories.chat_repository import ChatRepository
     from app.services.chat.attachment_service import ChatAttachmentService
     from app.services.chat.command_service import ChatCommandService
@@ -424,11 +427,15 @@ def get_session_service(
 
 async def get_geolocation_service() -> Any:
     from app.services.geolocation import get_geolocation_service_instance
+
     return await get_geolocation_service_instance()
+
 
 async def get_redis_session_service() -> Any:
     from app.services.auth.redis_session import RedisSessionService
+
     return RedisSessionService()
+
 
 async def get_login_service(
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],

@@ -43,9 +43,16 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
     which is a silent, hard-to-debug data-loss bug. (TD-2: audit 2026-02-24)
     """
 
-    _BAD_CONTENT_LENGTH = JSONResponse(
-        status_code=400, content={"detail": "Invalid Content-Length header"}
-    )
+    _BAD_CONTENT_LENGTH_BODY: bytes = b'{"detail":"Invalid Content-Length header"}'
+
+    @staticmethod
+    def _bad_content_length_response() -> Response:
+        """Return a fresh response per call to prevent header pollution."""
+        return Response(
+            content=ContentSizeLimitMiddleware._BAD_CONTENT_LENGTH_BODY,
+            status_code=400,
+            media_type="application/json",
+        )
 
     def __init__(self, app, *, max_bytes: int = 5 * 1024 * 1024) -> None:
         super().__init__(app)
@@ -58,7 +65,7 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
             try:
                 cl = int(cl_header)
             except ValueError:
-                return self._BAD_CONTENT_LENGTH
+                return self._bad_content_length_response()
             if cl > self._max_bytes:
                 return self._oversized_response(self._max_bytes)
 
@@ -67,31 +74,35 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         # payloads without Content-Length would bypass the fast path.
         method = request.method.upper()
         path = request.url.path or ""
-        has_body = (
-            method in {"POST", "PUT", "PATCH", "DELETE"}
-            and not path.startswith("/ws")
+        has_body = method in {"POST", "PUT", "PATCH", "DELETE"} and not path.startswith(
+            "/ws"
         )
         if has_body and cl_header is None:
-            body_chunks: list[bytes] = []
-            accumulated = 0
-            async for chunk in request.stream():
-                accumulated += len(chunk)
-                if accumulated > self._max_bytes:
-                    return self._oversized_response(self._max_bytes)
-                body_chunks.append(chunk)
-
-            # Re-inject the accumulated body so downstream handlers can read it.
-            # BaseHTTPMiddleware wraps the scope/receive, so we re-create the
-            # request with a synthetic receive callable.
-            body_bytes = b"".join(body_chunks)
-
-            async def _replay_receive() -> dict:
-                return {"type": "http.request", "body": body_bytes, "more_body": False}
-
-            request = Request(request.scope, receive=_replay_receive)
+            new_request, error_response = await self._read_and_replay_body(request)
+            if error_response:
+                return error_response
+            request = new_request
 
         from fastapi import Response
+
         return cast(Response, await call_next(request))
+
+    async def _read_and_replay_body(self, request: Request):
+        """Consume request body safely within limits and return an injected replay Request."""
+        body_chunks: list[bytes] = []
+        accumulated = 0
+        async for chunk in request.stream():
+            accumulated += len(chunk)
+            if accumulated > self._max_bytes:
+                return None, self._oversized_response(self._max_bytes)
+            body_chunks.append(chunk)
+
+        body_bytes = b"".join(body_chunks)
+
+        async def _replay_receive() -> dict:
+            return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+        return Request(request.scope, receive=_replay_receive), None
 
     @staticmethod
     def _oversized_response(limit: int) -> JSONResponse:
@@ -149,6 +160,8 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         CSRFMiddleware,
         exempt_prefixes=(
             "/internal",
+            "/api/v1/csp-report",
+            "/api/v1/auth/logout",
             "/api/v2/auth/token",  # OAuth2 password/refresh grant
             "/api/v2/auth/webauthn",  # WebAuthn challenge/response flow
         ),

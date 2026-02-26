@@ -5,10 +5,10 @@ import logging
 import sqlite3
 import threading
 import time
+from collections.abc import AsyncGenerator, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import event, text
@@ -22,11 +22,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
-from collections.abc import AsyncGenerator
-
-from app.core.config import Settings
+from app.core.config import Settings, settings
 from app.core.protocols import AsyncDatabaseSession
-from app.core.config import settings
 
 
 # Fix for aiosqlite/sqlite3 deprecation warning
@@ -297,13 +294,14 @@ def create_session_factory(
     return engine, session_factory, read_replica_engine
 
 
-
 T = TypeVar("T")
+
 
 class _LazyProxy:
     """A proxy that delegates all attribute access and calls to an underlying
     object that is initialized later. (TD-4)
     """
+
     __slots__ = ("_get_target", "_name")
 
     def __init__(self, get_target: Callable[[], Any], name: str):
@@ -322,8 +320,16 @@ class _LazyProxy:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._get_current_object(), name)
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        setattr(self._get_current_object(), name, value)
+    def __setattr__(self, name: str, value: object) -> None:
+        # Mutation of the proxy target is prohibited.
+        # All engine/session-factory configuration must occur before
+        # init_database() is called. Allowing post-init mutation would
+        # create race conditions in multi-threaded pool event callbacks.
+        # (RZ-5: audit 2026-02-26)
+        raise AttributeError(
+            f"Direct attribute mutation on '{self._name}' database proxy is prohibited. "
+            "Configure the engine through Settings before calling init_database()."
+        )
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self._get_current_object()(*args, **kwargs)
@@ -333,6 +339,7 @@ class _LazyProxy:
             return repr(self._get_current_object())
         except RuntimeError:
             return f"<_LazyProxy for {self._name} (uninitialized)>"
+
 
 # ── Private storage for actual engines/factories ───────────────────────────
 _engine: AsyncEngine | None = None
@@ -345,8 +352,12 @@ _read_session_factory: async_sessionmaker[AsyncSession] | None = None
 # work even if imported before init_database() is called.
 engine: Any = _LazyProxy(lambda: _engine, "engine")
 async_session: Any = _LazyProxy(lambda: _async_session, "async_session")
-read_replica_engine: Any = _LazyProxy(lambda: _read_replica_engine, "read_replica_engine")
-read_session_factory: Any = _LazyProxy(lambda: _read_session_factory, "read_session_factory")
+read_replica_engine: Any = _LazyProxy(
+    lambda: _read_replica_engine, "read_replica_engine"
+)
+read_session_factory: Any = _LazyProxy(
+    lambda: _read_session_factory, "read_session_factory"
+)
 
 if TYPE_CHECKING:
     # Tell type checkers these are the real types for better IDE support
@@ -374,7 +385,9 @@ def init_database(current_settings: Settings | None = None) -> None:
     logger.info(
         "Database initialised: %s (replica: %s)",
         s.database_url,
-        s.database_read_replica_url if getattr(s, "database_read_replica_url", None) else "none",
+        s.database_read_replica_url
+        if getattr(s, "database_read_replica_url", None)
+        else "none",
     )
 
 

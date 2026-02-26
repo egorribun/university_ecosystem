@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
@@ -108,5 +110,7 @@ class ActiveSessionRepository(
         if not row:
             return None
         return row[0], row[1]
+
+
 def get_active_session_repository(db: AsyncDatabaseSession) -> ActiveSessionRepository:
     return ActiveSessionRepository(db)

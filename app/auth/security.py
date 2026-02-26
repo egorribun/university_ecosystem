@@ -403,20 +403,34 @@ def decode_token(token: str) -> dict | None:
             # But we can be explicit if we find it's a PEM block.
             verification_key: Any = secret
             if settings.algorithm == "RS256" and secret.startswith("-----BEGIN"):
-                 try:
-                     # If it's a private key, extract public key for verification.
-                     # This is standard practice to separate signing/verifying.
-                     if "PRIVATE KEY" in secret:
-                         key = serialization.load_pem_private_key(secret.encode(), password=None)
-                         if hasattr(key, "public_key"):
-                             verification_key = key.public_key().public_bytes(
-                                 encoding=serialization.Encoding.PEM,
-                                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
-                             ).decode()
-                 except Exception:
-                     pass
+                if "PRIVATE KEY" in secret:
+                    try:
+                        # If it's a private key, extract public key for verification.
+                        # This is standard practice to separate signing/verifying.
+                        key = serialization.load_pem_private_key(
+                            secret.encode(), password=None
+                        )
+                        if hasattr(key, "public_key"):
+                            verification_key = (
+                                key.public_key()
+                                .public_bytes(
+                                    encoding=serialization.Encoding.PEM,
+                                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                                )
+                                .decode()
+                            )
+                    except Exception as exc:
+                        _logger.error(
+                            "Failed to extract public key from PEM for RS256 verification: %s",
+                            exc,
+                        )
+                        continue
+                else:
+                    verification_key = secret
 
-            payload = jwt.decode(token, verification_key, algorithms=[settings.algorithm])
+            payload = jwt.decode(
+                token, verification_key, algorithms=[settings.algorithm]
+            )
             return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:
             continue

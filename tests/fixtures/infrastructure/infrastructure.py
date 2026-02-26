@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import secrets
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,6 +10,10 @@ from app import main
 from app.core import rate_limit as ratelimit_module
 from app.core.config import settings
 from asgi_lifespan import LifespanManager
+
+# Static CSRF token for test clients — used by both the cookie and the header.
+# Using a fixed value keeps debugging simple and removes non-determinism.
+_TEST_CSRF_TOKEN: str = secrets.token_urlsafe(32)
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -51,7 +58,17 @@ async def app():
 
 @pytest_asyncio.fixture
 async def async_client(app, prepare_database):
-    """Client for testing API endpoints (with /api/v1 prefix)."""
+    """Client for testing API endpoints (with /api/v1 prefix).
+
+    Pre-configures a CSRF token cookie and the matching X-CSRF-Token header
+    so that mutation requests (POST/PUT/PATCH/DELETE) are accepted by the
+    CSRFMiddleware without a separate setup step in each test.
+
+    Note: tests that POST to /auth/login via form data (not Bearer) rely on
+    this pre-configuration because the login endpoint IS a mutation and CSRF
+    protection applies.  Token-based callers (Authorization: Bearer …) bypass
+    CSRF automatically; this pre-set is for browser-flow integration tests.
+    """
     import httpx
 
     transport = httpx.ASGITransport(app=app)
@@ -59,13 +76,32 @@ async def async_client(app, prepare_database):
         transport=transport,
         base_url="http://testserver/api/v1",
         follow_redirects=True,
+        headers={"X-CSRF-Token": _TEST_CSRF_TOKEN},
     ) as ac:
+        ac.cookies.set("csrf_token", _TEST_CSRF_TOKEN, domain="testserver.local")
+
+        # Intercept responses to automatically apply rotated CSRF tokens to future requests
+        original_send = ac.send
+
+        async def _intercepted_send(*args, **kwargs):
+            response = await original_send(*args, **kwargs)
+            for header in response.headers.get_list("set-cookie"):
+                if header.lower().startswith("csrf_token="):
+                    new_token = header.split(";")[0].split("=")[1]
+                    ac.headers["X-CSRF-Token"] = new_token
+            return response
+
+        ac.send = _intercepted_send
+
         yield ac
 
 
 @pytest_asyncio.fixture
 async def root_client(app, prepare_database):
-    """Client for testing root-level endpoints (no /api/v1 prefix)."""
+    """Client for testing root-level endpoints (no /api/v1 prefix).
+
+    Also pre-configures CSRF token for mutation request compatibility.
+    """
     import httpx
 
     transport = httpx.ASGITransport(app=app)
@@ -73,5 +109,21 @@ async def root_client(app, prepare_database):
         transport=transport,
         base_url="http://testserver",
         follow_redirects=True,
+        headers={"X-CSRF-Token": _TEST_CSRF_TOKEN},
     ) as ac:
+        ac.cookies.set("csrf_token", _TEST_CSRF_TOKEN, domain="testserver.local")
+
+        # Intercept responses to automatically apply rotated CSRF tokens to future requests
+        original_send = ac.send
+
+        async def _intercepted_send(*args, **kwargs):
+            response = await original_send(*args, **kwargs)
+            for header in response.headers.get_list("set-cookie"):
+                if header.lower().startswith("csrf_token="):
+                    new_token = header.split(";")[0].split("=")[1]
+                    ac.headers["X-CSRF-Token"] = new_token
+            return response
+
+        ac.send = _intercepted_send
+
         yield ac
