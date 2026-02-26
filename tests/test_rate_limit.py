@@ -530,7 +530,9 @@ def test_parse_rate_limit_accepts_known_units(
     assert parsed == (count, expected_seconds)
 
 
-@hypo_settings(max_examples=25)
+@hypo_settings(
+    max_examples=25, suppress_health_check=[HealthCheck.filter_too_much]
+)
 @given(
     value=st.text().filter(
         lambda raw: not raw or raw.strip().isdigit() or raw.count("/") > 1

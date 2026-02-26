@@ -433,6 +433,18 @@ vi.mock("@/api/client", () => ({
   SKIP_UNAUTHORIZED_HEADER: "X-Client-Skip-Unauthorized",
 }))
 
+vi.mock("@/api/generated/client.gen", () => ({
+  client: {
+    get: (opts: any) => apiGetMock(typeof opts === "string" ? opts : opts.url),
+    post: (opts: any) => apiPostMock(typeof opts === "string" ? opts : opts.url, opts?.body),
+    patch: (opts: any) => apiPatchMock(typeof opts === "string" ? opts : opts.url, opts?.body),
+    delete: (opts: any) => apiDeleteMock(typeof opts === "string" ? opts : opts.url),
+    put: (opts: any) => apiPutMock(typeof opts === "string" ? opts : opts.url, opts?.body),
+    setConfig: vi.fn(),
+    getConfig: vi.fn(),
+  },
+}))
+
 function LanguageToggleHarness({ children }: { children: ReactNode }) {
   const { language, setLanguage } = useLanguage()
 

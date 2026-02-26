@@ -23,12 +23,18 @@ import type {
 } from "@/types/Mfa"
 
 export const startTotpEnrollment = async (payload?: TotpEnrollmentStartPayload) => {
-  const { data } = await startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost({ body: payload })
+  const { data } = await startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost({
+    body: payload,
+    throwOnError: true,
+  })
   return data as TotpEnrollmentStart
 }
 
 export const confirmTotpEnrollment = async (payload: TotpEnrollmentConfirmPayload) => {
-  const { data } = await confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost({ body: payload })
+  const { data } = await confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost({
+    body: payload,
+    throwOnError: true,
+  })
   return data as MfaTotpEnrollment
 }
 
@@ -40,6 +46,7 @@ export const listTotpEnrollments = async () => {
 export const deleteTotpEnrollment = async (enrollmentId: string) => {
   const { data } = await deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete({
     path: { enrollment_id: enrollmentId },
+    throwOnError: true,
   })
   return data as MfaFactorStatus
 }
@@ -47,21 +54,27 @@ export const deleteTotpEnrollment = async (enrollmentId: string) => {
 export const deletePendingTotpEnrollment = async (enrollmentId: string) => {
   await deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete({
     path: { enrollment_id: enrollmentId },
+    throwOnError: true,
   })
 }
 
 export const verifyMfaChallenge = async (payload: MfaVerifyPayload) => {
-  const { data } = await verifyMfaChallengeApiV1AuthMfaVerifyPost({ body: payload })
+  const { data } = await verifyMfaChallengeApiV1AuthMfaVerifyPost({
+    body: payload,
+    throwOnError: true,
+  })
   return data as { access_token: string; token_type: string }
 }
 
 export const requestStepUpChallenge = async () => {
-  const { data } = await requestStepUpApiV1AuthMfaStepUpPost()
+  const { data } = await requestStepUpApiV1AuthMfaStepUpPost({ throwOnError: true })
   return data as StepUpResponse
 }
 
 export const startWebAuthnRegistration = async () => {
-  const { data } = await startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost()
+  const { data } = await startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost({
+    throwOnError: true,
+  })
   return data as { publicKey: unknown; challenge_token: string }
 }
 
@@ -72,23 +85,27 @@ export const confirmWebAuthnRegistration = async (payload: {
 }) => {
   const { data } = await confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost({
     body: payload as any,
+    throwOnError: true,
   })
   return data as MfaFactorStatus
 }
 
 export const listWebAuthnCredentials = async () => {
-  const { data } = await listWebauthnCredentialsApiV1AuthMfaWebauthnGet()
+  const { data } = await listWebauthnCredentialsApiV1AuthMfaWebauthnGet({ throwOnError: true })
   return data as unknown[]
 }
 
 export const deleteWebAuthnCredential = async (credentialId: string) => {
   const { data } = await deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete({
     path: { credential_id: credentialId },
+    throwOnError: true,
   })
   return data as MfaFactorStatus
 }
 
 export const generateRecoveryCodes = async () => {
-  const { data } = await generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost()
+  const { data } = await generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost({
+    throwOnError: true,
+  })
   return data as { codes: string[] }
 }

@@ -42,26 +42,32 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
     const sanitized = value.replace(/\D/g, "")
 
     if (sanitized.length === 0) {
-      const newDigits = [...digits]
-      newDigits[index] = ""
-      setDigits(newDigits)
+      setDigits((prev) => {
+        const next = [...prev]
+        next[index] = ""
+        return next
+      })
       return
     }
 
     if (sanitized.length === 1) {
-      const newDigits = [...digits]
-      newDigits[index] = sanitized
-      setDigits(newDigits)
+      setDigits((prev) => {
+        const next = [...prev]
+        next[index] = sanitized
+        return next
+      })
 
       if (index < 5) {
         inputRefs.current[index + 1]?.focus()
       }
     } else if (sanitized.length > 1) {
-      const newDigits = [...digits]
-      for (let i = 0; i < sanitized.length && index + i < 6; i++) {
-        newDigits[index + i] = sanitized[i]
-      }
-      setDigits(newDigits)
+      setDigits((prev) => {
+        const next = [...prev]
+        for (let i = 0; i < sanitized.length && index + i < 6; i++) {
+          next[index + i] = sanitized[i]
+        }
+        return next
+      })
 
       const lastIndex = Math.min(index + sanitized.length, 5)
       inputRefs.current[lastIndex]?.focus()
@@ -91,11 +97,13 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
     const sanitized = pastedData.replace(/\D/g, "").slice(0, 6)
 
     if (sanitized.length > 0) {
-      const newDigits = [...digits]
-      for (let i = 0; i < 6; i++) {
-        newDigits[i] = sanitized[i] || ""
-      }
-      setDigits(newDigits)
+      setDigits((prev) => {
+        const next = [...prev]
+        for (let i = 0; i < 6; i++) {
+          next[i] = sanitized[i] || ""
+        }
+        return next
+      })
       const lastIndex = Math.min(sanitized.length - 1, 5)
       inputRefs.current[lastIndex]?.focus()
     }
@@ -116,6 +124,15 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
       void onSubmit(code)
     }
   }, [code, loading, onSubmit, localError, error])
+
+  useEffect(() => {
+    // Auto-focus the first input on initial render
+    if (digits.every((d) => d === "")) {
+      inputRefs.current[0]?.focus()
+    }
+    // We only want this on mount for the "fresh" state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="w-full">
@@ -138,10 +155,6 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               key={index}
               ref={(el) => {
                 inputRefs.current[index] = el
-                // Auto-focus the first input on initial render if it's empty
-                if (el && index === 0 && digits.every((d) => d === "")) {
-                  setTimeout(() => el.focus(), 0)
-                }
               }}
               type="text"
               inputMode="numeric"
@@ -150,7 +163,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={index === 0}
               disabled={Boolean(loading)}
-              aria-label={index === 0 ? t("mfa.otp.methods.totp") : undefined}
+              aria-label={t("mfa.otp.methods.totp") + " - digit " + (index + 1)}
               onChange={(e) => handleChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
               onPaste={index === 0 ? handlePaste : undefined}

@@ -9,6 +9,7 @@ import {
   type WeekdayConfig,
   type LessonTypeConfig,
   scheduleGroupsQueryKey,
+  scheduleQueryKey,
   minimalWeekdayFallback,
   minimalLessonTypeFallback,
   defaultLessonTypeColor,

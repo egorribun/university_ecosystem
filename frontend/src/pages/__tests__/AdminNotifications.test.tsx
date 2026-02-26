@@ -89,7 +89,7 @@ describe("AdminNotifications page", () => {
     expect(await screen.findByText("Webhook failed")).toBeInTheDocument()
     expect(screen.getByText("Total jobs: 2")).toBeInTheDocument()
 
-    const checkbox = await screen.findByRole("checkbox", { name: /Select job uuid-1/i })
+    const checkbox = await screen.findByRole("checkbox", { name: /Select job 550e8400-e29b-41d4-a716-446655440000/i })
     await userEvent.click(checkbox)
     expect(checkbox).toBeChecked()
 
@@ -99,7 +99,7 @@ describe("AdminNotifications page", () => {
   it("retries and purges selected jobs", async () => {
     const { queryClient } = renderPage()
 
-    const firstJobCheckbox = await screen.findByRole("checkbox", { name: /Select job uuid-1/i })
+    const firstJobCheckbox = await screen.findByRole("checkbox", { name: /Select job 550e8400-e29b-41d4-a716-446655440000/i })
     await userEvent.click(firstJobCheckbox)
 
     const retryButton = await screen.findByRole("button", { name: /Retry selected/i })

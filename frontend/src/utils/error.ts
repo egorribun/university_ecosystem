@@ -81,8 +81,7 @@ export const extractApiError = (error: unknown, fallbackMessage = "An unexpected
  * Creates a generic fallback function for queries/mutations.
  */
 export const createFallback = <T>(fallbackValue: T) => {
-  return (error: unknown): T => {
-    console.warn("Recovering from error with fallback:", extractApiError(error))
+  return (_error: unknown): T => {
     return fallbackValue
   }
 }

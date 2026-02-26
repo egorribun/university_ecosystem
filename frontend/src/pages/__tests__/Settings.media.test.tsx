@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -38,6 +39,37 @@ vi.mock("@/hooks/usePushPreferences", () => ({
   }),
 }))
 
+vi.mock("@/stores/useAuthStore", () => ({
+  useAuthStore: () => ({
+    user: {
+      id: "uuid-1",
+      email: "test@example.com",
+      full_name: "Test User",
+      role: "student",
+      group_id: "group-1",
+      avatar_url: "/media/avatars/original.png",
+      avatar_url_optimized: null,
+      cover_url: "/media/covers/original.jpg",
+      cover_url_optimized: null,
+      profile_detail: undefined,
+      education_path: undefined,
+      preferences: { dnd_enabled: false, timezone: null, dnd_start: null, dnd_end: null },
+      spotify_connected: false,
+      is_active: true,
+      mfa_required: false,
+      mfa_default_method: null,
+      mfa_last_verified_at: null,
+      recovery_codes_left: 0,
+      totp_enrollments: [],
+      mfa_challenges: [],
+    },
+    loading: false,
+    pendingMfa: null,
+    authOperation: false,
+    setUser: vi.fn(),
+  }),
+}))
+
 const baseUser: User = {
   id: "uuid-1",
   email: "test@example.com",
@@ -48,10 +80,10 @@ const baseUser: User = {
   avatar_url_optimized: null,
   cover_url: "/media/covers/original.jpg",
   cover_url_optimized: null,
-    profile_detail: undefined,
-    education_path: undefined,
-    preferences: { dnd_enabled: false, timezone: null, dnd_start: null, dnd_end: null },
-    spotify_connected: false,
+  profile_detail: undefined,
+  education_path: undefined,
+  preferences: { dnd_enabled: false, timezone: null, dnd_start: null, dnd_end: null },
+  spotify_connected: false,
   is_active: true,
   mfa_required: false,
   mfa_default_method: null,
@@ -112,6 +144,7 @@ describe("Settings media actions", () => {
     const { mockSetUser } = renderSettings()
 
     fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await userEvent.click(await screen.findByText(tSettings("media.avatar.title")))
 
     await waitFor(() =>
       expect(document.querySelectorAll("input[type='file']").length).toBeGreaterThan(1)
@@ -153,6 +186,7 @@ describe("Settings media actions", () => {
 
     renderSettings()
     fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await userEvent.click(await screen.findByText(tSettings("media.avatar.title")))
     await waitFor(() => expect(document.querySelector("input[type='file']")).toBeTruthy())
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']")
     const file = new File(["avatar"], "avatar.png", { type: "image/png" })
@@ -181,6 +215,7 @@ describe("Settings media actions", () => {
     const { mockSetUser } = renderSettings()
 
     fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await userEvent.click(await screen.findByText(tSettings("media.cover.title")))
 
     await waitFor(() =>
       expect(document.querySelectorAll("input[type='file']").length).toBeGreaterThan(1)
@@ -216,6 +251,7 @@ describe("Settings media actions", () => {
     const { mockSetUser } = renderSettings()
 
     fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await userEvent.click(await screen.findByText(tSettings("media.avatar.title")))
 
     const deleteButton = await screen.findByRole("button", {
       name: tSettings("media.avatar.delete"),
@@ -238,6 +274,7 @@ describe("Settings media actions", () => {
     const { mockSetUser } = renderSettings()
 
     fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await userEvent.click(await screen.findByText(tSettings("media.cover.title")))
 
     const deleteButton = await screen.findByRole("button", {
       name: tSettings("media.cover.remove"),

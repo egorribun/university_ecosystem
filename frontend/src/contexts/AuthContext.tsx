@@ -38,7 +38,6 @@ export { PROFILE_CACHE_STORAGE_KEY } from "@/hooks/auth/useProfileSync"
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const {
-    sessionSigningKey,
     updateSessionSigningKey,
     sessionSigningKeyPromiseRef,
     ensureSessionSigningKey,
@@ -52,7 +51,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     authOperation,
     setAuthOperation,
   } = useProfileSync(
-    sessionSigningKey,
     updateSessionSigningKey,
     sessionSigningKeyPromiseRef,
     ensureSessionSigningKey

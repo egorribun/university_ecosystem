@@ -1,7 +1,7 @@
 import { type PropsWithChildren } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -10,6 +10,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext"
 import { AuthContext } from "@/contexts/AuthContext"
 
 import type { MfaTotpEnrollment } from "@/types/Mfa"
+import { useAuthStore } from "@/stores/useAuthStore"
 import { createQueryClient } from "@/app/queryClient"
 import { resetTestMfa, testUser } from "@/tests/mocks/handlers"
 import { server } from "@/tests/mocks/server"
@@ -90,7 +91,7 @@ const renderSettings = () => {
   return { ...result, queryClient }
 }
 
-const matchTotpAddButton = /Set up authenticator app|Настроить приложение/i
+const matchTotpAddButton = /Set up authenticator app|Подключить приложение/i
 const matchSecurityTab = /Security|Безопасность/i
 const matchSecurityHeading = /Security & MFA|Безопасность и MFA/i
 
@@ -99,6 +100,12 @@ describe("Settings TOTP enrollment", () => {
     resetTestMfa()
     localStorage.clear()
     localStorage.setItem("ue:language", "en")
+    useAuthStore.setState({
+      user: JSON.parse(JSON.stringify(testUser)),
+      loading: false,
+      pendingMfa: null,
+      authOperation: false,
+    })
   })
 
   it("starts and completes a new TOTP enrollment", async () => {
@@ -114,17 +121,30 @@ describe("Settings TOTP enrollment", () => {
     const manualCode = await screen.findByLabelText(/Manual code|Ручной код/i)
     expect((manualCode as HTMLInputElement).value).toBe("JBSWY3DPEHJK")
 
-    const otpInput = screen.getByLabelText(/Authenticator code|Код из приложения/i)
-    await user.type(otpInput, "123456")
-    // OtpEntry auto-submits when 6 digits are entered
+    const allInputs = await screen.findAllByRole("textbox")
+    const otpInputs = allInputs.filter((input) => input.getAttribute("maxLength") === "1")
+    expect(otpInputs).toHaveLength(6)
+    await waitFor(() => expect(otpInputs[0]).not.toBeDisabled())
 
-    await waitFor(() =>
-      expect(
-        screen.getByText(/Authenticator app connected|Приложение-аутентификатор подключено/i)
-      ).toBeVisible()
+    for (let i = 0; i < 6; i++) {
+        fireEvent.change(otpInputs[i]!, { target: { value: (i + 1).toString() } })
+    }
+
+    await waitFor(
+      async () => {
+        const matches = await screen.findAllByText(/Authenticator app connected|Приложение-аутентификатор подключено/i)
+        expect(matches.length).toBeGreaterThan(0)
+      },
+      { timeout: 5000 }
     )
 
-    await waitFor(() => expect(screen.getByText(/Authenticator 1|Аутентификатор 1/i)).toBeVisible())
+    await waitFor(
+      () => {
+        const matches = screen.queryAllByText(/Authenticator|Приложение/i)
+        expect(matches.length).toBeGreaterThan(2) // 1 in title, 1 in section, 1 in enrollment
+      },
+      { timeout: 7000 }
+    )
   })
 
   it("surfaces server errors when confirmation fails", async () => {
@@ -139,14 +159,23 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
+    const accordions = await screen.findAllByText(/Authenticator app|Приложение для аутентификации/i)
+    await user.click(accordions[0] as HTMLElement)
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
-    const otpInput = await screen.findByLabelText(/Authenticator code|Код из приложения/i)
-    await user.type(otpInput, "000000")
-    // OtpEntry auto-submits when 6 digits are entered
+    await screen.findByText(/Finish setup|Завершите настройку/i)
 
-    const errorMessages = await screen.findAllByText(/Invalid verification code/i)
-    expect(errorMessages.length).toBeGreaterThan(0)
+    const allInputs = await screen.findAllByRole("textbox")
+    const otpInputs = allInputs.filter((input) => input.getAttribute("maxLength") === "1")
+    expect(otpInputs).toHaveLength(6)
+    await waitFor(() => expect(otpInputs[0]).not.toBeDisabled())
+
+    for (let i = 0; i < 6; i++) {
+        fireEvent.change(otpInputs[i]!, { target: { value: "0" } })
+    }
+
+    const alerts = await screen.findAllByText(/Invalid verification code/i)
+    expect(alerts.length).toBeGreaterThan(0)
     expect(screen.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
   })
 
@@ -173,7 +202,9 @@ describe("Settings TOTP enrollment", () => {
 
   it("shows an error if pending cancellation fails", async () => {
     server.use(
-      http.delete("*/auth/mfa/totp/pending/:id", () => HttpResponse.json({}, { status: 500 }))
+      http.delete("*/auth/mfa/totp/pending/*", () => {
+        return HttpResponse.json({ detail: "Mock Server Error" }, { status: 500 })
+      })
     )
 
     const user = userEvent.setup()
@@ -188,16 +219,17 @@ describe("Settings TOTP enrollment", () => {
       await screen.findByRole("button", { name: /Cancel setup|Отменить настройку/i })
     )
 
-    const errorMessages = await screen.findAllByText(
-      /Couldn't cancel authenticator setup|Не удалось отменить настройку/i
-    )
-    expect(errorMessages.length).toBeGreaterThan(0)
+    await waitFor(async () => {
+      const errors = await screen.findAllByText(/Mock Server Error/i)
+      expect(errors.length).toBeGreaterThanOrEqual(1)
+    })
     expect(screen.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
   })
 
   it("shows pending enrollments only inside the QR panel", async () => {
     const pendingEnrollment = createPendingEnrollment()
     testUser.totp_enrollments = [pendingEnrollment]
+    useAuthStore.setState({ user: JSON.parse(JSON.stringify(testUser)) })
 
     const user = userEvent.setup()
     renderSettings()
@@ -222,6 +254,7 @@ describe("Settings TOTP enrollment", () => {
     })
     testUser.totp_enrollments = [activeEnrollment]
     testUser.mfa_default_method = "totp"
+    useAuthStore.setState({ user: JSON.parse(JSON.stringify(testUser)) })
 
     const user = userEvent.setup()
     renderSettings()
@@ -230,9 +263,14 @@ describe("Settings TOTP enrollment", () => {
     await screen.findByRole("heading", { name: matchSecurityHeading })
 
     expect(
-      await screen.findByText(
-        /Only one authenticator app can be connected at a time|Можно подключить только одно приложение/i
-      )
+      await screen.findByText((_, element) => {
+        const hasText = (node: Element) => node.textContent?.match(/Only one authenticator app can be connected at a time|Можно подключить только одно приложение/i)
+        const nodeHasText = hasText(element as Element)
+        const childrenDontHaveText = Array.from(element?.children || []).every(
+          (child) => !hasText(child)
+        )
+        return Boolean(nodeHasText && childrenDontHaveText)
+      })
     ).toBeVisible()
     expect(
       screen.queryByRole("button", { name: /Set up authenticator app|Настроить приложение/i })

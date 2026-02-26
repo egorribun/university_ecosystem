@@ -89,6 +89,14 @@ vi.mock("qrcode.react", () => ({
   QRCodeSVG: () => null,
 }))
 
+vi.mock("@/push/subscribe", () => ({
+  recoverPushConsentFromBrowser: vi.fn(async () => false),
+  hasPushConsent: vi.fn(() => false),
+  softSyncPushSubscription: vi.fn(async () => null),
+  setPushConsent: vi.fn(),
+  isPushSupported: vi.fn(() => false),
+}))
+
 if (typeof HTMLCanvasElement !== "undefined") {
   HTMLCanvasElement.prototype.getContext = vi.fn(
     () =>

@@ -36,7 +36,7 @@ type AdminDeadLetterJob = {
 }
 
 export const testUser: User = {
-  id: "uuid-1",
+  id: "550e8400-e29b-41d4-a716-446655440000",
   email: "user@example.com",
   full_name: "Тестовый Пользователь",
   role: "student",
@@ -66,7 +66,7 @@ const createTotpEnrollment = (overrides: Partial<MfaTotpEnrollment> = {}): MfaTo
   return {
     id: overrides.id ?? `uuid-${Math.floor(Math.random() * 10_000) + 1}`,
     user_id: overrides.user_id ?? testUser.id,
-    label: overrides.label ?? null,
+    label: overrides.label !== undefined ? overrides.label : null,
     is_active: overrides.is_active ?? false,
     confirmed_at: overrides.confirmed_at ?? null,
     revoked_at: overrides.revoked_at ?? null,
@@ -167,7 +167,7 @@ const createBaseSessions = (): ActiveSession[] => {
   return [
     {
       id: "session-1",
-      user_id: "uuid-1",
+      user_id: "550e8400-e29b-41d4-a716-446655440000",
       jti: "session-current",
       created_at: currentIso,
       expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
@@ -183,7 +183,7 @@ const createBaseSessions = (): ActiveSession[] => {
     },
     {
       id: "session-2",
-      user_id: "uuid-1",
+      user_id: "550e8400-e29b-41d4-a716-446655440000",
       jti: "session-secondary",
       created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
       expires_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
@@ -227,7 +227,7 @@ const createBaseEvents = (): Event[] => {
       event_type_en: null,
       starts_at: isoStart,
       ends_at: isoEnd,
-      created_by: "uuid-1",
+      created_by: "550e8400-e29b-41d4-a716-446655440000",
       created_at: new Date(now - 60 * 60 * 1000).toISOString(),
       is_active: true,
       speaker: null,
@@ -282,7 +282,7 @@ const createTestNews = (): NewsItem[] => {
   return Array.from({ length: 5 }, (_, index) => {
     const id = index + 1
     return {
-      id: `uuid-${id}`,
+      id: `550e8400-e29b-41d4-a716-446655440${index + 100}`,
       title: `News item ${id}`,
       content: `News content ${id}`,
       title_en: `News item ${id}`,
@@ -312,7 +312,7 @@ export const resetTestNews = () => {
 
 const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
   {
-    id: "uuid-1",
+    id: "550e8400-e29b-41d4-a716-446655440000",
     kind: "event",
     record_id: "record-1001",
     locale: "ru",
@@ -373,8 +373,15 @@ export const handlers = [
   http.get("*/users/me", () => HttpResponse.json(testUser)),
   http.get("*/stories", () => HttpResponse.json(testStories)),
   http.get("*/news", () => HttpResponse.json(testNewsItems)),
+  http.get("*/news/:id", ({ params }) => {
+    const id = params.id as string
+    const item = testNewsItems.find((news) => news.id === id) || testNewsItems[0]
+    return HttpResponse.json(item)
+  }),
   http.get("*/auth/sessions", () => HttpResponse.json(testSessions)),
-  http.get("*/auth/mfa/totp", () => HttpResponse.json(testUser.totp_enrollments ?? [])),
+  http.get("*/auth/mfa/totp", () => {
+    return HttpResponse.json(testUser.totp_enrollments ?? [])
+  }),
   http.get("*/auth/mfa/webauthn", () => HttpResponse.json([])),
   http.post("*/auth/mfa/totp/start", async ({ request }) => {
     const hasActiveTotp = Boolean(
@@ -444,15 +451,21 @@ export const handlers = [
     testUser.totp_enrollments!.splice(0, testUser.totp_enrollments!.length, confirmed)
     return HttpResponse.json(confirmed)
   }),
-  http.delete("*/auth/mfa/totp/pending/:id", ({ params }) => {
-    const id = params.id as string
+  http.delete("*/auth/mfa/totp/pending/*", ({ request }) => {
+    const url = new URL(request.url)
+    const id = url.pathname.split("/").pop()
     if (!totpDraft || totpDraft.enrollment.id !== id) {
       return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
     }
     totpDraft = null
     return HttpResponse.json(null, { status: 204 })
   }),
-  http.delete("*/auth/mfa/totp/:id", ({ params }) => {
+  http.delete("*/auth/mfa/totp/:id", ({ request, params }) => {
+    // Prevent this route from matching /auth/mfa/totp/pending/...
+    const url = new URL(request.url)
+    if (url.pathname.includes("/pending/")) {
+      return // Let the pending route handle it by returning undefined
+    }
     const id = params.id as string
     const index = testUser.totp_enrollments!.findIndex((entry) => entry.id === id)
     if (index === -1) {
@@ -627,7 +640,7 @@ export const handlers = [
     if (body.email === "taken@example.com") {
       return HttpResponse.json({ detail: "Email already used" }, { status: 400 })
     }
-    return HttpResponse.json({ status: "ok", id: "uuid-2", ...body })
+    return HttpResponse.json({ status: "ok", id: "550e8400-e29b-41d4-a716-446655440001", ...body })
   }),
   http.post("*/auth/login", async ({ request }) => {
     const raw = await request.text()
