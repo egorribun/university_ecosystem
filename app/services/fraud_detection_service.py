@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     import redis.asyncio as aioredis
@@ -47,7 +47,7 @@ class FraudDetectionService:
     so that the Redis connection is reused across requests.
     """
 
-    def __init__(self, redis_client: aioredis.Redis) -> None:  # type: ignore[type-arg]
+    def __init__(self, redis_client: aioredis.Redis) -> None:
         self._redis = redis_client
 
     async def record_event(self, event_data: dict[str, str]) -> None:
@@ -65,7 +65,7 @@ class FraudDetectionService:
         try:
             await self._redis.xadd(
                 _STREAM_KEY,
-                event_data,
+                cast(Any, event_data),
                 maxlen=_MAX_STREAM_LEN,
                 approximate=True,  # Trim ~MAX_STREAM_LEN (O(1) rather than O(N))
             )
@@ -137,7 +137,7 @@ class FraudDetectionService:
 
     async def count_recent_high_severity(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         within_seconds: int = 300,
     ) -> int:
         """Count HIGH-severity events for *user_id* in the last N seconds.

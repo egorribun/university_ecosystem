@@ -10,7 +10,7 @@ from .models import User
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from app.schemas.dtos import UserDTO
+    from app.schemas.dtos import UserAuthDTO, UserDTO
 
 USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
@@ -54,8 +54,8 @@ USER_LIST_LOAD_OPTIONS: tuple = (joinedload(User.profile),)
 
 
 async def ensure_mfa_relationships_loaded(
-    db: AsyncSession, user: User | UserDTO | None
-) -> User | UserDTO | None:
+    db: AsyncSession, user: User | UserDTO | UserAuthDTO | None
+) -> User | UserDTO | UserAuthDTO | None:
     """Ensure MFA-related relationships are loaded on the given user instance.
 
     PERF-4: Idempotent — sets ``_mfa_loaded = True`` after the first successful

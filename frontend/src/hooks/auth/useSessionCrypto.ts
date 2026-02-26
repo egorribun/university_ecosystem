@@ -192,7 +192,7 @@ export const useSessionCrypto = () => {
       try {
         const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
           skipRateLimitQueue: true,
-        } as any)
+        } as Parameters<typeof api.get>[1])
         const key = response.data.signing_key
         updateSessionSigningKey(key)
         return key

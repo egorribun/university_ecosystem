@@ -124,7 +124,7 @@ class SecurityHeadersMiddleware:
                         # Attempt to replace nonce placeholder
                         # Will simply fallback to no-op on err/failure to decode
                         html_text = full_body.decode("utf-8")
-                        if "__CSP_NONCE__" in html_text:
+                        if "__CSP_NONCE__" in html_text and nonce is not None:
                             html_text = html_text.replace("__CSP_NONCE__", nonce)
                             full_body = html_text.encode("utf-8")
                     except (LookupError, UnicodeDecodeError):

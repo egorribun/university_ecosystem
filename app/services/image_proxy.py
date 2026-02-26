@@ -12,7 +12,7 @@ try:
     import msgspec.msgpack as _msgpack
 
     def _cache_encode(data: bytes, mime: str) -> bytes:
-        return _msgpack.encode({"d": data, "m": mime})
+        return _msgpack.encode({"d": data, "m": mime})  # type: ignore[no-any-return]
 
     def _cache_decode(payload: bytes) -> tuple[bytes, str]:
         obj = _msgpack.decode(payload)
@@ -23,10 +23,10 @@ except ImportError:  # pragma: no cover — fallback if msgspec not installed
     import base64
     import json
 
-    def _cache_encode(data: bytes, mime: str) -> bytes:  # type: ignore[misc]
+    def _cache_encode(data: bytes, mime: str) -> bytes:
         return json.dumps({"d": base64.b64encode(data).decode(), "m": mime}).encode()
 
-    def _cache_decode(payload: bytes) -> tuple[bytes, str]:  # type: ignore[misc]
+    def _cache_decode(payload: bytes) -> tuple[bytes, str]:
         obj = json.loads(payload)
         return base64.b64decode(obj["d"]), str(obj["m"])
 

@@ -62,10 +62,13 @@ describe("StepUpDialog", () => {
 
     render(<StepUpDialog open onClose={() => {}} onChallengeReset={onChallengeReset} />)
 
-    const input = await screen.findByLabelText("Authenticator code")
+    const inputs = await screen.findAllByRole("textbox")
+    expect(inputs.length).toBe(6)
     expect(await screen.findByText("2 attempts remaining")).toBeInTheDocument()
 
-    await user.type(input, "123456")
+    // OtpEntry handles its own state, so we need to type into each input or ensure it accepts pasting
+    await user.click(inputs[0])
+    await user.keyboard("123456")
     // OtpEntry auto-submits when 6 digits are entered
 
     await waitFor(() => {

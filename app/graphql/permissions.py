@@ -40,7 +40,7 @@ class IsAuthenticated(BasePermission):
 
     message = "Authentication required"
 
-    def has_permission(  # type: ignore[override]
+    def has_permission(
         self,
         source: Any,
         info: Info[GraphQLContext, Any],
@@ -65,7 +65,7 @@ class IsAdmin(BasePermission):
 
     message = "Admin access required"
 
-    async def has_permission(  # type: ignore[override]
+    async def has_permission(
         self,
         source: Any,
         info: Info[GraphQLContext, Any],
@@ -86,7 +86,7 @@ class IsAdmin(BasePermission):
         try:
             from app.auth.rbac import SpiceDBUnavailableError
 
-            return await checker.check_admin(str(info.context.current_user.id))
+            return bool(await checker.check_admin(str(info.context.current_user.id)))
         except SpiceDBUnavailableError:
             # Fail closed — authorization service unavailable must not allow access.
             logger.warning(

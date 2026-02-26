@@ -2,6 +2,7 @@ import asyncio
 import datetime as dt
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pyotp
 import pytest
@@ -56,7 +57,7 @@ async def _enable_totp(async_client: AsyncClient, headers: dict[str, str]) -> st
         json={"enrollment_id": enrollment_id, "code": totp.now()},
     )
     assert confirm.status_code == status.HTTP_200_OK, confirm.text
-    return secret
+    return cast(str, secret)
 
 
 async def _complete_step_up(
@@ -83,7 +84,7 @@ async def _complete_step_up(
     token = verify.cookies.get("access_token_v2")
     assert token is not None, "access_token_v2 cookie missing after MFA verify"
     headers["Authorization"] = f"Bearer {token}"
-    return payload
+    return cast(dict[Any, Any], payload)
 
 
 @pytest.mark.asyncio
@@ -342,12 +343,18 @@ async def test_revoke_session_requires_step_up(
 
     async with make_session() as isolated_db:
         isolated_session = (
-            await isolated_db.execute(
-                select(ActiveSession).where(ActiveSession.id == current_session_id)
+            (
+                await isolated_db.execute(
+                    select(ActiveSession).where(ActiveSession.id == current_session_id)
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert isolated_session is not None
-        isolated_session.mfa_verified_at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=1)
+        isolated_session.mfa_verified_at = dt.datetime.now(dt.UTC) - dt.timedelta(
+            hours=1
+        )
         await isolated_db.commit()
 
     blocked = await async_client.delete(

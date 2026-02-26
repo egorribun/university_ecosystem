@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,7 +23,7 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
         except json.JSONDecodeError:  # pragma: no cover - defensive guard
             continue
         if payload.get("event") == event:
-            return payload
+            return cast(dict[Any, Any], payload)
     raise AssertionError(f"event {event!r} not found for logger {logger_name!r}")
 
 
@@ -129,9 +130,7 @@ async def test_password_reset_completed_audit(
     )
     await db_session.commit()
 
-    with patch(
-        "app.auth.security._validate_password_hibp", new_callable=AsyncMock
-    ):
+    with patch("app.auth.security._validate_password_hibp", new_callable=AsyncMock):
         response = await async_client.post(
             "/password/reset",
             json={"token": token, "password": "BrandNewPass123!"},

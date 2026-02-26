@@ -873,6 +873,7 @@ def upgrade() -> None:
             batch_op.f("ix_notification_deliveries_status"), ["status"], unique=False
         )
 
+    assert inspector is not None
     existing_constraints = {
         c["name"] for c in inspector.get_unique_constraints("active_sessions")
     }
@@ -885,6 +886,7 @@ def upgrade() -> None:
                 batch_op.f("uq_active_sessions_jti"), type_="unique"
             )
 
+    assert inspector is not None
     if inspector.has_table("failed_login_attempts"):
         existing_failed_login_indexes = {
             i["name"] for i in inspector.get_indexes("failed_login_attempts")

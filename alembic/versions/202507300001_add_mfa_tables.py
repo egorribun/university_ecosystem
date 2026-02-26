@@ -57,7 +57,7 @@ def upgrade() -> None:
     get_idxs = _index_names
 
     if inspector is None:
-        tables = {
+        tables: set[str] = {
             _USERS_TABLE,
             _ACTIVE_SESSIONS_TABLE,
         }
@@ -392,7 +392,7 @@ def downgrade() -> None:
     get_idxs = _index_names
 
     if inspector is None:
-        tables = {}  # Skip drop checks in offline mode
+        tables: set[str] = set()  # Skip drop checks in offline mode
         get_idxs = _empty_names
         get_cols = _empty_names
     else:

@@ -235,7 +235,6 @@ class AppProvider(Provider):
         auth_repo: AuthRepository,
         user_repo: UserRepository,
     ) -> AuthService:
-
         return AuthService(
             audit=audit,
             auth_repo=auth_repo,
@@ -248,10 +247,14 @@ class AppProvider(Provider):
         self,
         db: AsyncDatabaseSession,
     ) -> ScheduleService:
-        from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+        from app.repositories.schedule_repository import (
+            GroupRepository,
+            ScheduleRepository,
+        )
         from app.services.schedule_optimizer import (
             ScheduleOptimizerService,
         )
+
         return ScheduleService(
             repo=ScheduleRepository(db),
             group_repo=GroupRepository(db),
@@ -270,11 +273,15 @@ class AppProvider(Provider):
     # ── CQRS Handlers and Buses ───────────────────────────────────────────────
 
     @provide(scope=Scope.REQUEST)
-    def get_schedule_handler(self, db: AsyncDatabaseSession, cache: BaseCache) -> GetScheduleHandler:
+    def get_schedule_handler(
+        self, db: AsyncDatabaseSession, cache: BaseCache
+    ) -> GetScheduleHandler:
         return GetScheduleHandler(db=db, cache=cache)
 
     @provide(scope=Scope.REQUEST)
-    def get_stats_handler(self, db: AsyncDatabaseSession, cache: BaseCache, analytics_service: object) -> GetStatsHandler:
+    def get_stats_handler(
+        self, db: AsyncDatabaseSession, cache: BaseCache, analytics_service: object
+    ) -> GetStatsHandler:
         # Cast logic is internal to the handler, but DI handles injection
         return GetStatsHandler(db=db, cache=cache, analytics_service=analytics_service)
 
@@ -294,17 +301,22 @@ class AppProvider(Provider):
         return bus
 
     @provide(scope=Scope.REQUEST)
-    def create_schedule_handler(self, service: ScheduleService, cache: BaseCache) -> CreateScheduleHandler:
+    def create_schedule_handler(
+        self, service: ScheduleService, cache: BaseCache
+    ) -> CreateScheduleHandler:
         return CreateScheduleHandler(service=service, cache=cache)
 
     @provide(scope=Scope.REQUEST)
-    def update_schedule_handler(self, service: ScheduleService, cache: BaseCache) -> UpdateScheduleHandler:
+    def update_schedule_handler(
+        self, service: ScheduleService, cache: BaseCache
+    ) -> UpdateScheduleHandler:
         return UpdateScheduleHandler(service=service, cache=cache)
 
     @provide(scope=Scope.REQUEST)
-    def delete_schedule_handler(self, service: ScheduleService, cache: BaseCache) -> DeleteScheduleHandler:
+    def delete_schedule_handler(
+        self, service: ScheduleService, cache: BaseCache
+    ) -> DeleteScheduleHandler:
         return DeleteScheduleHandler(service=service, cache=cache)
-
 
     @provide(scope=Scope.REQUEST)
     def chat_repository(self, db: AsyncDatabaseSession) -> ChatRepository:
@@ -315,11 +327,15 @@ class AppProvider(Provider):
         return ChatAttachmentService()
 
     @provide(scope=Scope.REQUEST)
-    def chat_ws_notification_service(self, db: AsyncDatabaseSession) -> ChatWSNotificationService:
+    def chat_ws_notification_service(
+        self, db: AsyncDatabaseSession
+    ) -> ChatWSNotificationService:
         return ChatWSNotificationService(session=db)
 
     @provide(scope=Scope.REQUEST)
-    def chat_query_service(self, db: AsyncDatabaseSession, repo: ChatRepository) -> ChatQueryService:
+    def chat_query_service(
+        self, db: AsyncDatabaseSession, repo: ChatRepository
+    ) -> ChatQueryService:
         return ChatQueryService(session=db, repository=repo)
 
     @provide(scope=Scope.REQUEST)

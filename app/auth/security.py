@@ -30,6 +30,7 @@ LEGACY_SCHEME = "bcrypt"
 
 _logger = logging.getLogger(__name__)
 
+
 # Executor for CPU-bound auth operations (Argon2 hashing).
 # Argon2 at ARGON2_MEMORY_COST_KIB=65536 uses 64 MB per concurrent hash call;
 # bounding pool size to cpu_count prevents memory exhaustion under login bursts.
@@ -41,8 +42,10 @@ _logger = logging.getLogger(__name__)
 def _container_cpu_count() -> int:
     """Return cgroup-aware CPU count for container environments."""
     try:
-        return len(os.sched_getaffinity(0))  # Linux cgroups v2 — most accurate
-    except AttributeError:
+        sched = getattr(os, "sched_getaffinity", None)
+        if sched:
+            return len(sched(0))  # Linux cgroups v2 — most accurate
+    except (AttributeError, NotImplementedError):
         pass
     try:  # Fallback for cgroups v1 (Docker legacy)
         with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:

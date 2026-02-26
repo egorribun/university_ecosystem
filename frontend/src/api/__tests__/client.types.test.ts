@@ -10,7 +10,7 @@ import { fetchNotificationsList, type NotificationsListResult } from "@/api/noti
 describe("typed api client", () => {
   it("fetchNews matches schema", async () => {
     const result = await fetchNews()
-    expectTypeOf(result.data).toMatchTypeOf<any>()
+    expectTypeOf(result.data).toMatchTypeOf<unknown>()
   })
 
   it("fetchNewsItem matches schema", async () => {

@@ -84,7 +84,7 @@ export const confirmWebAuthnRegistration = async (payload: {
   label?: string
 }) => {
   const { data } = await confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost({
-    body: payload as any,
+    body: payload as unknown as TotpEnrollmentConfirmPayload,
     throwOnError: true,
   })
   return data as MfaFactorStatus

@@ -80,10 +80,8 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         if has_body and cl_header is None:
             new_request, error_response = await self._read_and_replay_body(request)
             if error_response:
-                return error_response
+                return cast(Response, error_response)
             request = new_request
-
-        from fastapi import Response
 
         return cast(Response, await call_next(request))
 

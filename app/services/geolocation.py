@@ -31,7 +31,7 @@ class GeolocationService:
             return
         async with self._init_lock:
             if self._initialized:
-                return
+                return  # type: ignore[unreachable]
 
             if not self.db_path:
                 self._initialized = True
@@ -55,7 +55,9 @@ class GeolocationService:
             return LocationInfo()
 
         try:
-            record: dict[str, Any] | None = self.reader.get(ip_address)
+            from typing import cast
+
+            record = cast(dict[str, Any], self.reader.get(ip_address))
             if not record:
                 return LocationInfo()
 
@@ -84,6 +86,7 @@ class GeolocationService:
 
 _geolocation_service_instance: GeolocationService | None = None
 
+
 async def get_geolocation_service_instance() -> GeolocationService:
     global _geolocation_service_instance
     if _geolocation_service_instance is None:
@@ -93,6 +96,7 @@ async def get_geolocation_service_instance() -> GeolocationService:
         await _geolocation_service_instance.initialize()
 
     return _geolocation_service_instance
+
 
 def shutdown_geolocation_service() -> None:
     global _geolocation_service_instance

@@ -25,8 +25,10 @@ def _get_fk_names(table: str, constrained_columns: list[str]) -> list[str]:
         return []
     inspector = _insp()
     target = set(constrained_columns)
+    from typing import cast
+
     return [
-        fk["name"]
+        cast(str, fk["name"])
         for fk in inspector.get_foreign_keys(table)
         if fk.get("name") and set(fk.get("constrained_columns") or []) == target
     ]

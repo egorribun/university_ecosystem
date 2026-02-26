@@ -300,11 +300,11 @@ async def test_attendance_stats_uses_cache(
     original_get = cache_module.RedisCache.get
     original_set = cache_module.RedisCache.set
 
-    async def tracked_get(self, key):  # type: ignore[override]
+    async def tracked_get(self, key):
         calls["get"] += 1
         return await original_get(self, key)
 
-    async def tracked_set(self, key, payload, ttl=None):  # type: ignore[override]
+    async def tracked_set(self, key, payload, ttl=None):
         calls["set"] += 1
         return await original_set(self, key, payload, ttl=ttl)
 
@@ -329,7 +329,7 @@ async def test_set_cached_stats_uses_settings_ttl(fake_cache, monkeypatch):
     recorded: list[int | None] = []
     original_set = cache_module.RedisCache.set
 
-    async def tracked_set(self, key, payload, ttl=None):  # type: ignore[override]
+    async def tracked_set(self, key, payload, ttl=None):
         recorded.append(ttl)
         return await original_set(self, key, payload, ttl=ttl)
 
@@ -355,7 +355,7 @@ async def test_set_cached_stats_prefers_override_ttl(fake_cache, monkeypatch):
     recorded: list[int | None] = []
     original_set = cache_module.RedisCache.set
 
-    async def tracked_set(self, key, payload, ttl=None):  # type: ignore[override]
+    async def tracked_set(self, key, payload, ttl=None):
         recorded.append(ttl)
         return await original_set(self, key, payload, ttl=ttl)
 

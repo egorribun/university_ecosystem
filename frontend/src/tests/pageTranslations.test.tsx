@@ -251,10 +251,10 @@ const {
     return Promise.resolve({ data: [] })
   })
 
-  const apiPostMock = vi.fn(() => Promise.resolve({ data: {} }))
-  const apiPatchMock = vi.fn(() => Promise.resolve({ data: {} }))
-  const apiDeleteMock = vi.fn(() => Promise.resolve({ data: {} }))
-  const apiPutMock = vi.fn(() => Promise.resolve({ data: baseUser }))
+  const apiPostMock = vi.fn((_url: string, _body?: any) => Promise.resolve({ data: {} }))
+  const apiPatchMock = vi.fn((_url: string, _body?: any) => Promise.resolve({ data: {} }))
+  const apiDeleteMock = vi.fn((_url: string) => Promise.resolve({ data: {} }))
+  const apiPutMock = vi.fn((_url: string, _body?: any) => Promise.resolve({ data: baseUser }))
 
   const fetchCurrentUserMock = vi.fn(async () => baseUser)
 

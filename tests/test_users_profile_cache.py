@@ -18,7 +18,9 @@ async def _login(async_client: AsyncClient, email: str, password: str) -> str:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert response.status_code == 200
-    return response.cookies.get("access_token_v2")
+    token = response.cookies.get("access_token_v2")
+    assert token is not None
+    return str(token)
 
 
 @pytest.mark.asyncio

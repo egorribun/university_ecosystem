@@ -7,8 +7,10 @@ class QueryBus:
     def __init__(self, container: AsyncContainer):
         self.container = container
 
+
 class SomeHandler:
     pass
+
 
 class MyProvider(Provider):
     @provide(scope=Scope.REQUEST)
@@ -19,11 +21,13 @@ class MyProvider(Provider):
     def handler(self) -> SomeHandler:
         return SomeHandler()
 
+
 async def main():
     container = make_async_container(MyProvider())
     async with container() as request_container:
         bus = await request_container.get(QueryBus)
         print("Bus Container:", bus.container)
         print("Resolved Handler:", await bus.container.get(SomeHandler))
+
 
 asyncio.run(main())

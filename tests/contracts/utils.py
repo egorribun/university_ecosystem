@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from app.main import app
 
@@ -18,7 +18,7 @@ def load_current_openapi() -> dict[str, Any]:
 def normalize_openapi(schema: dict[str, Any]) -> dict[str, Any]:
     """Return a deterministically ordered OpenAPI payload."""
     normalized = json.loads(json.dumps(schema, sort_keys=True))
-    return normalized
+    return cast(dict[str, Any], normalized)
 
 
 def _iterable_contains_superset(

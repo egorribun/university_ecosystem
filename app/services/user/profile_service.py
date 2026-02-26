@@ -73,7 +73,9 @@ class UserProfileService:
         # Convert back to DTO
         updated_user = self.repo._to_dto(db_user)
         # Attach pending email if any
-        updated_user = cast(UserDTO, await attach_pending_email(self.repo.db, updated_user))
+        updated_user = cast(
+            UserDTO, await attach_pending_email(self.repo.db, updated_user)
+        )
 
         return updated_user
 

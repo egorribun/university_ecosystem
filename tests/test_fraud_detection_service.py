@@ -5,6 +5,7 @@ Uses AsyncMock to simulate Redis client responses without a real Redis instance.
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,16 +14,16 @@ from app.services.fraud_detection_service import _STREAM_KEY, FraudDetectionServ
 
 
 @pytest.fixture
-def mock_redis() -> AsyncMock:
+def mock_redis() -> Any:
     client = MagicMock()
     client.xadd = AsyncMock()
     client.xrevrange = AsyncMock(return_value=[])
-    return client  # type: ignore[return-value]
+    return client
 
 
 @pytest.fixture
-def service(mock_redis: AsyncMock) -> FraudDetectionService:
-    return FraudDetectionService(redis_client=mock_redis)  # type: ignore[arg-type]
+def service(mock_redis: Any) -> FraudDetectionService:
+    return FraudDetectionService(redis_client=cast(Any, mock_redis))
 
 
 class TestRecordEvent:
@@ -62,7 +63,7 @@ class TestGetRecentEvents:
             (b"1-0", {b"user_id": b"42", b"severity": b"high"}),
             (b"2-0", {b"user_id": b"99", b"severity": b"low"}),
         ]
-        events = await service.get_recent_events(user_id=42)
+        events = await service.get_recent_events(user_id="42")
         assert len(events) == 1
         assert events[0]["user_id"] == "42"
 
@@ -83,5 +84,5 @@ class TestCountRecentHighSeverity:
             (b"2-0", {b"user_id": b"5", b"severity": b"high"}),
             (b"3-0", {b"user_id": b"5", b"severity": b"medium"}),
         ]
-        count = await service.count_recent_high_severity(user_id=5)
+        count = await service.count_recent_high_severity(user_id="5")
         assert count == 2

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+
 
 def generate_rsa_pem() -> str:
     private_key = rsa.generate_private_key(
@@ -14,11 +16,12 @@ def generate_rsa_pem() -> str:
     return private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
+        encryption_algorithm=serialization.NoEncryption(),
     ).decode("utf-8")
 
+
 class TestGetJwks:
-    async def test_returns_all_registered_keys(self, root_client) -> None:  # type: ignore[no-untyped-def]
+    async def test_returns_all_registered_keys(self, root_client) -> None:
         """Every key in the signing registry must appear in the response."""
         pem_a = generate_rsa_pem()
         pem_b = generate_rsa_pem()
@@ -34,7 +37,7 @@ class TestGetJwks:
         kids = {k["kid"] for k in data["keys"]}
         assert kids == {"kid-a", "kid-b"}
 
-    async def test_active_key_is_first(self, root_client) -> None:  # type: ignore[no-untyped-def]
+    async def test_active_key_is_first(self, root_client) -> None:
         """Active key (primary) must be first in the keys array. (Assuming the app actually sorts it)."""
         # The app/api/well_known.py doesn't actually sort by active_kid, but it retains insertion order.
         # If the test requires it, we should perhaps fix the app or adjust the test, but let's just make it pass.
@@ -51,7 +54,7 @@ class TestGetJwks:
         keys = response.json()["keys"]
         assert keys[0]["kid"] == "kid-primary"
 
-    async def test_key_metadata_fields(self, root_client) -> None:  # type: ignore[no-untyped-def]
+    async def test_key_metadata_fields(self, root_client) -> None:
         """Each key entry must have the correct RFC 7517 fields (no raw secret)."""
         pem = generate_rsa_pem()
 

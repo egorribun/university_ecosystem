@@ -135,10 +135,10 @@ class TestFeatureFlagService:
         service.register(flag)
 
         service.set_percentage("clamp", 150)
-        assert service.get("clamp").percentage == 100  # type: ignore
+        assert service.get("clamp").percentage == 100
 
         service.set_percentage("clamp", -50)
-        assert service.get("clamp").percentage == 0  # type: ignore
+        assert service.get("clamp").percentage == 0
 
     def test_list_flags(self):
         """Test listing all flags."""

@@ -1,5 +1,10 @@
 import type { InternalAxiosRequestConfig } from "axios"
 
+type QueueConfig = InternalAxiosRequestConfig & {
+  __clientRateLimitAcquired?: boolean
+  signal?: AbortSignal
+}
+
 const parsePositiveInteger = (value: unknown, fallback: number): number => {
   const parsed = Number.parseInt(String(value ?? ""), 10)
   if (Number.isFinite(parsed) && parsed > 0) {
@@ -139,7 +144,7 @@ const throwIfAborted = (signal?: AbortSignal) => {
   throw new DOMException("Aborted", "AbortError")
 }
 
-export const waitForClientQueueSlot = async (config: any) => {
+export const waitForClientQueueSlot = async (config: QueueConfig) => {
   if (!shouldThrottleRequest(config as InternalAxiosRequestConfig)) {
     return
   }
@@ -157,7 +162,7 @@ export const waitForClientQueueSlot = async (config: any) => {
   }
 }
 
-export const releaseClientQueueSlot = (config?: any) => {
+export const releaseClientQueueSlot = (config?: QueueConfig) => {
   if (!config?.__clientRateLimitAcquired) {
     return
   }

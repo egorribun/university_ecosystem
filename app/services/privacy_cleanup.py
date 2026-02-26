@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Retention helpers for privacy-sensitive artifacts."""
+
+from __future__ import annotations
 
 import asyncio
 import logging

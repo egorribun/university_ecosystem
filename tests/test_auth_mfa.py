@@ -2,6 +2,7 @@ import base64
 import datetime as dt
 import json
 import logging
+from typing import Any, cast
 from uuid import UUID
 
 import pyotp
@@ -30,13 +31,13 @@ async def _login_for_token(async_client, email: str, password: str) -> str:
     if response.status_code == status.HTTP_202_ACCEPTED:
         pytest.fail("Login unexpectedly returned an MFA challenge")
     assert response.status_code == status.HTTP_200_OK, response.text
-    return response.cookies.get("access_token_v2")
+    return cast(str, response.cookies.get("access_token_v2"))
 
 
 def _get_method_entry(payload: dict, method: str) -> dict:
     for entry in payload.get("methods", []):
         if entry.get("method") == method:
-            return entry
+            return cast(dict, entry)
     raise AssertionError(f"MFA method {method!r} not found in {payload}")
 
 
@@ -60,7 +61,7 @@ async def _enroll_totp(async_client, user, password: str, db_session) -> str:
     await db_session.refresh(user)
     assert user.mfa_default_method == mfa.MFA_METHOD_TOTP
     assert user.mfa_required is True
-    return secret
+    return cast(str, secret)
 
 
 @pytest.mark.asyncio
@@ -260,7 +261,7 @@ def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
         except json.JSONDecodeError:  # pragma: no cover - defensive guard
             continue
         if payload.get("event") == event:
-            return payload
+            return cast(dict[Any, Any], payload)
     raise AssertionError(f"Audit event {event!r} not found for logger {logger_name!r}")
 
 
@@ -655,7 +656,7 @@ async def test_admin_reset_endpoint_clears_mfa_state(
 
     notifications: list[dict] = []
 
-    async def fake_create_notifications_for_users(db, **kwargs):
+    async def fake_create_notifications_for_users(db: Any, **kwargs: Any) -> int:
         notifications.append({"user_ids": list(kwargs.get("user_ids", []))})
         return len(kwargs.get("user_ids", []))
 
@@ -724,7 +725,7 @@ async def test_reset_mfa_command_resets_state(
 
     notifications: list[list[int]] = []
 
-    async def fake_create_notifications(db, **kwargs):
+    async def fake_create_notifications(db: Any, **kwargs: Any) -> int:
         notifications.append(list(kwargs.get("user_ids", [])))
         return len(kwargs.get("user_ids", []))
 

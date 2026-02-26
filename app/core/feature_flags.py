@@ -117,7 +117,9 @@ class UniversityFeatureProvider(AbstractProvider):
             except (ValueError, TypeError):
                 pass
 
-        is_enabled = self._service.is_enabled(flag_key, user_id=user_id, default=default_value)
+        is_enabled = self._service.is_enabled(
+            flag_key, user_id=user_id, default=default_value
+        )
         return FlagResolutionDetails(
             value=is_enabled,
             reason=Reason.STATIC,  # Simplified for now
@@ -202,6 +204,7 @@ class FeatureFlagService:
             return
 
         from redis.asyncio import Redis
+
         self._redis = redis or (
             Redis.from_url(settings.cache_redis_url, decode_responses=True)
             if settings.cache_redis_url
@@ -240,7 +243,10 @@ class FeatureFlagService:
         api.set_provider(UniversityFeatureProvider(self))
         self.of_client = api.get_client()
 
-        logger.info("Feature flag service initialized (%d flags and OpenFeature)", len(self._flags))
+        logger.info(
+            "Feature flag service initialized (%d flags and OpenFeature)",
+            len(self._flags),
+        )
 
     async def shutdown(self) -> None:
         """Shutdown the service."""

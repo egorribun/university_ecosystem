@@ -76,7 +76,9 @@ class OutboxWorker:
                 conn = await asyncpg.connect(dsn)
                 try:
                     await conn.add_listener(self.CHANNEL, self._on_notification)
-                    logger.info("Listening for notifications on channel: %s", self.CHANNEL)
+                    logger.info(
+                        "Listening for notifications on channel: %s", self.CHANNEL
+                    )
                     while self._is_running:
                         # Keep connection alive
                         await asyncio.sleep(30)

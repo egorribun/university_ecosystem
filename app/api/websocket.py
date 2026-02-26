@@ -475,8 +475,6 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
                 return None, None
 
             expires_at = active_session.expires_at
-            if expires_at is None:
-                return None, None
 
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=UTC)
@@ -504,7 +502,9 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
 async def get_user_from_cookie(cookie_value: str) -> tuple[User | None, str | None]:
     """Validate session cookie and return the user."""
     # Delegate entirely — error handling is in get_user_from_token.
-    return await get_user_from_token(cookie_value)
+    from typing import cast
+
+    return cast(tuple[User | None, str | None], await get_user_from_token(cookie_value))
 
 
 def _extract_bearer_token(header_value: str | None) -> str | None:

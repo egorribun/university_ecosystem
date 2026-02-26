@@ -12,9 +12,8 @@ export type StoryUpdatePayload = StoryUpdate
 
 export function fetchStories() {
   return listStoriesApiV1StoriesGet({
-    // @ts-ignore - custom extension for etag interceptor
     etagCacheKey: "dashboard:stories",
-  })
+  } as unknown as Parameters<typeof listStoriesApiV1StoriesGet>[0])
 }
 
 export function createStory(payload: StoryCreatePayload) {

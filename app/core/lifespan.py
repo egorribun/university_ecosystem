@@ -208,7 +208,7 @@ async def lifespan(app: FastAPI):
 
         _sched_logger = _log.getLogger(__name__)
 
-        async def _kick(task) -> None:  # type: ignore[no-untyped-def]
+        async def _kick(task) -> None:
             try:
                 await task.kick()
             except Exception:
@@ -266,7 +266,7 @@ async def lifespan(app: FastAPI):
     outbox_worker = OutboxWorker()
     outbox_task = asyncio.create_task(outbox_worker.run_forever(), name="outbox_worker")
 
-    def _on_outbox_done(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+    def _on_outbox_done(task: asyncio.Task) -> None:
         """Log unexpected OutboxWorker exits so they are never silently swallowed."""
         if task.cancelled():
             return

@@ -206,7 +206,7 @@ async def test_security_headers_development_report_only(monkeypatch):
 
 def _parse_csp(header_value: str) -> dict[str, list[str]]:
     """Parse CSP header into a dict of directives."""
-    directives = {}
+    directives: dict[str, list[str]] = {}
     if not header_value:
         return directives
     for part in header_value.split(";"):

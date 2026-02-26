@@ -157,10 +157,10 @@ api.interceptors.response.use(
  * This manual TypedApiClient is kept for backward compatibility during migration.
  */
 export const apiClient = {
-  get: <T = any>(url: string, config?: AxiosRequestConfig) => api.get<T>(url, config),
-  post: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => api.post<T>(url, data, config),
-  put: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => api.put<T>(url, data, config),
-  patch: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => api.patch<T>(url, data, config),
+  get: <T = unknown>(url: string, config?: AxiosRequestConfig) => api.get<T>(url, config),
+  post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.post<T>(url, data, config),
+  put: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.put<T>(url, data, config),
+  patch: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.patch<T>(url, data, config),
   delete: (url: string, config?: AxiosRequestConfig) => api.delete(url, config),
   request: (config: AxiosRequestConfig) => api.request(config),
 }

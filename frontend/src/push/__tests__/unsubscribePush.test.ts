@@ -12,6 +12,14 @@ vi.mock("@/push/register-sw", () => ({
   registerServiceWorker: vi.fn().mockResolvedValue(null),
 }))
 
+vi.mock("@/push/subscribe", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/push/subscribe")>()
+  return {
+    ...actual,
+    unsubscribePush: actual.unsubscribePush,
+  }
+})
+
 describe("unsubscribePush", () => {
   beforeEach(() => {
     vi.useFakeTimers()

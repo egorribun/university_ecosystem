@@ -1,5 +1,6 @@
 import typing
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import pytest
@@ -165,9 +166,9 @@ async def test_now_playing_returns_401_when_refresh_fails(
 
     class DummyResponse:
         status_code = 400
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {}
 
     original_post = httpx.AsyncClient.post
@@ -209,16 +210,16 @@ async def test_now_playing_refreshes_when_access_token_missing(
 
     class RefreshResponse:
         status_code = 200
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {"access_token": "fresh", "expires_in": 120}
 
     class NowPlayingResponse:
         status_code = 204
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {}
 
     refresh_called = False
@@ -271,23 +272,23 @@ async def test_now_playing_retries_after_unauthorized_response(
 
     class UnauthorizedResponse:
         status_code = 401
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {"error": {"status": 401, "message": "The access token expired"}}
 
     class EmptyResponse:
         status_code = 204
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {}
 
     class RefreshResponse:
         status_code = 200
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {
                 "access_token": "fresh",
                 "refresh_token": "refresh-new",
@@ -351,16 +352,16 @@ async def test_now_playing_disconnects_on_unauthorized_response(
 
     class UnauthorizedResponse:
         status_code = 401
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {"error": {"status": 401, "message": "The access token expired"}}
 
     class RefreshResponse:
         status_code = 200
-        headers: typing.ClassVar[dict[str, str]] = {}
+        headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
-        def json(self) -> dict[str, str]:
+        def json(self) -> dict[str, Any]:
             return {
                 "access_token": "another-token",
                 "refresh_token": "another-refresh",

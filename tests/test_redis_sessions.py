@@ -6,7 +6,6 @@ from fakeredis.aioredis import FakeRedis
 
 from app.auth.fingerprint import SessionFingerprint
 from app.core.config import settings
-from app.services.auth import redis_session
 from app.services.auth.redis_session import RedisSessionService
 
 
@@ -23,7 +22,11 @@ async def test_redis_session_lifecycle_v2(monkeypatch, request):
         return fake_client
 
     from unittest.mock import patch
-    patcher = patch("app.services.auth.redis_session._get_shared_client", side_effect=mock_get_client)
+
+    patcher = patch(
+        "app.services.auth.redis_session._get_shared_client",
+        side_effect=mock_get_client,
+    )
     patcher.start()
     request.addfinalizer(patcher.stop)
 
@@ -39,7 +42,6 @@ async def test_redis_session_lifecycle_v2(monkeypatch, request):
         fingerprint_hash="hash123",
     )
     now = datetime.now(UTC)
-
 
     # 4. Create
     await service.create_session(jti, user_id, fingerprint, now)

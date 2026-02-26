@@ -69,6 +69,7 @@ class ChatCommandService:
         assert participant is not None
 
         from app.deps.cache import get_cache_client
+
         cache_client = await get_cache_client()
 
         if not user.id or not participant_id:
@@ -147,7 +148,9 @@ class ChatCommandService:
         saved_urls: list[str] = []
         try:
             for upload in uploads:
-                meta = await self.attachment_service.process_upload(upload, chat_id, locale=locale)
+                meta = await self.attachment_service.process_upload(
+                    upload, chat_id, locale=locale
+                )
                 saved_urls.append(str(meta["url"]))
                 attachment = Attachment(
                     message=message,
@@ -170,9 +173,9 @@ class ChatCommandService:
         full_message = reloaded.get(message.id)
 
         if not full_message:
-             # Fallback if something went wrong, though unlikely
-             await self.repository.refresh(message)
-             msg_data = MessageResponse(
+            # Fallback if something went wrong, though unlikely
+            await self.repository.refresh(message)
+            msg_data = MessageResponse(
                 id=message.id,
                 chat_id=message.chat_id,
                 sender_id=message.sender_id,
@@ -181,16 +184,22 @@ class ChatCommandService:
                 read_status=message.read_status,
                 sender=message.sender,
                 attachments=message.attachments,
-                sender_presence=PresenceStatus(active=ws_manager.is_online(message.sender_id)),
+                sender_presence=PresenceStatus(
+                    active=ws_manager.is_online(message.sender_id)
+                ),
             )
         else:
             msg_data = MessageResponse(
                 **full_message.model_dump(),
-                sender_presence=PresenceStatus(active=ws_manager.is_online(message.sender_id)),
+                sender_presence=PresenceStatus(
+                    active=ws_manager.is_online(message.sender_id)
+                ),
             )
 
         # Notify participants
-        await self.notification_service.notify_new_message(message, chat.participants, user)
+        await self.notification_service.notify_new_message(
+            message, chat.participants, user
+        )
 
         return msg_data
 

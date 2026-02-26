@@ -26,7 +26,9 @@ def _alter_is_active_default(server_default: sa.sql.elements.TextClause) -> None
         # batch_alter_table would require table reflection which fails if FK
         # target tables don't exist. Skip this on SQLite for CI compatibility.
         return
-    op.alter_column(_TABLE_NAME, "is_active", **alter_kwargs)
+    from typing import Any, cast
+
+    op.alter_column(_TABLE_NAME, "is_active", **cast(dict[str, Any], alter_kwargs))
 
 
 def _table_exists(inspector) -> bool:
@@ -49,7 +51,7 @@ def upgrade() -> None:
         )
     )
 
-    _alter_is_active_default(sa.false())
+    _alter_is_active_default(sa.text("false"))
 
 
 def downgrade() -> None:
@@ -58,7 +60,7 @@ def downgrade() -> None:
     if not _table_exists(inspector):
         return
 
-    _alter_is_active_default(sa.true())
+    _alter_is_active_default(sa.text("true"))
 
     op.execute(
         sa.text(

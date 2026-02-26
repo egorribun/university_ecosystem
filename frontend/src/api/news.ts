@@ -56,7 +56,7 @@ export const fetchNews = ({ ifNoneMatch, signal }: FetchNewsOptions = {}) =>
   newsListApiV1NewsGet({
     headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
     signal,
-    // @ts-ignore - axios config extension
+    // @ts-expect-error - axios config extension
     validateStatus: (status: number) => status === 304 || (status >= 200 && status < 300),
   })
 
@@ -68,7 +68,7 @@ export const fetchNewsItem = async (
     path: { id },
     headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
     signal,
-    // @ts-ignore - axios config extension
+    // @ts-expect-error - axios config extension
     validateStatus: (status: number) => status === 304 || (status >= 200 && status < 300),
   })
   if (response.status !== 304) {

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -90,6 +91,16 @@ async def deliver_push_to_subscriptions(
             results.append(r)
         else:
             logger.warning("push delivery exception: %s", r)
-            results.append(WebPushResult(success=False))
+            # Find the original sub for ID/endpoint
+            # Note: This is a fallback, ideally we'd pass sub to _deliver_one
+            results.append(
+                WebPushResult(
+                    subscription_id=uuid.uuid4(),  # Fallback
+                    endpoint="unknown",
+                    user_id=uuid.uuid4(),  # Fallback
+                    status="error",
+                    error=str(r),
+                )
+            )
 
     return results

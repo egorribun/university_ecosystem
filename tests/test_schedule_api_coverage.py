@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -145,11 +146,11 @@ async def test_schedule_api_coverage(
     class TestProvider(Provider):
         @provide(scope=Scope.REQUEST)
         def query_bus(self) -> QueryBus:
-            return mock_query_bus
+            return cast(QueryBus, mock_query_bus)
 
         @provide(scope=Scope.REQUEST)
         def command_bus(self) -> CommandBus:
-            return mock_command_bus
+            return cast(CommandBus, mock_command_bus)
 
     original_container = getattr(app.state, "dishka_container", None)
     app.state.dishka_container = make_async_container(TestProvider())

@@ -1,10 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 
 import { getPersistedTopics, setPersistedTopics } from "../subscribe"
 
 const PROFILE_CACHE_KEY = "sub-profile-cache"
 const TOPICS_KEY = "push:last_topics"
 
+vi.mock("@/push/subscribe", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/push/subscribe")>()
+  return {
+    ...actual,
+    getPersistedTopics: vi.fn().mockImplementation((options) => actual.getPersistedTopics(options)),
+    setPersistedTopics: vi.fn().mockImplementation((topics, options) => actual.setPersistedTopics(topics, options)),
+  }
+})
 const setActiveUser = (id: string | number | null) => {
   if (typeof localStorage === "undefined") return
   if (id == null) {

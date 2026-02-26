@@ -44,12 +44,12 @@ async def prepare_database() -> AsyncIterator[None]:
     # We exclude them from create_all and create them separately
     # with SQLite-compatible schema
     excluded_tables = {
-        models.DataAccessLog.__table__.name,
-        models.Notification.__table__.name,
-        models.NotificationDelivery.__table__.name,
-        models.Event.__table__.name,
-        models.EventAttendance.__table__.name,
-        models.EventFile.__table__.name,
+        models.DataAccessLog.__table__.name,  # type: ignore[attr-defined]
+        models.Notification.__table__.name,  # type: ignore[attr-defined]
+        models.NotificationDelivery.__table__.name,  # type: ignore[attr-defined]
+        models.Event.__table__.name,  # type: ignore[attr-defined]
+        models.EventAttendance.__table__.name,  # type: ignore[attr-defined]
+        models.EventFile.__table__.name,  # type: ignore[attr-defined]
     }
 
     async with database.engine.begin() as conn:
@@ -243,8 +243,9 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
 
     database_url = os.environ.get("DATABASE_URL", "")
-    is_postgresql = database.engine.dialect.name == "postgresql" or database_url.startswith(
-        "postgresql"
+    is_postgresql = (
+        database.engine.dialect.name == "postgresql"
+        or database_url.startswith("postgresql")
     )
 
     attempts = 5

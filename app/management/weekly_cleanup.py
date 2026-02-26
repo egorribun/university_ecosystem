@@ -77,7 +77,7 @@ async def _reindex_database() -> None:
         return
     quoted_db_name = database_name.replace('"', '""')
     async with engine.connect() as conn:
-        await conn.execution_options(isolation_level="AUTOCOMMIT").execute(  # type: ignore[attr-defined]
+        await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
             text(f'REINDEX DATABASE "{quoted_db_name}"')
         )
     logger.info("weekly_cleanup.reindex_completed", extra={"database": database_name})

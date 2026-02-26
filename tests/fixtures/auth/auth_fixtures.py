@@ -29,9 +29,11 @@ async def user_factory(
         await db_session.commit()
         from app.models.user_loaders import USER_AUTH_LOAD_OPTIONS
 
-        user = await db_session.get(
+        fetched_user = await db_session.get(
             models.User, user.id, options=USER_AUTH_LOAD_OPTIONS, populate_existing=True
         )
+        assert fetched_user is not None
+        user = fetched_user
         await ensure_mfa_relationships_loaded(db_session, user)
         return user
 
@@ -39,12 +41,14 @@ async def user_factory(
 
 
 @pytest_asyncio.fixture
-async def test_user(user_factory) -> models.User:
+async def test_user(user_factory: Callable[..., Awaitable[models.User]]) -> models.User:
     return await user_factory(role="student")
 
 
 @pytest_asyncio.fixture
-async def admin_user(user_factory) -> models.User:
+async def admin_user(
+    user_factory: Callable[..., Awaitable[models.User]],
+) -> models.User:
     return await user_factory(role="admin")
 
 

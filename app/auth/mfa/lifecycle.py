@@ -219,7 +219,11 @@ async def reset_user_mfa(
     update_stmt = (
         update(User)
         .where(User.id == target_user_id)
-        .where((User.mfa_required) | (User.mfa_default_method.is_not(None)) | (User.mfa_last_verified_at.is_not(None)))
+        .where(
+            (User.mfa_required)
+            | (User.mfa_default_method.is_not(None))
+            | (User.mfa_last_verified_at.is_not(None))
+        )
         .values(mfa_required=False, mfa_default_method=None, mfa_last_verified_at=None)
     )
     res = await db.execute(update_stmt)

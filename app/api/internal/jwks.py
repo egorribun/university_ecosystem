@@ -68,9 +68,9 @@ async def get_jwks() -> JwksResponse:
 
     keys = [
         JwksKey(
-            kty="oct",            # Symmetric key type (RFC 7518 §6.4)
-            use="sig",            # Intended use: signature verification
-            alg=algorithm,        # e.g. HS256
+            kty="oct",  # Symmetric key type (RFC 7518 §6.4)
+            use="sig",  # Intended use: signature verification
+            alg=algorithm,  # e.g. HS256
             kid=kid,
         )
         for kid in registry

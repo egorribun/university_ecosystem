@@ -195,7 +195,7 @@ class TestConnectionManager:
     ):
         """Presence broadcasts should be throttled when configured."""
         send_mock = AsyncMock(return_value=1)
-        connection_manager.send_to_user = send_mock
+        monkeypatch.setattr(connection_manager, "send_to_user", send_mock)
 
         async def _audience(_user_id: uuid.UUID) -> set[uuid.UUID]:
             return {uuid.uuid4()}

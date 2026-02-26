@@ -78,7 +78,7 @@ def signal_csrf_rotation(request: Request) -> None:
 
     CSRFMiddleware reads this flag and rotates the cookie unconditionally.
     """
-    request.state.rotate_csrf = True  # type: ignore[attr-defined]
+    request.state.rotate_csrf = True
 
 
 # Pre-serialised CSRF rejection body.

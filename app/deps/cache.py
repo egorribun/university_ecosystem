@@ -755,9 +755,9 @@ async def get_cache_client() -> Redis:
     """
     cache = get_cache()
     if hasattr(cache, "_get_client"):
-        return await cast(Any, cache)._get_client()
+        return cast(Redis, await cast(Any, cache)._get_client())
     if hasattr(cache, "l2") and hasattr(cast(Any, cache).l2, "_get_client"):
-        return await cast(Any, cache.l2)._get_client()
+        return cast(Redis, await cast(Any, cache.l2)._get_client())
     raise RuntimeError(
         f"Cache backend {type(cache)} does not support direct Redis client access."
     )
