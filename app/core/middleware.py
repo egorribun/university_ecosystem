@@ -87,17 +87,32 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
 
         return cast(Response, await call_next(request))
 
-    async def _read_and_replay_body(self, request: Request):
-        """Consume request body safely within limits and return an injected replay Request."""
-        body_chunks: list[bytes] = []
-        accumulated = 0
-        async for chunk in request.stream():
-            accumulated += len(chunk)
-            if accumulated > self._max_bytes:
-                return None, self._oversized_response(self._max_bytes)
-            body_chunks.append(chunk)
+    # PERF-1: Threshold below which body is kept in RAM; beyond this it spills to
+    # a temporary disk file.  100 concurrent 4.9 MB uploads without this threshold
+    # would allocate ~490 MB of heap at once.  SpooledTemporaryFile transparently
+    # handles the in-memory → disk transition so replay semantics are unchanged.
+    _MEM_BUFFER_THRESHOLD: int = 512 * 1024  # 512 KB
 
-        body_bytes = b"".join(body_chunks)
+    async def _read_and_replay_body(self, request: Request):
+        """Consume request body safely within limits and return an injected replay Request.
+
+        Bodies ≤ _MEM_BUFFER_THRESHOLD bytes are kept in RAM; larger bodies spill
+        to a NamedTemporaryFile so concurrent uploads don't exhaust the heap.
+        """
+        import tempfile
+
+        accumulated = 0
+        with tempfile.SpooledTemporaryFile(
+            max_size=self._MEM_BUFFER_THRESHOLD, mode="w+b"
+        ) as tmpfile:
+            async for chunk in request.stream():
+                accumulated += len(chunk)
+                if accumulated > self._max_bytes:
+                    return None, self._oversized_response(self._max_bytes)
+                tmpfile.write(chunk)
+
+            tmpfile.seek(0)
+            body_bytes = tmpfile.read()
 
         async def _replay_receive() -> dict:
             return {"type": "http.request", "body": body_bytes, "more_body": False}

@@ -10,9 +10,14 @@ from collections.abc import AsyncGenerator
 
 import strawberry
 from fastapi import Request
-from strawberry.extensions import QueryDepthLimiter
+from strawberry.extensions import (
+    AddValidationRules,
+    MaxTokensLimiter,
+    QueryDepthLimiter,
+)
 from strawberry.fastapi import GraphQLRouter
 
+from app.core.config import settings
 from app.graphql.context import GraphQLContext
 from app.graphql.dataloaders import DataLoaderRegistry
 from app.graphql.queries import Query
@@ -43,7 +48,42 @@ async def get_context(
                 payload = decode_token(token)
                 if payload:
                     user_id = payload.get("sub")
-                    if user_id:
+                    jti = payload.get("jti")
+
+                    # RZ-2 (audit 2026-02-26): GraphQL must honour session revocation
+                    # exactly like the REST path (deps.py:54-62).
+                    # Step 1 — Redis fast-path (O(1), optional):
+                    _user_id_valid = True
+                    if jti:
+                        try:
+                            from app.deps.cache import get_cache_client
+
+                            _redis = await get_cache_client()
+                            if await _redis.exists(f"revoked:jti:{jti}"):
+                                _user_id_valid = False
+                        except Exception:
+                            pass  # Redis unavailable — fall through to DB check
+
+                    # Step 2 — DB authoritative check (session.revoked_at):
+                    if _user_id_valid and jti:
+                        try:
+                            from sqlalchemy import select
+
+                            from app.models.models import ActiveSession
+
+                            _result = await session.execute(
+                                select(ActiveSession).where(
+                                    ActiveSession.jti == jti,
+                                    ActiveSession.revoked_at.is_(None),
+                                )
+                            )
+                            _active = _result.scalar_one_or_none()
+                            if _active is None:
+                                _user_id_valid = False
+                        except Exception:
+                            pass  # DB error — treat as unauthenticated
+
+                    if _user_id_valid and user_id:
                         from sqlalchemy import select
 
                         from app.models import User
@@ -77,23 +117,50 @@ async def get_context(
         yield context
 
 
-# Create the schema
-# QueryDepthLimiter prevents deeply-nested query DoS attacks (GraphQL batching
-# attack / introspection amplification). max_depth=8 is generous for this
-# read-heavy schema while blocking abuse. (MOD-3: audit 2026-02-24)
+def _build_schema_extensions() -> list:
+    """Build the list of Strawberry schema extensions based on environment.
+
+    RZ-5 (audit 2026-02-26): Without depth and token limits an attacker can craft
+    deeply-nested or extremely wide queries (GraphQL DoS / query amplification).
+    In production, schema introspection is also disabled to prevent automated
+    schema enumeration and PoC generation by attackers.
+    """
+    extensions: list = [
+        # Prevent deeply-nested query DoS (OWASP API8:2023).
+        # max_depth=8 is generous for this read-heavy schema while blocking abuse.
+        QueryDepthLimiter(max_depth=8),
+        # Prevent query amplification via extremely wide selections.
+        # 1000 tokens ≈ ~50 medium-complexity fields with aliases.
+        MaxTokensLimiter(max_token_count=1000),
+    ]
+
+    # Disable introspection in production — schema enumeration lets attackers
+    # auto-generate targeted PoC queries. The GraphiQL IDE is already hidden
+    # from OpenAPI in non-dev environments.
+    _is_prod = settings.environment not in {"development", "testing", "local"}
+    if _is_prod:
+        from graphql.validation import NoSchemaIntrospectionCustomRule
+
+        extensions.append(AddValidationRules([NoSchemaIntrospectionCustomRule]))
+
+    return extensions
+
+
+# Create the schema with DoS protection extensions.
 schema = strawberry.Schema(
     query=Query,
     # mutation=Mutation,  # Add when mutations are implemented
-    extensions=[
-        QueryDepthLimiter(max_depth=8),
-    ],
+    extensions=_build_schema_extensions(),
 )
 
-# Create the router for FastAPI
+# RZ-5 (audit 2026-02-26): GraphQL IDE (GraphiQL) must not be exposed in
+# production — it provides a convenient attack surface for ad-hoc query
+# crafting and leaks schema shape even when introspection is disabled.
+_is_dev_env = settings.environment in {"development", "testing", "local"}
 graphql_router = GraphQLRouter(
     schema,
     context_getter=get_context,
-    graphql_ide="graphiql",  # Enable GraphiQL IDE at /graphql
+    graphql_ide="graphiql" if _is_dev_env else None,
 )
 
 

@@ -38,6 +38,11 @@ class MfaSettingsMixin:
     password_hibp_check_enabled: bool = False
     password_hibp_api_url: str = "https://api.pwnedpasswords.com/range"
     password_hibp_timeout_seconds: int = 5
+    # RZ-2: When True, password operations succeed even if HIBP API is unreachable.
+    # Default False (fail-closed) for maximum security. Set to True only in
+    # environments where availability SLAs outweigh the security risk of skipping
+    # the compromised-password check during an outage.
+    password_hibp_fail_open: bool = False
 
     auth_dummy_hash: str = (
         "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$"

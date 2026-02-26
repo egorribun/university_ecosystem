@@ -106,13 +106,25 @@ class SessionService:
                         },
                     )
 
-        # Fallback to Postgres Advisory Lock if Redis is unavailable or fails
-        if not lock_acquired and self.db.bind.dialect.name == "postgresql":
-            # pg_advisory_xact_lock(int, int) requires 32-bit integers
-            uid_int = int(user_id.int) % (2**31 - 1)
-            await self.db.execute(
-                text("SELECT pg_advisory_xact_lock(1, :uid)"), {"uid": uid_int}
-            )
+        # Fallback to Postgres Advisory Lock if Redis is unavailable or fails.
+        # OZ-6 (audit 2026-02-26): AsyncSession.get_bind() was removed in
+        # SQLAlchemy 2.0 — it always raised an exception in async contexts,
+        # making the advisory lock dead code (silent race condition).
+        # Read the dialect name directly from the engine module instead.
+        if not lock_acquired:
+            try:
+                from app.core.database import engine as _pg_engine
+
+                engine_dialect = _pg_engine.dialect.name if _pg_engine else "unknown"
+            except Exception:
+                engine_dialect = "unknown"
+            if engine_dialect == "postgresql":
+                # pg_advisory_xact_lock(int8) scoped to the current transaction.
+                # Released automatically on COMMIT/ROLLBACK — no manual cleanup needed.
+                uid_int = int(user_id.int) % (2**31 - 1)
+                await self.db.execute(
+                    text("SELECT pg_advisory_xact_lock(1, :uid)"), {"uid": uid_int}
+                )
 
         try:
             # 2. Build and persist session record

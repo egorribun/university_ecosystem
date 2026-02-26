@@ -68,23 +68,33 @@ async def test_get_current_user_redis_hit():
 
     with (
         patch(
-            "app.api.deps.AuthTokenService.extract_and_decode_token", return_value={"sub": str(user_id), "jti": jti}
+            "app.api.deps.AuthTokenService.extract_and_decode_token",
+            return_value={"sub": str(user_id), "jti": jti},
         ),
-        patch("app.services.auth.redis_session.RedisSessionService") as mock_redis_cls,
-        patch("app.auth.fingerprint.extract_fingerprint") as mock_fp,
+        patch("app.api.deps.RedisSessionService") as mock_redis_cls,
+        patch("app.api.deps.AuthFingerprintService") as mock_fp_cls,
     ):
         mock_redis = mock_redis_cls.return_value
         mock_redis.get_session = AsyncMock(return_value=cached_session)
         mock_redis.update_last_seen = AsyncMock()
 
-        db.get = AsyncMock(return_value=user)
+        mock_fp = mock_fp_cls.return_value
+        mock_fp.validate_fingerprint = AsyncMock()
+
+        async def mock_db_get(model, *args, **kwargs):
+            if model == User:
+                return user
+            return session
+
+        db.get = AsyncMock(side_effect=mock_db_get)
 
         # We still need to mock the session load if the logic falls through
         mock_result = MagicMock()
-        mock_result.scalars.return_value.first.return_value = session
+        mock_scalars = mock_result.scalars.return_value
+        mock_scalars.first.return_value = session
+        # And in case it fully misses to the active session repo:
+        mock_result.first.return_value = (user, session)
         db.execute = AsyncMock(return_value=mock_result)
-
-        mock_fp.return_value.fingerprint_hash = "hash"
 
         result = await get_current_user(request, "token", db)
         assert result == user

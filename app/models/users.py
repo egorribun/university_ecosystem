@@ -49,7 +49,7 @@ class _DelegatedProperty(Generic[_T]):
     related tables.
     """
 
-    __slots__ = ("_attr", "_default", "_factory", "_relation")
+    __slots__ = ("_attr", "_default", "_factory", "_public_name", "_relation")
 
     def __init__(
         self,
@@ -64,15 +64,26 @@ class _DelegatedProperty(Generic[_T]):
         self._factory = factory
 
     def __set_name__(self, owner: type, name: str) -> None:
-        # Keep track of the public name for clearer error messages if needed.
-        pass
+        # TD-2 (audit 2026-02-26): Store the public attribute name so that
+        # __get__ can produce actionable debug messages when a relation is not
+        # loaded, instead of silently returning the default value.
+        self._public_name = name
 
     def __get__(self, obj: Any, objtype: type | None = None) -> _T:
         if obj is None:
             return self  # type: ignore[return-value]
         related = getattr(obj, self._relation, None)
         if related is None:
-            # Return a falsy neutral value that matches the declared type.
+            # Relation not loaded (lazy="noload" or not joined).  Log at DEBUG
+            # so N+1 / noload misconfigurations surface in development.
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug(
+                "DelegatedProperty %s.%s accessed with unloaded relation '%s'",
+                type(obj).__name__,
+                getattr(self, "_public_name", "<unknown>"),
+                self._relation,
+            )
             return self._default
         return getattr(related, self._attr)  # type: ignore[no-any-return]
 
@@ -161,12 +172,15 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     group = relationship("Group", back_populates="students", passive_deletes=True)
+    # TD-5: lazy="noload" prevents N+1 when loading lists of users.
+    # Load explicitly via selectinload(User.stats) in queries that need it.
     stats = relationship(
         "UserStats",
         uselist=False,
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
     notifications = relationship(
         "Notification",
@@ -185,7 +199,11 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
-        lazy="select",
+        # TD-5 (audit 2026-02-26): Changed from lazy="select" to lazy="noload" to
+        # prevent an N+1 when loading lists of users (e.g. admin user list, event
+        # attendees). Load with selectinload(User.push_topic_preferences) only in
+        # endpoints that actually render push preferences.
+        lazy="noload",
     )
     sessions = relationship(
         "ActiveSession",
@@ -229,12 +247,15 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    # PERF-3: order_by on a relationship triggers a full-scan sort every time
+    # the collection is accessed.  Use lazy="noload" and load explicitly with
+    # an ordered query when login history is actually needed.
     login_history = relationship(
         "LoginHistory",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        order_by="desc(LoginHistory.created_at)",
+        lazy="noload",
     )
 
     def __init__(self, **kwargs) -> None:
@@ -387,10 +408,13 @@ class UserPreferences(Base):
         primary_key=True,
     )
 
-    dnd_enabled = Column(Boolean, default=False, nullable=False)
-    dnd_start = Column(Time(timezone=False))
-    dnd_end = Column(Time(timezone=False))
-    timezone = Column(String(64))
+    # TD-2: Use timezone-aware Time so the application can correctly compare DnD
+    # window boundaries against UTC server time regardless of the user's locale.
+    # Requires a new Alembic migration (ALTER COLUMN ... TYPE TIMETZ).
+    dnd_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    dnd_start: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
+    dnd_end: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user = relationship("User", back_populates="preferences")
 
@@ -407,18 +431,19 @@ class UserProfile(Base):
         primary_key=True,
     )
 
-    # Fields moved from User
-    full_name = Column(String)
-    avatar_url = Column(String)
-    cover_url = Column(String)
-
-    # Fields moved from UserProfileDetail
-    about = Column(String)
-    telegram = Column(String)
-    status = Column(String)
-    achievements = Column(String)
-    position = Column(String)
-    department = Column(String)
+    # PERF-4 (audit 2026-02-26): All String columns were unbounded (TEXT in Postgres).
+    # Without a column-level constraint a bug or attacker can store multi-MB values,
+    # causing OOM on bulk user list queries.  Bounds reflect real-world field semantics.
+    # Migration required: ALTER COLUMN ... TYPE VARCHAR(N)
+    full_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    cover_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    about: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    telegram: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    achievements: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    position: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     user = relationship("User", back_populates="profile")
 
@@ -434,12 +459,13 @@ class EducationPath(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    institute = Column(String)
-    course = Column(String)
-    education_level = Column(String)
-    track = Column(String)
-    program = Column(String)
-    record_book_number = Column(String)
+    # PERF-4 (audit 2026-02-26): Add length bounds — see UserProfile above.
+    institute: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    course: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    education_level: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    track: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    program: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    record_book_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user = relationship("User", back_populates="education_path")
 
@@ -480,24 +506,26 @@ class UserStats(Base):
         primary_key=True,
     )
 
+    # TD-1: Migrated from legacy Column() to typed Mapped[] for consistency with
+    # the rest of the codebase and to benefit from SQLAlchemy 2.x type inference.
     # Attendance metrics
-    attendance_percent = Column(Float, default=0.0)
-    attendance_present = Column(Integer, default=0)
-    attendance_total = Column(Integer, default=0)
-    attendance_trend = Column(Float, default=0.0)
+    attendance_percent: Mapped[float] = mapped_column(Float, default=0.0)
+    attendance_present: Mapped[int] = mapped_column(Integer, default=0)
+    attendance_total: Mapped[int] = mapped_column(Integer, default=0)
+    attendance_trend: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Grade metrics
-    grades_average = Column(Float, default=0.0)
-    grades_trend = Column(Float, default=0.0)
+    grades_average: Mapped[float] = mapped_column(Float, default=0.0)
+    grades_trend: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Participation metrics
-    participation_events = Column(Integer, default=0)
-    participation_hours = Column(Float, default=0.0)
-    participation_groups = Column(Integer, default=0)
-    participation_trend = Column(Integer, default=0)
+    participation_events: Mapped[int] = mapped_column(Integer, default=0)
+    participation_hours: Mapped[float] = mapped_column(Float, default=0.0)
+    participation_groups: Mapped[int] = mapped_column(Integer, default=0)
+    participation_trend: Mapped[int] = mapped_column(Integer, default=0)
 
     # General metadata
-    last_computed_at = Column(
+    last_computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 

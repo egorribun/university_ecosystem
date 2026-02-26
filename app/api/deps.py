@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import select
 
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
+from app.auth.fingerprint import SessionFingerprint
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.config import settings
 from app.core.container import get_audit_service, get_vector_service
 from app.core.database import get_db, get_read_db
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
+from app.deps.cache import get_cache_client
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import (
     USER_AUTH_LOAD_OPTIONS,
@@ -22,6 +26,7 @@ from app.models.user_loaders import (
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.auth.fingerprint_service import AuthFingerprintService
+from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
 
@@ -39,14 +44,15 @@ async def get_current_user(
     payload = AuthTokenService.extract_and_decode_token(request, token, locale)
     user_id, jti = AuthTokenService.validate_payload(payload, locale)
 
-    # 2. JTI Revocation Fast-Path — rejects explicitly revoked tokens in O(1)
-    # before any DB or Redis session lookup.  SessionService.revoke_session()
-    # writes the key "revoked:jti:<jti>" with a TTL equal to the token's
-    # remaining lifetime, so no background cleanup is needed.
+    # 2. JTI Revocation Fast-Path — optional O(1) pre-check before session lookup.
+    # NOTE (RZ-3): The "revoked:jti:<jti>" key is reserved for future use as an
+    # additional defense-in-depth layer.  The authoritative revocation check is
+    # session.revoked_at in PostgreSQL, enforced in every code path below.
+    # If Redis is unavailable the except branch falls through silently — the DB
+    # check is the source of truth and will still deny revoked sessions.
+    # TD-3: get_cache_client and RedisSessionService are top-level imports now.
     try:
-        from app.deps.cache import get_cache_client as _cache
-
-        _redis = await _cache()
+        _redis = await get_cache_client()
         if await _redis.exists(f"revoked:jti:{jti}"):
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
     except HTTPException:
@@ -56,8 +62,6 @@ async def get_current_user(
         pass
 
     # 3. Redis Session Check (Cache-Aside)
-    from app.services.auth.redis_session import RedisSessionService
-
     redis_service = RedisSessionService()
     cached_session = await redis_service.get_session(jti)
 
@@ -74,6 +78,24 @@ async def get_current_user(
         if not user or not user.is_active:
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
+        # RZ-3: Use session_id stored in Redis cache for O(1) pk lookup instead
+        # of a secondary WHERE-jti query on every cache-hit request.
+        # _uuid_mod and select are top-level imports (TD-3).
+        cached_sid = cached_session.get("session_id")
+        if cached_sid:
+            try:
+                session = await db.get(ActiveSession, _uuid_mod.UUID(cached_sid))
+            except (ValueError, TypeError):
+                session = None
+        if not session or session.revoked_at:
+            # session_id missing/stale in old cache entries — fall through to DB
+            res_s = await db.execute(
+                select(ActiveSession).where(ActiveSession.jti == jti)
+            )
+            session = res_s.scalars().first()
+            if not session or session.revoked_at:
+                raise_unauthorized(locale, "errors.auth.credentials_invalid")
+
     # 3. MISS or Fallback: Full DB Validation
     if not user:
         session_repo = ActiveSessionRepository(db)
@@ -84,9 +106,8 @@ async def get_current_user(
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
         user, session = row
 
-        # Populate Redis (Cache-Aside)
-        from app.auth.fingerprint import SessionFingerprint
-
+        # Populate Redis (Cache-Aside) — include session_id to avoid N+1 on next HIT
+        # SessionFingerprint is a top-level import (TD-3).
         fp = SessionFingerprint(
             user_agent=str(session.user_agent or ""),
             ip_address=str(session.ip_address or ""),
@@ -98,17 +119,8 @@ async def get_current_user(
             user_id=user.id,
             fingerprint=fp,
             mfa_verified_at=session.mfa_verified_at,
+            session_id=session.id,
         )
-
-    # Ensure we have a session object (required for downstream logic)
-    if not session:
-        # SQLA Select is fine to use with protocol if it matches
-        from sqlalchemy import select
-
-        res_s = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
-        session = res_s.scalars().first()
-        if not session or session.revoked_at:
-            raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     # 4. Security Lifecycle Validation
     security_service = AuthSecurityService(db, locale)

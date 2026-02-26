@@ -10,14 +10,13 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import exc as sa_exc
-from sqlalchemy.orm import exc as orm_exc
 from sqlalchemy import inspect
+from sqlalchemy.orm import exc as orm_exc
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
     from app.models import models as _models
-    from app.schemas.dtos import UserAuthDTO
+    from app.schemas.dtos import UserAuthDTO, UserDTO
 
     _AnyUser = _models.User | UserAuthDTO | UserDTO
 
@@ -27,7 +26,6 @@ from app.auth.security import (
     get_password_hash,
     verify_password,
 )
-from app.schemas.dtos import UserDTO
 from app.core.config import settings
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import resolve_locale
@@ -38,6 +36,7 @@ from app.repositories.auth_repository import AuthRepository
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
+from app.schemas.dtos import UserDTO
 from app.services.audit_service import AuditService
 from app.tasks.email import send_auth_email
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
@@ -67,12 +66,19 @@ class AuthService:
         request: Request,
         bg: BackgroundTasks,
     ) -> None:
-        user = await self.user_repo.get_by_email(email)
+        # RZ-1: Timer must start BEFORE the DB query so that ensure_minimum_time
+        # normalises the total response time including I/O, preventing user-
+        # enumeration via timing differentials (~5-20 ms) between existing and
+        # non-existing email lookups (OWASP OTG-IDENT-004).
         start = time.perf_counter()
         from app.core.timing import ensure_minimum_time
 
+        user = await self.user_repo.get_by_email(email)
+
         if user:
-            token = secrets.token_urlsafe(32)
+            # RZ-2: 48 bytes (384 bits) exceeds NIST SP 800-131A requirements and
+            # is resistant to brute-force even if the HMAC-SHA256 digest leaks.
+            token = secrets.token_urlsafe(48)
             token_hash = _hash_token(token)
             expires = datetime.now(UTC) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
 
@@ -391,8 +397,14 @@ class AuthService:
 
 
 def _hash_token(token: str) -> str:
+    # OZ-5 (audit 2026-02-26): Use a dedicated TOKEN_HMAC_SECRET rather than the
+    # JWT signing secret so that JWT key rotation (which must happen periodically)
+    # does not invalidate in-flight password-reset and email-change tokens.
+    # Falls back to secret_key for backwards-compatibility if TOKEN_HMAC_SECRET
+    # is not yet set in the environment.
+    hmac_secret = getattr(settings, "token_hmac_secret", None) or settings.secret_key
     return hmac.new(
-        settings.secret_key.encode(),
+        hmac_secret.encode(),
         token.encode(),
         hashlib.sha256,
     ).hexdigest()

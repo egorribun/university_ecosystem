@@ -193,17 +193,53 @@ def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -
 
     Now enabled in all environments when slow_query_logging_enabled is True.
     Uses configurable threshold from settings.
+
+    PERF-2 (audit 2026-02-26): The threshold is captured once in a closure at
+    engine-setup time rather than reading ``settings.slow_query_threshold_ms``
+    on every single SQL query (which at 10K rps = 10K redundant getattr calls/s).
     """
     if not getattr(current_settings, "slow_query_logging_enabled", False):
         return
 
+    # Capture threshold once — changes require application restart (acceptable).
+    _threshold_ms: float = float(
+        getattr(current_settings, "slow_query_threshold_ms", 500.0) or 500.0
+    )
+
+    def _after_cursor_execute_closure(
+        conn, cursor, statement, parameters, context, executemany
+    ) -> None:
+        """Log if query execution time exceeded threshold."""
+        start_time = _query_start_time.get()
+        if start_time is None:
+            return
+        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+        _query_start_time.set(None)
+        if elapsed_ms >= _threshold_ms:
+            truncated_statement = (
+                statement[:500] + "..." if len(statement) > 500 else statement
+            )
+            slow_query_logger.warning(
+                "Slow query detected: %.2fms - %s",
+                elapsed_ms,
+                truncated_statement.replace("\n", " ").strip(),
+                extra={
+                    "elapsed_ms": elapsed_ms,
+                    "statement_length": len(statement),
+                    "executemany": executemany,
+                    "threshold_ms": _threshold_ms,
+                },
+            )
+
     sync_engine = engine.sync_engine
     event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
-    event.listen(sync_engine, "after_cursor_execute", _after_cursor_execute)
-    threshold = getattr(current_settings, "slow_query_threshold_ms", 500.0)
+    # PERF-2: Use the closure that captured _threshold_ms at setup time,
+    # replacing the module-level _after_cursor_execute which called
+    # getattr(settings, ...) on every single query execution.
+    event.listen(sync_engine, "after_cursor_execute", _after_cursor_execute_closure)
     logger.info(
         "Slow query logging enabled (threshold: %.0fms)",
-        threshold,
+        _threshold_ms,
     )
 
 

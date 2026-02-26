@@ -18,7 +18,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 
 from app.core import metrics
@@ -43,6 +43,7 @@ from app.utils.logging import redact_sensitive_mapping
 # infrastructure failures (DB timeouts, programming errors).
 try:
     import jwt as _jwt_lib
+
     _JWT_DECODE_ERRORS: tuple[type[Exception], ...] = (
         _jwt_lib.exceptions.DecodeError,
         _jwt_lib.exceptions.InvalidTokenError,
@@ -196,6 +197,10 @@ class ConnectionManager:
         # websocket -> user_id (for reverse lookup on disconnect)
         self.connection_users: dict[WebSocket, uuid.UUID] = {}
         self._last_presence_sent_at: dict[uuid.UUID, datetime] = {}
+        # OZ-2 (audit 2026-02-26): Protects connect/disconnect against concurrent
+        # access so that connection-limit checks are atomically enforced even when
+        # multiple WebSocket upgrade requests arrive simultaneously for the same user.
+        self._lock: asyncio.Lock = asyncio.Lock()
 
     async def connect(
         self,
@@ -208,28 +213,33 @@ class ConnectionManager:
 
         Returns True when the connection was accepted, False when it was rejected
         because the per-user connection limit has been reached.
+
+        The connection-limit check and registration happen inside a single Lock
+        acquisition so concurrent upgrade requests cannot bypass the per-user
+        cap by racing between the check and the insert. (OZ-2: audit 2026-02-26)
         """
-        current_conns = self.active_connections.get(user_id, set())
         limit = getattr(
             settings, "ws_max_connections_per_user", self.MAX_CONNECTIONS_PER_USER
         )
-        if len(current_conns) >= limit:
-            # Reject BEFORE accepting — the client will receive a proper close frame.
-            await websocket.close(code=1008, reason="Connection limit exceeded")
-            logger.warning(
-                "WS connection limit reached for user %s (%d/%d) — rejected",
-                user_id,
-                len(current_conns),
-                limit,
-            )
-            return False
+        async with self._lock:
+            current_conns = self.active_connections.get(user_id, set())
+            if len(current_conns) >= limit:
+                # Reject BEFORE accepting — the client will receive a proper close frame.
+                await websocket.close(code=1008, reason="Connection limit exceeded")
+                logger.warning(
+                    "WS connection limit reached for user %s (%d/%d) — rejected",
+                    user_id,
+                    len(current_conns),
+                    limit,
+                )
+                return False
 
-        if subprotocol:
-            await websocket.accept(subprotocol=subprotocol)
-        else:
-            await websocket.accept()
-        self.active_connections.setdefault(user_id, set()).add(websocket)
-        self.connection_users[websocket] = user_id
+            if subprotocol:
+                await websocket.accept(subprotocol=subprotocol)
+            else:
+                await websocket.accept()
+            self.active_connections.setdefault(user_id, set()).add(websocket)
+            self.connection_users[websocket] = user_id
         logger.info("WebSocket connected: user_id=%s", user_id)
         return True
 
@@ -240,8 +250,8 @@ class ConnectionManager:
             self.active_connections[user_id].discard(websocket)
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
-                # Clean up presence throttle state only when the last connection closes.
-                # If the user has multiple tabs open, keep the throttle to avoid presence spam.
+                # Clean up presence throttle state only when the last connection
+                # closes.  Multiple open tabs keep the throttle to prevent spam.
                 self._last_presence_sent_at.pop(user_id, None)
             logger.info("WebSocket disconnected: user_id=%s", user_id)
         return user_id
@@ -305,16 +315,24 @@ class ConnectionManager:
         message: dict[str, Any],
         exclude_user_id: uuid.UUID | None = None,
     ) -> int:
-        """Broadcast a message to all participants of a chat. Returns total sends."""
-        total_sent = 0
+        """Broadcast a message to all participants of a chat. Returns total sends.
+
+        PERF-1 (audit 2026-02-26): Messages are fanned-out concurrently via
+        asyncio.gather so latency scales with the slowest single send rather than
+        O(N × send_time). Results are collected with return_exceptions=True to
+        ensure one failing connection does not abort sends to other participants.
+        """
         participant_ids = await self._get_chat_participants_cached(chat_id)
-
-        for p_id in participant_ids:
-            if exclude_user_id and p_id == exclude_user_id:
-                continue
-            total_sent += await self.send_to_user(p_id, message)
-
-        return total_sent
+        targets = [
+            p_id
+            for p_id in participant_ids
+            if exclude_user_id is None or p_id != exclude_user_id
+        ]
+        results = await asyncio.gather(
+            *(self.send_to_user(p_id, message) for p_id in targets),
+            return_exceptions=True,
+        )
+        return sum(r for r in results if isinstance(r, int))
 
     def _should_broadcast_presence(
         self, user_id: uuid.UUID, now: datetime, *, force: bool
@@ -388,7 +406,9 @@ def get_connection_manager(request: Request) -> ConnectionManager:
     Usage::
 
         @router.get("/example")
-        async def example(cm: Annotated[ConnectionManager, Depends(get_connection_manager)]):
+        async def example(
+            cm: Annotated[ConnectionManager, Depends(get_connection_manager)]
+        ):
             ...
     """
     return cast("ConnectionManager", request.app.state.connection_manager)
@@ -475,7 +495,9 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
     except Exception:
         # Unexpected failure: DB connection lost, programming error, etc.
         # Log at ERROR so Sentry / alerting sees the outage.
-        logger.exception("WebSocket token validation: unexpected infrastructure failure")
+        logger.exception(
+            "WebSocket token validation: unexpected infrastructure failure"
+        )
         return None, None
 
 
@@ -616,8 +638,7 @@ async def websocket_chat(websocket: WebSocket):
     - Query param `token` can be enabled temporarily via
       feature flag `websocket_query_param_compat`
 
-    Message types (from client):
-    - {"type": "ping"} - Keep-alive ping
+    Message types (from client):\n    - {"type": "ping"} - Keep-alive ping
     - {"type": "typing", "chat_id": "..."} - Typing indicator
     - {"type": "read", "chat_id": "...", "message_id": "..."} - Mark message as read
 
@@ -631,6 +652,28 @@ async def websocket_chat(websocket: WebSocket):
       - Participant presence updates
     - {"type": "error", "message": "..."} - Error message
     """
+    # --- RZ-6: CSRF protection for WebSocket (audit 2026-02-26) ---
+    # WebSocket upgrades are exempt from the CSRF middleware because they use
+    # HTTP Upgrade — the browser attaches cookies automatically, making cookie-
+    # authenticated WebSocket connections vulnerable to CSRF from any origin.
+    # Mitigation: validate the Origin header against the CORS allowlist *before*
+    # accepting the upgrade.  Allowed origins are the same set used by CORSMiddleware.
+    # Native clients (no Origin header) are permitted to connect via explicit JWT.
+    _origin = websocket.headers.get("origin")
+    if _origin is not None:
+        _allowed_origins: set[str] = set(
+            getattr(settings, "cors_allow_origins_list", [])
+            or getattr(settings, "frontend_origins", "").split(",")
+        )
+        # Normalise: strip trailing slash and lowercase scheme+host
+        _origin_normalised = _origin.rstrip("/").lower()
+        _allowed_normalised = {o.rstrip("/").lower() for o in _allowed_origins if o}
+        if _origin_normalised not in _allowed_normalised:
+            logger.warning("WebSocket rejected: Origin '%s' not in allowlist", _origin)
+            await websocket.close(code=4403, reason="Origin not allowed")
+            return
+    # ------------------------------------------------------------------
+
     user = None
     session_jti = None
 
@@ -675,7 +718,35 @@ async def websocket_chat(websocket: WebSocket):
         if is_query_param_enabled:
             token = websocket.query_params.get("token")
             if token:
-                logger.info("Attempting token auth from query params (compat mode)")
+                # RZ-4 (audit 2026-02-26): Query-param tokens appear in nginx/caddy
+                # access logs and browser history. Log a security event WITHOUT
+                # logging the token value, then attempt authentication as normal.
+                logger.warning(
+                    "SECURITY DEPRECATION: WebSocket token passed via query param. "
+                    "This exposure vector will be removed; use Authorization header or "
+                    "Sec-WebSocket-Protocol instead. "
+                    "Disable websocket_query_param_compat feature flag to block this path."
+                )
+                # Emit a structured security event for alerting pipelines.
+                try:
+                    from app.deps.cache import get_cache_client
+                    from app.services.fraud_detection_service import (
+                        FraudDetectionService,
+                    )
+
+                    _rc = await get_cache_client()
+                    _fds = FraudDetectionService(_rc)
+                    await _fds.record_event(
+                        {
+                            "event": "ws.token_query_param",
+                            "severity": "medium",
+                            "client_host": websocket.client.host
+                            if websocket.client
+                            else "",
+                        }
+                    )
+                except Exception:
+                    pass  # Fraud detection is best-effort, never block the request
                 user, session_jti = await get_user_from_token(token)
                 if user:
                     logger.info("Token auth successful: user_id=%s", user.id)
@@ -748,12 +819,16 @@ async def websocket_chat(websocket: WebSocket):
                         )
                         async with async_session() as session:
                             repo = ChatRepository(session)
-                            is_participant = await repo.check_participant(chat_uuid, user.id)
+                            is_participant = await repo.check_participant(
+                                chat_uuid, user.id
+                            )
 
                         if not is_participant:
                             logger.warning(
-                                f"Access denied: User {user.id} tried to send typing "
-                                f"indicator to chat {chat_id} without being a participant"
+                                "Access denied: User %s tried to send typing "
+                                "indicator to chat %s without being a participant",
+                                user.id,
+                                chat_id,
                             )
                             await websocket.send_json(
                                 {"type": "error", "message": "Access denied"}
@@ -892,6 +967,3 @@ async def notify_new_message(
         },
         exclude_user_id=exclude_user_id,
     )
-
-
-

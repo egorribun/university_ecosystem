@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import math
 import time
 import uuid
@@ -159,7 +160,13 @@ _shared_clients: dict[str, Redis] = {}
 _shared_clients_write_lock: asyncio.Lock
 
 # Replaced list-based buckets with dictionary: key -> (count, expiry_timestamp)
+# Retained for cleanup/eviction compatibility (periodic cleanup still iterates this).
 _memory_counters: dict[str, tuple[int, float]] = {}
+
+# PERF-3 (audit 2026-02-26): Sliding window log using deque of timestamps.
+# Key -> deque of request epoch timestamps within the active window.
+# Replaces the fixed-window counter to match Redis Lua script behaviour.
+_memory_windows: dict[str, collections.deque[float]] = {}
 
 # Sharded lock pool: 256 shards reduce contention under high concurrency.
 # Each rate-limit key maps to shard = hash(key) & 0xFF so at most 1/256 of
@@ -489,16 +496,46 @@ class RateLimitMiddleware:
 
     @staticmethod
     def _fingerprint_token(token: str | None) -> str | None:
+        """Return a collision-resistant fingerprint for rate-limit keying.
+
+        RZ-2 (audit 2026-02-26): The previous implementation returned the first 32
+        characters of the token — which for JWTs is always the base64url-encoded
+        header ('eyJhbGciOiJIUzI1NiIsImtpZCI6...'), identical for every token
+        sharing the same algorithm + KID.  This collapsed ALL authenticated requests
+        into a single rate-limit bucket, nullifying per-user throttling.
+
+        Fix: extract the ``jti`` claim from the JWT payload (uuid4, unique per token).
+        Tail-segment fallback for opaque / non-JWT tokens: the signature bytes are
+        cryptographically unique, unlike the deterministic header.
+
+        PERF-2: parsing is O(1) string split + base64 decode — cheaper than HMAC-SHA256
+        and fast enough for the hot path.
+        """
         if not token:
             return None
         normalized = token.strip()
         if not normalized:
             return None
-        # PERF-5: HMAC SHA-256 on a 500+ character JWT is O(n) and too slow
-        # for a high-throughput rate-limiting middleware. Instead, simply
-        # take the first 32 characters of the token string (which contains
-        # the JWT header and part of the payload, ensuring uniqueness per token).
-        return normalized[:32]
+
+        # Fast path: extract JTI from JWT payload (unique per token by construction).
+        try:
+            import base64
+            import json as _json
+
+            parts = normalized.split(".")
+            if len(parts) == 3:
+                # Pad to 4-byte alignment required by base64 spec.
+                payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+                payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+                jti = payload.get("jti")
+                if jti and isinstance(jti, str):
+                    return f"jti:{jti}"
+        except Exception:
+            pass
+
+        # Fallback for opaque tokens: use the tail (signature) segment.
+        # The signature is cryptographically bound to the payload — unique per token.
+        return normalized[-32:]
 
     def _should_skip(self, method: str, path: str) -> bool:
         if method in {"OPTIONS", "HEAD"}:
@@ -569,29 +606,37 @@ class RateLimitExceeded(Exception):
 async def _memory_rate_limit(
     key: str, limit: int, window_seconds: int
 ) -> RateLimitInfo:
+    """In-memory sliding-window rate limiter.
+
+    PERF-3 (audit 2026-02-26): The previous implementation used a fixed-window
+    counter.  When Redis is unavailable and traffic falls back to memory, an
+    attacker could burst 2× the limit by straddling two consecutive windows.
+    The Redis backend uses a sliding window Lua script — this implementation
+    matches that behaviour using a collections.deque of request timestamps.
+
+    Memory: each entry is a float (8 bytes).  At the maximum limit of 300
+    requests / window, peak memory per key is 300 × 8 = 2.4 KB.
+    """
     if limit <= 0 or window_seconds <= 0:
         return RateLimitInfo(True, max(limit, 0), 0)
 
     now = time.time()
+    cutoff = now - window_seconds
 
     async with _shard_lock(key):
-        # Check existing counter
-        count, expiry = _memory_counters.get(key, (0, 0.0))
+        window = _memory_windows.setdefault(key, collections.deque())
 
-        # If expired, reset
-        if now > expiry:
-            count = 0
-            expiry = now + window_seconds
+        # Evict timestamps that have fallen outside the sliding window.
+        while window and window[0] <= cutoff:
+            window.popleft()
 
-        # Check limit
-        if count >= limit:
-            retry_after = math.ceil(expiry - now)
+        if len(window) >= limit:
+            # Time until the oldest request exits the window frees a slot.
+            retry_after = math.ceil(window[0] + window_seconds - now)
             return RateLimitInfo(False, 0, max(0, retry_after))
 
-        # Increment
-        count += 1
-        _memory_counters[key] = (count, expiry)
-        remaining = limit - count
+        window.append(now)
+        remaining = limit - len(window)
 
     return RateLimitInfo(True, max(0, remaining), 0)
 
@@ -651,7 +696,8 @@ async def _redis_rate_limit(
     except RedisError as exc:
         if "unknown command" not in str(exc).lower():
             raise
-        # Fallback: fixed-window pipeline (Redis EVAL unavailable, e.g. Redis Cluster mode)
+        # Fallback: fixed-window pipeline
+        # (Redis EVAL unavailable, e.g. Redis Cluster mode)
         info = await _redis_rate_limit_fallback(client, redis_key, window_ms, limit)
         return info
 

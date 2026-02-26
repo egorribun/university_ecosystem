@@ -28,7 +28,6 @@ from app.schemas.dtos import UserDTO
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
-    from app.models.webauthn import WebAuthnCredential as _WebAuthnCredential
 
 logger = logging.getLogger(__name__)
 
@@ -104,12 +103,18 @@ class WebAuthnService:
         label: str | None = None,
     ) -> WebAuthnCredential:
         """Verify the registration response and save the new credential."""
+        # TD-6 (audit 2026-02-26): Read from config instead of hardcoding False.
+        # PREFERRED means we ask for UV but don't fail if the authenticator can't
+        # provide it (hardware keys without PIN). Setting
+        # WEBAUTHN_REQUIRE_USER_VERIFICATION=true in .env enforces PIN/biometric
+        # for passkey-grade security (FIDO2 Level 2).
+        _require_uv = getattr(settings, "webauthn_require_user_verification", False)
         verification = verify_registration_response(
             credential=response,
             expected_challenge=base64.urlsafe_b64decode(challenge + "=="),
             expected_origin=settings.frontend_origins_list,
             expected_rp_id=self._get_rp_id(),
-            require_user_verification=False,  # We use PREFERRED in options
+            require_user_verification=_require_uv,
         )
 
         credential = await self.repo.create_webauthn_credential(

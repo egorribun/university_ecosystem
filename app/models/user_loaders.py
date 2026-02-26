@@ -56,10 +56,22 @@ USER_LIST_LOAD_OPTIONS: tuple = (joinedload(User.profile),)
 async def ensure_mfa_relationships_loaded(
     db: AsyncSession, user: User | UserDTO | None
 ) -> User | UserDTO | None:
-    """Ensure MFA-related relationships are loaded on the given user instance."""
+    """Ensure MFA-related relationships are loaded on the given user instance.
+
+    PERF-4: Idempotent — sets ``_mfa_loaded = True`` after the first successful
+    refresh so subsequent calls (e.g. from both deps.py and auth_service.py in
+    the same request) bypass the SQLAlchemy inspect overhead entirely.
+    """
 
     if user is None:
         return None
+
+    # Short-circuit if we have already loaded relationships in this request.
+    # User.__allow_unmapped__ = True permits the extra attribute on ORM instances;
+    # for DTO objects (Pydantic) we also set it since model_config allows extras
+    # or we use object.__setattr__ to avoid validation.
+    if getattr(user, "_mfa_loaded", False):
+        return user
 
     try:
         state = inspect(user)
@@ -75,4 +87,11 @@ async def ensure_mfa_relationships_loaded(
     ]
     if to_refresh:
         await db.refresh(user, attribute_names=to_refresh)
+
+    # Mark as loaded to avoid redundant inspect() calls on subsequent invocations.
+    try:
+        object.__setattr__(user, "_mfa_loaded", True)
+    except (TypeError, AttributeError):
+        pass  # DTO with frozen config — skip silently, overhead is minimal
+
     return user
