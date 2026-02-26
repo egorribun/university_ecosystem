@@ -320,7 +320,14 @@ class CircuitBreaker:
 
 # Registry for global circuit breaker instances
 _circuit_breakers: dict[str, CircuitBreaker] = {}
-_registry_lock = asyncio.Lock()
+_registry_lock: asyncio.Lock | None = None
+
+
+def _get_registry_lock() -> asyncio.Lock:
+    global _registry_lock
+    if _registry_lock is None:
+        _registry_lock = asyncio.Lock()
+    return _registry_lock
 
 
 async def get_circuit_breaker(
@@ -344,7 +351,7 @@ async def get_circuit_breaker(
     Returns:
         CircuitBreaker instance for the service.
     """
-    async with _registry_lock:
+    async with _get_registry_lock():
         if service_name not in _circuit_breakers:
             _circuit_breakers[service_name] = CircuitBreaker(
                 service_name,
@@ -361,6 +368,6 @@ def get_all_circuit_breakers() -> dict[str, CircuitBreaker]:
 
 async def reset_all_circuit_breakers() -> None:
     """Reset all circuit breakers. Useful for testing."""
-    async with _registry_lock:
+    async with _get_registry_lock():
         for breaker in _circuit_breakers.values():
             await breaker.reset()

@@ -530,9 +530,7 @@ def test_parse_rate_limit_accepts_known_units(
     assert parsed == (count, expected_seconds)
 
 
-@hypo_settings(
-    max_examples=25, suppress_health_check=[HealthCheck.filter_too_much]
-)
+@hypo_settings(max_examples=25, suppress_health_check=[HealthCheck.filter_too_much])
 @given(
     value=st.text().filter(
         lambda raw: not raw or raw.strip().isdigit() or raw.count("/") > 1
@@ -554,7 +552,9 @@ async def test_check_rate_limit_blocks_after_limit(
     # Clear redis between hypothesis iterations to ensure clean state
     await _rate_limit_redis_client.flushall()
     monkeypatch.setattr(rate_limit, "_shared_clients", {})
-    monkeypatch.setattr(rate_limit, "_shared_client_locks", {})
+    # Reset the single write lock (replaces the removed _shared_client_locks dict).
+    # PERF-3 audit 2026-02-26: per-URL lock dict was replaced by one module-level lock.
+    monkeypatch.setattr(rate_limit, "_shared_clients_write_lock", asyncio.Lock())
 
     namespace = "prop"
     limit = 2

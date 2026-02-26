@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import logging
 import secrets
@@ -237,8 +239,11 @@ class SessionService:
         else:
             await register_session_bg(*args)
 
-    async def get_active_sessions_for_user(self, user_id: UUID) -> list[ActiveSessionDTO]:
+    async def get_active_sessions_for_user(
+        self, user_id: UUID
+    ) -> list[ActiveSessionDTO]:
         from sqlalchemy import select
+
         stmt = (
             select(ActiveSession)
             .where(ActiveSession.user_id == user_id)
@@ -269,13 +274,16 @@ class SessionService:
         from contextlib import suppress
 
         from app.auth.redis_session import get_session_backend
+
         backend = await get_session_backend()
         with suppress(Exception):
             await backend.revoke_session(str(session.jti))
 
         return ActiveSessionDTO.model_validate(session)
 
-    async def revoke_other_sessions(self, user_id: UUID, current_jti: str | None) -> int:
+    async def revoke_other_sessions(
+        self, user_id: UUID, current_jti: str | None
+    ) -> int:
         from sqlalchemy import and_
 
         from app.services.session_cleanup import revoke_sessions_matching
@@ -287,6 +295,8 @@ class SessionService:
         if current_jti:
             where_parts.append(ActiveSession.jti != current_jti)
 
-        revoked = await revoke_sessions_matching(db=self.db, whereclause=and_(*where_parts))
+        revoked = await revoke_sessions_matching(
+            db=self.db, whereclause=and_(*where_parts)
+        )
         await self.db.commit()
         return revoked

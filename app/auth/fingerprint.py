@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -172,7 +173,9 @@ class SuspiciousActivityDetector:
 
     def __init__(self) -> None:
         from collections import deque
+
         self._events: deque[SuspiciousActivityEvent] = deque(maxlen=self._MAX_EVENTS)
+        self._lock = threading.Lock()
 
     def check_fingerprint_mismatch(
         self,
@@ -285,7 +288,8 @@ class SuspiciousActivityDetector:
         materialisation is O(min(limit, len(deque))) and safe.
         """
         # Take the last `limit` events from the ring buffer.
-        events: list[SuspiciousActivityEvent] = list(self._events)[-limit:]
+        with self._lock:
+            events: list[SuspiciousActivityEvent] = list(self._events)[-limit:]
         if user_id is not None:
             events = [e for e in events if e.user_id == user_id]
         return events
@@ -293,11 +297,14 @@ class SuspiciousActivityDetector:
 
 # Global detector instance
 _detector: SuspiciousActivityDetector | None = None
+_detector_lock = threading.Lock()
 
 
 def get_suspicious_activity_detector() -> SuspiciousActivityDetector:
     """Get or create the global suspicious activity detector."""
     global _detector
     if _detector is None:
-        _detector = SuspiciousActivityDetector()
+        with _detector_lock:
+            if _detector is None:
+                _detector = SuspiciousActivityDetector()
     return _detector

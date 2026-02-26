@@ -66,6 +66,29 @@ class JwtSettingsMixin:
                         )
         return v
 
+    @field_validator("algorithm")
+    @classmethod
+    def _validate_algorithm(cls, v: str, info: ValidationInfo) -> str:
+        """Prohibit HS256 in non-development environments.
+
+        HS256 uses a shared secret: any party that can *verify* a token can
+        also *forge* one. RS256 separates the signing key (private) from the
+        verification key (public, shareable via the /jwks endpoint).
+        Algorithm Confusion attacks swap the declared alg header to trick a
+        verifier into using a public RSA key as an HMAC secret.
+        (RZ-3: audit 2026-02-26)
+        """
+        env = (
+            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        ).lower()
+        if env not in _DEVELOPMENT_ENVIRONMENTS and v.upper() == "HS256":
+            raise ValueError(
+                "HS256 is prohibited in production environments. "
+                "Use RS256 with a dedicated RSA key pair "
+                "(set ALGORITHM=RS256 and JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem)."
+            )
+        return v
+
     def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
         entries: list[tuple[str, str]] = []
         seen_kids: set[str] = set()
@@ -111,6 +134,14 @@ class JwtSettingsMixin:
                         raise RuntimeError(
                             f"Failed to load JWT_PRIVATE_KEY_PATH: {exc}"
                         ) from exc
+                    import logging
+
+                    logging.getLogger(__name__).warning(
+                        "Failed to load RS256 private key from %s: %s. "
+                        "Falling back to HMAC signing with SECRET_KEY for local development.",
+                        self.jwt_private_key_path,
+                        exc,
+                    )
                     # In dev, fall back to secret_key (will fail signing but keep app alive)
                     entries.append((fallback_kid, self.secret_key))
             else:
@@ -119,10 +150,30 @@ class JwtSettingsMixin:
 
     @property
     def jwt_signing_key_registry(self) -> dict[str, str]:
-        registry: dict[str, str] = {}
-        for kid, secret in self._build_jwt_signing_key_entries():
-            registry[kid] = secret
-        return registry
+        """Parsed {kid: secret} registry — lazily computed and value-keyed cached.
+
+        Uses an instance-level cache keyed by the *current* value of
+        ``jwt_signing_keys`` so that:
+        - Production: same config every call → O(1) after first call.
+        - Tests: monkeypatch changes ``jwt_signing_keys`` → cache miss
+          → recomputed with the new value. (TD-1: audit 2026-02-26)
+        """
+        cache_key = str(self.jwt_signing_keys) + str(self.jwt_active_kid)
+
+        # Fast path lock-free read
+        cache: dict[str, dict[str, str]] = self.__dict__.get("_jwt_registry_cache", {})
+        if cache_key in cache:
+            return cache[cache_key]
+
+        # Slow path computation
+        new_registry = {
+            kid: secret for kid, secret in self._build_jwt_signing_key_entries()
+        }
+
+        # Safely bypass Pydantic frozen validation (MOD-5 prep)
+        object.__setattr__(self, "_jwt_registry_cache", {cache_key: new_registry})
+
+        return new_registry
 
     @property
     def jwt_signing_active_kid(self) -> str:

@@ -5,12 +5,15 @@ Consolidated validation functions to reduce code duplication across API endpoint
 Each helper raises HTTPException with appropriate status codes and localized messages.
 """
 
+from __future__ import annotations
+
 import uuid
 from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, overload
 
 from fastapi import HTTPException, status
 
 from app.core.localization import translate
+
 if TYPE_CHECKING:
     from app.schemas.dtos import UserDTO
 
@@ -119,7 +122,7 @@ def require_admin(user: User | UserDTO, locale: str) -> None:
         raise_forbidden(locale)
 
 
-def require_teacher_or_admin(user: "User", locale: str) -> None:
+def require_teacher_or_admin(user: User, locale: str) -> None:
     """
     Verify user has teacher or admin role, raise 403 if not.
     """
@@ -129,7 +132,7 @@ def require_teacher_or_admin(user: "User", locale: str) -> None:
 
 @overload
 def require_owner_or_admin(
-    user: "User",
+    user: User,
     locale: str,
     *,
     owner_id: uuid.UUID | int | str,
@@ -138,7 +141,7 @@ def require_owner_or_admin(
 
 @overload
 def require_owner_or_admin(
-    user: "User",
+    user: User,
     locale: str,
     *,
     owner_id: uuid.UUID | int | str,
@@ -147,7 +150,7 @@ def require_owner_or_admin(
 
 
 def require_owner_or_admin(
-    user: "User",
+    user: User,
     locale: str,
     *,
     owner_id: uuid.UUID | int | str,

@@ -26,6 +26,9 @@ async def test_security_headers_production_mode(monkeypatch):
     monkeypatch.setenv(
         "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
     )
+    monkeypatch.setenv("ALGORITHM", "RS256")
+    monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
+    monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     settings = Settings()
     assert settings.strict_security_headers_enabled
     spec = importlib_util.find_spec("app.core.security_headers")
@@ -59,7 +62,8 @@ async def test_security_headers_production_mode(monkeypatch):
     assert headers.get("X-Frame-Options") == "DENY"
     assert headers.get("Referrer-Policy") == "no-referrer"
     assert (
-        headers.get("Permissions-Policy") == "accelerometer=(), autoplay=(), camera=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(self), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=()"
+        headers.get("Permissions-Policy")
+        == "accelerometer=(), autoplay=(), camera=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(self), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=()"
     )
     assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
@@ -231,6 +235,9 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     monkeypatch.setenv(
         "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
     )
+    monkeypatch.setenv("ALGORITHM", "RS256")
+    monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
+    monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     settings = Settings()
     spec = importlib_util.find_spec("app.core.security_headers")
     assert spec and spec.origin
@@ -320,12 +327,14 @@ def _reset_security_env(monkeypatch):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("FRONTEND_ORIGIN", "")
     monkeypatch.setenv("APP_BASE_URL", "")
-    # Force production environment to avoid localhost fallback
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SECRET_KEY", "production-secret-key-at-least-32-chars")
     monkeypatch.setenv(
         "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
     )
+    monkeypatch.setenv("ALGORITHM", "RS256")
+    monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
+    monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
 
 
 def test_cors_hardening_filters_insecure_origins(monkeypatch):

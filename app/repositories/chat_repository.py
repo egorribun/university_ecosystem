@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
@@ -359,11 +361,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
 
     async def mark_single_message_read(self, message_id: uuid.UUID) -> bool:
         """Mark a single message as read. Returns True if successful."""
-        stmt = (
-            update(Message)
-            .where(Message.id == message_id)
-            .values(read_status=True)
-        )
+        stmt = update(Message).where(Message.id == message_id).values(read_status=True)
         result = await self.db.execute(stmt)
         await self.db.flush()
         return (int(getattr(result, "rowcount", 0) or 0)) > 0
@@ -382,6 +380,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
         audience = {row[0] for row in result.all()}
         audience.discard(user_id)
         return audience
+
 
 def get_chat_repository(db: AsyncDatabaseSession) -> ChatRepository:
     return ChatRepository(db)

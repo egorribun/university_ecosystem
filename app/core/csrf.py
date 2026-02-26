@@ -27,6 +27,17 @@ SameSite relationship
 CSRF vectors in modern browsers.  This middleware is a defence-in-depth
 layer that also covers older browsers, same-site subdomain compromise,
 and development environments where ``SameSite=lax`` is used.
+
+Implementation: pure ASGI (no BaseHTTPMiddleware)
+--------------------------------------------------
+Using ``BaseHTTPMiddleware`` from Starlette buffers the **entire response
+body** in memory before passing it downstream.  This silently breaks
+streaming responses (SSE, NDJSON, chunked upload progress) and inflates
+peak memory for large file downloads.
+
+This implementation is a pure ASGI callable that injects the CSRF cookie
+via the ``http.response.start`` ASGI message without reading or buffering
+any response body.  (TD-2: audit 2026-02-26)
 """
 
 from __future__ import annotations
@@ -35,13 +46,13 @@ import logging
 import secrets
 from typing import TYPE_CHECKING
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from starlette.requests import Request
-    from starlette.responses import Response
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _logger = logging.getLogger(__name__)
 
@@ -57,7 +68,7 @@ _TOKEN_BYTES = 32  # 256-bit token → ~43 URL-safe base64 chars
 _ROTATE_CSRF_KEY = "rotate_csrf"
 
 
-def signal_csrf_rotation(request: Request) -> None:  # type: ignore[name-defined]
+def signal_csrf_rotation(request: Request) -> None:
     """Mark the current request as requiring a fresh CSRF token in the response.
 
     Call this in every endpoint that completes a privilege escalation:
@@ -68,6 +79,7 @@ def signal_csrf_rotation(request: Request) -> None:  # type: ignore[name-defined
     CSRFMiddleware reads this flag and rotates the cookie unconditionally.
     """
     request.state.rotate_csrf = True  # type: ignore[attr-defined]
+
 
 # Pre-serialised CSRF rejection body.
 # Using raw bytes + a factory avoids the shared-mutable-singleton hazard:
@@ -80,17 +92,21 @@ _REJECT_BODY: bytes = b'{"detail":"CSRF token mismatch"}'
 
 def _make_reject_response() -> Response:
     """Return a fresh 403 JSON response for each CSRF rejection."""
-    from starlette.responses import Response as _Response
-
-    return _Response(
+    return Response(
         content=_REJECT_BODY,
         status_code=403,
         media_type="application/json",
     )
 
 
-class CSRFMiddleware(BaseHTTPMiddleware):
-    """Stateless Double-Submit Cookie CSRF protection.
+class CSRFMiddleware:
+    """Stateless Double-Submit Cookie CSRF protection — pure ASGI.
+
+    Implemented as a raw ASGI callable (no ``BaseHTTPMiddleware``) so that
+    streaming responses (SSE, NDJSON, chunked file downloads) are never
+    buffered into memory.  The CSRF cookie is injected into the
+    ``http.response.start`` message without touching the response body.
+    (TD-2: audit 2026-02-26)
 
     Parameters
     ----------
@@ -108,50 +124,58 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         *,
         exempt_prefixes: Sequence[str] = (),
         cookie_secure: bool = True,
         cookie_samesite: str = "strict",
     ) -> None:
-        super().__init__(app)
+        self._app = app
         self._exempt: tuple[str, ...] = tuple(exempt_prefixes)
         self._cookie_secure = cookie_secure
         self._cookie_samesite = cookie_samesite
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # Only protect HTTP — pass WebSocket / lifespan through unchanged.
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
         method = request.method.upper()
 
-        # Preflight requests carry no body and have no side effects.
+        # ── Fast-path exemptions ──────────────────────────────────────────────
+        # Preflight — no body, no side-effects.
         if method == "OPTIONS":
-            return await call_next(request)
+            await self._app(scope, receive, send)
+            return
 
-        path = request.url.path
+        path: str = request.url.path
 
         # WebSocket upgrade requests cannot carry CSRF tokens the same way.
         if path.startswith("/ws"):
-            return await call_next(request)
+            await self._app(scope, receive, send)
+            return
 
         # Configurable exemptions (internal routes, OAuth callbacks, etc.).
         if self._exempt and path.startswith(self._exempt):
-            return await call_next(request)
+            await self._app(scope, receive, send)
+            return
 
         # Bearer-token clients (mobile apps, CLI tools) use token auth.
         # They have no access to cookies so CSRF via cookie-theft is impossible.
+        # However, we must ensure that a browser SPA isn't explicitly sending a
+        # Bearer token alongside its cookies to maliciously bypass CSRF validation.
         auth_header = request.headers.get("authorization", "")
         if auth_header.lower().startswith("bearer "):
-            return await call_next(request)
+            if not request.cookies.get(CSRF_COOKIE_NAME):
+                await self._app(scope, receive, send)
+                return
 
-        # ── Test Environment Bypass ──────────────────────────────────────────
-        # (audit 2026-02-24)
-        from app.core.config import settings
-        if settings.environment == "testing":
-            return await call_next(request)
-
-        # ── Core CSRF check ───────────────────────────────────────────────────
+        # ── Core CSRF validation ──────────────────────────────────────────────
         if method in _MUTATION_METHODS:
-            cookie_token = request.cookies.get(CSRF_COOKIE_NAME, "")
-            header_token = request.headers.get(CSRF_HEADER_NAME, "")
+            cookie_token: str = request.cookies.get(CSRF_COOKIE_NAME, "")
+            header_token: str = request.headers.get(CSRF_HEADER_NAME, "")
 
             if not cookie_token or not header_token:
                 _logger.warning(
@@ -162,7 +186,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     bool(cookie_token),
                     bool(header_token),
                 )
-                return _make_reject_response()
+                reject = _make_reject_response()
+                await reject(scope, receive, send)
+                return
 
             # Constant-time comparison prevents timing-oracle attacks.
             if not secrets.compare_digest(cookie_token, header_token):
@@ -171,33 +197,39 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     method,
                     path,
                 )
-                return _make_reject_response()
+                reject = _make_reject_response()
+                await reject(scope, receive, send)
+                return
 
-        response = await call_next(request)
-        self._ensure_csrf_cookie(request, response)
-        return response
+        # ── Inject CSRF cookie into response (no body buffering) ─────────────
+        existing_cookie: str = request.cookies.get(CSRF_COOKIE_NAME, "")
 
-    def _ensure_csrf_cookie(self, request: Request, response: Response) -> None:  # type: ignore[name-defined]
-        """Attach a fresh CSRF cookie, rotating if the request signals it.
+        async def send_with_csrf_cookie(message: Message) -> None:
+            """Inject Set-Cookie into http.response.start without buffering body."""
+            if message["type"] == "http.response.start":
+                should_rotate: bool = getattr(request.state, _ROTATE_CSRF_KEY, False)
+                # If no existing cookie is present, or the endpoint signaled rotation, inject a new token
+                if not existing_cookie or should_rotate:
+                    new_token = secrets.token_urlsafe(_TOKEN_BYTES)
+                    set_cookie_header = self._build_set_cookie_header(new_token)
+                    headers: list[tuple[bytes, bytes]] = list(
+                        message.get("headers", [])
+                    )
+                    headers.append((b"set-cookie", set_cookie_header))
+                    message = {**message, "headers": headers}
+            await send(message)
 
-        Rotation is unconditional when ``request.state.rotate_csrf is True``
-        (set by ``signal_csrf_rotation()`` in login/MFA/password-change
-        handlers). Without rotation, a CSRF token stolen by XSS *before* login
-        would remain valid *after* privilege escalation. (RZ-5: audit 2026-02-24)
-        """
-        should_rotate = getattr(request.state, _ROTATE_CSRF_KEY, False)
-        if request.cookies.get(CSRF_COOKIE_NAME) and not should_rotate:
-            # Cookie already exists and caller has not requested rotation.
-            # Do not rotate unconditionally — rotating on every response would
-            # invalidate all concurrent in-flight requests that already read
-            # the old cookie value.
-            return
-        token = secrets.token_urlsafe(_TOKEN_BYTES)
-        response.set_cookie(
-            CSRF_COOKIE_NAME,
-            token,
-            httponly=False,  # MUST be readable by JS to implement the pattern
-            secure=self._cookie_secure,
-            samesite=self._cookie_samesite,  # type: ignore[arg-type]
-            path="/",
-        )
+        await self._app(scope, receive, send_with_csrf_cookie)
+
+    def _build_set_cookie_header(self, token: str) -> bytes:
+        """Build a raw ``Set-Cookie`` header value for the CSRF token."""
+        parts = [
+            f"{CSRF_COOKIE_NAME}={token}",
+            "Path=/",
+            "SameSite=" + self._cookie_samesite,
+        ]
+        if self._cookie_secure:
+            parts.append("Secure")
+        # HttpOnly is intentionally OMITTED — the SPA must read this cookie
+        # in JavaScript to forward it as the X-CSRF-Token request header.
+        return "; ".join(parts).encode("latin-1")

@@ -52,15 +52,51 @@ class TestSpiceDBChaos:
 
     async def test_spicedb_check_failure_raises_unavailable_error(self):
         """When SpiceDB CheckPermission fails, PermissionChecker should raise SpiceDBUnavailableError."""
-        mock_client = MagicMock()
-        mock_client.CheckPermission.side_effect = Exception("gRPC connection failed")
+        from unittest.mock import AsyncMock, MagicMock, patch
 
-        checker = PermissionChecker(client=mock_client)
+        mock_stub = AsyncMock()
+        mock_stub.CheckPermission.side_effect = Exception("gRPC connection failed")
 
-        with pytest.raises(SpiceDBUnavailableError):
-            await checker.check_permission("semester", "current", "admin", "user-123")
+        # Define mock classes for the imports in rbac.py
+        MockRequest = MagicMock()
+        MockResponse = MagicMock()
+        MockResponse.PERMISSIONSHIP_HAS_PERMISSION = 1
+        MockObjectRef = MagicMock()
+        MockSubjectRef = MagicMock()
 
-        mock_client.CheckPermission.assert_called_once()
+        # Create a mock module for authzed.api.v1
+        authzed_v1 = MagicMock()
+        authzed_v1.CheckPermissionRequest = MockRequest
+        authzed_v1.CheckPermissionResponse = MockResponse
+        authzed_v1.ObjectReference = MockObjectRef
+        authzed_v1.SubjectReference = MockSubjectRef
+
+        # Create a mock module for the gRPC service
+        authzed_grpc = MagicMock()
+        authzed_grpc.PermissionsServiceStub = MagicMock(return_value=mock_stub)
+
+        # Patch sys.modules to simulate installed library
+        with patch.dict(
+            "sys.modules",
+            {
+                "authzed": MagicMock(),
+                "authzed.api": MagicMock(),
+                "authzed.api.v1": authzed_v1,
+                "authzed.api.v1.permission_service_grpc": authzed_grpc,
+                "grpclib": MagicMock(),
+                "grpclib.client": MagicMock(),
+            },
+        ):
+            checker = PermissionChecker(channel=MagicMock())
+
+            with pytest.raises(SpiceDBUnavailableError) as exc_info:
+                await checker.check_permission(
+                    "semester", "current", "admin", "user-123"
+                )
+
+            assert "SpiceDB unreachable" in str(exc_info.value)
+
+        mock_stub.CheckPermission.assert_called_once()
 
     async def test_admin_dependency_returns_503_on_spicedb_failure(self):
         """When SpiceDB is unreachable, get_current_admin_user should return 503 (fail-closed)."""
