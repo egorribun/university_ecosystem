@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { isAxiosError } from "axios"
+import { extractApiError } from "@/utils/error"
 import { formatDate } from "@/utils/date"
 
 import { useAuth } from "@/contexts/AuthContext"
@@ -49,14 +49,16 @@ export interface UseTotpEnrollmentReturn {
   formatDateTime: (value: string | null) => string | null
 }
 
-const isStepUpError = (error: unknown): boolean =>
-  isAxiosError(error) && error.response?.status === 428
+const isStepUpError = (error: unknown): boolean => {
+  const apiError = extractApiError(error)
+  return apiError.status === 428
+}
 
 export function useTotpEnrollment({
   setSnackbar,
   openStepUpFor,
 }: UseTotpEnrollmentOptions): UseTotpEnrollmentReturn {
-  const { t } = useTranslation(["settings"])
+  const { t } = useTranslation(["settings", "common"])
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
 
@@ -65,9 +67,9 @@ export function useTotpEnrollment({
   const [totpError, setTotpError] = useState<string | null>(null)
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
-    if (isAxiosError(error)) {
-      const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
-      if (typeof detail === "string") return detail
+    const apiError = extractApiError(error)
+    if (apiError.status) {
+      return apiError.message
     }
     return fallback
   }, [])

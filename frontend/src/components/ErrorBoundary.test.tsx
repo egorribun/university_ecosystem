@@ -10,9 +10,24 @@ vi.mock("@sentry/react", () => ({
 }))
 
 // Mock i18next
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { changeLanguage: vi.fn(), language: "en" },
+  }),
+  withTranslation: () => (Component: any) => {
+    // Inject mock 't' function into props
+    const TranslatedComponent = (props: any) => <Component {...props} t={(key: string) => key} />
+    return TranslatedComponent
+  },
+  initReactI18next: { type: "3rdParty", init: vi.fn() },
+}))
+
+// Mock i18next core for good measure
 vi.mock("i18next", () => ({
   default: {
     t: (key: string) => key,
+    changeLanguage: vi.fn(),
   },
 }))
 
@@ -50,8 +65,8 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     )
 
-    expect(screen.getByText("common:errorBoundary.title")).toBeInTheDocument()
-    expect(screen.getByText("common:errorBoundary.description")).toBeInTheDocument()
+    expect(screen.getByText("system:errorBoundary.title")).toBeInTheDocument()
+    expect(screen.getByText("system:errorBoundary.description")).toBeInTheDocument()
     expect(Sentry.captureException).toHaveBeenCalled()
   })
 
@@ -72,7 +87,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     )
     expect(screen.getByText("Custom Fallback")).toBeInTheDocument()
-    expect(screen.queryByText("common:errorBoundary.title")).not.toBeInTheDocument()
+    expect(screen.queryByText("system:errorBoundary.title")).not.toBeInTheDocument()
   })
 
   it("resets state when retry button is clicked", () => {
@@ -93,7 +108,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     )
 
-    const retryBtn = screen.getByText("common:errorBoundary.retry")
+    const retryBtn = screen.getByText("system:errorBoundary.retry")
     expect(retryBtn).toBeInTheDocument()
     fireEvent.click(retryBtn)
 

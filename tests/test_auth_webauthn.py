@@ -246,8 +246,7 @@ async def test_webauthn_authentication_flow(
         },
     )
     assert verify_resp.status_code == status.HTTP_200_OK
-    token_data = verify_resp.json()
-    assert "access_token" in token_data
+    assert verify_resp.cookies.get("access_token_v2")
 
 
 @pytest.mark.asyncio

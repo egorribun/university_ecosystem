@@ -15,10 +15,15 @@ from app.core.spicedb import SpiceDBClient
         ("http://spicedb.example.com:443", "spicedb.example.com:443", True),
     ],
 )
-def test_init_logic(endpoint, expected_target, expected_ssl):
+def test_init_logic(endpoint, expected_target, expected_ssl, monkeypatch):
     with patch("app.core.spicedb.settings") as mock_settings:
         mock_settings.spicedb_endpoint = endpoint
         mock_settings.spicedb_preshared_key = "test-token"
+
+        if not expected_ssl:
+            monkeypatch.setenv("SPICEDB_INSECURE", "true")
+        else:
+            monkeypatch.setenv("SPICEDB_INSECURE", "false")
 
         client_wrapper = SpiceDBClient()
         # Reset internal state

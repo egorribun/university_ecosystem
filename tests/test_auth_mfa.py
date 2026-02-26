@@ -619,7 +619,7 @@ async def test_disabling_last_factor_clears_mfa_requirement(
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert post_delete_login.status_code == status.HTTP_200_OK, post_delete_login.text
-    assert "access_token" in post_delete_login.json()
+    assert post_delete_login.cookies.get("access_token_v2")
 
 
 @pytest.mark.asyncio

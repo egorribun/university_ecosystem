@@ -225,7 +225,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                   <TotpQrDisplay secret={totpDraft.secret} otpauthUrl={totpDraft.otpauth_url} />
 
                   <div className="flex flex-col gap-2">
-                    <OtpEntry loading={totpBusy} onSubmit={handleConfirmTotp} />
+                    <OtpEntry loading={totpBusy} onSubmit={handleConfirmTotp} error={totpError} />
 
                     <p className="text-xs text-(--text-tertiary) text-center px-2">
                       {t("settings:security.totp.pendingHelper")}

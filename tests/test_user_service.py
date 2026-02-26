@@ -34,7 +34,9 @@ def mock_db():
     db.refresh = AsyncMock()
     db.rollback = AsyncMock()
     db.execute = AsyncMock()
-    db.execute.return_value = MagicMock()
+    result = MagicMock()
+    result.rowcount = 0
+    db.execute.return_value = result
     db.get = AsyncMock()
     return db
 
@@ -226,16 +228,19 @@ def mock_admin_user():
 
 @pytest.fixture
 def service(mock_db, mock_repo, mock_audit, mock_notifications, monkeypatch):
+    mock_repo.db = mock_db
     s = UserService(
         user_repo=mock_repo,
         audit=mock_audit,
         notifications=mock_notifications,
     )
     # Mock result chaining for repo.db
-    s.repo.db.execute.return_value = MagicMock()
-    s.repo.db.execute.return_value.scalars.return_value = MagicMock()
-    s.repo.db.execute.return_value.scalars.return_value.first.return_value = None
-    s.repo.db.execute.return_value.scalars.return_value.all.return_value = []
+    result = MagicMock()
+    result.rowcount = 0
+    result.scalars.return_value = MagicMock()
+    result.scalars.return_value.first.return_value = None
+    result.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = result
 
     # Mock attach_pending_email to avoid cascaded repo calls in unit tests
     async def mock_attach(_db, user):
@@ -457,7 +462,7 @@ async def test_admin_update_user_success(
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         # Mock database rowcount for reset_user_mfa check
         mock_result = MagicMock()
-        type(mock_result).rowcount = 1
+        mock_result.rowcount = 1
         mock_db.execute.return_value = mock_result
 
         service.repo._get_orm.return_value = updated_user
@@ -486,7 +491,7 @@ async def test_admin_update_user_mfa_reset(
 
     # Mock database rowcount for reset_user_mfa check
     mock_result = MagicMock()
-    type(mock_result).rowcount = 1
+    mock_result.rowcount = 1
     mock_db.execute.return_value = mock_result
     data.model_dump.return_value = {"reset_mfa": True}
 

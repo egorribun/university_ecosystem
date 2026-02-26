@@ -24,7 +24,7 @@ export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
 const API_TIMEOUT_MS = 8000
 
-const devBase = "/api/v1"
+const devBase = ""
 const prodBase = `${import.meta.env.VITE_BACKEND_ORIGIN || ""}/api/v1`
 
 export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {

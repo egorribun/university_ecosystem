@@ -445,7 +445,6 @@ const readStoredSessionSigningKey = (): string | null => {
 }
 
 export const useProfileSync = (
-  sessionSigningKey: string | null,
   updateSessionSigningKey: (key: string | null) => void,
   sessionSigningKeyPromiseRef: React.MutableRefObject<Promise<string | null> | null>,
   ensureSessionSigningKey: () => Promise<string | null>
@@ -637,11 +636,7 @@ export const useProfileSync = (
     ]
   )
 
-  useEffect(() => {
-    if (sessionSigningKey && userState) {
-      persistUserToCacheAsync(userState, sessionSigningKey)
-    }
-  }, [sessionSigningKey, userState])
+
 
   useEffect(() => {
     if (cachedUserRef.current !== null) {

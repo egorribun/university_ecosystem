@@ -23,6 +23,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -300,9 +301,9 @@ func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 	} else {
 		// Production: enforce TLS.  The default TLS config uses the system CA
 		// pool; override with a custom CA via OTLP_CA_FILE if needed.
-		opts = append(opts, otlptracegrpc.WithTLSClientConfig(&tls.Config{
+		opts = append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(&tls.Config{
 			MinVersion: tls.VersionTLS12,
-		}))
+		})))
 	}
 
 	exporter, err := otlptracegrpc.New(ctx, opts...)
