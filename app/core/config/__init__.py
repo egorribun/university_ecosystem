@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import cached_property
 
 from pydantic import ValidationInfo, field_validator
@@ -95,10 +96,21 @@ def _load_settings() -> Settings:
             "before deploying."
         ]
         if not (_PROJECT_ROOT / ".env").exists():
-            hint_parts.append(
-                "For local development, copy .env.example to .env and replace "
-                "the placeholder values before starting the application."
+            is_ci = (
+                os.environ.get("CI") == "true"
+                or os.environ.get("GITHUB_ACTIONS") == "true"
             )
+            if is_ci:
+                hint_parts.append(
+                    "This is permitted for CI/CD pipelines (CI=true detected). "
+                    "If this step requires real secrets, ensure they are injected "
+                    "via environment variables."
+                )
+            else:
+                hint_parts.append(
+                    "For local development, copy .env.example to .env and replace "
+                    "the placeholder values before starting the application."
+                )
         _logger.warning(
             "Using development defaults for %s because required "
             "environment variables missing. %s",
