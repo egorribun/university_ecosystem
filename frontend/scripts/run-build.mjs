@@ -31,6 +31,17 @@ function run(command, commandArgs, options = {}) {
 }
 
 async function main() {
+  console.log("Building rust-crypto WASM...")
+  try {
+    await run("wasm-pack", ["build", "rust-crypto", "--target", "web"], {
+      cwd: path.resolve(process.cwd()),
+      shell: true,
+    })
+  } catch (error) {
+    console.warn("WASM build failed. If this is a non-rust environment, ensure rust-crypto/pkg exists.")
+    console.warn(error.message)
+  }
+
   console.log("Syncing tokens...")
   await run("node", ["./scripts/sync-tokens.mjs"])
 
