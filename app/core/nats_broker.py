@@ -181,8 +181,9 @@ class NatsTaskBroker:
                                     if asyncio.iscoroutinefunction(handler):
                                         wrapped = wrap_injection(
                                             func=handler,
-                                            container_getter=lambda _,
-                                            kwargs: request_container,
+                                            container_getter=lambda _, kwargs: (
+                                                request_container
+                                            ),
                                             remove_depends=True,
                                         )
                                         await wrapped(*args, **kwargs)
@@ -192,8 +193,9 @@ class NatsTaskBroker:
                                         # For sync funcs, dishka needs sync container which is complex
                                         wrapped = wrap_injection(
                                             func=handler,
-                                            container_getter=lambda _,
-                                            kwargs: request_container,
+                                            container_getter=lambda _, kwargs: (
+                                                request_container
+                                            ),
                                             remove_depends=True,
                                         )
                                         await anyio.to_thread.run_sync(
