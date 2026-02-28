@@ -91,7 +91,7 @@ class PushSubscriptionOut(SecureBaseModel):
     user_agent: str | None = None
     last_seen_at: datetime | None = None
     updated_at: datetime | None = None
-    topics: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -107,7 +107,7 @@ class PushSubscriptionOut(SecureBaseModel):
 
 class PushSubscriptionTopicsUpdate(SecureBaseModel):
     endpoint: str
-    topics: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
 
     @field_validator("endpoint", mode="before")
     @classmethod
@@ -150,7 +150,7 @@ class PushTopicsResponse(SecureBaseModel):
 
 
 class AdminUserTopicsUpdate(SecureBaseModel):
-    topics: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
 
     @field_validator("topics", mode="before")
     @classmethod

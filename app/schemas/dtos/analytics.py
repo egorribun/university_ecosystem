@@ -14,7 +14,7 @@ class AttendanceStatsDTO(SecureBaseModel):
     current_attended: int
     previous_attended: int
     recent_attended_events: list[dict] = Field(
-        default_factory=list
+        default_factory=list, json_schema_extra={"default": []}
     )  # Can be further refined if needed
 
 

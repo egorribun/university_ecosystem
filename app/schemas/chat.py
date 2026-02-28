@@ -54,7 +54,9 @@ class MessageResponse(MessageBase):
     read_status: bool
     sender: ChatParticipant | None = None
     sender_presence: PresenceStatus | None = None
-    attachments: list[AttachmentResponse] = Field(default_factory=list)
+    attachments: list[AttachmentResponse] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
 
 
 class ChatBase(SecureBaseModel):

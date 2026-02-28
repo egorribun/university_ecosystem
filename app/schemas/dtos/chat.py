@@ -37,7 +37,9 @@ class MessageDTO(SecureBaseModel):
     created_at: datetime
     read_status: bool = False
     sender: ChatParticipantDTO | None = None
-    attachments: list[AttachmentDTO] = Field(default_factory=list)
+    attachments: list[AttachmentDTO] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
 
 
 class ChatDTO(SecureBaseModel):
@@ -46,5 +48,9 @@ class ChatDTO(SecureBaseModel):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    participants: list[ChatParticipantDTO] = Field(default_factory=list)
-    messages: list[MessageDTO] = Field(default_factory=list)
+    participants: list[ChatParticipantDTO] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    messages: list[MessageDTO] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )

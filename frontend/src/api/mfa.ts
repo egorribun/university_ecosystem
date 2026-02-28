@@ -84,7 +84,8 @@ export const confirmWebAuthnRegistration = async (payload: {
   label?: string
 }) => {
   const { data } = await confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost({
-    body: payload as unknown as TotpEnrollmentConfirmPayload,
+    // @ts-expect-error - type mismatch in generated body
+    body: payload,
     throwOnError: true,
   })
   return data as MfaFactorStatus

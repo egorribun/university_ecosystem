@@ -271,8 +271,12 @@ class UserOut(OrmModel, UserBase):
     mfa_required: bool = False
     mfa_default_method: str | None = None
     mfa_last_verified_at: datetime | None = None
-    totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
-    mfa_challenges: list[MfaChallengeOut] = Field(default_factory=list)
+    totp_enrollments: list[MfaTotpEnrollmentOut] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    mfa_challenges: list[MfaChallengeOut] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
     recovery_codes_left: int = 0
 
     # Nested related models
@@ -718,7 +722,9 @@ class EventOut(OrmModel):
     image_url: str | None = None
     about: str | None = None
     about_en: str | None = None
-    files: list[EventFileOut] = Field(default_factory=list)
+    files: list[EventFileOut] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
     participant_count: int = 0
     is_registered: bool | None = None
     my_qr_token: str | None = None
@@ -788,7 +794,7 @@ class SpotifyNowPlayingOut(BaseModel):
     duration_ms: int | None = None
     track_id: str | None = None
     track_name: str | None = None
-    artists: list[str] = Field(default_factory=list)
+    artists: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
     album_name: str | None = None
     album_image_url: str | None = None
     track_url: str | None = None
