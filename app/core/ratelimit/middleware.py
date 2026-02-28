@@ -147,7 +147,7 @@ class RateLimitMiddleware:
 
         cookie = request.cookies.get("access_token")
         if cookie:
-            return f"cookie:{cookie}"
+            return f"cookie:{cookie}"  # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
 
         ip = resolve_client_ip(request)
         return f"ip:{ip}"
