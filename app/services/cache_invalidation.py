@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from enum import StrEnum
+from typing import Any
 
 from app.deps.cache import get_cache
 
@@ -72,8 +73,8 @@ async def register_key_with_tags(key: str, ttl_seconds: int = 3600) -> None:
                 "1",
                 ttl=ttl_seconds,
             )
-        except Exception:  # pragma: no cover - defensive guard
-            logger.debug(f"Failed to register key {key} with tag {tag}")
+        except Exception as exc_type:  # pragma: no cover - defensive guard
+            logger.debug(f"Failed to register key {key} with tag {tag}: {exc_type}")
 
 
 async def invalidate_by_tag(tag: CacheTag) -> int:
@@ -227,7 +228,12 @@ class CacheInvalidator:
     async def __aenter__(self) -> CacheInvalidator:
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
         await self.flush()
 
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 from brotli_asgi import BrotliMiddleware
 from fastapi import Request
@@ -22,6 +23,8 @@ except ImportError:  # pragma: no cover
     ProxyHeadersMiddleware: Any = None  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from fastapi import FastAPI, Request
 
     from app.core.config import Settings
@@ -54,11 +57,15 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
             media_type="application/json",
         )
 
-    def __init__(self, app, *, max_bytes: int = 5 * 1024 * 1024) -> None:
+    def __init__(self, app: Any, *, max_bytes: int = 5 * 1024 * 1024) -> None:
         super().__init__(app)
         self._max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         # Fast path: Content-Length declared → reject immediately, no body read.
         cl_header = request.headers.get("content-length")
         if cl_header is not None:
@@ -80,10 +87,11 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         if has_body and cl_header is None:
             new_request, error_response = await self._read_and_replay_body(request)
             if error_response:
-                return cast(Response, error_response)
-            request = new_request
+                return error_response
+            if new_request:
+                request = new_request
 
-        return cast(Response, await call_next(request))
+        return await call_next(request)
 
     # PERF-1: Threshold below which body is kept in RAM; beyond this it spills to
     # a temporary disk file.  100 concurrent 4.9 MB uploads without this threshold
@@ -91,7 +99,9 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
     # handles the in-memory → disk transition so replay semantics are unchanged.
     _MEM_BUFFER_THRESHOLD: int = 512 * 1024  # 512 KB
 
-    async def _read_and_replay_body(self, request: Request):
+    async def _read_and_replay_body(
+        self, request: Request
+    ) -> tuple[Request | None, Response | None]:
         """Consume request body safely within limits and return an injected replay Request.
 
         Bodies ≤ _MEM_BUFFER_THRESHOLD bytes are kept in RAM; larger bodies spill
@@ -112,7 +122,7 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
             tmpfile.seek(0)
             body_bytes = tmpfile.read()
 
-        async def _replay_receive() -> dict:
+        async def _replay_receive() -> dict[str, Any]:
             return {"type": "http.request", "body": body_bytes, "more_body": False}
 
         return Request(request.scope, receive=_replay_receive), None
@@ -125,7 +135,7 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         )
 
 
-def _ensure_vary_header(response, header_name: str) -> None:
+def _ensure_vary_header(response: Response, header_name: str) -> None:
     existing = response.headers.get("Vary")
     if not existing:
         response.headers["Vary"] = header_name
@@ -136,7 +146,9 @@ def _ensure_vary_header(response, header_name: str) -> None:
         response.headers["Vary"] = ", ".join(values)
 
 
-async def _http_response_hardening(request: Request, call_next):
+async def _http_response_hardening(
+    request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
+) -> Response:
     response = await call_next(request)
     if request.url.path.startswith("/static/") and response.status_code == 200:
         # Encourage browsers to keep avatars locally without marking them immutable.
@@ -217,7 +229,7 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
 
     for pattern, limit_str in limit_map.items():
         if limit_str:
-            limit_val, window_val = parse_rate_limit(limit_str, fallback=(None, None))
+            limit_val, window_val = parse_rate_limit(limit_str, fallback=(60, 60))
             if limit_val is not None:
                 endpoint_limits.append(
                     EndpointRateLimit(pattern, limit_val, window_val)

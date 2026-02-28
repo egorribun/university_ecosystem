@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from redis.asyncio import Redis
 
@@ -13,8 +13,11 @@ _RedisFactory = Callable[[str], Redis]
 
 
 def _create_redis_pool(url: str) -> Redis:
-    return Redis.from_url(
-        url, encoding="utf-8", decode_responses=False, health_check_interval=30
+    return cast(
+        Redis,
+        Redis.from_url(
+            url, encoding="utf-8", decode_responses=False, health_check_interval=30
+        ),
     )
 
 

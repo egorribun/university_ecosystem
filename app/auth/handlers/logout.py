@@ -29,7 +29,7 @@ async def logout(
     response: Response,
     request: Request,
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, str]:
     """Terminate the client session.
 
     Revokes the current session in the database and clears all

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, time
 from typing import Any
@@ -760,7 +762,7 @@ class Token(BaseModel):
 
 class TokenWithProfile(Token):
     user: UserOut
-    session: "SessionSigningKeyOut | None" = None
+    session: SessionSigningKeyOut | None = None
 
 
 class SessionSigningKeyOut(BaseModel):

@@ -1,4 +1,6 @@
 import uuid
+from datetime import datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -26,22 +28,26 @@ from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "events"
 
-    title = Column(String, nullable=False, index=True)
-    title_en = Column(String)
-    description = Column(Text)
-    description_en = Column(Text)
-    location = Column(String)
-    location_en = Column(String)
-    event_type = Column(String, index=True)
-    event_type_en = Column(String)
-    starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    ends_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    title_en: Mapped[str | None] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text)
+    description_en: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(String)
+    location_en: Mapped[str | None] = mapped_column(String)
+    event_type: Mapped[str | None] = mapped_column(String, index=True)
+    event_type_en: Mapped[str | None] = mapped_column(String)
+    starts_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    ends_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         index=True,
     )
-    search_vector = Column(
+    search_vector: Mapped[Any] = mapped_column(
         Text().with_variant(TSVECTOR(), "postgresql"),
         Computed(
             "to_tsvector('simple', "
@@ -57,13 +63,17 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             persisted=True,
         ),
     )
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    is_active = Column(Boolean, default=True, index=True)
-    speaker = Column(String)
-    image_url = Column(String)
-    about = Column(Text)
-    about_en = Column(Text)
-    embedding = Column(Text().with_variant(Vector(1536), "postgresql"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    speaker: Mapped[str | None] = mapped_column(String)
+    image_url: Mapped[str | None] = mapped_column(String)
+    about: Mapped[str | None] = mapped_column(Text)
+    about_en: Mapped[str | None] = mapped_column(Text)
+    embedding: Mapped[Any] = mapped_column(
+        Text().with_variant(Vector(1536), "postgresql")
+    )
 
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),

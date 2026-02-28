@@ -66,8 +66,8 @@ async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bo
 
     for record in available_codes:
         if await verify_password(normalized_code, str(record.code_hash)):
-            record.is_used = True  # type: ignore[assignment]
-            record.used_at = _utcnow()  # type: ignore[assignment]
+            record.is_used = True
+            record.used_at = _utcnow()
             await db.flush()
             return True
 

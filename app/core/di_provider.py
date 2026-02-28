@@ -445,6 +445,6 @@ class AppProvider(Provider):
         )
 
 
-def create_dishka_container():
+def create_dishka_container() -> AsyncContainer:
     """Create and return the application-level dishka async container."""
     return make_async_container(AppProvider())

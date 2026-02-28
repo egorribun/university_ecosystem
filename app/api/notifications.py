@@ -185,7 +185,7 @@ def _localized_notification_field(
 
 
 async def _existing_notification_columns(db: AsyncDatabaseSession) -> set[str]:
-    def _sync_get_columns(sync_session) -> set[str]:
+    def _sync_get_columns(sync_session: Any) -> set[str]:
         bind = sync_session.bind
         if bind is None:  # pragma: no cover - defensive guard
             return set()
@@ -263,7 +263,7 @@ async def _fetch_notification_rows_fallback(
     table = Notification.__table__
     cols = table.c
 
-    def column(name: str, *, default: Any = None):
+    def column(name: str, *, default: Any = None) -> Any:
         if name in available:
             column_obj = cols[name]
             if name in {"created_at", "read_at"}:
@@ -378,7 +378,7 @@ async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncDatabaseSession = Depends(get_read_db),
     user: User = Depends(get_current_user),
-):
+) -> NotificationsListOut:
     locale = resolve_locale(request=request, user=user)
     response.headers["Content-Language"] = locale or ""
     _ensure_vary_header(response, "Accept-Language")
@@ -449,7 +449,7 @@ async def mark_read_single(
     request: Request,
     db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     notif = (
         await db.execute(select(Notification).where(Notification.id == notif_id))
@@ -463,8 +463,10 @@ async def mark_read_single(
     if notif.read:
         return {"ok": True}
 
-    notif.read = True  # type: ignore[assignment]
-    notif.read_at = datetime.now(UTC)  # type: ignore[assignment]
+    from typing import cast
+
+    notif.read = cast(Any, True)
+    notif.read_at = cast(Any, datetime.now(UTC))
     await db.commit()
 
     return {"ok": True}
@@ -474,7 +476,7 @@ async def mark_read_single(
 async def mark_all_read(
     db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     now = datetime.now(UTC)
     result = await db.execute(
         update(Notification)
@@ -492,7 +494,7 @@ async def delete_notification(
     request: Request,
     db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     notif = (
         await db.execute(select(Notification).where(Notification.id == notif_id))
@@ -513,7 +515,7 @@ async def delete_notification(
 async def clear_notifications(
     db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     result = await db.execute(
         delete(Notification).where(Notification.user_id == user.id)
     )
@@ -529,7 +531,7 @@ async def check_schedule_and_generate(
     lookahead_minutes: int = Query(15, ge=1, le=180),
     db: AsyncDatabaseSession = Depends(get_read_db),
     user: User = Depends(get_current_user),
-):
+) -> NotificationsListOut:
     locale = resolve_locale(request=request, user=user)
     if not user.group_id:
         return await list_notifications(

@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
@@ -61,27 +61,27 @@ class EventService:
             "id": record.id,
             "title": _localized_event_field(
                 normalized_locale,
-                cast(str, record.title),
-                cast(str, record.title_en),
+                record.title,
+                record.title_en,
                 required=True,
             ),
             "description": _localized_event_field(
                 normalized_locale,
-                cast(str, record.description),
-                cast(str, record.description_en),
+                record.description,
+                record.description_en,
             ),
             "title_en": record.title_en,
             "description_en": record.description_en,
             "location": _localized_event_field(
                 normalized_locale,
-                cast(str, record.location),
-                cast(str, record.location_en),
+                record.location,
+                record.location_en,
             ),
             "location_en": record.location_en,
             "event_type": _localized_event_field(
                 normalized_locale,
-                cast(str, record.event_type),
-                cast(str, record.event_type_en),
+                record.event_type,
+                record.event_type_en,
             ),
             "event_type_en": record.event_type_en,
             "starts_at": record.starts_at,
@@ -93,8 +93,8 @@ class EventService:
             "image_url": record.image_url,
             "about": _localized_event_field(
                 normalized_locale,
-                cast(str, record.about),
-                cast(str, record.about_en),
+                record.about,
+                record.about_en,
             ),
             "about_en": record.about_en,
             "files": prepared_files,

@@ -79,7 +79,7 @@ async def get_session_backend() -> SessionBackend:
             return RedisSessionBackend(client)
 
     class NullSessionBackend(SessionBackend):
-        async def register_session(self, *args, **kwargs) -> None:
+        async def register_session(self, *args: Any, **kwargs: Any) -> None:
             pass
 
         async def is_session_valid(self, jti: str) -> bool:

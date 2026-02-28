@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 
 
 @lru_cache(maxsize=1)
-def _get_vary_helper():
+def _get_vary_helper() -> Any:
     from app.main import _ensure_vary_header
 
     return _ensure_vary_header
@@ -84,7 +85,7 @@ async def _handle_stats_query(
     return result.payload  # type: ignore[no-any-return]
 
 
-@router.get("/attendance")
+@router.get("/attendance", response_model=None)
 async def attendance_summary(
     request: Request,
     response: Response,
@@ -93,7 +94,7 @@ async def attendance_summary(
     if_none_match: str | None = Header(default=None),
     user: models.User = Depends(get_current_user),
     handler: GetStatsHandler = Depends(get_read_stats_handler),
-):
+) -> Response | dict[str, Any]:
     return await _handle_stats_query(
         kind="attendance",
         period=period,
@@ -106,7 +107,7 @@ async def attendance_summary(
     )
 
 
-@router.get("/grades")
+@router.get("/grades", response_model=None)
 async def grade_summary(
     request: Request,
     response: Response,
@@ -115,7 +116,7 @@ async def grade_summary(
     if_none_match: str | None = Header(default=None),
     user: models.User = Depends(get_current_user),
     handler: GetStatsHandler = Depends(get_read_stats_handler),
-):
+) -> Response | dict[str, Any]:
     return await _handle_stats_query(
         kind="grades",
         period=period,
@@ -128,7 +129,7 @@ async def grade_summary(
     )
 
 
-@router.get("/participation")
+@router.get("/participation", response_model=None)
 async def participation_summary(
     request: Request,
     response: Response,
@@ -137,7 +138,7 @@ async def participation_summary(
     if_none_match: str | None = Header(default=None),
     user: models.User = Depends(get_current_user),
     handler: GetStatsHandler = Depends(get_read_stats_handler),
-):
+) -> Response | dict[str, Any]:
     return await _handle_stats_query(
         kind="participation",
         period=period,
@@ -158,7 +159,7 @@ async def creation_analytics(
     ),
     period: str = Query("30d"),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Analytics powered by UUID v7:
     Creation time distribution without DB indexes on created_at.

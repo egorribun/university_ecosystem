@@ -372,7 +372,7 @@ async def test_get_current_user_no_expiration_mock(
         mock_session = MagicMock(spec=ActiveSession)
         mock_session.user_id = user.id
         mock_session.jti = jti
-        mock_session.expires_at = None  # Trigger the failure condition
+        mock_session.expires_at = datetime.now(UTC) - timedelta(hours=1)
         mock_session.revoked_at = None
         mock_session.fingerprint_hash = None
 

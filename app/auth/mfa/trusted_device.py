@@ -93,6 +93,6 @@ async def verify_trusted_device_token(
         await db.flush()
         return False
 
-    device.last_used_at = now  # type: ignore[assignment]
+    device.last_used_at = now
     await db.flush()
     return True

@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import Any
 
 from fastapi import Request, UploadFile
 
@@ -80,7 +81,7 @@ class UserService:
         user_id: uuid.UUID | str,
         request: Request,
         current_user: UserDTO,
-    ) -> dict:
+    ) -> dict[str, Any]:
         return await self.compliance_service.admin_delete_user(
             user_id, request, current_user
         )

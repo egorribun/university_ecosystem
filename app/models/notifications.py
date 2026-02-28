@@ -1,11 +1,12 @@
 import uuid
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
     UUID,
     Boolean,
     CheckConstraint,
-    Column,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -28,15 +29,17 @@ from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "notifications"
 
-    title = Column(String, nullable=False, index=True)
-    title_en = Column(String)
-    body = Column(Text)
-    body_en = Column(Text)
-    type = Column(String, index=True)
-    url = Column(String)
-    dedupe_key = Column(String(255), index=True)
-    read = Column(Boolean, default=False, index=True)
-    read_at = Column(DateTime(timezone=True), index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    title_en: Mapped[str | None] = mapped_column(String)
+    body: Mapped[str | None] = mapped_column(Text)
+    body_en: Mapped[str | None] = mapped_column(Text)
+    type: Mapped[str | None] = mapped_column(String, index=True)
+    url: Mapped[str | None] = mapped_column(String)
+    dedupe_key: Mapped[str | None] = mapped_column(String(255), index=True)
+    read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -70,18 +73,29 @@ class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
 class NotificationQueueJob(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "notification_queue_jobs"
 
-    kind = Column(String(50), nullable=False, index=True)
-    record_id = Column(UUID(as_uuid=True), nullable=False)
-    locale = Column(String(16))
-    enqueued_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+    kind: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    record_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    locale: Mapped[str | None] = mapped_column(String(16))
+    enqueued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
-    claimed_at = Column(DateTime(timezone=True), index=True)
-    attempts = Column(Integer, nullable=False, server_default=text("0"))
-    last_error = Column(Text)
-    next_retry_at = Column(DateTime(timezone=True), index=True)
-    dead_lettered = Column(
-        Boolean, nullable=False, server_default=text("false"), index=True
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    next_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    dead_lettered: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        index=True,
     )
 
     __table_args__ = (
@@ -120,8 +134,12 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
     notification_created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    channel = Column(String, nullable=False, default="inapp", index=True)
-    status = Column(String, nullable=False, default="delivered", index=True)
+    channel: Mapped[str] = mapped_column(
+        String, nullable=False, default="inapp", index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="delivered", index=True
+    )
     attempted_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -129,9 +147,11 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
         index=True,
         primary_key=True,
     )
-    delivered_at = Column(DateTime(timezone=True), index=True)
-    status_code = Column(Integer)
-    detail = Column(Text)
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[str | None] = mapped_column(Text)
 
     notification = relationship("Notification", back_populates="deliveries")
 
@@ -155,15 +175,20 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
 class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "push_subscriptions"
 
-    endpoint = Column(Text, nullable=False, index=True, unique=True)
-    p256dh = Column(String(200), nullable=False)
-    auth = Column(String(200), nullable=False)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False, index=True, unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200), nullable=False)
+    auth: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
     )
-    user_agent = Column(String(512))
-    last_seen_at = Column(DateTime(timezone=True), index=True)
-    topics = Column(JSON, nullable=False, default=list)
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    topics: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
 
     user = relationship("User", back_populates="push_subscriptions")
 
@@ -183,8 +208,8 @@ class UserPushTopic(Base):
         primary_key=True,
         index=True,
     )
-    topics = Column(JSON, nullable=False, default=list)
-    updated_at = Column(
+    topics: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),

@@ -30,6 +30,20 @@ from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
 
+__all__ = [
+    "get_audit_service",
+    "get_current_admin_user",
+    "get_current_user",
+    "get_current_user_full",
+    "get_current_user_optional",
+    "get_db",
+    "get_login_service",
+    "get_read_db",
+    "require_fresh_mfa",
+    "require_fresh_mfa_for_enrollment",
+    "resolve_locale",
+]
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 

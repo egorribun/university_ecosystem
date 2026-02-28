@@ -35,7 +35,7 @@ async def download_schedule_ics(
         ..., description=translate("schedule.query.group_id_description")
     ),
     db: AsyncSession = Depends(get_read_db),
-):
+) -> Response:
     locale = resolve_locale(request=request)
     group_obj = await db.get(models.Group, group)
     if not group_obj:

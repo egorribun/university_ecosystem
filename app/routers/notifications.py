@@ -115,12 +115,8 @@ async def _refresh_user_topic_preferences(
     ).scalars()
     aggregated: list[str] = []
     for row in topics_rows:
-        if not row:
-            continue
-        if isinstance(row, list | tuple | set):
+        if row:
             aggregated.extend(str(item) for item in row if item)
-        else:
-            aggregated.append(str(row))
     normalized = sort_topics(aggregated, settings_obj=settings)
 
     try:
@@ -137,7 +133,7 @@ async def _refresh_user_topic_preferences(
                 if record is None:
                     db.add(UserPushTopic(user_id=user_id, topics=topics_copy))
                 else:
-                    record.topics = topics_copy  # type: ignore[assignment]
+                    record.topics = topics_copy
             elif record is not None:
                 await db.delete(record)
             await db.flush()
@@ -150,7 +146,7 @@ async def _refresh_user_topic_preferences(
         ).scalar_one_or_none()
         if record:
             if normalized:
-                record.topics = list(normalized)  # type: ignore[assignment]
+                record.topics = list(normalized)
             else:
                 await db.delete(record)
             await db.flush()
@@ -292,17 +288,17 @@ async def subscribe(
             if existing:
                 # Transfer ownership or update existing subscription
                 payload_topics = payload.topics
-                normalized_topics = resolve_topics(payload_topics, existing.topics)  # type: ignore[arg-type]
+                normalized_topics = resolve_topics(payload_topics, existing.topics)
                 topics_copy = list(normalized_topics)
 
-                existing.p256dh = p256dh  # type: ignore[assignment]
-                existing.auth = auth  # type: ignore[assignment]
+                existing.p256dh = p256dh
+                existing.auth = auth
                 existing.user_id = user.id
-                existing.user_agent = user_agent or None  # type: ignore[assignment]
-                existing.last_seen_at = now  # type: ignore[assignment]
+                existing.user_agent = user_agent or None
+                existing.last_seen_at = now
                 if getattr(existing, "created_at", None) is None:
-                    existing.created_at = now  # type: ignore[assignment]
-                existing.topics = topics_copy  # type: ignore[assignment]
+                    existing.created_at = now
+                existing.topics = topics_copy
                 subscription = existing
             else:
                 # Try to create a new one
@@ -359,13 +355,13 @@ async def subscribe(
             ).scalar_one_or_none()
 
             if existing:
-                normalized_topics = resolve_topics(payload.topics, existing.topics)  # type: ignore[arg-type]
-                existing.p256dh = p256dh  # type: ignore[assignment]
-                existing.auth = auth  # type: ignore[assignment]
+                normalized_topics = resolve_topics(payload.topics, existing.topics)
+                existing.p256dh = p256dh
+                existing.auth = auth
                 existing.user_id = user.id
-                existing.user_agent = user_agent or None  # type: ignore[assignment]
-                existing.last_seen_at = now  # type: ignore[assignment]
-                existing.topics = list(normalized_topics)  # type: ignore[assignment]
+                existing.user_agent = user_agent or None
+                existing.last_seen_at = now
+                existing.topics = list(normalized_topics)
                 await db.flush()
                 await _refresh_user_topic_preferences(db, user_id=user.id)
                 await db.commit()
@@ -452,8 +448,8 @@ async def update_subscription_topics(
         user_id=user.id,
         topics=payload.topics,
     )
-    subscription.topics = list(normalized_topics)  # type: ignore[assignment]
-    subscription.last_seen_at = datetime.now(UTC)  # type: ignore[assignment]
+    subscription.topics = list(normalized_topics)
+    subscription.last_seen_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(subscription)
     return _serialize_subscription(subscription)
@@ -543,7 +539,6 @@ async def get_push_topics(
         allowed=allowed,
         topics=topics,
         has_preferences=record is not None,
-        updated_at=getattr(record, "updated_at", None),
     )
 
 

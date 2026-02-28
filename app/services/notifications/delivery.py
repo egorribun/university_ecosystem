@@ -74,7 +74,7 @@ def invalidate_push_subscription_schema_cache() -> None:
     _SCHEMA_CHECK_MARKER = None
 
 
-def only_active_users(stmt: Select) -> Select:
+def only_active_users(stmt: Select[Any]) -> Select[Any]:
     """Limit a user selection to accounts that are currently active."""
 
     return stmt.where(User.is_active.is_(True))
@@ -96,7 +96,7 @@ async def create_notifications_for_users(
     payload_data: Mapping[str, Any] | None = None,
     user_ids: Sequence[uuid.UUID],
     topic: str | None = None,
-    user_filter: Callable[[Select], Select] | None = None,
+    user_filter: Callable[[Select[Any]], Select[Any]] | None = None,
 ) -> int:
     """Create notifications for multiple users and send push notifications."""
     now = dt.datetime.now(UTC)

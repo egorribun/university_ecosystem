@@ -13,7 +13,7 @@ async def proxy_image(
     path: str,
     w: int | None = Query(None, alias="w", ge=1, le=2000),
     accept: str | None = Header(None),
-):
+) -> Response:
     """
     Public image proxy endpoint.
     Retrieves an image from storage, optimizes it for the requesting browser,

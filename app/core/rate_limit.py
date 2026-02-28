@@ -11,6 +11,7 @@ from __future__ import (
 
 import asyncio
 import time
+from typing import Any
 
 from app.core.config import settings as _settings
 from app.core.ratelimit import *
@@ -70,7 +71,7 @@ def _calculate_delay(failures: int) -> float:
     return PROGRESSIVE_DELAY_MAX
 
 
-class RateLimitMiddleware(_RateLimitMiddleware):
+class RateLimitMiddleware(_RateLimitMiddleware):  # type: ignore[no-redef]
     """Alias for backward compatibility."""
 
     async def _check_limit(
@@ -78,11 +79,11 @@ class RateLimitMiddleware(_RateLimitMiddleware):
         identifier: str,
         limit: int | None = None,
         window_seconds: int | None = None,
-    ) -> None:
+    ) -> Any:
         """Legacy internal method used in tests.
         In the new middleware, logic is in __call__ and calls strategy.check.
         """
-        return await super()._check_limit(identifier, limit, window_seconds)
+        return await super()._check_limit(identifier, limit or 100, window_seconds or 60)
 
 
 class _Limiter:

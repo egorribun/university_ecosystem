@@ -6,12 +6,13 @@ news, events, schedule, and other data.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import strawberry
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from app.graphql.context import GraphQLContext
 from app.graphql.types import (
     EventsConnection,
     EventType,
@@ -21,12 +22,10 @@ from app.graphql.types import (
     ScheduleEntryType,
     UserType,
 )
-
-if TYPE_CHECKING:
-    from app.graphql.context import GraphQLContext
+from app.models import Event, News, User
 
 
-def _user_to_type(user) -> UserType:
+def _user_to_type(user: User) -> UserType:
     """Convert SQLAlchemy User model to GraphQL UserType."""
     return UserType(
         id=strawberry.ID(str(user.id)),
@@ -37,7 +36,7 @@ def _user_to_type(user) -> UserType:
     )
 
 
-def _news_to_type(news, author=None) -> NewsType:
+def _news_to_type(news: News, author: User | None = None) -> NewsType:
     """Convert SQLAlchemy News model to GraphQL NewsType."""
     return NewsType(
         id=strawberry.ID(str(news.id)),
@@ -53,7 +52,7 @@ def _news_to_type(news, author=None) -> NewsType:
     )
 
 
-def _event_to_type(event, organizer=None) -> EventType:
+def _event_to_type(event: Event, organizer: User | None = None) -> EventType:
     """Convert SQLAlchemy Event model to GraphQL EventType."""
     return EventType(
         id=strawberry.ID(str(event.id)),
@@ -75,7 +74,7 @@ def _event_to_type(event, organizer=None) -> EventType:
 class Query:
     @strawberry.field(description="Get paginated list of news articles")
     async def news(
-        self,
+        self: Any,
         info: strawberry.Info[GraphQLContext],
         limit: int = 20,
         offset: int = 0,
@@ -140,7 +139,7 @@ class Query:
 
     @strawberry.field(description="Get paginated list of events")
     async def events(
-        self,
+        self: Any,
         info: strawberry.Info[GraphQLContext],
         limit: int = 25,
         offset: int = 0,
@@ -179,7 +178,7 @@ class Query:
 
     @strawberry.field(description="Get schedule entries for a group")
     async def schedule(
-        self,
+        self: Any,
         info: strawberry.Info[GraphQLContext],
         group_id: strawberry.ID,
     ) -> list[ScheduleEntryType]:
@@ -200,10 +199,10 @@ class Query:
         return [
             ScheduleEntryType(
                 id=strawberry.ID(str(e.id)),
-                day_of_week=e.weekday,  # type: ignore[arg-type]
+                day_of_week=e.weekday,
                 time_start=str(e.start_time),
                 time_end=str(e.end_time),
-                subject=e.subject,  # type: ignore[arg-type]
+                subject=e.subject,
                 teacher=getattr(e, "teacher", None),
                 room=getattr(e, "room", None),
                 type=getattr(e, "lesson_type", None),

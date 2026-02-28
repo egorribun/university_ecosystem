@@ -125,7 +125,7 @@ async def forgot_password(
     request: Request,
     bg: BackgroundTasks,
     auth_service: AuthService = Depends(get_auth_service),
-):
+) -> dict[str, bool]:
     await auth_service.initiate_password_reset(payload.email, request, bg)
     return {"ok": True}
 
@@ -138,7 +138,7 @@ async def reset_password(
     payload: schemas.ResetPasswordIn,
     request: Request,
     auth_service: AuthService = Depends(get_auth_service),
-):
+) -> dict[str, bool]:
     await auth_service.perform_password_reset(payload.token, payload.password, request)
     return {"ok": True}
 
@@ -149,7 +149,7 @@ async def me(
     db: AsyncDatabaseSession = Depends(get_read_db),
     user: models.User = Depends(get_current_user_full),
     auth_service: AuthService = Depends(get_auth_service),
-):
+) -> schemas.UserOut:
     _enforce_profile_cache_integrity(request)
     await auth_service.refresh_pending_email(user)
     await log_data_access(
@@ -170,8 +170,9 @@ async def update_me(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserProfileService = Depends(get_user_profile_service),
-):
-    return await service.update_user_profile(user, data, request)
+) -> schemas.UserOut:
+    user_dto = await service.update_user_profile(user, data, request)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.post(
@@ -187,8 +188,9 @@ async def change_email(
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     auth_service: AuthService = Depends(get_auth_service),
-):
-    return await auth_service.initiate_email_change(user, payload, request, bg)
+) -> schemas.UserOut:
+    user_dto = await auth_service.initiate_email_change(user, payload, request, bg)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.post(
@@ -202,8 +204,9 @@ async def verify_email_change(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     auth_service: AuthService = Depends(get_auth_service),
-):
-    return await auth_service.confirm_email_change(user, payload.token, request)
+) -> schemas.UserOut:
+    user_dto = await auth_service.confirm_email_change(user, payload.token, request)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.post(
@@ -217,7 +220,7 @@ async def change_password(
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     auth_service: AuthService = Depends(get_auth_service),
-):
+) -> schemas.PasswordChangeOut:
     ok, revoked = await auth_service.change_password(user, payload, request)
     return schemas.PasswordChangeOut(ok=ok, revoked_sessions=revoked)
 
@@ -232,7 +235,7 @@ async def export_current_user_data(
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserComplianceService = Depends(get_user_compliance_service),
-):
+) -> schemas.DataExportOut:
     return await service.export_user_data(user, request)
 
 
@@ -247,7 +250,7 @@ async def delete_current_user_account(
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserComplianceService = Depends(get_user_compliance_service),
-):
+) -> schemas.DataDeletionOut:
     return await service.delete_user_data(user, request, confirm=payload.confirm)
 
 
@@ -258,8 +261,9 @@ async def upload_avatar(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserMediaService = Depends(get_user_media_service),
-):
-    return await service.upload_avatar(user, file)
+) -> schemas.UserOut:
+    user_dto = await service.upload_avatar(user, file)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.post("/me/cover", response_model=schemas.UserOut)
@@ -269,8 +273,9 @@ async def upload_cover(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserMediaService = Depends(get_user_media_service),
-):
-    return await service.upload_cover(user, file)
+) -> schemas.UserOut:
+    user_dto = await service.upload_cover(user, file)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.delete("/me/avatar", response_model=schemas.UserOut)
@@ -278,8 +283,9 @@ async def delete_avatar(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserMediaService = Depends(get_user_media_service),
-):
-    return await service.delete_avatar(user)
+) -> schemas.UserOut:
+    user_dto = await service.delete_avatar(user)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.delete("/me/cover", response_model=schemas.UserOut)
@@ -287,8 +293,9 @@ async def delete_cover(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserMediaService = Depends(get_user_media_service),
-):
-    return await service.delete_cover(user)
+) -> schemas.UserOut:
+    user_dto = await service.delete_cover(user)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.post("", response_model=schemas.UserOut)
@@ -297,8 +304,9 @@ async def create_user(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserComplianceService = Depends(get_user_compliance_service),
-):
-    return await service.create_user(data, request, user)
+) -> schemas.UserOut:
+    user_dto = await service.create_user(data, request, user)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.get(
@@ -312,7 +320,7 @@ async def get_users(
     current_user: UserDTO = Depends(deps.get_current_user_dto),
     service: UserProfileService = Depends(get_user_profile_service),
     db: AsyncDatabaseSession = Depends(get_read_db),
-):
+) -> list[schemas.UserPublicOut | schemas.UserOut]:
     """
     Search for users.
     Admins see full profiles (UserOut), others see only public info (UserPublicOut).
@@ -343,7 +351,7 @@ async def get_users(
         ]
 
     # Admins get full objects
-    return users
+    return [schemas.UserOut.model_validate(u) for u in users]
 
 
 @users_router.get("/audit/export")
@@ -354,7 +362,7 @@ async def export_access_audit(
     db: AsyncDatabaseSession = Depends(get_read_db),
     user: models.User = Depends(get_current_user),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> Response:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     logs = await export_access_logs(db, start_at=start_at, end_at=end_at, limit=20_000)
@@ -376,8 +384,9 @@ async def update_user_admin(
     # authorization is enforced in two layers (route + service).
     user: models.User = Depends(get_current_admin_user),
     service: UserProfileService = Depends(get_user_profile_service),
-):
-    return await service.admin_update_user(user_id, data, request, user)  # type: ignore[arg-type]
+) -> schemas.UserOut:
+    user_dto = await service.admin_update_user(user_id, data, request, user)
+    return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.delete("/{user_id}", response_model=dict)
@@ -387,15 +396,16 @@ async def delete_user_admin(
     # TD-6: same fail-closed SpiceDB check at the route boundary.
     user: models.User = Depends(get_current_admin_user),
     service: UserComplianceService = Depends(get_user_compliance_service),
-):
+) -> dict[str, bool]:
     return await service.admin_delete_user(user_id, request, user)  # type: ignore[arg-type]
 
 
 @groups_router.get("", response_model=list[schemas.GroupOut])
 async def get_groups(
     service: GroupService = Depends(get_group_service),
-):
-    return await service.get_groups()
+) -> list[schemas.GroupOut]:
+    groups = await service.get_groups()
+    return [schemas.GroupOut.model_validate(g) for g in groups]
 
 
 router.include_router(users_router)

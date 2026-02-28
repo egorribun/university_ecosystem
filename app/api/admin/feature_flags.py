@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 
 from app.api.deps import get_current_admin_user
@@ -11,7 +13,9 @@ router = APIRouter(prefix="/feature-flags", tags=["admin-feature-flags"])
 
 
 @router.get("", response_model=list[schemas.FeatureFlagOut])
-async def list_feature_flags(_: models.User = Depends(get_current_admin_user)):
+async def list_feature_flags(
+    _: models.User = Depends(get_current_admin_user),
+) -> list[dict[str, Any]]:
     """List all registered feature flags."""
     return [flag.to_dict() for flag in feature_flags.list_flags()]
 
@@ -22,7 +26,7 @@ async def update_feature_flag(
     data: schemas.FeatureFlagUpdateIn,
     request: Request,
     user: models.User = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """Update a feature flag's status or percentage."""
     locale = resolve_locale(request=request, user=user)
 

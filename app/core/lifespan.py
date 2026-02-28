@@ -1,6 +1,8 @@
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -23,7 +25,7 @@ _logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Configure database adapters (remove global side effects)
     from app.core.database import configure_database
 
@@ -123,7 +125,7 @@ async def lifespan(app: FastAPI):
                 raise
             _logger.warning("Migration check failed (likely DB unavailable): %s", exc)
 
-    register_event_listeners()
+    await register_event_listeners()
 
     # Configure domain event handlers
     from app.services.event_handlers import configure_event_handlers
@@ -212,7 +214,7 @@ async def lifespan(app: FastAPI):
 
     await setup_periodic_cleanups()
 
-    async def _periodic_scheduler():
+    async def _periodic_scheduler() -> None:
         """Lightweight background loop for periodic tasks. (MOD-3)"""
         from app.tasks.cleanups import (
             cleanup_dead_letter_jobs_task,
@@ -232,7 +234,7 @@ async def lifespan(app: FastAPI):
         # TD-4: Each task is wrapped individually so a failure in one cleanup
         # never prevents subsequent cleanups from running.
 
-        async def _kick(task) -> None:
+        async def _kick(task: Any) -> None:
             try:
                 await task.kick()
             except Exception:
@@ -293,7 +295,7 @@ async def lifespan(app: FastAPI):
     outbox_worker = OutboxWorker()
     outbox_task = asyncio.create_task(outbox_worker.run_forever(), name="outbox_worker")
 
-    def _on_outbox_done(task: asyncio.Task) -> None:
+    def _on_outbox_done(task: asyncio.Task[Any]) -> None:
         """Log unexpected OutboxWorker exits so they are never silently swallowed."""
         if task.cancelled():
             return

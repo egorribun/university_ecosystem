@@ -1,9 +1,9 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     UUID,
     CheckConstraint,
-    Column,
     DateTime,
     ForeignKey,
     Index,
@@ -21,9 +21,9 @@ from app.models.mixins import UUID7PrimaryKeyMixin
 class Group(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "groups"
 
-    name = Column(String, index=True)
-    course = Column(Integer)
-    faculty = Column(String)
+    name: Mapped[str | None] = mapped_column(String, index=True)
+    course: Mapped[int | None] = mapped_column(Integer)
+    faculty: Mapped[str | None] = mapped_column(String)
 
     students = relationship(
         "User", back_populates="group", passive_deletes=True, lazy="selectin"
@@ -41,14 +41,18 @@ class Schedule(Base, UUID7PrimaryKeyMixin):
         ForeignKey("groups.id", ondelete="CASCADE"),
         index=True,
     )
-    subject = Column(String, nullable=False)
-    teacher = Column(String)
-    room = Column(String)
-    weekday = Column(String, index=True, nullable=False)
-    start_time = Column(DateTime(timezone=True), index=True, nullable=False)
-    end_time = Column(DateTime(timezone=True), index=True, nullable=False)
-    parity = Column(String, default="both", index=True)
-    lesson_type = Column(String, default=None)
+    subject: Mapped[str] = mapped_column(String, nullable=False)
+    teacher: Mapped[str | None] = mapped_column(String)
+    room: Mapped[str | None] = mapped_column(String)
+    weekday: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    start_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )
+    end_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )
+    parity: Mapped[str] = mapped_column(String, default="both", index=True)
+    lesson_type: Mapped[str | None] = mapped_column(String, default=None)
 
     __table_args__ = (
         CheckConstraint("end_time > start_time", name="ck_schedule_time_order"),

@@ -80,6 +80,7 @@ dependencies = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
+plugins = ["sqlalchemy.ext.mypy.plugin", "strawberry.ext.mypy_plugin"]
 files = ["app"]
 warn_return_any = true
 warn_unused_configs = true
