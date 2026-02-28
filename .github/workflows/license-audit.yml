@@ -153,7 +153,11 @@ jobs:
           find . -name 'go.mod' -not -path '*/vendor/*' | while read modfile; do
             dir=$(dirname "$modfile")
             echo "=== Checking: $dir ==="
-            (cd "$dir" && go-licenses check ./... 2>/dev/null) || {
+            (
+              cd "$dir"
+              modname=$(go list -m)
+              go-licenses check ./... --ignore "$modname" 2>/dev/null
+            ) || {
               echo "❌ Disallowed or unknown license found in $dir!"
               # Report specific violations for debugging
               (cd "$dir" && go-licenses report ./... 2>/dev/null)
