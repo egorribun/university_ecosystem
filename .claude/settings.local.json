@@ -21,7 +21,8 @@
       "mcp__plugin_serena_serena__edit_memory",
       "Bash(cat:*)",
       "mcp__plugin_serena_serena__search_for_pattern",
-      "mcp__plugin_serena_serena__find_symbol"
+      "mcp__plugin_serena_serena__find_symbol",
+      "Bash(done)"
     ]
   }
 }
