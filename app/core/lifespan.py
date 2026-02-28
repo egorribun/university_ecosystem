@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -17,6 +18,8 @@ from app.services.partition_manager import (
 )
 from app.tasks.cleanups import setup_periodic_cleanups
 from app.workers.outbox import OutboxWorker
+
+_logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -54,14 +57,30 @@ async def lifespan(app: FastAPI):
     _ws_module.manager = _cm  # Keep module-level alias for pubsub / background tasks
 
     # MOD-3: NATS Task Broker initialization
-    await nats_broker.connect()
-    # In development or if explicitly allowed, we can run the worker in-process.
-    # In production, a separate worker process would call broker.run_worker().
-    worker_task = asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
+    _nats_success = False
+    try:
+        await nats_broker.connect()
+        _nats_success = True
+    except Exception as exc:
+        _logger.warning("NATS connection failed: %s. Continuing in degraded mode.", exc)
+
+    worker_task = None
+    if _nats_success:
+        # In development or if explicitly allowed, we can run the worker in-process.
+        # In production, a separate worker process would call broker.run_worker().
+        worker_task = asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
 
     await feature_flags.initialize()
     await start_presence_pubsub()
-    await wait_db(max_attempts=10, delay=0.5)
+    try:
+        await wait_db(max_attempts=10, delay=0.5)
+    except Exception as exc:
+        if settings.environment not in {"development", "local", "testing"}:
+            raise
+        _logger.warning(
+            "Database unavailable: %s. Continuing startup (be prepared for errors).",
+            exc,
+        )
 
     # MOD-4 (audit 2026-02-26): Fail fast if the DB schema is not at the
     # migration head.  Without this check a deployment that skips ``alembic
@@ -71,9 +90,6 @@ async def lifespan(app: FastAPI):
     # Skipped for non-Postgres dialects (e.g. SQLite used in tests) because
     # the alembic_version table may not exist in ephemeral test databases.
     if settings.environment not in {"testing", "test"}:
-        import logging as _log
-
-        _migration_logger = _log.getLogger(__name__)
         try:
             from alembic.config import Config as AlembicConfig
             from alembic.runtime.migration import MigrationContext
@@ -96,15 +112,13 @@ async def lifespan(app: FastAPI):
                             f"head={_head!r}. Run 'alembic upgrade head' before "
                             "starting the application."
                         )
-                    _migration_logger.info(
-                        "DB schema check passed: revision=%s", _current
-                    )
+                    _logger.info("DB schema check passed: revision=%s", _current)
         except ImportError:
-            _migration_logger.warning(
-                "alembic not importable — skipping migration head check"
-            )
-        except RuntimeError:
-            raise  # Re-raise schema mismatch error — must not be swallowed
+            _logger.warning("alembic not importable — skipping migration head check")
+        except Exception as exc:
+            if settings.environment not in {"development", "local", "testing"}:
+                raise
+            _logger.warning("Migration check failed (likely DB unavailable): %s", exc)
 
     register_event_listeners()
 
@@ -114,18 +128,14 @@ async def lifespan(app: FastAPI):
     configure_event_handlers()
 
     if settings.auto_create_schema:
-        import logging
-
         from sqlalchemy import text
-
-        logger = logging.getLogger(__name__)
 
         async with engine.begin() as conn:
             if conn.dialect.name == "postgresql":
                 try:
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
                 except Exception as e:
-                    logger.warning(
+                    _logger.warning(
                         f"Could not create 'vector' extension: {e}. "
                         "Semantic search will be disabled."
                     )
@@ -141,7 +151,7 @@ async def lifespan(app: FastAPI):
 
                             if hasattr(column.type, "_variant_mapping"):
                                 # If Variant, check if PG variant is Vector
-                                pg_utils = column.type._variant_mapping
+                                pg_utils = getattr(column.type, "_variant_mapping", {})
                                 pg_variant = pg_utils.get("postgresql")
                                 if pg_variant and isinstance(pg_variant, Vector):
                                     is_variant_vector = True
@@ -157,7 +167,7 @@ async def lifespan(app: FastAPI):
                         # Attempt to disable semantic search since extension is missing
                         object.__setattr__(settings, "semantic_search_enabled", False)
                     except Exception:
-                        logger.error(
+                        _logger.error(
                             "Failed to disable semantic_search_enabled setting"
                         )
             else:
@@ -168,7 +178,7 @@ async def lifespan(app: FastAPI):
                         if column.computed is not None:
                             sql_text = str(column.computed.sqltext)
                             if "to_tsvector" in sql_text:
-                                logger.info(
+                                _logger.info(
                                     "Patching out computed column %s.%s for dialect %s",
                                     table.name,
                                     column.name,
@@ -204,15 +214,12 @@ async def lifespan(app: FastAPI):
 
         # TD-4: Each task is wrapped individually so a failure in one cleanup
         # never prevents subsequent cleanups from running.
-        import logging as _log
-
-        _sched_logger = _log.getLogger(__name__)
 
         async def _kick(task) -> None:
             try:
                 await task.kick()
             except Exception:
-                _sched_logger.exception(
+                _logger.exception(
                     "Periodic cleanup failed", extra={"task": task.__class__.__name__}
                 )
 
@@ -250,10 +257,7 @@ async def lifespan(app: FastAPI):
     )
 
     if settings.partition_management_enabled:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.info(
+        _logger.info(
             "Synchronously warming up PostgreSQL partitions "
             "to prevent cold start failures..."
         )
@@ -272,11 +276,7 @@ async def lifespan(app: FastAPI):
             return
         exc = task.exception()
         if exc is not None:
-            import logging as _logging
-
-            _logging.getLogger(__name__).error(
-                "OutboxWorker exited unexpectedly: %s", exc, exc_info=exc
-            )
+            _logger.error("OutboxWorker exited unexpectedly: %s", exc, exc_info=exc)
 
     outbox_task.add_done_callback(_on_outbox_done)
 
@@ -299,7 +299,8 @@ async def lifespan(app: FastAPI):
         await outbox_task
 
         # Shutdown NATS broker
-        worker_task.cancel()
+        if worker_task:
+            worker_task.cancel()
         await nats_broker.close()
 
         await feature_flags.shutdown()

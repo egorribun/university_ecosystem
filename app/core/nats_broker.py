@@ -36,6 +36,11 @@ class NatsTaskBroker:
         self._stream_name = "TASK_QUEUE"
         self._subject_prefix = "tasks"
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if broker is connected to NATS."""
+        return self._nc is not None and self._nc.is_connected
+
     async def connect(self) -> None:
         """Connect to NATS and ensure JetStream is initialized."""
         if self._nc is not None:
@@ -57,8 +62,12 @@ class NatsTaskBroker:
 
     async def close(self) -> None:
         """Close NATS connection."""
-        if self._nc:
-            await self._nc.close()
+        try:
+            if self._nc and self._nc.is_connected:
+                await self._nc.close()
+        except Exception as exc:
+            _logger.warning("Error during NATS closure: %s", exc)
+        finally:
             self._nc = None
             self._js = None
 
