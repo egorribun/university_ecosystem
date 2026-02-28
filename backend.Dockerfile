@@ -43,9 +43,12 @@ WORKDIR /app
 # Install tini for proper signal handling (PID-1 reaping).
 # curl is intentionally omitted — healthcheck uses Python stdlib instead,
 # reducing the attack surface by one CVE-prone binary.
+# apt-get upgrade ensures Debian security patches released after the base
+# image was built on Docker Hub are applied at our build time.
 RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-runtime,target=/var/cache/apt \
     apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \

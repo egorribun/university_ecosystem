@@ -82,19 +82,6 @@ jobs:
           trivyignores: .trivyignore
           exit-code: '1'
 
-      # Table scan: prints findings to the CI log so failures are immediately
-      # visible without downloading SARIF artifacts. exit-code 0 — never fails.
-      - name: Trivy image scan (table — CI log)
-        if: always()
-        run: |
-          trivy image \
-            --severity "${{ env.TRIVY_SEVERITY }}" \
-            --ignore-unfixed \
-            --ignorefile .trivyignore \
-            --format table \
-            --exit-code 0 \
-            "${{ env.IMAGE_REF }}"
-
       # ── Filesystem scan ───────────────────────────────────────────────────────
       - name: Trivy filesystem scan (SARIF)
         id: trivy_fs
@@ -110,16 +97,49 @@ jobs:
           trivyignores: .trivyignore
           exit-code: '1'
 
-      - name: Trivy filesystem scan (table — CI log)
+      # Parse both SARIF files and print every finding to the CI log.
+      # Runs after both scans so we always see all findings in one place,
+      # without relying on trivy being in PATH or the Docker image being live.
+      - name: Print SARIF findings (CI log)
         if: always()
         run: |
-          trivy fs \
-            --severity "${{ env.TRIVY_SEVERITY }}" \
-            --ignore-unfixed \
-            --ignorefile .trivyignore \
-            --format table \
-            --exit-code 0 \
-            .
+          python3 - <<'PY'
+          import json, os, sys
+
+          files = ["trivy-image.sarif", "trivy-fs.sarif"]
+          any_findings = False
+
+          for path in files:
+              if not os.path.exists(path):
+                  print(f"[{path}] file not found — scan may not have run")
+                  continue
+              with open(path) as f:
+                  sarif = json.load(f)
+              results = [r for run in sarif.get("runs", []) for r in run.get("results", [])]
+              if not results:
+                  print(f"[{path}] ✓ no findings")
+                  continue
+              any_findings = True
+              print(f"\n{'='*70}")
+              print(f"[{path}]  {len(results)} finding(s)")
+              print(f"{'='*70}")
+              for r in results:
+                  cve   = r.get("ruleId", "N/A")
+                  msg   = r.get("message", {}).get("text", "").split("\n")[0][:100]
+                  locs  = r.get("locations", [])
+                  uri   = ""
+                  if locs:
+                      uri = locs[0].get("physicalLocation", {}) \
+                                   .get("artifactLocation", {}) \
+                                   .get("uri", "")
+                  sev   = r.get("properties", {}).get("security-severity", "")
+                  print(f"  {cve:<22}  {sev:<5}  {uri}")
+                  if msg:
+                      print(f"    {msg}")
+
+          if not any_findings:
+              print("\nAll SARIF files: no findings.")
+          PY
 
       # ── Upload & report ───────────────────────────────────────────────────────
       - name: Upload SARIF (image)
