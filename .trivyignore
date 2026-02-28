@@ -6,3 +6,13 @@
 # Risk: Low - DoS attack requires malicious protobuf input, server-side validation mitigates
 # Review date: 2026-03-28 (check monthly for fix)
 CVE-2026-0994
+
+# CVE-2024-23342 - ecdsa potential timing attack
+# Status: Explicitly allowed in security/audit-allowlist.yaml
+# Risk: Low - timing attack in some curves, not applicable to current usage
+CVE-2024-23342
+
+# GHSA-7h2j-956f-4vf2 - brace-expansion Uncontrolled Resource Consumption (DoS)
+# Status: Explicitly allowed in security/audit-allowlist.yaml (ID: 1112818, 1112862, 1112954)
+# Risk: Low - requires malicious input, server-side validation mitigates
+GHSA-7h2j-956f-4vf2
