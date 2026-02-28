@@ -3,6 +3,7 @@ Shim for backward compatibility.
 The actual implementation has been moved to app.core.ratelimit package.
 (Audit 2026-02-27: Decomposition into app.core.ratelimit)
 """
+# ruff: noqa
 
 from __future__ import (
     annotations,  # Kept original as `from __future__ import asyncio` is syntactically incorrect

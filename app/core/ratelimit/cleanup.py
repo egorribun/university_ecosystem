@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 
 from app.core.ratelimit.strategies.memory import _memory_locks, _memory_windows
 
@@ -19,7 +18,7 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
     while True:
         try:
             await asyncio.sleep(interval_seconds)
-            now = time.time()
+            # now = time.time()  # Unused variable removed
 
             # We don't have a global lock for _memory_windows keys,
             # but we can prune individual windows under their own locks.

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from app.schemas.base import SecureBaseModel
 
@@ -54,7 +54,7 @@ class MessageResponse(MessageBase):
     read_status: bool
     sender: ChatParticipant | None = None
     sender_presence: PresenceStatus | None = None
-    attachments: list[AttachmentResponse] = []
+    attachments: list[AttachmentResponse] = Field(default_factory=list)
 
 
 class ChatBase(SecureBaseModel):

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from app.schemas.base import SecureBaseModel
 
@@ -13,7 +13,9 @@ class AttendanceStatsDTO(SecureBaseModel):
     previous_total: int
     current_attended: int
     previous_attended: int
-    recent_attended_events: list[dict] = []  # Can be further refined if needed
+    recent_attended_events: list[dict] = Field(
+        default_factory=list
+    )  # Can be further refined if needed
 
 
 class ParticipationStatsDTO(SecureBaseModel):

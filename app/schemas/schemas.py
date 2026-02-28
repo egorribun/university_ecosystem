@@ -12,16 +12,14 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
+from app.core.localization import translate
+from app.models.enums import UserRole
 from app.schemas.base import SecureBaseModel
+from app.schemas.validators import SanitizedInput
 
 
 class BaseModel(SecureBaseModel):
     pass
-
-
-from app.core.localization import translate
-from app.models.enums import UserRole
-from app.schemas.validators import SanitizedInput
 
 
 class OrmModel(BaseModel):
