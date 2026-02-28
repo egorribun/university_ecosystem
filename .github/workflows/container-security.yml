@@ -65,8 +65,12 @@ jobs:
           printf 'bytes=%s\n' "$size_bytes" >> "$GITHUB_OUTPUT"
           printf 'human=%s\n' "$size_human" >> "$GITHUB_OUTPUT"
 
-      - name: Trivy image scan
+      # ── Image scan ────────────────────────────────────────────────────────────
+      # SARIF scan: results go to the Security tab. continue-on-error so the
+      # filesystem scan always runs even when this step finds vulnerabilities.
+      - name: Trivy image scan (SARIF)
         id: trivy_image
+        continue-on-error: true
         uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: image
@@ -75,10 +79,26 @@ jobs:
           output: trivy-image.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
+          trivyignores: .trivyignore
           exit-code: '1'
 
-      - name: Trivy filesystem scan
+      # Table scan: prints findings to the CI log so failures are immediately
+      # visible without downloading SARIF artifacts. exit-code 0 — never fails.
+      - name: Trivy image scan (table — CI log)
+        if: always()
+        run: |
+          trivy image \
+            --severity "${{ env.TRIVY_SEVERITY }}" \
+            --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --format table \
+            --exit-code 0 \
+            "${{ env.IMAGE_REF }}"
+
+      # ── Filesystem scan ───────────────────────────────────────────────────────
+      - name: Trivy filesystem scan (SARIF)
         id: trivy_fs
+        continue-on-error: true
         uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: fs
@@ -87,8 +107,21 @@ jobs:
           output: trivy-fs.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
+          trivyignores: .trivyignore
           exit-code: '1'
 
+      - name: Trivy filesystem scan (table — CI log)
+        if: always()
+        run: |
+          trivy fs \
+            --severity "${{ env.TRIVY_SEVERITY }}" \
+            --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --format table \
+            --exit-code 0 \
+            .
+
+      # ── Upload & report ───────────────────────────────────────────────────────
       - name: Upload SARIF (image)
         if: always()
         uses: github/codeql-action/upload-sarif@v4
@@ -126,10 +159,17 @@ jobs:
           - Failing severities: `${{ env.TRIVY_SEVERITY }}`
           SUMMARY
 
-      - name: Report Trivy findings
-        if: ${{ steps.trivy_image.outcome == 'failure' || steps.trivy_fs.outcome == 'failure' }}
+      # Explicit failure gate — runs after all scans and uploads so nothing
+      # is skipped. Fails the job only when a SARIF scan actually found issues.
+      - name: Fail on findings
+        if: >-
+          always() && (
+            steps.trivy_image.outcome == 'failure' ||
+            steps.trivy_fs.outcome   == 'failure'
+          )
         run: |
-          echo "::warning::Trivy detected ${{ env.TRIVY_SEVERITY }} vulnerabilities. See Security tab for SARIF reports."
-          echo "Image scan: ${{ steps.trivy_image.outcome }}"
+          echo "::error::Trivy found ${{ env.TRIVY_SEVERITY }} vulnerabilities."
+          echo "Image scan:      ${{ steps.trivy_image.outcome }}"
           echo "Filesystem scan: ${{ steps.trivy_fs.outcome }}"
-          echo "Note: Vulnerabilities are tracked in GitHub Security tab via SARIF upload."
+          echo "Check the table output above and the Security tab for details."
+          exit 1
