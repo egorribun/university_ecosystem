@@ -1,11 +1,13 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict, Field
+
+from app.schemas.base import SecureBaseModel
 
 
-class AttachmentDTO(BaseModel):
-    model_config = ConfigDict(from_attributes=True, frozen=True)
+class AttachmentDTO(SecureBaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     message_id: uuid.UUID
@@ -16,21 +18,8 @@ class AttachmentDTO(BaseModel):
     created_at: datetime
 
 
-class MessageDTO(BaseModel):
-    model_config = ConfigDict(from_attributes=True, frozen=True)
-
-    id: uuid.UUID
-    chat_id: uuid.UUID
-    sender_id: uuid.UUID
-    content: str
-    created_at: datetime
-    read_status: bool = False
-    sender: "ChatParticipantDTO | None" = None
-    attachments: list[AttachmentDTO] = []
-
-
-class ChatParticipantDTO(BaseModel):
-    model_config = ConfigDict(from_attributes=True, frozen=True)
+class ChatParticipantDTO(SecureBaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     full_name: str | None = None
     email: str | None = None
@@ -38,13 +27,24 @@ class ChatParticipantDTO(BaseModel):
     is_active: bool = True
 
 
-class ChatDTO(BaseModel):
-    model_config = ConfigDict(from_attributes=True, frozen=True)
+class MessageDTO(SecureBaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    chat_id: uuid.UUID
+    sender_id: uuid.UUID
+    content: str
+    created_at: datetime
+    read_status: bool = False
+    sender: ChatParticipantDTO | None = None
+    attachments: list[AttachmentDTO] = Field(default_factory=list)
+
+
+class ChatDTO(SecureBaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    participants: list[ChatParticipantDTO] = []
-    messages: list[MessageDTO] = []
-    # We'll handle messages as a separate paginated call usually,
-    # but the model has a relationship.
+    participants: list[ChatParticipantDTO] = Field(default_factory=list)
+    messages: list[MessageDTO] = Field(default_factory=list)

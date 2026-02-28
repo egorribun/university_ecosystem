@@ -3,12 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, time
 
-from pydantic import AliasPath, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasPath, ConfigDict, EmailStr, Field
 
 from app.models.enums import UserRole
+from app.schemas.base import SecureBaseModel
 
 
-class DTOModel(BaseModel):
+class DTOModel(SecureBaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
 

@@ -49,8 +49,6 @@ def mock_news_service():
             title="Test News",
             content="Content",
             created_at="2024-01-01T00:00:00Z",  # ISO format string for schema
-            author_id=uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7c"),
-            author_name="Test Author",
             image_url=None,
             likes_count=0,
             comments_count=0,

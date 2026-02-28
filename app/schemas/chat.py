@@ -1,11 +1,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from app.schemas.base import SecureBaseModel
 
 
 # Simplified User schema for chat participants (avoids lazy-loaded relationships)
-class ChatParticipant(BaseModel):
+class ChatParticipant(SecureBaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -15,14 +17,14 @@ class ChatParticipant(BaseModel):
     is_active: bool
 
 
-class PresenceStatus(BaseModel):
+class PresenceStatus(SecureBaseModel):
     """Represents a participant's presence state."""
 
     active: bool = False
     last_seen_at: datetime | None = None
 
 
-class MessageBase(BaseModel):
+class MessageBase(SecureBaseModel):
     content: str
 
 
@@ -30,7 +32,7 @@ class MessageCreate(MessageBase):
     pass
 
 
-class AttachmentResponse(BaseModel):
+class AttachmentResponse(SecureBaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -38,6 +40,8 @@ class AttachmentResponse(BaseModel):
     file_type: str
     filename: str
     size: int
+    created_at: datetime | None = None
+    message_id: UUID | None = None
 
 
 class MessageResponse(MessageBase):
@@ -53,7 +57,7 @@ class MessageResponse(MessageBase):
     attachments: list[AttachmentResponse] = []
 
 
-class ChatBase(BaseModel):
+class ChatBase(SecureBaseModel):
     pass
 
 
@@ -73,7 +77,7 @@ class ChatResponse(ChatBase):
     presence: dict[UUID, PresenceStatus] | None = None
 
 
-class ChatsListOut(BaseModel):
+class ChatsListOut(SecureBaseModel):
     """Paginated list of chats."""
 
     items: list[ChatResponse]
@@ -81,7 +85,7 @@ class ChatsListOut(BaseModel):
     next_cursor: str | None = None
 
 
-class MessagesListOut(BaseModel):
+class MessagesListOut(SecureBaseModel):
     """Paginated list of messages."""
 
     items: list[MessageResponse]
@@ -89,7 +93,7 @@ class MessagesListOut(BaseModel):
     next_cursor: str | None = None
 
 
-class ChatMaintenanceResult(BaseModel):
+class ChatMaintenanceResult(SecureBaseModel):
     """Represents the result of a maintenance operation on a chat."""
 
     chat_id: UUID

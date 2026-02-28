@@ -57,62 +57,75 @@ class MfaResetStats:
 
 
 def user_has_confirmed_interactive_factor(user: User) -> bool:
-    """Return True if the user has at least one confirmed interactive factor."""
-    if user.mfa_default_method:
+    """Return True if the user has at least one confirmed interactive factor.
+    Note: Highly security-sensitive sync helper.
+    """
+    if getattr(user, "mfa_default_method", None):
         return True
 
     # Check WebAuthn
-    if getattr(user, "webauthn_credentials", None):
-        return True
+    webauthn = getattr(user, "webauthn_credentials", None)
+    if webauthn:
+        for cred in webauthn:
+            if cred is not None:
+                return True
 
-    enrollments = getattr(user, "totp_enrollments", None)
-    if not enrollments:
-        return False
-    for enrollment in enrollments:
-        if enrollment.revoked_at is None and enrollment.confirmed_at is not None:
-            return True
+    # Check TOTP
+    totp = getattr(user, "totp_enrollments", None)
+    if totp is not None:
+        for enrollment in totp:
+            if enrollment:
+                confirmed = getattr(enrollment, "confirmed_at", None)
+                revoked = getattr(enrollment, "revoked_at", None)
+                if confirmed is not None and revoked is None:
+                    return True
     return False
 
 
 async def has_totp_enabled(db: AsyncSession, user: User) -> bool:
     """Return True if the user has at least one active TOTP enrollment."""
     enrollments = getattr(user, "totp_enrollments", None)
-    if enrollments is not None:
+    if enrollments:
         for e in enrollments:
             if e.confirmed_at is not None and e.revoked_at is None:
                 return True
-        return False
-
-    stmt = select(func.count(MfaTotpEnrollment.id)).where(
-        MfaTotpEnrollment.user_id == user.id,
-        MfaTotpEnrollment.confirmed_at.is_not(None),
-        MfaTotpEnrollment.revoked_at.is_(None),
-    )
-    res = await db.execute(stmt)
-    return bool(res.scalar())
+    else:
+        stmt = select(func.count(MfaTotpEnrollment.id)).where(
+            MfaTotpEnrollment.user_id == user.id,
+            MfaTotpEnrollment.confirmed_at.is_not(None),
+            MfaTotpEnrollment.revoked_at.is_(None),
+        )
+        res = await db.execute(stmt)
+        if (res.scalar() or 0) > 0:
+            return True
+    return False
 
 
 async def has_webauthn_enabled(db: AsyncSession, user: User) -> bool:
     """Return True if the user has at least one WebAuthn credential."""
     credentials = getattr(user, "webauthn_credentials", None)
-    if credentials is not None:
-        return len(credentials) > 0
-
-    stmt = select(func.count(WebAuthnCredential.id)).where(
-        WebAuthnCredential.user_id == user.id
-    )
-    res = await db.execute(stmt)
-    return bool(res.scalar())
+    if credentials:
+        return True
+    else:
+        stmt = select(func.count(WebAuthnCredential.id)).where(
+            WebAuthnCredential.user_id == user.id
+        )
+        res = await db.execute(stmt)
+        if (res.scalar() or 0) > 0:
+            return True
+    return False
 
 
 async def user_has_active_factor(db: AsyncSession, user: User) -> bool:
     """Return True if the user has any active MFA factor."""
+    # Check TOTP
     enrollments = getattr(user, "totp_enrollments", None)
-    if enrollments is not None:
+    if enrollments:  # Use truthiness to check if list is non-empty
         for e in enrollments:
             if e.is_active and e.revoked_at is None:
                 return True
     else:
+        # Fallback to DB if collection is empty or not loaded
         stmt = select(func.count(MfaTotpEnrollment.id)).where(
             MfaTotpEnrollment.user_id == user.id,
             MfaTotpEnrollment.is_active.is_(True),
@@ -122,11 +135,12 @@ async def user_has_active_factor(db: AsyncSession, user: User) -> bool:
         if (res.scalar() or 0) > 0:
             return True
 
+    # Check WebAuthn
     credentials = getattr(user, "webauthn_credentials", None)
-    if credentials is not None:
-        if len(credentials) > 0:
-            return True
+    if credentials:
+        return True
     else:
+        # Fallback to DB
         stmt = select(func.count(WebAuthnCredential.id)).where(
             WebAuthnCredential.user_id == user.id
         )

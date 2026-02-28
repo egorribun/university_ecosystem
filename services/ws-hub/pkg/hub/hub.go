@@ -49,14 +49,14 @@ type Hub struct {
 
 func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
 	return &Hub{
-		Clients:        make(map[string]*Client),
-		Rooms:          make(map[string]map[*Client]bool),
-		Register:       make(chan *Client),
-		Unregister:     make(chan *Client),
-		Broadcast:      make(chan *Message, cfg.BroadcastBufferSize),
-		Nats:           nc,
-		Logger:         logger,
-		authClient:     authClient,
+		Clients:    make(map[string]*Client),
+		Rooms:      make(map[string]map[*Client]bool),
+		Register:   make(chan *Client),
+		Unregister: make(chan *Client),
+		Broadcast:  make(chan *Message, cfg.BroadcastBufferSize),
+		Nats:       nc,
+		Logger:     logger,
+		authClient: authClient,
 		// 10 upgrade attempts per 60-second window per IP.
 		// At ~1 KB/handshake this limits the surface area for JWT-brute-force
 		// DDoS without affecting legitimate reconnect scenarios.
@@ -112,10 +112,16 @@ func (h *Hub) Run(ctx context.Context) {
 
 		case client := <-h.Unregister:
 			h.mu.Lock()
-			if _, ok := h.Clients[client.ID]; ok {
+			if existingClient, ok := h.Clients[client.ID]; ok && existingClient == client {
 				delete(h.Clients, client.ID)
+			}
+			h.mu.Unlock()
+
+			client.closeOnce.Do(func() {
 				close(client.Send)
 
+				// Establish consistent lock order (Hub.mu -> Client.mu) matching JoinRoom.
+				h.mu.Lock()
 				client.mu.Lock()
 				for room := range client.Rooms {
 					if clients, ok := h.Rooms[room]; ok {
@@ -126,8 +132,8 @@ func (h *Hub) Run(ctx context.Context) {
 					}
 				}
 				client.mu.Unlock()
-			}
-			h.mu.Unlock()
+				h.mu.Unlock()
+			})
 			h.Logger.Info("Client disconnected", zap.String("id", client.ID))
 
 		case msg := <-h.Broadcast:
@@ -158,7 +164,7 @@ func (h *Hub) broadcastMessage(msg *Message) {
 	// hold time to O(1) (just map iteration + slice append), making channel
 	// writes contention-free.
 	type recipient struct {
-		client   *Client
+		client      *Client
 		evictOnFull bool // true only for global broadcast where we auto-evict
 	}
 	var recipients []recipient

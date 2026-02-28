@@ -28,26 +28,24 @@ async def test_mfa_check_helpers(db_session, user_factory):
 
     # Add unconfirmed TOTP
     secret = pyotp.random_base32()
-    enrollment = models.MfaTotpEnrollment(
-        user_id=user.id, secret=secret, is_active=False
-    )
+    enrollment = models.MfaTotpEnrollment(user=user, secret=secret, is_active=False)
     db_session.add(enrollment)
     await db_session.commit()
-    await db_session.refresh(user, attribute_names=["totp_enrollments"])
+    await db_session.refresh(user)
 
     assert (
         await mfa.user_has_active_factor(db_session, user) is False
     )  # is_active=False
     enrollment.is_active = True
     await db_session.commit()
-    await db_session.refresh(user, attribute_names=["totp_enrollments"])
+    await db_session.refresh(user)
     assert await mfa.user_has_active_factor(db_session, user) is True
     assert mfa.user_has_confirmed_interactive_factor(user) is False  # not confirmed_at
 
     # Confirm TOTP
     enrollment.confirmed_at = datetime.now(UTC)
     await db_session.commit()
-    await db_session.refresh(user, attribute_names=["totp_enrollments"])
+    await db_session.refresh(user)
     assert await mfa.has_totp_enabled(db_session, user) is True
     assert mfa.user_has_confirmed_interactive_factor(user) is True
 

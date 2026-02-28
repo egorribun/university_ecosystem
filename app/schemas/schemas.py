@@ -4,24 +4,30 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
-    BaseModel,
     ConfigDict,
     EmailStr,
     Field,
-    computed_field,
     field_validator,
     model_validator,
 )
 from pydantic_core import PydanticCustomError
 
+from app.schemas.base import SecureBaseModel
+
+
+class BaseModel(SecureBaseModel):
+    pass
+
+
 from app.core.localization import translate
 from app.models.enums import UserRole
 from app.schemas.validators import SanitizedInput
-from app.utils.img import get_optimized_image_url
 
 
 class OrmModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    created_at: datetime | None = Field(default=None)
 
     @classmethod
     def from_orm(cls, obj):
@@ -276,15 +282,10 @@ class UserOut(OrmModel, UserBase):
     preferences: UserPreferencesBase | None = None
     education_path: UserEducationBase | None = None
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def avatar_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.avatar_url, width=200, height=200)
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def cover_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.cover_url, width=1200, height=400)
+    # Optimized URLs are calculated asynchronously or by the client to prevent CPU-blocking
+    # HMAC generation in the main event loop during list serialization.
+    avatar_url_optimized: str | None = None
+    cover_url_optimized: str | None = None
 
     @field_validator("dnd_enabled", mode="before")
     @classmethod
@@ -441,10 +442,7 @@ class UserPublicOut(OrmModel, UserProfilePublicFlattened):
 
         return out
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def avatar_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.avatar_url, width=200, height=200)
+    avatar_url_optimized: str | None = None
 
 
 class UserAdminUpdate(BaseModel):
@@ -570,10 +568,7 @@ class NewsOut(OrmModel, NewsCreate):
     comments_count: int = 0
     is_liked: bool = False
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def image_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.image_url, width=800, height=450)
+    image_url_optimized: str | None = None
 
 
 class PaginatedNews(BaseModel):
@@ -641,10 +636,7 @@ class StoryOut(OrmModel):
     created_by: str | Any | None = None
     created_at: datetime
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def cover_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.cover_url, width=1080, height=1920)
+    cover_url_optimized: str | None = None
 
 
 class EventFileOut(OrmModel):
@@ -733,10 +725,7 @@ class EventOut(OrmModel):
     is_registered: bool | None = None
     my_qr_token: str | None = None
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def image_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.image_url, width=1200, height=630)
+    image_url_optimized: str | None = None
 
 
 class PaginatedEvents(BaseModel):

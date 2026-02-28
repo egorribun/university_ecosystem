@@ -13,7 +13,6 @@ async def test_register_endpoint(async_client: AsyncClient, db_session):
         "email": "newuser@example.com",
         "password": "StrongPassword123!",
         "full_name": "New User",
-        "referral_code": None,
     }
     response = await async_client.post("/auth/register", json=payload)
     assert response.status_code == 200

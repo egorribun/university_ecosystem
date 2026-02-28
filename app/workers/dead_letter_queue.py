@@ -154,6 +154,7 @@ class DeadLetterQueue:
             )
             .order_by(DeadLetterJob.next_retry_at)
             .limit(limit)
+            .with_for_update(skip_locked=True)
         )
 
         return list(result.scalars().all())

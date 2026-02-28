@@ -175,7 +175,7 @@ export const useNowPlaying = (enabled: boolean) => {
       }
       return interval
     },
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
   })
 
   const { data, isSuccess, refetch } = query

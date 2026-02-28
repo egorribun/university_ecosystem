@@ -24,7 +24,6 @@ class AuthSecurityService:
 
         if expires_at is None:
             self._fail()
-            return  # Make type-checker happy, though _fail raises
 
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)

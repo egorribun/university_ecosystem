@@ -25,7 +25,9 @@ class Group(Base, UUID7PrimaryKeyMixin):
     course = Column(Integer)
     faculty = Column(String)
 
-    students = relationship("User", back_populates="group", passive_deletes=True)
+    students = relationship(
+        "User", back_populates="group", passive_deletes=True, lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<Group(id={self.id}, name='{self.name}')>"

@@ -272,7 +272,12 @@ async def get_csrf_cookie() -> dict[str, str]:
     return {"detail": "CSRF cookie set"}
 
 
-@router.post("/register", dependencies=[Depends(sensitive_route_limit())])
+@router.post(
+    "/register",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_auth_register))
+    ],
+)
 @inject
 async def register(
     user: UserCreate,

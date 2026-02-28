@@ -24,7 +24,11 @@ from app.auth.constants import (
     MFA_METHOD_WEBAUTHN,
 )
 from app.core.config import settings
-from app.core.rate_limit import RateLimitExceeded, enforce_rate_limit
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    enforce_rate_limit,
+    get_default_strategy,
+)
 from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 
 if TYPE_CHECKING:
@@ -56,10 +60,9 @@ async def _enforce_challenge_rate_limit(
     try:
         await enforce_rate_limit(
             identifier=key,
-            namespace="mfa",
             limit=limit,
             window_seconds=window,
-            redis_url=settings.rate_limit_storage_uri,
+            strategy=get_default_strategy("mfa"),
         )
     except RateLimitExceeded:
         raise_http_error(

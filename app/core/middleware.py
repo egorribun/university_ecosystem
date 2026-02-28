@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse, Response
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.core.csrf import CSRFMiddleware
 from app.core.internal_access import InternalAccessMiddleware
-from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
+from app.core.rate_limit import EndpointRateLimit, RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
 
 try:
@@ -200,6 +200,29 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         fallback=(60, 60),
     )
 
+    # Build endpoint-specific limits from settings
+    endpoint_limits = []
+
+    # Mapping of common prefixes to their respective settings
+    limit_map = {
+        "/api/v1/news": settings.rate_limit_news,
+        "/api/v1/events": settings.rate_limit_events,
+        "/api/v1/chat": settings.rate_limit_chat,
+        "/api/v1/auth/login": settings.rate_limit_auth_login,
+        "/api/v1/auth/register": settings.rate_limit_auth_register,
+        "/api/v1/password/forgot": settings.rate_limit_auth_password_reset,
+        "/api/v1/users/me": settings.rate_limit_users_me,
+        "/graphql": settings.rate_limit_graphql,
+    }
+
+    for pattern, limit_str in limit_map.items():
+        if limit_str:
+            limit_val, window_val = parse_rate_limit(limit_str, fallback=(None, None))
+            if limit_val is not None:
+                endpoint_limits.append(
+                    EndpointRateLimit(pattern, limit_val, window_val)
+                )
+
     if settings.rate_limit_enabled:
         normalized_url = rate_limit_url.lower()
         if rate_limit_backend == "redis" and normalized_url.startswith(
@@ -212,6 +235,7 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
                 window_seconds=default_window,
                 headers_enabled=settings.rate_limit_headers_enabled,
                 storage_backend="redis",
+                endpoint_limits=tuple(endpoint_limits),
             )
         elif rate_limit_backend == "memory" or normalized_url.startswith("memory://"):
             app.add_middleware(
@@ -221,6 +245,7 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
                 window_seconds=default_window,
                 headers_enabled=settings.rate_limit_headers_enabled,
                 storage_backend="memory",
+                endpoint_limits=tuple(endpoint_limits),
             )
 
     if ProxyHeadersMiddleware is not None:

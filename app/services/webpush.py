@@ -22,7 +22,12 @@ from sqlalchemy.orm import selectinload, sessionmaker
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.localization import resolve_locale, translate
-from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    RateLimitInfo,
+    enforce_rate_limit,
+    get_default_strategy,
+)
 from app.models.models import PushSubscription, User
 from app.services import push_schema
 from app.services.notification_templates import render_notification_template
@@ -455,10 +460,9 @@ async def _check_rate_limit(
     try:
         return await enforce_rate_limit(
             identifier=identifier,
-            namespace=namespace,
             limit=limit,
             window_seconds=_RATE_LIMIT_WINDOW_SECONDS,
-            redis_url=settings.rate_limit_storage_uri,
+            strategy=get_default_strategy(namespace),
         )
     except RateLimitExceeded as exc:
         return exc.info

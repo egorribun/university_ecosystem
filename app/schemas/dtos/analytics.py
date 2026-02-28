@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from app.schemas.base import SecureBaseModel
 
 
-class AttendanceStatsDTO(BaseModel):
+class AttendanceStatsDTO(SecureBaseModel):
     model_config = ConfigDict(frozen=True)
 
     current_total: int
@@ -14,7 +16,7 @@ class AttendanceStatsDTO(BaseModel):
     recent_attended_events: list[dict] = []  # Can be further refined if needed
 
 
-class ParticipationStatsDTO(BaseModel):
+class ParticipationStatsDTO(SecureBaseModel):
     model_config = ConfigDict(frozen=True)
 
     event_id: uuid.UUID
@@ -24,7 +26,7 @@ class ParticipationStatsDTO(BaseModel):
     ends_at: datetime
 
 
-class HealthStatsDTO(BaseModel):
+class HealthStatsDTO(SecureBaseModel):
     model_config = ConfigDict(frozen=True)
 
     active_connections: int

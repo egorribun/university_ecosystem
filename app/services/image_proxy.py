@@ -12,7 +12,7 @@ try:
     import msgspec.msgpack as _msgpack
 
     def _cache_encode(data: bytes, mime: str) -> bytes:
-        return _msgpack.encode({"d": data, "m": mime})  # type: ignore[no-any-return]
+        return _msgpack.encode({"d": data, "m": mime})
 
     def _cache_decode(payload: bytes) -> tuple[bytes, str]:
         obj = _msgpack.decode(payload)
