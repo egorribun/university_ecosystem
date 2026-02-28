@@ -22,7 +22,9 @@
       "Bash(cat:*)",
       "mcp__plugin_serena_serena__search_for_pattern",
       "mcp__plugin_serena_serena__find_symbol",
-      "Bash(done)"
+      "Bash(done)",
+      "WebFetch(domain:hub.docker.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

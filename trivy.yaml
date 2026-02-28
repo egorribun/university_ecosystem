@@ -7,14 +7,15 @@ scan:
     - node_modules
     - frontend/node_modules
 
+# 'pkg.types' replaces the deprecated 'vulnerability.type' (removed in v0.47+).
+pkg:
+  types:
+    - os
+    - library
+
 vulnerability:
   # Ignore unfixed vulnerabilities
   ignore-unfixed: true
 
   # Ignore file path
   ignorefile: ".trivyignore"
-
-  # Severity types to check
-  type:
-    - os
-    - library
