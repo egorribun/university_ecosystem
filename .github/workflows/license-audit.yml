@@ -155,6 +155,7 @@ jobs:
             echo "=== Checking: $dir ==="
             (
               cd "$dir"
+              go mod download
               go-licenses check ./... --ignore "github.com/university-ecosystem" 2>/dev/null
             ) || {
               echo "❌ Disallowed or unknown license found in $dir!"
