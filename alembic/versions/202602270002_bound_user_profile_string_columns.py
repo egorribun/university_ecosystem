@@ -27,8 +27,13 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Apply column length constraints to user_profiles and user_education_paths."""
+    # SQLite does not enforce VARCHAR(n) length limits, so these constraints are
+    # meaningless there.  The table name "user_profiles" also only exists on
+    # PostgreSQL deployments; on SQLite the chain uses "user_profile_details"
+    # with a different column set.  Skip entirely on non-PostgreSQL.
+    if op.get_bind().dialect.name != "postgresql":
+        return
 
-    # ── user_profiles ─────────────────────────────────────────────────────────
     with op.batch_alter_table("user_profiles") as batch_op:
         batch_op.alter_column(
             "full_name",
@@ -127,6 +132,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Revert column length constraints back to unbounded TEXT."""
+    if op.get_bind().dialect.name != "postgresql":
+        return
 
     with op.batch_alter_table("user_profiles") as batch_op:
         for col in (

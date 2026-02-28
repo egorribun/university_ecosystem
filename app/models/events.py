@@ -76,10 +76,16 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         ),
     )
     files = relationship(
-        "EventFile", cascade="all, delete-orphan", passive_deletes=True
+        "EventFile",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
     )
     attendance = relationship(
-        "EventAttendance", cascade="all, delete-orphan", passive_deletes=True
+        "EventAttendance",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
     )
     organizer = relationship("User")
 

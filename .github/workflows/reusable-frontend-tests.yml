@@ -106,6 +106,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build rust-crypto
+        run: |
+          cd rust-crypto
+          wasm-pack build --target web
+
       - name: Build app
         run: npm run build
 

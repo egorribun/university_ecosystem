@@ -36,13 +36,28 @@ class NatsTaskBroker:
         self._stream_name = "TASK_QUEUE"
         self._subject_prefix = "tasks"
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if broker is connected to NATS."""
+        return self._nc is not None and self._nc.is_connected
+
     async def connect(self) -> None:
         """Connect to NATS and ensure JetStream is initialized."""
         if self._nc is not None:
             return
 
         try:
-            self._nc = await nats.connect(settings.nats_url)
+            self._nc = await nats.connect(
+                settings.nats_url,
+                # Fail immediately on initial connect rather than retrying forever.
+                # With the default max_reconnect_attempts=-1 the nats-py client enters
+                # an infinite retry loop that asyncio.wait_for cannot reliably cancel
+                # in Python 3.13 + uvloop, blocking lifespan startup.
+                # After a successful initial connection, disconnects are handled by the
+                # caller (enqueue() re-calls connect() on the next use).
+                max_reconnect_attempts=0,
+                connect_timeout=2,
+            )
             self._js = self._nc.jetstream()
 
             # Ensure stream exists
@@ -57,8 +72,12 @@ class NatsTaskBroker:
 
     async def close(self) -> None:
         """Close NATS connection."""
-        if self._nc:
-            await self._nc.close()
+        try:
+            if self._nc and self._nc.is_connected:
+                await self._nc.close()
+        except Exception as exc:
+            _logger.warning("Error during NATS closure: %s", exc)
+        finally:
             self._nc = None
             self._js = None
 
@@ -181,8 +200,9 @@ class NatsTaskBroker:
                                     if asyncio.iscoroutinefunction(handler):
                                         wrapped = wrap_injection(
                                             func=handler,
-                                            container_getter=lambda _,
-                                            kwargs: request_container,
+                                            container_getter=lambda _, kwargs: (
+                                                request_container
+                                            ),
                                             remove_depends=True,
                                         )
                                         await wrapped(*args, **kwargs)
@@ -192,8 +212,9 @@ class NatsTaskBroker:
                                         # For sync funcs, dishka needs sync container which is complex
                                         wrapped = wrap_injection(
                                             func=handler,
-                                            container_getter=lambda _,
-                                            kwargs: request_container,
+                                            container_getter=lambda _, kwargs: (
+                                                request_container
+                                            ),
                                             remove_depends=True,
                                         )
                                         await anyio.to_thread.run_sync(

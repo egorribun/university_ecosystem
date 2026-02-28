@@ -6,13 +6,14 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from app.core.localization import translate
+from app.schemas.base import SecureBaseModel
 from app.services.push_topics import normalize_topic, normalize_topics
 
 
-class NotificationAction(BaseModel):
+class NotificationAction(SecureBaseModel):
     action: str = Field(..., description="Notification action identifier")
     title: str = Field(..., description="Action button title")
     url: str | None = Field(default=None, description="Optional URL to open")
@@ -26,7 +27,7 @@ class NotificationAction(BaseModel):
         return str(value).strip()
 
 
-class NotifyBody(BaseModel):
+class NotifyBody(SecureBaseModel):
     title: str
     body: str | None = None
     url: str | None = None
@@ -45,7 +46,7 @@ class NotifyBody(BaseModel):
         return normalize_topic(value)
 
 
-class PushSubscriptionKeys(BaseModel):
+class PushSubscriptionKeys(SecureBaseModel):
     p256dh: str = Field(..., description="Base64-encoded public key")
     auth: str = Field(..., description="Authentication secret")
 
@@ -57,7 +58,7 @@ class PushSubscriptionKeys(BaseModel):
         return str(value).strip()
 
 
-class PushSubscriptionIn(BaseModel):
+class PushSubscriptionIn(SecureBaseModel):
     endpoint: str = Field(..., description="Push subscription endpoint URL")
     keys: PushSubscriptionKeys
     topics: list[str] | None = Field(
@@ -80,7 +81,7 @@ class PushSubscriptionIn(BaseModel):
         return normalize_topics(value)
 
 
-class PushSubscriptionOut(BaseModel):
+class PushSubscriptionOut(SecureBaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     endpoint: str
@@ -90,7 +91,7 @@ class PushSubscriptionOut(BaseModel):
     user_agent: str | None = None
     last_seen_at: datetime | None = None
     updated_at: datetime | None = None
-    topics: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,9 +105,9 @@ class PushSubscriptionOut(BaseModel):
         return []
 
 
-class PushSubscriptionTopicsUpdate(BaseModel):
+class PushSubscriptionTopicsUpdate(SecureBaseModel):
     endpoint: str
-    topics: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
 
     @field_validator("endpoint", mode="before")
     @classmethod
@@ -123,7 +124,7 @@ class PushSubscriptionTopicsUpdate(BaseModel):
         return normalize_topics(value)
 
 
-class PushSubscriptionDelete(BaseModel):
+class PushSubscriptionDelete(SecureBaseModel):
     endpoint: str
 
     @field_validator("endpoint", mode="before")
@@ -134,22 +135,22 @@ class PushSubscriptionDelete(BaseModel):
         return str(value).strip()
 
 
-class DisableUserPushRequest(BaseModel):
+class DisableUserPushRequest(SecureBaseModel):
     user_id: uuid.UUID = Field(
         ...,
         description=translate("notifications.push.disable_user.description"),
     )
 
 
-class PushTopicsResponse(BaseModel):
+class PushTopicsResponse(SecureBaseModel):
     allowed: list[str]
     topics: list[str]
     has_preferences: bool = False
     updated_at: datetime | None = None
 
 
-class AdminUserTopicsUpdate(BaseModel):
-    topics: list[str] = Field(default_factory=list)
+class AdminUserTopicsUpdate(SecureBaseModel):
+    topics: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
 
     @field_validator("topics", mode="before")
     @classmethod
@@ -159,7 +160,7 @@ class AdminUserTopicsUpdate(BaseModel):
         return normalize_topics(value, strict=True)
 
 
-class AdminUserTopicsResponse(BaseModel):
+class AdminUserTopicsResponse(SecureBaseModel):
     user_id: uuid.UUID
     email: str
     topics: list[str]
@@ -167,7 +168,7 @@ class AdminUserTopicsResponse(BaseModel):
     updated_at: datetime | None = None
 
 
-class SendTestResponse(BaseModel):
+class SendTestResponse(SecureBaseModel):
     total: int = 0
     sent: int
     removed: int

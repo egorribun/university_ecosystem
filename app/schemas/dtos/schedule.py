@@ -1,10 +1,12 @@
 import uuid
 from datetime import UTC, datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from app.schemas.base import SecureBaseModel
 
 
-class DTOModel(BaseModel):
+class DTOModel(SecureBaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
 

@@ -14,9 +14,10 @@ type Client struct {
 	UserID string
 	Conn   *websocket.Conn
 	Rooms  map[string]bool
-	Send   chan []byte
-	Hub    *Hub
-	mu     sync.Mutex
+	Send      chan []byte
+	Hub       *Hub
+	mu        sync.Mutex
+	closeOnce sync.Once
 }
 
 func (c *Client) ReadPump() {

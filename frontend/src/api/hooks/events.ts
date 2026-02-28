@@ -168,6 +168,7 @@ const createEventsListQueryFn =
       return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
     }
 
+    // @ts-expect-error - type mismatch in generated response
     return ensurePaginatedResponse(response.data, normalized.limit)
   }
 

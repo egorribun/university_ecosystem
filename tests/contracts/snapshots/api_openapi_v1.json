@@ -1207,7 +1207,6 @@
                 "type": "null"
               }
             ],
-            "readOnly": true,
             "title": "Image Url Optimized"
           },
           "is_active": {
@@ -1302,8 +1301,7 @@
           "ends_at",
           "created_by",
           "created_at",
-          "is_active",
-          "image_url_optimized"
+          "is_active"
         ],
         "title": "EventOut",
         "type": "object"
@@ -2295,7 +2293,6 @@
                 "type": "null"
               }
             ],
-            "readOnly": true,
             "title": "Image Url Optimized"
           },
           "is_liked": {
@@ -2328,8 +2325,7 @@
           "title",
           "content",
           "id",
-          "created_at",
-          "image_url_optimized"
+          "created_at"
         ],
         "title": "NewsOut",
         "type": "object"
@@ -3887,7 +3883,6 @@
                 "type": "null"
               }
             ],
-            "readOnly": true,
             "title": "Cover Url Optimized"
           },
           "created_at": {
@@ -3975,8 +3970,7 @@
           "published_at",
           "expires_at",
           "is_active",
-          "created_at",
-          "cover_url_optimized"
+          "created_at"
         ],
         "title": "StoryOut",
         "type": "object"
@@ -4527,6 +4521,78 @@
         "title": "UserCreate",
         "type": "object"
       },
+      "UserEducationBase": {
+        "properties": {
+          "course": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course"
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Education Level"
+          },
+          "institute": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institute"
+          },
+          "program": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program"
+          },
+          "record_book_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Book Number"
+          },
+          "track": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track"
+          }
+        },
+        "title": "UserEducationBase",
+        "type": "object"
+      },
       "UserEmailChangeIn": {
         "properties": {
           "email": {
@@ -4603,7 +4669,6 @@
                 "type": "null"
               }
             ],
-            "readOnly": true,
             "title": "Avatar Url Optimized"
           },
           "course": {
@@ -4637,7 +4702,6 @@
                 "type": "null"
               }
             ],
-            "readOnly": true,
             "title": "Cover Url Optimized"
           },
           "department": {
@@ -4690,6 +4754,16 @@
               }
             ],
             "title": "Education Level"
+          },
+          "education_path": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserEducationBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "email": {
             "format": "email",
@@ -4796,6 +4870,26 @@
               }
             ],
             "title": "Position"
+          },
+          "preferences": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserPreferencesBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "program": {
             "anyOf": [
@@ -4910,9 +5004,7 @@
         "required": [
           "email",
           "id",
-          "is_active",
-          "avatar_url_optimized",
-          "cover_url_optimized"
+          "is_active"
         ],
         "title": "UserOut",
         "type": "object"
@@ -4935,6 +5027,130 @@
           "new_password"
         ],
         "title": "UserPasswordChangeIn",
+        "type": "object"
+      },
+      "UserPreferencesBase": {
+        "properties": {
+          "dnd_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd Enabled"
+          },
+          "dnd_end": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd End"
+          },
+          "dnd_start": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd Start"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "UserPreferencesBase",
+        "type": "object"
+      },
+      "UserProfileBase": {
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "achievements": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Achievements"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "telegram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram"
+          }
+        },
+        "title": "UserProfileBase",
         "type": "object"
       },
       "UserProfileUpdate": {
@@ -5029,6 +5245,16 @@
             ],
             "title": "Education Level"
           },
+          "education_path": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserEducationBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "email": {
             "anyOf": [
               {
@@ -5073,6 +5299,26 @@
               }
             ],
             "title": "Position"
+          },
+          "preferences": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserPreferencesBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "program": {
             "anyOf": [
@@ -5178,7 +5424,6 @@
                 "type": "null"
               }
             ],
-            "readOnly": true,
             "title": "Avatar Url Optimized"
           },
           "course": {
@@ -5213,6 +5458,16 @@
               }
             ],
             "title": "Department"
+          },
+          "education_path": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserEducationBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "full_name": {
             "anyOf": [
@@ -5268,6 +5523,16 @@
             ],
             "title": "Position"
           },
+          "profile_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "role": {
             "$ref": "#/components/schemas/UserRole",
             "default": "student"
@@ -5282,12 +5547,22 @@
               }
             ],
             "title": "Status"
+          },
+          "telegram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram"
           }
         },
         "required": [
           "id",
-          "is_active",
-          "avatar_url_optimized"
+          "is_active"
         ],
         "title": "UserPublicOut",
         "type": "object"
@@ -5534,6 +5809,14 @@
               ],
               "title": "Action"
             }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
+            }
           }
         ],
         "responses": {
@@ -5574,6 +5857,16 @@
       "get": {
         "description": "List all registered feature flags.",
         "operationId": "list_feature_flags_admin_feature_flags_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5588,6 +5881,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -5614,6 +5917,14 @@
             "schema": {
               "title": "Name",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
             }
           }
         ],
@@ -5658,6 +5969,32 @@
         "tags": [
           "admin",
           "admin-feature-flags"
+        ]
+      }
+    },
+    "/api/v1/auth/csrf-cookie": {
+      "get": {
+        "description": "This endpoint sets a new robust CSRF cookie and is intended for SPAs to call before attempting a login.",
+        "operationId": "get_csrf_cookie_api_v1_auth_csrf_cookie_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Csrf Cookie Api V1 Auth Csrf Cookie Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Initialize CSRF token",
+        "tags": [
+          "auth"
         ]
       }
     },
@@ -7600,6 +7937,14 @@
                 }
               ],
               "title": "Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
             }
           }
         ],
@@ -11080,6 +11425,14 @@
               "title": "User Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
+            }
           }
         ],
         "responses": {
@@ -11127,6 +11480,14 @@
               "format": "uuid",
               "title": "User Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
             }
           }
         ],
@@ -11199,7 +11560,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ready Ready Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"

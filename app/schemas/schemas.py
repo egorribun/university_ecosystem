@@ -4,11 +4,9 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
-    BaseModel,
     ConfigDict,
     EmailStr,
     Field,
-    computed_field,
     field_validator,
     model_validator,
 )
@@ -16,12 +14,18 @@ from pydantic_core import PydanticCustomError
 
 from app.core.localization import translate
 from app.models.enums import UserRole
+from app.schemas.base import SecureBaseModel
 from app.schemas.validators import SanitizedInput
-from app.utils.img import get_optimized_image_url
+
+
+class BaseModel(SecureBaseModel):
+    pass
 
 
 class OrmModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    created_at: datetime | None = Field(default=None)
 
     @classmethod
     def from_orm(cls, obj):
@@ -267,8 +271,12 @@ class UserOut(OrmModel, UserBase):
     mfa_required: bool = False
     mfa_default_method: str | None = None
     mfa_last_verified_at: datetime | None = None
-    totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
-    mfa_challenges: list[MfaChallengeOut] = Field(default_factory=list)
+    totp_enrollments: list[MfaTotpEnrollmentOut] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    mfa_challenges: list[MfaChallengeOut] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
     recovery_codes_left: int = 0
 
     # Nested related models
@@ -276,15 +284,10 @@ class UserOut(OrmModel, UserBase):
     preferences: UserPreferencesBase | None = None
     education_path: UserEducationBase | None = None
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def avatar_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.avatar_url, width=200, height=200)
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def cover_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.cover_url, width=1200, height=400)
+    # Optimized URLs are calculated asynchronously or by the client to prevent CPU-blocking
+    # HMAC generation in the main event loop during list serialization.
+    avatar_url_optimized: str | None = None
+    cover_url_optimized: str | None = None
 
     @field_validator("dnd_enabled", mode="before")
     @classmethod
@@ -441,10 +444,7 @@ class UserPublicOut(OrmModel, UserProfilePublicFlattened):
 
         return out
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def avatar_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.avatar_url, width=200, height=200)
+    avatar_url_optimized: str | None = None
 
 
 class UserAdminUpdate(BaseModel):
@@ -570,10 +570,7 @@ class NewsOut(OrmModel, NewsCreate):
     comments_count: int = 0
     is_liked: bool = False
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def image_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.image_url, width=800, height=450)
+    image_url_optimized: str | None = None
 
 
 class PaginatedNews(BaseModel):
@@ -641,10 +638,7 @@ class StoryOut(OrmModel):
     created_by: str | Any | None = None
     created_at: datetime
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def cover_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.cover_url, width=1080, height=1920)
+    cover_url_optimized: str | None = None
 
 
 class EventFileOut(OrmModel):
@@ -728,15 +722,14 @@ class EventOut(OrmModel):
     image_url: str | None = None
     about: str | None = None
     about_en: str | None = None
-    files: list[EventFileOut] = Field(default_factory=list)
+    files: list[EventFileOut] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
     participant_count: int = 0
     is_registered: bool | None = None
     my_qr_token: str | None = None
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def image_url_optimized(self) -> str | None:
-        return get_optimized_image_url(self.image_url, width=1200, height=630)
+    image_url_optimized: str | None = None
 
 
 class PaginatedEvents(BaseModel):
@@ -801,7 +794,7 @@ class SpotifyNowPlayingOut(BaseModel):
     duration_ms: int | None = None
     track_id: str | None = None
     track_name: str | None = None
-    artists: list[str] = Field(default_factory=list)
+    artists: list[str] = Field(default_factory=list, json_schema_extra={"default": []})
     album_name: str | None = None
     album_image_url: str | None = None
     track_url: str | None = None

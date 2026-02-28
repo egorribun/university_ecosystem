@@ -174,6 +174,7 @@ async def test_warm_news():
         mock_news.author_id = uuid.uuid4()
         mock_news.is_published = True
         mock_news.tags = []
+        mock_news.image_url_optimized = None
         mock_service.list_news = AsyncMock(
             return_value=schemas.PaginatedNews(
                 items=[mock_news], has_more=False, next_cursor=None

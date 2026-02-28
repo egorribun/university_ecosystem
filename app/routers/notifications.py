@@ -19,7 +19,12 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
-from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    RateLimitInfo,
+    enforce_rate_limit,
+    get_default_strategy,
+)
 from app.models.models import PushSubscription, User, UserPushTopic
 from app.schemas.notifications import (
     AdminUserTopicsResponse,
@@ -228,18 +233,16 @@ async def subscribe(
     try:
         await enforce_rate_limit(
             identifier=f"user:{user.id}",
-            namespace="push:subscribe:user",
             limit=20,
             window_seconds=60,
-            redis_url=settings.rate_limit_storage_uri,
+            strategy=get_default_strategy("push:subscribe:user"),
         )
         if client_host:
             await enforce_rate_limit(
                 identifier=f"ip:{client_host}",
-                namespace="push:subscribe:ip",
                 limit=60,
                 window_seconds=60,
-                redis_url=settings.rate_limit_storage_uri,
+                strategy=get_default_strategy("push:subscribe:ip"),
             )
     except RateLimitExceeded as exc:
         info: RateLimitInfo = exc.info
@@ -481,18 +484,16 @@ async def unsubscribe(
     try:
         await enforce_rate_limit(
             identifier=f"user:{user.id}",
-            namespace="push:unsubscribe:user",
             limit=20,
             window_seconds=60,
-            redis_url=settings.rate_limit_storage_uri,
+            strategy=get_default_strategy("push:unsubscribe:user"),
         )
         if client_host:
             await enforce_rate_limit(
                 identifier=f"ip:{client_host}",
-                namespace="push:unsubscribe:ip",
                 limit=60,
                 window_seconds=60,
-                redis_url=settings.rate_limit_storage_uri,
+                strategy=get_default_strategy("push:unsubscribe:ip"),
             )
     except RateLimitExceeded as exc:
         info: RateLimitInfo = exc.info
@@ -579,18 +580,16 @@ async def send_test(
     try:
         await enforce_rate_limit(
             identifier=f"user:{user.id}",
-            namespace="push:test:user",
             limit=5,
             window_seconds=60,
-            redis_url=settings.rate_limit_storage_uri,
+            strategy=get_default_strategy("push:test:user"),
         )
         if client_host:
             await enforce_rate_limit(
                 identifier=f"ip:{client_host}",
-                namespace="push:test:ip",
                 limit=15,
                 window_seconds=60,
-                redis_url=settings.rate_limit_storage_uri,
+                strategy=get_default_strategy("push:test:ip"),
             )
     except RateLimitExceeded as exc:
         info: RateLimitInfo = exc.info

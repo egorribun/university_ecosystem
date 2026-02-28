@@ -110,7 +110,7 @@ class TestProgressiveDelayTrackerMemory:
         assert info.failures == 1
 
         # Simulate TTL expiration by patching time
-        with patch("app.core.rate_limit.time") as mock_time:
+        with patch("app.core.ratelimit.delay.time") as mock_time:
             mock_time.time.return_value = time.time() + 2
             info_expired = await tracker.get_delay("test:ttl")
             assert info_expired.failures == 0
@@ -184,7 +184,7 @@ class TestProgressiveDelayTrackerRedis:
         tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
 
         with patch(
-            "app.core.rate_limit._get_shared_client",
+            "app.core.ratelimit.delay.get_shared_client",
             new_callable=AsyncMock,
             return_value=mock_redis_client,
         ):
@@ -205,7 +205,7 @@ class TestProgressiveDelayTrackerRedis:
             raise RedisError("Connection failed")
 
         with patch(
-            "app.core.rate_limit._get_shared_client",
+            "app.core.ratelimit.delay.get_shared_client",
             side_effect=failing_get_client,
         ):
             # Should fall back to memory without raising
@@ -219,7 +219,7 @@ class TestProgressiveDelayTrackerRedis:
         mock_redis_client.get = AsyncMock(return_value=b"3")
 
         with patch(
-            "app.core.rate_limit._get_shared_client",
+            "app.core.ratelimit.delay.get_shared_client",
             new_callable=AsyncMock,
             return_value=mock_redis_client,
         ):
@@ -232,7 +232,7 @@ class TestProgressiveDelayTrackerRedis:
         tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
 
         with patch(
-            "app.core.rate_limit._get_shared_client",
+            "app.core.ratelimit.delay.get_shared_client",
             new_callable=AsyncMock,
             return_value=mock_redis_client,
         ):

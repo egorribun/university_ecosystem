@@ -41,6 +41,7 @@ export function useNotifications() {
       return normalize(data)
     },
     refetchInterval: 60000,
+    refetchIntervalInBackground: false,
     staleTime: 30000,
   })
 

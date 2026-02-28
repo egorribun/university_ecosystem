@@ -2,7 +2,7 @@
 # This file documents accepted security risks until fixes are available
 
 # CVE-2026-0994 - protobuf DoS vulnerability (recursion limit exhaustion)
-# Status: No fix available as of 2026-01-27 (protobuf 6.33.4 is latest)
+# Status: No fix available as of 2026-02-28 (protobuf 6.33.4 is latest)
 # Risk: Low - DoS attack requires malicious protobuf input, server-side validation mitigates
-# Review date: 2026-02-27 (check monthly for fix)
+# Review date: 2026-03-28 (check monthly for fix)
 CVE-2026-0994

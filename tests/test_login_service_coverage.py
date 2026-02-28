@@ -457,8 +457,11 @@ def test_extract_client_info_forwarded(login_service):
     req.headers = {"X-Forwarded-For": "10.0.0.1, 10.0.0.2", "user-agent": "client-ua"}
     req.client.host = "127.0.0.1"
 
-    with patch("app.core.rate_limit.settings") as mock_settings:
-        mock_settings.trusted_proxies_list = ["127.0.0.1"]
-        ip, ua = login_service._extract_client_info(req)
-        assert ip == "10.0.0.1"
-        assert ua == "client-ua"
+    with patch("app.core.config.settings") as mock_settings:
+        # resolve_client_ip in ratelimit.utils imports settings from app.core.config
+        # but it's already bound if imported before the patch.
+        with patch("app.core.ratelimit.utils.settings", mock_settings):
+            mock_settings.trusted_proxies_list = ["127.0.0.1"]
+            ip, ua = login_service._extract_client_info(req)
+            assert ip == "10.0.0.1"
+            assert ua == "client-ua"

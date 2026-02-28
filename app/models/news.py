@@ -52,10 +52,16 @@ class News(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     likes = relationship(
-        "NewsLike", back_populates="news", cascade="all, delete-orphan"
+        "NewsLike",
+        back_populates="news",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
     comments = relationship(
-        "NewsComment", back_populates="news", cascade="all, delete-orphan"
+        "NewsComment",
+        back_populates="news",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
     def __repr__(self) -> str:

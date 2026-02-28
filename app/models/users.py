@@ -142,7 +142,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="joined",
     )
     profile = relationship(
         "UserProfile",
@@ -150,7 +150,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="joined",
     )
     education_path = relationship(
         "EducationPath",
@@ -158,7 +158,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="joined",
     )
 
     # Integrations & other relationships
@@ -187,11 +187,13 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="selectin",
     )
     push_subscriptions = relationship(
         "PushSubscription",
         back_populates="user",
         passive_deletes=True,
+        lazy="selectin",
     )
     push_topic_preferences = relationship(
         "UserPushTopic",
@@ -210,42 +212,49 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
     totp_enrollments = relationship(
         "MfaTotpEnrollment",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="selectin",
     )
     mfa_challenges = relationship(
         "MfaChallenge",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
     email_change_tokens = relationship(
         "EmailChangeToken",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
     trusted_devices = relationship(
         "TrustedDevice",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
     webauthn_credentials = relationship(
         "WebAuthnCredential",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="selectin",
     )
     recovery_codes = relationship(
         "RecoveryCode",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
     # PERF-3: order_by on a relationship triggers a full-scan sort every time
     # the collection is accessed.  Use lazy="noload" and load explicitly with

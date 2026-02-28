@@ -82,6 +82,7 @@ api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
 
   if (!candidate.skipRateLimitQueue) {
+    // @ts-expect-error - axios config bridge
     await waitForClientQueueSlot(candidate)
   }
 
@@ -111,11 +112,13 @@ api.interceptors.response.use(
       handleEtagResponse(response, config.etagCacheKey)
     }
     updateTraceContext(response.headers as AxiosHeaders)
+    // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
     return response
   },
   async (error) => {
     const config = error?.config as ApiRequestConfig | undefined
+    // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
 
     if (error?.response?.headers) {

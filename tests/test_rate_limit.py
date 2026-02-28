@@ -13,7 +13,9 @@ from app.core import rate_limit
 from app.core import rate_limit as ratelimit_module
 from app.core.config import settings
 from app.core.localization import translate
-from app.core.rate_limit import RateLimitMiddleware
+from app.core.rate_limit import (
+    RateLimitMiddleware,
+)
 
 
 @pytest.mark.asyncio
@@ -462,19 +464,17 @@ async def test_enforce_rate_limit_falls_back_on_redis_error(monkeypatch):
 
     await rate_limit.enforce_rate_limit(
         identifier="demo",
-        namespace="ns",
         limit=1,
         window_seconds=60,
-        redis_url="redis://test",
+        strategy=rate_limit.RedisSlidingWindowStrategy("redis://test"),
     )
 
     with pytest.raises(rate_limit.RateLimitExceeded):
         await rate_limit.enforce_rate_limit(
             identifier="demo",
-            namespace="ns",
             limit=1,
             window_seconds=60,
-            redis_url="redis://test",
+            strategy=rate_limit.RedisSlidingWindowStrategy("redis://test"),
         )
 
 
@@ -561,21 +561,17 @@ async def test_check_rate_limit_blocks_after_limit(
     window = 60
 
     for _ in range(limit):
-        allowed = await rate_limit.check_rate_limit(
-            identifier=identifier,
-            namespace=namespace,
+        allowed = await rate_limit.get_default_strategy(namespace).check(
+            key=identifier,
             limit=limit,
             window_seconds=window,
-            redis_url="redis://test",
         )
         assert allowed.allowed
 
-    blocked = await rate_limit.check_rate_limit(
-        identifier=identifier,
-        namespace=namespace,
+    blocked = await rate_limit.get_default_strategy(namespace).check(
+        key=identifier,
         limit=limit,
         window_seconds=window,
-        redis_url="redis://test",
     )
 
     assert blocked.allowed is False

@@ -80,6 +80,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Install Playwright
         working-directory: frontend
         env:

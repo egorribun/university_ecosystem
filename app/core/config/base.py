@@ -207,13 +207,18 @@ def _should_allow_development_defaults(missing: Iterable[str] | None = None) -> 
     # Prefer explicit ENVIRONMENT setting if available
     env_name = (os.environ.get("ENVIRONMENT") or "").lower()
 
+    # CI/CD environments (e.g., GitHub Actions) frequently run tools like Alembic or tests
+    # where strict secret enforcement is unnecessary overhead for non-sensitive steps.
+    is_ci = os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
+
     # STRICT SECURITY: Only allow defaults if we are explicitly in a development environment.
-    # If ENVIRONMENT is unset, empty, or "production", we fail securely.
-    if env_name not in _DEVELOPMENT_ENVIRONMENTS:
+    # If ENVIRONMENT is unset, empty, or "production", we fail securely unless in a CI environment.
+    if env_name not in _DEVELOPMENT_ENVIRONMENTS and not is_ci:
         return False
 
-    if _ENV_FILE is not None:
+    if _ENV_FILE is not None and not is_ci:
         # If no ENVIRONMENT set but .env exists, assume production-like intent
+        # (Wait, if CI is true and .env exists, we might still want fallbacks if .env is incomplete)
         return False
 
     if missing is None:

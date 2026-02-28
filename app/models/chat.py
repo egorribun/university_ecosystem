@@ -52,10 +52,13 @@ class Chat(Base, UUID7PrimaryKeyMixin):
     )
 
     participants = relationship(
-        "User", secondary=chat_participants, backref="chats", lazy="noload"
+        "User", secondary=chat_participants, backref="chats", lazy="selectin"
     )
     messages: Mapped[list["Message"]] = relationship(
-        "Message", back_populates="chat", cascade="all, delete-orphan", lazy="noload"
+        "Message",
+        back_populates="chat",
+        cascade="all, delete-orphan",
+        lazy="noload",
     )
 
 

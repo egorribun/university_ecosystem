@@ -183,6 +183,30 @@ class PresencePubSub:
 presence_pubsub = PresencePubSub()
 
 
+class WebSocketRateLimiter:
+    """
+    Token Bucket rate limiter for WebSocket messages. (Audit 6.3)
+    Prevents DoS flooding by limiting message arrival rate per connection.
+    """
+
+    def __init__(self, rate: float, capacity: float) -> None:
+        self.rate = rate
+        self.capacity = capacity
+        self.tokens = capacity
+        self.last_update = asyncio.get_event_loop().time()
+
+    def consume(self) -> bool:
+        now = asyncio.get_event_loop().time()
+        elapsed = now - self.last_update
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+        self.last_update = now
+
+        if self.tokens >= 1.0:
+            self.tokens -= 1.0
+            return True
+        return False
+
+
 class ConnectionManager:
     """Manages WebSocket connections for all users."""
 
@@ -196,6 +220,8 @@ class ConnectionManager:
         self.active_connections: dict[uuid.UUID, set[WebSocket]] = {}
         # websocket -> user_id (for reverse lookup on disconnect)
         self.connection_users: dict[WebSocket, uuid.UUID] = {}
+        # websocket -> rate limiter (Audit 6.3)
+        self.rate_limiters: dict[WebSocket, WebSocketRateLimiter] = {}
         self._last_presence_sent_at: dict[uuid.UUID, datetime] = {}
         # OZ-2 (audit 2026-02-26): Protects connect/disconnect against concurrent
         # access so that connection-limit checks are atomically enforced even when
@@ -240,11 +266,18 @@ class ConnectionManager:
                 await websocket.accept()
             self.active_connections.setdefault(user_id, set()).add(websocket)
             self.connection_users[websocket] = user_id
+
+            # Initialize rate limiter: default 5 msgs/sec with burst of 10.
+            # (Audit 6.3: prevents flooding of expensive operations like search)
+            rate = getattr(settings, "ws_message_rate", 5.0)
+            burst = getattr(settings, "ws_message_burst", 10.0)
+            self.rate_limiters[websocket] = WebSocketRateLimiter(rate, burst)
         logger.info("WebSocket connected: user_id=%s", user_id)
         return True
 
     def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
         """Remove a WebSocket connection and return the user_id if found."""
+        self.rate_limiters.pop(websocket, None)
         user_id = self.connection_users.pop(websocket, None)
         if user_id is not None and user_id in self.active_connections:
             self.active_connections[user_id].discard(websocket)
@@ -255,6 +288,16 @@ class ConnectionManager:
                 self._last_presence_sent_at.pop(user_id, None)
             logger.info("WebSocket disconnected: user_id=%s", user_id)
         return user_id
+
+    def check_rate_limit(self, websocket: WebSocket) -> bool:
+        """
+        Consume a token globally for this connection.
+        Returns True if allowed, False if limit exceeded.
+        """
+        limiter = self.rate_limiters.get(websocket)
+        if limiter is None:
+            return True
+        return limiter.consume()
 
     def is_online(self, user_id: uuid.UUID) -> bool:
         """Check if a user has any active connections."""
@@ -792,6 +835,20 @@ async def websocket_chat(websocket: WebSocket):
 
         while True:
             try:
+                # 1. Message Rate Limiting (Audit 6.3)
+                if not manager.check_rate_limit(websocket):
+                    logger.warning(
+                        "WS rate limit exceeded for user %s - dropping message",
+                        user.id,
+                    )
+                    await websocket.send_json(
+                        {"type": "error", "message": "Rate limit exceeded"}
+                    )
+                    # We don't necessarily disconnect, just drop the spam message.
+                    # But we should sleep a bit to prevent tight-looping on the client.
+                    await asyncio.sleep(0.1)
+                    continue
+
                 data = await websocket.receive_json()
             except json.JSONDecodeError:
                 await websocket.send_json({"type": "error", "message": "Invalid JSON"})

@@ -21,6 +21,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Add outbox notification trigger."""
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     op.execute(
         sa.text(
             """
@@ -49,6 +52,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove outbox notification trigger."""
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     op.execute(
         sa.text("DROP TRIGGER IF EXISTS trg_notify_outbox_event ON stored_events;")
     )

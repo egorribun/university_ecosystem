@@ -21,6 +21,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     op.drop_index("ix_users_email", table_name="users")
     op.create_index(
         "ix_users_email_lower", "users", [sa.text("lower(email)")], unique=True
@@ -29,5 +32,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     op.drop_index("ix_users_email_lower", table_name="users")
     op.create_index("ix_users_email", "users", ["email"], unique=True)
