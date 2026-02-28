@@ -79,10 +79,12 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: ci-test-secret-key-do-not-use-in-production
           OTEL_SDK_DISABLED: "true"
+          # Explicit dev environment so lifespan exception guards log warnings
+          # instead of re-raising when optional services (NATS) are unavailable.
+          ENVIRONMENT: development
         run: |
           uv run uvicorn app.main:app --host 0.0.0.0 --port ${{ env.BACKEND_PORT }} &
-          sleep 10
-          curl --retry 10 --retry-delay 2 --retry-connrefused http://localhost:${{ env.BACKEND_PORT }}/health
+          curl --retry 15 --retry-delay 2 --retry-connrefused http://localhost:${{ env.BACKEND_PORT }}/health
 
       - name: Create ZAP rules file if missing
         run: |

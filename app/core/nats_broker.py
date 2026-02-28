@@ -47,7 +47,17 @@ class NatsTaskBroker:
             return
 
         try:
-            self._nc = await nats.connect(settings.nats_url)
+            self._nc = await nats.connect(
+                settings.nats_url,
+                # Fail immediately on initial connect rather than retrying forever.
+                # With the default max_reconnect_attempts=-1 the nats-py client enters
+                # an infinite retry loop that asyncio.wait_for cannot reliably cancel
+                # in Python 3.13 + uvloop, blocking lifespan startup.
+                # After a successful initial connection, disconnects are handled by the
+                # caller (enqueue() re-calls connect() on the next use).
+                max_reconnect_attempts=0,
+                connect_timeout=2,
+            )
             self._js = self._nc.jetstream()
 
             # Ensure stream exists

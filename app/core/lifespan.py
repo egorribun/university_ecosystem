@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import settings
-from app.core.database import Base, engine, wait_db
+from app.core.database import Base, engine, init_database, wait_db
 from app.core.events import register_event_listeners
 from app.core.nats_broker import broker as nats_broker
 from app.core.observability import shutdown_observability
@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
     from app.core.database import configure_database
 
     configure_database()
+    init_database()
 
     # (TD-4) Re-create a fresh Dishka container per lifespan start.
     # This ensures that Pytest test cycles (which run multiple lifespan contexts)
@@ -59,9 +60,10 @@ async def lifespan(app: FastAPI):
     # MOD-3: NATS Task Broker initialization
     _nats_success = False
     try:
-        await nats_broker.connect()
+        # We use a 5-second timeout to ensure CI/deployments don't hang if NATS is down.
+        await asyncio.wait_for(nats_broker.connect(), timeout=5.0)
         _nats_success = True
-    except Exception as exc:
+    except (TimeoutError, Exception) as exc:
         _logger.warning("NATS connection failed: %s. Continuing in degraded mode.", exc)
 
     worker_task = None
@@ -73,8 +75,9 @@ async def lifespan(app: FastAPI):
     await feature_flags.initialize()
     await start_presence_pubsub()
     try:
-        await wait_db(max_attempts=10, delay=0.5)
-    except Exception as exc:
+        # Limit total wait time for database to 5 seconds to pass CI health checks.
+        await asyncio.wait_for(wait_db(max_attempts=10, delay=0.5), timeout=5.0)
+    except (TimeoutError, Exception) as exc:
         if settings.environment not in {"development", "local", "testing"}:
             raise
         _logger.warning(
@@ -130,67 +133,81 @@ async def lifespan(app: FastAPI):
     if settings.auto_create_schema:
         from sqlalchemy import text
 
-        async with engine.begin() as conn:
-            if conn.dialect.name == "postgresql":
-                try:
-                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                except Exception as e:
-                    _logger.warning(
-                        f"Could not create 'vector' extension: {e}. "
-                        "Semantic search will be disabled."
-                    )
-                    # Patch metadata to avoid using Vector type if extension is missing
-                    from pgvector.sqlalchemy import Vector
-                    from sqlalchemy import Text
+        try:
+            async with engine.begin() as conn:
+                if conn.dialect.name == "postgresql":
+                    try:
+                        await conn.execute(
+                            text("CREATE EXTENSION IF NOT EXISTS vector")
+                        )
+                    except Exception as e:
+                        _logger.warning(
+                            f"Could not create 'vector' extension: {e}. "
+                            "Semantic search will be disabled."
+                        )
+                        # Patch metadata to avoid using Vector type if extension is missing
+                        from pgvector.sqlalchemy import Vector
+                        from sqlalchemy import Text
 
+                        for table in Base.metadata.tables.values():
+                            for column in table.columns:
+                                # Check for direct Vector or Variant containing Vector
+                                is_vector = isinstance(column.type, Vector)
+                                is_variant_vector = False
+
+                                if hasattr(column.type, "_variant_mapping"):
+                                    # If Variant, check if PG variant is Vector
+                                    pg_utils = getattr(
+                                        column.type, "_variant_mapping", {}
+                                    )
+                                    pg_variant = pg_utils.get("postgresql")
+                                    if pg_variant and isinstance(pg_variant, Vector):
+                                        is_variant_vector = True
+
+                                if is_vector:
+                                    column.type = Text()
+                                elif is_variant_vector:
+                                    # Use base type as fallback
+                                    column.type = getattr(
+                                        column.type, "base_type", Text()
+                                    )
+
+                        # Disable semantic search in settings
+                        try:
+                            # Attempt to disable semantic search since extension is missing
+                            object.__setattr__(
+                                settings, "semantic_search_enabled", False
+                            )
+                        except Exception:
+                            _logger.error(
+                                "Failed to disable semantic_search_enabled setting"
+                            )
+                else:
+                    # Non-PostgreSQL dialect (likely SQLite for tests)
+                    # Patch out search_vector Computed columns that use to_tsvector
                     for table in Base.metadata.tables.values():
                         for column in table.columns:
-                            # Check for direct Vector or Variant containing Vector
-                            is_vector = isinstance(column.type, Vector)
-                            is_variant_vector = False
+                            if column.computed is not None:
+                                sql_text = str(column.computed.sqltext)
+                                if "to_tsvector" in sql_text:
+                                    _logger.info(
+                                        "Patching out computed column %s.%s for dialect %s",
+                                        table.name,
+                                        column.name,
+                                        conn.dialect.name,
+                                    )
+                                    column.computed = None
 
-                            if hasattr(column.type, "_variant_mapping"):
-                                # If Variant, check if PG variant is Vector
-                                pg_utils = getattr(column.type, "_variant_mapping", {})
-                                pg_variant = pg_utils.get("postgresql")
-                                if pg_variant and isinstance(pg_variant, Vector):
-                                    is_variant_vector = True
-
-                            if is_vector:
-                                column.type = Text()
-                            elif is_variant_vector:
-                                # Use base type as fallback
-                                column.type = getattr(column.type, "base_type", Text())
-
-                    # Disable semantic search in settings
-                    try:
-                        # Attempt to disable semantic search since extension is missing
-                        object.__setattr__(settings, "semantic_search_enabled", False)
-                    except Exception:
-                        _logger.error(
-                            "Failed to disable semantic_search_enabled setting"
-                        )
-            else:
-                # Non-PostgreSQL dialect (likely SQLite for tests)
-                # Patch out search_vector Computed columns that use to_tsvector
-                for table in Base.metadata.tables.values():
-                    for column in table.columns:
-                        if column.computed is not None:
-                            sql_text = str(column.computed.sqltext)
-                            if "to_tsvector" in sql_text:
-                                _logger.info(
-                                    "Patching out computed column %s.%s for dialect %s",
-                                    table.name,
-                                    column.name,
-                                    conn.dialect.name,
-                                )
-                                column.computed = None
-
-        async with engine.begin() as conn:
-            await conn.run_sync(
-                lambda sync_conn: Base.metadata.create_all(
-                    bind=sync_conn, checkfirst=True
+                await conn.run_sync(
+                    lambda sync_conn: Base.metadata.create_all(
+                        bind=sync_conn, checkfirst=True
+                    )
                 )
+        except Exception as exc:
+            if settings.environment not in {"development", "local", "testing"}:
+                raise
+            _logger.warning(
+                "Auto-schema creation failed (likely DB unavailable): %s", exc
             )
 
     await setup_periodic_cleanups()
@@ -256,15 +273,21 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_periodic_scheduler(), name="periodic_scheduler")
     )
 
+    stop_partitions = None
     if settings.partition_management_enabled:
-        _logger.info(
-            "Synchronously warming up PostgreSQL partitions "
-            "to prevent cold start failures..."
-        )
-        await ensure_partitions_exist()
-        stop_partitions = await start_partition_management_scheduler(
-            settings.partition_management_interval_seconds
-        )
+        try:
+            _logger.info(
+                "Synchronously warming up PostgreSQL partitions "
+                "to prevent cold start failures..."
+            )
+            await ensure_partitions_exist()
+            stop_partitions = await start_partition_management_scheduler(
+                settings.partition_management_interval_seconds
+            )
+        except Exception as exc:
+            if settings.environment not in {"development", "local", "testing"}:
+                raise
+            _logger.warning("Partition management initialization failed: %s", exc)
 
     # Start OutboxWorker
     outbox_worker = OutboxWorker()
@@ -283,7 +306,12 @@ async def lifespan(app: FastAPI):
     # Start in-memory rate limit cleanup (for fallback mode)
     start_memory_cleanup_task()
 
-    await warm_cache()
+    try:
+        await warm_cache()
+    except Exception as exc:
+        if settings.environment not in {"development", "local", "testing"}:
+            raise
+        _logger.warning("Cache warmup failed: %s", exc)
     try:
         yield
     finally:
@@ -292,7 +320,7 @@ async def lifespan(app: FastAPI):
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()
-        if settings.partition_management_enabled:
+        if settings.partition_management_enabled and stop_partitions:
             await stop_partitions()
 
         await outbox_worker.stop()
