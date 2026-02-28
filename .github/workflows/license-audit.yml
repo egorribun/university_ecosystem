@@ -110,7 +110,7 @@ jobs:
           npx license-checker --summary --production
 
           # Check for copyleft licenses
-          npx license-checker --production --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;Unlicense;CC0-1.0;Python-2.0;MPL-2.0" || {
+          npx license-checker --production --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;Unlicense;CC0-1.0;Python-2.0;MPL-2.0;OFL-1.1;(MPL-2.0 OR Apache-2.0)" || {
             echo "❌ Found packages with disallowed licenses!"
             npx license-checker --production --csv > frontend-licenses.csv
             exit 1
