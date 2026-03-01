@@ -81,11 +81,27 @@ class JwtSettingsMixin:
         env = (
             info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
         ).lower()
-        if env not in _DEVELOPMENT_ENVIRONMENTS and v.upper() == "HS256":
+        # Explicitly enumerate environments that require asymmetric signing.
+        # This prevents a staging deployment that accidentally loads ENVIRONMENT=development
+        # from bypassing the HS256 guard (RZ-3: audit 2026-03-02).
+        _NON_HMAC_ENVS = frozenset(
+            {
+                "production",
+                "prod",
+                "staging",
+                "qa",
+                "preprod",
+                "pre-prod",
+            }
+        )
+        if (
+            env in _NON_HMAC_ENVS or env not in _DEVELOPMENT_ENVIRONMENTS
+        ) and v.upper() == "HS256":
             raise ValueError(
-                "HS256 is prohibited in production environments. "
+                "HS256 is prohibited in non-local environments (env=%r). "
                 "Use RS256 with a dedicated RSA key pair "
                 "(set ALGORITHM=RS256 and JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem)."
+                % env
             )
         return v
 
