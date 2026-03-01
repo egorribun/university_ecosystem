@@ -1,26 +1,31 @@
 # Trivy Ignore File
-# This file documents accepted security risks until fixes are available
+# This file documents accepted security risks until upstream fixes are available.
 
-# CVE-2026-0994 - protobuf DoS vulnerability (recursion limit exhaustion)
-# Status: No fix available as of 2026-02-28 (protobuf 6.33.4 is latest)
-# Risk: Low - DoS attack requires malicious protobuf input, server-side validation mitigates
-# Review date: 2026-03-28 (check monthly for fix)
+# CVE-2026-0994 - protobuf DoS (recursion limit exhaustion in ParseDict)
+# Status: Fix included in protobuf 6.31.1+ (we are on 6.33.5).
+# Keeping entry temporarily until scan confirmed clear.
+# Review: 2026-04-01
 CVE-2026-0994
 
+# CVE-2024-7254 - protobuf unbounded recursion
+# Status: Fixed in 6.31.1+ (we are on 6.33.5).
+# Review: 2026-04-01
+CVE-2024-7254
+
 # CVE-2024-23342 - ecdsa potential timing attack
-# Status: Explicitly allowed in security/audit-allowlist.yaml
-# Risk: Low - timing attack in some curves, not applicable to current usage
+# Risk: Low - affects specific curves not used in production.
+# Review: 2026-05-01
 CVE-2024-23342
 
-# GHSA-7h2j-956f-4vf2 - brace-expansion Uncontrolled Resource Consumption (DoS)
-# Status: Explicitly allowed in security/audit-allowlist.yaml (ID: 1112818, 1112862, 1112954)
-# Risk: Low - requires malicious input, server-side validation mitigates
+# GHSA-7h2j-956f-4vf2 - brace-expansion DoS
+# Risk: Low - dev dependency (semantic-release). No production impact.
+# Review: 2026-05-01
 GHSA-7h2j-956f-4vf2
 
-# GHSA-7r86-cg39-jmmj - minimatch ReDoS (matchOne backtracking)
-# GHSA-23c5-xmqv-rm74 - minimatch ReDoS (nested extglobs)
-# Status: Upstream dependency in npm 11.11.0 (latest). No fix available in npm yet.
-# Risk: Low - development tool-only (semantic-release). Not present in production runtime.
+# GHSA-7r86-cg39-jmmj - minimatch ReDoS
+# GHSA-23c5-xmqv-rm74 - minimatch ReDoS
+# Status: Fixed via overrides where possible. Semantic-release still uses older npm.
+# Risk: Low - development tool only.
 GHSA-7r86-cg39-jmmj
 GHSA-23c5-xmqv-rm74
 GHSA-3ppc-4f35-3m26

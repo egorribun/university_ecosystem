@@ -14,6 +14,7 @@ WORKDIR /build
 RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-builder,target=/var/cache/apt \
     apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
        build-essential \
        curl \
