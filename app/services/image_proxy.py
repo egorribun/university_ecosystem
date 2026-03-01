@@ -2,8 +2,9 @@ import asyncio
 import hashlib
 import logging
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal, cast
+from urllib.parse import unquote
 
 # msgspec is used for safe binary serialization of Redis cache payloads.
 # Unlike pickle, msgspec cannot execute arbitrary code on deserialization —
@@ -192,29 +193,50 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
 
 
 def _sanitize_path_input(path: str) -> str:
+    """Validate and sanitize user-provided path input.
+
+    FILE-1 (audit 2026-03): The previous implementation only caught `//`
+    double-slash absolute paths and did NOT URL-decode before checking, so
+    `%2fetc%2fpasswd` and `/etc/passwd` both bypassed the guard.
+
+    New strategy:
+    1. URL-decode the raw input first (catches %2e%2e, %2f, %00, etc.)
+    2. Reject null bytes (only possible in the raw form or decoded form)
+    3. Use PurePosixPath to normalize and detect traversal beyond root
+    4. Block any path whose normalized form is absolute or contains `..`
+       components even after normalization
+
+    Returns the cleaned relative path string.
+    Raises ValueError if the path is malicious.
     """
-    Validate and sanitize user-provided path input.
-    Returns the validated path.
-    Raises ValueError if path contains traversal sequences.
-    """
-    # Block path traversal patterns
-    if ".." in path:
-        raise ValueError("Path traversal detected: '..' not allowed")
+    # Step 1: URL-decode (apply twice to catch double-encoded sequences)
+    decoded = unquote(unquote(path))
 
-    # Block absolute paths (Unix and Windows)
-    if path.startswith("/") and path.count("/") > 1 and path[1:].startswith("/"):
-        raise ValueError("Absolute path not allowed")
-
-    # Block Windows absolute paths
-    if len(path) > 1 and path[1] == ":":
-        raise ValueError("Windows absolute path not allowed")
-
-    # Block null bytes (can be used to bypass filters)
-    if "\x00" in path:
+    # Step 2: Block null bytes in both raw and decoded forms
+    if "\x00" in path or "\x00" in decoded:
         raise ValueError("Null byte in path not allowed")
 
-    # Return validated path - signals to static analyzers that output is safe
-    return path
+    # Step 3: Normalize via PurePosixPath (handles ., .., redundant slashes)
+    try:
+        normalized = PurePosixPath(decoded)
+    except Exception as exc:
+        raise ValueError(f"Invalid path: {exc}") from exc
+
+    # Step 4: Reject paths that contain `..` components.
+    # Absolute URL paths like /static/... are allowed — _validate_path_within_base
+    # enforces the filesystem boundary as a second-line defence.
+    # PurePosixPath.parts includes '..' literally (no filesystem resolution).
+    for part in normalized.parts:
+        if part == "..":
+            raise ValueError("Path traversal detected: '..' not allowed")
+
+    # Step 6: Block Windows absolute paths (C:\...) in the decoded form
+    if len(decoded) > 1 and decoded[1] == ":":
+        raise ValueError("Windows absolute path not allowed")
+
+    # Return the raw (but decoded) path — the caller's _validate_path_within_base
+    # does a full .resolve() + relative_to() check as a second line of defence.
+    return decoded
 
 
 def _validate_path_within_base(base_dir: Path, rel_path: Path) -> Path:

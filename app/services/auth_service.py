@@ -325,6 +325,12 @@ class AuthService:
         if user is not db_user:
             await attach_pending_email(self.auth_repo.db, user)
 
+        # AUTH-4 (audit 2026-03): email change is a privilege escalation —
+        # rotate CSRF token so any pre-change CSRF cookies become invalid.
+        from app.core.csrf import signal_csrf_rotation
+
+        signal_csrf_rotation(request)
+
         self.audit.log(
             "users.email.changed",
             request,
@@ -371,6 +377,12 @@ class AuthService:
             revoked = await self.session_repo.revoke_all_for_user(user_id=user.id)
 
         await self.auth_repo.commit()
+
+        # AUTH-4 (audit 2026-03): rotate CSRF token on password change to
+        # invalidate any CSRF tokens captured before the privilege escalation.
+        from app.core.csrf import signal_csrf_rotation
+
+        signal_csrf_rotation(request)
 
         if isinstance(user, models.User):
             user.hashed_password = hashed_password

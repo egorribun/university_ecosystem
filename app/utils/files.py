@@ -191,15 +191,56 @@ def detect_mime_type(data: bytes) -> str | None:
 
 
 def _looks_like_polyglot(data: bytes, detected_type: str) -> bool:
-    lowered = data[:4096].lower()
+    # FILE-2 (audit 2026-03): Expand SVG XSS pattern set and scan full content.
+    #
+    # Previous issues:
+    # 1. Only checked first 4096 bytes — crafted files can embed payloads deeper.
+    # 2. SVG check only matched <script> and onload= — missed many valid attack
+    #    vectors: <image onerror>, <animate>, <use xlink:href=javascript:>,
+    #    <foreignObject>, data: URI in href, base64-encoded <script>, etc.
+    # 3. No check that SVG file actually starts with valid SVG structure.
+
+    # Scan the full content (SVGs should be small; PDFs need full scan too).
+    lowered = data.lower()
+    lowered_head = lowered[:4096]
 
     if detected_type == "application/pdf":
         if b"<script" in lowered or b"<svg" in lowered:
             return True
+
     if detected_type == "image/svg+xml":
-        if b"<script" in lowered or b"onload=" in lowered:
-            return True
-    return bool(b"<script" in lowered and b"<!doctype html" in lowered)
+        # 1. Must actually contain an <svg> root element.
+        if b"<svg" not in lowered_head:
+            return True  # Claims to be SVG but isn't — treat as polyglot.
+
+        # 2. Comprehensive XSS/execution patterns in SVG:
+        _SVG_DANGEROUS_PATTERNS: tuple[bytes, ...] = (
+            b"<script",  # Direct script tag
+            b"onerror=",  # <image onerror="…">, <img onerror="…">
+            b"onload=",  # <body onload>, <svg onload>
+            b"onclick=",  # Click handlers
+            b"onmouseover=",  # Hover handlers
+            b"onfocus=",  # Focus handlers
+            b"onbegin=",  # SMIL animation event
+            b"onend=",  # SMIL animation end event
+            b"onrepeat=",  # SMIL repeat event
+            b"<animate ",  # SMIL animate (can set event attrs)
+            b"<set ",  # SMIL set (can set event attrs)
+            b"<foreignobject",  # Embeds arbitrary HTML into SVG
+            b"<use ",  # xlink:href can reference external SVGs
+            b"javascript:",  # javascript: URI in href/src
+            b"data:text/html",  # data: URI embedding HTML
+            b"data:text/xml",  # data: URI embedding XML
+            b"vbscript:",  # IE VBScript URI
+            b"xlink:href",  # Can reference external resources
+            b"&#",  # HTML entity encoding (obfuscation)
+            b"base64,",  # Base64 encoded payload
+        )
+        for pattern in _SVG_DANGEROUS_PATTERNS:
+            if pattern in lowered:
+                return True
+
+    return bool(b"<script" in lowered and b"<!doctype html" in lowered_head)
 
 
 async def _quarantine_payload(

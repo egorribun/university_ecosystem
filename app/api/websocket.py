@@ -276,19 +276,27 @@ class ConnectionManager:
         logger.info("WebSocket connected: user_id=%s", user_id)
         return True
 
-    def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
-        """Remove a WebSocket connection and return the user_id if found."""
-        self.rate_limiters.pop(websocket, None)
-        user_id = self.connection_users.pop(websocket, None)
-        if user_id is not None and user_id in self.active_connections:
-            self.active_connections[user_id].discard(websocket)
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
-                # Clean up presence throttle state only when the last connection
-                # closes.  Multiple open tabs keep the throttle to prevent spam.
-                self._last_presence_sent_at.pop(user_id, None)
-            logger.info("WebSocket disconnected: user_id=%s", user_id)
-        return user_id
+    async def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
+        """Remove a WebSocket connection and return the user_id if found.
+
+        WS-1 (audit 2026-03): Acquire self._lock so that disconnect() and
+        connect() are mutually exclusive.  Without the lock the connection-limit
+        check in connect() could race with a concurrent teardown, allowing a
+        user to exceed their limit or leaving orphaned state in the dicts.
+        """
+        async with self._lock:
+            self.rate_limiters.pop(websocket, None)
+            user_id = self.connection_users.pop(websocket, None)
+            if user_id is not None and user_id in self.active_connections:
+                self.active_connections[user_id].discard(websocket)
+                if not self.active_connections[user_id]:
+                    del self.active_connections[user_id]
+                    # Clean up presence throttle state only when the last
+                    # connection closes.  Multiple open tabs keep the throttle
+                    # to prevent spam.
+                    self._last_presence_sent_at.pop(user_id, None)
+                logger.info("WebSocket disconnected: user_id=%s", user_id)
+            return user_id
 
     def check_rate_limit(self, websocket: WebSocket) -> bool:
         """
@@ -328,7 +336,7 @@ class ConnectionManager:
 
         # Clean up dead connections
         for conn in dead_connections:
-            self.disconnect(conn)
+            await self.disconnect(conn)
 
         return sent
 
@@ -977,7 +985,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
                 )
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket)
         last_seen = await _update_last_seen(session_jti)
         await manager.broadcast_presence(
             user.id,
@@ -991,7 +999,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
         # Unexpected error in the WebSocket loop: log at ERROR so Sentry captures
         # the full traceback. The connection is cleaned up regardless.
         logger.exception("WebSocket unexpectedly closed for user %s", user.id)
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket)
         last_seen = await _update_last_seen(session_jti)
         await manager.broadcast_presence(
             user.id,

@@ -42,7 +42,9 @@ class AppGeneralSettings(BaseAppSettings):
     presence_pubsub_channel: str = "presence_updates"
 
     api_v2_prefix: str = "/api/v2"
-    audit_log_secret: str = "development-audit-secret-change-me"
+    # CFG-2 (audit 2026-03): audit_log_secret is defined and validated in
+    # SecuritySettings (with a proper field_validator).  The duplicate here was
+    # removed to avoid shadowing that validator if MRO changes.
 
     # Semantic Search
     semantic_search_enabled: bool = True

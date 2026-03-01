@@ -440,6 +440,18 @@ def decode_token(token: str) -> dict | None:
     if not registry:
         return None
 
+    # AUTH-2 (audit 2026-03): If the token carries a `kid` header, verify
+    # ONLY with the key bound to that `kid`.  Previously the code fell back to
+    # all registry entries, meaning a token signed with a revoked key could
+    # still be accepted if any current key happened to verify it.
+    #
+    # Key-rotation strategy:
+    #   • Tokens signed with the active kid → verified by its secret (fast path).
+    #   • Tokens signed with an old kid still in the registry → verified by that
+    #     old secret only (allows graceful rotation without immediate revocation).
+    #   • Tokens with NO kid → fall back to the full registry (legacy tokens
+    #     issued before kid-header support was added).
+    #   • Tokens with a kid NOT present in the registry → rejected immediately.
     candidates: list[str] = []
     try:
         header = jwt.get_unverified_header(token)
@@ -449,14 +461,14 @@ def decode_token(token: str) -> dict | None:
     kid = header.get("kid") if isinstance(header, dict) else None
     if isinstance(kid, str):
         kid_secret = registry.get(kid)
-        if kid_secret:
-            candidates.append(kid_secret)
-
-    seen: set[str] = set(candidates)
-    for secret in registry.values():
-        if secret not in seen:
-            candidates.append(secret)
-            seen.add(secret)
+        if not kid_secret:
+            # kid present but unknown — reject immediately; do not fall back.
+            _logger.warning("JWT rejected: unknown kid=%r", kid)
+            return None
+        candidates = [kid_secret]
+    else:
+        # No kid header: try all keys for backward compat with legacy tokens.
+        candidates = list(registry.values())
 
     for secret in candidates:
         try:

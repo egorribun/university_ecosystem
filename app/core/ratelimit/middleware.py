@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -139,15 +140,21 @@ class RateLimitMiddleware:
         """Build a unique identifier for the request.
         Prioritizes Authorization header, then access_token cookie, then IP.
         """
+        # RATE-1 (audit 2026-03): Never store the raw JWT as a Redis key.
+        # A 500-char JWT in the keyspace reveals token material to any process
+        # with Redis keyspace-notification access (Pub/Sub, RedisInsight, etc.).
+        # SHA-256 of the token is collision-resistant and exposes nothing.
         auth = request.headers.get("Authorization")
         if auth and auth.lower().startswith("bearer "):
             token = auth[7:].strip()
             if token:
-                return f"token:{token}"
+                token_digest = hashlib.sha256(token.encode()).hexdigest()
+                return f"token:{token_digest}"
 
         cookie = request.cookies.get("access_token")
         if cookie:
-            return f"cookie:{cookie}"  # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
+            cookie_digest = hashlib.sha256(cookie.encode()).hexdigest()
+            return f"cookie:{cookie_digest}"
 
         ip = resolve_client_ip(request)
         return f"ip:{ip}"
