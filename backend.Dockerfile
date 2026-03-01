@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Builder
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.12-slim-bookworm AS builder
 
 # Pin uv to an exact version for reproducible builds.
-# Check for latest: https://github.com/astral-sh/uv/releases
-COPY --from=ghcr.io/astral-sh/uv:0.10.7 /uv /uv/bin/uv
+# Use 0.10.6 for proven stability in current scan environments.
+COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uv/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.12-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
