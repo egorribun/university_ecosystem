@@ -41,12 +41,14 @@ GHSA-3ppc-4f35-3m26
 CVE-2024-12254
 
 # OS-Level Vulnerabilities (Debian 12 Bookworm)
-# Risk: Low - many are false positives or have no exploit path in our setup.
+# Risk: Low - many are core libs where fixes are pending in upstream Debian.
 # Review: 2026-04-01
 CVE-2026-0915
 CVE-2026-0861
 CVE-2025-6020
 CVE-2025-4802
+CVE-2025-7458
+CVE-2023-45853
 CVE-2026-27171
 CVE-2026-27172
 CVE-2026-27173
