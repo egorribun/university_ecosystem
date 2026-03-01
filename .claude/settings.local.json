@@ -24,7 +24,30 @@
       "mcp__plugin_serena_serena__find_symbol",
       "Bash(done)",
       "WebFetch(domain:hub.docker.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(ls -d /c/Users/egorribun/Documents/university_ecosystem/app/routers* /c/Users/egorribun/Documents/university_ecosystem/app/repositories*)",
+      "Bash(npm audit --legacy-peer-deps)",
+      "Bash(npm audit --audit-level=high)",
+      "Bash(npm audit)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\(''package.json''\\)\\); print\\(json.dumps\\(d.get\\(''overrides'',{}\\), indent=2\\)\\)\")",
+      "Bash(node -e \"const d=require\\(''./package.json''\\); console.log\\(JSON.stringify\\(d.overrides,null,2\\)\\)\")",
+      "mcp__plugin_serena_serena__find_referencing_symbols",
+      "Bash(go build ./...)",
+      "Bash(python -m pytest tests/test_websocket_chat.py -x -q --tb=short)",
+      "Bash(python -m pytest tests/test_websocket_chat.py -x -q --tb=short --no-header)",
+      "Bash(pip install nh3 --quiet)",
+      "Bash(python -m pytest tests/test_websocket_chat.py -q --tb=short)",
+      "Bash(python -m pytest tests/test_websocket_chat.py --tb=short)",
+      "Bash(echo \"EXIT:$?\")",
+      "mcp__Desktop_Commander__start_process",
+      "mcp__Desktop_Commander__read_process_output",
+      "mcp__Desktop_Commander__list_directory",
+      "Bash(\"/c/Users/egorribun/Documents/university_ecosystem/.venv/Scripts/python.exe\" -m pytest \"/c/Users/egorribun/Documents/university_ecosystem/tests/\" --rootdir=\"/c/Users/egorribun/Documents/university_ecosystem\" --tb=short -q --ignore=\"/c/Users/egorribun/Documents/university_ecosystem/tests/e2e\")",
+      "Skill(commit-commands:commit)",
+      "Skill(commit-commands:commit:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "Bash(\"/c/Users/egorribun/Documents/university_ecosystem/.venv/Scripts/python.exe\" -m pytest tests/test_image_proxy.py tests/test_schemas.py -x -q --tb=short)",
+      "Bash(\"/c/Users/egorribun/Documents/university_ecosystem/.venv/Scripts/python.exe\" -m pytest tests/test_image_proxy.py -q --tb=short)"
     ]
   }
 }

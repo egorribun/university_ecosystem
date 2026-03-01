@@ -17,7 +17,7 @@ from pydantic_core import PydanticCustomError
 from app.core.localization import translate
 from app.models.enums import UserRole
 from app.schemas.base import SecureBaseModel
-from app.schemas.validators import SanitizedInput
+from app.schemas.validators import CleanStr, SafeRichText, SanitizedInput, SanitizedStr
 
 
 class BaseModel(SecureBaseModel):
@@ -192,11 +192,11 @@ class NewsCommentOut(BaseModel):
 
 
 class NewsCommentCreate(BaseModel):
-    content: str = Field(..., min_length=1, max_length=1000)
+    content: SafeRichText = Field(..., min_length=1, max_length=1000)
 
 
 class NewsCommentUpdate(BaseModel):
-    content: str = Field(..., min_length=1, max_length=1000)
+    content: SafeRichText = Field(..., min_length=1, max_length=1000)
 
 
 class NewsInteractionsOut(BaseModel):
@@ -550,16 +550,16 @@ class ScheduleOut(OrmModel, ScheduleBase):
 
 
 class NewsCreate(BaseModel):
-    title: str
-    content: str
+    title: SanitizedStr
+    content: SafeRichText
     title_en: SanitizedInput = None
     content_en: SanitizedInput = None
     image_url: str | None = None
 
 
 class NewsUpdate(BaseModel):
-    title: str | None = None
-    content: str | None = None
+    title: SanitizedStr | None = None
+    content: SafeRichText | None = None
     title_en: SanitizedInput = None
     content_en: SanitizedInput = None
     image_url: str | None = None
@@ -651,19 +651,19 @@ class EventFileOut(OrmModel):
 
 
 class EventCreate(BaseModel):
-    title: str
-    description: str | None = None
+    title: CleanStr
+    description: SafeRichText | None = None
     title_en: SanitizedInput = None
     description_en: SanitizedInput = None
-    location: str | None = None
+    location: CleanStr | None = None
     location_en: SanitizedInput = None
-    event_type: str | None = None
+    event_type: SanitizedInput = None
     event_type_en: SanitizedInput = None
     starts_at: datetime
     ends_at: datetime
-    speaker: str | None = None
+    speaker: CleanStr | None = None
     image_url: str | None = None
-    about: str | None = None
+    about: SafeRichText | None = None
     about_en: SanitizedInput = None
 
     @model_validator(mode="after")
@@ -674,20 +674,20 @@ class EventCreate(BaseModel):
 
 
 class EventUpdate(BaseModel):
-    title: str | None = None
-    description: str | None = None
+    title: CleanStr | None = None
+    description: SafeRichText | None = None
     title_en: SanitizedInput = None
     description_en: SanitizedInput = None
-    location: str | None = None
+    location: CleanStr | None = None
     location_en: SanitizedInput = None
-    event_type: str | None = None
+    event_type: SanitizedInput = None
     event_type_en: SanitizedInput = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     is_active: bool | None = None
-    speaker: str | None = None
+    speaker: CleanStr | None = None
     image_url: str | None = None
-    about: str | None = None
+    about: SafeRichText | None = None
     about_en: SanitizedInput = None
 
     @model_validator(mode="after")

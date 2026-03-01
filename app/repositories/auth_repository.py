@@ -45,7 +45,9 @@ class AuthRepository(
         """
         max_active = max(1, int(settings.password_reset_max_active_tokens))
 
-        # Get current active tokens
+        # DB-1 (audit 2026-03): Use SELECT FOR UPDATE so that concurrent
+        # password-reset requests for the same user_id serialise here instead
+        # of racing through the read-check-modify pattern and creating N tokens.
         result = await self.db.execute(
             select(models.PasswordResetToken)
             .where(
@@ -56,6 +58,7 @@ class AuthRepository(
                 models.PasswordResetToken.created_at.desc(),
                 models.PasswordResetToken.id.desc(),
             )
+            .with_for_update()
         )
         active_tokens = list(result.scalars())
 
@@ -133,7 +136,9 @@ class AuthRepository(
         """
         Create an email change token, invalidating previous unused ones.
         """
-        # Invalidate existing unused tokens
+        # DB-1 (audit 2026-03): Lock existing rows before invalidating so that
+        # two concurrent email-change requests for the same user can't both pass
+        # the "no active token" check and insert duplicate records.
         await self.db.execute(
             update(models.EmailChangeToken)
             .where(
@@ -141,6 +146,7 @@ class AuthRepository(
                 models.EmailChangeToken.used.is_(False),
             )
             .values(used=True)
+            .execution_options(synchronize_session="fetch")
         )
 
         record = models.EmailChangeToken(

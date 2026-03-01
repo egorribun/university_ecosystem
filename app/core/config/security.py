@@ -31,6 +31,22 @@ from .mixins import (
 
 _logger = logging.getLogger(__name__)
 
+# CFG-2 (audit 2026-03): Placeholder detection for AUDIT_LOG_SECRET.
+# Defined at module level (not inside the Pydantic model) so it's a plain
+# Python constant and doesn't get treated as a Pydantic field/private-attr.
+_AUDIT_SECRET_PLACEHOLDERS: frozenset[str] = frozenset(
+    {
+        "development-audit-secret-change-me",
+        "change-me",
+        "changeme",
+        "change_me",
+        "placeholder",
+        "example",
+        "secret",
+        "your-secret",
+    }
+)
+
 
 class SecuritySettings(
     JwtSettingsMixin,
@@ -63,20 +79,37 @@ class SecuritySettings(
     @field_validator("audit_log_secret")
     @classmethod
     def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:
+        # CFG-2 (audit 2026-03): expanded placeholder detection — the old default
+        # value (44 chars) silently passed the 32-char length check.  Any secret
+        # containing common placeholder substrings is now rejected in production
+        # and warned about in development.  The placeholder set is defined at
+        # module level (_AUDIT_SECRET_PLACEHOLDERS) to avoid Pydantic treating it
+        # as a private-attr field.
         normalized = _validate_non_empty(value, label="AUDIT_LOG_SECRET")
         secrets = _coerce_str_list(normalized)
         if not secrets:
             raise ValueError("AUDIT_LOG_SECRET must not be empty")
 
-        # Prevent usage of default value in non-dev environments
         env = (
             info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
         ).lower()
-        if (
-            env not in _DEVELOPMENT_ENVIRONMENTS
-            and "development-audit-secret-change-me" in secrets
-        ):
-            raise ValueError("Default AUDIT_LOG_SECRET cannot be used in production")
+        is_dev = env in _DEVELOPMENT_ENVIRONMENTS
+
+        for secret in secrets:
+            lower = secret.lower()
+            if any(ph in lower for ph in _AUDIT_SECRET_PLACEHOLDERS):
+                if is_dev:
+                    _logger.warning(
+                        "SECURITY: AUDIT_LOG_SECRET looks like a placeholder value. "
+                        "Replace it with a cryptographically random secret before "
+                        "deploying to production (e.g. `openssl rand -hex 32`)."
+                    )
+                else:
+                    raise ValueError(
+                        "AUDIT_LOG_SECRET contains a placeholder value and cannot "
+                        "be used in production. Generate a real secret with: "
+                        "openssl rand -hex 32"
+                    )
 
         min_length = 32
         for secret in secrets:

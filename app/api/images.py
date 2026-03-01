@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Header, Query, Response, status
+import hashlib
+
+from fastapi import APIRouter, Header, Query, Request, Response, status
 
 from app.api.validation import raise_http_error, raise_not_found
 from app.core.config import settings
@@ -10,6 +12,7 @@ router = APIRouter(tags=["images"])
 
 @router.get("/img/{path:path}")
 async def proxy_image(
+    request: Request,
     path: str,
     w: int | None = Query(None, alias="w", ge=1, le=2000),
     accept: str | None = Header(None),
@@ -58,11 +61,17 @@ async def proxy_image(
             backend, normalized_path, width=target_width, format_preference=format_pref
         )
 
+        # ETag: 16 hex chars of SHA-256 (64 bits) — sufficient for cache discrimination.
+        etag = f'"{hashlib.sha256(data).hexdigest()[:16]}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+
         return Response(
             content=data,
             media_type=mime,
             headers={
                 "Cache-Control": "public, max-age=31536000, immutable",
+                "ETag": etag,
                 "Vary": "Accept, bucket-width",  # Inform caching layers
                 "x-image-proxy-cache": (
                     "HIT" if target_width else "MISS"

@@ -116,7 +116,7 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
 const clearProfileCacheStorage = () => {
   if (typeof localStorage === "undefined") return
   try {
-    console.warn("CLEARING PROFILE CACHE STORAGE")
+    logWarning("profile_cache.cleared", { reason: "parse_error" })
     localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
     localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
   } catch {
@@ -178,6 +178,57 @@ const deriveKey = async (keyMaterial: CryptoKey, salt: Uint8Array) => {
   )
 }
 
+/** Convert a Uint8Array to a base64 string without using spread arguments.
+ * btoa(String.fromCharCode(...array)) risks a stack overflow for arrays > ~65k bytes.
+ * This loop-based version avoids the call-stack issue entirely.
+ */
+const uint8ToBase64 = (bytes: Uint8Array): string => {
+  let binary = ""
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
+/** Constant-time string comparison — avoids early-exit timing leaks in the sync path.
+ * Both strings must have equal length; the function always iterates the full length.
+ */
+const timingSafeEqual = (a: string, b: string): boolean => {
+  if (a.length !== b.length) return false
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
+}
+
+/** Constant-time HMAC-SHA256 verification using Web Crypto subtle.verify.
+ * Preferred over re-computing the HMAC and comparing with === or timingSafeEqual,
+ * because crypto.subtle.verify is mandated by the W3C spec to be constant-time.
+ */
+const verifyHmacAsync = async (
+  payload: CacheSignaturePayload,
+  signature: string,
+  signingKey: string
+): Promise<boolean> => {
+  const subtle = getCrypto()
+  if (!subtle) return false
+  try {
+    const enc = new TextEncoder()
+    const key = await subtle.importKey(
+      "raw",
+      enc.encode(signingKey),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    )
+    const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
+    return await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
+  } catch {
+    return false
+  }
+}
+
 const encryptData = async (
   data: CachedUserSnapshot,
   signingKey: string
@@ -204,7 +255,7 @@ const encryptData = async (
     const ivHex = Array.from(iv)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("")
-    const ciphertextBase64 = btoa(String.fromCharCode(...new Uint8Array(ciphertext)))
+    const ciphertextBase64 = uint8ToBase64(new Uint8Array(ciphertext))
 
     return `${saltHex}:${ivHex}:${ciphertextBase64}`
   } catch (e) {
@@ -251,7 +302,7 @@ const signPayload = async (payload: CacheSignaturePayload, signingKey: string): 
       enc.encode(signingKey),
       enc.encode(JSON.stringify(payload))
     )
-    return btoa(String.fromCharCode(...signatureBytes))
+    return uint8ToBase64(signatureBytes)
   } catch {
     return ""
   }
@@ -265,8 +316,8 @@ const verifySignatureSync = (
   try {
     const enc = new TextEncoder()
     const signatureBytes = hmac(sha256, enc.encode(signingKey), enc.encode(JSON.stringify(payload)))
-    const expected = btoa(String.fromCharCode(...signatureBytes))
-    return signature === expected
+    const expected = uint8ToBase64(signatureBytes)
+    return timingSafeEqual(signature, expected)
   } catch {
     return false
   }
@@ -296,14 +347,14 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
     return undefined
   }
 
-  // Verify signature
+  // Verify signature — use crypto.subtle.verify for constant-time HMAC comparison.
   const payload: CacheSignaturePayload = {
     version: candidate.version,
     expiresAt: candidate.expiresAt,
     data: candidate.data,
   }
-  const expectedSignature = await signPayload(payload, signingKey)
-  if (candidate.signature !== expectedSignature) {
+  const signatureValid = await verifyHmacAsync(payload, candidate.signature, signingKey)
+  if (!signatureValid) {
     clearProfileCacheStorage()
     return undefined
   }

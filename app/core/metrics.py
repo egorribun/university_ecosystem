@@ -522,7 +522,35 @@ def record_circuit_breaker_trip(service: str) -> None:
 
 
 _CONFIGURED_ATTR = "_metrics_configured"
-_PLACEHOLDER_PASSWORDS = {"changeme"}
+# CFG-1 (audit 2026-03): Expanded placeholder password set.  The previous
+# set only contained "changeme".  Common weak/placeholder values are now
+# rejected at startup so operators can't accidentally expose metrics with
+# trivially-guessable credentials.
+_PLACEHOLDER_PASSWORDS: frozenset[str] = frozenset(
+    {
+        "changeme",
+        "change_me",
+        "change-me",
+        "password",
+        "password123",
+        "admin",
+        "admin123",
+        "metrics",
+        "prometheus",
+        "secret",
+        "test",
+        "1234",
+        "12345",
+        "123456",
+        "qwerty",
+        "letmein",
+        "welcome",
+        "placeholder",
+        "example",
+        "default",
+        "",
+    }
+)
 _LOOPBACK_HOSTNAMES = {"localhost"}
 logger = logging.getLogger(__name__)
 
@@ -932,17 +960,26 @@ def configure_metrics(app: FastAPI) -> None:
             " restricted to loopback addresses"
         )
 
-    if (
-        settings.enable_metrics_endpoint
-        and settings.metrics_basic_auth_password.strip().lower()
-        in _PLACEHOLDER_PASSWORDS
-    ):
-        logger.warning(
-            "Metrics endpoint is enabled but METRICS_BASIC_AUTH_PASSWORD uses a "
-            "placeholder value; refusing to expose /metrics until strong "
-            "credentials are configured."
-        )
-        return
+    # CFG-1 (audit 2026-03): Check BOTH username and password for placeholder
+    # values.  The original code only checked the password.  Also check that
+    # credentials aren't identical (admin:admin, metrics:metrics, etc.).
+    if settings.enable_metrics_endpoint:
+        pw = settings.metrics_basic_auth_password.strip().lower()
+        un = settings.metrics_basic_auth_username.strip().lower()
+        if pw in _PLACEHOLDER_PASSWORDS or un in _PLACEHOLDER_PASSWORDS:
+            logger.warning(
+                "Metrics endpoint is enabled but METRICS_BASIC_AUTH credentials "
+                "use a placeholder value; refusing to expose /metrics until "
+                "strong credentials are configured (see METRICS_BASIC_AUTH_*)."
+            )
+            return
+        if un and pw and un == pw:
+            logger.warning(
+                "Metrics endpoint is enabled but METRICS_BASIC_AUTH_USERNAME "
+                "equals METRICS_BASIC_AUTH_PASSWORD; refusing to expose /metrics "
+                "until distinct credentials are configured."
+            )
+            return
 
     app.add_middleware(PrometheusRequestMetricsMiddleware)
     try:

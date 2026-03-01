@@ -28,6 +28,7 @@ dependencies = [
     "httpx>=0.27",
     "minio>=7.2",
     "nats-py>=2.9",
+    "nh3>=0.2.17",
     "opentelemetry-api",
     "opentelemetry-exporter-otlp",
     "opentelemetry-instrumentation",

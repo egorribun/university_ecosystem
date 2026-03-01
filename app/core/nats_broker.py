@@ -4,6 +4,7 @@ import asyncio
 import functools
 import json
 import logging
+import os
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar, cast
@@ -149,10 +150,20 @@ class NatsTaskBroker:
             durable="python-worker",
         )
 
-        _logger.info("NATS Task Worker started")
+        # PERF-4 (audit 2026-03): Batch-fetch instead of fetch(1).
+        # fetch(1) issues a separate JetStream FETCH request to the server for
+        # every single message.  With 1 000 queued tasks this is ~1 000 network
+        # round-trips vs. 50 with NATS_FETCH_BATCH_SIZE=20.  Processing remains
+        # sequential inside each batch (safe ordering, no concurrent DB pressure)
+        # while still eliminating the per-message polling overhead.
+        _batch_size = max(
+            1, min(100, int(os.environ.get("NATS_FETCH_BATCH_SIZE", "20")))
+        )
+
+        _logger.info("NATS Task Worker started (batch_size=%d)", _batch_size)
         while True:
             try:
-                msgs = await sub.fetch(1, timeout=5)
+                msgs = await sub.fetch(_batch_size, timeout=5)
                 for msg in msgs:
                     try:
                         data = json.loads(msg.data.decode())

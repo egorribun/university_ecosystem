@@ -217,7 +217,11 @@ func main() {
 		}
 		schema := graphql.MustParseSchema(string(s), resolver)
 		mux := http.NewServeMux()
-		mux.Handle("/graphql", &relay.Handler{Schema: schema})
+		// GO-1 (audit 2026-03): wrap /graphql with JWT auth middleware.
+		// /metrics intentionally has no JWT auth — it is protected at the
+		// network level (internal service mesh) and/or Prometheus scrape credentials.
+		graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, logger, &relay.Handler{Schema: schema})
+		mux.Handle("/graphql", graphqlHandler)
 		mux.Handle("/metrics", promhttp.Handler())
 		httpHandler = mux
 	}
@@ -255,6 +259,55 @@ func main() {
 	// 3. Temporal Worker (stopped by defer w.Stop())
 	logger.Info("Server exited")
 }
+// httpJWTMiddleware validates the Bearer token in HTTP requests using the
+// same JWT secret as the gRPC authFunc.  Requests without a valid token
+// receive 401 Unauthorized.
+//
+// GO-1 (audit 2026-03): The /graphql HTTP endpoint was registered on the mux
+// without any authentication, while /grpc already had JWT validation via the
+// grpc-middleware auth interceptor.  This middleware closes that gap.
+func httpJWTMiddleware(secret string, log *zap.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		const prefix = "Bearer "
+		if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
+			log.Warn("GraphQL HTTP request missing or malformed Authorization header",
+				zap.String("remote", r.RemoteAddr),
+			)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		tokenStr := authHeader[len(prefix):]
+
+		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, status.Errorf(codes.Unauthenticated, "unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(secret), nil
+		})
+		if err != nil || !token.Valid {
+			log.Warn("GraphQL HTTP JWT validation failed",
+				zap.String("remote", r.RemoteAddr),
+				zap.Error(err),
+			)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if sub, ok := claims["sub"].(string); ok {
+			ctx := context.WithValue(r.Context(), userIDKey, sub)
+			r = r.WithContext(ctx)
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func authFunc(secret string, logger *zap.Logger) auth.AuthFunc {
 	return func(ctx context.Context) (context.Context, error) {
 		tokenStr, err := auth.AuthFromMD(ctx, "bearer")

@@ -241,15 +241,16 @@ class SessionService:
         user_id: UUID,
         jti: str,
         expires_at: datetime,
-        bg_tasks: BackgroundTasks | None,
+        bg_tasks: BackgroundTasks | None,  # kept for API compat; no longer used
     ) -> None:
-        # We reuse the existing background task helper if available, or call directly
-        # For better SRP, this could be moved here too.
+        # AUTH-1 (audit 2026-03): Always await Redis session registration before
+        # returning the JWT to the client.  Using bg_tasks.add_task() meant the
+        # session wasn't visible in Redis until after the response was sent,
+        # causing 401s on immediate follow-up requests (login → token refresh
+        # race window).  The DB record is committed first, so latency here is
+        # bounded by a single Redis SET (~1ms on localhost, <5ms in prod).
         args = (user_id, jti, expires_at, session.ip_address, session.user_agent)
-        if bg_tasks:
-            bg_tasks.add_task(register_session_bg, *args)
-        else:
-            await register_session_bg(*args)
+        await register_session_bg(*args)
 
     async def get_active_sessions_for_user(
         self, user_id: UUID

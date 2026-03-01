@@ -32,6 +32,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_database()
     init_database()
 
+    # TD-5: Warn at startup when SPOTIFY_TOKEN_SECRET is not independently configured.
+    # Falling back to SHA256(SECRET_KEY) couples Spotify token decryption to JWT signing;
+    # rotating SECRET_KEY will silently invalidate all stored Spotify tokens.
+    if not settings.spotify_token_secret:
+        _logger.warning(
+            "SPOTIFY_TOKEN_SECRET is not set — Spotify token encryption falls back to "
+            "a key derived from SECRET_KEY.  Rotating SECRET_KEY will invalidate all "
+            "stored Spotify OAuth tokens.  Set SPOTIFY_TOKEN_SECRET to an independent "
+            "Fernet key to decouple the two secrets."
+        )
+
     # (TD-4) Re-create a fresh Dishka container per lifespan start.
     # This ensures that Pytest test cycles (which run multiple lifespan contexts)
     # always have an open container, not a closed one from a previous test.

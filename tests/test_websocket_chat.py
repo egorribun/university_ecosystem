@@ -50,7 +50,9 @@ class TestConnectionManager:
         assert mock_ws1 in connection_manager.active_connections[user_id]
         assert mock_ws2 in connection_manager.active_connections[user_id]
 
-    def test_disconnect_removes_connection(self, connection_manager: ConnectionManager):
+    async def test_disconnect_removes_connection(
+        self, connection_manager: ConnectionManager
+    ):
         """Test that disconnect properly removes user connection."""
         mock_ws = AsyncMock(spec=WebSocket)
         user_id = uuid.uuid4()
@@ -59,13 +61,13 @@ class TestConnectionManager:
         connection_manager.active_connections[user_id] = {mock_ws}
         connection_manager.connection_users[mock_ws] = user_id
 
-        result = connection_manager.disconnect(mock_ws)
+        result = await connection_manager.disconnect(mock_ws)
 
         assert result == user_id
         assert user_id not in connection_manager.active_connections
         assert mock_ws not in connection_manager.connection_users
 
-    def test_disconnect_keeps_other_connections(
+    async def test_disconnect_keeps_other_connections(
         self, connection_manager: ConnectionManager
     ):
         """Test that disconnect only removes the specific connection."""
@@ -77,7 +79,7 @@ class TestConnectionManager:
         connection_manager.connection_users[mock_ws1] = user_id
         connection_manager.connection_users[mock_ws2] = user_id
 
-        connection_manager.disconnect(mock_ws1)
+        await connection_manager.disconnect(mock_ws1)
 
         assert user_id in connection_manager.active_connections
         assert mock_ws2 in connection_manager.active_connections[user_id]
