@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
@@ -36,7 +36,7 @@ class ChatQueryService:
         )
 
         participant_ids: set[uuid.UUID] = set()
-        chat_data_map: dict[str, dict] = {}
+        chat_data_map: dict[str, dict[str, Any]] = {}
 
         for row in rows:
             chat = row[0]

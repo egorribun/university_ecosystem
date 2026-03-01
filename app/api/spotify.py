@@ -4,6 +4,7 @@ import base64
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -156,7 +157,7 @@ async def _save_tokens(
     refresh: str | None,
     scope: str | None,
     expires_in: int | str | None,
-):
+) -> None:
     if not user.spotify:
         user.spotify = SpotifyIntegration(user_id=user.id)
 
@@ -245,7 +246,9 @@ async def _ensure_access_token(
 
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
-async def spotify_auth_url(user: User = Depends(get_current_user)):
+async def spotify_auth_url(
+    user: User = Depends(get_current_user),
+) -> SpotifyAuthURL | dict[str, str]:
     state_token = _mint_state_token(str(user.id), expires_minutes=10)
     params = {
         "client_id": settings.spotify_client_id,
@@ -265,7 +268,7 @@ async def spotify_callback(
     code: str = Query(...),
     state: str = Query(...),
     db: AsyncDatabaseSession = Depends(get_db),
-):
+) -> RedirectResponse:
     locale = resolve_locale(request=request)
     payload = decode_token(state) or {}
     if not payload.get("sub"):
@@ -330,7 +333,7 @@ async def now_playing(
     request: Request,
     db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> SpotifyNowPlayingOut | Response:
     locale = resolve_locale(request=request, user=user)
 
     def _as_response(data: SpotifyNowPlayingOut) -> SpotifyNowPlayingOut | Response:
@@ -440,7 +443,7 @@ async def now_playing(
 @router.post("/disconnect")
 async def disconnect(
     db: AsyncDatabaseSession = Depends(get_db), user: User = Depends(get_current_user)
-):
+) -> dict[str, bool]:
     _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
     return {"ok": True}
@@ -451,7 +454,7 @@ async def list_playlists(
     request: Request,
     db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> Any:
     locale = resolve_locale(request=request, user=user)
     token = await _ensure_access_token(db, user, locale=locale)
     if not token:
@@ -472,7 +475,7 @@ async def sync_playlists(
     request: Request,
     db: AsyncDatabaseSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Synchronize Spotify playlists metadata to the local database.
     """

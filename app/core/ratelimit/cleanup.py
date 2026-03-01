@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app.core.ratelimit.strategies.memory import _memory_locks, _memory_windows
+from app.core.ratelimit.strategies.memory import _memory_windows, _shard_lock
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
 
             keys = list(_memory_windows.keys())
             for key in keys:
-                lock = _memory_locks.get(key)
+                lock = _shard_lock(key)
                 if not lock:
                     continue
 

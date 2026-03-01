@@ -256,7 +256,7 @@ def capture_domain_events(
             session.add(event_to_add)
 
 
-def register_event_listeners():
+async def register_event_listeners() -> None:
     """Register domain event capturing listeners for all sessions."""
     from sqlalchemy import event as sa_event
     from sqlalchemy.orm import Session

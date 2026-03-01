@@ -14,5 +14,16 @@
         "@semantic-release/npm": "^13.1.4",
         "@semantic-release/release-notes-generator": "^14.1.0",
         "semantic-release": "^25.0.3"
+    },
+    "dependencies": {
+        "@isaacs/brace-expansion": "^5.0.1"
+    },
+    "overrides": {
+        "minimatch": "^10.2.4",
+        "tar": "^7.5.8",
+        "npm": {
+            "minimatch": "^10.2.4",
+            "tar": "^7.5.8"
+        }
     }
 }

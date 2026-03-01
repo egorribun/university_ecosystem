@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import (
     UUID,
     Boolean,
-    Column,
     DateTime,
     ForeignKey,
     Index,
@@ -32,20 +31,22 @@ class Story(Base, UUID7PrimaryKeyMixin):
         Index("ix_stories_expires_at_is_active", "expires_at", "is_active"),
     )
 
-    title = Column(String, nullable=False)
-    title_en = Column(String)
-    short_text = Column(Text, nullable=False)
-    short_text_en = Column(Text)
-    cover_url = Column(String)
-    cta_url = Column(String)
-    published_at = Column(
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    title_en: Mapped[str | None] = mapped_column(String)
+    short_text: Mapped[str] = mapped_column(Text, nullable=False)
+    short_text_en: Mapped[str | None] = mapped_column(Text)
+    cover_url: Mapped[str | None] = mapped_column(String)
+    cta_url: Mapped[str | None] = mapped_column(String)
+    published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=_utcnow,
         server_default=func.now(),
     )
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    is_active = Column(
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
@@ -57,7 +58,7 @@ class Story(Base, UUID7PrimaryKeyMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
     )
-    created_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=_utcnow,

@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import Any
 
 from fastapi import Request
 from sqlalchemy.exc import IntegrityError
@@ -34,7 +35,7 @@ class UserComplianceService:
         user_id: uuid.UUID | str,
         request: Request,
         current_user: UserDTO,
-    ) -> dict:
+    ) -> dict[str, Any]:
         if current_user.role != "admin":
             raise PermissionDenied()
 

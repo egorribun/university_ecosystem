@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import copy
 import uuid
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from functools import wraps
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from app.core.config import settings
 from app.deps.cache import BaseCache, CacheEntry, get_cache
@@ -116,16 +118,18 @@ async def invalidate_user_stats_cache(
         await backend.invalidate(*keys)
 
 
-def cache_stats(kind: str, ttl: int | None = None) -> Any:
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def cache_stats(kind: str, ttl: int | None = None) -> Callable[[F], F]:
     """Decorator to automatically handle caching for statistics methods.
 
     Expects the first argument to be 'self' (a service instance with a 'cache' attribute/property)
     or just uses the global cache.
     Expects 'user_id' and 'period_key' or 'period_days' as arguments.
     """
-    from functools import wraps
 
-    def decorator(func: Any) -> Any:
+    def decorator(func: F) -> F:
         @wraps(func)
         async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             import inspect
@@ -178,6 +182,6 @@ def cache_stats(kind: str, ttl: int | None = None) -> Any:
 
             return result
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]
 
     return decorator

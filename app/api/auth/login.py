@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import secrets
 import time
+from typing import Any
 
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
@@ -67,7 +68,7 @@ async def login_passkey_start(
     profile_service: FromDishka[UserProfileService],
     db: FromDishka[AsyncDatabaseSession],
     audit: AuditService = Depends(get_audit_service),
-):
+) -> WebAuthnAuthenticationOptionsOut:
     normalized_email = payload.email.strip().lower()
 
     user = await profile_service.get_user_by_email(normalized_email)
@@ -121,7 +122,7 @@ async def login_passkey_verify(
     bg_tasks: BackgroundTasks,
     login_service: FromDishka[LoginService],
     db: FromDishka[AsyncDatabaseSession],
-):
+) -> TokenWithProfile | PendingMfaResponse:
     try:
         challenge = await mfa.get_challenge(
             db,
@@ -140,7 +141,7 @@ async def login_passkey_verify(
 
     service = WebAuthnService(db)
     try:
-        payload_dict: dict = challenge.payload  # type: ignore[assignment]
+        payload_dict: dict[str, Any] = challenge.payload  # type: ignore[assignment]
         await service.verify_authentication(
             user,
             str(payload_dict.get("options", {}).get("challenge", "")),
@@ -176,7 +177,7 @@ async def login(
     login_service: FromDishka[LoginService],
     trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
-):
+) -> TokenWithProfile | PendingMfaResponse:
     return await login_service.perform_login(
         email=form_data.username,
         password=form_data.password,
@@ -200,7 +201,7 @@ async def login_json(
     request: Request,
     bg_tasks: BackgroundTasks,
     login_service: FromDishka[LoginService],
-):
+) -> TokenWithProfile | PendingMfaResponse:
     return await login_service.perform_login(
         email=payload.email,
         password=payload.password,
@@ -222,7 +223,7 @@ async def verify_mfa_challenge(
     bg_tasks: BackgroundTasks,
     login_service: FromDishka[LoginService],
     db: FromDishka[AsyncDatabaseSession],
-):
+) -> TokenWithProfile:
     challenge_type: str | list[str] | None = None
     if payload.method == constants.MFA_METHOD_TOTP:
         challenge_type = constants.CHALLENGE_TYPE_TOTP_VERIFY
@@ -285,7 +286,7 @@ async def register(
     compliance_service: FromDishka[UserComplianceService],
     login_service: FromDishka[LoginService],
     db: FromDishka[AsyncDatabaseSession],
-):
+) -> dict[str, Any]:
     locale = resolve_locale(request=request)
     try:
         new_user = await compliance_service.register_user(user)
@@ -309,7 +310,7 @@ async def register(
 @router.get("/session/signing-key", response_model=SessionSigningKeyOut)
 async def get_session_signing_key(
     request: Request, _: User = Depends(get_current_user)
-):
+) -> SessionSigningKeyOut:
     session = getattr(request.state, "active_session", None)
     if session is None or not getattr(session, "signing_key", None):
         raise HTTPException(

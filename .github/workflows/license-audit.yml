@@ -110,7 +110,7 @@ jobs:
           npx license-checker --summary --production
 
           # Check for copyleft licenses
-          npx license-checker --production --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;Unlicense;CC0-1.0;Python-2.0;MPL-2.0" || {
+          npx license-checker --production --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;Unlicense;CC0-1.0;Python-2.0;MPL-2.0;OFL-1.1;(MPL-2.0 OR Apache-2.0)" || {
             echo "❌ Found packages with disallowed licenses!"
             npx license-checker --production --csv > frontend-licenses.csv
             exit 1
@@ -153,10 +153,14 @@ jobs:
           find . -name 'go.mod' -not -path '*/vendor/*' | while read modfile; do
             dir=$(dirname "$modfile")
             echo "=== Checking: $dir ==="
-            (cd "$dir" && go-licenses check ./... 2>/dev/null) || {
+            (
+              cd "$dir"
+              go mod download
+              go-licenses check ./... --ignore "github.com/university-ecosystem"
+            ) || {
               echo "❌ Disallowed or unknown license found in $dir!"
               # Report specific violations for debugging
-              (cd "$dir" && go-licenses report ./... 2>/dev/null)
+              (cd "$dir" && go-licenses report ./...)
               exit 1
             }
           done

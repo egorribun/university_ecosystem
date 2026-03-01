@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -71,7 +72,7 @@ async def list_stories(
     response: Response,
     if_none_match: str | None = Header(default=None),
     service: StoryService = Depends(get_read_story_service),
-):
+) -> list[schemas.StoryOut] | Response | Any:
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
     cache = get_cache()
@@ -115,7 +116,7 @@ async def create_story(
     request: Request,
     service: StoryService = Depends(get_story_service),
     user: models.User = Depends(get_current_user),
-):
+) -> schemas.StoryOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     record = await service.create_story(data, created_by=user.id)
@@ -131,7 +132,7 @@ async def update_story(
     data: schemas.StoryUpdate | None = Body(default=None),
     service: StoryService = Depends(get_story_service),
     user: models.User = Depends(get_current_user),
-):
+) -> schemas.StoryOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
 
@@ -151,7 +152,7 @@ async def delete_story(
     request: Request,
     service: StoryService = Depends(get_story_service),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
 
@@ -170,7 +171,7 @@ async def upload_story_cover(
     *,
     request: Request,
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     url = await save_upload(file, "story_covers", "stories", locale=locale)

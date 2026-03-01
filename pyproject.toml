@@ -45,7 +45,7 @@ dependencies = [
     "pillow-avif-plugin>=1.4.0",
     "polars>=1.0",
     "prometheus-client>=0.20",
-    "protobuf>=4.25.0",
+    "protobuf>=6.33.5",
     "psutil>=6.0.0",
     "psycopg[binary]>=3.1",
     "pyasn1>=0.6.2",
@@ -75,11 +75,13 @@ dependencies = [
     "grpcio-health-checking>=1.60.0",
     "dishka[fastapi]>=0.14",
     "openfeature-sdk>=0.8.4",
+    "virtualenv>=20.36.2",
 ]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+plugins = ["sqlalchemy.ext.mypy.plugin", "strawberry.ext.mypy_plugin"]
 files = ["app"]
 warn_return_any = true
 warn_unused_configs = true

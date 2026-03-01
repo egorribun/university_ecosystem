@@ -89,7 +89,7 @@ class StoryRepository(BaseRepository[Story, StoryDTO, dict, dict]):
         story = await self._get_orm(story_id)
         if story is None:
             return False
-        story.is_active = False  # type: ignore[assignment]
+        story.is_active = False
         await self.db.flush()
         return True
 

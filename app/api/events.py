@@ -59,11 +59,11 @@ _EVENTS_CACHE_CONTROL = "private, max-age=180"
 _EVENTS_LIST_CACHE_PREFIX = events_cache_version.prefix
 
 
-async def _get_events_list_version(cache) -> str:
+async def _get_events_list_version(cache: Any) -> str:
     return await events_cache_version.get_version(cache)
 
 
-async def _increment_events_list_version(cache) -> None:
+async def _increment_events_list_version(cache: Any) -> None:
     await events_cache_version.increment(cache)
 
 
@@ -109,7 +109,7 @@ async def _invalidate_events_list_cache() -> None:
 
 
 @lru_cache(maxsize=1)
-def _get_vary_helper():
+def _get_vary_helper() -> Any:
     from app.main import _ensure_vary_header
 
     return _ensure_vary_header
@@ -141,7 +141,7 @@ async def create_event(
     user: models.User = Depends(get_current_user),
     notifications: NotificationService = Depends(get_notification_service),
     events: EventService = Depends(get_event_service),
-):
+) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
     try:
@@ -178,7 +178,7 @@ async def all_events(
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
     events: EventService = Depends(get_read_event_service),
-):
+) -> schemas.PaginatedEvents | Response | Any:
     """
     Get paginated list of events.
 
@@ -276,7 +276,7 @@ async def attend(
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     events: EventService = Depends(get_event_service),
-):
+) -> schemas.EventAttendanceOut:
     """
     Register attendance for an event.
 
@@ -288,11 +288,12 @@ async def attend(
     event = await db.get(models.Event, data.event_id)
     ensure_exists(event, "events", locale)
     assert event is not None
-    event_ends_at = _to_utc(event.ends_at)  # type: ignore[arg-type]
+    event_ends_at = _to_utc(event.ends_at)
     if not event.is_active or event_ends_at <= datetime.now(UTC):
         raise_conflict("errors.events.registration_closed", locale)
     try:
-        return await events.register_attendance(data, user_id=user.id)
+        dto = await events.register_attendance(data, user_id=user.id)
+        return schemas.EventAttendanceOut.model_validate(dto)
     except LookupError:
         raise_not_found("events", locale)
     except ValueError:
@@ -304,7 +305,7 @@ async def unregister_event(
     data: schemas.EventAttendanceCreate,
     user: models.User = Depends(get_current_user),
     events: EventService = Depends(get_event_service),
-):
+) -> dict[str, bool]:
     return await events.unregister_attendance(data, user_id=user.id)
 
 
@@ -315,7 +316,7 @@ async def my_events(
     user: models.User = Depends(get_current_user),
     if_none_match: str | None = Header(default=None),
     events: EventService = Depends(get_read_event_service),
-):
+) -> list[schemas.EventOut] | Response | Any:
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
     response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
@@ -339,7 +340,7 @@ async def upload_event_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
-):
+) -> models.EventFile:
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, id)
     ensure_exists(event, "events", locale)
@@ -363,7 +364,9 @@ async def upload_event_file(
 
 
 @router.get("/{id}/files", response_model=list[schemas.EventFileOut])
-async def get_event_files(id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)):
+async def get_event_files(
+    id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)
+) -> list[models.EventFile]:
     files = (
         (
             await db.execute(
@@ -373,7 +376,7 @@ async def get_event_files(id: uuid.UUID | int, db: AsyncSession = Depends(get_re
         .scalars()
         .all()
     )
-    return files
+    return list(files)
 
 
 @router.post("/upload_image")
@@ -382,7 +385,7 @@ async def upload_event_image(
     *,
     request: Request,
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
     url = await save_upload(file, "event_images", "event", locale=locale)
@@ -398,7 +401,7 @@ async def update_event(
     user: models.User = Depends(get_current_user),
     events: EventService = Depends(get_event_service),
     checker: PermissionChecker = Depends(),
-):
+) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
     ensure_exists(q, "events", locale)
@@ -450,7 +453,7 @@ async def delete_event(
     request: Request,
     events: EventService = Depends(get_event_service),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     # Check existence and permission. Service delete checks existence,
     # but maybe we want validation first?
@@ -496,7 +499,7 @@ async def get_event(
     user: models.User = Depends(get_current_user),
     if_none_match: str | None = Header(default=None),
     events: EventService = Depends(get_read_event_service),
-):
+) -> schemas.EventOut | Response | Any:
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
 
@@ -520,7 +523,7 @@ async def delete_event_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)
     if not ef:
@@ -548,7 +551,7 @@ async def semantic_search(
     db: AsyncSession = Depends(get_read_db),
     vector_service: Any = Depends(get_vector_service),
     events: EventService = Depends(get_read_event_service),
-):
+) -> list[schemas.EventOut] | Response:
     """
     Semantic search for events using embeddings.
     """

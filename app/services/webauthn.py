@@ -198,8 +198,8 @@ class WebAuthnService:
             require_user_verification=False,
         )
 
-        db_credential.sign_count = verification.new_sign_count  # type: ignore[assignment]
-        db_credential.last_used_at = datetime.now(UTC)  # type: ignore[assignment]
+        db_credential.sign_count = verification.new_sign_count
+        db_credential.last_used_at = datetime.now(UTC)
         await self.db.flush()
 
         return db_credential

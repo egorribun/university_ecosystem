@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
 import uuid
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from fastapi import Request
 
@@ -14,6 +16,9 @@ from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.auth_service import attach_pending_email
 from app.services.notification_service import NotificationService
 from app.services.user.logic import update_user_attributes
+
+if TYPE_CHECKING:
+    from app.models.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +114,7 @@ class UserProfileService:
         user_id: uuid.UUID | str,
         data: schemas.UserAdminUpdate,
         request: Request,
-        current_user: UserDTO,
+        current_user: UserDTO | User,
     ) -> UserDTO:
         if current_user.role != "admin":
             raise PermissionDenied()

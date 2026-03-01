@@ -125,7 +125,7 @@ class PresencePubSub:
 
     def __init__(self) -> None:
         self._redis: Redis | None = None
-        self._pubsub_task: asyncio.Task | None = None
+        self._pubsub_task: asyncio.Task[Any] | None = None
 
     async def initialize(self, redis: Redis | None = None) -> None:
         if self._redis or not settings.presence_pubsub_enabled:
@@ -174,8 +174,9 @@ class PresencePubSub:
                     continue
                 await _handle_presence_pubsub(payload)
         except asyncio.CancelledError:
-            await ps.unsubscribe(settings.presence_pubsub_channel)
-            await ps.close()
+            if ps:
+                await ps.unsubscribe(settings.presence_pubsub_channel)
+                await ps.close()
         except Exception as exc:
             logger.error("Presence Pub/Sub listener error: %s", exc)
 
@@ -670,7 +671,7 @@ def serialize_message(
 
 
 @router.websocket("/chat")
-async def websocket_chat(websocket: WebSocket):
+async def websocket_chat(websocket: WebSocket) -> None:
     """
     WebSocket endpoint for real-time chat.
 

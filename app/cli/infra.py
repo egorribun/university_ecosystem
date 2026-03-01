@@ -24,7 +24,7 @@ COMPONENT_NATS = "NATS"
 COMPONENT_S3 = "S3 Storage"
 
 
-async def check_infra():
+async def check_infra() -> None:
     """Check infrastructure health status."""
     table = Table(title="Infrastructure Health Status")
     table.add_column("Component", style="cyan")
@@ -94,6 +94,6 @@ async def check_infra():
 
 
 @app.command()
-def check():
+def main() -> None:
     """Run health checks for all infrastructure components."""
     asyncio.run(check_infra())

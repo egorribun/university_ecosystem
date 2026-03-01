@@ -15,7 +15,7 @@ from app.core.nats_broker import broker
 logger = logging.getLogger(__name__)
 
 
-async def main():
+async def main() -> None:
     """Main entrypoint for starting the NATS JetStream task worker. (MOD-3)"""
     logger.info("NATS Task Worker entrypoint initialized.")
     await broker.run_worker()

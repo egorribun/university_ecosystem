@@ -1,4 +1,6 @@
 import uuid
+from datetime import datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -26,18 +28,22 @@ USERS_ID_FK = "users.id"
 class News(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "news"
 
-    title = Column(String, nullable=False, index=True)
-    content = Column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
     )
-    title_en = Column(String)
-    content_en = Column(Text)
-    image_url = Column(String)
-    embedding = Column(Text().with_variant(Vector(1536), "postgresql"))
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    title_en: Mapped[str | None] = mapped_column(String)
+    content_en: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(String)
+    embedding: Mapped[Any | None] = mapped_column(
+        Text().with_variant(Vector(1536), "postgresql"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     author = relationship("User")
 

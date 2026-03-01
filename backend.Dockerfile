@@ -1,26 +1,28 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Builder
-FROM python:3.13.12-slim-bookworm AS builder
+FROM python:3.12-slim-bookworm AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_COLOR=1 \
-    PIP_NO_CACHE_DIR=1
+# Pin uv to an exact version for reproducible builds.
+# Use 0.10.6 for proven stability in current scan environments.
+COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uv/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /build
 
+# Update OS packages and install build dependencies.
 RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-builder,target=/var/cache/apt \
     apt-get update \
+    && apt-get dist-upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
        build-essential \
        curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Pin uv to an exact version for reproducible builds.
-COPY --from=ghcr.io/astral-sh/uv:0.10.7 /uv /uv/bin/uv
 ENV PATH="/uv/bin:$PATH" \
     UV_PROJECT_ENVIRONMENT="/opt/venv"
 
@@ -30,7 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime
-FROM python:3.13.12-slim-bookworm AS runtime
+FROM python:3.12-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -48,7 +50,7 @@ WORKDIR /app
 RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-runtime,target=/var/cache/apt \
     apt-get update \
-    && apt-get upgrade -y --no-install-recommends \
+    && apt-get dist-upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \

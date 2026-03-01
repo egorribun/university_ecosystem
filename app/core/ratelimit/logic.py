@@ -23,13 +23,13 @@ async def check_rate_limit(
     key = compose_identifier(namespace, identifier)
     if redis_url and redis_url.lower().startswith(("redis://", "rediss://")):
         try:
-            strategy = RedisSlidingWindowStrategy(redis_url)
-            return await strategy.check(key, limit, window_seconds)
+            redis_strategy = RedisSlidingWindowStrategy(redis_url)
+            return await redis_strategy.check(key, limit, window_seconds)
         except (RedisError, OSError):
             pass
 
-    strategy = MemorySlidingWindowStrategy(namespace)
-    return await strategy.check(identifier, limit, window_seconds)
+    memory_strategy = MemorySlidingWindowStrategy(namespace)
+    return await memory_strategy.check(identifier, limit, window_seconds)
 
 
 def get_default_strategy(namespace: str = "") -> RateLimitStrategy:

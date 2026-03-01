@@ -37,7 +37,7 @@ async def get_chats(
     chat_service: Annotated[ChatService, Depends(get_read_chat_service)],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=100, description="Number of chats to return"),
-):
+) -> ChatsListOut:
     """
     Get all chats for the current user with cursor-based pagination.
 
@@ -57,7 +57,7 @@ async def create_chat(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
-):
+) -> ChatResponse:
     """
     Create a new chat with a user. If a chat already exists, return it.
     """
@@ -72,7 +72,7 @@ async def get_chat(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_read_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
-):
+) -> ChatResponse:
     """
     Get details for a specific chat.
     """
@@ -87,7 +87,7 @@ async def get_messages(
     locale: Annotated[str, Depends(get_locale)],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(50, ge=1, le=100, description="Number of messages to return"),
-):
+) -> MessagesListOut:
     """
     Get messages for a chat with cursor-based pagination.
 
@@ -111,7 +111,7 @@ async def send_message(
     locale: Annotated[str, Depends(get_locale)],
     content: str = Form(""),
     files: list[UploadFile] = File(default=[]),
-):
+) -> MessageResponse:
     """
     Send a message to a chat.
 
@@ -129,7 +129,7 @@ async def mark_read(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
-):
+) -> dict[str, str]:
     """
     Mark all messages in a chat as read.
     """
@@ -147,7 +147,7 @@ async def clear_chat_history(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
-):
+) -> ChatMaintenanceResult:
     """Remove all messages (and attachments) from a chat for its participants."""
     return await chat_service.clear_history(chat_id, current_user, locale=locale)
 
@@ -162,6 +162,6 @@ async def delete_chat(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
-):
+) -> ChatMaintenanceResult:
     """Delete a chat entirely for all participants (messages, attachments, links)."""
     return await chat_service.delete_chat(chat_id, current_user, locale=locale)

@@ -35,7 +35,7 @@ from app.core.exceptions.handlers import (
 from app.core.lifespan import lifespan
 from app.core.metrics import configure_metrics
 from app.core.middleware import (
-    _ensure_vary_header,  # noqa: F401 - re-exported for API modules
+    _ensure_vary_header,
     configure_middleware,
 )
 from app.core.observability import configure_observability
@@ -112,7 +112,7 @@ _logger = logging.getLogger(__name__)
 
 
 @app.get("/", response_class=JSONResponse, summary="Root")
-async def get_root():
+async def get_root() -> JSONResponse:
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
@@ -124,3 +124,5 @@ app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)
 app.include_router(websocket_router)
 app.include_router(graphql_router, prefix="/graphql", include_in_schema=False)
+
+__all__ = ["_ensure_vary_header", "app", "scan_for_malware"]

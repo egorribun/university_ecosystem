@@ -131,7 +131,7 @@ async def create_news(
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
     notifications: NotificationService = Depends(get_notification_service),
-):
+) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     record = await service.create_news(data)
@@ -155,7 +155,7 @@ async def news_list(
     if_none_match: str | None = Header(default=None),
     service: NewsService = Depends(get_read_news_service),
     user: models.User | None = Depends(get_current_user_optional),
-):
+) -> schemas.PaginatedNews | Response | Any:
     """
     Get paginated list of news articles.
 
@@ -222,7 +222,7 @@ async def get_news(
     user: models.User | None = Depends(get_current_user_optional),
     db: AsyncDatabaseSession = Depends(get_read_db),
     service: NewsService = Depends(get_read_news_service),
-):
+) -> schemas.NewsOut | Response | Any:
     """
     Get a specific news article by ID.
 
@@ -315,7 +315,7 @@ async def update_news(
     data: schemas.NewsUpdate | None = Body(default=None),
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
-):
+) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
 
@@ -340,7 +340,7 @@ async def delete_news(
     request: Request,
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
 
@@ -363,7 +363,7 @@ async def like_news(
     request: Request,
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     news = await service.get_news_item(id)  # type: ignore[arg-type]
     if not news:
@@ -381,7 +381,7 @@ async def comment_on_news(
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
     notifications: NotificationService = Depends(get_notification_service),
-):
+) -> schemas.NewsCommentOut | dict[str, Any]:
     locale = resolve_locale(request=request, user=user)
     news = await service.get_news_item(id)  # type: ignore[arg-type]
     if not news:
@@ -413,19 +413,19 @@ async def get_news_interact(
     offset: int = Query(0, ge=0),
     service: NewsService = Depends(get_read_news_service),
     user: models.User | None = Depends(get_current_user_optional),
-):
+) -> schemas.NewsInteractionsOut:
     locale = resolve_locale(request=request)
     news = await service.get_news_item(id)  # type: ignore[arg-type]
     if not news:
-        raise_not_found("news", locale)
+        raise_not_found("news", locale, resource_id=id)
 
-    data = await service.get_interactions(
+    interactions = await service.get_interactions(
         id,  # type: ignore[arg-type]
         user.id if user else None,
         limit=limit,
         offset=offset,
     )
-    return data
+    return schemas.NewsInteractionsOut.model_validate(interactions)
 
 
 @router.patch("/comments/{comment_id}", response_model=schemas.NewsCommentOut)
@@ -435,7 +435,7 @@ async def update_comment(
     data: schemas.NewsCommentUpdate,
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
-):
+) -> schemas.NewsCommentOut | dict[str, Any]:
     locale = resolve_locale(request=request, user=user)
     try:
         comment = await service.update_comment(comment_id, user.id, data.content)  # type: ignore[arg-type]
@@ -458,7 +458,7 @@ async def delete_comment(
     request: Request,
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     try:
         await service.delete_comment(
@@ -479,7 +479,7 @@ async def upload_news_image(
     *,
     request: Request,
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     url = await save_upload(file, "news_images", "news", locale=locale)
@@ -497,7 +497,7 @@ async def semantic_search(
     db: AsyncDatabaseSession = Depends(get_read_db),
     vector_service: Any = Depends(get_vector_service),
     service: NewsService = Depends(get_read_news_service),
-):
+) -> list[schemas.NewsOut] | Response:
     """
     Semantic search for news articles using embeddings.
     """

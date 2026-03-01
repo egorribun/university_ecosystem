@@ -3,7 +3,7 @@ import hashlib
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 # msgspec is used for safe binary serialization of Redis cache payloads.
 # Unlike pickle, msgspec cannot execute arbitrary code on deserialization —
@@ -12,7 +12,7 @@ try:
     import msgspec.msgpack as _msgpack
 
     def _cache_encode(data: bytes, mime: str) -> bytes:
-        return _msgpack.encode({"d": data, "m": mime})
+        return cast(bytes, _msgpack.encode({"d": data, "m": mime}))
 
     def _cache_decode(payload: bytes) -> tuple[bytes, str]:
         obj = _msgpack.decode(payload)

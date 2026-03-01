@@ -22,9 +22,6 @@ class AuthSecurityService:
         now = datetime.now(UTC)
         expires_at = session.expires_at
 
-        if expires_at is None:
-            self._fail()
-
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
 

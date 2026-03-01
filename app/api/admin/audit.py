@@ -27,7 +27,7 @@ async def list_audit_logs(
     db: AsyncSession = Depends(get_db),
     secure_audit: SecureAuditService = Depends(get_secure_audit_service_dep),
     _: models.User = Depends(get_current_admin_user),
-):
+) -> schemas.AuditLogListOut:
     """List audit logs with filtering and integrity verification."""
 
     # Aliases for joining users and their profiles for both actor and subject

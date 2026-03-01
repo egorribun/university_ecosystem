@@ -62,7 +62,7 @@ async def start_totp_enrollment_endpoint(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> TotpEnrollmentStartOut:
     label = payload.label if payload else None
     reuse_existing = bool(payload.reuse_existing) if payload else False
 
@@ -106,7 +106,7 @@ async def confirm_totp_enrollment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> MfaTotpEnrollmentOut:
     enrollment = await db.get(MfaTotpEnrollment, payload.enrollment_id)
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
@@ -151,7 +151,7 @@ async def confirm_totp_enrollment(
 async def list_totp_enrollments(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> list[MfaTotpEnrollmentOut]:
     stmt = (
         select(MfaTotpEnrollment)
         .where(MfaTotpEnrollment.user_id == user.id)
@@ -171,7 +171,7 @@ async def delete_pending_totp_enrollment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> Response:
     enrollment = await db.get(MfaTotpEnrollment, enrollment_id)
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
@@ -199,7 +199,7 @@ async def delete_totp_enrollment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> MfaFactorStatusOut:
     disabled_count = await mfa.disable_totp(db, user=user, enrollment_id=enrollment_id)
     await mfa.refresh_user_mfa_preferences(db, user=user)
     payload = MfaFactorStatusOut(
@@ -234,7 +234,7 @@ async def start_webauthn_registration(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> WebAuthnRegistrationOptionsOut:
     from app.services.webauthn import WebAuthnService
 
     service = WebAuthnService(db)
@@ -273,7 +273,7 @@ async def confirm_webauthn_registration(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> MfaFactorStatusOut:
     challenge = await mfa.get_challenge(
         db,
         token=payload.challenge,
@@ -286,7 +286,7 @@ async def confirm_webauthn_registration(
     service = WebAuthnService(db)
 
     try:
-        payload_dict: dict = challenge.payload  # type: ignore[assignment]
+        payload_dict: dict[str, Any] = challenge.payload  # type: ignore[assignment]
         await service.verify_registration(
             user,
             str(payload_dict.get("options", {}).get("challenge", "")),
@@ -329,7 +329,7 @@ async def confirm_webauthn_registration(
 async def list_webauthn_credentials(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> list[dict[str, Any]]:
     from app.models.models import WebAuthnCredential
 
     stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
@@ -353,7 +353,7 @@ async def delete_webauthn_credential(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> MfaFactorStatusOut:
     from app.models.models import WebAuthnCredential
 
     cred = await db.get(WebAuthnCredential, credential_id)
@@ -385,7 +385,7 @@ async def generate_recovery_codes_endpoint(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-):
+) -> RecoveryCodesGenerateOut:
     codes = await mfa.generate_recovery_codes(db, user=user)
     await db.commit()
 
@@ -415,7 +415,7 @@ async def request_step_up(
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
     login_service: LoginService = Depends(get_login_service),
-):
+) -> auth_schemas.PendingMfaResponse:
     from app.core.localization import resolve_locale
 
     locale = resolve_locale(request=request, user=user)

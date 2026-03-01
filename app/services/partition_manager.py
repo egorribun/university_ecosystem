@@ -1,6 +1,8 @@
 import contextlib
 import logging
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import text
 
@@ -15,7 +17,7 @@ PARTITIONED_TABLES = [
 ]
 
 
-async def ensure_partitions_exist():
+async def ensure_partitions_exist() -> None:
     """
     Ensures that PostgreSQL partitions exist for the current and next few months,
     and prunes old partitions based on retention settings.
@@ -129,7 +131,9 @@ async def ensure_partitions_exist():
                         logger.error(f"Failed to prune partition {p_name}: {e}")
 
 
-async def start_partition_management_scheduler(interval_seconds: int = 86400):
+async def start_partition_management_scheduler(
+    interval_seconds: int = 86400,
+) -> Callable[[], Coroutine[Any, Any, None]]:
     """
     Simplistic scheduler for partition management.
     In a real production environment, this might be a Celery Beat task or a cron job.
@@ -146,7 +150,7 @@ async def start_partition_management_scheduler(interval_seconds: int = 86400):
 
     task = asyncio.create_task(run_periodically())
 
-    async def stop():
+    async def stop() -> None:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task

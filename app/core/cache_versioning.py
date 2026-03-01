@@ -28,7 +28,7 @@ class CacheVersionManager:
     # and to maintain state across instances if needed (though usually held globally)
     _local_state: dict[str, Any] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         pass
 
     @property

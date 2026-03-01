@@ -4,6 +4,7 @@ import logging
 import traceback
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import asyncpg
 from opentelemetry import trace
@@ -37,7 +38,7 @@ class OutboxWorker:
         self._is_running = False
         self._wakeup_event = asyncio.Event()
 
-    async def run_forever(self):
+    async def run_forever(self) -> None:
         self._is_running = True
         logger.info("OutboxWorker started (Reactive Mode)")
 
@@ -66,7 +67,7 @@ class OutboxWorker:
         with contextlib.suppress(asyncio.CancelledError):
             await listen_task
 
-    async def _listen_loop(self):
+    async def _listen_loop(self) -> None:
         """Listen for PostgreSQL NOTIFY events to wake up the worker."""
         # asyncpg needs the DSN, strip +asyncpg for compatibility if present
         dsn = settings.database_url.replace("postgresql+asyncpg://", "postgres://")
@@ -91,10 +92,10 @@ class OutboxWorker:
                 logger.warning("OutboxWorker listen connection lost, retrying: %s", e)
                 await asyncio.sleep(5)
 
-    def _on_notification(self, *args):
+    def _on_notification(self, *args: Any) -> None:
         self._wakeup_event.set()
 
-    async def stop(self):
+    async def stop(self) -> None:
         self._is_running = False
         self._wakeup_event.set()
 

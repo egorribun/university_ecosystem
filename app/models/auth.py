@@ -7,7 +7,6 @@ from sqlalchemy import (
     JSON,
     UUID,
     Boolean,
-    Column,
     DateTime,
     ForeignKey,
     Index,
@@ -61,8 +60,10 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=True, index=True
     )
     # Session fingerprint for security binding
-    accept_language = Column(String(256))
-    fingerprint_hash = Column(String(64), index=True)  # SHA-256 hex digest
+    accept_language: Mapped[str | None] = mapped_column(String(256))
+    fingerprint_hash: Mapped[str | None] = mapped_column(
+        String(64), index=True
+    )  # SHA-256 hex digest
 
     user = relationship("User", back_populates="sessions")
     challenges = relationship(
@@ -215,13 +216,21 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
 class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "trusted_devices"
 
-    token_hash = Column(String(128), unique=True, index=True, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    last_used_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    user_agent = Column(String(512), nullable=True)
-    ip_address = Column(String(45), nullable=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+    token_hash: Mapped[str] = mapped_column(
+        String(128), unique=True, index=True, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 
     user = relationship("User", back_populates="trusted_devices")
@@ -230,20 +239,28 @@ class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
 class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "webauthn_credentials"
 
-    credential_id = Column(String, unique=True, index=True, nullable=False)
+    credential_id: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
     # OZ-1 (audit 2026-02-26): Bound public_key to String(4096). Without a limit
     # an attacker could write multi-MB values during registration, causing OOM on
     # bulk credential list queries. COSE EC key ≈ 512 B base64, RSA-4096 ≈ 736 B base64.
     public_key: Mapped[str] = mapped_column(String(4096), nullable=False)
-    sign_count = Column(Integer, default=0, nullable=False)
-    transports = Column(JSON, nullable=True)  # List of allowed transports
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+    sign_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    transports: Mapped[list[Any] | None] = mapped_column(
+        JSON, nullable=True
+    )  # List of allowed transports
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
-    last_used_at = Column(DateTime(timezone=True), nullable=True)
-    label = Column(String(255), nullable=True)
-    backing_up = Column(Boolean, default=False)
-    backup_state = Column(Boolean, default=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    backing_up: Mapped[bool] = mapped_column(Boolean, default=False)
+    backup_state: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user = relationship("User", back_populates="webauthn_credentials")
 
@@ -251,12 +268,20 @@ class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
 class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "recovery_codes"
 
-    code_hash = Column(String(255), nullable=False)  # Argon2 hash of the code
-    is_used = Column(Boolean, default=False, nullable=False, index=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+    code_hash: Mapped[str] = mapped_column(
+        String(255), nullable=False
+    )  # Argon2 hash of the code
+    is_used: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
     )
-    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user = relationship("User", back_populates="recovery_codes")
 
@@ -264,19 +289,24 @@ class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):
 class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "login_history"
 
-    ip_address = Column(String(45), nullable=False)
-    user_agent = Column(String(512), nullable=True)
-    country = Column(String(2))  # ISO 3166-1 alpha-2
-    city = Column(String(128))
+    ip_address: Mapped[str] = mapped_column(String(45), nullable=False)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2))  # ISO 3166-1 alpha-2
+    city: Mapped[str | None] = mapped_column(String(128))
     # TD-2 (audit 2026-02-26): Changed from String(20) to Numeric(9,6) to enable
     # PostGIS spatial queries and correct numeric comparisons.
     # Numeric(9,6) supports ±179.999999° without floating-point imprecision.
     latitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     longitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
-    status = Column(String(20), nullable=False)  # success, failed, locked
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # success, failed, locked
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
     )
-    is_suspicious = Column(Boolean, default=False, nullable=False)
+    is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     user = relationship("User", back_populates="login_history")
