@@ -19,9 +19,11 @@
         "@isaacs/brace-expansion": "^5.0.1"
     },
     "overrides": {
-        "minimatch": "10.2.4",
+        "minimatch": "^10.2.4",
+        "tar": "^7.5.8",
         "npm": {
-            "minimatch": "10.2.4"
+            "minimatch": "^10.2.4",
+            "tar": "^7.5.8"
         }
     }
 }
