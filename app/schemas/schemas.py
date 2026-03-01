@@ -17,7 +17,7 @@ from pydantic_core import PydanticCustomError
 from app.core.localization import translate
 from app.models.enums import UserRole
 from app.schemas.base import SecureBaseModel
-from app.schemas.validators import SanitizedInput
+from app.schemas.validators import SafeRichText, SanitizedInput, SanitizedStr
 
 
 class BaseModel(SecureBaseModel):
@@ -192,11 +192,11 @@ class NewsCommentOut(BaseModel):
 
 
 class NewsCommentCreate(BaseModel):
-    content: str = Field(..., min_length=1, max_length=1000)
+    content: SafeRichText = Field(..., min_length=1, max_length=1000)
 
 
 class NewsCommentUpdate(BaseModel):
-    content: str = Field(..., min_length=1, max_length=1000)
+    content: SafeRichText = Field(..., min_length=1, max_length=1000)
 
 
 class NewsInteractionsOut(BaseModel):
@@ -550,16 +550,16 @@ class ScheduleOut(OrmModel, ScheduleBase):
 
 
 class NewsCreate(BaseModel):
-    title: str
-    content: str
+    title: SanitizedStr
+    content: SafeRichText
     title_en: SanitizedInput = None
     content_en: SanitizedInput = None
     image_url: str | None = None
 
 
 class NewsUpdate(BaseModel):
-    title: str | None = None
-    content: str | None = None
+    title: SanitizedStr | None = None
+    content: SafeRichText | None = None
     title_en: SanitizedInput = None
     content_en: SanitizedInput = None
     image_url: str | None = None

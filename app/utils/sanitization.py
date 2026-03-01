@@ -3,54 +3,31 @@ Input sanitization utilities.
 
 Provides consistent sanitization for user input to prevent XSS, path traversal,
 and other injection attacks.
+
+HTML sanitization is powered by ``nh3`` — a Python binding for Mozilla's Ammonia
+library (written in Rust). Ammonia parses HTML with the same html5ever engine used
+by Firefox, which eliminates entire classes of bypass attacks that affect regex-based
+sanitisers (pre-encoded entities, malformed tags, encoding tricks, etc.).
 """
 
 from __future__ import annotations
 
-import html
 import re
 import unicodedata
 from pathlib import Path
 from typing import Any
 
+import nh3
 
-def sanitize_html(text: str, allow_basic_tags: bool = False) -> str:
-    """
-    Sanitize HTML from user input.
+# ---------------------------------------------------------------------------
+# Tag / attribute allow-lists
+# ---------------------------------------------------------------------------
 
-    Args:
-        text: User input text
-        allow_basic_tags: If True, allow <b>, <i>, <em>, <strong>
+# Tags allowed in plain text that permits *basic* inline formatting only.
+_BASIC_TAGS: set[str] = {"b", "i", "em", "strong"}
 
-    Returns:
-        Sanitized text with HTML entities escaped
-    """
-    if not text:
-        return ""
-
-    # First escape all HTML entities
-    result = html.escape(text)
-
-    # Optionally restore basic formatting tags
-    if allow_basic_tags:
-        safe_tags = {
-            "&lt;b&gt;": "<b>",
-            "&lt;/b&gt;": "</b>",
-            "&lt;i&gt;": "<i>",
-            "&lt;/i&gt;": "</i>",
-            "&lt;em&gt;": "<em>",
-            "&lt;/em&gt;": "</em>",
-            "&lt;strong&gt;": "<strong>",
-            "&lt;/strong&gt;": "</strong>",
-        }
-        for escaped, original in safe_tags.items():
-            result = result.replace(escaped, original)
-
-    return result
-
-
-# Allowed tags and attributes for rich text sanitization
-ALLOWED_RICH_TEXT_TAGS = frozenset(
+# Tags allowed in rich-text editor output.
+ALLOWED_RICH_TEXT_TAGS: frozenset[str] = frozenset(
     {
         "p",
         "br",
@@ -77,88 +54,66 @@ ALLOWED_RICH_TEXT_TAGS = frozenset(
     }
 )
 
-ALLOWED_LINK_ATTRIBUTES = frozenset({"href", "title", "target", "rel"})
+# Per-element attribute allow-lists consumed by nh3.
+# Only <a> needs attributes; all other tags are stripped of their attributes
+# automatically by nh3 when not listed here.
+_RICH_TEXT_ATTRIBUTES: dict[str, set[str]] = {
+    "a": {"href", "title", "target", "rel"},
+}
 
-# Pattern to match HTML tags with optional attributes
-_TAG_PATTERN = re.compile(
-    r"<(/?)(\w+)([^>]*)>",
-    re.IGNORECASE | re.DOTALL,
-)
+# URL schemes permitted inside href attributes.
+# ``nh3`` enforces this at the parser level — ``javascript:`` / ``data:``
+# can never appear in the output regardless of encoding tricks.
+_SAFE_URL_SCHEMES: set[str] = {"http", "https"}
 
-# Pattern to extract href attribute
-_HREF_PATTERN = re.compile(
-    r'\bhref\s*=\s*["\']([^"\']*)["\']',
-    re.IGNORECASE,
-)
+
+def sanitize_html(text: str, allow_basic_tags: bool = False) -> str:
+    """Sanitize HTML from user input.
+
+    Args:
+        text: User input text.
+        allow_basic_tags: If ``True``, allow ``<b>``, ``<i>``, ``<em>``,
+            ``<strong>`` inline formatting tags.
+
+    Returns:
+        Sanitized text.  When *allow_basic_tags* is ``False`` all HTML tags
+        are stripped and the text is returned as plain text (HTML entities
+        are preserved so the output is safe to embed in HTML).
+    """
+    if not text:
+        return ""
+    if not allow_basic_tags:
+        # Strip every tag — pure plain-text output.
+        return nh3.clean(text, tags=set())
+    # Allow only the four safe inline-formatting tags; no attributes.
+    return nh3.clean(text, tags=_BASIC_TAGS, attributes={})
 
 
 def sanitize_rich_text(html_content: str) -> str:
-    """
-    Sanitize rich text HTML content with whitelist approach.
+    """Sanitize rich-text HTML content using a whitelist approach.
 
-    Allows a limited set of safe HTML tags for rich text editors
-    while stripping all dangerous elements and attributes.
+    Allows a limited set of safe HTML tags for rich-text editors while
+    stripping all dangerous elements and attributes.  URL schemes are
+    restricted to ``http`` and ``https`` — ``javascript:``, ``data:``,
+    ``vbscript:`` and similar schemes are rejected at the parser level by
+    ``nh3`` and can never appear in the output.
 
     Args:
-        html_content: Raw HTML from user input
+        html_content: Raw HTML from user input.
 
     Returns:
-        Sanitized HTML with only allowed tags
+        Sanitized HTML containing only allowed tags and attributes.
     """
     if not html_content:
         return ""
-
-    def replace_tag(match: re.Match[str]) -> str:
-        closing_slash = match.group(1)
-        tag_name = match.group(2).lower()
-        attributes_str = match.group(3)
-
-        # Strip disallowed tags entirely
-        if tag_name not in ALLOWED_RICH_TEXT_TAGS:
-            return ""
-
-        # For closing tags, just return the clean closing tag
-        if closing_slash:
-            return f"</{tag_name}>"
-
-        # For anchor tags, validate href and add security attributes
-        if tag_name == "a":
-            href_match = _HREF_PATTERN.search(attributes_str)
-            if href_match:
-                href = href_match.group(1)
-                # Only allow http/https URLs
-                if href.startswith(("http://", "https://", "/")):
-                    # Escape href value and add security attributes
-                    safe_href = html.escape(href, quote=True)
-                    return (
-                        f'<a href="{safe_href}" '
-                        'rel="noopener noreferrer" target="_blank">'
-                    )
-            # Invalid or missing href - strip the link
-            return ""
-
-        # For all other allowed tags, return clean tag without attributes
-        return f"<{tag_name}>"
-
-    # Replace tags according to whitelist
-    result = _TAG_PATTERN.sub(replace_tag, html_content)
-
-    # Escape any remaining < or > that might be malformed HTML
-    result = result.replace("<", "&lt;").replace(">", "&gt;")
-
-    # Restore the valid tags we just created (they use our specific format)
-    for tag in ALLOWED_RICH_TEXT_TAGS:
-        result = result.replace(f"&lt;{tag}&gt;", f"<{tag}>")
-        result = result.replace(f"&lt;/{tag}&gt;", f"</{tag}>")
-
-    # Restore anchor tags with attributes
-    result = re.sub(
-        r'&lt;a href="([^"]*)" rel="noopener noreferrer" target="_blank"&gt;',
-        r'<a href="\1" rel="noopener noreferrer" target="_blank">',
-        result,
+    return nh3.clean(
+        html_content,
+        tags=set(ALLOWED_RICH_TEXT_TAGS),
+        attributes=_RICH_TEXT_ATTRIBUTES,
+        url_schemes=_SAFE_URL_SCHEMES,
+        # nh3 automatically adds rel="noopener noreferrer" to every <a> tag.
+        link_rel="noopener noreferrer",
     )
-
-    return result
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:

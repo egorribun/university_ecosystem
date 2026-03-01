@@ -12,6 +12,9 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
+    # Required for uploading SARIF results to GitHub Code Scanning
+    permissions:
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - name: Run Semgrep
@@ -23,6 +26,16 @@ jobs:
             p/jwt
             p/fastapi
             p/secrets
+            p/react
+            p/typescript
+            p/xss
+          # Emit SARIF so findings appear in GitHub Security > Code Scanning
+          generateSarif: "1"
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
 
   secret-scan:
     name: TruffleHog Secrets

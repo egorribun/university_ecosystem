@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy.types import Text, TypeDecorator
 
 from app.core.config import settings
+
+_logger = logging.getLogger(__name__)
 
 
 class SpotifyEncryptionError(RuntimeError):
@@ -97,8 +100,6 @@ def decrypt_string(value: str | bytes | None) -> str | None:
     If decryption fails (e.g., due to key change), returns None and logs a warning
     instead of raising an exception to prevent application crashes.
     """
-    import logging
-
     if value is None:
         return None
     if isinstance(value, bytes):
@@ -112,7 +113,7 @@ def decrypt_string(value: str | bytes | None) -> str | None:
     try:
         data = _get_cipher().decrypt(token)
     except InvalidToken:
-        logging.getLogger(__name__).warning(
+        _logger.warning(
             "Failed to decrypt stored token (key mismatch?). Returning None."
         )
         return None
