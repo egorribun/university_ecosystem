@@ -1,3 +1,5 @@
+import asyncio
+import hashlib
 from functools import lru_cache
 from typing import Any
 
@@ -149,6 +151,60 @@ async def participation_summary(
         user=user,
         handler=handler,
     )
+
+
+@router.get("/summary", response_model=None)
+async def stats_summary(
+    request: Request,
+    response: Response,
+    period: str = Query("30d"),
+    skip_cache: bool = Query(False, alias="skip_cache"),
+    if_none_match: str | None = Header(default=None),
+    user: models.User = Depends(get_current_user),
+    handler: GetStatsHandler = Depends(get_read_stats_handler),
+) -> Response | dict[str, Any]:
+    """Return attendance, grades and participation stats in a single request.
+
+    PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
+    All three sub-queries run concurrently via asyncio.gather and share the
+    same Redis cache entries as the individual endpoints.
+    """
+    period_key, days = _resolve_period(period)
+    locale = resolve_locale(request=request, user=user)
+
+    def _make_query(kind: str) -> GetStatsQuery:
+        return GetStatsQuery(
+            kind=kind,
+            user_id=user.id,
+            period_key=period_key,
+            period_days=days,
+            locale=locale,
+            # Pass if_none_match only for the combined etag check below.
+            if_none_match=None,
+            skip_cache=skip_cache,
+        )
+
+    attendance_r, grades_r, participation_r = await asyncio.gather(
+        handler.handle(_make_query("attendance")),
+        handler.handle(_make_query("grades")),
+        handler.handle(_make_query("participation")),
+    )
+
+    # Build a combined ETag from the three sub-ETags.
+    sub_etags = "".join(r.etag or "" for r in (attendance_r, grades_r, participation_r))
+    combined_etag = f'"{hashlib.sha256(sub_etags.encode()).hexdigest()[:16]}"'
+
+    if if_none_match == combined_etag:
+        not_modified = Response(status_code=304)
+        _set_stats_headers(not_modified, locale=locale, etag=combined_etag)
+        return not_modified
+
+    _set_stats_headers(response, locale=locale, etag=combined_etag)
+    return {
+        "attendance": attendance_r.payload,
+        "grades": grades_r.payload,
+        "participation": participation_r.payload,
+    }
 
 
 @router.get("/creation")

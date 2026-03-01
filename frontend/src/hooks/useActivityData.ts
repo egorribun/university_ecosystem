@@ -132,21 +132,49 @@ export default function useActivityData() {
 
     setLoading(true)
 
+    // PERF-1: /stats/summary — single round-trip instead of three separate requests.
+    // Falls back to individual endpoints on failure (older backend / per-service outage).
+    type SummaryEnvelope = {
+      attendance: AttendanceSummaryResponse | null
+      grades: GradeSummaryResponse | null
+      participation: ParticipationSummaryResponse | null
+    }
+    type SettledLike<T> =
+      | { status: "fulfilled"; value: { data: T } }
+      | { status: "rejected" }
+    const _toSettled = <T>(data: T | null): SettledLike<T> =>
+      data != null ? { status: "fulfilled", value: { data } } : { status: "rejected" }
+
     try {
-      const [a, g, p] = await Promise.allSettled([
-        axios.get<AttendanceSummaryResponse>("/stats/attendance", {
+      let a: SettledLike<AttendanceSummaryResponse>
+      let g: SettledLike<GradeSummaryResponse>
+      let p: SettledLike<ParticipationSummaryResponse>
+
+      try {
+        const summary = await axios.get<SummaryEnvelope>("/stats/summary", {
           params: { period },
           signal: controller.signal,
-        }),
-        axios.get<GradeSummaryResponse>("/stats/grades", {
-          params: { period },
-          signal: controller.signal,
-        }),
-        axios.get<ParticipationSummaryResponse>("/stats/participation", {
-          params: { period },
-          signal: controller.signal,
-        }),
-      ])
+        })
+        a = _toSettled(summary.data?.attendance ?? null)
+        g = _toSettled(summary.data?.grades ?? null)
+        p = _toSettled(summary.data?.participation ?? null)
+      } catch {
+        // Fallback: individual requests for older backend or per-endpoint failure.
+        ;[a, g, p] = await Promise.allSettled([
+          axios.get<AttendanceSummaryResponse>("/stats/attendance", {
+            params: { period },
+            signal: controller.signal,
+          }),
+          axios.get<GradeSummaryResponse>("/stats/grades", {
+            params: { period },
+            signal: controller.signal,
+          }),
+          axios.get<ParticipationSummaryResponse>("/stats/participation", {
+            params: { period },
+            signal: controller.signal,
+          }),
+        ])
+      }
 
       if (controller.signal.aborted) {
         return
