@@ -17,5 +17,11 @@
     },
     "dependencies": {
         "@isaacs/brace-expansion": "^5.0.1"
+    },
+    "overrides": {
+        "minimatch": "10.2.4",
+        "npm": {
+            "minimatch": "10.2.4"
+        }
     }
 }

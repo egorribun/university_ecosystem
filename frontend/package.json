@@ -96,11 +96,11 @@
     "@lhci/cli": "^0.15.1",
     "@playwright/test": "1.58.1",
     "@sentry/vite-plugin": "^4.5.0",
-    "@storybook/addon-a11y": "^10.1.10",
-    "@storybook/addon-docs": "^10.1.10",
-    "@storybook/addon-onboarding": "^10.1.10",
-    "@storybook/addon-vitest": "^10.1.10",
-    "@storybook/react-vite": "^10.1.10",
+    "@storybook/addon-a11y": "^10.2.13",
+    "@storybook/addon-docs": "^10.2.13",
+    "@storybook/addon-onboarding": "^10.2.13",
+    "@storybook/addon-vitest": "^10.2.13",
+    "@storybook/react-vite": "^10.2.13",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
@@ -140,7 +140,7 @@
     "prettier-plugin-organize-imports": "^4.3.0",
     "rollup-plugin-visualizer": "^5.12.0",
     "sharp": "^0.34.5",
-    "storybook": "^10.1.10",
+    "storybook": "^10.2.13",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.52.0",
@@ -172,6 +172,10 @@
       "esbuild": "^0.25.0"
     },
     "tmp": "^0.2.4",
-    "glob": "11.1.0"
+    "glob": "11.1.0",
+    "serialize-javascript": "7.0.3",
+    "minimatch": "10.2.4",
+    "basic-ftp": "5.2.0",
+    "rollup": "4.59.0"
   }
 }

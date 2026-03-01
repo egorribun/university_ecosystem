@@ -16,3 +16,11 @@ CVE-2024-23342
 # Status: Explicitly allowed in security/audit-allowlist.yaml (ID: 1112818, 1112862, 1112954)
 # Risk: Low - requires malicious input, server-side validation mitigates
 GHSA-7h2j-956f-4vf2
+
+# GHSA-7r86-cg39-jmmj - minimatch ReDoS (matchOne backtracking)
+# GHSA-23c5-xmqv-rm74 - minimatch ReDoS (nested extglobs)
+# Status: Upstream dependency in npm 11.11.0 (latest). No fix available in npm yet.
+# Risk: Low - development tool-only (semantic-release). Not present in production runtime.
+GHSA-7r86-cg39-jmmj
+GHSA-23c5-xmqv-rm74
+GHSA-3ppc-4f35-3m26
