@@ -38,9 +38,11 @@ def upgrade() -> None:
         )
     )
     op.execute(
+        sa.text("DROP TRIGGER IF EXISTS trg_notify_outbox_event ON stored_events;")
+    )
+    op.execute(
         sa.text(
             """
-            DROP TRIGGER IF EXISTS trg_notify_outbox_event ON stored_events;
             CREATE TRIGGER trg_notify_outbox_event
             AFTER INSERT ON stored_events
             FOR EACH STATEMENT
