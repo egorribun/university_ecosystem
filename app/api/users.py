@@ -50,6 +50,7 @@ from app.services.data_access import (
     log_data_access,
     serialize_access_logs_csv,
 )
+from app.services.file_scanner import scan_for_malware
 from app.services.group_service import GroupService
 from app.services.notifications import create_notifications_for_users
 from app.services.user.compliance_service import UserComplianceService
@@ -262,6 +263,7 @@ async def upload_avatar(
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserMediaService = Depends(get_user_media_service),
 ) -> schemas.UserOut:
+    await scan_for_malware(file, locale=None, size_bytes=file.size)
     user_dto = await service.upload_avatar(user, file)
     return schemas.UserOut.model_validate(user_dto)
 
@@ -274,6 +276,7 @@ async def upload_cover(
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
     service: UserMediaService = Depends(get_user_media_service),
 ) -> schemas.UserOut:
+    await scan_for_malware(file, locale=None, size_bytes=file.size)
     user_dto = await service.upload_cover(user, file)
     return schemas.UserOut.model_validate(user_dto)
 

@@ -47,6 +47,7 @@ from app.models import models
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO
 from app.services.event_service import EventService
+from app.services.file_scanner import scan_for_malware
 from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file, save_attachment
 
@@ -346,6 +347,7 @@ async def upload_event_file(
     ensure_exists(event, "events", locale)
     assert event is not None
     require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
+    await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_attachment(file, "event_files", f"event_{id}", locale=locale)
     ef = models.EventFile(event_id=id, file_url=url)
     db.add(ef)
@@ -388,6 +390,7 @@ async def upload_event_image(
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
+    await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_upload(file, "event_images", "event", locale=locale)
     return {"url": url}
 

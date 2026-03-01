@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 from app.api.validation import raise_http_error
 from app.core.config import settings
+from app.services.file_scanner import scan_for_malware
 from app.utils.files import delete_static_file, save_attachment
 
 
@@ -36,6 +37,7 @@ class ChatAttachmentService:
         self, upload: UploadFile, chat_id: uuid.UUID, *, locale: str | None
     ) -> dict[str, object]:
         """Save a single attachment and return its metadata."""
+        await scan_for_malware(upload, locale=locale, size_bytes=upload.size)
         meta = await save_attachment(
             upload,
             "chat_uploads",

@@ -47,7 +47,10 @@
       "Skill(commit-commands:commit:*)",
       "mcp__plugin_context7_context7__resolve-library-id",
       "Bash(\"/c/Users/egorribun/Documents/university_ecosystem/.venv/Scripts/python.exe\" -m pytest tests/test_image_proxy.py tests/test_schemas.py -x -q --tb=short)",
-      "Bash(\"/c/Users/egorribun/Documents/university_ecosystem/.venv/Scripts/python.exe\" -m pytest tests/test_image_proxy.py -q --tb=short)"
+      "Bash(\"/c/Users/egorribun/Documents/university_ecosystem/.venv/Scripts/python.exe\" -m pytest tests/test_image_proxy.py -q --tb=short)",
+      "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem ls-files .secrets/)",
+      "Bash(git rm --cached .secrets/postgres_password)",
+      "mcp__plugin_serena_serena__replace_symbol_body"
     ]
   }
 }

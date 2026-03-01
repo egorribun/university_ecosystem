@@ -59,38 +59,55 @@ async def register_key_with_tags(key: str, ttl_seconds: int = 3600) -> None:
     """
     Register a cache key with its associated tags for tag-based invalidation.
 
-    This stores a reverse index: tag -> set of keys.
-    Keys are automatically removed after TTL to prevent stale entries.
+    Stores a Redis SET index: tag:keys  →  {key, key, ...}
+    The index TTL is refreshed on every write to prevent stale ghost entries.
     """
-    cache = get_cache()
+    from app.deps.cache import get_cache_client
+
     tags = get_tags_for_key(key)
-    for tag in tags:
-        tag_set_key = f"{tag}:keys"
-        try:
-            # Add key to the tag's key set
-            await cache.set(
-                f"{tag_set_key}:{key}",
-                "1",
-                ttl=ttl_seconds,
-            )
-        except Exception as exc_type:  # pragma: no cover - defensive guard
-            logger.debug(f"Failed to register key {key} with tag {tag}: {exc_type}")
+    if not tags:
+        return
+    try:
+        redis = await get_cache_client()
+        pipe = redis.pipeline(transaction=False)
+        for tag in tags:
+            tag_index_key = f"{tag}:keys"
+            pipe.sadd(tag_index_key, key)
+            pipe.expire(tag_index_key, ttl_seconds)
+        await pipe.execute()
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.debug("Failed to register key %s with tags %s: %s", key, tags, exc)
 
 
 async def invalidate_by_tag(tag: CacheTag) -> int:
     """
-    Invalidate all cache entries associated with a specific tag.
+    Invalidate all cache entries associated with *tag*.
 
-    Returns the number of keys invalidated.
-
-    Note: This uses a pattern-based approach which requires Redis SCAN.
-    For high-performance scenarios, consider using Redis keyspace notifications.
+    Uses a Redis SET index (SMEMBERS) to find member keys in O(members)
+    rather than a full-keyspace SCAN.  Returns the number of keys deleted.
     """
-    cache = get_cache()
-    # Invalidate the tag tracker itself
-    await cache.invalidate(f"{tag}:keys")
-    logger.info(f"Invalidated all entries with tag {tag}")
-    return 0  # Actual count requires SCAN implementation
+    from app.deps.cache import get_cache_client
+
+    tag_index_key = f"{tag}:keys"
+    try:
+        redis = await get_cache_client()
+        raw_keys: set[bytes] = await redis.smembers(tag_index_key)
+        if not raw_keys:
+            logger.debug("No cached keys found for tag %s", tag)
+            return 0
+
+        keys = [k.decode() if isinstance(k, bytes) else k for k in raw_keys]
+        pipe = redis.pipeline(transaction=False)
+        for k in keys:
+            pipe.delete(k)
+        pipe.delete(tag_index_key)
+        await pipe.execute()
+
+        logger.info("Invalidated %d keys for tag %s", len(keys), tag)
+        return len(keys)
+    except Exception as exc:  # pragma: no cover - Redis unavailable
+        logger.warning("Failed to invalidate tag %s: %s", tag, exc)
+        return 0  # Actual count requires SCAN implementation
 
 
 def schedule_cache_key(group_id: int) -> str:

@@ -45,6 +45,7 @@ from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
+from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
 
@@ -482,6 +483,7 @@ async def upload_news_image(
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
+    await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_upload(file, "news_images", "news", locale=locale)
     return {"url": url}
 

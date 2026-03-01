@@ -296,15 +296,11 @@ class SuspiciousActivityDetector:
 
 
 # Global detector instance
-_detector: SuspiciousActivityDetector | None = None
-_detector_lock = threading.Lock()
+# SuspiciousActivityDetector.__init__ is pure Python (no I/O).
+# Module-level init is thread-safe via Python's import lock; no threading.Lock needed.
+_detector: SuspiciousActivityDetector = SuspiciousActivityDetector()
 
 
 def get_suspicious_activity_detector() -> SuspiciousActivityDetector:
-    """Get or create the global suspicious activity detector."""
-    global _detector
-    if _detector is None:
-        with _detector_lock:
-            if _detector is None:
-                _detector = SuspiciousActivityDetector()
+    """Return the module-level suspicious activity detector singleton."""
     return _detector

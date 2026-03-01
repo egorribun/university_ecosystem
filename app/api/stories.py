@@ -30,6 +30,7 @@ from app.core.localization import (
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
+from app.services.file_scanner import scan_for_malware
 from app.services.story_service import StoryService
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,7 @@ async def upload_story_cover(
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
+    await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_upload(file, "story_covers", "stories", locale=locale)
     return {"url": url}
 

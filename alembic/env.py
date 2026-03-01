@@ -75,7 +75,7 @@ def run_migrations_online() -> None:
 
     connection: Any = config.attributes.get("connection")
     if connection:
-        print(f"DEBUG: Using injected connection: {connection}")
+        # Connection injected externally (e.g., from a test fixture).
         run_sync_migrations(connection)
         return
 

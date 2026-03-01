@@ -262,9 +262,18 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
             )
 
     if ProxyHeadersMiddleware is not None:
-        trusted_hosts = settings.trusted_hosts_list
-        if trusted_hosts:
-            app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_hosts)
+        # trusted_proxies_list = actual IP/CIDR of the load-balancer / ingress.
+        # These are the ONLY IPs whose X-Forwarded-For headers we should trust.
+        # (trusted_hosts_list is for TrustedHostMiddleware's Host-header check —
+        #  it holds hostnames, not proxy IPs, and must NOT be used here.)
+        trusted_proxy_ips = settings.trusted_proxies_list
+        if trusted_proxy_ips:
+            app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy_ips)
+        elif settings.environment not in {"development", "local", "testing"}:
+            _logger.warning(
+                "TRUSTED_PROXIES not configured. X-Forwarded-For will NOT be "
+                "trusted. Set TRUSTED_PROXIES to your reverse-proxy CIDR/IP in .env."
+            )
 
     # TrustedHostMiddleware protects against Host Header injection attacks
     # by validating that incoming requests have an allowed Host header.
