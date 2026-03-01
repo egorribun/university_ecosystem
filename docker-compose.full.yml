@@ -30,6 +30,10 @@ services:
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
       AUTO_CREATE_SCHEMA: "false"
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      ENABLE_OTEL_LOGS: "false"
+      ENABLE_OTEL_METRICS: "false"
     volumes:
       - static-data:/app/app/static
     depends_on:
@@ -96,6 +100,10 @@ services:
       CACHE_REDIS_URL: redis://redis:6379/0
       TASKIQ_BROKER_URL: redis://redis:6379/2
       AUTO_CREATE_SCHEMA: "false"
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      ENABLE_OTEL_LOGS: "false"
+      ENABLE_OTEL_METRICS: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -496,3 +504,4 @@ volumes:
   grafana-data:
   prometheus-data:
   temporal-data:
+

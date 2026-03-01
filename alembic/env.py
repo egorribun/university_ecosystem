@@ -90,10 +90,26 @@ def run_migrations_online() -> None:
         async def async_run_migrations() -> None:
             # Cast connectable to AsyncEngine to ensure connect() returns AsyncConnection
             engine = cast(AsyncEngine, connectable)
-            async with engine.connect() as connection:
-                # connection is AsyncConnection, run_sync_migrations expects SyncConnection
-                # The connection.run_sync method handles this conversion internally.
-                await connection.run_sync(run_sync_migrations)
+
+            max_retries = 10
+            retry_delay = 2
+            last_exception = None
+
+            for attempt in range(max_retries):
+                try:
+                    async with engine.connect() as connection:
+                        await connection.run_sync(run_sync_migrations)
+                    return
+                except Exception as e:
+                    last_exception = e
+                    # Specifically log name resolution or connection failures
+                    print(f"Connection attempt {attempt + 1} failed: {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        print("Max retries reached. Migration failed.")
+                        raise last_exception from None
 
         try:
             asyncio.run(async_run_migrations())

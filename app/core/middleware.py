@@ -186,6 +186,7 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         exempt_prefixes=(
             "/internal",
             "/api/v1/csp-report",
+            "/api/v1/auth/login",
             "/api/v1/auth/logout",
             "/api/v2/auth/token",  # OAuth2 password/refresh grant
             "/api/v2/auth/webauthn",  # WebAuthn challenge/response flow
