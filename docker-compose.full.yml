@@ -30,7 +30,10 @@ services:
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
       AUTO_CREATE_SCHEMA: "false"
-      NATS_URL: nats://nats:4222
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+      ELASTICSEARCH_USER: "elastic"
+      ELASTICSEARCH_PASSWORD: "${ELASTIC_PASSWORD:?ELASTIC_PASSWORD is required - set in .env file}"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
@@ -100,7 +103,7 @@ services:
       CACHE_REDIS_URL: redis://redis:6379/0
       TASKIQ_BROKER_URL: redis://redis:6379/2
       AUTO_CREATE_SCHEMA: "false"
-      NATS_URL: nats://nats:4222
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
@@ -152,7 +155,18 @@ services:
 
   redis:
     image: redis:7.4.2-alpine
-    command: [ "redis-server", "--save", "", "--appendonly", "no" ]
+    command:
+      - "redis-server"
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+      - "--maxmemory"
+      - "200mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+      - "--hz"
+      - "20"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -175,9 +189,8 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
     volumes:
       - minio-data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    # Ports intentionally not published: MinIO is internal-only.
+    # Console access (9001) via SSH tunnel only: ssh -L 9001:localhost:9001 server
     networks:
       - internal
     healthcheck:
@@ -236,14 +249,15 @@ services:
       - "--js"
       - "--sd=/data"
       - "--http_port=8222"
-    ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "--user=${NATS_USER:?NATS_USER is required - set in .env file}"
+      - "--pass=${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}"
+    # Ports not published: NATS is internal-only. Monitoring (8222) accessible via SSH tunnel.
     volumes:
       - nats-data:/data
     networks:
       - internal
     healthcheck:
+      # Monitoring endpoint (8222) does not require credentials — safe for healthcheck
       test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
       interval: 10s
       timeout: 5s
@@ -289,7 +303,7 @@ services:
       - "8083:8081"
     environment:
       WS_HUB_PORT: "8081"
-      NATS_URL: nats://nats:4222
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
       JWT_SECRET: ${SECRET_KEY}
     depends_on:
       - nats
@@ -308,7 +322,7 @@ services:
       context: .
       dockerfile: services/file-processor/Dockerfile
     environment:
-      NATS_URL: nats://nats:4222
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
@@ -333,16 +347,17 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.17.1
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
+      - xpack.security.enabled=true
+      - xpack.security.transport.ssl.enabled=false  # single-node, internal network only
+      - "ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD is required - set in .env file}"
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
+    # Port not published: ES is internal-only. Access via SSH tunnel if needed.
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsSL http://localhost:9200/_cluster/health"]
+      test: ["CMD-SHELL", "curl -fsSL -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -375,8 +390,8 @@ services:
     image: temporalio/admin-tools:1.26.2
     container_name: temporal
     ports:
-      - "7233:7233"
-      - "8233:8233"
+      - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
+      # UI port (8233) not published: use SSH tunnel or internal access only
     environment:
       - TEMPORAL_CLI_ADDRESS=temporal:7233
     entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
@@ -414,13 +429,15 @@ services:
   grafana:
     image: grafana/grafana:11.5.1
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"  # localhost only; access via SSH tunnel in production
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required - set in .env file}
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
     networks:
       - internal
-      - public
     deploy:
       resources:
         limits:

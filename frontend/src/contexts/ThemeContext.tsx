@@ -10,10 +10,19 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
+const VALID_THEMES: ReadonlySet<Theme> = new Set(["light", "dark", "system"])
+
+const readStoredTheme = (): Theme => {
+  try {
+    const raw = localStorage.getItem("ue-mode")
+    return raw && VALID_THEMES.has(raw as Theme) ? (raw as Theme) : "system"
+  } catch {
+    return "system"
+  }
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    return (localStorage.getItem("ue-mode") as Theme) || "system"
-  })
+  const [theme, setThemeState] = useState<Theme>(readStoredTheme)
 
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light")
 

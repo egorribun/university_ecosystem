@@ -474,19 +474,21 @@ async def get_login_service(
     redis_session_service: Annotated[Any, Depends(get_redis_session_service)],
     geolocation_service: Annotated[Any, Depends(get_geolocation_service)],
 ) -> Any:
+    from app.repositories.auth_repository import AuthRepository
     from app.repositories.user_repository import UserRepository
     from app.services.auth.lockout import LockoutService
     from app.services.auth.login_service import LoginService
     from app.services.notification_service import NotificationService
     from app.services.user.profile_service import UserProfileService
 
+    auth_repo = AuthRepository(db)
     user_repo = UserRepository(db)
     notifications = NotificationService(db)
     profile_service = UserProfileService(user_repo, audit, notifications)
     lockout_service = LockoutService(db)
 
     return LoginService(
-        db,
+        auth_repo,
         user_repo,
         profile_service,
         session_service,

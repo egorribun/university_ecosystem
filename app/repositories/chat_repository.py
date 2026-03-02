@@ -365,8 +365,19 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
         await self.db.flush()
         return (int(getattr(result, "rowcount", 0) or 0)) > 0
 
+    # P2-fix (audit 2026-02-26): Without a LIMIT the presence audience query is
+    # O(chats × participants) and can load tens-of-thousands of UUIDs into memory
+    # for heavily-connected users (e.g. admins in many group chats).
+    # 500 recipients is generous for real-time presence while preventing exhaustion.
+    _PRESENCE_AUDIENCE_LIMIT: int = 500
+
     async def get_presence_audience(self, user_id: uuid.UUID) -> set[uuid.UUID]:
-        """Resolve user IDs that should receive presence updates for user_id."""
+        """Resolve user IDs that should receive presence updates for user_id.
+
+        Capped at ``_PRESENCE_AUDIENCE_LIMIT`` to prevent memory exhaustion for
+        heavily-connected users. The cache in ``websocket._get_presence_audience``
+        shields subsequent calls.
+        """
         chat_ids_subquery = select(chat_participants.c.chat_id).where(
             chat_participants.c.user_id == user_id
         )
@@ -374,6 +385,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
             select(chat_participants.c.user_id)
             .distinct()
             .where(chat_participants.c.chat_id.in_(chat_ids_subquery))
+            .limit(self._PRESENCE_AUDIENCE_LIMIT)
         )
         result = await self.db.execute(stmt)
         audience = {row[0] for row in result.all()}

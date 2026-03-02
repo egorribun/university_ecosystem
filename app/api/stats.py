@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
@@ -9,6 +8,11 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.container import get_read_stats_handler
 from app.core.localization import resolve_locale
+
+# P2-fix (audit 2026-02-26): import _ensure_vary_header from its defining module
+# (app.core.middleware) instead of via app.main, which would create a circular
+# dependency: stats → main → routers → stats.
+from app.core.middleware import _ensure_vary_header
 from app.cqrs.queries import GetStatsHandler, GetStatsQuery
 from app.deps.cache import format_etag
 from app.models import models
@@ -16,19 +20,17 @@ from app.models import models
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 
-@lru_cache(maxsize=1)
-def _get_vary_helper() -> Any:
-    from app.main import _ensure_vary_header
-
-    return _ensure_vary_header
-
-
 def _set_stats_headers(
     response: Response, *, locale: str, etag: str | None = None
 ) -> None:
-    _get_vary_helper()(response, "Accept-Language")
+    _ensure_vary_header(response, "Accept-Language")
     response.headers["Content-Language"] = locale
-    response.headers["Cache-Control"] = _STATS_CACHE_CONTROL
+    # P3-fix (audit 2026-02-26): compute Cache-Control lazily so that unit tests
+    # that override settings.stats_cache_ttl_seconds see the correct value instead
+    # of the import-time snapshot.
+    response.headers["Cache-Control"] = (
+        f"private, max-age={settings.stats_cache_ttl_seconds}"
+    )
     if etag:
         response.headers["ETag"] = format_etag(etag)
 
@@ -40,8 +42,6 @@ _PERIOD_ALIASES = {
 }
 
 _PERIOD_DEFAULT = ("30d", 30)
-
-_STATS_CACHE_CONTROL = f"private, max-age={settings.stats_cache_ttl_seconds}"
 
 
 def _resolve_period(period: str | None) -> tuple[str, int]:

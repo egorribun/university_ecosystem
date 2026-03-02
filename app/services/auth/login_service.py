@@ -16,7 +16,6 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.localization import resolve_locale
-from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.schemas import schemas
@@ -27,6 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
 
+    from app.repositories.auth_repository import AuthRepository
     from app.repositories.user_repository import UserRepository
     from app.services.audit_service import AuditService
     from app.services.auth.lockout import LockoutService
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 class LoginService:
     def __init__(
         self,
-        db: AsyncDatabaseSession,
+        auth_repo: AuthRepository,
         user_repo: UserRepository,
         profile_service: UserProfileService,
         session_service: SessionService,
@@ -48,14 +48,16 @@ class LoginService:
         redis_session_service: Any,
         geolocation_service: Any,
     ):
+        # P2-fix (audit 2026-02-26): AuthRepository is now injected via the DI
+        # container (deps.py:get_login_service) instead of being constructed
+        # inline here. This makes the dependency explicit, testable, and respects
+        # the Dishka DI conventions used throughout the rest of the codebase.
+        self.repo = auth_repo
         self.user_repo = user_repo
         self.profile_service = profile_service
         self.session_service = session_service
         self.lockout_service = lockout_service
         self.audit = audit
-        from app.repositories.auth_repository import AuthRepository
-
-        self.repo = AuthRepository(db)
         self.redis_session = redis_session_service
         self.geolocation = geolocation_service
 

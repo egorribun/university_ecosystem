@@ -81,6 +81,16 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
         }
         return resolved.toString()
       },
+      createHTML: (value: string) => {
+        // Use synchronous DOMPurify if already loaded; otherwise reject.
+        // DOMPurify is loaded lazily by ensureTrustedTypesPolicies() before any HTML
+        // rendering occurs, so getDOMPurifySync() should always return a value here.
+        const purify = getDOMPurifySync()
+        if (!purify) {
+          throw new TypeError("DOMPurify not loaded — refusing createHTML via app policy")
+        }
+        return purify.sanitize(value, DEFAULT_SANITIZE_CONFIG)
+      },
     }) as TrustedTypePolicy
     win.__ttAppPolicy = policy
   } catch {

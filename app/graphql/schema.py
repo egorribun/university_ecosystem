@@ -5,7 +5,6 @@ included in the FastAPI application.
 """
 
 import logging
-import uuid
 from collections.abc import AsyncGenerator
 
 import strawberry
@@ -37,7 +36,10 @@ async def get_context(
 
     # Create a new session for this request
     async with async_session() as session:
-        # Try to get current user from auth header
+        # Try to get current user from auth header.
+        # P1-fix (audit 2026-02-26): Use GraphQLTokenValidator which applies the
+        # same five-layer security check as the REST get_current_user dependency
+        # (Redis revocation → DB session → expiry → fingerprint → user active).
         current_user = None
         try:
             auth_header = request.headers.get("Authorization", "")
@@ -50,59 +52,15 @@ async def get_context(
                     user_id = payload.get("sub")
                     jti = payload.get("jti")
 
-                    # RZ-2 (audit 2026-02-26): GraphQL must honour session revocation
-                    # exactly like the REST path (deps.py:54-62).
-                    # Step 1 — Redis fast-path (O(1), optional):
-                    _user_id_valid = True
-                    if jti:
-                        try:
-                            from app.deps.cache import get_cache_client
+                    if user_id and jti:
+                        from app.services.auth.graphql_token_validator import (
+                            GraphQLTokenValidator,
+                        )
 
-                            _redis = await get_cache_client()
-                            if await _redis.exists(f"revoked:jti:{jti}"):
-                                _user_id_valid = False
-                        except Exception:
-                            pass  # Redis unavailable — fall through to DB check
-
-                    # Step 2 — DB authoritative check (session.revoked_at):
-                    if _user_id_valid and jti:
-                        try:
-                            from sqlalchemy import select
-
-                            from app.models.models import ActiveSession
-
-                            _result = await session.execute(
-                                select(ActiveSession).where(
-                                    ActiveSession.jti == jti,
-                                    ActiveSession.revoked_at.is_(None),
-                                )
-                            )
-                            _active = _result.scalar_one_or_none()
-                            if _active is None:
-                                _user_id_valid = False
-                        except Exception:
-                            pass  # DB error — treat as unauthenticated
-
-                    if _user_id_valid and user_id:
-                        from sqlalchemy import select
-
-                        from app.models import User
-
-                        try:
-                            val = (
-                                uuid.UUID(user_id)
-                                if isinstance(user_id, str)
-                                else user_id
-                            )
-                            result = await session.execute(
-                                select(User).where(User.id == val)
-                            )
-                            current_user = result.scalar_one_or_none()
-                        except (ValueError, TypeError):
-                            pass
+                        validator = GraphQLTokenValidator(request, session)
+                        current_user = await validator.validate(str(user_id), str(jti))
         except Exception as exc:
-            # Note: Auth failures are acceptable for public queries,
-            # but we should log them for debugging
+            # Auth failures are acceptable for public queries; log for debugging.
             from app.auth.security import SecurityError
 
             if not isinstance(exc, SecurityError):
