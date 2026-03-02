@@ -125,8 +125,11 @@ export function useChatWebSocket({
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
 
     try {
-      const token = readAccessToken()
-      const ws = token ? new WebSocket(wsUrl, ["access_token", token]) : new WebSocket(wsUrl)
+      // Authentication is handled via HttpOnly cookie (access_token_v2).
+      // The browser sends it automatically — no token in Sec-WebSocket-Protocol needed.
+      // Passing a token as subprotocol logs it in every Nginx access line (SECURITY RISK).
+      // Backend fallback: websocket.py:809 reads access_token_v2 cookie directly.
+      const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {

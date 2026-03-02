@@ -8,7 +8,18 @@ import { SessionSigningKeyOut } from "@/api/generated"
 import { logWarning } from "@/app/logger"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-export const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
+// Kept for one-time migration: clear any key previously persisted in sessionStorage.
+const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
+
+// One-time cleanup: remove legacy key that was incorrectly stored in sessionStorage.
+// Safe to run on every load — no-op if key is already absent.
+if (typeof sessionStorage !== "undefined") {
+  try {
+    sessionStorage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
 
 type SessionSigningKeyResponse = SessionSigningKeyOut
 
@@ -78,32 +89,24 @@ export const signSnapshot = async (
   return cryptoWorker.hmacSha256({ json, key })
 }
 
-export const readStoredSessionSigningKey = (): string | null => {
-  if (typeof sessionStorage === "undefined") return null
-  try {
-    return sessionStorage.getItem(SESSION_SIGNING_KEY_STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
+/**
+ * Signing key is kept ONLY in memory (React state + ref).
+ * sessionStorage is NOT used: XSS can read it trivially with one line.
+ * On page reload the key is re-fetched from /auth/session/signing-key (auth'd endpoint).
+ * Security: key exposure requires full JS execution context control, not just storage read.
+ */
+export const readStoredSessionSigningKey = (): string | null => null
 
-const persistSessionSigningKey = (value: string | null) => {
-  if (typeof sessionStorage === "undefined") return
-  try {
-    if (value) {
-      sessionStorage.setItem(SESSION_SIGNING_KEY_STORAGE_KEY, value)
-    } else {
-      sessionStorage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
-    }
-  } catch {
-    /* ignore */
-  }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const persistSessionSigningKey = (_value: string | null) => {
+  // Intentionally empty — signing key must not be written to any Web Storage.
+  // The key lives only in React state (useSessionCrypto hook) for the session duration.
 }
 
 export const useSessionCrypto = () => {
-  const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(() =>
-    readStoredSessionSigningKey()
-  )
+  // Always initialise to null — key lives in memory only, never in Web Storage.
+  // ensureSessionSigningKey() will fetch from /auth/session/signing-key on first use.
+  const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(null)
   const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
   const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
   const sessionCacheHashRef = useRef<string | null>(null)

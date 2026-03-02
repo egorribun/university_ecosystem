@@ -95,17 +95,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
-  <meta http-equiv="Content-Security-Policy" content="
-        default-src 'self';
-        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com;
-        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-        img-src 'self' data: https: blob:;
-        connect-src 'self' https://api.spotify.com https://api.open-meteo.com https://fcm.googleapis.com https://fcmregistrations.googleapis.com https://*.push.services.mozilla.com https://*.push.apple.com;
-        font-src 'self' data: https://fonts.gstatic.com;
-        frame-src https://yandex.ru https://*.yandex.ru;
-        object-src 'none';
-        base-uri 'self';
-      " />
+  <!--
+    Content-Security-Policy is NOT set here.
+    In production: the backend (app/core/policies/csp.py) injects a nonce-based
+    CSP header (strict-dynamic + require-trusted-types-for 'script') on every response.
+    In development: Vite injects a permissive dev-only meta-CSP via vite.config.ts plugin.
+    Setting a static CSP here would override the server header and defeat nonce protection.
+  -->
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fafc" />
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#020617" />
   <meta name="description"

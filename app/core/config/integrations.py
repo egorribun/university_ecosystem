@@ -12,3 +12,8 @@ class IntegrationSettings(BaseAppSettings):
     rust_optimizer_url: str = "http://rust-optimizer:8080"
     spicedb_endpoint: str = "spicedb:50051"
     spicedb_preshared_key: str = "development-preshared-key"
+
+    # Elasticsearch — requires xpack.security (ELASTIC_PASSWORD must be set in production)
+    elasticsearch_url: str = "http://localhost:9200"
+    elasticsearch_user: str = "elastic"
+    elasticsearch_password: str = ""

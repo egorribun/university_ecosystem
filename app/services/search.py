@@ -27,14 +27,19 @@ class SearchService:
     def __init__(
         self,
         hosts: list[str] | str = "http://localhost:9200",
+        http_auth: tuple[str, str] | None = None,
     ) -> None:
         self._hosts = [hosts] if isinstance(hosts, str) else hosts
+        self._http_auth = http_auth
         self._client: AsyncElasticsearch | None = None
 
     @property
     def client(self) -> AsyncElasticsearch:
         if self._client is None:
-            self._client = AsyncElasticsearch(hosts=self._hosts)
+            kwargs: dict[str, Any] = {"hosts": self._hosts}
+            if self._http_auth is not None:
+                kwargs["http_auth"] = self._http_auth
+            self._client = AsyncElasticsearch(**kwargs)
         return self._client
 
     async def close(self) -> None:
@@ -271,8 +276,11 @@ def get_search_service() -> SearchService:
     if _search_service is None:
         from app.core.config import settings
 
-        hosts = getattr(settings, "elasticsearch_hosts", "http://localhost:9200")
-        _search_service = SearchService(hosts=hosts)
+        hosts = getattr(settings, "elasticsearch_url", "http://localhost:9200")
+        user = getattr(settings, "elasticsearch_user", "elastic")
+        password = getattr(settings, "elasticsearch_password", "")
+        http_auth: tuple[str, str] | None = (user, password) if password else None
+        _search_service = SearchService(hosts=hosts, http_auth=http_auth)
     return _search_service
 
 

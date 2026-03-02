@@ -84,6 +84,19 @@ import { SERVICE_WORKER_MESSAGE_TYPES } from "./constants/serviceWorkerMessages"
 self.addEventListener("message", (event) => {
   if (!event.data) return
 
+  // Origin check: only accept messages from the same origin as this service worker.
+  // Prevents cross-origin iframes or malicious pages from sending control messages.
+  if (event.source && "url" in event.source) {
+    const senderOrigin = new URL((event.source as WindowClient).url).origin
+    const swOrigin = new URL(self.location.href).origin
+    if (senderOrigin !== swOrigin) {
+      if (import.meta.env.DEV) {
+        console.warn("[SW] Rejected postMessage from foreign origin:", senderOrigin)
+      }
+      return
+    }
+  }
+
   switch (event.data.type) {
     case SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING:
       self.skipWaiting()

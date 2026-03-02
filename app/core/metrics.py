@@ -406,6 +406,31 @@ _CIRCUIT_BREAKER_TRIPS = (
     else None
 )
 
+# DEPRECATED: Legacy bcrypt verifications — track migration progress.
+# Condition for removal: counter stays at 0 for 30+ consecutive days → remove
+# _verify_legacy_bcrypt(), the bcrypt dependency, and this counter.
+# Ticket: ECOSYSTEM-BCRYPT-MIGRATION (target: Q3 2026)
+_LEGACY_BCRYPT_VERIFICATIONS = (
+    Counter(
+        "auth_legacy_bcrypt_verifications_total",
+        "Total legacy bcrypt password verifications — decreasing to 0 means migration is complete",
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+
+def record_legacy_bcrypt_verification() -> None:
+    """Increment the legacy bcrypt verification counter.
+
+    Called by _verify_legacy_bcrypt on every successful or attempted bcrypt check.
+    Monitor this counter: when it reaches 0 for 30+ days the bcrypt migration
+    is complete and the legacy code path can be removed.
+    """
+    if _LEGACY_BCRYPT_VERIFICATIONS is not None:
+        _LEGACY_BCRYPT_VERIFICATIONS.inc()
+
 
 def record_login_success(method: str = "password") -> None:
     """Record a successful login."""

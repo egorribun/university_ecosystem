@@ -77,10 +77,13 @@ class ContentSecurityPolicy:
             )
 
         # 1. Require Trusted Types
+        # Included in both dev and prod so developers see violations during local development.
+        # In dev the dev CSP template uses 'unsafe-inline'/'unsafe-eval' for HMR compatibility,
+        # but TT enforcement still catches innerHTML/eval without a policy — which is exactly
+        # the signal we want. Omitted only when the entire CSP is in report_only mode (to
+        # avoid sending the directive twice when the caller wraps it in CSPRO).
         require_trusted_types = (
-            "require-trusted-types-for 'script'"
-            if not self.is_development and not self.report_only
-            else ""
+            "require-trusted-types-for 'script'" if not self.report_only else ""
         )
         policy = template.replace("{require_trusted_types}", require_trusted_types)
 

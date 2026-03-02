@@ -97,7 +97,16 @@ def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
     bcrypt silently truncates inputs at 72 bytes (the historical behaviour).
     This matches the semantics passlib used; callers should rehash matching
     legacy passwords to argon2id on successful login.
+
+    DEPRECATED: Remove once auth_legacy_bcrypt_verifications_total counter
+    stays at 0 for 30+ consecutive days (migration complete, Q3 2026 target).
     """
+    try:
+        from app.core.metrics import record_legacy_bcrypt_verification
+
+        record_legacy_bcrypt_verification()
+    except Exception:
+        pass  # Metrics must never break auth
     try:
         password_bytes = plain_password.encode("utf-8")[:LEGACY_BCRYPT_MAX_BYTES]
         return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
@@ -132,26 +141,54 @@ def _calculate_lookup_hash(input_data: str) -> str:
 # RZ-4: Module-level shared HTTPX client with connection pooling.
 # Creating a new AsyncClient per request burns a TCP handshake (~50-150 ms)
 # and bypasses keep-alive reuse. Closed in app lifespan (app/core/lifespan.py).
+#
+# P1-fix (audit 2026-02-26): original _get_hibp_client() was NOT race-free.
+# Two coroutines concurrently hitting `if _hibp_client is None` would both
+# create a new AsyncClient; the first one would be silently leaked (never
+# aclose'd), exhausting file-descriptors over time.
+# Fix: asyncio.Lock + double-checked locking pattern. The Lock is created
+# lazily to avoid "no running event loop" errors at import time.
 _hibp_client: httpx.AsyncClient | None = None
+_hibp_client_lock: asyncio.Lock | None = None
 
 
-def _get_hibp_client() -> httpx.AsyncClient:
-    """Return (or lazily create) the shared HIBP AsyncClient."""
+def _ensure_hibp_lock() -> asyncio.Lock:
+    """Return (or lazily create) the HIBP init lock — synchronous, no await."""
+    global _hibp_client_lock
+    if _hibp_client_lock is None:
+        # Safe: asyncio is cooperative. No await → no interleaving here.
+        _hibp_client_lock = asyncio.Lock()
+    return _hibp_client_lock
+
+
+async def _get_hibp_client() -> httpx.AsyncClient:
+    """Return (or lazily create) the shared HIBP AsyncClient — race-free.
+
+    Uses double-checked locking: the fast path (client already exists) avoids
+    lock acquisition entirely; the slow path (first call) serialises through
+    the lock so only one coroutine creates the client.
+    """
     global _hibp_client
-    if _hibp_client is None:
-        _hibp_client = httpx.AsyncClient(
-            timeout=settings.password_hibp_timeout_seconds,
-            limits=httpx.Limits(
-                max_connections=20,
-                max_keepalive_connections=10,
-                keepalive_expiry=30.0,
-            ),
-            headers={
-                "User-Agent": "UniversityEcosystem/1.0",
-                "Add-Padding": "true",
-            },
-        )
-    return _hibp_client
+    if _hibp_client is not None:
+        return _hibp_client  # fast path — no lock contention
+
+    async with _ensure_hibp_lock():
+        # Re-check inside the lock: another coroutine may have initialised it
+        # while we were waiting to acquire.
+        if _hibp_client is None:
+            _hibp_client = httpx.AsyncClient(
+                timeout=settings.password_hibp_timeout_seconds,
+                limits=httpx.Limits(
+                    max_connections=20,
+                    max_keepalive_connections=10,
+                    keepalive_expiry=30.0,
+                ),
+                headers={
+                    "User-Agent": "UniversityEcosystem/1.0",
+                    "Add-Padding": "true",
+                },
+            )
+    return _hibp_client  # type: ignore[return-value]  # guaranteed non-None
 
 
 async def close_hibp_client() -> None:
@@ -178,7 +215,8 @@ async def _validate_password_hibp(password: str, *, locale: str | None = None) -
     fail_open: bool = getattr(settings, "password_hibp_fail_open", False)
 
     try:
-        response = await _get_hibp_client().get(url)
+        client = await _get_hibp_client()
+        response = await client.get(url)
     except httpx.RequestError as exc:
         _logger.warning(
             "HIBP password check failed (fail-%s): %s",

@@ -10,7 +10,10 @@ import {
   handleEtagResponse,
   etagCache,
   responseCache,
+  registerSigningKeyAccessor,
 } from "./interceptors/etagCache"
+
+export { registerSigningKeyAccessor }
 import {
   waitForClientQueueSlot,
   releaseClientQueueSlot,
@@ -23,6 +26,18 @@ import {
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
 const API_TIMEOUT_MS = 8000
+
+/**
+ * Endpoints that are allowed to bypass the client-side rate-limit queue.
+ * Only add paths whose latency is directly user-visible during auth flows.
+ * Any other endpoint with skipRateLimitQueue=true will be demoted to the queue.
+ */
+const RATE_LIMIT_SKIP_ALLOWLIST = new Set([
+  "/auth/session/signing-key",
+  "/users/me",
+  "/auth/refresh",
+  "/auth/token",
+])
 
 const devBase = ""
 const prodBase = `${import.meta.env.VITE_BACKEND_ORIGIN || ""}/api/v1`
@@ -41,8 +56,8 @@ const api = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
   withCredentials: true,
   timeout: API_TIMEOUT_MS,
-  xsrfCookieName: "XSRF-TOKEN",
-  xsrfHeaderName: "X-XSRF-TOKEN",
+  xsrfCookieName: "csrf_token",
+  xsrfHeaderName: "X-CSRF-Token",
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -81,6 +96,17 @@ const getRetryDelay = (headers: Record<string, unknown> | undefined) => {
 api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
 
+  // Guard the bypass flag: only allowlisted URLs may skip the rate-limit queue.
+  if (candidate.skipRateLimitQueue) {
+    const url = candidate.url ?? ""
+    if (!RATE_LIMIT_SKIP_ALLOWLIST.has(url)) {
+      if (import.meta.env.DEV) {
+        console.warn(`[rateLimit] skipRateLimitQueue=true for non-allowlisted URL: ${url}`)
+      }
+      candidate.skipRateLimitQueue = false
+    }
+  }
+
   if (!candidate.skipRateLimitQueue) {
     // @ts-expect-error - axios config bridge
     await waitForClientQueueSlot(candidate)
@@ -106,10 +132,10 @@ api.interceptors.request.use(async (config) => {
 })
 
 api.interceptors.response.use(
-  (response) => {
+  async (response) => {
     const config = response.config as ApiRequestConfig | undefined
     if (config?.etagCacheKey) {
-      handleEtagResponse(response, config.etagCacheKey)
+      await handleEtagResponse(response, config.etagCacheKey)
     }
     updateTraceContext(response.headers as AxiosHeaders)
     // @ts-expect-error - axios config bridge

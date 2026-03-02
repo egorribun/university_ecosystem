@@ -31,6 +31,14 @@ export const MessengerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
     enabled: isAuth,
     onPresenceUpdate: (userId, active, lastSeen) => {
+      // Validate WebSocket payload before mutating React Query cache.
+      // Guards against malformed or tampered presence messages from the WS server.
+      const isValid =
+        typeof userId === "string" && userId.length > 0 && userId.length < 40 &&
+        typeof active === "boolean" &&
+        (lastSeen === null || (typeof lastSeen === "string" && lastSeen.length < 50))
+      if (!isValid) return
+
       setPresenceMap((prev) => ({
         ...prev,
         [userId]: { active, last_seen_at: lastSeen },
