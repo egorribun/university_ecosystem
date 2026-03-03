@@ -134,8 +134,8 @@ class UserEducationBase(BaseModel):
 class UserProfilePublicFlattened(BaseModel):
     about: str | None = None
     telegram: str | None = None
-    status: str | None = None
-    department: str | None = None
+    profile_status: str | None = None
+    profile_department: str | None = None
     position: str | None = None
     course: str | None = None
     institute: str | None = None
@@ -334,9 +334,9 @@ class UserOut(OrmModel, UserBase):
                 "cover_url": get_attr(profile, "cover_url"),
                 "about": get_attr(profile, "about"),
                 "telegram": get_attr(profile, "telegram"),
-                "status": get_attr(profile, "status"),
+                "profile_status": get_attr(profile, "status"),
                 "achievements": get_attr(profile, "achievements"),
-                "department": get_attr(profile, "department"),
+                "profile_department": get_attr(profile, "department"),
                 "position": get_attr(profile, "position"),
             }
         )
@@ -430,8 +430,8 @@ class UserPublicOut(OrmModel, UserProfilePublicFlattened):
                 "avatar_url": get_attr(profile, "avatar_url"),
                 "cover_url": get_attr(profile, "cover_url"),
                 "about": get_attr(profile, "about"),
-                "status": get_attr(profile, "status"),
-                "department": get_attr(profile, "department"),
+                "profile_status": get_attr(profile, "status"),
+                "profile_department": get_attr(profile, "department"),
                 "position": get_attr(profile, "position"),
             }
         )

@@ -87,7 +87,7 @@ async def news_factory(db_session: AsyncSession):
             # Vary created_at for pagination testing
             news = models.News(**data)
             # Use setattr for created_at to bypass Mypy Column/datetime mismatch
-            news.created_at = datetime.now(UTC) - timedelta(hours=count - i)  # type: ignore[assignment]
+            news.created_at = datetime.now(UTC) - timedelta(hours=count - i)
             db_session.add(news)
             items.append(news)
         await db_session.commit()

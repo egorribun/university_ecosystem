@@ -98,7 +98,7 @@ def _calculate_delay(failures: int) -> float:
     return PROGRESSIVE_DELAY_MAX
 
 
-class RateLimitMiddleware(_RateLimitMiddleware):  # type: ignore[no-redef]
+class RateLimitMiddleware(_RateLimitMiddleware):
     """Alias for backward compatibility."""
 
     async def _check_limit(

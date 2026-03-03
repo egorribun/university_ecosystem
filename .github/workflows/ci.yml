@@ -113,7 +113,7 @@ jobs:
       test-group-name: All-Py${{ matrix.python-version }}
       test-pattern: "tests/"
       python-version: ${{ matrix.python-version }}
-      coverage-threshold: ${{ matrix.coverage-check && 72 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 80 || 0 }}
       run-integration-tests: ${{ matrix.python-version == '3.13' }}
       parallel-workers: -1 # disable parallel execution for SQLite stability
     secrets: inherit
@@ -142,6 +142,9 @@ jobs:
 
       - name: Run mypy
         run: uv run mypy
+
+      - name: Enforce Mypy override budget
+        run: uv run python scripts/check_mypy_budget.py
 
   go-tests:
     name: Go Tests (${{ matrix.service }})

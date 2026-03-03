@@ -4,7 +4,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from functools import partial
+from functools import lru_cache, partial
 from typing import Any
 from uuid import uuid4
 
@@ -138,27 +138,13 @@ def _calculate_lookup_hash(input_data: str) -> str:
     )
 
 
-# RZ-4: Module-level shared HTTPX client with connection pooling.
-# Creating a new AsyncClient per request burns a TCP handshake (~50-150 ms)
-# and bypasses keep-alive reuse. Closed in app lifespan (app/core/lifespan.py).
-#
-# P1-fix (audit 2026-02-26): original _get_hibp_client() was NOT race-free.
-# Two coroutines concurrently hitting `if _hibp_client is None` would both
-# create a new AsyncClient; the first one would be silently leaked (never
-# aclose'd), exhausting file-descriptors over time.
-# Fix: asyncio.Lock + double-checked locking pattern. The Lock is created
-# lazily to avoid "no running event loop" errors at import time.
+# RZ-10: Lock created eagerly at import time as a module-level constant.
+# The previous lazy pattern (_hibp_client_lock: asyncio.Lock | None) had a
+# TOCTOU race under Python 3.13+ free-threaded mode (PYTHON_GIL=0): two
+# coroutines could both see None and create separate Lock objects, causing
+# one of them to be permanently leaked and the other to be used inconsistently.
 _hibp_client: httpx.AsyncClient | None = None
-_hibp_client_lock: asyncio.Lock | None = None
-
-
-def _ensure_hibp_lock() -> asyncio.Lock:
-    """Return (or lazily create) the HIBP init lock — synchronous, no await."""
-    global _hibp_client_lock
-    if _hibp_client_lock is None:
-        # Safe: asyncio is cooperative. No await → no interleaving here.
-        _hibp_client_lock = asyncio.Lock()
-    return _hibp_client_lock
+_hibp_client_lock: asyncio.Lock = asyncio.Lock()  # immutable module constant
 
 
 async def _get_hibp_client() -> httpx.AsyncClient:
@@ -172,7 +158,7 @@ async def _get_hibp_client() -> httpx.AsyncClient:
     if _hibp_client is not None:
         return _hibp_client  # fast path — no lock contention
 
-    async with _ensure_hibp_lock():
+    async with _hibp_client_lock:
         # Re-check inside the lock: another coroutine may have initialised it
         # while we were waiting to acquire.
         if _hibp_client is None:
@@ -188,7 +174,7 @@ async def _get_hibp_client() -> httpx.AsyncClient:
                     "Add-Padding": "true",
                 },
             )
-    return _hibp_client  # type: ignore[return-value]  # guaranteed non-None
+    return _hibp_client  # guaranteed non-None
 
 
 async def close_hibp_client() -> None:
@@ -468,6 +454,25 @@ def _mint_pure_jwt(
     )
 
 
+@lru_cache(maxsize=32)
+def _extract_public_key_pem(private_key_pem: str) -> str:
+    """Derive and cache the RSA public key PEM from a private key PEM.
+
+    lru_cache is keyed on the PEM string, so cache entries are automatically
+    invalidated when keys rotate (new PEM = new cache key).
+    maxsize=32 accommodates multi-key rotation scenarios with headroom.
+    """
+    key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
+    return (
+        key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
+
+
 def decode_token(token: str) -> dict | None:
     """Validate JWT signature and return the payload, or None if invalid.
 
@@ -518,20 +523,12 @@ def decode_token(token: str) -> dict | None:
             if settings.algorithm == "RS256" and secret.startswith("-----BEGIN"):
                 if "PRIVATE KEY" in secret:
                     try:
-                        # If it's a private key, extract public key for verification.
-                        # This is standard practice to separate signing/verifying.
-                        key = serialization.load_pem_private_key(
-                            secret.encode(), password=None
-                        )
-                        if hasattr(key, "public_key"):
-                            verification_key = (
-                                key.public_key()
-                                .public_bytes(
-                                    encoding=serialization.Encoding.PEM,
-                                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
-                                )
-                                .decode()
-                            )
+                        # RZ-5: Cache RSA public key extraction with lru_cache.
+                        # load_pem_private_key + public_bytes is a full RSA operation:
+                        # O(key_size). Without caching this runs on EVERY JWT request,
+                        # creating a significant CPU spike at scale. lru_cache keyed on
+                        # the PEM string auto-invalidates on key rotation.
+                        verification_key = _extract_public_key_pem(secret)
                     except Exception as exc:
                         _logger.error(
                             "Failed to extract public key from PEM for RS256 verification: %s",

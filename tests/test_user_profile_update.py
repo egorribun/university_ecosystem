@@ -326,9 +326,10 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
         "app.services.user.media_service.delete_static_file", tracking_delete
     )
 
-    from unittest.mock import AsyncMock
+    from unittest.mock import AsyncMock, MagicMock
 
     service = UserService(AsyncMock(), AuditService(), AsyncMock())
+    service.repo.add = MagicMock()
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 
@@ -374,9 +375,10 @@ async def test_upload_cover_cleans_up_on_commit_failure(
         "app.services.user.media_service.delete_static_file", tracking_delete
     )
 
-    from unittest.mock import AsyncMock
+    from unittest.mock import AsyncMock, MagicMock
 
     service = UserService(AsyncMock(), AuditService(), AsyncMock())
+    service.repo.add = MagicMock()
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 

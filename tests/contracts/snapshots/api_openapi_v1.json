@@ -120,16 +120,17 @@
           }
         },
         "required": [
+          "created_at",
           "id",
           "user_id",
           "jti",
-          "created_at",
           "expires_at"
         ],
         "title": "ActiveSessionOut",
         "type": "object"
       },
       "AdminUserTopicsResponse": {
+        "additionalProperties": false,
         "properties": {
           "allowed_topics": {
             "items": {
@@ -177,8 +178,10 @@
         "type": "object"
       },
       "AdminUserTopicsUpdate": {
+        "additionalProperties": false,
         "properties": {
           "topics": {
+            "default": [],
             "items": {
               "type": "string"
             },
@@ -190,7 +193,20 @@
         "type": "object"
       },
       "AttachmentResponse": {
+        "additionalProperties": false,
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "file_type": {
             "title": "File Type",
             "type": "string"
@@ -203,6 +219,18 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
           },
           "size": {
             "title": "Size",
@@ -224,6 +252,7 @@
         "type": "object"
       },
       "AuditLogListOut": {
+        "additionalProperties": false,
         "properties": {
           "items": {
             "items": {
@@ -245,6 +274,7 @@
         "type": "object"
       },
       "AuditLogOut": {
+        "additionalProperties": false,
         "properties": {
           "action": {
             "title": "Action",
@@ -457,7 +487,7 @@
           "files": {
             "default": [],
             "items": {
-              "format": "binary",
+              "contentMediaType": "application/octet-stream",
               "type": "string"
             },
             "title": "Files",
@@ -470,7 +500,7 @@
       "Body_upload_avatar_api_v1_users_me_avatar_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -484,7 +514,7 @@
       "Body_upload_cover_api_v1_users_me_cover_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -498,7 +528,7 @@
       "Body_upload_event_file_api_v1_events__id__upload_file_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -512,7 +542,7 @@
       "Body_upload_event_image_api_v1_events_upload_image_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -526,7 +556,7 @@
       "Body_upload_news_image_api_v1_news_upload_image_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -540,7 +570,7 @@
       "Body_upload_story_cover_api_v1_stories_upload_cover_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -552,6 +582,7 @@
         "type": "object"
       },
       "ChatCreate": {
+        "additionalProperties": false,
         "properties": {
           "participant_id": {
             "format": "uuid",
@@ -566,6 +597,7 @@
         "type": "object"
       },
       "ChatMaintenanceResult": {
+        "additionalProperties": false,
         "description": "Represents the result of a maintenance operation on a chat.",
         "properties": {
           "chat_id": {
@@ -596,6 +628,7 @@
         "type": "object"
       },
       "ChatParticipant": {
+        "additionalProperties": false,
         "properties": {
           "avatar_url": {
             "anyOf": [
@@ -642,6 +675,7 @@
         "type": "object"
       },
       "ChatResponse": {
+        "additionalProperties": false,
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -708,6 +742,7 @@
         "type": "object"
       },
       "ChatsListOut": {
+        "additionalProperties": false,
         "description": "Paginated list of chats.",
         "properties": {
           "has_more": {
@@ -741,6 +776,7 @@
         "type": "object"
       },
       "DataDeletionOut": {
+        "additionalProperties": false,
         "properties": {
           "anonymized_email": {
             "format": "email",
@@ -760,6 +796,7 @@
         "type": "object"
       },
       "DataDeletionRequest": {
+        "additionalProperties": false,
         "properties": {
           "confirm": {
             "description": "Explicit consent to remove personal data",
@@ -774,6 +811,7 @@
         "type": "object"
       },
       "DataExportOut": {
+        "additionalProperties": false,
         "properties": {
           "access_logs": {
             "items": {
@@ -828,6 +866,7 @@
         "type": "object"
       },
       "DisableUserPushRequest": {
+        "additionalProperties": false,
         "properties": {
           "user_id": {
             "description": "User ID for which push notifications should be disabled",
@@ -843,6 +882,7 @@
         "type": "object"
       },
       "EventAttendanceCreate": {
+        "additionalProperties": false,
         "properties": {
           "event_id": {
             "anyOf": [
@@ -865,6 +905,18 @@
       },
       "EventAttendanceOut": {
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "event_id": {
             "format": "uuid",
             "title": "Event Id",
@@ -907,6 +959,7 @@
         "type": "object"
       },
       "EventCreate": {
+        "additionalProperties": false,
         "properties": {
           "about": {
             "anyOf": [
@@ -1054,6 +1107,18 @@
       },
       "EventFileOut": {
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "description": {
             "anyOf": [
               {
@@ -1176,6 +1241,7 @@
             "title": "Event Type En"
           },
           "files": {
+            "default": [],
             "items": {
               "$ref": "#/components/schemas/EventFileOut"
             },
@@ -1295,18 +1361,19 @@
           }
         },
         "required": [
+          "created_at",
           "id",
           "title",
           "starts_at",
           "ends_at",
           "created_by",
-          "created_at",
           "is_active"
         ],
         "title": "EventOut",
         "type": "object"
       },
       "EventUpdate": {
+        "additionalProperties": false,
         "properties": {
           "about": {
             "anyOf": [
@@ -1480,6 +1547,7 @@
         "type": "object"
       },
       "FeatureFlagOut": {
+        "additionalProperties": false,
         "properties": {
           "allowed_groups": {
             "items": {
@@ -1535,6 +1603,7 @@
         "type": "object"
       },
       "FeatureFlagUpdateIn": {
+        "additionalProperties": false,
         "properties": {
           "description": {
             "anyOf": [
@@ -1574,6 +1643,7 @@
         "type": "object"
       },
       "ForgotPasswordIn": {
+        "additionalProperties": false,
         "properties": {
           "email": {
             "format": "email",
@@ -1599,6 +1669,18 @@
               }
             ],
             "title": "Course"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
           },
           "faculty": {
             "anyOf": [
@@ -1704,6 +1786,7 @@
         "type": "object"
       },
       "MessageResponse": {
+        "additionalProperties": false,
         "properties": {
           "attachments": {
             "default": [],
@@ -1774,6 +1857,7 @@
         "type": "object"
       },
       "MessagesListOut": {
+        "additionalProperties": false,
         "description": "Paginated list of messages.",
         "properties": {
           "has_more": {
@@ -1879,17 +1963,18 @@
           }
         },
         "required": [
+          "created_at",
           "id",
           "user_id",
           "challenge_type",
           "token",
-          "expires_at",
-          "created_at"
+          "expires_at"
         ],
         "title": "MfaChallengeOut",
         "type": "object"
       },
       "MfaFactorStatusOut": {
+        "additionalProperties": false,
         "properties": {
           "disabled": {
             "title": "Disabled",
@@ -2049,10 +2134,10 @@
           }
         },
         "required": [
+          "created_at",
           "id",
           "user_id",
-          "is_active",
-          "created_at"
+          "is_active"
         ],
         "title": "MfaTotpEnrollmentOut",
         "type": "object"
@@ -2109,6 +2194,7 @@
         "type": "object"
       },
       "NewsCommentOut": {
+        "additionalProperties": false,
         "properties": {
           "content": {
             "title": "Content",
@@ -2145,6 +2231,7 @@
         "type": "object"
       },
       "NewsCommentUpdate": {
+        "additionalProperties": false,
         "properties": {
           "content": {
             "maxLength": 1000,
@@ -2160,6 +2247,7 @@
         "type": "object"
       },
       "NewsCreate": {
+        "additionalProperties": false,
         "properties": {
           "content": {
             "title": "Content",
@@ -2211,6 +2299,7 @@
         "type": "object"
       },
       "NewsInteractionsOut": {
+        "additionalProperties": false,
         "properties": {
           "comments": {
             "items": {
@@ -2242,6 +2331,7 @@
         "type": "object"
       },
       "NewsOut": {
+        "additionalProperties": false,
         "properties": {
           "comments_count": {
             "default": 0,
@@ -2324,13 +2414,14 @@
         "required": [
           "title",
           "content",
-          "id",
-          "created_at"
+          "created_at",
+          "id"
         ],
         "title": "NewsOut",
         "type": "object"
       },
       "NewsUpdate": {
+        "additionalProperties": false,
         "properties": {
           "content": {
             "anyOf": [
@@ -2392,6 +2483,7 @@
         "type": "object"
       },
       "NotificationAction": {
+        "additionalProperties": false,
         "properties": {
           "action": {
             "description": "Notification action identifier",
@@ -2524,15 +2616,16 @@
           }
         },
         "required": [
+          "created_at",
           "id",
           "title",
-          "created_at",
           "read"
         ],
         "title": "NotificationOut",
         "type": "object"
       },
       "NotificationsListOut": {
+        "additionalProperties": false,
         "properties": {
           "has_more": {
             "title": "Has More",
@@ -2570,6 +2663,7 @@
         "type": "object"
       },
       "NotifyBody": {
+        "additionalProperties": false,
         "properties": {
           "actions": {
             "anyOf": [
@@ -2698,6 +2792,7 @@
         "type": "object"
       },
       "PaginatedEvents": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "anyOf": [
@@ -2757,6 +2852,7 @@
         "type": "object"
       },
       "PaginatedNews": {
+        "additionalProperties": false,
         "description": "Paginated news response with cursor-based pagination.",
         "properties": {
           "has_more": {
@@ -2790,6 +2886,7 @@
         "type": "object"
       },
       "PasswordChangeOut": {
+        "additionalProperties": false,
         "properties": {
           "ok": {
             "title": "Ok",
@@ -2863,6 +2960,7 @@
         "type": "object"
       },
       "PresenceStatus": {
+        "additionalProperties": false,
         "description": "Represents a participant's presence state.",
         "properties": {
           "active": {
@@ -2887,6 +2985,7 @@
         "type": "object"
       },
       "PushSubscriptionDelete": {
+        "additionalProperties": false,
         "properties": {
           "endpoint": {
             "title": "Endpoint",
@@ -2900,6 +2999,7 @@
         "type": "object"
       },
       "PushSubscriptionIn": {
+        "additionalProperties": false,
         "properties": {
           "endpoint": {
             "description": "Push subscription endpoint URL",
@@ -2945,6 +3045,7 @@
         "type": "object"
       },
       "PushSubscriptionKeys": {
+        "additionalProperties": false,
         "properties": {
           "auth": {
             "description": "Authentication secret",
@@ -2965,6 +3066,7 @@
         "type": "object"
       },
       "PushSubscriptionOut": {
+        "additionalProperties": false,
         "properties": {
           "auth": {
             "title": "Auth",
@@ -3001,6 +3103,7 @@
             "type": "string"
           },
           "topics": {
+            "default": [],
             "items": {
               "type": "string"
             },
@@ -3048,12 +3151,14 @@
         "type": "object"
       },
       "PushSubscriptionTopicsUpdate": {
+        "additionalProperties": false,
         "properties": {
           "endpoint": {
             "title": "Endpoint",
             "type": "string"
           },
           "topics": {
+            "default": [],
             "items": {
               "type": "string"
             },
@@ -3068,6 +3173,7 @@
         "type": "object"
       },
       "PushTestRequest": {
+        "additionalProperties": false,
         "properties": {
           "actions": {
             "anyOf": [
@@ -3211,6 +3317,7 @@
         "type": "object"
       },
       "PushTopicsResponse": {
+        "additionalProperties": false,
         "properties": {
           "allowed": {
             "items": {
@@ -3252,6 +3359,7 @@
         "type": "object"
       },
       "RecoveryCodesGenerateOut": {
+        "additionalProperties": false,
         "properties": {
           "codes": {
             "items": {
@@ -3274,6 +3382,7 @@
         "type": "object"
       },
       "ResetPasswordIn": {
+        "additionalProperties": false,
         "properties": {
           "password": {
             "maxLength": 200,
@@ -3294,6 +3403,7 @@
         "type": "object"
       },
       "ScheduleCreate": {
+        "additionalProperties": false,
         "properties": {
           "end_time": {
             "format": "date-time",
@@ -3375,7 +3485,20 @@
         "type": "object"
       },
       "ScheduleOut": {
+        "additionalProperties": false,
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "end_time": {
             "format": "date-time",
             "title": "End Time",
@@ -3473,6 +3596,7 @@
         "type": "object"
       },
       "ScheduleUpdate": {
+        "additionalProperties": false,
         "properties": {
           "end_time": {
             "anyOf": [
@@ -3581,6 +3705,7 @@
         "type": "object"
       },
       "SendTestResponse": {
+        "additionalProperties": false,
         "properties": {
           "detail": {
             "anyOf": [
@@ -3620,6 +3745,7 @@
         "type": "object"
       },
       "SessionBulkRevokeOut": {
+        "additionalProperties": false,
         "properties": {
           "revoked": {
             "default": 0,
@@ -3631,6 +3757,7 @@
         "type": "object"
       },
       "SessionSigningKeyOut": {
+        "additionalProperties": false,
         "properties": {
           "signing_key": {
             "title": "Signing Key",
@@ -3644,6 +3771,7 @@
         "type": "object"
       },
       "SpotifyAuthURL": {
+        "additionalProperties": false,
         "properties": {
           "url": {
             "title": "Url",
@@ -3657,6 +3785,7 @@
         "type": "object"
       },
       "SpotifyNowPlayingOut": {
+        "additionalProperties": false,
         "properties": {
           "album_image_url": {
             "anyOf": [
@@ -3681,6 +3810,7 @@
             "title": "Album Name"
           },
           "artists": {
+            "default": [],
             "items": {
               "type": "string"
             },
@@ -3771,6 +3901,7 @@
         "type": "object"
       },
       "StoryCreate": {
+        "additionalProperties": false,
         "properties": {
           "cover_url": {
             "anyOf": [
@@ -3964,18 +4095,19 @@
           }
         },
         "required": [
+          "created_at",
           "id",
           "title",
           "short_text",
           "published_at",
           "expires_at",
-          "is_active",
-          "created_at"
+          "is_active"
         ],
         "title": "StoryOut",
         "type": "object"
       },
       "StoryUpdate": {
+        "additionalProperties": false,
         "properties": {
           "cover_url": {
             "anyOf": [
@@ -4083,6 +4215,7 @@
         "type": "object"
       },
       "TokenWithProfile": {
+        "additionalProperties": false,
         "properties": {
           "access_token": {
             "anyOf": [
@@ -4191,6 +4324,7 @@
         "type": "object"
       },
       "UserAdminUpdate": {
+        "additionalProperties": false,
         "properties": {
           "email": {
             "anyOf": [
@@ -4253,6 +4387,7 @@
         "type": "object"
       },
       "UserCreate": {
+        "additionalProperties": false,
         "properties": {
           "about": {
             "anyOf": [
@@ -4308,17 +4443,6 @@
               }
             ],
             "title": "Cover Url"
-          },
-          "department": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department"
           },
           "dnd_enabled": {
             "default": false,
@@ -4427,6 +4551,28 @@
             ],
             "title": "Position"
           },
+          "profile_department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Department"
+          },
+          "profile_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Status"
+          },
           "program": {
             "anyOf": [
               {
@@ -4468,17 +4614,6 @@
               }
             ],
             "title": "Spotify Display Name"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
           },
           "telegram": {
             "anyOf": [
@@ -4522,6 +4657,7 @@
         "type": "object"
       },
       "UserEducationBase": {
+        "additionalProperties": false,
         "properties": {
           "course": {
             "anyOf": [
@@ -4594,6 +4730,7 @@
         "type": "object"
       },
       "UserEmailChangeIn": {
+        "additionalProperties": false,
         "properties": {
           "email": {
             "format": "email",
@@ -4613,6 +4750,7 @@
         "type": "object"
       },
       "UserEmailConfirmIn": {
+        "additionalProperties": false,
         "properties": {
           "token": {
             "title": "Token",
@@ -4626,6 +4764,7 @@
         "type": "object"
       },
       "UserOut": {
+        "additionalProperties": false,
         "properties": {
           "about": {
             "anyOf": [
@@ -4704,16 +4843,17 @@
             ],
             "title": "Cover Url Optimized"
           },
-          "department": {
+          "created_at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Department"
+            "title": "Created At"
           },
           "dnd_enabled": {
             "default": false,
@@ -4814,6 +4954,7 @@
             "type": "boolean"
           },
           "mfa_challenges": {
+            "default": [],
             "items": {
               "$ref": "#/components/schemas/MfaChallengeOut"
             },
@@ -4881,6 +5022,17 @@
               }
             ]
           },
+          "profile_department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Department"
+          },
           "profile_detail": {
             "anyOf": [
               {
@@ -4890,6 +5042,17 @@
                 "type": "null"
               }
             ]
+          },
+          "profile_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Status"
           },
           "program": {
             "anyOf": [
@@ -4949,17 +5112,6 @@
             ],
             "title": "Spotify Is Connected"
           },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
           "telegram": {
             "anyOf": [
               {
@@ -4983,6 +5135,7 @@
             "title": "Timezone"
           },
           "totp_enrollments": {
+            "default": [],
             "items": {
               "$ref": "#/components/schemas/MfaTotpEnrollmentOut"
             },
@@ -5010,6 +5163,7 @@
         "type": "object"
       },
       "UserPasswordChangeIn": {
+        "additionalProperties": false,
         "properties": {
           "current_password": {
             "title": "Current Password",
@@ -5031,6 +5185,18 @@
       },
       "UserPreferencesBase": {
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "dnd_enabled": {
             "anyOf": [
               {
@@ -5082,6 +5248,7 @@
         "type": "object"
       },
       "UserProfileBase": {
+        "additionalProperties": false,
         "properties": {
           "about": {
             "anyOf": [
@@ -5154,6 +5321,7 @@
         "type": "object"
       },
       "UserProfileUpdate": {
+        "additionalProperties": false,
         "properties": {
           "about": {
             "anyOf": [
@@ -5187,6 +5355,18 @@
               }
             ],
             "title": "Course"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
           },
           "department": {
             "anyOf": [
@@ -5391,6 +5571,7 @@
         "type": "object"
       },
       "UserPublicOut": {
+        "additionalProperties": false,
         "description": "Publicly visible user profile information (PII-safe).",
         "properties": {
           "about": {
@@ -5448,16 +5629,17 @@
             ],
             "title": "Cover Url"
           },
-          "department": {
+          "created_at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Department"
+            "title": "Created At"
           },
           "education_path": {
             "anyOf": [
@@ -5523,6 +5705,17 @@
             ],
             "title": "Position"
           },
+          "profile_department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Department"
+          },
           "profile_detail": {
             "anyOf": [
               {
@@ -5533,11 +5726,7 @@
               }
             ]
           },
-          "role": {
-            "$ref": "#/components/schemas/UserRole",
-            "default": "student"
-          },
-          "status": {
+          "profile_status": {
             "anyOf": [
               {
                 "type": "string"
@@ -5546,7 +5735,11 @@
                 "type": "null"
               }
             ],
-            "title": "Status"
+            "title": "Profile Status"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole",
+            "default": "student"
           },
           "telegram": {
             "anyOf": [
@@ -5581,6 +5774,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -5613,6 +5813,7 @@
         "type": "object"
       },
       "WebAuthnAuthenticationOptionsOut": {
+        "additionalProperties": false,
         "properties": {
           "challenge_token": {
             "title": "Challenge Token",
@@ -5632,6 +5833,7 @@
         "type": "object"
       },
       "WebAuthnRegistrationOptionsOut": {
+        "additionalProperties": false,
         "properties": {
           "challenge_token": {
             "title": "Challenge Token",
@@ -5651,6 +5853,7 @@
         "type": "object"
       },
       "WebAuthnRegistrationVerifyIn": {
+        "additionalProperties": false,
         "properties": {
           "challenge": {
             "title": "Challenge",
@@ -6194,7 +6397,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Logout Api V1 Auth Logout Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -6686,7 +6895,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Register Api V1 Auth Register Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -7314,7 +7527,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Mark Read Api V1 Chats  Chat Id  Read Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -7836,7 +8055,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Upload Event Image Api V1 Events Upload Image Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -8431,7 +8656,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Comment Api V1 News Comments  Comment Id  Delete",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -8619,7 +8850,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Upload News Image Api V1 News Upload Image Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -8970,7 +9207,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Like News Api V1 News  Id  Like Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -9004,7 +9247,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clear Notifications Api V1 Notifications Delete",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -9142,7 +9389,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Mark All Read Api V1 Notifications Read All Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -9178,7 +9429,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Notification Api V1 Notifications  Notif Id  Delete",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -9224,7 +9481,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Mark Read Single Api V1 Notifications  Notif Id  Read Patch",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -9268,7 +9531,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Forgot Password Api V1 Password Forgot Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -9307,7 +9576,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Reset Password Api V1 Password Reset Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -10123,7 +10398,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Disconnect Api V1 Spotify Disconnect Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -10173,7 +10454,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "title": "Response List Playlists Api V1 Spotify Playlists Get"
+                }
               }
             },
             "description": "Successful Response"
@@ -10198,7 +10481,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sync Playlists Api V1 Spotify Sync Playlists Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -10318,7 +10605,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Creation Analytics Api V1 Stats Creation Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -10489,6 +10780,79 @@
         ]
       }
     },
+    "/api/v1/stats/summary": {
+      "get": {
+        "description": "Return attendance, grades and participation stats in a single request.\n\nPERF-1 (audit 2026-03): replaces three separate client-side round-trips.\nAll three sub-queries run concurrently via asyncio.gather and share the\nsame Redis cache entries as the individual endpoints.",
+        "operationId": "stats_summary_api_v1_stats_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "30d",
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "skip_cache",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Skip Cache",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Stats Summary",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
     "/api/v1/stories": {
       "get": {
         "operationId": "list_stories_api_v1_stories_get",
@@ -10603,7 +10967,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Upload Story Cover Api V1 Stories Upload Cover Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"

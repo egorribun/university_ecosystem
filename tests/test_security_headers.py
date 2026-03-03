@@ -23,9 +23,7 @@ async def test_security_headers_production_mode(monkeypatch):
     monkeypatch.setenv("ENABLE_CORP", "true")
     monkeypatch.setenv("CORP_VALUE", "same-site")
     monkeypatch.setenv("SECURITY_CSP_REPORT_ONLY", "false")
-    monkeypatch.setenv(
-        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
-    )
+    monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
@@ -232,9 +230,7 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     monkeypatch.setenv("COEP_VALUE", "credentialless")
     monkeypatch.setenv("ENABLE_CORP", "true")
     monkeypatch.setenv("CORP_VALUE", "cross-origin")
-    monkeypatch.setenv(
-        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
-    )
+    monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
@@ -329,9 +325,7 @@ def _reset_security_env(monkeypatch):
     monkeypatch.setenv("APP_BASE_URL", "")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SECRET_KEY", "production-secret-key-at-least-32-chars")
-    monkeypatch.setenv(
-        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
-    )
+    monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")

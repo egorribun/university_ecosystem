@@ -287,6 +287,8 @@ async def test_register_rate_limit(async_client):
             "full_name": "Rate Limited User",
         }
         response = await async_client.post("/auth/register", json=payload)
+        if response.status_code != 200:
+            print(f"\nREGISTER FAIL: {response.json()}\n")
         assert response.status_code == status.HTTP_200_OK
 
     blocked_payload = {

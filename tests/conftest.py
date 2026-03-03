@@ -237,11 +237,20 @@ def mock_spicedb_permissions():
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
     """
-    Aggressively clear any leftover dependency overrides after each test.
-    This prevents AsyncMocks and other test-specific objects from leaking
-    into subsequent tests, avoiding RuntimeWarnings during deepcopy.
+    Clear ONLY the dependency overrides that were added by the CURRENT test.
+    RZ-3: The previous implementation called app.dependency_overrides.clear(),
+    which destroyed session-scoped permanent overrides installed by fixtures like
+    link_read_db_to_write_db and mock_spicedb_permissions. Those session-scoped
+    fixtures register their overrides ONCE for the entire test session, but
+    clear() wiped them after every test, making subsequent tests use the real
+    (unavailable) read-replica and real SpiceDB, causing non-deterministic failures.
     """
     from app.main import app
 
+    # Snapshot the keys of overrides that are already installed (from session-scoped fixtures).
+    _permanent_keys = set(app.dependency_overrides.keys())
     yield
-    app.dependency_overrides.clear()
+    # Remove only test-specific overrides, leaving permanent session-scoped ones intact.
+    for key in list(app.dependency_overrides.keys()):
+        if key not in _permanent_keys:
+            del app.dependency_overrides[key]

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import AsyncClient
 
-from app.api.deps import get_news_service, get_vector_service
+from app.api.deps import get_news_service
 from app.core.container import get_notification_service
 from app.main import app
 from app.models import models
@@ -206,7 +206,11 @@ async def test_delete_comment(async_client: AsyncClient, mock_news_service):
 async def test_semantic_search(
     async_client: AsyncClient, mock_news_service, mock_vector_service
 ):
+    # If semantic search relies on get_vector_service, it was probably injected directly
+    # Wait, what does the router inject? Let me just mock the VectorService class in DI if it's Dishka
+    # But this uses dependency_overrides, so it's FastAPI DI.
     from app.api.deps import get_read_news_service
+    from app.core.container import get_vector_service
 
     app.dependency_overrides[get_read_news_service] = lambda: mock_news_service
     app.dependency_overrides[get_vector_service] = lambda: mock_vector_service

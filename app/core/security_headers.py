@@ -64,15 +64,22 @@ class SecurityHeadersMiddleware:
 
                 # Determine if HTML needs nonce injection
                 if nonce and self._settings.should_inject_csp_nonce:
-                    for name_b, value_b in headers_out:
-                        if (
-                            name_b.lower() == b"content-type"
-                            and b"text/html" in value_b.lower()
-                        ):
-                            is_html = True
-                            html_status = message["status"]
-                            html_headers = headers_out
-                            break
+                    # PERF-3: Do not attempt to buffer SSE streams or non-HTML responses
+                    # for nonce injection. Buffering SSE causes latency and memory leaks.
+                    request_path = scope.get("path", "")
+                    if "/api/events/stream" not in request_path:
+                        for name_b, value_b in headers_out:
+                            if name_b.lower() == b"content-type":
+                                content_type = value_b.lower()
+                                # Only match explicit text/html, ignore event-stream
+                                if (
+                                    b"text/html" in content_type
+                                    and b"event-stream" not in content_type
+                                ):
+                                    is_html = True
+                                    html_status = message["status"]
+                                    html_headers = headers_out
+                                    break
 
                 if not is_html:
                     message = {**message, "headers": headers_out}

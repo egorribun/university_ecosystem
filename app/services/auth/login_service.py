@@ -4,7 +4,6 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
-import anyio
 from fastapi import BackgroundTasks, Request, Response, status
 
 # Removed circular dependency on app.api.deps
@@ -553,10 +552,9 @@ class LoginService:
         async with async_session() as db:
             from app.repositories.auth_repository import AuthRepository
 
-            # Geolocation resolution is synchronous and IO-bound, run in thread
-            location = await anyio.to_thread.run_sync(
-                self.geolocation.resolve, client_ip or ""
-            )
+            # Geolocation resolution is CPU-bound (memory reader) so we run it directly
+            # to avoid the overhead of thread dispatching.
+            location = self.geolocation.resolve(client_ip or "")
 
             # Use repo for record creation
             repo = AuthRepository(db)

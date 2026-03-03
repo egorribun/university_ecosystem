@@ -18,7 +18,7 @@ class AuthSecurityService:
         self.db = db
         self.locale = locale
 
-    def validate_session_expiry(self, session: ActiveSession):
+    def validate_session_expiry(self, session: ActiveSession) -> None:
         now = datetime.now(UTC)
         expires_at = session.expires_at
 
@@ -28,7 +28,7 @@ class AuthSecurityService:
         if expires_at <= now:
             self._fail()
 
-    async def handle_mfa_ttl(self, session: ActiveSession):
+    async def handle_mfa_ttl(self, session: ActiveSession) -> None:
         ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
         if ttl > 0 and session.mfa_verified_at is not None:
             now = datetime.now(UTC)
@@ -42,7 +42,7 @@ class AuthSecurityService:
 
     async def sync_last_seen(
         self, session: ActiveSession, cached_session: bool = False
-    ):
+    ) -> None:
         now = datetime.now(UTC)
         last_seen_at = session.last_seen_at
         if last_seen_at is not None and last_seen_at.tzinfo is None:
@@ -71,7 +71,7 @@ class AuthSecurityService:
             await self.db.commit()
             session.last_seen_at = now
 
-    def _fail(self):
+    def _fail(self) -> None:
         raise_unauthorized(
             self.locale,
             "errors.auth.credentials_invalid",

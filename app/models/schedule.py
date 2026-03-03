@@ -25,7 +25,7 @@ class Group(Base, UUID7PrimaryKeyMixin):
     course: Mapped[int | None] = mapped_column(Integer)
     faculty: Mapped[str | None] = mapped_column(String)
 
-    students = relationship(
+    users = relationship(
         "User", back_populates="group", passive_deletes=True, lazy="selectin"
     )
 

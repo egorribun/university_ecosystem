@@ -18,11 +18,21 @@ logger = logging.getLogger(__name__)
 
 
 class LockoutService:
-    def __init__(self, db: AsyncDatabaseSession):
+    def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
         self.repo = AuthRepository(db)
+        # TD-5: Parse lockout rules once at construction — settings don't change at runtime.
+        # Avoids repeated string parsing on every failed login attempt.
+        self._rules: list[tuple[int, int]] = self._parse_lockout_rules()
+        # RZ-1: Detect PostgreSQL dialect from the database URL at construction time.
+        # AsyncSession.bind was removed in SQLAlchemy 2.0; we must not access it.
+        _db_url: str = str(settings.database_url or "")
+        self._is_postgresql: bool = any(
+            driver in _db_url for driver in ("postgresql", "asyncpg", "psycopg")
+        )
 
-    def _lockout_rules(self) -> list[tuple[int, int]]:
+    def _parse_lockout_rules(self) -> list[tuple[int, int]]:
+        """Parse lockout thresholds from settings. Called once at construction."""
         raw = settings.auth_lockout_thresholds
         tokens: list[str]
         if isinstance(raw, str):
@@ -46,6 +56,10 @@ class LockoutService:
                 rules.append((threshold, duration))
         rules.sort(key=lambda item: item[0])
         return rules
+
+    def _lockout_rules(self) -> list[tuple[int, int]]:
+        """Return cached lockout rules. Parsing done once in __init__."""
+        return self._rules
 
     def _max_lockout_threshold(self) -> int:
         rules = self._lockout_rules()
@@ -122,9 +136,10 @@ class LockoutService:
         now = datetime.now(UTC)
 
         # Serialize all operations for this email within the transaction.
-        # hashtext() and pg_advisory_xact_lock() are PostgreSQL-specific.
-        # SQLite (used in tests) doesn't support them, so we skip it there.
-        if self.db.bind and self.db.bind.dialect.name == "postgresql":
+        # pg_advisory_xact_lock() is PostgreSQL-specific; skip on SQLite (used in tests).
+        # RZ-1: AsyncSession.bind was removed in SQLAlchemy 2.0. Dialect is detected
+        # from the database URL string at service construction time (_is_postgresql).
+        if self._is_postgresql:
             await self.db.execute(
                 text(
                     "SELECT pg_advisory_xact_lock(hashtext(:email), hashtext(reverse(:email)))"

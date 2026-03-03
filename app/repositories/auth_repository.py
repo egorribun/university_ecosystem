@@ -62,9 +62,16 @@ class AuthRepository(
         )
         active_tokens = list(result.scalars())
 
-        # Invalidate excess tokens
-        for stale in active_tokens[max_active:]:
-            stale.used = True
+        # PERF-5: Bulk UPDATE stale tokens in one round-trip instead of N individual
+        # attribute assignments that each emit their own UPDATE statement.
+        if len(active_tokens) > max_active:
+            stale_ids = [t.id for t in active_tokens[max_active:]]
+            await self.db.execute(
+                update(models.PasswordResetToken)
+                .where(models.PasswordResetToken.id.in_(stale_ids))
+                .values(used=True)
+                .execution_options(synchronize_session="fetch")
+            )
 
         # Recycle existing token slot if at limit
         if len(active_tokens) >= max_active:

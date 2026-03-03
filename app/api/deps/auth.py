@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -13,8 +13,7 @@ from app.auth import mfa
 from app.auth.fingerprint import SessionFingerprint
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.config import settings
-from app.core.container import get_audit_service, get_vector_service
-from app.core.database import get_db, get_read_db
+from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import get_cache_client
@@ -29,20 +28,6 @@ from app.services.auth.fingerprint_service import AuthFingerprintService
 from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
-
-__all__ = [
-    "get_audit_service",
-    "get_current_admin_user",
-    "get_current_user",
-    "get_current_user_full",
-    "get_current_user_optional",
-    "get_db",
-    "get_login_service",
-    "get_read_db",
-    "require_fresh_mfa",
-    "require_fresh_mfa_for_enrollment",
-    "resolve_locale",
-]
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -64,7 +49,6 @@ async def get_current_user(
     # session.revoked_at in PostgreSQL, enforced in every code path below.
     # If Redis is unavailable the except branch falls through silently — the DB
     # check is the source of truth and will still deny revoked sessions.
-    # TD-3: get_cache_client and RedisSessionService are top-level imports now.
     try:
         _redis = await get_cache_client()
         if await _redis.exists(f"revoked:jti:{jti}"):
@@ -94,7 +78,6 @@ async def get_current_user(
 
         # RZ-3: Use session_id stored in Redis cache for O(1) pk lookup instead
         # of a secondary WHERE-jti query on every cache-hit request.
-        # _uuid_mod and select are top-level imports (TD-3).
         cached_sid = cached_session.get("session_id")
         if cached_sid:
             try:
@@ -121,7 +104,6 @@ async def get_current_user(
         user, session = row
 
         # Populate Redis (Cache-Aside) — include session_id to avoid N+1 on next HIT
-        # SessionFingerprint is a top-level import (TD-3).
         fp = SessionFingerprint(
             user_agent=str(session.user_agent or ""),
             ip_address=str(session.ip_address or ""),
@@ -199,11 +181,7 @@ async def get_current_admin_user(
     user: Annotated[User, Depends(get_current_user)],
     checker: Annotated[PermissionChecker, Depends()],
 ) -> User:
-    """Dependency that ensures the current user is an admin via SpiceDB.
-
-    Returns HTTP 503 when SpiceDB is unreachable (fail-closed) so that
-    operations can distinguish authorization outages from permission denials.
-    """
+    """Dependency that ensures the current user is an admin via SpiceDB."""
     try:
         is_admin_user = await checker.check_admin(str(user.id), user=user)
     except SpiceDBUnavailableError:
@@ -278,228 +256,3 @@ async def require_fresh_mfa_for_enrollment(
     if not mfa.user_has_confirmed_interactive_factor(user):
         return
     _enforce_fresh_mfa(request)
-
-
-def get_locale(
-    request: Request,
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> str:
-    """
-    Resolve locale from request headers or user preference.
-    """
-    # Priority:
-    # 1. Query param (implied by some frontends, but not implemented here yet)
-    # 2. Accept-Language header (via resolve_locale)
-    # 3. User preference
-
-    # We use resolve_locale to handle header parsing
-    header_locale = resolve_locale(request=request)
-
-    # If user has a preference, it overrides header (or vice versa depending on policy)
-    # Usually: User Profile > Header > Default
-    user_locale = getattr(current_user, "preferred_locale", None)
-
-    if user_locale:
-        return str(user_locale)
-
-    return str(header_locale)
-
-
-def get_chat_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> ChatService:  # type: ignore # noqa: F821
-    from app.repositories.chat_repository import ChatRepository
-    from app.services.chat.attachment_service import ChatAttachmentService
-    from app.services.chat.command_service import ChatCommandService
-    from app.services.chat.notification_service import ChatNotificationService
-    from app.services.chat.query_service import ChatQueryService
-    from app.services.chat_service import ChatService
-
-    repo = ChatRepository(session)
-    attachments = ChatAttachmentService()
-    notifications = ChatNotificationService(session)
-    queries = ChatQueryService(session, repo)
-    commands = ChatCommandService(session, repo, attachments, notifications)
-
-    return ChatService(session, attachments, notifications, queries, commands)
-
-
-def get_read_chat_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> ChatService:  # type: ignore # noqa: F821
-    from app.repositories.chat_repository import ChatRepository
-    from app.services.chat.attachment_service import ChatAttachmentService
-    from app.services.chat.command_service import ChatCommandService
-    from app.services.chat.notification_service import ChatNotificationService
-    from app.services.chat.query_service import ChatQueryService
-    from app.services.chat_service import ChatService
-
-    repo = ChatRepository(session)
-    attachments = ChatAttachmentService()
-    notifications = ChatNotificationService(session)
-    queries = ChatQueryService(session, repo)
-    commands = ChatCommandService(session, repo, attachments, notifications)
-
-    return ChatService(session, attachments, notifications, queries, commands)
-
-
-def create_event_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
-    from app.repositories.event_repository import EventRepository
-    from app.services.event_service import EventService
-
-    repo = EventRepository(session)
-    return EventService(repo, vector_service)
-
-
-def get_event_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
-    return create_event_service(session, vector_service)
-
-
-def get_read_event_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-    vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
-    return create_event_service(session, vector_service)
-
-
-def create_news_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
-    from app.repositories.news_repository import NewsRepository
-    from app.services.news_service import NewsService
-
-    repo = NewsRepository(session)
-    return NewsService(repo, vector_service)
-
-
-def get_news_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
-    return create_news_service(session, vector_service)
-
-
-def get_read_news_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-    vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
-    return create_news_service(session, vector_service)
-
-
-def create_story_service(session: AsyncDatabaseSession) -> Any:
-    from app.repositories.story_repository import StoryRepository
-    from app.services.story_service import StoryService
-
-    repo = StoryRepository(session)
-    return StoryService(repo)
-
-
-def get_story_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
-    return create_story_service(session)
-
-
-def get_read_story_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> Any:
-    return create_story_service(session)
-
-
-def create_schedule_service(session: AsyncDatabaseSession) -> Any:
-    from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
-    from app.services.schedule_optimizer import ScheduleOptimizerService
-    from app.services.schedule_service import ScheduleService
-
-    repo = ScheduleRepository(session)
-    group_repo = GroupRepository(session)
-    optimizer = ScheduleOptimizerService()
-    return ScheduleService(repo, group_repo, optimizer)
-
-
-def get_schedule_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
-    return create_schedule_service(session)
-
-
-def get_read_schedule_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> Any:
-    return create_schedule_service(session)
-
-
-def get_auth_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
-    from app.repositories.auth_repository import AuthRepository
-    from app.repositories.session_repository import SessionRepository
-    from app.repositories.user_repository import UserRepository
-    from app.services.audit_service import audit_service
-    from app.services.auth_service import AuthService
-
-    auth_repo = AuthRepository(session)
-    user_repo = UserRepository(session)
-    session_repo = SessionRepository(session)
-    return AuthService(audit_service, auth_repo, user_repo, session_repo)
-
-
-def get_session_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
-    from app.repositories.active_session_repository import ActiveSessionRepository
-    from app.services.session_service import SessionService
-
-    repo = ActiveSessionRepository(session)
-    return SessionService(session, repo)
-
-
-async def get_geolocation_service() -> Any:
-    from app.services.geolocation import get_geolocation_service_instance
-
-    return await get_geolocation_service_instance()
-
-
-async def get_redis_session_service() -> Any:
-    from app.services.auth.redis_session import RedisSessionService
-
-    return RedisSessionService()
-
-
-async def get_login_service(
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    session_service: Annotated[Any, Depends(get_session_service)],
-    audit: Annotated[Any, Depends(get_audit_service)],
-    redis_session_service: Annotated[Any, Depends(get_redis_session_service)],
-    geolocation_service: Annotated[Any, Depends(get_geolocation_service)],
-) -> Any:
-    from app.repositories.auth_repository import AuthRepository
-    from app.repositories.user_repository import UserRepository
-    from app.services.auth.lockout import LockoutService
-    from app.services.auth.login_service import LoginService
-    from app.services.notification_service import NotificationService
-    from app.services.user.profile_service import UserProfileService
-
-    auth_repo = AuthRepository(db)
-    user_repo = UserRepository(db)
-    notifications = NotificationService(db)
-    profile_service = UserProfileService(user_repo, audit, notifications)
-    lockout_service = LockoutService(db)
-
-    return LoginService(
-        auth_repo,
-        user_repo,
-        profile_service,
-        session_service,
-        lockout_service,
-        audit,
-        redis_session_service,
-        geolocation_service,
-    )
-
-
-def get_analytics_service() -> Any:
-    from app.services.analytics import get_analytics_service
-
-    return get_analytics_service()

@@ -225,15 +225,14 @@ class UserComplianceService:
                 "mfa_default_method": settings.mfa_default_method,
             }
         )
-        if "id" in user_data:
-            del user_data["id"]
-
         try:
             db_user = await self.repo.create_with_invite(user_data, code)
             await self.repo.commit()
             # create_with_invite now returns DTO
             return db_user
         except Exception as exc:
+            import traceback
+            traceback.print_exc()
             await self.repo.rollback()
             raise BusinessRuleViolation("errors.users.create_failed") from exc
 

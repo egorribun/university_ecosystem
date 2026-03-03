@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from functools import cached_property
 
 from pydantic import ValidationInfo, field_validator
@@ -98,12 +99,25 @@ class JwtSettingsMixin:
             env in _NON_HMAC_ENVS or env not in _DEVELOPMENT_ENVIRONMENTS
         ) and v.upper() == "HS256":
             raise ValueError(
-                "HS256 is prohibited in non-local environments (env=%r). "
+                f"HS256 is prohibited in non-local environments (env={env!r}). "
                 "Use RS256 with a dedicated RSA key pair "
                 "(set ALGORITHM=RS256 and JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem)."
-                % env
             )
         return v
+
+    @field_validator("algorithm", mode="after")
+    @classmethod
+    def validate_jwt_algorithm(cls, v: str) -> str:
+        if v.upper() == "RS256":
+            # Just informational logging; logic handles public/private keys
+            pass
+        elif v.upper() == "HS256":
+            warnings.warn(
+                "HS256 is not recommended for production. "
+                "Use RS256 with a dedicated public/private key pair.",
+                stacklevel=2,
+            )
+        return v.upper()
 
     def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
         entries: list[tuple[str, str]] = []

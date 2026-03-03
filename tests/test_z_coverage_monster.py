@@ -151,8 +151,12 @@ async def test_monster_coverage_run():
     mock_profile_service.get_auth_user_by_email.return_value = user
     mock_profile_service.get_user_by_id.return_value = user
 
+    mock_auth_repo = AsyncMock()
+    mock_auth_repo.db = mock_db
+    mock_auth_repo.get_user_mfa_capabilities.return_value = {}
+
     login_service = LoginService(
-        db=mock_db,
+        auth_repo=mock_auth_repo,
         user_repo=mock_user_service,
         profile_service=mock_profile_service,
         session_service=mock_session_service,

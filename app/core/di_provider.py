@@ -421,7 +421,7 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def login_service(
         self,
-        db: AsyncDatabaseSession,
+        auth_repo: AuthRepository,
         user_repo: UserRepository,
         profile_service: UserProfileService,
         session_service: SessionService,
@@ -434,7 +434,7 @@ class AppProvider(Provider):
         geolocation_service: GeolocationService,
     ) -> LoginService:
         return LoginService(
-            db=db,
+            auth_repo=auth_repo,
             user_repo=user_repo,
             profile_service=profile_service,
             session_service=session_service,

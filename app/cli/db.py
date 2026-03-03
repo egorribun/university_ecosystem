@@ -52,6 +52,7 @@ def create_admin(
                 hashed_password=await get_password_hash(password),
                 full_name=full_name,
                 role="admin",
+                profile_status="active",
                 is_active=True,
                 mfa_required=False,
             )

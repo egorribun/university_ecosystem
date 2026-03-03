@@ -194,10 +194,18 @@ class WebSocketRateLimiter:
         self.rate = rate
         self.capacity = capacity
         self.tokens = capacity
-        self.last_update = asyncio.get_event_loop().time()
+        # RZ-4: asyncio.get_event_loop() is deprecated in Python 3.10+ and raises
+        # RuntimeError in 3.12+ when called outside a running loop (e.g. at module import).
+        # Use lazy initialization — first consume() call sets the start time.
+        self.last_update: float = 0.0
 
     def consume(self) -> bool:
-        now = asyncio.get_event_loop().time()
+        # get_running_loop() is the correct API inside an async context.
+        loop = asyncio.get_running_loop()
+        now = loop.time()
+        if self.last_update == 0.0:
+            # First call: initialize baseline so no tokens are drained retroactively.
+            self.last_update = now
         elapsed = now - self.last_update
         self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
         self.last_update = now
@@ -326,7 +334,13 @@ class ConnectionManager:
         sent = 0
         dead_connections: list[WebSocket] = []
 
-        for connection in self.active_connections[user_id]:
+        # PERF-2: Snapshot the set under lock BEFORE iterating to prevent concurrent
+        # modification. self.disconnect() modifies active_connections, which would
+        # cause RuntimeError if we iterated directly over the live set.
+        async with self._lock:
+            connections_snapshot = set(self.active_connections.get(user_id, set()))
+
+        for connection in connections_snapshot:
             try:
                 await connection.send_json(message)
                 sent += 1
@@ -334,7 +348,7 @@ class ConnectionManager:
                 logger.warning("Failed to send to user %s: %s", user_id, e)
                 dead_connections.append(connection)
 
-        # Clean up dead connections
+        # Clean up dead connections (disconnect() uses _lock internally — safe)
         for conn in dead_connections:
             await self.disconnect(conn)
 
@@ -509,6 +523,27 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
         session_jti = payload.get("jti")
         if not user_id:
             return None, None
+
+        # RZ-8: Fast-path Redis JTI revocation check — mirrors the HTTP auth chain
+        # in deps.py. Without this, a user whose session was revoked (e.g. via
+        # "log out all devices") can still send/receive WebSocket messages until
+        # the DB-authoritative check below is reached. Redis is O(1); DB is O(log N).
+        if session_jti:
+            try:
+                from app.deps.cache import get_cache_client
+
+                _redis = await get_cache_client()
+                if await _redis.exists(f"revoked:jti:{session_jti}"):
+                    logger.debug(
+                        "WebSocket: JTI %s is revoked (Redis fast-path)", session_jti
+                    )
+                    return None, None
+            except Exception as _redis_exc:
+                # Redis unavailable — DB check below is authoritative; log and continue.
+                logger.debug(
+                    "WebSocket: Redis JTI revocation check failed, falling through to DB: %s",
+                    _redis_exc,
+                )
 
         async with async_session() as session:
             user_repo = UserRepository(session)

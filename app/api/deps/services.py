@@ -1,0 +1,194 @@
+from typing import Annotated, Any
+
+from fastapi import Depends
+
+from app.core.container import get_audit_service, get_vector_service
+from app.core.database import get_db, get_read_db
+from app.core.protocols import AsyncDatabaseSession
+
+
+def _build_chat_service(session: AsyncDatabaseSession) -> Any:
+    from app.repositories.chat_repository import ChatRepository
+    from app.services.chat.attachment_service import ChatAttachmentService
+    from app.services.chat.command_service import ChatCommandService
+    from app.services.chat.notification_service import ChatNotificationService
+    from app.services.chat.query_service import ChatQueryService
+    from app.services.chat_service import ChatService
+
+    repo = ChatRepository(session)
+    attachments = ChatAttachmentService()
+    notifications = ChatNotificationService(session)
+    queries = ChatQueryService(session, repo)
+    commands = ChatCommandService(session, repo, attachments, notifications)
+
+    return ChatService(session, attachments, notifications, queries, commands)
+
+
+def get_chat_service(session: Annotated[AsyncDatabaseSession, Depends(get_db)]) -> Any:
+    return _build_chat_service(session)
+
+
+def get_read_chat_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
+) -> Any:
+    return _build_chat_service(session)
+
+
+def _build_event_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
+    from app.repositories.event_repository import EventRepository
+    from app.services.event_service import EventService
+
+    repo = EventRepository(session)
+    return EventService(repo, vector_service)
+
+
+def get_event_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    return _build_event_service(session, vector_service)
+
+
+def get_read_event_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    return _build_event_service(session, vector_service)
+
+
+def _build_news_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
+    from app.repositories.news_repository import NewsRepository
+    from app.services.news_service import NewsService
+
+    repo = NewsRepository(session)
+    return NewsService(repo, vector_service)
+
+
+def get_news_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    return _build_news_service(session, vector_service)
+
+
+def get_read_news_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    return _build_news_service(session, vector_service)
+
+
+def _build_story_service(session: AsyncDatabaseSession) -> Any:
+    from app.repositories.story_repository import StoryRepository
+    from app.services.story_service import StoryService
+
+    repo = StoryRepository(session)
+    return StoryService(repo)
+
+
+def get_story_service(session: Annotated[AsyncDatabaseSession, Depends(get_db)]) -> Any:
+    return _build_story_service(session)
+
+
+def get_read_story_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
+) -> Any:
+    return _build_story_service(session)
+
+
+def _build_schedule_service(session: AsyncDatabaseSession) -> Any:
+    from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+    from app.services.schedule_optimizer import ScheduleOptimizerService
+    from app.services.schedule_service import ScheduleService
+
+    repo = ScheduleRepository(session)
+    group_repo = GroupRepository(session)
+    optimizer = ScheduleOptimizerService()
+    return ScheduleService(repo, group_repo, optimizer)
+
+
+def get_schedule_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> Any:
+    return _build_schedule_service(session)
+
+
+def get_read_schedule_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
+) -> Any:
+    return _build_schedule_service(session)
+
+
+def get_auth_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> Any:
+    from app.repositories.auth_repository import AuthRepository
+    from app.repositories.session_repository import SessionRepository
+    from app.repositories.user_repository import UserRepository
+    from app.services.audit_service import audit_service
+    from app.services.auth_service import AuthService
+
+    auth_repo = AuthRepository(session)
+    user_repo = UserRepository(session)
+    session_repo = SessionRepository(session)
+    return AuthService(audit_service, auth_repo, user_repo, session_repo)
+
+
+def get_session_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> Any:
+    from app.repositories.active_session_repository import ActiveSessionRepository
+    from app.services.session_service import SessionService
+
+    repo = ActiveSessionRepository(session)
+    return SessionService(session, repo)
+
+
+async def get_geolocation_service() -> Any:
+    from app.services.geolocation import get_geolocation_service_instance
+
+    return await get_geolocation_service_instance()
+
+
+async def get_redis_session_service() -> Any:
+    from app.services.auth.redis_session import RedisSessionService
+
+    return RedisSessionService()
+
+
+async def get_login_service(
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    session_service: Annotated[Any, Depends(get_session_service)],
+    audit: Annotated[Any, Depends(get_audit_service)],
+    redis_session_service: Annotated[Any, Depends(get_redis_session_service)],
+    geolocation_service: Annotated[Any, Depends(get_geolocation_service)],
+) -> Any:
+    from app.repositories.auth_repository import AuthRepository
+    from app.repositories.user_repository import UserRepository
+    from app.services.auth.lockout import LockoutService
+    from app.services.auth.login_service import LoginService
+    from app.services.notification_service import NotificationService
+    from app.services.user.profile_service import UserProfileService
+
+    auth_repo = AuthRepository(db)
+    user_repo = UserRepository(db)
+    notifications = NotificationService(db)
+    profile_service = UserProfileService(user_repo, audit, notifications)
+    lockout_service = LockoutService(db)
+
+    return LoginService(
+        auth_repo,
+        user_repo,
+        profile_service,
+        session_service,
+        lockout_service,
+        audit,
+        redis_session_service,
+        geolocation_service,
+    )
+
+
+def get_analytics_service() -> Any:
+    from app.services.analytics import get_analytics_service
+
+    return get_analytics_service()

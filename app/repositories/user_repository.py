@@ -13,7 +13,11 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.core.protocols import AsyncDatabaseSession
 from app.models import models
 from app.models.models import User, UserProfile
-from app.models.user_loaders import USER_MFA_LOAD_OPTIONS, USER_MFA_RELATIONSHIP_NAMES
+from app.models.user_loaders import (
+    USER_LIST_LOAD_OPTIONS,
+    USER_MFA_LOAD_OPTIONS,
+    USER_MFA_RELATIONSHIP_NAMES,
+)
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
@@ -141,19 +145,20 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         filters = filters or schemas.UserSearchFilter()
         stmt = (
             select(User)
-            .join(User.profile)
-            .where(UserProfile.status != "deleted")
+            .where(User.profile.has(UserProfile.status != "deleted"))
             .options(
-                *__import__(
-                    "app.models.user_loaders", fromlist=["USER_LIST_LOAD_OPTIONS"]
-                ).USER_LIST_LOAD_OPTIONS,
+                # TD-2: Replaced __import__() dynamic lookup with explicit top-level import.
+                # Dynamic imports break IDE navigation, refactoring tools, and mypy.
+                *USER_LIST_LOAD_OPTIONS,
                 selectinload(User.group),
             )
         )
         if filters.group_id:
             stmt = stmt.where(User.group_id == filters.group_id)
         if filters.full_name:
-            stmt = stmt.where(UserProfile.full_name.ilike(f"%{filters.full_name}%"))
+            stmt = stmt.where(
+                User.profile.has(UserProfile.full_name.ilike(f"%{filters.full_name}%"))
+            )
         if filters.role:
             stmt = stmt.where(User.role == filters.role)
 
@@ -197,8 +202,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(
             select(User)
-            .join(User.profile)
-            .where(func.lower(UserProfile.full_name).like(pattern))
+            .where(User.profile.has(func.lower(UserProfile.full_name).like(pattern)))
             .where(User.is_active.is_(True))
             .offset(skip)
             .limit(limit)
@@ -327,7 +331,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
                 user_id = uuid.UUID(user_id)
             except ValueError:
                 return
-        """Cleanup user-related transient records (sessions, challenges, etc)."""
+
         await self.db.execute(
             delete(models.ActiveSession).where(models.ActiveSession.user_id == user_id)
         )

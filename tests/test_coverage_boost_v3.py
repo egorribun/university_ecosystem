@@ -5,16 +5,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, Request
 
-from app.api.deps import (
-    get_chat_service,
+from app.api.deps.auth import (
     get_current_admin_user,
     get_current_user,
+    require_fresh_mfa,
+)
+from app.api.deps.localization import get_locale
+from app.api.deps.services import (
+    get_chat_service,
     get_event_service,
-    get_locale,
     get_news_service,
     get_schedule_service,
     get_story_service,
-    require_fresh_mfa,
 )
 from app.models.models import ActiveSession, User
 
@@ -36,7 +38,7 @@ async def test_get_current_user_invalid_token():
     db = AsyncMock()
 
     with patch(
-        "app.api.deps.AuthTokenService.extract_and_decode_token",
+        "app.api.deps.auth.AuthTokenService.extract_and_decode_token",
         side_effect=HTTPException(status_code=401),
     ):
         with pytest.raises(HTTPException) as exc:
@@ -68,11 +70,11 @@ async def test_get_current_user_redis_hit():
 
     with (
         patch(
-            "app.api.deps.AuthTokenService.extract_and_decode_token",
+            "app.api.deps.auth.AuthTokenService.extract_and_decode_token",
             return_value={"sub": str(user_id), "jti": jti},
         ),
-        patch("app.api.deps.RedisSessionService") as mock_redis_cls,
-        patch("app.api.deps.AuthFingerprintService") as mock_fp_cls,
+        patch("app.api.deps.auth.RedisSessionService") as mock_redis_cls,
+        patch("app.api.deps.auth.AuthFingerprintService") as mock_fp_cls,
     ):
         mock_redis = mock_redis_cls.return_value
         mock_redis.get_session = AsyncMock(return_value=cached_session)
@@ -112,7 +114,10 @@ async def test_get_current_admin_user():
     assert result == user
 
     checker.check_admin = AsyncMock(return_value=False)
-    with patch("app.api.deps.resolve_locale"), pytest.raises(HTTPException) as exc:
+    with (
+        patch("app.api.deps.localization.resolve_locale"),
+        pytest.raises(HTTPException) as exc,
+    ):
         await get_current_admin_user(request, user, checker)
     assert exc.value.status_code == 403
 
@@ -122,7 +127,7 @@ async def test_get_locale():
     request = MagicMock(spec=Request)
     user = User(id=uuid.uuid4())
 
-    with patch("app.api.deps.resolve_locale", return_value="en"):
+    with patch("app.api.deps.localization.resolve_locale", return_value="en"):
         # Test default
         assert get_locale(request, user) == "en"
 
@@ -139,12 +144,10 @@ async def test_require_fresh_mfa():
     request.state.active_session = session
 
     with (
-        patch(
-            "app.api.deps.mfa.user_has_confirmed_interactive_factor", return_value=True
-        ),
-        patch("app.api.deps.settings") as mock_settings,
-        patch("app.api.deps.resolve_locale"),
-        patch("app.api.deps.ensure_mfa_relationships_loaded"),
+        patch("app.auth.mfa.user_has_confirmed_interactive_factor", return_value=True),
+        patch("app.api.deps.auth.settings") as mock_settings,
+        patch("app.api.deps.localization.resolve_locale"),
+        patch("app.models.user_loaders.ensure_mfa_relationships_loaded"),
     ):
         mock_settings.mfa_step_up_ttl_seconds = 300
         # Should not raise
@@ -162,7 +165,7 @@ async def test_service_factories():
     db = AsyncMock()
     vector = MagicMock()
 
-    with patch("app.api.deps.get_vector_service", return_value=vector):
+    with patch("app.api.deps.services.get_vector_service", return_value=vector):
         get_chat_service(db)
         get_event_service(db, vector)
         get_news_service(db, vector)

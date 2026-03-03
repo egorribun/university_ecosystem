@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -68,17 +69,20 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 			return
 		}
 
-		// Set rate limit headers
-		// FIXED: Using strconv.Itoa instead of string(rune(val)) to avoid garbled headers
-		c.Header("X-RateLimit-Limit", strconv.Itoa(rl.rps))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(res.Remaining))
-		c.Header("X-RateLimit-Reset", res.ResetAfter.String())
+		// Set standard IETF draft RateLimit headers (MOD-8)
+		c.Header("RateLimit-Limit", strconv.Itoa(rl.rps))
+		c.Header("RateLimit-Remaining", strconv.Itoa(res.Remaining))
+		// ResetAfter is a time.Duration, we need to add it to current time for Reset header
+		resetAt := time.Now().Add(res.ResetAfter)
+		c.Header("RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
+		c.Header("RateLimit-Policy", fmt.Sprintf("%d;w=1", rl.rps)) // Assuming 1 second window based on PerSecond(rl.rps)
 
 		if res.Allowed == 0 {
-			c.Header("Retry-After", res.RetryAfter.String())
+			// RFC 7231 requires Retry-After to be an HTTP-date or an integer number of seconds
+			c.Header("Retry-After", strconv.FormatInt(int64(res.RetryAfter.Seconds()), 10))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error":       "rate limit exceeded",
-				"retry_after": res.RetryAfter.Seconds(),
+				"retry_after": int(res.RetryAfter.Seconds()),
 			})
 			return
 		}

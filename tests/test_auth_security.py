@@ -127,7 +127,10 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
     monkeypatch.setattr(
         settings,
         "jwt_signing_keys",
-        ["new-key:new-secret", "legacy-key:old-secret"],
+        [
+            "new-key:new-secret-token-32-chars-long-here",
+            "legacy-key:old-secret-token-32-chars-long-here",
+        ],
     )
     monkeypatch.setattr(settings, "jwt_active_kid", "new-key")
 
@@ -137,7 +140,11 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
     assert header["kid"] == "new-key"
 
     with pytest.raises(PyJWTError):
-        jwt.decode(token, "old-secret", algorithms=[settings.algorithm])
+        jwt.decode(
+            token,
+            "old-secret-token-32-chars-long-here",
+            algorithms=[settings.algorithm],
+        )
 
     decoded = decode_token(token)
     assert decoded is not None
@@ -149,7 +156,10 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
     monkeypatch.setattr(
         settings,
         "jwt_signing_keys",
-        ["active:new-secret", "legacy:old-secret"],
+        [
+            "active:new-secret-token-32-chars-long-here",
+            "legacy:old-secret-token-32-chars-long-here",
+        ],
     )
     monkeypatch.setattr(settings, "jwt_active_kid", "active")
 
@@ -162,7 +172,9 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
         "jti": "legacy-jti",
     }
     legacy_token = jwt.encode(
-        legacy_payload, "old-secret", algorithm=settings.algorithm
+        legacy_payload,
+        "old-secret-token-32-chars-long-here",
+        algorithm=settings.algorithm,
     )
 
     rotated_token = _mint_pure_jwt("current-user")

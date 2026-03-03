@@ -66,6 +66,15 @@ class AuthService:
         request: Request,
         bg: BackgroundTasks,
     ) -> None:
+        from app.core.ratelimit import enforce_rate_limit, get_default_strategy
+
+        # MOD-3: Rate limit password reset emails to prevent Temporal task exhaustion
+        await enforce_rate_limit(
+            identifier=f"email:reset:{email}",
+            limit=3,
+            window_seconds=3600,  # max 3 reset emails per hour per address
+            strategy=get_default_strategy("email"),
+        )
         # RZ-1: Timer must start BEFORE the DB query so that ensure_minimum_time
         # normalises the total response time including I/O, preventing user-
         # enumeration via timing differentials (~5-20 ms) between existing and
