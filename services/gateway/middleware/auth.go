@@ -183,14 +183,16 @@ func (m *JWTMiddleware) verifySession(ctx context.Context, sessionID string, fai
 		return true, false, nil
 	}
 
-	key := fmt.Sprintf("session:%s", sessionID)
+	// Match Python backend's revocation key format: revoked:jti:{jti}
+	// Note: backend deletes the active session but writes to revoked:jti list
+	key := fmt.Sprintf("revoked:jti:%s", sessionID)
 
 	// 1. Check L1 Cache
 	if exists, found := m.checkL1Cache(key); found {
-		return exists, false, nil
+		return !exists, false, nil // If it exists in revoked cache, it's NOT valid
 	}
 
-	// 2. Check Redis
+	// 2. Check Redis (exists == true means the token is REVOKED)
 	exists, err := m.checkSessionInRedis(ctx, key)
 	if err != nil {
 		if failSecure {
@@ -200,7 +202,7 @@ func (m *JWTMiddleware) verifySession(ctx context.Context, sessionID string, fai
 		return false, false, nil
 	}
 
-	return exists, false, nil
+	return !exists, false, nil
 }
 
 // keyFunc returns the correct verification key based on the token's algorithm.

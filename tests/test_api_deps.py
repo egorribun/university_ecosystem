@@ -121,8 +121,8 @@ async def test_get_current_admin_user_forbidden(mock_request):
     # Mock PermissionChecker that returns False for admin check
     mock_checker = MagicMock()
     mock_checker.check_admin = AsyncMock(return_value=False)
-    with patch("app.api.deps.resolve_locale", return_value="en"):
-        with patch("app.api.deps.raise_forbidden") as mock_raise:
+    with patch("app.api.deps.localization.resolve_locale", return_value="en"):
+        with patch("app.api.deps.auth.raise_forbidden") as mock_raise:
             await get_current_admin_user(mock_request, user, mock_checker)
             mock_raise.assert_called_once()
 
@@ -131,9 +131,10 @@ async def test_get_current_admin_user_forbidden(mock_request):
 async def test_enforce_fresh_mfa_no_session(mock_request):
     mock_request.state.active_session = None
     with (
-        patch("app.api.deps.resolve_locale", return_value="en"),
+        patch("app.api.deps.localization.resolve_locale", return_value="en"),
         patch(
-            "app.api.deps.raise_forbidden", side_effect=HTTPException(status_code=403)
+            "app.api.deps.auth.raise_forbidden",
+            side_effect=HTTPException(status_code=403),
         ) as mock_raise,
     ):
         with pytest.raises(HTTPException) as excinfo:
@@ -147,8 +148,8 @@ async def test_enforce_fresh_mfa_not_verified(mock_request):
     session = MagicMock(spec=ActiveSession)
     session.mfa_verified_at = None
     mock_request.state.active_session = session
-    with patch("app.api.deps.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
-        with patch("app.api.deps.resolve_locale", return_value="en"):
+    with patch("app.api.deps.auth.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
+        with patch("app.api.deps.localization.resolve_locale", return_value="en"):
             with pytest.raises(HTTPException) as excinfo:
                 _enforce_fresh_mfa(mock_request)
             assert excinfo.value.status_code == status.HTTP_428_PRECONDITION_REQUIRED
@@ -160,8 +161,8 @@ async def test_enforce_fresh_mfa_expired(mock_request):
     session = MagicMock(spec=ActiveSession)
     session.mfa_verified_at = now - timedelta(seconds=600)
     mock_request.state.active_session = session
-    with patch("app.api.deps.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
-        with patch("app.api.deps.resolve_locale", return_value="en"):
+    with patch("app.api.deps.auth.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
+        with patch("app.api.deps.localization.resolve_locale", return_value="en"):
             with pytest.raises(HTTPException) as excinfo:
                 _enforce_fresh_mfa(mock_request)
             assert excinfo.value.status_code == status.HTTP_428_PRECONDITION_REQUIRED
@@ -171,7 +172,7 @@ async def test_enforce_fresh_mfa_expired(mock_request):
 async def test_get_locale_preferred(mock_request):
     user = MagicMock(spec=User)
     user.preferred_locale = "ru"
-    with patch("app.api.deps.resolve_locale", return_value="en"):
+    with patch("app.api.deps.localization.resolve_locale", return_value="en"):
         locale = get_locale(mock_request, user)
         assert locale == "ru"
 
@@ -265,7 +266,9 @@ async def test_get_current_user_mfa_ttl_expired(mock_request, db_session, user_f
 
     payload = {"sub": str(user.id), "jti": jti}
     with patch("app.services.auth.token_service.decode_token", return_value=payload):
-        with patch("app.api.deps.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
+        with patch(
+            "app.api.deps.auth.settings", MagicMock(mfa_step_up_ttl_seconds=300)
+        ):
             returned_user = await get_current_user(mock_request, "token", db_session)
             assert returned_user.id == user.id
             await db_session.refresh(session)
@@ -306,7 +309,7 @@ async def test_get_current_user_last_seen_throttled(
 async def test_get_locale_header_fallback(mock_request):
     user = MagicMock(spec=User)
     user.preferred_locale = None
-    with patch("app.api.deps.resolve_locale", return_value="fr"):
+    with patch("app.api.deps.localization.resolve_locale", return_value="fr"):
         locale = get_locale(mock_request, user)
         assert locale == "fr"
 
@@ -315,8 +318,8 @@ async def test_get_locale_header_fallback(mock_request):
 async def test_require_fresh_mfa_confirmed(mock_request, db_session):
     user = MagicMock(spec=User)
     with patch("app.auth.mfa.user_has_confirmed_interactive_factor", return_value=True):
-        with patch("app.api.deps.ensure_mfa_relationships_loaded"):
-            with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
+        with patch("app.models.user_loaders.ensure_mfa_relationships_loaded"):
+            with patch("app.api.deps.auth._enforce_fresh_mfa") as mock_enforce:
                 from app.api.deps import require_fresh_mfa
 
                 await require_fresh_mfa(mock_request, user, db_session)
@@ -328,9 +331,9 @@ async def test_require_fresh_mfa_not_confirmed(mock_request, db_session):
     user = MagicMock(spec=User)
     with (
         patch("app.auth.mfa.user_has_confirmed_interactive_factor", return_value=False),
-        patch("app.api.deps.ensure_mfa_relationships_loaded"),
+        patch("app.models.user_loaders.ensure_mfa_relationships_loaded"),
     ):
-        with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
+        with patch("app.api.deps.auth._enforce_fresh_mfa") as mock_enforce:
             from app.api.deps import require_fresh_mfa
 
             await require_fresh_mfa(mock_request, user, db_session)
@@ -426,7 +429,9 @@ async def test_get_current_user_mfa_ttl_not_expired(
 
     payload = {"sub": str(user.id), "jti": jti}
     with patch("app.services.auth.token_service.decode_token", return_value=payload):
-        with patch("app.api.deps.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
+        with patch(
+            "app.api.deps.auth.settings", MagicMock(mfa_step_up_ttl_seconds=300)
+        ):
             returned_user = await get_current_user(mock_request, "token", db_session)
             assert returned_user.id == user.id
             await db_session.refresh(session)
@@ -438,7 +443,7 @@ async def test_enforce_fresh_mfa_success(mock_request):
     session = MagicMock(spec=ActiveSession)
     session.mfa_verified_at = datetime.now(UTC) - timedelta(seconds=10)
     mock_request.state.active_session = session
-    with patch("app.api.deps.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
+    with patch("app.api.deps.auth.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
         from app.api.deps import _enforce_fresh_mfa
 
         # Should not raise

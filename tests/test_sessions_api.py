@@ -92,7 +92,9 @@ async def test_list_sessions_includes_current_session_metadata(
     async_client: AsyncClient,
     user_factory,
     db_session,
+    monkeypatch,
 ):
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["testserver", "127.0.0.1"])
     password = "Sessions123!"
     hashed = await get_password_hash(password)
     user = await user_factory(email="sessions@example.com", hashed_password=hashed)

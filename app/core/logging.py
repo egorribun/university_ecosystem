@@ -29,6 +29,23 @@ if TYPE_CHECKING:
 _configured = False
 
 
+def add_otel_context(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Add OpenTelemetry trace and span IDs to the log event."""
+    try:
+        from opentelemetry import trace
+
+        span = trace.get_current_span()
+        if span.is_recording():
+            ctx = span.get_span_context()
+            event_dict["trace_id"] = format(ctx.trace_id, "032x")
+            event_dict["span_id"] = format(ctx.span_id, "016x")
+    except ImportError:
+        pass
+    return event_dict
+
+
 def configure_logging(
     *,
     level: int = logging.INFO,
@@ -50,6 +67,7 @@ def configure_logging(
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
+        add_otel_context,
         structlog.processors.TimeStamper(fmt="iso", utc=True, key="timestamp"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,

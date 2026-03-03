@@ -58,7 +58,7 @@ ALLOWED_RICH_TEXT_TAGS: frozenset[str] = frozenset(
 # Only <a> needs attributes; all other tags are stripped of their attributes
 # automatically by nh3 when not listed here.
 _RICH_TEXT_ATTRIBUTES: dict[str, set[str]] = {
-    "a": {"href", "title", "target", "rel"},
+    "a": {"href", "title", "target"},
 }
 
 # URL schemes permitted inside href attributes.

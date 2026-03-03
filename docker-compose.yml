@@ -219,7 +219,7 @@ services:
           memory: 512M
 
   imgproxy:
-    image: darthsim/imgproxy:v3.15.0
+    image: darthsim/imgproxy:v3.24.0
     ports:
       - "8082:8080"
     environment:
@@ -279,7 +279,10 @@ services:
     image: temporalio/ui:2.34.0
     container_name: temporal-ui
     ports:
-      - "8233:8080"
+      # MOD-9: Temporal UI is admin-only. Expose on localhost only to prevent
+      # unauthenticated workflow access from external networks. Access via SSH
+      # tunnel or VPN for remote management: ssh -L 8233:localhost:8233 host
+      - "127.0.0.1:8233:8080"
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_CORS_ORIGINS=http://localhost:8233
@@ -324,7 +327,7 @@ services:
   spicedb:
     image: authzed/spicedb:v1.36.0
     container_name: spicedb
-    command: serve --grpc-preshared-key "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required}" --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=disable"
+    command: serve --grpc-preshared-key "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required}" --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=${SPICEDB_PG_SSLMODE:-require}"
     # Internal only - accessed by backend services
     expose:
       - "50051"

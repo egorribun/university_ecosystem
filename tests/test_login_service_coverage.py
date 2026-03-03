@@ -60,7 +60,7 @@ def login_service(
     mock_profile_service,
 ):
     ls = LoginService(
-        db=mock_db,
+        auth_repo=mock_db,
         user_repo=mock_user_service,
         profile_service=mock_profile_service,
         session_service=mock_session_service,
@@ -74,6 +74,8 @@ def login_service(
     ls.repo.db.execute.return_value.scalars.return_value = MagicMock()
     ls.repo.db.execute.return_value.scalars.return_value.first.return_value = None
     ls.repo.db.execute.return_value.scalars.return_value.all.return_value = []
+    # Service now uses AuthRepository methods instead of raw queries
+    ls.repo.has_active_mfa.return_value = False
     return ls
 
 
@@ -380,14 +382,8 @@ async def test_resolve_mfa_capabilities(login_service, mock_db):
     user.id = uuid4()
     user.mfa_default_method = None
 
-    # Mock DB execution
-    mock_result_totp = MagicMock()
-    mock_result_totp.scalars.return_value.first.return_value = uuid4()
-
-    mock_result_webauthn = MagicMock()
-    mock_result_webauthn.scalars.return_value.first.return_value = None
-
-    mock_db.execute.side_effect = [mock_result_totp, mock_result_webauthn]
+    # Service delegates to AuthRepository.get_user_mfa_capabilities
+    mock_db.get_user_mfa_capabilities.return_value = {"totp": True, "webauthn": False}
 
     caps = await login_service._resolve_mfa_capabilities(user)
 
@@ -400,16 +396,8 @@ async def test_resolve_mfa_capabilities_legacy_totp(login_service, mock_db):
     user.id = uuid4()
     user.mfa_default_method = "totp"  # Trigger legacy check
 
-    # Mock DB execution
-    # 1. TOTP (unified search) -> Found (legacy or active)
-    # 2. WebAuthn -> None
-    mock_totp = MagicMock()
-    mock_totp.scalars.return_value.first.return_value = uuid4()
-
-    mock_webauthn = MagicMock()
-    mock_webauthn.scalars.return_value.first.return_value = None
-
-    mock_db.execute.side_effect = [mock_totp, mock_webauthn]
+    # Service delegates to AuthRepository.get_user_mfa_capabilities
+    mock_db.get_user_mfa_capabilities.return_value = {"totp": True, "webauthn": False}
 
     caps = await login_service._resolve_mfa_capabilities(user)
 
@@ -452,7 +440,7 @@ async def test_collect_mfa_challenges_webauthn_flow(login_service):
                 assert challenges[0].challenge_expires_at == challenge.expires_at
 
 
-def test_extract_client_info_forwarded(login_service):
+async def test_extract_client_info_forwarded(login_service):
     req = MagicMock()
     req.headers = {"X-Forwarded-For": "10.0.0.1, 10.0.0.2", "user-agent": "client-ua"}
     req.client.host = "127.0.0.1"

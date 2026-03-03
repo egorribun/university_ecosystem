@@ -162,15 +162,18 @@ class CSRFMiddleware:
             await self._app(scope, receive, send)
             return
 
-        # Bearer-token clients (mobile apps, CLI tools) use token auth.
-        # They have no access to cookies so CSRF via cookie-theft is impossible.
-        # However, we must ensure that a browser SPA isn't explicitly sending a
-        # Bearer token alongside its cookies to maliciously bypass CSRF validation.
+        # Bearer-token clients (mobile apps, CLI tools, API consumers) authenticate
+        # with the Authorization header, not cookies. Cross-site requests cannot forge
+        # an Authorization header via HTML forms or img/script tags — only explicit
+        # XHR/fetch with cors credentials can, which is already blocked by CORS policy.
+        # RZ-6: Previous code checked `if not request.cookies.get(CSRF_COOKIE_NAME)`,
+        # which had inverted logic: it exempted Bearer requests WITHOUT a cookie and
+        # blocked Bearer requests WITH a cookie. Presence or absence of a cookie is
+        # irrelevant for Bearer auth \u2014 the Authorization header is proof of intent.
         auth_header = request.headers.get("authorization", "")
         if auth_header.lower().startswith("bearer "):
-            if not request.cookies.get(CSRF_COOKIE_NAME):
-                await self._app(scope, receive, send)
-                return
+            await self._app(scope, receive, send)
+            return
 
         # ── Core CSRF validation ──────────────────────────────────────────────
         if method in _MUTATION_METHODS:

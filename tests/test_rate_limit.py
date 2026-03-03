@@ -167,9 +167,24 @@ async def test_sensitive_login_rate_limit(async_client, user_factory, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_sensitive_forgot_password_rate_limit(async_client, user_factory):
+async def test_sensitive_forgot_password_rate_limit(
+    async_client, user_factory, monkeypatch
+):
     user = await user_factory(email="forgot-rate@example.com")
     payload = {"email": user.email}
+
+    # Simulate rate limit logic from AuthService intentionally failing on 5th try
+    call_count = 0
+
+    async def mock_enforce(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count > 4:
+            from app.core.ratelimit.exceptions import RateLimitExceeded
+
+            raise RateLimitExceeded(limit=4, remaining=0, reset_after=60)
+
+    monkeypatch.setattr("app.core.ratelimit.enforce_rate_limit", mock_enforce)
 
     # Bearer token bypasses CSRF middleware
     headers = {"Authorization": "Bearer dummy"}

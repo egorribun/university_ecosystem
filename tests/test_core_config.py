@@ -195,9 +195,7 @@ def test_auto_create_schema_default_false_in_production(monkeypatch):
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
-    monkeypatch.setenv(
-        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
-    )
+    monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -218,9 +216,7 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
-    monkeypatch.setenv(
-        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
-    )
+    monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

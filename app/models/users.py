@@ -1,10 +1,9 @@
 import uuid
 from collections.abc import Callable
 from datetime import datetime, time
-from typing import Any, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 from sqlalchemy import (
-    UUID,
     Boolean,
     Column,
     DateTime,
@@ -19,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SqlEnum,
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -97,10 +97,9 @@ class _DelegatedProperty(Generic[_T]):
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "users"
-    __allow_unmapped__ = True
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
-    pending_email: str | None = None
+    pending_email: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
 
@@ -144,6 +143,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         passive_deletes=True,
         lazy="joined",
     )
+    # Integrations & other relationships
     profile = relationship(
         "UserProfile",
         back_populates="user",
@@ -171,7 +171,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         lazy="noload",
     )
 
-    group = relationship("Group", back_populates="students", passive_deletes=True)
+    group = relationship("Group", back_populates="users", passive_deletes=True)
     # TD-5: lazy="noload" prevents N+1 when loading lists of users.
     # Load explicitly via selectinload(User.stats) in queries that need it.
     stats = relationship(
@@ -182,18 +182,28 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         passive_deletes=True,
         lazy="noload",
     )
+    # PERF-1: Changed from lazy="selectin" to lazy="noload".
+    # lazy="selectin" was firing an extra SELECT on EVERY User load, including
+    # the hot path in auth-check deps (every HTTP request). At 100 rps this
+    # caused 100 extra DB round-trips per second with no benefit outside the
+    # /notifications endpoints. Use selectinload(User.notifications) at the
+    # query site instead, only when notification data is actually needed.
     notifications = relationship(
         "Notification",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="noload",
     )
+    # PERF-1: Changed from lazy="selectin" to lazy="noload" for the same
+    # reason as notifications above — avoids SELECT on every User load.
+    # Load with selectinload(User.push_subscriptions) only in the push
+    # notification service where subscription data is actually consumed.
     push_subscriptions = relationship(
         "PushSubscription",
         back_populates="user",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="noload",
     )
     push_topic_preferences = relationship(
         "UserPushTopic",
@@ -327,71 +337,119 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     # ------------------------------------------------------------------
     # Profile field delegation
     # ------------------------------------------------------------------
-    full_name = _DelegatedProperty[str | None](
-        "profile", "full_name", None, lambda: UserProfile()
-    )
-    avatar_url = _DelegatedProperty[str | None](
-        "profile", "avatar_url", None, lambda: UserProfile()
-    )
-    cover_url = _DelegatedProperty[str | None](
-        "profile", "cover_url", None, lambda: UserProfile()
-    )
-    about = _DelegatedProperty[str | None](
+    full_name: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("profile", "full_name", None, lambda: UserProfile())
+    avatar_url: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("profile", "avatar_url", None, lambda: UserProfile())
+    cover_url: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("profile", "cover_url", None, lambda: UserProfile())
+    about: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
         "profile", "about", None, lambda: UserProfile()
     )
-    telegram = _DelegatedProperty[str | None](
+    telegram: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
         "profile", "telegram", None, lambda: UserProfile()
     )
-    status = _DelegatedProperty[str | None](
-        "profile", "status", None, lambda: UserProfile()
-    )
-    achievements = _DelegatedProperty[str | None](
-        "profile", "achievements", None, lambda: UserProfile()
-    )
-    position = _DelegatedProperty[str | None](
+    profile_status: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("profile", "status", None, lambda: UserProfile())
+    achievements: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("profile", "achievements", None, lambda: UserProfile())
+    position: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
         "profile", "position", None, lambda: UserProfile()
     )
-    department = _DelegatedProperty[str | None](
-        "profile", "department", None, lambda: UserProfile()
-    )
+    profile_department: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("profile", "department", None, lambda: UserProfile())
 
     # ------------------------------------------------------------------
     # Preferences field delegation
     # ------------------------------------------------------------------
-    timezone = _DelegatedProperty[str | None](
+    timezone: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
         "preferences", "timezone", None, lambda: UserPreferences()
     )
-    dnd_enabled = _DelegatedProperty[bool](
+    dnd_enabled: ClassVar[_DelegatedProperty[bool]] = _DelegatedProperty[bool](
         "preferences", "dnd_enabled", False, lambda: UserPreferences()
     )
-    dnd_start = _DelegatedProperty[time | None](
-        "preferences", "dnd_start", None, lambda: UserPreferences()
-    )
-    dnd_end = _DelegatedProperty[time | None](
-        "preferences", "dnd_end", None, lambda: UserPreferences()
-    )
+    dnd_start: ClassVar[_DelegatedProperty[time | None]] = _DelegatedProperty[
+        time | None
+    ]("preferences", "dnd_start", None, lambda: UserPreferences())
+    dnd_end: ClassVar[_DelegatedProperty[time | None]] = _DelegatedProperty[
+        time | None
+    ]("preferences", "dnd_end", None, lambda: UserPreferences())
 
     # ------------------------------------------------------------------
     # EducationPath field delegation
     # ------------------------------------------------------------------
-    institute = _DelegatedProperty[str | None](
-        "education_path", "institute", None, lambda: EducationPath()
-    )
-    course = _DelegatedProperty[str | None](
+    institute: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "institute", None, lambda: EducationPath())
+    course: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
         "education_path", "course", None, lambda: EducationPath()
     )
-    education_level = _DelegatedProperty[str | None](
-        "education_path", "education_level", None, lambda: EducationPath()
-    )
-    track = _DelegatedProperty[str | None](
+    education_level: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "education_level", None, lambda: EducationPath())
+    track: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
         "education_path", "track", None, lambda: EducationPath()
     )
-    program = _DelegatedProperty[str | None](
+    program: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
         "education_path", "program", None, lambda: EducationPath()
     )
-    record_book_number = _DelegatedProperty[str | None](
-        "education_path", "record_book_number", None, lambda: EducationPath()
+    record_book_number: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "record_book_number", None, lambda: EducationPath())
+    grade: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
+        "education_path", "grade", None, lambda: EducationPath()
     )
+    education_group: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "group", None, lambda: EducationPath())
+    specialty: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "specialty", None, lambda: EducationPath())
+    specialty_code: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "specialty_code", None, lambda: EducationPath())
+    education_department: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "department", None, lambda: EducationPath())
+    faculty: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
+        "education_path", "faculty", None, lambda: EducationPath()
+    )
+    entry_year: ClassVar[_DelegatedProperty[int | None]] = _DelegatedProperty[
+        int | None
+    ]("education_path", "entry_year", None, lambda: EducationPath())
+    graduation_year: ClassVar[_DelegatedProperty[int | None]] = _DelegatedProperty[
+        int | None
+    ]("education_path", "graduation_year", None, lambda: EducationPath())
+    education_status: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "status", None, lambda: EducationPath())
+    status_date: ClassVar[_DelegatedProperty[datetime | None]] = _DelegatedProperty[
+        datetime | None
+    ]("education_path", "status_date", None, lambda: EducationPath())
+    basis: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
+        "education_path", "basis", None, lambda: EducationPath()
+    )
+    form: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
+        "education_path", "form", None, lambda: EducationPath()
+    )
+    term: ClassVar[_DelegatedProperty[int | None]] = _DelegatedProperty[int | None](
+        "education_path", "term", None, lambda: EducationPath()
+    )
+    vacation_start: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "vacation_start", None, lambda: EducationPath())
+    vacation_end: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "vacation_end", None, lambda: EducationPath())
+    source_id: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
+        str | None
+    ]("education_path", "source_id", None, lambda: EducationPath())
 
     def __repr__(self) -> str:
         # Email is PII — omit from repr to prevent leakage into logs and tracebacks.

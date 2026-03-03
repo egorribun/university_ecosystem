@@ -139,7 +139,7 @@ def test_is_user_in_quiet_hours_defaults_to_utc(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(notifications_core.dt, "datetime", _UtcDatetime)
     assert is_user_in_quiet_hours(user) is True
 
-    user.timezone = "Invalid/Zone"
+    setattr(user, "timezone", "Invalid/Zone")
     assert is_user_in_quiet_hours(user) is True
 
     monkeypatch.setattr(webpush_module, "datetime", _UtcDatetime)
@@ -194,7 +194,7 @@ async def test_create_notifications_records_webpush_deliveries(
     def _fake_send(sub: PushSubscription, payload: dict[str, object]) -> WebPushResult:
         return WebPushResult(
             subscription_id=sub.id,
-            endpoint=cast(str, sub.endpoint),
+            endpoint=sub.endpoint,
             user_id=sub.user_id,
             status="sent",
             status_code=201,
