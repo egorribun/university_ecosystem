@@ -203,15 +203,16 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
     # Exempt: /ws (WebSocket), /internal (token-guarded), OAuth token endpoint.
     # Bearer-token callers are auto-exempted inside CSRFMiddleware.dispatch()
     # by detecting an Authorization: Bearer … header — no path exemption needed.
-    # RZ-10 (audit 2026-03-04): /api/v1/auth/login was previously exempt, enabling
-    # login CSRF (attacker submits credentials on victim's behalf and captures the
-    # session cookie). Removed — CSRF protection is required on credential endpoints.
+    # RZ-10 (audit 2026-03-04): /api/v1/auth/login was previously exempt.
+    # RZ-01 (audit 2026-03-04): /api/v1/auth/logout was exempt — removed.
+    #   Attackers could cross-site POST to /logout and force-logout any visiting
+    #   authenticated user. The SPA sends X-CSRF-Token; Bearer clients are
+    #   auto-exempted by the Authorization header check in CSRFMiddleware.
     app.add_middleware(
         CSRFMiddleware,
         exempt_prefixes=(
             "/internal",
             "/api/v1/csp-report",
-            "/api/v1/auth/logout",
             "/api/v2/auth/token",  # OAuth2 password/refresh grant
             "/api/v2/auth/webauthn",  # WebAuthn challenge/response flow
         ),

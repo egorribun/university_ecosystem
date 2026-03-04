@@ -11,6 +11,10 @@ TD-03 (audit 2026-03-04): MIGRATION DEADLINE Q3 2026
      (see audit MOD-02). Estimated saving: ~1 800 lines removed.
   3. Delete this file.
 Tracking: add a GitHub issue and link it here before EOD.
+
+PERF-004 (audit 2026-03-04): In-memory rate limiter strategy does NOT safely sync
+state across multi-worker deployments (e.g. gunicorn with workers > 1).
+RedisSlidingWindowStrategy MUST be used in production to prevent bypass via round-robin.
 """
 # ruff: noqa
 

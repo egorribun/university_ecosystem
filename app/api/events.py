@@ -130,8 +130,9 @@ def _encode_payload_with_etag(payload: Any) -> tuple[Any, str, str]:
         sort_keys=True,
     ).encode("utf-8")
     digest = hashlib.sha256(serialized).hexdigest()
-    weak_header = f"W/{format_etag(digest)}"
-    return encoded, digest, weak_header
+    # MOD-006 (audit 2026-03-04): Use strong ETags for deterministic JSON
+    strong_header = f'"{format_etag(digest).strip('"')}"'
+    return encoded, digest, strong_header
 
 
 @router.post("", response_model=schemas.EventOut)
@@ -179,7 +180,7 @@ async def all_events(
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
     events: EventService = Depends(get_read_event_service),
-) -> schemas.PaginatedEvents | Response | Any:
+) -> schemas.PaginatedEvents | Response | dict[str, Any]:
     """
     Get paginated list of events.
 
@@ -456,38 +457,24 @@ async def delete_event(
     request: Request,
     events: EventService = Depends(get_event_service),
     user: models.User = Depends(get_current_user),
+    checker: PermissionChecker = Depends(),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
-    # Check existence and permission. Service delete checks existence,
-    # but maybe we want validation first?
-    # Existing code does: ensure_exists, require_owner_or_admin.
-    # We should fetch event to check logic? Or let service do it?
-    # Service doesn't check owner.
-    # Implementation:
-    # 1. Get event (for permission check).
-    # 2. Check permission.
-    # 3. Call service.delete.
 
-    # We can use service.repo.get(event_id) or just events.get_event(event_id).
-    # But get_event signature: get_event(self, *, user_id=None, search...) -> Paginated.
-    # No, it's list events.
-    # Look for get by ID.
-    # We had db.get(models.Event, event_id).
-
-    # Let's inspect service methods again. It has repo.
-    # But usage of repo in API is discouraged if we want pure service.
-    # But usually we allow read.
-
-    # For now, I'll keep db dependency just for reading event for permission check,
-    # OR inject db as well.
-    # BUT better refactor:
-    # Use service.repo.get inside API?
-    # events.repo.get(event_id).
-
-    q = await events.repo.get(event_id)
+    # RZ-003 (audit 2026-03-04): Replaced require_owner_or_admin() with
+    # SpiceDB ReBAC check to stay consistent with update_event. Users whose
+    # editor permission was revoked via SpiceDB could previously still delete
+    # events via the legacy RBAC path because they remained the DB owner.
+    q = await events.get_event_by_id(event_id)
     ensure_exists(q, "events", locale)
-    assert q is not None
-    require_owner_or_admin(user, locale, owner_id=q.created_by, allow_teacher=True)
+
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event_id),
+        permission="delete",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
 
     await events.delete_event(event_id)
     await _invalidate_events_list_cache()
@@ -531,11 +518,15 @@ async def delete_event_file(
     ef = await db.get(models.EventFile, file_id)
     if not ef:
         raise_not_found("events", locale, exact_key="errors.events.file_not_found")
+    assert ef is not None  # narrowing for type checkers
     event = await db.get(models.Event, ef.event_id)
-    # Event is checked implicitly by permissions, but we might want to ensure it
-    # still exists?
-    # Assuming standard behavior, we just check permission.
-    require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)  # type: ignore[union-attr]
+    # RZ-004 (audit 2026-03-04): explicitly guard against a concurrently deleted
+    # parent event. Without this check `event.created_by` raises AttributeError
+    # which propagated as an unhandled 500, while the file deletion still
+    # proceeded — an authorization bypass.
+    ensure_exists(event, "events", locale)
+    assert event is not None  # narrowing for type checkers
+    require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
     file_url = ef.file_url
     await db.delete(ef)
     await db.commit()

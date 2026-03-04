@@ -9,7 +9,6 @@ from app.api.deps.auth import (
     get_current_user_full,
     get_current_user_optional,
     require_fresh_mfa,
-    require_fresh_mfa_for_enrollment,
 )
 from app.api.deps.localization import get_locale, resolve_locale
 from app.api.deps.services import (
@@ -62,6 +61,5 @@ __all__ = [
     "get_session_service",
     "get_story_service",
     "require_fresh_mfa",
-    "require_fresh_mfa_for_enrollment",
     "resolve_locale",
 ]

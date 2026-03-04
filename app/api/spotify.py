@@ -48,12 +48,22 @@ _spotify_circuit_breaker = CircuitBreaker(
     ),
 )
 
+# PERF-002 (audit 2026-03-04): shared HTTP client across requests prevents
+# per-request TCP handshake and TLS negotiation overhead.  HTTP/2 multiplexing
+# allows multiple concurrent Spotify API calls over a single connection.
+_spotify_http_client = httpx.AsyncClient(
+    http2=True,
+    timeout=httpx.Timeout(10.0),
+)
+
 
 def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
-    """Mint a short-lived pure-JWT state token for the Spotify OAuth round-trip.
+    """Mint a short-lived JWT state token for the Spotify OAuth round-trip.
 
-    This token is never stored or revoked — it only carries the user ID
-    through the Spotify redirect callback so we can identify the user.
+    RZ-002 (audit 2026-03-04): uses a dedicated spotify_oauth_state_secret
+    distinct from the main JWT signing key.  Prevents a confused-deputy attack
+    where an externally-supplied state token (returned by Spotify callback) could
+    be mistaken for or forged into a user access token.
     """
     now = datetime.now(UTC)
     payload = {
@@ -63,12 +73,10 @@ def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
         "exp": now + timedelta(minutes=expires_minutes),
         "jti": str(uuid4()),
     }
-    return jwt.encode(
-        payload,
-        settings.jwt_signing_active_secret,
-        algorithm=settings.algorithm,
-        headers={"kid": settings.jwt_signing_active_kid},
-    )
+    # Prefer the dedicated state secret; fall back to spotify_token_secret during
+    # rollout when SPOTIFY_OAUTH_STATE_SECRET has not yet been set in .env.
+    state_secret = settings.spotify_oauth_state_secret or settings.spotify_token_secret
+    return jwt.encode(payload, state_secret, algorithm="HS256")
 
 
 def _now_utc() -> datetime:

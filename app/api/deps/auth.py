@@ -265,14 +265,3 @@ async def require_fresh_mfa(
     if not mfa.user_has_confirmed_interactive_factor(user):
         return
     _enforce_fresh_mfa(request)
-
-
-async def require_fresh_mfa_for_enrollment(
-    request: Request,
-    user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> None:
-    await ensure_mfa_relationships_loaded(db, user)
-    if not mfa.user_has_confirmed_interactive_factor(user):
-        return
-    _enforce_fresh_mfa(request)

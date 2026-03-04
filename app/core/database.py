@@ -133,6 +133,11 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
     if current_settings.database_url.startswith("sqlite"):
         kwargs["poolclass"] = NullPool
     else:
+        # PERF-009 (audit 2026-03-04): Optimize Postgres pool efficiency and safety
+        kwargs["connect_args"] = {
+            "statement_cache_size": 100,
+            "command_timeout": 30.0,
+        }
         if current_settings.database_pool_size is not None:
             kwargs["pool_size"] = current_settings.database_pool_size
         if current_settings.database_max_overflow is not None:

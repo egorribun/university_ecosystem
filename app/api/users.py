@@ -327,6 +327,7 @@ async def create_user(
 )
 async def get_users(
     request: Request,
+    bg: BackgroundTasks,
     filters: schemas.UserSearchFilter = Depends(),
     current_user: UserDTO = Depends(deps.get_current_user_dto),
     service: UserProfileService = Depends(get_user_profile_service),
@@ -353,7 +354,7 @@ async def get_users(
         }
         for item in users
     ]
-    await batch_log_data_access(db, entries=log_entries, request=request)
+    bg.add_task(batch_log_data_access, db, entries=log_entries, request=request)
 
     if current_user.role != "admin":
         # Force strict serialization to public schema for non-admins

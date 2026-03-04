@@ -5,6 +5,7 @@ User repository for user data access operations.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, exists, func, or_, select
@@ -105,10 +106,14 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         return self._to_dto(obj) if obj else None
 
     async def get_by_email_or_raise(self, email: str) -> UserDTO:
-        """Get user by email or raise ValueError."""
+        """Get user by email or raise ValueError.
+
+        TD-010 (audit 2026-03-04): email address removed from the error message
+        to prevent PII propagation into logs, error trackers, and API responses.
+        """
         user = await self.get_by_email(email)
         if user is None:
-            raise ValueError(f"User with email {email} not found")
+            raise ValueError("User not found")
         return user
 
     async def get_with_full_profile(self, user_id: uuid.UUID | str) -> UserDTO | None:
@@ -207,7 +212,8 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(
             select(User)
-            .where(User.profile.has(func.lower(UserProfile.full_name).like(pattern)))
+            .join(User.profile)
+            .where(func.lower(UserProfile.full_name).like(pattern))
             .where(User.is_active.is_(True))
             .offset(skip)
             .limit(limit)
@@ -217,7 +223,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         return [self._to_dto(obj) for obj in objs]
 
     async def get_user_sessions(
-        self, user_id: uuid.UUID | str, limit: int = 1000
+        self, user_id: uuid.UUID | str, limit: int = 50
     ) -> list[models.ActiveSession]:
         """Get user sessions with limit."""
         if isinstance(user_id, str):
@@ -500,6 +506,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         self,
         user_id: uuid.UUID | str,
         limit: int = 2000,
+        before_dt: datetime | None = None,
     ) -> list[models.DataAccessLog]:
         """Get access logs where user is actor or subject."""
         if isinstance(user_id, str):
@@ -529,14 +536,16 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         # However, I must preserve existing behavior during refactoring unless it's clearly a bug.
         # If I look at strict translation:
 
+        condition = or_(
+            models.DataAccessLog.actor_user_id == user_id,
+            models.DataAccessLog.subject_user_id == user_id,
+        )
+        if before_dt:
+            condition = (condition) & (models.DataAccessLog.created_at < before_dt)
+
         stmt = (
             select(models.DataAccessLog)
-            .where(
-                or_(
-                    models.DataAccessLog.actor_user_id == user_id,
-                    models.DataAccessLog.subject_user_id == user_id,
-                )
-            )
+            .where(condition)
             .order_by(models.DataAccessLog.created_at.desc())
             .limit(limit)
         )

@@ -18,6 +18,7 @@ class CacheSettings(BaseAppSettings):
     cache_enabled: bool = True
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     nats_url: str = "nats://127.0.0.1:4222"
+    nats_auth_token: str | None = None
     session_storage_backend: str = "redis"
     cache_default_ttl_seconds: int = 300
     stats_cache_ttl_seconds: int = 180

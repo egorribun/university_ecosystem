@@ -122,6 +122,10 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         "max_overflow": 4,
         "pool_timeout": 45.0,
         "pool_recycle": 900,
+        "connect_args": {
+            "statement_cache_size": 100,
+            "command_timeout": 30.0,
+        },
     }
     assert captured["engine"] == engine
     assert captured["session_kwargs"] == {

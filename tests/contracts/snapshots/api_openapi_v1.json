@@ -487,7 +487,7 @@
           "files": {
             "default": [],
             "items": {
-              "contentMediaType": "application/octet-stream",
+              "format": "binary",
               "type": "string"
             },
             "title": "Files",
@@ -500,7 +500,7 @@
       "Body_upload_avatar_api_v1_users_me_avatar_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -514,7 +514,7 @@
       "Body_upload_cover_api_v1_users_me_cover_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -528,7 +528,7 @@
       "Body_upload_event_file_api_v1_events__id__upload_file_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -542,7 +542,7 @@
       "Body_upload_event_image_api_v1_events_upload_image_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -556,7 +556,7 @@
       "Body_upload_news_image_api_v1_news_upload_image_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -570,7 +570,7 @@
       "Body_upload_story_cover_api_v1_stories_upload_cover_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -5774,13 +5774,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -8107,6 +8100,14 @@
                 }
               ],
               "title": "Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
             }
           }
         ],
