@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Message, MessagesListResponse } from "@/api/chat"
-import { readAccessToken } from "./auth/tokenStorage"
+// Auth token storage handled natively via cookies
 import { logDebug, logError } from "@/app/logger"
 
 // Reconnection configuration

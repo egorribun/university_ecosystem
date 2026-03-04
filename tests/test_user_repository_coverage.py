@@ -16,13 +16,17 @@ async def user_repo(db_session):
 
 @pytest.fixture
 async def test_user(db_session):
+    from app.models.users import UserProfile, UserPreferences
     user = models.User(
         email="test_repo@example.com",
-        full_name="Test Repo User",
         hashed_password="hashed_password",
         is_active=True,
         role=UserRole.STUDENT,
-        profile_status="active",
+        profile=UserProfile(
+            full_name="Test Repo User",
+            status="active"
+        ),
+        preferences=UserPreferences()
     )
     db_session.add(user)
     await db_session.commit()

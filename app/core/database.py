@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import event, text
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -443,7 +442,6 @@ async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:
     # Stale connections are already handled by pool_pre_ping=True at engine level.
     async with async_session() as session:
         yield session
-
 
 
 async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:

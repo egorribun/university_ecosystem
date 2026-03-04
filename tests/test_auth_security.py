@@ -175,6 +175,7 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
         legacy_payload,
         "old-secret-token-32-chars-long-here",
         algorithm=settings.algorithm,
+        headers={"kid": "legacy"},
     )
 
     rotated_token = _mint_pure_jwt("current-user")

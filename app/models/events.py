@@ -7,7 +7,6 @@ from sqlalchemy import (
     UUID,
     Boolean,
     CheckConstraint,
-    Column,
     Computed,
     DateTime,
     ForeignKey,

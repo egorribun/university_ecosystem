@@ -125,8 +125,6 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
         raise_validation_error("errors.profile_cache.invalid_signature", locale)
 
 
-
-
 @password_router.post(
     "/forgot",
     dependencies=[Depends(sensitive_route_limit())],
@@ -412,8 +410,6 @@ async def export_access_audit(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=access_audit.csv"},
     )
-
-
 
 
 @users_router.patch("/{user_id}", response_model=schemas.UserOut)

@@ -19,10 +19,32 @@ async def user_factory(
             "hashed_password": "hashed-password",
             "role": "student",
             "is_active": True,
-            "full_name": "Test User",
         }
+
+        # Default profile mapping
+        profile_data = {"full_name": "Test User"}
+        pref_data = {}
+
+        profile_keys = {"full_name", "avatar_url", "cover_url", "about", "telegram", "profile_status", "status", "achievements", "position", "department"}
+        pref_keys = {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
+
+        for k, v in list(kwargs.items()):
+            if k in profile_keys:
+                if k == "profile_status":
+                    profile_data["status"] = kwargs.pop(k)
+                elif k == "profile_department":
+                    profile_data["department"] = kwargs.pop(k)
+                else:
+                    profile_data[k] = kwargs.pop(k)
+            elif k in pref_keys:
+                pref_data[k] = kwargs.pop(k)
+
         defaults.update(kwargs)
         user = models.User(**defaults)
+
+        user.profile = models.UserProfile(**profile_data)
+        if pref_data:
+            user.preferences = models.UserPreferences(**pref_data)
         db_session.add(user)
         if not user.spotify:
             user.spotify = models.SpotifyIntegration()

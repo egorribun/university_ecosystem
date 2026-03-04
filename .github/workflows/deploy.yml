@@ -153,11 +153,20 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      id-token: write # Required for requesting the JWT for OIDC
     environment:
       name: ${{ inputs.environment }}
       url: ${{ steps.deploy.outputs.url }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Configure Cloud Provider Credentials (OIDC)
+        # Replaces long-lived secrets with ephemeral, short-lived tokens via GitHub's OIDC provider.
+        # Ensure the cloud provider's identity pool trusts this repository and environment.
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Deploy (placeholder)
         id: deploy

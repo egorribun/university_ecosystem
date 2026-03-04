@@ -63,7 +63,7 @@ class Settings(
         return bool(value)
 
     @model_validator(mode="after")
-    def _reject_insecure_production_config(self) -> "Settings":
+    def _reject_insecure_production_config(self) -> Settings:
         """Fail fast on insecure defaults that are only acceptable locally.
 
         RZ-12 (audit 2026-03-04): Operators frequently copy .env.example → .env

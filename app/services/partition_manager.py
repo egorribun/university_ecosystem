@@ -57,17 +57,15 @@ async def ensure_partitions_exist() -> None:
                 )
 
                 try:
-                    from sqlalchemy.sql import quoted_name
-
-                    # Safely handle table names as identifiers
-                    safe_partition = quoted_name(partition_name, quote=True)
-                    safe_table = quoted_name(table, quote=True)
+                    # RZ-2 Fix (audit 2026-03-04): Safely handle identifiers to strictly prevent SQLi
+                    safe_partition = str(partition_name).replace('"', '""')
+                    safe_table = str(table).replace('"', '""')
 
                     await conn.execute(
                         text(
                             f"""
-                        CREATE TABLE IF NOT EXISTS {safe_partition}
-                        PARTITION OF {safe_table}
+                        CREATE TABLE IF NOT EXISTS "{safe_partition}"
+                        PARTITION OF "{safe_table}"
                         FOR VALUES FROM ('{start_date.isoformat()}')
                         TO ('{next_month_start.isoformat()}');
                     """
@@ -119,10 +117,10 @@ async def ensure_partitions_exist() -> None:
 
                         if p_end_date < cutoff_date:
                             logger.info(f"Pruning old partition {p_name}")
-                            from sqlalchemy.sql import quoted_name
 
-                            safe_p_name = quoted_name(p_name, quote=True)
-                            await conn.execute(text(f"DROP TABLE {safe_p_name}"))
+                            # RZ-2 Fix (audit 2026-03-04): Prevent SQLi in DROP TABLE
+                            safe_p_name = str(p_name).replace('"', '""')
+                            await conn.execute(text(f'DROP TABLE "{safe_p_name}"'))
                             await conn.commit()
 
                     except (ValueError, IndexError):

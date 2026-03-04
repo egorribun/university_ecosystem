@@ -160,10 +160,6 @@ class BaseRepository(ReadOnlyRepository[T, DTOT], Generic[T, DTOT, CreateT, Upda
         await self.db.flush()
         return self._to_dto(db_obj)
 
-
-
-
-
     async def delete(self, id: Any) -> bool:
         target_id = self._cast_id(id)
         stmt = delete(self.model).where(self.model.id == target_id)

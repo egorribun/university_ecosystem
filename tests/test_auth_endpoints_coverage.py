@@ -23,7 +23,7 @@ async def test_register_endpoint(async_client: AsyncClient, db_session):
 
     stmt = select(models.User).where(models.User.email == "newuser@example.com")
     user = (await db_session.execute(stmt)).scalar_one()
-    assert user.full_name == "New User"
+    assert user.profile.full_name == "New User"
 
     # Duplicate email
     response = await async_client.post("/auth/register", json=payload)

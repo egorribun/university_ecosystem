@@ -80,12 +80,18 @@ class WebAuthnService:
             for cre in result
         ]
 
+        profile = getattr(user, "profile", None)
+        display_name = (
+            getattr(user, "full_name", None)
+            or (getattr(profile, "full_name", None) if profile else None)
+            or str(user.email)
+        )
         options = generate_registration_options(
             rp_id=self._get_rp_id(),
             rp_name=self._get_rp_name(),
             user_id=user_id_bytes,
             user_name=str(user.email),
-            user_display_name=str(user.full_name or user.email),
+            user_display_name=display_name,
             exclude_credentials=exclude_credentials,  # type: ignore[arg-type]
             authenticator_selection=AuthenticatorSelectionCriteria(
                 resident_key=ResidentKeyRequirement.PREFERRED,

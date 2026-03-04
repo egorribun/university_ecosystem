@@ -232,6 +232,7 @@ class UserComplianceService:
             return db_user
         except Exception as exc:
             import traceback
+
             traceback.print_exc()
             await self.repo.rollback()
             raise BusinessRuleViolation("errors.users.create_failed") from exc

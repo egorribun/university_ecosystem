@@ -47,12 +47,13 @@ def create_admin(
                 )
                 return
 
+            from app.models.users import UserProfile
+
             admin = User(
                 email=email,
                 hashed_password=await get_password_hash(password),
-                full_name=full_name,
+                profile=UserProfile(full_name=full_name, status="active"),
                 role="admin",
-                profile_status="active",
                 is_active=True,
                 mfa_required=False,
             )

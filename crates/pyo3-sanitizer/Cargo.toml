@@ -1,0 +1,24 @@
+[package]
+name = "pyo3-sanitizer"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings for the ammonia-based HTML sanitizer (isomorphic with the WASM frontend crate)"
+authors = ["Admin"]
+license = "MIT"
+
+[lib]
+# cdylib = native Python extension (.pyd / .so)
+crate-type = ["cdylib"]
+
+[dependencies]
+# PyO3 extension-module feature = embed Python only at link time, not startup.
+# This is the correct feature for native Python .so extensions built by maturin.
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py311"] }
+ammonia = "4"
+
+[profile.release]
+# LTO produces significantly smaller binaries for cdylib targets at the cost of
+# a longer link step. Acceptable for the infrequent CI build cadence.
+lto = true
+opt-level = 3
+codegen-units = 1

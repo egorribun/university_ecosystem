@@ -42,7 +42,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:test@postgres:5432/test_db
       CACHE_REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
-      TASKIQ_BROKER_URL: redis://redis:6379/2
+      NATS_URL: nats://test-nats:4222
       SECRET_KEY: test_secret_key
       ALEMBIC_CONFIG: alembic.ini
     depends_on:

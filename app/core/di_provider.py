@@ -14,6 +14,7 @@ Usage in a new route handler:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
@@ -21,6 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.fingerprint import SuspiciousActivityDetector
 from app.auth.redis_session import SessionBackend
+
+# NatsTaskBroker is imported at module level so that Dishka's @provide parser
+# can resolve the return type via get_type_hints() at class-definition time.
+# (A string forward-reference like "app.core.nats_broker.NatsTaskBroker" will
+# cause UndefinedTypeAnalysisError because "app" is not in module globals.)
+from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession
 from app.cqrs.bus import CommandBus, QueryBus
 from app.cqrs.commands.schedule import (
@@ -37,7 +44,7 @@ from app.cqrs.queries import (
     GetStatsHandler,
     GetStatsQuery,
 )
-from app.deps.cache import BaseCache, get_cache
+from app.deps.cache import BaseCache, create_cache_backend
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
@@ -74,6 +81,9 @@ from app.services.user.media_service import UserMediaService
 from app.services.user.profile_service import UserProfileService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
+from app.workers.outbox import OutboxWorker
+
+_logger = logging.getLogger(__name__)
 
 
 class AppProvider(Provider):
@@ -94,6 +104,44 @@ class AppProvider(Provider):
 
         return async_sessionmaker(engine, expire_on_commit=False)
 
+    # ── Background workers (APP singletons) ───────────────────────────────────
+
+    @provide(scope=Scope.APP)
+    def outbox_worker(self) -> OutboxWorker:
+        """Outbox pattern CDC worker — one instance per process.
+
+        lifespan.py acquires this via the Dishka container and drives the
+        asyncio task lifecycle. The container just owns the *object*;
+        lifespan owns the *task* that calls run_forever().
+        """
+        return OutboxWorker()
+
+    @provide(scope=Scope.APP)
+    async def nats_broker(
+        self,
+    ) -> AsyncIterator[NatsTaskBroker]:
+        """NATS JetStream broker — connects on container startup, closes on shutdown.
+
+        Using an async generator so Dishka drives the connect/close lifecycle
+        rather than lifespan.py doing it manually.  A 5-second timeout guards
+        against hung connections during startup.
+        """
+        import asyncio
+
+        broker = NatsTaskBroker()
+        try:
+            await asyncio.wait_for(broker.connect(), timeout=5.0)
+            _logger.info("Dishka: NatsTaskBroker connected (Scope.APP)")
+        except Exception as exc:
+            _logger.warning(
+                "Dishka: NATS connection failed (%s). Broker in degraded mode.", exc
+            )
+        try:
+            yield broker
+        finally:
+            await broker.close()
+            _logger.info("Dishka: NatsTaskBroker closed (Scope.APP shutdown)")
+
     @provide(scope=Scope.REQUEST)
     async def db(
         self,
@@ -107,8 +155,12 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def cache(self) -> BaseCache:
-        """Wraps the existing module-level cache singleton."""
-        return get_cache()
+        """Creates an independent cache instance for the DI container.
+
+        Enforces Dependency Inversion by managing the cache lifecycle within
+        Dishka rather than delegating to a module-level global singleton.
+        """
+        return create_cache_backend()
 
     # ── Stateless APP-scoped singletons ───────────────────────────────────────
 
@@ -432,27 +484,40 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def login_service(
         self,
+        db: AsyncDatabaseSession,
         auth_repo: AuthRepository,
         user_repo: UserRepository,
         profile_service: UserProfileService,
         session_service: SessionService,
         lockout_service: LockoutService,
         audit: AuditService,
-        # Inject RedisSessionService (has create_session) not SessionBackend
-        # (has register_session). Both live in different modules; the DI container
-        # previously wired the wrong one, causing AttributeError at login. (TD-6)
         redis_session: RedisSessionService,
         geolocation_service: GeolocationService,
     ) -> LoginService:
-        return LoginService(
-            auth_repo=auth_repo,
-            user_repo=user_repo,
-            profile_service=profile_service,
+        from app.services.auth.credential_validator import CredentialValidator
+        from app.services.auth.login_session_manager import LoginSessionManager
+        from app.services.auth.mfa_coordinator import MfaCoordinator
+
+        session_manager = LoginSessionManager(
             session_service=session_service,
-            lockout_service=lockout_service,
-            audit=audit,
             redis_session_service=redis_session,
             geolocation_service=geolocation_service,
+            audit=audit,
+        )
+        validator = CredentialValidator(
+            user_repo=user_repo,
+            profile_service=profile_service,
+            lockout_service=lockout_service,
+            audit=audit,
+            session_manager=session_manager,
+        )
+        mfa_coord = MfaCoordinator(auth_repo=auth_repo)
+
+        return LoginService(
+            validator=validator,
+            mfa_coord=mfa_coord,
+            session_manager=session_manager,
+            db_session=db,
         )
 
 

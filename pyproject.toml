@@ -79,6 +79,9 @@ dependencies = [
     "virtualenv>=20.36.2",
 ]
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -107,30 +110,17 @@ check_untyped_defs = false
 # Routers and services contain many FastAPI route handlers decorated with
 # Depends(); their signatures are validated by FastAPI at startup rather than
 # mypy.  Allow missing annotations in these modules during the migration period.
-# NOTE: FastAPI route-handler functions are validated by FastAPI at startup
-# rather than mypy.  The override below is TEMPORARY and must be narrowed
-# module-by-module until the services layer is fully annotated. (TD-1: audit 2026-02-24)
-# Target: remove each module from this list on resolution of its annotations.
-# TD-05 (audit 2026-03-04): Override exempts high-risk auth routing modules from
-# untyped-def checks during the annotation migration period.
 # DEADLINE: 2026-Q3 | Action: annotate each route function one PR at a time,
-# then remove that module from this list. Start with app.api.auth.login.
+# then remove that module from this list. Start with app.api.admin.*.
 [[tool.mypy.overrides]]
 module = [
     "app.routers.*",
-    "app.api.auth.*",
-    "app.api.internal.*",
 ]
-disallow_untyped_defs = false
 
 # Temporarily exempt only the services with the most complex Depends() chains.
 # All other services must be fully annotated.
-# TD-05: login_service is the highest-risk file in the auth layer — complex
-# Depends() chains obscure typing. Priority target for Q3 2026 annotation.
-# DEADLINE: 2026-Q3 | Action: add return types to all login/session functions.
 [[tool.mypy.overrides]]
 module = [
-    "app.services.auth.login_service",
     "app.services.chat_service",
     "app.services.webpush",
 ]
@@ -223,6 +213,7 @@ dev = [
     "asgi-lifespan>=2.1.0",
     "fakeredis>=2",
     "hypothesis>=6.112",
+    "maturin>=1.7,<2",
     "mypy>=1.11",
     "pre-commit>=3.8",
     "bandit[toml]>=1.8",

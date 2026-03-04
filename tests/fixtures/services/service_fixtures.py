@@ -43,7 +43,7 @@ class _TestingRedisCache(cache_module.RedisCache):
 
 
 @pytest_asyncio.fixture
-async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
+async def fake_cache(mock_global_redis) -> AsyncIterator[_TestingRedisCache]:
     """Fixture to inject fakeredis for cache tests."""
     from app.core import cache as core_cache
 
@@ -55,10 +55,11 @@ async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
         url=settings.cache_redis_url,
         default_ttl=settings.cache_default_ttl_seconds,
     )
+    cache._client = mock_global_redis
     cache_module.set_cache_backend(cache)
 
     # Inject into global caches
-    fake_client = await cache._get_client()
+    fake_client = mock_global_redis
     orig_sched_redis = core_cache.schedule_cache._redis
     orig_news_redis = core_cache.news_cache._redis
 

@@ -123,18 +123,25 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         """
         import tempfile
 
+        import anyio
+
         accumulated = 0
-        with tempfile.SpooledTemporaryFile(
+        tmpfile = tempfile.SpooledTemporaryFile(
             max_size=self._MEM_BUFFER_THRESHOLD, mode="w+b"
-        ) as tmpfile:
+        )
+        try:
             async for chunk in request.stream():
                 accumulated += len(chunk)
                 if accumulated > self._max_bytes:
+                    await anyio.to_thread.run_sync(tmpfile.close)
                     return None, self._oversized_response(self._max_bytes)
-                tmpfile.write(chunk)
+                await anyio.to_thread.run_sync(tmpfile.write, chunk)
 
-            tmpfile.seek(0)
-            body_bytes = tmpfile.read()
+            await anyio.to_thread.run_sync(tmpfile.seek, 0)
+            body_bytes = await anyio.to_thread.run_sync(tmpfile.read)
+        finally:
+            if not tmpfile.closed:
+                await anyio.to_thread.run_sync(tmpfile.close)
 
         async def _replay_receive() -> dict[str, Any]:
             return {"type": "http.request", "body": body_bytes, "more_body": False}
@@ -317,5 +324,5 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
     # Added last so it wraps all other middleware (Starlette applies in reverse).
     app.add_middleware(
         ContentSizeLimitMiddleware,
-        max_bytes=getattr(settings, "max_upload_body_bytes", 5 * 1024 * 1024),
+        max_bytes=getattr(settings, "max_upload_body_bytes", 50 * 1024 * 1024),
     )

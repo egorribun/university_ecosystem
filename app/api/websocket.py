@@ -14,7 +14,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import threading
 import uuid
+from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -37,7 +39,6 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.chat import ChatParticipant, PresenceStatus
 from app.schemas.dtos import UserDTO
 from app.services.audit_service import SecurityEvent, audit_service
-from app.utils.logging import redact_sensitive_mapping
 
 # PyJWT exception base — catch all JWT-specific errors without swallowing
 # infrastructure failures (DB timeouts, programming errors).
@@ -68,14 +69,22 @@ PRESENCE_SOURCE_PUBSUB = "pubsub"
 
 _PRESENCE_INSTANCE_ID = uuid.uuid4().hex
 
-# PERF-07 (audit 2026-03-04): _get_presence_audience opens a new DB session on
-# every WebSocket message when Redis is unavailable. At 100 concurrent clients
-# with 5 contacts each this is 500 DB sessions/sec at presence ping rate.
-# This in-process cache caps DB access to once per 30s per user_id for the
-# Redis-cold path. Redis-enabled path is unchanged (cache_key hit returns early).
-_PRESENCE_DB_CACHE: dict[uuid.UUID, tuple[set[uuid.UUID], float]] = {}
+# PERF-07 (audit 2026-03-04): Capped to _PRESENCE_DB_CACHE_MAX_SIZE using
+# OrderedDict to prevent Memory Leak / OOM under unbounded presence checks.
+_PRESENCE_DB_CACHE: OrderedDict[uuid.UUID, tuple[set[uuid.UUID], float]] = OrderedDict()
 _PRESENCE_DB_CACHE_TTL = 30.0  # seconds
-_PRESENCE_DB_CACHE_LOCK = asyncio.Lock()
+_PRESENCE_DB_CACHE_MAX_SIZE = 10000
+_PRESENCE_DB_CACHE_LOCK: asyncio.Lock | None = None
+_PRESENCE_DB_ALLOC_LOCK = threading.Lock()
+
+
+def _get_presence_cache_lock() -> asyncio.Lock:
+    global _PRESENCE_DB_CACHE_LOCK
+    if _PRESENCE_DB_CACHE_LOCK is None:
+        with _PRESENCE_DB_ALLOC_LOCK:
+            if _PRESENCE_DB_CACHE_LOCK is None:
+                _PRESENCE_DB_CACHE_LOCK = asyncio.Lock()
+    return _PRESENCE_DB_CACHE_LOCK
 
 
 async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
@@ -92,20 +101,26 @@ async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
     # WebSocket ping when Redis is disabled. Lock prevents thundering herd.
     now = asyncio.get_event_loop().time()
     cached = _PRESENCE_DB_CACHE.get(user_id)
-    if cached is not None and (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
-        return cached[0]
+    if cached is not None:
+        _PRESENCE_DB_CACHE.move_to_end(user_id)  # LRU bump
+        if (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
+            return cached[0]
 
-    async with _PRESENCE_DB_CACHE_LOCK:
+    async with _get_presence_cache_lock():
         # Re-check inside the lock (another coroutine may have filled it).
         cached = _PRESENCE_DB_CACHE.get(user_id)
-        if cached is not None and (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
-            return cached[0]
+        if cached is not None:
+            _PRESENCE_DB_CACHE.move_to_end(user_id)
+            if (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
+                return cached[0]
 
         async with async_session() as session:
             repo = ChatRepository(session)
             audience = await repo.get_presence_audience(user_id)
 
         _PRESENCE_DB_CACHE[user_id] = (audience, asyncio.get_event_loop().time())
+        if len(_PRESENCE_DB_CACHE) > _PRESENCE_DB_CACHE_MAX_SIZE:
+            _PRESENCE_DB_CACHE.popitem(last=False)
 
     if cache.enabled:
         await cache.set(cache_key, list(audience), ttl=3600)
@@ -158,7 +173,9 @@ class PresencePubSub:
             self._redis = redis
         elif settings.cache_redis_url:
             self._redis = Redis.from_url(
-                settings.cache_redis_url, decode_responses=True
+                settings.cache_redis_url,
+                decode_responses=True,
+                max_connections=getattr(settings, "redis_pool_size", 20),
             )
         if self._redis:
             self._pubsub_task = asyncio.create_task(self._listen_for_updates())
@@ -256,10 +273,17 @@ class ConnectionManager:
         # websocket -> rate limiter (Audit 6.3)
         self.rate_limiters: dict[WebSocket, WebSocketRateLimiter] = {}
         self._last_presence_sent_at: dict[uuid.UUID, datetime] = {}
-        # OZ-2 (audit 2026-02-26): Protects connect/disconnect against concurrent
-        # access so that connection-limit checks are atomically enforced even when
-        # multiple WebSocket upgrade requests arrive simultaneously for the same user.
-        self._lock: asyncio.Lock = asyncio.Lock()
+        # OZ-2 (audit 2026-02-26): Lazily initialized to safely bound to
+        # the ASGI loop instance.
+        self._lock: asyncio.Lock | None = None
+        self._alloc_lock = threading.Lock()
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            with self._alloc_lock:
+                if self._lock is None:
+                    self._lock = asyncio.Lock()
+        return self._lock
 
     async def connect(
         self,
@@ -280,7 +304,7 @@ class ConnectionManager:
         limit = getattr(
             settings, "ws_max_connections_per_user", self.MAX_CONNECTIONS_PER_USER
         )
-        async with self._lock:
+        async with self._get_lock():
             current_conns = self.active_connections.get(user_id, set())
             if len(current_conns) >= limit:
                 # Reject BEFORE accepting — the client will receive a proper close frame.
@@ -311,12 +335,12 @@ class ConnectionManager:
     async def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
         """Remove a WebSocket connection and return the user_id if found.
 
-        WS-1 (audit 2026-03): Acquire self._lock so that disconnect() and
+        WS-1 (audit 2026-03): Acquire self._get_lock() so that disconnect() and
         connect() are mutually exclusive.  Without the lock the connection-limit
         check in connect() could race with a concurrent teardown, allowing a
         user to exceed their limit or leaving orphaned state in the dicts.
         """
-        async with self._lock:
+        async with self._get_lock():
             self.rate_limiters.pop(websocket, None)
             user_id = self.connection_users.pop(websocket, None)
             if user_id is not None and user_id in self.active_connections:
@@ -361,7 +385,7 @@ class ConnectionManager:
         # PERF-2: Snapshot the set under lock BEFORE iterating to prevent concurrent
         # modification. self.disconnect() modifies active_connections, which would
         # cause RuntimeError if we iterated directly over the live set.
-        async with self._lock:
+        async with self._get_lock():
             connections_snapshot = set(self.active_connections.get(user_id, set()))
 
         for connection in connections_snapshot:
@@ -540,7 +564,9 @@ async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
         try:
             last_seen = datetime.fromisoformat(str(last_seen_raw))
         except ValueError:
-            logger.warning("Presence pubsub: invalid last_seen value — ignoring timestamp")
+            logger.warning(
+                "Presence pubsub: invalid last_seen value — ignoring timestamp"
+            )
     await manager.broadcast_presence(
         user_id,
         active,
@@ -815,8 +841,6 @@ async def websocket_chat(websocket: WebSocket) -> None:
 
     # Debug: log incoming connection info
 
-
-
     auth_header = websocket.headers.get("authorization")
     protocol_header = websocket.headers.get("sec-websocket-protocol")
     header_token = _extract_bearer_token(auth_header)
@@ -989,7 +1013,9 @@ async def websocket_chat(websocket: WebSocket) -> None:
                             "type": "typing",
                             "chat_id": str(chat_uuid),
                             "user_id": str(user.id),
-                            "user_name": user.full_name or user.email,
+                            "user_name": getattr(user.profile, "full_name", None)
+                            if getattr(user, "profile", None)
+                            else str(user.email),
                         },
                         exclude_user_id=user.id,
                     )

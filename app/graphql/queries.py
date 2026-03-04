@@ -30,7 +30,7 @@ def _user_to_type(user: User) -> UserType:
     return UserType(
         id=strawberry.ID(str(user.id)),
         email=user.email,
-        full_name=user.full_name,
+        full_name=user.profile.full_name if getattr(user, "profile", None) else None,
         is_active=user.is_active,
         created_at=user.created_at,
     )
