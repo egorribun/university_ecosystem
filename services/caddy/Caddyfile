@@ -1,0 +1,60 @@
+# Caddyfile — HTTP/3 (QUIC) edge reverse proxy for university-ecosystem.
+#
+# Caddy manages TLS certificates automatically via Let's Encrypt (ACME).
+# HTTP/3 (QUIC/UDP) is advertised via the Alt-Svc response header.
+# The Python backend stays on plain HTTP/1.1 internally — QUIC terminates here.
+#
+# For local development (self-signed / no domain), set the environment variable:
+#   ACME_EMAIL=      (empty or omitted → Caddy uses self-signed locally)
+# For production, set:
+#   ACME_EMAIL=you@example.com
+#   PUBLIC_HOSTNAME=your.domain.tld
+
+{
+    # Enable all three protocol versions at the server level.
+    # h3 (QUIC) is enabled automatically when UDP 443 is exposed.
+    servers {
+        protocols h1 h2 h3
+    }
+
+    # Auto-HTTPS certificate management email (required for ACME production).
+    # In dev environments without a real domain, Caddy falls back to self-signed.
+    email {$ACME_EMAIL:dev@localhost}
+}
+
+# Main HTTPS site — matches the public hostname or falls back to :443.
+{$PUBLIC_HOSTNAME::443} {
+
+    # --- Reverse proxy to the backend service ------------------------------
+    reverse_proxy backend:8000 {
+        # Propagate real client IP for rate limiting, audit logs, geolocation.
+        header_up X-Real-IP           {http.request.remote}
+        header_up X-Forwarded-For     {http.request.remote}
+        header_up X-Forwarded-Proto   https
+        header_up X-Forwarded-Host    {host}
+
+        # Health check: Caddy will stop sending traffic if the backend is down.
+        health_uri /healthz
+        health_interval 10s
+        health_timeout  5s
+    }
+
+    # --- HTTP/3 advertisement header --------------------------------------
+    # Browsers use this to upgrade future connections to QUIC.
+    # ma=2592000 = 30-day max-age (standard recommendation).
+    header Alt-Svc `h3=":443"; ma=2592000`
+
+    # --- Security hardening -----------------------------------------------
+    # HSTS: tell browsers to always use HTTPS for this domain (1 year).
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+    # Prevent Caddy from leaking its version in the Server header.
+    header -Server
+
+    # --- Logging -----------------------------------------------------------
+    log {
+        output stderr
+        format json
+        level  INFO
+    }
+}

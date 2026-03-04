@@ -9,7 +9,6 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.database import Base, engine, init_database, wait_db
 from app.core.events import register_event_listeners
-from app.core.nats_broker import broker as nats_broker
 from app.core.observability import shutdown_observability
 from app.deps.cache import shutdown_cache
 from app.services import notification_queue, webpush
@@ -78,21 +77,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _cm = ConnectionManager()
     app.state.connection_manager = _cm
     _ws_module.manager = _cm  # Keep module-level alias for pubsub / background tasks
-
-    # MOD-3: NATS Task Broker initialization
-    _nats_success = False
-    try:
-        # We use a 5-second timeout to ensure CI/deployments don't hang if NATS is down.
-        await asyncio.wait_for(nats_broker.connect(), timeout=5.0)
-        _nats_success = True
-    except (TimeoutError, Exception) as exc:
-        _logger.warning("NATS connection failed: %s. Continuing in degraded mode.", exc)
-
-    worker_task = None
-    if _nats_success:
-        # In development or if explicitly allowed, we can run the worker in-process.
-        # In production, a separate worker process would call broker.run_worker().
-        worker_task = asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
 
     await feature_flags.initialize()
     await start_presence_pubsub()
@@ -311,9 +295,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 raise
             _logger.warning("Partition management initialization failed: %s", exc)
 
-    # Start OutboxWorker
-    outbox_worker = OutboxWorker()
+    # DI-01: Both the OutboxWorker and NatsTaskBroker are Scope.APP singletons
+    # owned by the Dishka container.  lifespan is responsible only for driving
+    # their asyncio task lifecycles; the object construction and cleanup happen
+    # inside their @provide generators.
+    from app.core.nats_broker import NatsTaskBroker
+
+    outbox_worker: OutboxWorker = await app.state.dishka_container.get(OutboxWorker)
     outbox_task = asyncio.create_task(outbox_worker.run_forever(), name="outbox_worker")
+    app.state.background_tasks.add(outbox_task)
+
+    nats_broker: NatsTaskBroker = await app.state.dishka_container.get(NatsTaskBroker)
+    if nats_broker.is_connected:
+        nats_worker_task = asyncio.create_task(
+            nats_broker.run_worker(), name="nats_worker"
+        )
+        app.state.background_tasks.add(nats_worker_task)
+    else:
+        _logger.warning("NATS broker not connected — worker task skipped (degraded mode)")
 
     def _on_outbox_done(task: asyncio.Task[Any]) -> None:
         """Log unexpected OutboxWorker exits so they are never silently swallowed."""
@@ -350,6 +349,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if hasattr(app.state, "background_tasks"):
             app.state.background_tasks.clear()
 
+        # DI-01: Container owns the OutboxWorker and NatsTaskBroker lifetimes.
+        # Closing the container calls the async generator finalizers in order:
+        #   1. NatsTaskBroker.close() (via the Scope.APP async generator)
+        # The outbox_worker.stop() no longer needs a manual call here because
+        # the task is cancelled via background_tasks above and run_forever()
+        # exits cleanly on CancelledError.
         await app.state.dishka_container.close()
         await stop_presence_pubsub()
         await notification_queue.shutdown_notification_queue()
@@ -357,14 +362,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await shutdown_cache()
         if settings.partition_management_enabled and stop_partitions:
             await stop_partitions()
-
-        await outbox_worker.stop()
-        await outbox_task
-
-        # Shutdown NATS broker
-        if worker_task:
-            worker_task.cancel()
-        await nats_broker.close()
 
         await feature_flags.shutdown()
         await stop_memory_cleanup_task()

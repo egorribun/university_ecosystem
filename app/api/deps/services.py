@@ -165,8 +165,11 @@ async def get_login_service(
 ) -> Any:
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.user_repository import UserRepository
+    from app.services.auth.credential_validator import CredentialValidator
     from app.services.auth.lockout import LockoutService
     from app.services.auth.login_service import LoginService
+    from app.services.auth.login_session_manager import LoginSessionManager
+    from app.services.auth.mfa_coordinator import MfaCoordinator
     from app.services.notification_service import NotificationService
     from app.services.user.profile_service import UserProfileService
 
@@ -176,15 +179,26 @@ async def get_login_service(
     profile_service = UserProfileService(user_repo, audit, notifications)
     lockout_service = LockoutService(db)
 
+    session_manager = LoginSessionManager(
+        session_service=session_service,
+        redis_session_service=redis_session_service,
+        geolocation_service=geolocation_service,
+        audit=audit,
+    )
+    validator = CredentialValidator(
+        user_repo=user_repo,
+        profile_service=profile_service,
+        lockout_service=lockout_service,
+        audit=audit,
+        session_manager=session_manager,
+    )
+    mfa_coord = MfaCoordinator(auth_repo=auth_repo)
+
     return LoginService(
-        auth_repo,
-        user_repo,
-        profile_service,
-        session_service,
-        lockout_service,
-        audit,
-        redis_session_service,
-        geolocation_service,
+        validator=validator,
+        mfa_coord=mfa_coord,
+        session_manager=session_manager,
+        db_session=db,
     )
 
 

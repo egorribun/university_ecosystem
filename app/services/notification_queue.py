@@ -51,13 +51,12 @@ async def enqueue_news_notification(
 
 
 async def shutdown_notification_queue() -> None:
-    """No-op for TaskIQ-backed queue."""
+    """No-op for NATS JetStream-backed queue."""
 
 
 async def cleanup_dead_lettered_jobs(retention_days: int = 30) -> int:
     """
-    No-op: Dead letter cleanup is not supported in TaskIQ mode
-    (or handled by TaskIQ).
+    No-op: Dead letter cleanup is handled by NATS consumer tracking internally.
     """
     return 0
 

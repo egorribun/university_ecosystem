@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache, partial
@@ -72,9 +73,18 @@ _auth_executor = ThreadPoolExecutor(
 # Without this, a login burst fans out 100+ simultaneous 64MB/~300ms hash calls,
 # saturating the thread pool and spiking latency for every other request.
 # The semaphore provides backpressure: excess callers await a free slot instead
-# of all racing to the executor at once.  Always ≥1 to avoid deadlock.
+# of all racing to the executor at once. Always >=1 to avoid deadlock.
 _ARGON2_CONCURRENCY_LIMIT: int = max(1, _AUTH_EXECUTOR_WORKERS - 1)
-_argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+_argon2_semaphore: asyncio.Semaphore | None = None
+_argon2_alloc_lock = threading.Lock()
+
+def _get_argon2_semaphore() -> asyncio.Semaphore:
+    global _argon2_semaphore
+    if _argon2_semaphore is None:
+        with _argon2_alloc_lock:
+            if _argon2_semaphore is None:
+                _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+    return _argon2_semaphore
 
 
 class SecurityError(Exception):
@@ -141,13 +151,20 @@ def _calculate_lookup_hash(input_data: str) -> str:
     )
 
 
-# RZ-10: Lock created eagerly at import time as a module-level constant.
-# The previous lazy pattern (_hibp_client_lock: asyncio.Lock | None) had a
-# TOCTOU race under Python 3.13+ free-threaded mode (PYTHON_GIL=0): two
-# coroutines could both see None and create separate Lock objects, causing
-# one of them to be permanently leaked and the other to be used inconsistently.
+# RZ-10: Lock created lazily using a threading.Lock constraint to prevent
+# double-allocation TOCTOU while safely binding the inner asyncio.Lock to the
+# local ASGI worker event loop.
 _hibp_client: httpx.AsyncClient | None = None
-_hibp_client_lock: asyncio.Lock = asyncio.Lock()  # immutable module constant
+_hibp_client_lock: asyncio.Lock | None = None
+_hibp_alloc_lock = threading.Lock()
+
+def _get_hibp_client_lock() -> asyncio.Lock:
+    global _hibp_client_lock
+    if _hibp_client_lock is None:
+        with _hibp_alloc_lock:
+            if _hibp_client_lock is None:
+                _hibp_client_lock = asyncio.Lock()
+    return _hibp_client_lock
 
 
 async def _get_hibp_client() -> httpx.AsyncClient:
@@ -161,7 +178,7 @@ async def _get_hibp_client() -> httpx.AsyncClient:
     if _hibp_client is not None:
         return _hibp_client  # fast path — no lock contention
 
-    async with _hibp_client_lock:
+    async with _get_hibp_client_lock():
         # Re-check inside the lock: another coroutine may have initialised it
         # while we were waiting to acquire.
         if _hibp_client is None:
@@ -341,7 +358,7 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
 
 async def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Asynchronous verification offloaded to thread pool with backpressure."""
-    async with _argon2_semaphore:
+    async with _get_argon2_semaphore():
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             _auth_executor, verify_password_sync, plain_password, hashed_password
@@ -386,7 +403,7 @@ async def verify_and_update_password(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, str | None]:
     """Asynchronous verify and update offloaded to thread pool with backpressure."""
-    async with _argon2_semaphore:
+    async with _get_argon2_semaphore():
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             _auth_executor,
@@ -412,7 +429,7 @@ async def get_password_hash(
     password: str, *, locale: str | None = None, validate_policy: bool = True
 ) -> str:
     """Hash a password using Argon2id (Asynchronous/Non-blocking) with backpressure."""
-    async with _argon2_semaphore:
+    async with _get_argon2_semaphore():
         loop = asyncio.get_running_loop()
         func = partial(
             get_password_hash_sync,

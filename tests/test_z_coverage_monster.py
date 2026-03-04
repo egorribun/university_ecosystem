@@ -129,7 +129,7 @@ async def test_monster_coverage_run():
         is_active=True,
         mfa_required=False,
         role="student",
-        full_name="Test User",
+        profile=models.UserProfile(full_name="Test User"),
     )
 
     mock_user_service = AsyncMock()
@@ -155,34 +155,49 @@ async def test_monster_coverage_run():
     mock_auth_repo.db = mock_db
     mock_auth_repo.get_user_mfa_capabilities.return_value = {}
 
-    login_service = LoginService(
-        auth_repo=mock_auth_repo,
-        user_repo=mock_user_service,
-        profile_service=mock_profile_service,
+    from app.services.auth.credential_validator import CredentialValidator
+    from app.services.auth.login_session_manager import LoginSessionManager
+    from app.services.auth.mfa_coordinator import MfaCoordinator
+
+    session_manager = LoginSessionManager(
         session_service=mock_session_service,
-        lockout_service=mock_lockout_service,
-        audit=mock_audit,
         redis_session_service=AsyncMock(),
         geolocation_service=AsyncMock(),
+        audit=mock_audit,
+    )
+    validator = CredentialValidator(
+        user_repo=mock_user_service,
+        profile_service=mock_profile_service,
+        lockout_service=mock_lockout_service,
+        audit=mock_audit,
+        session_manager=session_manager,
+    )
+    mfa_coord = MfaCoordinator(auth_repo=mock_auth_repo)
+
+    login_service = LoginService(
+        validator=validator,
+        mfa_coord=mfa_coord,
+        session_manager=session_manager,
+        db_session=mock_db,
     )
 
     with (
         patch(
-            "app.services.auth.login_service.verify_and_update_password",
+            "app.services.auth.credential_validator.verify_and_update_password",
             new_callable=AsyncMock,
             return_value=(True, None),
         ),
         patch(
-            "app.services.auth.login_service.mfa.user_has_active_factor",
+            "app.services.auth.mfa_coordinator.mfa.user_has_active_factor",
             new_callable=AsyncMock,
             return_value=False,
         ),
         patch(
-            "app.services.auth.login_service.extract_fingerprint",
+            "app.services.auth.login_session_manager.extract_fingerprint",
             return_value=MagicMock(accept_language="en", fingerprint_hash="h"),
         ),
         patch(
-            "app.services.auth.login_service.ensure_mfa_relationships_loaded",
+            "app.services.auth.login_session_manager.ensure_mfa_relationships_loaded",
             new_callable=AsyncMock,
             return_value=user,
         ),

@@ -277,7 +277,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
         self, comment: models.NewsComment, content: str
     ) -> models.NewsComment:
         """Update a comment."""
-        comment.content = content  # type: ignore[assignment]
+        comment.content = content
         self.db.add(comment)
         await self.db.flush()
         await self.db.refresh(comment, ["user"])

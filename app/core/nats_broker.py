@@ -26,7 +26,7 @@ tracer = trace.get_tracer(__name__)
 class NatsTaskBroker:
     """Consolidated background task broker using NATS JetStream. (MOD-3)
 
-    Replaces TaskIQ to reduce infrastructure complexity and leverage
+    Replaces legacy orchestrators to reduce infrastructure complexity and leverage
     JetStream's durable streams and at-least-once delivery.
     """
 
@@ -97,7 +97,7 @@ class NatsTaskBroker:
                 # Here we just execute synchronously if called directly.
                 return await cast("Awaitable[R]", func(*args, **kwargs))
 
-            # Add 'kick' method to the wrapper (similar to TaskIQ/Celery 'delay')
+            # Add 'kick' method to the wrapper (similar to standard background job 'delay')
             async def kick(*args: P.args, **kwargs: P.kwargs) -> None:
                 await self.enqueue(task_name, *args, **kwargs)
 

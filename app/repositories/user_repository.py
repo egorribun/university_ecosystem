@@ -5,7 +5,7 @@ User repository for user data access operations.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
@@ -312,17 +312,133 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         )
         return result.scalars().first()
 
+    def _extract_cqrs_data(self, data: dict) -> tuple[dict, dict, dict, dict]:
+        """Extract profile, preferences, education_path, and core user data from a flat dictionary."""
+        profile_keys = {
+            "full_name", "avatar_url", "cover_url", "about", "telegram",
+            "profile_status", "status", "achievements", "position", "department", "profile_department"
+        }
+        pref_keys = {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
+        edu_keys = {"institute", "course", "education_level", "track", "program", "record_book_number"}
+
+        profile_data = {}
+        pref_data = {}
+        edu_data = {}
+        core_data = {}
+
+        for k, v in data.items():
+            if k in profile_keys:
+                if k == "profile_status":
+                    profile_data["status"] = v
+                elif k == "profile_department":
+                    profile_data["department"] = v
+                else:
+                    profile_data[k] = v
+            elif k in pref_keys:
+                pref_data[k] = v
+            elif k in edu_keys:
+                edu_data[k] = v
+            else:
+                core_data[k] = v
+
+        return core_data, profile_data, pref_data, edu_data
+
+    async def create(self, obj_in: schemas.UserCreate | dict) -> UserDTO:
+        if hasattr(obj_in, "model_dump"):
+            obj_data = obj_in.model_dump()
+        else:
+            obj_data = obj_in
+
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(obj_data)
+
+        user = models.User(**core_data)
+        if profile_data:
+            user.profile = models.UserProfile(**profile_data)
+        else:
+            user.profile = models.UserProfile()
+
+        if pref_data:
+            user.preferences = models.UserPreferences(**pref_data)
+        else:
+            user.preferences = models.UserPreferences()
+
+        if edu_data:
+            user.education_path = models.EducationPath(**edu_data)
+        else:
+            user.education_path = models.EducationPath()
+
+        self.db.add(user)
+        await self.db.flush()
+        await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
+        return self._to_dto(user)
+
+    async def update(self, id: uuid.UUID | str, obj_in: Any | dict) -> UserDTO | None:
+        db_obj = await self._get_orm(id)
+        if db_obj is None:
+            return None
+
+        if hasattr(obj_in, "model_dump"):
+            update_data = obj_in.model_dump(exclude_unset=True)
+        else:
+            update_data = obj_in
+
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(update_data)
+
+        for field, value in core_data.items():
+            setattr(db_obj, field, value)
+
+        if profile_data:
+            if db_obj.profile is None:
+                db_obj.profile = models.UserProfile(**profile_data)
+            else:
+                for field, value in profile_data.items():
+                    setattr(db_obj.profile, field, value)
+
+        if pref_data:
+            if db_obj.preferences is None:
+                db_obj.preferences = models.UserPreferences(**pref_data)
+            else:
+                for field, value in pref_data.items():
+                    setattr(db_obj.preferences, field, value)
+
+        if edu_data:
+            if db_obj.education_path is None:
+                db_obj.education_path = models.EducationPath(**edu_data)
+            else:
+                for field, value in edu_data.items():
+                    setattr(db_obj.education_path, field, value)
+
+        await self.db.flush()
+        return self._to_dto(db_obj)
+
     async def create_with_invite(
         self, user_data: dict, invite_code: models.InviteCode | None
     ) -> UserDTO:
         """Create a user and optionally mark an invite code as used."""
-        user = models.User(**user_data)
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(user_data)
+
+        user = models.User(**core_data)
+        if profile_data:
+            user.profile = models.UserProfile(**profile_data)
+        else:
+            user.profile = models.UserProfile()
+
+        if pref_data:
+            user.preferences = models.UserPreferences(**pref_data)
+        else:
+            user.preferences = models.UserPreferences()
+
+        if edu_data:
+            user.education_path = models.EducationPath(**edu_data)
+        else:
+            user.education_path = models.EducationPath()
+
         self.db.add(user)
         await self.db.flush()  # Get ID
 
         if invite_code:
-            invite_code.is_used = True  # type: ignore[assignment]
-            invite_code.is_active = False  # type: ignore[assignment]
+            invite_code.is_used = True
+            invite_code.is_active = False
             invite_code.used_by_user_id = user.id
             self.db.add(invite_code)
 

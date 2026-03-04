@@ -1,27 +1,11 @@
 import type { TrustedHTML, TrustedTypePolicyFactory } from "trusted-types/lib"
 import { logWarning } from "@/app/logger"
 
-let dompurifyInstance: (typeof import("dompurify"))["default"] | null = null
-async function getDOMPurify() {
-  if (dompurifyInstance) return dompurifyInstance
-  const DOMPurify = (await import("dompurify")).default
-  dompurifyInstance = DOMPurify
-  return dompurifyInstance
-}
+import { sanitize_rich_text, strip_html } from "wasm-sanitizer"
 
 type TrustedPolicy = ReturnType<TrustedTypePolicyFactory["createPolicy"]>
 
-const HTML_CONFIG = Object.freeze({
-  USE_PROFILES: { html: true },
-  ALLOW_DATA_ATTR: false,
-  KEEP_CONTENT: false,
-})
-
-const TEXT_CONFIG = Object.freeze({
-  ALLOWED_TAGS: [],
-  ALLOWED_ATTR: [],
-  KEEP_CONTENT: false,
-})
+// Configuration handled entirely in Wasm Rust code
 
 type TrustedTypesWindow = Window & {
   trustedTypes?: TrustedTypePolicyFactory
@@ -33,13 +17,11 @@ const createPolicy = async (windowInstance: TrustedTypesWindow): Promise<Trusted
   if (windowInstance.__dompurifyNewsPolicy === false) return null
   if (windowInstance.__dompurifyNewsPolicy) return windowInstance.__dompurifyNewsPolicy
 
-  const DOMPurify = await getDOMPurify()
-
   try {
     windowInstance.__dompurifyNewsPolicy = windowInstance.trustedTypes.createPolicy(
       "dompurify-news",
       {
-        createHTML: (dirty: string) => DOMPurify.sanitize(dirty, HTML_CONFIG),
+        createHTML: (dirty: string) => sanitize_rich_text(dirty),
       }
     )
   } catch (error) {
@@ -53,7 +35,6 @@ export const sanitizeNewsHtml = async (
   dirty: string | null | undefined
 ): Promise<string | TrustedHTML> => {
   const source = dirty ?? ""
-  const DOMPurify = await getDOMPurify()
 
   if (typeof window !== "undefined") {
     const windowInstance = window as TrustedTypesWindow
@@ -62,12 +43,11 @@ export const sanitizeNewsHtml = async (
       return policy.createHTML(source)
     }
   }
-  return DOMPurify.sanitize(source, HTML_CONFIG)
+  return sanitize_rich_text(source)
 }
 
 export const sanitizeNewsText = async (dirty: string | null | undefined): Promise<string> => {
-  const DOMPurify = await getDOMPurify()
-  return DOMPurify.sanitize(dirty ?? "", TEXT_CONFIG) as string
+  return strip_html(dirty ?? "")
 }
 
 const TELEGRAM_HOSTS = new Set(["t.me", "telegram.me"])

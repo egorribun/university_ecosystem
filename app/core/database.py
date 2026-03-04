@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import event, text
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,

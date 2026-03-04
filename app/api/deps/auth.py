@@ -52,8 +52,8 @@ async def get_current_user(
     # in production; tests that call the function directly fall back to a
     # fresh instance, which is equivalent to the old inline construction.
     redis_service: Annotated[
-        RedisSessionService, Depends(get_redis_session_service)
-    ] = None,  # type: ignore[assignment]
+        RedisSessionService | None, Depends(get_redis_session_service)
+    ] = None,
 ) -> User:
     if redis_service is None:
         redis_service = get_redis_session_service()

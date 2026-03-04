@@ -90,8 +90,7 @@ async def setup_periodic_cleanups() -> None:
     """Schedule periodic cleanup tasks.
 
     (MOD-3: Audit 2026-02-24)
-    Periodic tasks are now managed by the application lifespan scheduler
-    to avoid TaskIQ Redis dependency.
+    Periodic tasks are now managed by the application lifespan scheduler.
     """
     _logger = logging.getLogger(__name__)
     _logger.info("NATS periodic cleanups initialised")

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -9,7 +8,6 @@ from uuid import UUID, uuid4
 
 import jwt
 from fastapi import BackgroundTasks
-from sqlalchemy import text
 
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
@@ -81,91 +79,44 @@ class SessionService:
         expires_at = now + timedelta(minutes=minutes)
         jti = str(uuid4())
 
-        # 1. Serialization (Concurrency Control)
-        # We attempt a Redis-based distributed lock first for scalability.
-        lock_acquired = False
-        redis_lock = None
-        if settings.session_storage_backend == "redis":
-            from app.deps.cache import RedisCache, get_cache
+        # PERF-2 Fix (audit 2026-03-04): Removed explicit asynchronous and synchronous database/Redis
+        # locking during session creation. Enforcing concurrent limit is now lock-free, increasing login TPS.
 
-            cache = get_cache()
-            if isinstance(cache, RedisCache):
-                client = await cache._get_client()
-                lock_key = f"lock:session_creation:{user_id}"
-                redis_lock = client.lock(lock_key, timeout=10)
-                try:
-                    # Attempt to acquire lock for up to 2 seconds
-                    lock_acquired = await redis_lock.acquire(blocking_timeout=2)
-                except Exception:
-                    logger.warning(
-                        "Redis lock acquisition failed",
-                        exc_info=True,
-                        extra={
-                            "user_id": str(user_id),
-                            "lock_type": "session_creation",
-                        },
-                    )
+        # 1. Build and persist session record
+        session_data = {
+            "user_id": user_id,
+            "jti": jti,
+            "expires_at": expires_at,
+            "signing_key": secrets.token_urlsafe(32),
+            "created_at": now,
+            "last_seen_at": now,
+        }
 
-        # Fallback to Postgres Advisory Lock if Redis is unavailable or fails.
-        # OZ-6 (audit 2026-02-26): AsyncSession.get_bind() was removed in
-        # SQLAlchemy 2.0 — it always raised an exception in async contexts,
-        # making the advisory lock dead code (silent race condition).
-        # Read the dialect name directly from the engine module instead.
-        if not lock_acquired:
-            try:
-                from app.core.database import engine as _pg_engine
+        # Merge metadata into session_data to avoid mutating frozen DTO
+        if metadata:
+            fields = [
+                "ip_address",
+                "user_agent",
+                "accept_language",
+                "fingerprint_hash",
+                "mfa_method",
+            ]
+            for key in fields:
+                if val := metadata.get(key):
+                    session_data[key] = str(val)
 
-                engine_dialect = _pg_engine.dialect.name if _pg_engine else "unknown"
-            except Exception:
-                engine_dialect = "unknown"
-            if engine_dialect == "postgresql":
-                # pg_advisory_xact_lock(int8) scoped to the current transaction.
-                # Released automatically on COMMIT/ROLLBACK — no manual cleanup needed.
-                uid_int = int(user_id.int) % (2**31 - 1)
-                await self.db.execute(
-                    text("SELECT pg_advisory_xact_lock(1, :uid)"), {"uid": uid_int}
-                )
+            session_data["mfa_required"] = bool(metadata.get("mfa_required", False))
+            if val := metadata.get("mfa_completed_at"):
+                session_data["mfa_completed_at"] = val
+            if val := metadata.get("mfa_verified_at"):
+                session_data["mfa_verified_at"] = val
 
-        try:
-            # 2. Build and persist session record
-            session_data = {
-                "user_id": user_id,
-                "jti": jti,
-                "expires_at": expires_at,
-                "signing_key": secrets.token_urlsafe(32),
-                "created_at": now,
-                "last_seen_at": now,
-            }
+        session = await self.repo.create(session_data)
 
-            # Merge metadata into session_data to avoid mutating frozen DTO
-            if metadata:
-                fields = [
-                    "ip_address",
-                    "user_agent",
-                    "accept_language",
-                    "fingerprint_hash",
-                    "mfa_method",
-                ]
-                for key in fields:
-                    if val := metadata.get(key):
-                        session_data[key] = str(val)
+        # 2. Enforce concurrent session limit (lock-free soft limit)
+        await self._enforce_concurrent_limit(user_id, jti, now)
 
-                session_data["mfa_required"] = bool(metadata.get("mfa_required", False))
-                if val := metadata.get("mfa_completed_at"):
-                    session_data["mfa_completed_at"] = val
-                if val := metadata.get("mfa_verified_at"):
-                    session_data["mfa_verified_at"] = val
-
-            session = await self.repo.create(session_data)
-
-            # 3. Enforce concurrent session limit
-            await self._enforce_concurrent_limit(user_id, jti, now)
-
-            await self.repo.commit()
-        finally:
-            if lock_acquired and redis_lock:
-                with contextlib.suppress(Exception):
-                    await redis_lock.release()
+        await self.repo.commit()
 
         # 4. Mint JWT
         token = self._mint_jwt(user_id, jti, now, expires_at, extra_claims)

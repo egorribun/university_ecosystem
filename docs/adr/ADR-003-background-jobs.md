@@ -1,7 +1,7 @@
 # ADR-003: Taskiq for Background Jobs
 
 ## Status
-Accepted
+Superseded by NATS JetStream architecture.
 
 ## Context
 We needed an async-first background job system that integrates well with our FastAPI + asyncio stack.

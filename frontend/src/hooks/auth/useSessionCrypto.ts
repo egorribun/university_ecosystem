@@ -97,7 +97,6 @@ export const signSnapshot = async (
  */
 export const readStoredSessionSigningKey = (): string | null => null
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const persistSessionSigningKey = (_value: string | null) => {
   // Intentionally empty — signing key must not be written to any Web Storage.
   // The key lives only in React state (useSessionCrypto hook) for the session duration.

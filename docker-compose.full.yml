@@ -20,7 +20,7 @@ services:
       CACHE_REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
-      TASKIQ_BROKER_URL: redis://redis:6379/2
+      NATS_URL: nats://nats:4222
       MINIO_ENDPOINT: minio:9000
       MINIO_BUCKET: uploads
       MINIO_SECURE: "false"
@@ -101,7 +101,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://redis:6379/0
-      TASKIQ_BROKER_URL: redis://redis:6379/2
+      NATS_URL: nats://nats:4222
       AUTO_CREATE_SCHEMA: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317

@@ -37,7 +37,8 @@ def _current_local_time(user: User | None = None) -> dt.time:
     """Get the current local time for a user based on their timezone."""
     tz: dt.tzinfo = UTC
     if user is not None:
-        raw = getattr(user, "timezone", None)
+        preferences = getattr(user, "preferences", None)
+        raw = getattr(preferences, "timezone", None) if preferences else None
         if isinstance(raw, str):
             candidate = raw.strip()
             if candidate:

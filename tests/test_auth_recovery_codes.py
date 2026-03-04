@@ -66,7 +66,6 @@ async def test_generate_recovery_codes_unit(
     assert not any(c.is_used for c in user_codes)
 
     # Verify hash
-    from typing import cast
 
     from app.auth.security import verify_password
 

@@ -174,7 +174,8 @@ def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
 def _current_local_time(user: Any | None = None) -> time:
     tz: Any = UTC
     if user is not None:
-        raw = getattr(user, "timezone", None)
+        preferences = getattr(user, "preferences", None)
+        raw = getattr(preferences, "timezone", None) if preferences else None
         if isinstance(raw, str):
             candidate = raw.strip()
             if candidate:
@@ -190,10 +191,11 @@ def _current_local_time(user: Any | None = None) -> time:
 
 
 def _is_user_in_quiet_hours(user: Any | None, *, now_time: time | None = None) -> bool:
-    if not user or not getattr(user, "dnd_enabled", False):
+    preferences = getattr(user, "preferences", None) if user else None
+    if not preferences or not getattr(preferences, "dnd_enabled", False):
         return False
-    start = getattr(user, "dnd_start", None)
-    end = getattr(user, "dnd_end", None)
+    start = getattr(preferences, "dnd_start", None)
+    end = getattr(preferences, "dnd_end", None)
     if now_time is None:
         now_time = _current_local_time(user)
     if start is None or end is None:

@@ -5,7 +5,6 @@ from typing import Any, ClassVar, Generic, TypeVar
 
 from sqlalchemy import (
     Boolean,
-    Column,
     DateTime,
     Float,
     ForeignKey,
@@ -30,96 +29,7 @@ from app.models.spotify import SpotifyIntegration
 _T = TypeVar("_T")
 
 
-class _DelegatedProperty(Generic[_T]):
-    """Descriptor that transparently delegates a field to a related ORM object.
 
-    Usage (on the *owner* model)::
-
-        full_name = _DelegatedProperty[str | None](
-            "profile", "full_name", str | None, lambda: UserProfile()
-        )
-
-    On read:  returns ``owner.profile.full_name`` or ``None`` if the relation
-              is not loaded yet.
-    On write: lazily creates the related object via *factory* if it is absent,
-              then sets the attribute on it.
-
-    This eliminates the repetitive property + setter boilerplate that previously
-    spanned ~200 lines of the User model for 15 delegated fields across three
-    related tables.
-    """
-
-    __slots__ = ("_attr", "_default", "_factory", "_public_name", "_relation")
-
-    def __init__(
-        self,
-        relation: str,
-        attr: str,
-        default: _T,
-        factory: Callable[[], Any],
-    ) -> None:
-        self._relation = relation
-        self._attr = attr
-        self._default = default
-        self._factory = factory
-
-    def __set_name__(self, owner: type, name: str) -> None:
-        # TD-2 (audit 2026-02-26): Store the public attribute name so that
-        # __get__ can produce actionable debug messages when a relation is not
-        # loaded, instead of silently returning the default value.
-        self._public_name = name
-
-    def __get__(self, obj: Any, objtype: type | None = None) -> _T:
-        if obj is None:
-            return self  # type: ignore[return-value]
-        related = getattr(obj, self._relation, None)
-        if related is None:
-            # Relation not loaded (lazy="noload" or not joined).  Log at DEBUG
-            # so N+1 / noload misconfigurations surface in development.
-            import logging as _logging
-
-            _logging.getLogger(__name__).debug(
-                "DelegatedProperty %s.%s accessed with unloaded relation '%s'",
-                type(obj).__name__,
-                getattr(self, "_public_name", "<unknown>"),
-                self._relation,
-            )
-            return self._default
-        return getattr(related, self._attr)  # type: ignore[no-any-return]
-
-    def __set__(self, obj: Any, value: _T) -> None:
-        related = getattr(obj, self._relation, None)
-        if related is None:
-            # Determine whether the owner object is brand-new (transient) or
-            # already persisted (persistent / detached).
-            #
-            # TD-06 (audit 2026-03-04): The original code called self._factory()
-            # unconditionally, creating an orphaned ORM object that shadows the
-            # real DB row after the next db.refresh().  We keep the factory only
-            # for *transient* objects (never added to a session) where there is
-            # no existing row to shadow — e.g. during User(**kwargs) construction.
-            # For *persistent* or *detached* objects the relation must be loaded
-            # explicitly before writing delegated fields.
-            try:
-                from sqlalchemy import inspect as _sa_inspect
-
-                is_transient = _sa_inspect(obj).transient
-            except Exception:
-                # Non-SQLAlchemy object or detached without state — use factory.
-                is_transient = True
-
-            if is_transient:
-                related = self._factory()
-                setattr(obj, self._relation, related)
-            else:
-                raise AttributeError(
-                    f"{type(obj).__name__}."
-                    f"{getattr(self, '_public_name', self._attr)} "
-                    f"cannot be set: relation '{self._relation}' is not loaded. "
-                    f"Ensure '{self._relation}' is eagerly loaded before writing "
-                    f"delegated fields on a persisted object."
-                )
-        setattr(related, self._attr, value)
 
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
@@ -316,14 +226,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
 
         super().__init__(**kwargs)
 
-        # Auto-discover delegated fields from _DelegatedProperty descriptors so
-        # adding a new field to UserProfile/UserPreferences/EducationPath never
-        # requires a manual update here — the descriptor set is the single source
-        # of truth.
-        for field_name, descriptor in _DELEGATED_FIELDS.items():
-            if field_name in kwargs:
-                setattr(self, field_name, kwargs[field_name])
-
         if preferences_data is not None:
             if isinstance(preferences_data, dict):
                 self.preferences = UserPreferences(**preferences_data)
@@ -366,136 +268,9 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             self.spotify = SpotifyIntegration()
         self.spotify.display_name = value
 
-    # ------------------------------------------------------------------
-    # Profile field delegation
-    # ------------------------------------------------------------------
-    full_name: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("profile", "full_name", None, lambda: UserProfile())
-    avatar_url: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("profile", "avatar_url", None, lambda: UserProfile())
-    cover_url: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("profile", "cover_url", None, lambda: UserProfile())
-    about: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "profile", "about", None, lambda: UserProfile()
-    )
-    telegram: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "profile", "telegram", None, lambda: UserProfile()
-    )
-    profile_status: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("profile", "status", None, lambda: UserProfile())
-    achievements: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("profile", "achievements", None, lambda: UserProfile())
-    position: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "profile", "position", None, lambda: UserProfile()
-    )
-    profile_department: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("profile", "department", None, lambda: UserProfile())
-
-    # ------------------------------------------------------------------
-    # Preferences field delegation
-    # ------------------------------------------------------------------
-    timezone: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "preferences", "timezone", None, lambda: UserPreferences()
-    )
-    dnd_enabled: ClassVar[_DelegatedProperty[bool]] = _DelegatedProperty[bool](
-        "preferences", "dnd_enabled", False, lambda: UserPreferences()
-    )
-    dnd_start: ClassVar[_DelegatedProperty[time | None]] = _DelegatedProperty[
-        time | None
-    ]("preferences", "dnd_start", None, lambda: UserPreferences())
-    dnd_end: ClassVar[_DelegatedProperty[time | None]] = _DelegatedProperty[
-        time | None
-    ]("preferences", "dnd_end", None, lambda: UserPreferences())
-
-    # ------------------------------------------------------------------
-    # EducationPath field delegation
-    # ------------------------------------------------------------------
-    institute: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "institute", None, lambda: EducationPath())
-    course: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "education_path", "course", None, lambda: EducationPath()
-    )
-    education_level: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "education_level", None, lambda: EducationPath())
-    track: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "education_path", "track", None, lambda: EducationPath()
-    )
-    program: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "education_path", "program", None, lambda: EducationPath()
-    )
-    record_book_number: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "record_book_number", None, lambda: EducationPath())
-    grade: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "education_path", "grade", None, lambda: EducationPath()
-    )
-    education_group: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "group", None, lambda: EducationPath())
-    specialty: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "specialty", None, lambda: EducationPath())
-    specialty_code: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "specialty_code", None, lambda: EducationPath())
-    education_department: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "department", None, lambda: EducationPath())
-    faculty: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "education_path", "faculty", None, lambda: EducationPath()
-    )
-    entry_year: ClassVar[_DelegatedProperty[int | None]] = _DelegatedProperty[
-        int | None
-    ]("education_path", "entry_year", None, lambda: EducationPath())
-    graduation_year: ClassVar[_DelegatedProperty[int | None]] = _DelegatedProperty[
-        int | None
-    ]("education_path", "graduation_year", None, lambda: EducationPath())
-    education_status: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "status", None, lambda: EducationPath())
-    status_date: ClassVar[_DelegatedProperty[datetime | None]] = _DelegatedProperty[
-        datetime | None
-    ]("education_path", "status_date", None, lambda: EducationPath())
-    basis: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "education_path", "basis", None, lambda: EducationPath()
-    )
-    form: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[str | None](
-        "education_path", "form", None, lambda: EducationPath()
-    )
-    term: ClassVar[_DelegatedProperty[int | None]] = _DelegatedProperty[int | None](
-        "education_path", "term", None, lambda: EducationPath()
-    )
-    vacation_start: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "vacation_start", None, lambda: EducationPath())
-    vacation_end: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "vacation_end", None, lambda: EducationPath())
-    source_id: ClassVar[_DelegatedProperty[str | None]] = _DelegatedProperty[
-        str | None
-    ]("education_path", "source_id", None, lambda: EducationPath())
-
     def __repr__(self) -> str:
         # Email is PII — omit from repr to prevent leakage into logs and tracebacks.
         return f"<User(id={self.id}, role='{self.role}')>"
-
-
-# Introspect User class once at import time to find all _DelegatedProperty descriptors.
-# User.__init__ uses this mapping to set delegated fields from kwargs — adding a new
-# descriptor to the User class automatically makes it settable in the constructor.
-_DELEGATED_FIELDS: dict[str, _DelegatedProperty[object]] = {
-    name: descriptor
-    for name, descriptor in vars(User).items()
-    if isinstance(descriptor, _DelegatedProperty)
-}
 
 
 class UserPreferences(Base):

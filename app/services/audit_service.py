@@ -260,7 +260,7 @@ def auditable(
     import functools
     import inspect
 
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def _get_signature(func: Callable[..., Any]) -> inspect.Signature:
         """Cache signature per decorated function — avoid per-request overhead (TD-02)."""
         return inspect.signature(func)
@@ -436,7 +436,7 @@ class SecureAuditService:
             # Cannot re-sign a frozen DTO in-place, caller should handle
             return False
 
-        log.signature = primary_signature  # type: ignore[assignment]
+        log.signature = primary_signature
         return True
 
     async def verify_batch(

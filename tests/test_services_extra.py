@@ -61,9 +61,7 @@ async def test_user_service_basics():
     service = UserService(user_repo, audit, notifications)
 
     user = models.User(id=1, email="u@e.com")
-    user.profile = models.UserProfile(user_id=1, full_name="Old Name")
-    user.avatar_url = None
-    user.cover_url = None
+    user.profile = models.UserProfile(user_id=1, full_name="Old Name", avatar_url=None, cover_url=None)
     request = MagicMock()
 
     # Mock repo.get to return user
@@ -91,7 +89,7 @@ async def test_user_service_basics():
         assert user.profile.full_name == "New Name"
 
     # delete_avatar
-    user.avatar_url = "/path/to/img"
+    user.profile.avatar_url = "/path/to/img"
     with (
         patch(
             "app.services.user.media_service.delete_static_file", new_callable=AsyncMock
@@ -103,7 +101,7 @@ async def test_user_service_basics():
         ),
     ):
         await service.delete_avatar(user)
-        assert user.avatar_url is None
+        assert user.profile.avatar_url is None
         m_del.assert_called_once()
 
 

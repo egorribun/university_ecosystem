@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -320,13 +321,18 @@ class CircuitBreaker:
 
 # Registry for global circuit breaker instances
 _circuit_breakers: dict[str, CircuitBreaker] = {}
-# TD-7 (audit 2026-02-26): Initialise the lock at module load time (not lazily)
-# to eliminate the TOCTOU race where two coroutines could each create a separate
-# Lock object during the first call, defeating the mutual-exclusion guarantee.
-_registry_lock: asyncio.Lock = asyncio.Lock()
+# TD-7 (audit 2026-02-26): Use lazy initialisation with a threading lock to avoid
+# TOCTOU race without binding to the module-import thread event loop.
+_registry_lock: asyncio.Lock | None = None
+_registry_alloc_lock = threading.Lock()
 
 
 def _get_registry_lock() -> asyncio.Lock:
+    global _registry_lock
+    if _registry_lock is None:
+        with _registry_alloc_lock:
+            if _registry_lock is None:
+                _registry_lock = asyncio.Lock()
     return _registry_lock
 
 

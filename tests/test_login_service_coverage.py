@@ -59,15 +59,30 @@ def login_service(
     mock_audit_service,
     mock_profile_service,
 ):
-    ls = LoginService(
-        auth_repo=mock_db,
-        user_repo=mock_user_service,
-        profile_service=mock_profile_service,
+    from app.services.auth.credential_validator import CredentialValidator
+    from app.services.auth.login_session_manager import LoginSessionManager
+    from app.services.auth.mfa_coordinator import MfaCoordinator
+
+    session_manager = LoginSessionManager(
         session_service=mock_session_service,
-        lockout_service=mock_lockout_service,
-        audit=mock_audit_service,
         redis_session_service=AsyncMock(),
         geolocation_service=AsyncMock(),
+        audit=mock_audit_service,
+    )
+    validator = CredentialValidator(
+        user_repo=mock_user_service,
+        profile_service=mock_profile_service,
+        lockout_service=mock_lockout_service,
+        audit=mock_audit_service,
+        session_manager=session_manager,
+    )
+    mfa_coord = MfaCoordinator(auth_repo=mock_db)
+
+    ls = LoginService(
+        validator=validator,
+        mfa_coord=mfa_coord,
+        session_manager=session_manager,
+        db_session=mock_db,
     )
     # Mock result chaining globally for this service's repo
     ls.repo.db.execute.return_value = MagicMock()
@@ -111,7 +126,7 @@ async def test_perform_login_success_no_mfa(
 
     # Mock password verification
     with patch(
-        "app.services.auth.login_service.verify_and_update_password",
+        "app.services.auth.credential_validator.verify_and_update_password",
         new_callable=AsyncMock,
         return_value=(True, None),
     ):
@@ -195,7 +210,7 @@ async def test_perform_login_invalid_password(
     mock_profile_service.get_auth_user_by_email.return_value = user
 
     with patch(
-        "app.services.auth.login_service.verify_and_update_password",
+        "app.services.auth.credential_validator.verify_and_update_password",
         new_callable=AsyncMock,
         return_value=(False, None),
     ):
@@ -225,17 +240,16 @@ async def test_perform_login_mfa_required_no_factors(
     mock_profile_service.get_auth_user_by_email.return_value = user
 
     with patch(
-        "app.services.auth.login_service.verify_and_update_password",
+        "app.services.auth.credential_validator.verify_and_update_password",
         new_callable=AsyncMock,
         return_value=(True, None),
     ):
-        # Mock no active factors found during resolve
         with patch.object(
-            login_service, "_resolve_mfa_capabilities", new_callable=AsyncMock
+            login_service.mfa_coord, "_resolve_mfa_capabilities", new_callable=AsyncMock
         ) as mock_resolve:
             mock_resolve.return_value = {}
             with patch.object(
-                login_service, "_collect_mfa_challenges", new_callable=AsyncMock
+                login_service.mfa_coord, "_collect_mfa_challenges", new_callable=AsyncMock
             ) as mock_collect:
                 mock_collect.return_value = []
 
@@ -265,13 +279,12 @@ async def test_perform_login_mfa_required_success(
     mock_profile_service.get_auth_user_by_email.return_value = user
 
     with patch(
-        "app.services.auth.login_service.verify_and_update_password",
+        "app.services.auth.credential_validator.verify_and_update_password",
         new_callable=AsyncMock,
         return_value=(True, None),
     ):
-        # Mock mfa setup
         with patch.object(
-            login_service, "_resolve_mfa_capabilities", new_callable=AsyncMock
+            login_service.mfa_coord, "_resolve_mfa_capabilities", new_callable=AsyncMock
         ) as mock_resolve:
             mock_resolve.return_value = {"totp": True}
 
@@ -323,7 +336,7 @@ async def test_finalize_login_success(
 
     # Bypass UserOut validation by returning our pre-made object
     with patch(
-        "app.services.auth.login_service.schemas.UserOut.model_validate"
+        "app.schemas.schemas.UserOut.model_validate"
     ) as mock_validate:
         mock_validate.return_value = real_user_out
 
@@ -333,9 +346,11 @@ async def test_finalize_login_success(
             redis_instance.create_session = AsyncMock()
 
             # Execute
-            result = await login_service.finalize_login(
-                user, mock_request, response, mock_background_tasks, mfa_completed=True
-            )
+            with patch("app.services.auth.login_session_manager.ensure_mfa_relationships_loaded", new_callable=AsyncMock, return_value=user):
+                with patch("app.services.auth_service.attach_pending_email", new_callable=AsyncMock, return_value=None):
+                    result = await login_service.finalize_login(
+                        user, mock_request, response, mock_background_tasks, mfa_completed=True
+                    )
 
             # assert result.access_token == "token_string"  # Field removed
             assert result.user.id == user.id
@@ -355,7 +370,7 @@ async def test_collect_mfa_challenges_totp_flow(login_service):
     capabilities = {"totp": True, "webauthn": False}
 
     with patch(
-        "app.services.auth.login_service.mfa.start_totp_verification",
+        "app.services.auth.mfa_coordinator.mfa.start_totp_verification",
         new_callable=AsyncMock,
     ) as mock_start:
         challenge = MagicMock()
@@ -364,7 +379,7 @@ async def test_collect_mfa_challenges_totp_flow(login_service):
         mock_start.return_value = challenge
 
         with patch(
-            "app.services.auth.login_service.mfa.describe_challenge_attempts",
+            "app.services.auth.mfa_coordinator.mfa.describe_challenge_attempts",
             return_value=(0, 3, 3),
         ):
             challenges = await login_service._collect_mfa_challenges(
@@ -412,7 +427,7 @@ async def test_collect_mfa_challenges_webauthn_flow(login_service):
     capabilities = {"totp": False, "webauthn": True}
 
     with patch(
-        "app.services.auth.login_service.mfa.issue_challenge", new_callable=AsyncMock
+        "app.services.auth.mfa_coordinator.mfa.issue_challenge", new_callable=AsyncMock
     ) as mock_issue:
         challenge = MagicMock()
         challenge.token = "webauthn-token"
@@ -427,7 +442,7 @@ async def test_collect_mfa_challenges_webauthn_flow(login_service):
             )
 
             with patch(
-                "app.services.auth.login_service.mfa.describe_challenge_attempts",
+                "app.services.auth.mfa_coordinator.mfa.describe_challenge_attempts",
                 return_value=(0, 3, 3),
             ):
                 challenges = await login_service._collect_mfa_challenges(
@@ -450,6 +465,6 @@ async def test_extract_client_info_forwarded(login_service):
         # but it's already bound if imported before the patch.
         with patch("app.core.ratelimit.utils.settings", mock_settings):
             mock_settings.trusted_proxies_list = ["127.0.0.1"]
-            ip, ua = login_service._extract_client_info(req)
+            ip, ua = login_service.session_manager.extract_client_info(req)
             assert ip == "10.0.0.1"
             assert ua == "client-ua"

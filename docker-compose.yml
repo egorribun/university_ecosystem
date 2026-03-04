@@ -1,4 +1,43 @@
 services:
+  caddy:
+    # HTTP/3 (QUIC) edge reverse proxy — sole public HTTPS entry point.
+    # Terminates TLS + QUIC; forwards plain HTTP/1.1 to the backend internally.
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      # TCP: HTTP/1.1, HTTP/2, and the TLS upgrade for HTTP/3.
+      - "80:80"
+      - "443:443"
+      # UDP: QUIC transport for HTTP/3 (essential — without UDP h3 degrades to h2).
+      - "443:443/udp"
+    volumes:
+      - ./services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # ACME certificates and OCSP staples — persist across restarts.
+      - caddy_data:/data
+      # Caddy internal config (auto-save, optional).
+      - caddy_config:/config
+    networks:
+      - internal
+      - public
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Set ACME_EMAIL and PUBLIC_HOSTNAME in .env for production TLS.
+      # In local dev (no real domain) Caddy issues a self-signed certificate.
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   backend:
     build:
       context: .
@@ -20,7 +59,7 @@ services:
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
       RATE_LIMIT_HEADERS_ENABLED: "true"
-      TASKIQ_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
+      NATS_URL: nats://nats:4222
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
       # Push notifications
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -43,13 +82,14 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    # SECURITY: port 8000 is NOT exposed to the host. All traffic enters via
+    # the Caddy edge proxy which handles TLS and HTTP/3 termination.
+    expose:
+      - "8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
       - internal
-      - public
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8000/healthz >/dev/null || exit 1" ]
       interval: 10s
@@ -115,7 +155,7 @@ services:
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
-      TASKIQ_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
+      NATS_URL: nats://nats:4222
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
       # Push notifications
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -388,3 +428,7 @@ volumes:
   static-data:
   temporal_data:
   minio_data:
+  # Caddy ACME certificates and OCSP staples — persist TLS state across restarts.
+  caddy_data:
+  # Caddy auto-save config (optional, enables zero-downtime reloads on restart).
+  caddy_config:

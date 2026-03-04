@@ -5,24 +5,12 @@ import type {
   TrustedTypePolicyFactory,
 } from "trusted-types/lib"
 
-const SANITIZE_POLICY_NAME = "dompurify-news"
+import { sanitize_rich_text } from "wasm-sanitizer"
+
+const SANITIZE_POLICY_NAME = "wasm-sanitizer"
 const APP_POLICY_NAME = "app"
 
-let dompurifyInstance: (typeof import("dompurify"))["default"] | null = null
-async function getDOMPurify() {
-  if (dompurifyInstance) return dompurifyInstance
-  const DOMPurify = (await import("dompurify")).default
-  dompurifyInstance = DOMPurify
-  return dompurifyInstance
-}
-
-export function getDOMPurifySync() {
-  return dompurifyInstance
-}
-
-const DEFAULT_SANITIZE_CONFIG = Object.freeze({
-  RETURN_TRUSTED_TYPE: false,
-})
+// Wasm handles everything internally. No dompurify RETURN_TRUSTED_TYPE flag required.
 
 type TrustedTypesWindow = Window & {
   trustedTypes?: TrustedTypePolicyFactory
@@ -53,11 +41,9 @@ const ensureSanitizePolicy = async (win: TrustedTypesWindow): Promise<TrustedTyp
   if (win.__ttSanitizePolicy === false) return null
   if (win.__ttSanitizePolicy) return win.__ttSanitizePolicy
 
-  const DOMPurify = await getDOMPurify()
-
   try {
     const policy = win.trustedTypes.createPolicy(SANITIZE_POLICY_NAME, {
-      createHTML: (input: string) => DOMPurify.sanitize(input, DEFAULT_SANITIZE_CONFIG),
+      createHTML: (input: string) => sanitize_rich_text(input),
     }) as TrustedTypePolicy
     win.__ttSanitizePolicy = policy
   } catch {
@@ -82,14 +68,7 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
         return resolved.toString()
       },
       createHTML: (value: string) => {
-        // Use synchronous DOMPurify if already loaded; otherwise reject.
-        // DOMPurify is loaded lazily by ensureTrustedTypesPolicies() before any HTML
-        // rendering occurs, so getDOMPurifySync() should always return a value here.
-        const purify = getDOMPurifySync()
-        if (!purify) {
-          throw new TypeError("DOMPurify not loaded — refusing createHTML via app policy")
-        }
-        return purify.sanitize(value, DEFAULT_SANITIZE_CONFIG)
+        return sanitize_rich_text(value)
       },
     }) as TrustedTypePolicy
     win.__ttAppPolicy = policy
@@ -108,8 +87,7 @@ export const ensureTrustedTypesPolicies = async (): Promise<void> => {
 }
 
 export const sanitizeHTML = async (value: string): Promise<string | TrustedHTML> => {
-  const DOMPurify = await getDOMPurify()
-  if (typeof window === "undefined") return DOMPurify.sanitize(value, DEFAULT_SANITIZE_CONFIG)
+  if (typeof window === "undefined") return sanitize_rich_text(value)
   const win = window as TrustedTypesWindow
   const policy = await ensureSanitizePolicy(win)
   if (policy) {
@@ -119,7 +97,7 @@ export const sanitizeHTML = async (value: string): Promise<string | TrustedHTML>
       // ignore
     }
   }
-  return DOMPurify.sanitize(value, DEFAULT_SANITIZE_CONFIG)
+  return sanitize_rich_text(value)
 }
 
 export const createTrustedScriptURL = (value: string): string | TrustedScriptURL => {
