@@ -18,16 +18,14 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
-    Column,
-    DateTime,
     Index,
-    Integer,
     String,
     Text,
     delete,
     func,
     select,
 )
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
@@ -47,26 +45,29 @@ class JobStatus(StrEnum):
 
 
 class DeadLetterJob(Base):
-    """Model for storing failed jobs in the dead letter queue."""
+    """Model for storing failed jobs in the dead letter queue.
+
+    RZ-011 (audit 2026-03-04): migrated from legacy Column() API to
+    SQLAlchemy 2.x Mapped[T] = mapped_column() for full type-safety.
+    """
 
     __tablename__ = "dead_letter_jobs"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    job_type = Column(String(100), nullable=False, index=True)
-    job_hash = Column(String(64), nullable=False, unique=True)  # For deduplication
-    payload = Column(Text, nullable=False)
-    error_message = Column(Text, nullable=True)
-    retry_count = Column(Integer, default=0, nullable=False)
-    max_retries = Column(Integer, default=3, nullable=False)
-    status = Column(
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    job_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    job_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    max_retries: Mapped[int] = mapped_column(default=3, nullable=False)
+    status: Mapped[str] = mapped_column(
         String(20), default=JobStatus.PENDING.value, nullable=False, index=True
     )
-    next_retry_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    created_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    next_retry_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(UTC), nullable=False
     )
-    updated_at = Column(
-        DateTime(timezone=True),
+    updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
@@ -129,7 +130,11 @@ class DeadLetterQueue:
         )
 
         self.session.add(job)
-        await self.session.commit()
+        # TD-012 (audit 2026-03-04): commit removed — callers own the Unit of Work
+        # boundary. Committing inside repository methods prevents batching multiple
+        # operations atomically and violates the UoW pattern.
+        # Callers MUST flush/commit after this method if persistence is required.
+        await self.session.flush()
 
         logger.info(
             "Added job to DLQ: type=%s, hash=%s, next_retry=%s",

@@ -186,16 +186,23 @@ def test_auto_create_schema_default_true_in_development(monkeypatch):
     assert settings.auto_create_schema is True
 
 
-def test_auto_create_schema_default_false_in_production(monkeypatch):
+def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     db_name = f"test_{worker_id}.db" if worker_id else "test.db"
+
+    # Create fake public key for production invariants validation
+    mock_key = tmp_path / "jwt.pem"
+    mock_key.write_text("-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----")
+
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("ALGORITHM", "RS256")
-    monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
+    monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", str(mock_key))
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
+    monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy_nats_token")
+    monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -207,16 +214,25 @@ def test_auto_create_schema_default_false_in_production(monkeypatch):
     assert settings.auto_create_schema is False
 
 
-def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog):
+def test_auto_create_schema_warns_when_enabled_in_production(
+    monkeypatch, caplog, tmp_path
+):
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     db_name = f"test_{worker_id}.db" if worker_id else "test.db"
+
+    # Create fake public key for production invariants validation
+    mock_key = tmp_path / "jwt.pem"
+    mock_key.write_text("-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----")
+
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("ALGORITHM", "RS256")
-    monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", ".secrets/jwt_rs256.pem")
+    monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", str(mock_key))
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
+    monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy_nats_token")
+    monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

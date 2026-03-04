@@ -1,5 +1,21 @@
 * text=auto eol=lf
 
+# Explicit source file LF rules (TD-001 audit 2026-03-04)
+*.py text eol=lf
+*.go text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.sh text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+
 # Бинарники
 *.png binary
 *.jpg binary
@@ -10,6 +26,10 @@
 *.zip binary
 *.tar.gz binary
 *.woff* binary
+# RZ-009: prevent line-ending corruption of binary database files
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
 
 # Exclude dependency installs from archives and prevent accidental tracking
 root/node_modules/ export-ignore

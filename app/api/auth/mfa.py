@@ -20,7 +20,6 @@ from app.api.deps import (
     get_db,
     get_login_service,
     require_fresh_mfa,
-    require_fresh_mfa_for_enrollment,
 )
 from app.api.validation import raise_http_error
 from app.auth import constants, mfa
@@ -54,7 +53,7 @@ router = APIRouter(tags=["mfa"])
 @router.post(
     "/mfa/totp/start",
     response_model=TotpEnrollmentStartOut,
-    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 async def start_totp_enrollment_endpoint(
     request: Request,
@@ -98,7 +97,7 @@ async def start_totp_enrollment_endpoint(
 @router.post(
     "/mfa/totp/confirm",
     response_model=MfaTotpEnrollmentOut,
-    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 async def confirm_totp_enrollment(
     payload: TotpEnrollmentConfirmIn,
@@ -227,7 +226,7 @@ async def delete_totp_enrollment(
 @router.post(
     "/mfa/webauthn/register/start",
     response_model=WebAuthnRegistrationOptionsOut,
-    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 async def start_webauthn_registration(
     request: Request,
@@ -265,7 +264,7 @@ async def start_webauthn_registration(
 @router.post(
     "/mfa/webauthn/register/confirm",
     response_model=MfaFactorStatusOut,
-    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 async def confirm_webauthn_registration(
     payload: WebAuthnRegistrationVerifyIn,

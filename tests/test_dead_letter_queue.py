@@ -105,7 +105,7 @@ async def test_add_failed_job_success(dlq, mock_session):
     )
 
     mock_session.add.assert_called_once()
-    mock_session.commit.assert_called_once()
+    mock_session.commit.assert_not_called()
 
 
 @pytest.mark.asyncio

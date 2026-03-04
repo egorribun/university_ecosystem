@@ -39,6 +39,15 @@ class EventService:
         self.repo = repo
         self.vector_service = vector_service
 
+    async def get_event_by_id(self, event_id: uuid.UUID | int) -> Event | None:
+        """Fetch a single event by primary key.
+
+        Returns None when the event does not exist.  API controllers MUST use
+        this method instead of accessing ``self.repo.get()`` directly to keep
+        service-layer indirection intact (TD-002).
+        """
+        return await self.repo.get(event_id)
+
     def serialize_event(
         self,
         record: Event | EventDTO,

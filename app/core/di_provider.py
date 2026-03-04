@@ -28,7 +28,7 @@ from app.auth.redis_session import SessionBackend
 # (A string forward-reference like "app.core.nats_broker.NatsTaskBroker" will
 # cause UndefinedTypeAnalysisError because "app" is not in module globals.)
 from app.core.nats_broker import NatsTaskBroker
-from app.core.protocols import AsyncDatabaseSession
+from app.core.protocols import AsyncDatabaseSession, UserAnalyticsServiceProtocol
 from app.cqrs.bus import CommandBus, QueryBus
 from app.cqrs.commands.schedule import (
     CreateScheduleCommand,
@@ -319,7 +319,9 @@ class AppProvider(Provider):
         )
 
     @provide(scope=Scope.REQUEST)
-    def user_analytics_service(self, db: AsyncDatabaseSession) -> object:
+    def user_analytics_service(
+        self, db: AsyncDatabaseSession
+    ) -> UserAnalyticsServiceProtocol:
         # TD-04 (audit 2026-03-04): Ideally this returns `UserAnalyticsService`
         # for mypy/IDE visibility, but Dishka's @provide parser calls
         # get_type_hints() at container-creation time. The class is imported
@@ -343,7 +345,10 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def get_stats_handler(
-        self, db: AsyncDatabaseSession, cache: BaseCache, analytics_service: object
+        self,
+        db: AsyncDatabaseSession,
+        cache: BaseCache,
+        analytics_service: UserAnalyticsServiceProtocol,
     ) -> GetStatsHandler:
         # Cast logic is internal to the handler, but DI handles injection
         return GetStatsHandler(db=db, cache=cache, analytics_service=analytics_service)

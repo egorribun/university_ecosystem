@@ -5,6 +5,7 @@ import traceback
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import asyncpg
 from opentelemetry import trace
@@ -69,8 +70,15 @@ class OutboxWorker:
 
     async def _listen_loop(self) -> None:
         """Listen for PostgreSQL NOTIFY events to wake up the worker."""
-        # asyncpg needs the DSN, strip +asyncpg for compatibility if present
-        dsn = settings.database_url.replace("postgresql+asyncpg://", "postgres://")
+        # TD-013 (audit 2026-03-04): use urlparse instead of str.replace() to
+        # safely convert the DSN scheme. str.replace() silently produced a
+        # broken DSN if the asyncpg dialect marker appeared multiple times or
+        # was absent (e.g. plain postgresql:// DSNs used in some envs).
+        parsed = urlparse(str(settings.database_url))
+        # asyncpg accepts 'postgres://' or 'postgresql://' — normalise to the
+        # canonical form it uses internally.
+        normalised_scheme = parsed.scheme.replace("+asyncpg", "")
+        dsn = urlunparse(parsed._replace(scheme=normalised_scheme))
 
         while self._is_running:
             try:

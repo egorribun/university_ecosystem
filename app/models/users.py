@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, time
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import (
     Boolean,
@@ -240,13 +240,38 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             else:
                 self.education_path = education_data
 
-    @property
-    def spotify_connected(self) -> bool:
-        return bool(self.spotify and self.spotify.is_connected)
+    @classmethod
+    def create(
+        cls,
+        *,
+        email: str,
+        hashed_password: str,
+        role: str = "student",
+        is_active: bool = True,
+        is_superuser: bool = False,
+        is_verified: bool = False,
+        preferences: "UserPreferences | dict[str, Any] | None" = None,
+        profile: "UserProfile | dict[str, Any] | None" = None,
+        education_path: "EducationPath | dict[str, Any] | None" = None,
+        **kwargs: "Any",
+    ) -> "User":
+        """Factory method with explicit types over dynamic __init__ kwargs."""
+        return cls(
+            email=email,
+            hashed_password=hashed_password,
+            role=role,
+            is_active=is_active,
+            is_superuser=is_superuser,
+            is_verified=is_verified,
+            preferences=preferences,
+            profile=profile,
+            education_path=education_path,
+            **kwargs,
+        )
 
     @property
     def spotify_is_connected(self) -> bool:
-        return self.spotify_connected
+        return bool(self.spotify and self.spotify.is_connected)
 
     @spotify_is_connected.setter
     def spotify_is_connected(self, value: bool) -> None:

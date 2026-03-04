@@ -98,6 +98,18 @@ class Settings(
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_security_invariants(self) -> Settings:
+        # MOD-003 (audit 2026-03-04): pydantic-settings Startup Validation Hook
+        if self.environment == "production":
+            if not getattr(self, "spotify_token_secret", None):
+                raise ValueError("SPOTIFY_TOKEN_SECRET required in production")
+            if not getattr(self, "nats_auth_token", None):
+                raise ValueError("NATS_AUTH_TOKEN required in production")
+            if "PRIVATE KEY" in str(getattr(self, "jwt_signing_active_secret", "")):
+                raise ValueError("jwt signing registry must contain PUBLIC keys only")
+        return self
+
     @cached_property
     def app_base_url_clean(self) -> str:
         for candidate in (self.app_base_url, self.frontend_origin):

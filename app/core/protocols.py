@@ -35,3 +35,38 @@ if TYPE_CHECKING:
     AsyncDatabaseSession = AsyncSession
 else:
     AsyncDatabaseSession = Any
+
+
+@runtime_checkable
+class UserAnalyticsServiceProtocol(Protocol):
+    """Protocol for user analytics service."""
+
+    async def get_attendance_stats(
+        self,
+        *,
+        user_id: uuid.UUID | str,
+        period_days: int,
+        period_key: str | None = None,
+        cache: Any | None = None,
+        skip_cache: bool = False,
+    ) -> dict[str, Any]: ...
+
+    async def get_grade_stats(
+        self,
+        *,
+        user_id: uuid.UUID | str,
+        period_days: int,
+        period_key: str | None = None,
+        cache: Any | None = None,
+        skip_cache: bool = False,
+    ) -> dict[str, Any]: ...
+
+    async def get_participation_stats(
+        self,
+        *,
+        user_id: uuid.UUID | str,
+        period_days: int,
+        period_key: str | None = None,
+        cache: Any | None = None,
+        skip_cache: bool = False,
+    ) -> dict[str, Any]: ...

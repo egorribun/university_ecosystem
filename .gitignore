@@ -279,6 +279,9 @@ partial_test_output.txt
 test_output2.txt
 
 # Databases
+# RZ-009 (audit 2026-03-04): broad catch-all prevents accidental commit of any
+# SQLite or other DB files that may carry sensitive data or credentials.
+*.db
 test.db-shm
 test.db-wal
 cache/images/*.db-shm

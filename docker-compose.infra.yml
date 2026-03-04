@@ -36,7 +36,7 @@ services:
 
   # MinIO - S3-compatible object storage
   minio:
-    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000" # API
@@ -69,9 +69,13 @@ services:
   nats:
     image: nats:2.10.25-alpine
     command:
+      - "--auth"
+      - "${NATS_AUTH_TOKEN:?NATS_AUTH_TOKEN is required - set in .env file}"
       - "--js" # Enable JetStream
       - "--sd=/data" # Storage directory
       - "--http_port=8222" # Monitoring
+    environment:
+      NATS_AUTH_TOKEN: ${NATS_AUTH_TOKEN:-dev-nats-token}
     ports:
       - "4222:4222" # Client connections
       - "8222:8222" # HTTP monitoring

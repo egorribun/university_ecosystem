@@ -1,6 +1,6 @@
 module github.com/university-ecosystem/gateway
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/getsentry/sentry-go v0.43.0
@@ -10,6 +10,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/extra/redisprometheus/v9 v9.18.0
@@ -32,7 +33,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -86,4 +86,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
+// TD-016 (audit 2026-03-04): Local file resolution for protobuf definitions.
+// PLAN: Migrate to native standard 'go work' workspace to natively integrate mono-repo modules.
 replace github.com/university-ecosystem/core/gen/go => ../../gen/go

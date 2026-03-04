@@ -99,7 +99,8 @@ async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
 
     # PERF-07: In-memory TTL fallback so we don't open a DB session on every
     # WebSocket ping when Redis is disabled. Lock prevents thundering herd.
-    now = asyncio.get_event_loop().time()
+    loop = asyncio.get_running_loop()
+    now = loop.time()
     cached = _PRESENCE_DB_CACHE.get(user_id)
     if cached is not None:
         _PRESENCE_DB_CACHE.move_to_end(user_id)  # LRU bump
@@ -118,7 +119,7 @@ async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
             repo = ChatRepository(session)
             audience = await repo.get_presence_audience(user_id)
 
-        _PRESENCE_DB_CACHE[user_id] = (audience, asyncio.get_event_loop().time())
+        _PRESENCE_DB_CACHE[user_id] = (audience, loop.time())
         if len(_PRESENCE_DB_CACHE) > _PRESENCE_DB_CACHE_MAX_SIZE:
             _PRESENCE_DB_CACHE.popitem(last=False)
 
@@ -172,11 +173,21 @@ class PresencePubSub:
         if redis is not None:
             self._redis = redis
         elif settings.cache_redis_url:
-            self._redis = Redis.from_url(
-                settings.cache_redis_url,
-                decode_responses=True,
-                max_connections=getattr(settings, "redis_pool_size", 20),
-            )
+            # PERF-001 (audit 2026-03-04): Share existing DI Redis client instead of creating new pool
+            from app.deps.cache import get_cache_client
+
+            try:
+                self._redis = await get_cache_client()
+            except Exception as e:
+                logger.warning(
+                    "Failed to share Redis client for presence pub/sub: %s", e
+                )
+                # Fallback to creating a new pool if cache backend isn't Redis
+                self._redis = Redis.from_url(
+                    settings.cache_redis_url,
+                    decode_responses=True,
+                    max_connections=getattr(settings, "redis_pool_size", 20),
+                )
         if self._redis:
             self._pubsub_task = asyncio.create_task(self._listen_for_updates())
 
@@ -396,9 +407,17 @@ class ConnectionManager:
                 logger.warning("Failed to send to user %s: %s", user_id, e)
                 dead_connections.append(connection)
 
-        # Clean up dead connections (disconnect() uses _lock internally — safe)
-        for conn in dead_connections:
-            await self.disconnect(conn)
+        if dead_connections:
+            async with self._get_lock():
+                for conn in dead_connections:
+                    self.rate_limiters.pop(conn, None)
+                    uid = self.connection_users.pop(conn, None)
+                    if uid is not None and uid in self.active_connections:
+                        self.active_connections[uid].discard(conn)
+                        if not self.active_connections[uid]:
+                            del self.active_connections[uid]
+                            self._last_presence_sent_at.pop(uid, None)
+                        logger.info("WebSocket batch-disconnected: user_id=%s", uid)
 
         return sent
 

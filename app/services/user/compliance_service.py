@@ -65,7 +65,15 @@ class UserComplianceService:
         # db_user is already a DTO and has mfa_challenges/totp_enrollments
         profile = db_user.model_dump()
 
-        sessions_list = await self.repo.get_user_sessions(user.id)
+        import asyncio
+
+        # PERF-010 (audit 2026-03-04): Gather independent I/O fetches concurrently
+        sessions_list, notifications_list, access_logs = await asyncio.gather(
+            self.repo.get_user_sessions(user.id),
+            self.repo.get_user_notifications(user.id),
+            self.repo.get_user_access_logs(user.id, limit=2000),
+        )
+
         sessions = [
             {
                 "id": s.id,
@@ -80,7 +88,6 @@ class UserComplianceService:
             for s in sessions_list
         ]
 
-        notifications_list = await self.repo.get_user_notifications(user.id)
         notifications = [
             {
                 "id": n.id,
@@ -116,7 +123,6 @@ class UserComplianceService:
             for e in getattr(db_user, "totp_enrollments", [])
         ]
 
-        access_logs = await self.repo.get_user_access_logs(user.id, limit=2000)
         access_log_payload = [
             {
                 "resource_type": log.resource_type,

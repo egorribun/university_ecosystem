@@ -41,7 +41,7 @@ jobs:
     name: Pre-commit & Linting
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required to push pre-commit autofix commits back to the branch
+      contents: write # Required to push pre-commit autofix commits back to the branch
     steps:
       - uses: actions/checkout@v5
         with:
@@ -73,7 +73,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: pre-commit autofix"
+          git commit -m "chore: pre-commit autofix [skip ci]"
           # CI-03 (audit 2026-03-04): Replaced --force-with-lease with a
           # pull-rebase-push pattern. --force-with-lease can still clobber work
           # if two jobs race on the same ref between the fetch and the push.
@@ -98,6 +98,14 @@ jobs:
     needs: run-hooks
     steps:
       - uses: actions/checkout@v5
+      - name: Enforce Rate Limit Shim Deadline (TD-003)
+        run: |
+          count=$(git grep "from app.core import rate_limit" app/ | wc -l || echo "0")
+          if [ "$count" -gt 15 ]; then
+            echo "::error::Too many legacy rate_limit imports ($count). Baseline is 15. Do not add new ones."
+            exit 1
+          fi
+          echo "Found $count legacy imports."
       - name: Validate docker compose configuration
         shell: pwsh
         run: |
