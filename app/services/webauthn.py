@@ -80,9 +80,12 @@ class WebAuthnService:
             for cre in result
         ]
 
-        display_name = getattr(user, "full_name", None) or (
-            user.profile.full_name if getattr(user, "profile", None) else None
-        ) or str(user.email)
+        profile = getattr(user, "profile", None)
+        display_name = (
+            getattr(user, "full_name", None)
+            or (getattr(profile, "full_name", None) if profile else None)
+            or str(user.email)
+        )
         options = generate_registration_options(
             rp_id=self._get_rp_id(),
             rp_name=self._get_rp_name(),

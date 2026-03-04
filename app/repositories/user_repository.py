@@ -315,11 +315,27 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
     def _extract_cqrs_data(self, data: dict) -> tuple[dict, dict, dict, dict]:
         """Extract profile, preferences, education_path, and core user data from a flat dictionary."""
         profile_keys = {
-            "full_name", "avatar_url", "cover_url", "about", "telegram",
-            "profile_status", "status", "achievements", "position", "department", "profile_department"
+            "full_name",
+            "avatar_url",
+            "cover_url",
+            "about",
+            "telegram",
+            "profile_status",
+            "status",
+            "achievements",
+            "position",
+            "department",
+            "profile_department",
         }
         pref_keys = {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
-        edu_keys = {"institute", "course", "education_level", "track", "program", "record_book_number"}
+        edu_keys = {
+            "institute",
+            "course",
+            "education_level",
+            "track",
+            "program",
+            "record_book_number",
+        }
 
         profile_data = {}
         pref_data = {}
@@ -382,7 +398,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         else:
             update_data = obj_in
 
-        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(update_data)
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(
+            update_data
+        )
 
         for field, value in core_data.items():
             setattr(db_obj, field, value)
@@ -415,7 +433,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         self, user_data: dict, invite_code: models.InviteCode | None
     ) -> UserDTO:
         """Create a user and optionally mark an invite code as used."""
-        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(user_data)
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(
+            user_data
+        )
 
         user = models.User(**core_data)
         if profile_data:

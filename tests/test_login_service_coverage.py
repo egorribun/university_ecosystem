@@ -11,7 +11,9 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 @pytest.fixture
 def mock_db():
-    return AsyncMock()
+    mock = AsyncMock()
+    mock.add = MagicMock()
+    return mock
 
 
 @pytest.fixture
@@ -86,6 +88,7 @@ def login_service(
     )
     # Mock result chaining globally for this service's repo
     ls.repo.db.execute.return_value = MagicMock()
+    ls.repo.db.add = MagicMock()
     ls.repo.db.execute.return_value.scalars.return_value = MagicMock()
     ls.repo.db.execute.return_value.scalars.return_value.first.return_value = None
     ls.repo.db.execute.return_value.scalars.return_value.all.return_value = []

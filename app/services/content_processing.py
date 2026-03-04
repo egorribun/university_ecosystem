@@ -29,18 +29,18 @@ try:
     _BACKEND_LABEL = "pyo3_sanitizer (native)"
 
     def _rich_text(html: str) -> str:
-        return _native.sanitize_rich_text(html)  # type: ignore[attr-defined]
+        return str(_native.sanitize_rich_text(html))
 
     def _basic(html: str) -> str:
-        return _native.sanitize_html_basic(html)  # type: ignore[attr-defined]
+        return str(_native.sanitize_html_basic(html))
 
     def _strip(html: str) -> str:
-        return _native.strip_html(html)  # type: ignore[attr-defined]
+        return str(_native.strip_html(html))
 
 except ImportError:
     # nh3 is an unconditional project dependency (pyproject.toml); the fallback
     # is always available even without a Rust toolchain.
-    import nh3 as _nh3  # type: ignore[import-untyped]
+    import nh3 as _nh3
 
     _BACKEND_LABEL = "nh3 (fallback)"
 
@@ -48,9 +48,28 @@ except ImportError:
         "a": {"href", "title", "target"},
     }
     _NH3_RICH_TAGS: set[str] = {
-        "p", "br", "b", "i", "em", "strong", "u", "s", "strike",
-        "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li",
-        "a", "blockquote", "code", "pre",
+        "p",
+        "br",
+        "b",
+        "i",
+        "em",
+        "strong",
+        "u",
+        "s",
+        "strike",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "ul",
+        "ol",
+        "li",
+        "a",
+        "blockquote",
+        "code",
+        "pre",
     }
     _NH3_BASIC_TAGS: set[str] = {"b", "i", "em", "strong"}
 
@@ -68,6 +87,7 @@ except ImportError:
 
     def _strip(html: str) -> str:
         return _nh3.clean(html, tags=set())
+
 
 _logger.debug("content_processing: using backend=%s", _BACKEND_LABEL)
 

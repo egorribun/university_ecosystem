@@ -444,7 +444,6 @@ async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:
         yield session
 
 
-
 async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:
     """Get a read-only session (uses replica if configured, otherwise primary)."""
     # Use the pre-allocated read_session_factory for efficiency

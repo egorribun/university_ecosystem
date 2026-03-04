@@ -1,7 +1,6 @@
 import uuid
-from collections.abc import Callable
 from datetime import datetime, time
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import TypeVar
 
 from sqlalchemy import (
     Boolean,
@@ -27,9 +26,6 @@ from app.models.mixins import UUID7PrimaryKeyMixin
 from app.models.spotify import SpotifyIntegration
 
 _T = TypeVar("_T")
-
-
-
 
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
@@ -78,7 +74,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="joined",
+        lazy="selectin",
     )
     # Integrations & other relationships
     profile = relationship(
@@ -87,7 +83,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="joined",
+        lazy="selectin",
     )
     education_path = relationship(
         "EducationPath",
@@ -95,7 +91,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="joined",
+        lazy="selectin",
     )
 
     # Integrations & other relationships
@@ -354,7 +350,9 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
     role: Mapped[str] = mapped_column(String)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
     used_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

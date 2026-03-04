@@ -20,10 +20,14 @@ from collections.abc import AsyncIterator
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-_logger = logging.getLogger(__name__)
-
 from app.auth.fingerprint import SuspiciousActivityDetector
 from app.auth.redis_session import SessionBackend
+
+# NatsTaskBroker is imported at module level so that Dishka's @provide parser
+# can resolve the return type via get_type_hints() at class-definition time.
+# (A string forward-reference like "app.core.nats_broker.NatsTaskBroker" will
+# cause UndefinedTypeAnalysisError because "app" is not in module globals.)
+from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession
 from app.cqrs.bus import CommandBus, QueryBus
 from app.cqrs.commands.schedule import (
@@ -40,7 +44,7 @@ from app.cqrs.queries import (
     GetStatsHandler,
     GetStatsQuery,
 )
-from app.deps.cache import BaseCache, get_cache
+from app.deps.cache import BaseCache, create_cache_backend
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
@@ -79,11 +83,7 @@ from app.services.user_service import UserService
 from app.services.vector_service import VectorService
 from app.workers.outbox import OutboxWorker
 
-# NatsTaskBroker is imported at module level so that Dishka's @provide parser
-# can resolve the return type via get_type_hints() at class-definition time.
-# (A string forward-reference like "app.core.nats_broker.NatsTaskBroker" will
-# cause UndefinedTypeAnalysisError because "app" is not in module globals.)
-from app.core.nats_broker import NatsTaskBroker
+_logger = logging.getLogger(__name__)
 
 
 class AppProvider(Provider):
@@ -155,8 +155,12 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def cache(self) -> BaseCache:
-        """Wraps the existing module-level cache singleton."""
-        return get_cache()
+        """Creates an independent cache instance for the DI container.
+
+        Enforces Dependency Inversion by managing the cache lifecycle within
+        Dishka rather than delegating to a module-level global singleton.
+        """
+        return create_cache_backend()
 
     # ── Stateless APP-scoped singletons ───────────────────────────────────────
 

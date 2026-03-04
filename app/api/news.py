@@ -401,7 +401,7 @@ async def comment_on_news(
         "id": comment.id,
         "content": comment.content,
         "user_id": comment.user_id,
-        "user_name": user.full_name,
+        "user_name": user.profile.full_name if user.profile else str(user.email),
         "created_at": comment.created_at,
     }
 
@@ -444,7 +444,7 @@ async def update_comment(
             "id": comment.id,
             "content": comment.content,
             "user_id": comment.user_id,
-            "user_name": user.full_name,
+            "user_name": user.profile.full_name if user.profile else str(user.email),
             "created_at": comment.created_at,
         }
     except LookupError:

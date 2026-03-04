@@ -48,6 +48,7 @@ def create_admin(
                 return
 
             from app.models.users import UserProfile
+
             admin = User(
                 email=email,
                 hashed_password=await get_password_hash(password),

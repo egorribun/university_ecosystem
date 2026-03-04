@@ -116,9 +116,12 @@ async def test_create_comment(
     from app.api.deps import get_current_user
 
     mock_user = MagicMock(spec=models.User)
-    mock_user.id = 1
+    mock_user.id = uuid.UUID(int=1)
     mock_user.role = "user"
-    mock_user.full_name = "Test User"
+    mock_user.email = "test@example.com"
+    mock_profile = MagicMock()
+    mock_profile.full_name = "Test User"
+    mock_user.profile = mock_profile
 
     app.dependency_overrides[get_news_service] = lambda: mock_news_service
     app.dependency_overrides[get_current_user] = lambda: mock_user
@@ -142,8 +145,11 @@ async def test_create_comment(
 @pytest.mark.asyncio
 async def test_update_comment(async_client: AsyncClient, mock_news_service):
     mock_user = MagicMock(spec=models.User)
-    mock_user.id = 1
-    mock_user.full_name = "Test User"
+    mock_user.id = uuid.UUID(int=1)
+    mock_user.email = "test@example.com"
+    mock_profile = MagicMock()
+    mock_profile.full_name = "Test User"
+    mock_user.profile = mock_profile
 
     from app.api.deps import get_current_user
 

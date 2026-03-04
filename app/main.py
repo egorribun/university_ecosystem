@@ -10,12 +10,7 @@ import os
 
 from fastapi import FastAPI, HTTPException
 
-try:
-    from fastapi.responses import JSONResponse, ORJSONResponse
-except ImportError:
-    from fastapi.responses import JSONResponse
-
-    ORJSONResponse = JSONResponse  # type: ignore[misc,assignment]
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_api_router
@@ -77,7 +72,6 @@ app = FastAPI(
         "schedules, news, events, notifications, and more."
     ),
     version=API_VERSION,
-    default_response_class=ORJSONResponse,
     docs_url="/api/docs" if _is_dev else None,
     redoc_url="/api/redoc" if _is_dev else None,
     openapi_url="/api/openapi.json" if _is_dev else None,

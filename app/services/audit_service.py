@@ -158,7 +158,9 @@ class AuditService:
             # RZ-05: Use getattr guard — request.client can be None on unix socket
             # transports or certain ASGI test clients (AttributeError at runtime).
             _client = getattr(request, "client", None)
-            payload["ip"] = _client.host if _client and hasattr(_client, "host") else None
+            payload["ip"] = (
+                _client.host if _client and hasattr(_client, "host") else None
+            )
             payload["path"] = request.url.path
             payload["method"] = request.method
 
@@ -416,7 +418,11 @@ class SecureAuditService:
         signature = self._compute_signature(log)
         # Step 3: write the signature back to the actual DB row.
         updated = await repo.update(log.id, {"signature": signature})
-        return updated if updated is not None else log.model_copy(update={"signature": signature})
+        return (
+            updated
+            if updated is not None
+            else log.model_copy(update={"signature": signature})
+        )
 
     def verify_integrity(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
         """Verify the integrity of an audit log entry."""

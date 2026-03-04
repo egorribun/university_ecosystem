@@ -304,10 +304,11 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
                 models.NewsComment.id,
                 models.NewsComment.content,
                 models.NewsComment.user_id,
-                models.User.full_name,
+                func.coalesce(models.UserProfile.full_name, models.User.email),
                 models.NewsComment.created_at,
-            )  # type: ignore[call-overload]
+            )
             .join(models.User, models.NewsComment.user_id == models.User.id)
+            .outerjoin(models.UserProfile, models.User.id == models.UserProfile.user_id)
             .where(models.NewsComment.news_id == news_id)
             .order_by(models.NewsComment.created_at.asc())
             .limit(limit)

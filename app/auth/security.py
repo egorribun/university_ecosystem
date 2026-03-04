@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import logging
 import os
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache, partial
@@ -76,14 +75,12 @@ _auth_executor = ThreadPoolExecutor(
 # of all racing to the executor at once. Always >=1 to avoid deadlock.
 _ARGON2_CONCURRENCY_LIMIT: int = max(1, _AUTH_EXECUTOR_WORKERS - 1)
 _argon2_semaphore: asyncio.Semaphore | None = None
-_argon2_alloc_lock = threading.Lock()
+
 
 def _get_argon2_semaphore() -> asyncio.Semaphore:
     global _argon2_semaphore
     if _argon2_semaphore is None:
-        with _argon2_alloc_lock:
-            if _argon2_semaphore is None:
-                _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+        _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
     return _argon2_semaphore
 
 
@@ -156,14 +153,12 @@ def _calculate_lookup_hash(input_data: str) -> str:
 # local ASGI worker event loop.
 _hibp_client: httpx.AsyncClient | None = None
 _hibp_client_lock: asyncio.Lock | None = None
-_hibp_alloc_lock = threading.Lock()
+
 
 def _get_hibp_client_lock() -> asyncio.Lock:
     global _hibp_client_lock
     if _hibp_client_lock is None:
-        with _hibp_alloc_lock:
-            if _hibp_client_lock is None:
-                _hibp_client_lock = asyncio.Lock()
+        _hibp_client_lock = asyncio.Lock()
     return _hibp_client_lock
 
 
@@ -530,18 +525,11 @@ def decode_token(token: str) -> dict | None:
             return None
         candidates = [kid_secret]
     else:
-        # RZ-10 (audit 2026-03-04): No `kid` header — fall back to trying all
-        # registered keys for backward compat with pre-rotation legacy tokens.
-        # This creates a timing side-channel: response latency leaks the number
-        # of keys in the registry (O(N) attempt loop).
-        # SUNSET DATE: Q3 2026 — after this date, tokens without `kid` will be
-        # rejected immediately. Track legacy token count via this log line.
-        _logger.warning(
-            "JWT without 'kid' header — falling back to full-key-scan "
-            "(legacy token). Sunset: Q3 2026. Count this log to track migration."
-        )
-        # No kid header: try all keys for backward compat with legacy tokens.
-        candidates = list(registry.values())
+        # RZ-10 (audit 2026-03-04) fix:
+        # Tokens without `kid` are immediately rejected.
+        # This closes the O(N) timing side-channel attack vector.
+        _logger.warning("JWT rejected: missing 'kid' header.")
+        return None
 
     for secret in candidates:
         try:

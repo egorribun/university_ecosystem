@@ -79,6 +79,9 @@ dependencies = [
     "virtualenv>=20.36.2",
 ]
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

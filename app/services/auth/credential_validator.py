@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class CredentialValidator:
     def __init__(
         self,
@@ -56,7 +57,9 @@ class CredentialValidator:
         # 1. Check Lockout
         lock_until = await self.lockout_service.get_active_lockout(normalized_email)
         if lock_until:
-            _detail, retry_after = self.lockout_service.get_lockout_message(locale, lock_until)
+            _detail, retry_after = self.lockout_service.get_lockout_message(
+                locale, lock_until
+            )
             self.audit.log(
                 "auth.login.failure",
                 request,
@@ -67,6 +70,7 @@ class CredentialValidator:
             )
             metrics.record_login_failure(reason="locked")
             from app.api.validation import raise_http_error
+
             duration_text = self.lockout_service.format_duration(
                 locale, int((lock_until - datetime.now(UTC)).total_seconds())
             )
@@ -89,8 +93,11 @@ class CredentialValidator:
 
         if not verified:
             from app.core.localization import resolve_locale
+
             user_locale = resolve_locale(request=request, user=user)
-            await self._handle_invalid_password(user, normalized_email, request, user_locale, bg_tasks)
+            await self._handle_invalid_password(
+                user, normalized_email, request, user_locale, bg_tasks
+            )
             return cast("UserAuthDTO", None)
 
         if new_hash:
@@ -114,19 +121,35 @@ class CredentialValidator:
         locale: str,
         bg_tasks: BackgroundTasks,
     ) -> None:
-        (lock_until, triggered, attempts) = await self.lockout_service.register_failed_attempt(email, None)
-        self.audit.log("auth.login.failure", request, level=logging.WARNING, reason="invalid_credentials")
+        (
+            lock_until,
+            triggered,
+            attempts,
+        ) = await self.lockout_service.register_failed_attempt(email, None)
+        self.audit.log(
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            reason="invalid_credentials",
+        )
 
         if triggered and lock_until:
             duration_text = self.lockout_service.format_duration(
                 locale, int((lock_until - datetime.now(UTC)).total_seconds())
             )
-            _detail, retry_after = self.lockout_service.get_lockout_message(locale, lock_until)
+            _detail, retry_after = self.lockout_service.get_lockout_message(
+                locale, lock_until
+            )
             self.audit.log(
-                "auth.login.locked", request, level=logging.WARNING, reason="lockout", until=lock_until.isoformat()
+                "auth.login.locked",
+                request,
+                level=logging.WARNING,
+                reason="lockout",
+                until=lock_until.isoformat(),
             )
             await self._trigger_lockout_alert(email, "", lock_until, attempts, locale)
             from app.api.validation import raise_http_error
+
             raise_http_error(
                 status.HTTP_423_LOCKED,
                 "errors.auth.account_locked",
@@ -137,10 +160,21 @@ class CredentialValidator:
 
         metrics.record_login_failure(reason="invalid_credentials")
         client_ip, user_agent = self.session_manager.extract_client_info(request)
-        bg_tasks.add_task(self.session_manager.record_login_history_bg, None, client_ip, user_agent, "failure")
+        bg_tasks.add_task(
+            self.session_manager.record_login_history_bg,
+            None,
+            client_ip,
+            user_agent,
+            "failure",
+        )
 
         from app.api.validation import raise_unauthorized
-        raise_unauthorized(locale, "errors.auth.credentials_invalid", headers={"WWW-Authenticate": "Bearer"})
+
+        raise_unauthorized(
+            locale,
+            "errors.auth.credentials_invalid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     async def _handle_invalid_password(
         self,
@@ -150,21 +184,39 @@ class CredentialValidator:
         locale: str,
         bg_tasks: BackgroundTasks,
     ) -> None:
-        (lock_until, triggered, attempts) = await self.lockout_service.register_failed_attempt(email, user.id)
+        (
+            lock_until,
+            triggered,
+            attempts,
+        ) = await self.lockout_service.register_failed_attempt(email, user.id)
         self.audit.log(
-            "auth.login.failure", request, level=logging.WARNING, user_id=user.id, reason="invalid_credentials"
+            "auth.login.failure",
+            request,
+            level=logging.WARNING,
+            user_id=user.id,
+            reason="invalid_credentials",
         )
 
         if triggered and lock_until:
             duration_text = self.lockout_service.format_duration(
                 locale, int((lock_until - datetime.now(UTC)).total_seconds())
             )
-            _detail, retry_after = self.lockout_service.get_lockout_message(locale, lock_until)
-            self.audit.log(
-                "auth.login.locked", request, level=logging.WARNING, user_id=user.id, reason="lockout", until=lock_until.isoformat()
+            _detail, retry_after = self.lockout_service.get_lockout_message(
+                locale, lock_until
             )
-            await self._trigger_lockout_alert(email, user.full_name or "", lock_until, attempts, locale)
+            self.audit.log(
+                "auth.login.locked",
+                request,
+                level=logging.WARNING,
+                user_id=user.id,
+                reason="lockout",
+                until=lock_until.isoformat(),
+            )
+            await self._trigger_lockout_alert(
+                email, user.full_name or "", lock_until, attempts, locale
+            )
             from app.api.validation import raise_http_error
+
             raise_http_error(
                 status.HTTP_423_LOCKED,
                 "errors.auth.account_locked",
@@ -175,13 +227,30 @@ class CredentialValidator:
 
         metrics.record_login_failure(reason="invalid_credentials")
         client_ip, user_agent = self.session_manager.extract_client_info(request)
-        bg_tasks.add_task(self.session_manager.record_login_history_bg, user.id, client_ip, user_agent, "failure")
+        bg_tasks.add_task(
+            self.session_manager.record_login_history_bg,
+            user.id,
+            client_ip,
+            user_agent,
+            "failure",
+        )
 
         from app.api.validation import raise_unauthorized
-        raise_unauthorized(locale, "errors.auth.credentials_invalid", headers={"WWW-Authenticate": "Bearer"})
+
+        raise_unauthorized(
+            locale,
+            "errors.auth.credentials_invalid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     async def _trigger_lockout_alert(
-        self, email: str, full_name: str, lock_until: datetime, attempts: int, locale: str
+        self,
+        email: str,
+        full_name: str,
+        lock_until: datetime,
+        attempts: int,
+        locale: str,
     ) -> None:
         from app.tasks.email import send_lockout_alert
+
         await send_lockout_alert.kick(email, full_name, locale)  # type: ignore[attr-defined]

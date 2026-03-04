@@ -77,6 +77,7 @@ _PRESENCE_DB_CACHE_MAX_SIZE = 10000
 _PRESENCE_DB_CACHE_LOCK: asyncio.Lock | None = None
 _PRESENCE_DB_ALLOC_LOCK = threading.Lock()
 
+
 def _get_presence_cache_lock() -> asyncio.Lock:
     global _PRESENCE_DB_CACHE_LOCK
     if _PRESENCE_DB_CACHE_LOCK is None:
@@ -84,6 +85,7 @@ def _get_presence_cache_lock() -> asyncio.Lock:
             if _PRESENCE_DB_CACHE_LOCK is None:
                 _PRESENCE_DB_CACHE_LOCK = asyncio.Lock()
     return _PRESENCE_DB_CACHE_LOCK
+
 
 async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
     """Resolve user IDs that should receive presence updates for user_id."""
@@ -100,7 +102,7 @@ async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
     now = asyncio.get_event_loop().time()
     cached = _PRESENCE_DB_CACHE.get(user_id)
     if cached is not None:
-        _PRESENCE_DB_CACHE.move_to_end(user_id) # LRU bump
+        _PRESENCE_DB_CACHE.move_to_end(user_id)  # LRU bump
         if (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
             return cached[0]
 
@@ -171,7 +173,9 @@ class PresencePubSub:
             self._redis = redis
         elif settings.cache_redis_url:
             self._redis = Redis.from_url(
-                settings.cache_redis_url, decode_responses=True
+                settings.cache_redis_url,
+                decode_responses=True,
+                max_connections=getattr(settings, "redis_pool_size", 20),
             )
         if self._redis:
             self._pubsub_task = asyncio.create_task(self._listen_for_updates())
@@ -560,7 +564,9 @@ async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
         try:
             last_seen = datetime.fromisoformat(str(last_seen_raw))
         except ValueError:
-            logger.warning("Presence pubsub: invalid last_seen value — ignoring timestamp")
+            logger.warning(
+                "Presence pubsub: invalid last_seen value — ignoring timestamp"
+            )
     await manager.broadcast_presence(
         user_id,
         active,
@@ -835,8 +841,6 @@ async def websocket_chat(websocket: WebSocket) -> None:
 
     # Debug: log incoming connection info
 
-
-
     auth_header = websocket.headers.get("authorization")
     protocol_header = websocket.headers.get("sec-websocket-protocol")
     header_token = _extract_bearer_token(auth_header)
@@ -1009,7 +1013,9 @@ async def websocket_chat(websocket: WebSocket) -> None:
                             "type": "typing",
                             "chat_id": str(chat_uuid),
                             "user_id": str(user.id),
-                            "user_name": user.full_name or user.email,
+                            "user_name": getattr(user.profile, "full_name", None)
+                            if getattr(user, "profile", None)
+                            else str(user.email),
                         },
                         exclude_user_id=user.id,
                     )

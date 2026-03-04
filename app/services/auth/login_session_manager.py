@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class LoginSessionManager:
     def __init__(
         self,
@@ -75,6 +76,7 @@ class LoginSessionManager:
         self._set_access_token_cookie(response, token)
 
         from app.core.csrf import signal_csrf_rotation
+
         signal_csrf_rotation(request)
 
         bg_tasks.add_task(
@@ -98,10 +100,14 @@ class LoginSessionManager:
             mfa_verified_at=session.mfa_verified_at,
         )
 
-        self.audit.log("auth.login.success", request, user_id=user.id, reason="authenticated")
+        self.audit.log(
+            "auth.login.success", request, user_id=user.id, reason="authenticated"
+        )
         metrics.record_login_success(method=method)
 
-        return await self.build_token_response(user, token, session, db_session, include_token=False)
+        return await self.build_token_response(
+            user, token, session, db_session, include_token=False
+        )
 
     async def build_token_response(
         self,
@@ -114,6 +120,7 @@ class LoginSessionManager:
         user = cast(Any, await ensure_mfa_relationships_loaded(db_session, user))
 
         from app.services.auth_service import attach_pending_email
+
         temp_user = await attach_pending_email(db_session, user)
         if temp_user is not None:
             user = temp_user
@@ -133,6 +140,7 @@ class LoginSessionManager:
 
     def extract_client_info(self, request: Request) -> tuple[str | None, str | None]:
         from app.core.rate_limit import resolve_client_ip
+
         client_ip: str | None = resolve_client_ip(request) or None
         user_agent = request.headers.get("user-agent")
         return client_ip, user_agent
@@ -169,7 +177,9 @@ class LoginSessionManager:
 
             from app.repositories.auth_repository import AuthRepository
 
-            location = await asyncio.to_thread(self.geolocation.resolve, client_ip or "")
+            location = await asyncio.to_thread(
+                self.geolocation.resolve, client_ip or ""
+            )
 
             repo = AuthRepository(db)
             await repo.record_login_history(

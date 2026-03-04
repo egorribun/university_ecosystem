@@ -312,7 +312,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         app.state.background_tasks.add(nats_worker_task)
     else:
-        _logger.warning("NATS broker not connected — worker task skipped (degraded mode)")
+        _logger.warning(
+            "NATS broker not connected — worker task skipped (degraded mode)"
+        )
 
     def _on_outbox_done(task: asyncio.Task[Any]) -> None:
         """Log unexpected OutboxWorker exits so they are never silently swallowed."""
