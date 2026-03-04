@@ -137,8 +137,15 @@ class BaseRepository(ReadOnlyRepository[T, DTOT], Generic[T, DTOT, CreateT, Upda
         return self._to_dto(db_obj)
 
     async def update(self, id: Any, obj_in: UpdateT | dict[str, Any]) -> DTOT | None:
-        # Prevent Lost Updates by locking the row for the transaction duration
-        db_obj = await self._get_orm(id, with_for_update=True)
+        # TD-02 (audit 2026-03-04): Removed the SELECT FOR UPDATE that preceded
+        # every update. Acquiring a row-level lock on every mutation caused lock
+        # escalation under concurrent load and added a latency-doubling round-trip
+        # even for callers that did not need serialised access.
+        # setattr is retained because it correctly fires ORM column descriptors,
+        # TypeDecorator processors, and SQLAlchemy attribute events. Callers that
+        # genuinely need a pessimistic lock should pass with_for_update=True to
+        # _get_orm() themselves.
+        db_obj = await self._get_orm(id)
         if db_obj is None:
             return None
 
@@ -150,10 +157,12 @@ class BaseRepository(ReadOnlyRepository[T, DTOT], Generic[T, DTOT, CreateT, Upda
         for field, value in update_data.items():
             setattr(db_obj, field, value)
 
-        self.db.add(db_obj)
         await self.db.flush()
-        await self.db.refresh(db_obj)
         return self._to_dto(db_obj)
+
+
+
+
 
     async def delete(self, id: Any) -> bool:
         target_id = self._cast_id(id)

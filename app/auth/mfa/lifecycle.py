@@ -58,7 +58,9 @@ class MfaResetStats:
 
 def user_has_confirmed_interactive_factor(user: User) -> bool:
     """Return True if the user has at least one confirmed interactive factor.
-    Note: Highly security-sensitive sync helper.
+
+    Security-critical sync helper.  Callers must ensure MFA relationship
+    collections are loaded first (e.g. via ensure_mfa_relationships_loaded).
     """
     if getattr(user, "mfa_default_method", None):
         return True

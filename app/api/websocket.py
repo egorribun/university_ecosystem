@@ -68,6 +68,15 @@ PRESENCE_SOURCE_PUBSUB = "pubsub"
 
 _PRESENCE_INSTANCE_ID = uuid.uuid4().hex
 
+# PERF-07 (audit 2026-03-04): _get_presence_audience opens a new DB session on
+# every WebSocket message when Redis is unavailable. At 100 concurrent clients
+# with 5 contacts each this is 500 DB sessions/sec at presence ping rate.
+# This in-process cache caps DB access to once per 30s per user_id for the
+# Redis-cold path. Redis-enabled path is unchanged (cache_key hit returns early).
+_PRESENCE_DB_CACHE: dict[uuid.UUID, tuple[set[uuid.UUID], float]] = {}
+_PRESENCE_DB_CACHE_TTL = 30.0  # seconds
+_PRESENCE_DB_CACHE_LOCK = asyncio.Lock()
+
 
 async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
     """Resolve user IDs that should receive presence updates for user_id."""
@@ -79,9 +88,24 @@ async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
         if entry:
             return set(entry.payload)
 
-    async with async_session() as session:
-        repo = ChatRepository(session)
-        audience = await repo.get_presence_audience(user_id)
+    # PERF-07: In-memory TTL fallback so we don't open a DB session on every
+    # WebSocket ping when Redis is disabled. Lock prevents thundering herd.
+    now = asyncio.get_event_loop().time()
+    cached = _PRESENCE_DB_CACHE.get(user_id)
+    if cached is not None and (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
+        return cached[0]
+
+    async with _PRESENCE_DB_CACHE_LOCK:
+        # Re-check inside the lock (another coroutine may have filled it).
+        cached = _PRESENCE_DB_CACHE.get(user_id)
+        if cached is not None and (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
+            return cached[0]
+
+        async with async_session() as session:
+            repo = ChatRepository(session)
+            audience = await repo.get_presence_audience(user_id)
+
+        _PRESENCE_DB_CACHE[user_id] = (audience, asyncio.get_event_loop().time())
 
     if cache.enabled:
         await cache.set(cache_key, list(audience), ttl=3600)
@@ -481,9 +505,34 @@ def get_connection_manager(request: Request) -> ConnectionManager:
 
 
 async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
-    user_id = payload.get("user_id")
-    if user_id is None:
+    """Handle a presence update received from Redis pub/sub.
+
+    RZ-07 (audit 2026-03-04): Validate the user_id from the payload before
+    broadcasting.  A misconfigured or compromised Redis channel could inject
+    arbitrary user_ids, spoofing presence for any user's contacts.
+    Only forward updates for users who already have an active connection on
+    this pod — legitimate cross-pod presence updates only affect online users.
+    """
+    raw_user_id = payload.get("user_id")
+    if raw_user_id is None:
         return
+
+    # Validate that the value is a well-formed UUID before trusting it.
+    try:
+        user_id = uuid.UUID(str(raw_user_id))
+    except (ValueError, AttributeError):
+        logger.warning(
+            "Presence pubsub: received invalid user_id format %r — ignoring",
+            raw_user_id,
+        )
+        return
+
+    # Only update presence for users with an active connection on this pod.
+    # Spoofing presence for a user who is genuinely offline on this pod is
+    # harmless; but injecting "active" for an online user would mislead contacts.
+    if not manager.is_online(user_id):
+        return
+
     active = bool(payload.get("active"))
     last_seen_raw = payload.get("last_seen")
     last_seen = None
@@ -491,9 +540,9 @@ async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
         try:
             last_seen = datetime.fromisoformat(str(last_seen_raw))
         except ValueError:
-            logger.warning("Invalid last_seen value in presence payload")
+            logger.warning("Presence pubsub: invalid last_seen value — ignoring timestamp")
     await manager.broadcast_presence(
-        uuid.UUID(str(user_id)),
+        user_id,
         active,
         last_seen,
         source=PRESENCE_SOURCE_PUBSUB,
@@ -765,16 +814,8 @@ async def websocket_chat(websocket: WebSocket) -> None:
     session_jti = None
 
     # Debug: log incoming connection info
-    logger.info(
-        "WebSocket connection attempt - cookies: %s",
-        redact_sensitive_mapping(websocket.cookies, allowlist=("session", "csrftoken")),
-    )
-    logger.info(
-        "WebSocket connection attempt - query params: %s",
-        redact_sensitive_mapping(
-            dict(websocket.query_params), allowlist=("client", "version")
-        ),
-    )
+
+
 
     auth_header = websocket.headers.get("authorization")
     protocol_header = websocket.headers.get("sec-websocket-protocol")

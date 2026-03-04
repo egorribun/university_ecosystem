@@ -57,7 +57,21 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
             media_type="application/json",
         )
 
-    def __init__(self, app: Any, *, max_bytes: int = 5 * 1024 * 1024) -> None:
+    def __init__(self, app: Any, *, max_bytes: int = 50 * 1024 * 1024) -> None:
+        """Initialise the middleware.
+
+        Parameters
+        ----------
+        max_bytes:
+            Upper body size limit in bytes.  Defaults to 50 MB to match the
+            nginx Ingress ``proxy-body-size: "50m"`` annotation
+            (k8s/ingress.yaml).  Both values MUST remain in sync — if you
+            change one, update the other.
+            RZ-08 (audit 2026-03-04): mismatched limits (5 MB here, 50 MB at
+            Ingress) allowed requests between those sizes to bypass the fast
+            Nginx gate and be rejected deep inside ASGI after fully streaming
+            the body, wasting bandwidth and backend memory.
+        """
         super().__init__(app)
         self._max_bytes = max_bytes
 
@@ -180,13 +194,16 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
 
     # CSRF double-submit cookie protection for browser-based clients.
     # Exempt: /ws (WebSocket), /internal (token-guarded), OAuth token endpoint.
-    # Bearer-token callers are auto-exempted inside CSRFMiddleware.dispatch().
+    # Bearer-token callers are auto-exempted inside CSRFMiddleware.dispatch()
+    # by detecting an Authorization: Bearer … header — no path exemption needed.
+    # RZ-10 (audit 2026-03-04): /api/v1/auth/login was previously exempt, enabling
+    # login CSRF (attacker submits credentials on victim's behalf and captures the
+    # session cookie). Removed — CSRF protection is required on credential endpoints.
     app.add_middleware(
         CSRFMiddleware,
         exempt_prefixes=(
             "/internal",
             "/api/v1/csp-report",
-            "/api/v1/auth/login",
             "/api/v1/auth/logout",
             "/api/v2/auth/token",  # OAuth2 password/refresh grant
             "/api/v2/auth/webauthn",  # WebAuthn challenge/response flow

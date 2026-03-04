@@ -111,6 +111,10 @@ check_untyped_defs = false
 # rather than mypy.  The override below is TEMPORARY and must be narrowed
 # module-by-module until the services layer is fully annotated. (TD-1: audit 2026-02-24)
 # Target: remove each module from this list on resolution of its annotations.
+# TD-05 (audit 2026-03-04): Override exempts high-risk auth routing modules from
+# untyped-def checks during the annotation migration period.
+# DEADLINE: 2026-Q3 | Action: annotate each route function one PR at a time,
+# then remove that module from this list. Start with app.api.auth.login.
 [[tool.mypy.overrides]]
 module = [
     "app.routers.*",
@@ -121,6 +125,9 @@ disallow_untyped_defs = false
 
 # Temporarily exempt only the services with the most complex Depends() chains.
 # All other services must be fully annotated.
+# TD-05: login_service is the highest-risk file in the auth layer — complex
+# Depends() chains obscure typing. Priority target for Q3 2026 annotation.
+# DEADLINE: 2026-Q3 | Action: add return types to all login/session functions.
 [[tool.mypy.overrides]]
 module = [
     "app.services.auth.login_service",

@@ -18,7 +18,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+  # CI-01 (audit 2026-03-04): Never store secrets as plaintext in workflow env blocks.
+  # Use a GitHub Actions encrypted secret; fall back to a random dummy only if the
+  # secret is not configured (e.g. forks running the test matrix without access).
+  # Set SECRETS.CI_TEST_SECRET_KEY in repo Settings → Secrets and variables → Actions.
+  SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'ci-only-dummy-key-minimum-32-chars-entropy' }}
   ENVIRONMENT: testing
 
 jobs:
@@ -70,8 +74,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "chore: pre-commit autofix"
+          # CI-03 (audit 2026-03-04): Replaced --force-with-lease with a
+          # pull-rebase-push pattern. --force-with-lease can still clobber work
+          # if two jobs race on the same ref between the fetch and the push.
+          # A rebase-then-normal-push is safer on shared team branches.
           git pull --rebase origin "$branch"
-          git push --force-with-lease origin "HEAD:$branch"
+          git push origin "HEAD:$branch"
 
       - name: Fail if fixes were needed and cannot push (fork PR)
         if: ${{ steps.changes.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
@@ -158,7 +166,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
-      go-version: "1.25.x"
+      go-version: "1.26.x"
     secrets: inherit
 
   frontend-tests:

@@ -86,7 +86,9 @@ class NewsLike(Base, UUID7PrimaryKeyMixin, UserFK):
         ForeignKey("news.id", ondelete="CASCADE"),
         index=True,
     )
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     news = relationship("News", back_populates="likes")
     user = relationship("User")
@@ -106,8 +108,10 @@ class NewsComment(Base, UUID7PrimaryKeyMixin, UserFK):
         ForeignKey("news.id", ondelete="CASCADE"),
         index=True,
     )
-    content = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     news = relationship("News", back_populates="comments")
     user = relationship("User")

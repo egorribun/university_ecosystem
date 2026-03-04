@@ -36,6 +36,13 @@ spec:
             matchLabels: {app: temporal}
       ports: [{protocol: TCP, port: 7233}]
     - to:
-        # allow DNS resolution for external services like smtp or generic APIs
-        - namespaceSelector: {}
+        # RZ-09 (audit 2026-03-04): Restrict DNS to kube-system/kube-dns only.
+        # The previous namespaceSelector:{} allowed UDP:53 to any pod in any
+        # namespace, creating a lateral movement vector via arbitrary UDP traffic.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports: [{protocol: UDP, port: 53}]

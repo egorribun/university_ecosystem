@@ -32,11 +32,14 @@ class SecurityHeadersMiddleware:
         # Build a frozen set of headers to inject
         extra_headers = self._build_security_headers(nonce=nonce)
 
-        # State block for handling HTML body injection
         is_html = False
         html_body: list[bytes] = []
         html_status = 200
         html_headers: list[tuple[bytes, bytes]] = []
+        # PERF-01 (audit 2026-03-04): Track accumulated buffer size with an O(1)
+        # running counter instead of recomputing sum(len(c)) on every chunk.
+        _accumulated_html_bytes = 0
+        _HTML_BUFFER_LIMIT = 2 * 1024 * 1024  # 2 MB
 
         async def send_with_security_headers(message: Message) -> None:
             nonlocal is_html, html_body, html_status, html_headers
@@ -96,12 +99,10 @@ class SecurityHeadersMiddleware:
                 # from large HTML responses (SSR pages, error dumps).  At >2 MB
                 # skip nonce injection and flush buffered chunks directly.
                 body_chunk = message.get("body", b"")
-                _HTML_BUFFER_LIMIT = 2 * 1024 * 1024  # 2 MB
                 if body_chunk:
-                    if (
-                        sum(len(c) for c in html_body) + len(body_chunk)
-                        > _HTML_BUFFER_LIMIT
-                    ):
+                    nonlocal _accumulated_html_bytes
+                    _accumulated_html_bytes += len(body_chunk)
+                    if _accumulated_html_bytes > _HTML_BUFFER_LIMIT:
                         # Exceed limit — disable buffering for this response.
                         is_html = False
                         await send(

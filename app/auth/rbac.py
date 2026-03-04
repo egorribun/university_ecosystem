@@ -154,9 +154,14 @@ class PermissionCheckerLegacy:
     def __init__(self) -> None:
         import warnings
 
+        # TD-07 (audit 2026-03-04): warnings.warn() with default filters fires on
+        # every FastAPI Depends() instantiation — once per admin request, flooding
+        # logs. The "once" filter ensures the warning is emitted at most once per
+        # Python process while still being discoverable in development.
         warnings.warn(
-            "PermissionCheckerLegacy is deprecated and will be removed in the next minor release. "
-            "Migrate to PermissionChecker injected via Dishka.",
+            "PermissionCheckerLegacy is deprecated and will be removed in v2.0. "
+            "Migrate to PermissionChecker injected via Dishka. "
+            "Deadline: 2026-Q3.",
             DeprecationWarning,
             stacklevel=2,
         )

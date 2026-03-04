@@ -1,7 +1,16 @@
 """
-Shim for backward compatibility.
-The actual implementation has been moved to app.core.ratelimit package.
-(Audit 2026-02-27: Decomposition into app.core.ratelimit)
+Compatibility shim: re-exports the public API of ``app.core.ratelimit``.
+
+The actual implementation lives in ``app.core.ratelimit`` (decomposed in audit 2026-02-27).
+This file exists solely so legacy import sites (``from app.core.rate_limit import ...``)
+continue to work without modification.
+
+TD-03 (audit 2026-03-04): MIGRATION DEADLINE Q3 2026
+  1. Update all import sites to ``from app.core.ratelimit import ...``.
+  2. Replace custom sliding-window + progressive-delay logic with ``slowapi 0.2``
+     (see audit MOD-02). Estimated saving: ~1 800 lines removed.
+  3. Delete this file.
+Tracking: add a GitHub issue and link it here before EOD.
 """
 # ruff: noqa
 
@@ -9,9 +18,9 @@ from __future__ import (
     annotations,  # Kept original as `from __future__ import asyncio` is syntactically incorrect
 )
 
-import asyncio
 import time
 from typing import Any
+
 
 from app.core.config import settings as _settings
 from app.core.ratelimit import (
@@ -119,32 +128,22 @@ class _Limiter:
     """Shim for legacy tests."""
 
     def reset(self) -> None:
-        try:
-            from app.core.ratelimit import clear_delay_memory, clear_memory_state
+        # RZ-06 (audit 2026-03-04): Do NOT create an asyncio.Task here.
+        # Under pytest with per-test event loops the task would target a dead loop
+        # from the previous test, leaving rate-limit counters dirty (spurious 429s).
+        # clear_memory_state / clear_delay_memory are fully synchronous — no I/O.
+        from app.core.ratelimit import clear_delay_memory, clear_memory_state
 
-            loop = asyncio.get_running_loop()
-
-            async def _reset():
-                clear_memory_state()
-                clear_delay_memory()
-
-            task = loop.create_task(_reset())
-            _BACKGROUND_TASKS.add(task)
-            task.add_done_callback(_BACKGROUND_TASKS.discard)
-        except (RuntimeError, ImportError):
-            from app.core.ratelimit import clear_delay_memory, clear_memory_state
-
-            # Sync fallback for tests without a running loop
-            clear_memory_state()
-            clear_delay_memory()
+        clear_memory_state()
+        clear_delay_memory()
 
     async def check(self, *args, **kwargs) -> None:
         """Mock-ready check method."""
         pass
 
 
-_BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
 limiter = _Limiter()
+
 
 
 async def clear_all_rate_limit_memory() -> None:

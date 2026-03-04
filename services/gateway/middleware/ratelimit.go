@@ -59,12 +59,18 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 		// Get client identifier (IP or User ID)
 		key := rl.getClientKey(c)
 
-		ctx := c.Request.Context()
+		// PERF-06 (audit 2026-03-04): Apply a tight deadline on the Redis call.
+		// Without a timeout a slow/overloaded Redis server blocks the Gin goroutine
+		// indefinitely, cascading into a connection exhaustion outage.
+		// On timeout we fail-open (allow the request) to maintain availability,
+		// consistent with the existing Redis-error behaviour below.
+		rCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Millisecond)
+		defer cancel()
 
 		// Apply rate limit
-		res, err := rl.limiter.Allow(ctx, key, redis_rate.PerSecond(rl.rps))
+		res, err := rl.limiter.Allow(rCtx, key, redis_rate.PerSecond(rl.rps))
 		if err != nil {
-			// If Redis fails, allow the request but log it
+			// If Redis fails or times out, allow the request but log it
 			c.Next()
 			return
 		}
@@ -90,6 +96,7 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
 
 // getClientKey returns a unique key for rate limiting based on IP or user
 func (rl *RateLimiter) getClientKey(c *gin.Context) string {

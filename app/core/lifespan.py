@@ -23,6 +23,15 @@ from app.workers.outbox import OutboxWorker
 
 _logger = logging.getLogger(__name__)
 
+# TD-06 (audit 2026-03-04): pydantic-settings marks Settings immutable via
+# model_config = ConfigDict(frozen=True). Using object.__setattr__ to bypass
+# this constraint is undefined behaviour — it violates the class invariant and
+# breaks type-safety. Runtime overrides are tracked here instead.
+# Callers: replace `settings.semantic_search_enabled` reads with
+# `_RUNTIME_FLAGS.get('semantic_search_enabled', settings.semantic_search_enabled)`
+# where the value may change after startup.
+_RUNTIME_FLAGS: dict[str, bool] = {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -185,16 +194,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                                         column.type, "base_type", Text()
                                     )
 
-                        # Disable semantic search in settings
-                        try:
-                            # Attempt to disable semantic search since extension is missing
-                            object.__setattr__(
-                                settings, "semantic_search_enabled", False
-                            )
-                        except Exception:
-                            _logger.error(
-                                "Failed to disable semantic_search_enabled setting"
-                            )
+                        # TD-06 (audit 2026-03-04): do NOT use object.__setattr__
+                        # on the pydantic-settings Settings instance — it is
+                        # intentionally frozen. Store the runtime override here so
+                        # callers that check semantic_search_enabled can use
+                        # _RUNTIME_FLAGS.get('semantic_search_enabled', ...)
+                        _RUNTIME_FLAGS["semantic_search_enabled"] = False
+                        _logger.info(
+                            "Runtime flag 'semantic_search_enabled' set to False "
+                            "(pgvector extension unavailable)"
+                        )
                 else:
                     # Non-PostgreSQL dialect (likely SQLite for tests)
                     # Patch out search_vector Computed columns that use to_tsvector
@@ -328,6 +337,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         yield
     finally:
+        # RZ-05 (audit 2026-03-04): Cancel all tracked background tasks before
+        # tearing down the DI container. Without this, _periodic_scheduler and
+        # other tasks survive across lifespan cycles in integration tests
+        # (creating multiple concurrent schedulers), and are silently abandoned
+        # on production SIGTERM → SIGKILL without running their finally blocks.
+        _bg_tasks = list(getattr(app.state, "background_tasks", set()))
+        for _bg_task in _bg_tasks:
+            _bg_task.cancel()
+        if _bg_tasks:
+            await asyncio.gather(*_bg_tasks, return_exceptions=True)
+        if hasattr(app.state, "background_tasks"):
+            app.state.background_tasks.clear()
+
         await app.state.dishka_container.close()
         await stop_presence_pubsub()
         await notification_queue.shutdown_notification_queue()

@@ -418,12 +418,26 @@ class AuthService:
 
 
 def _hash_token(token: str) -> str:
-    # OZ-5 (audit 2026-02-26): Use a dedicated TOKEN_HMAC_SECRET rather than the
-    # JWT signing secret so that JWT key rotation (which must happen periodically)
-    # does not invalidate in-flight password-reset and email-change tokens.
-    # Falls back to secret_key for backwards-compatibility if TOKEN_HMAC_SECRET
-    # is not yet set in the environment.
-    hmac_secret = getattr(settings, "token_hmac_secret", None) or settings.secret_key
+    """Hash a reset/change token with a dedicated HMAC secret.
+
+    RZ-01 (audit 2026-03-04): TOKEN_HMAC_SECRET must be set explicitly in non-dev
+    environments.  Falling back to secret_key couples JWT key rotation to token
+    invalidation — rotating JWT keys would silently invalidate all in-flight
+    password-reset and email-change tokens (OWASP A02).
+    """
+    hmac_secret: str | None = getattr(settings, "token_hmac_secret", None)
+    if not hmac_secret:
+        if settings.environment in {"production", "staging"}:
+            raise RuntimeError(
+                "TOKEN_HMAC_SECRET must be set explicitly in production/staging. "
+                "Falling back to secret_key couples JWT rotation to token invalidation."
+            )
+        # Development/testing only — emit a loud warning so engineers notice.
+        logger.warning(
+            "TOKEN_HMAC_SECRET is unset — falling back to secret_key (DEV/TESTING ONLY). "
+            "Set TOKEN_HMAC_SECRET before deploying to staging or production."
+        )
+        hmac_secret = settings.secret_key
     return hmac.new(
         hmac_secret.encode(),
         token.encode(),
@@ -446,14 +460,17 @@ async def attach_pending_email(
             # Expected: object is detached from its session (e.g. in a background
             # task).  Fall through to the DB query path below.
             pass
-        except Exception:
-            # Unexpected inspect error — log but do not propagate so that the
-            # caller still gets a result.  (RZ-6: audit 2026-02-24)
-            logger.warning(
-                "attach_pending_email: unexpected inspect error for user %s",
-                getattr(user, "id", "unknown"),
-                exc_info=True,
-            )
+        except Exception as exc:
+            # RZ-09 (audit 2026-03-04): An unexpected error in inspect() is a
+            # programming defect, not an operational condition that should be
+            # silently swallowed. Logging-and-continuing caused the caller to
+            # receive a user profile with pending_email missing — silent data
+            # corruption. Re-raise with context so the exception propagates and
+            # surfaces in error monitoring rather than hiding behind a WARNING.
+            raise RuntimeError(
+                f"attach_pending_email: unexpected inspect error for user "
+                f"{getattr(user, 'id', '?')}"
+            ) from exc
 
     repo = AuthRepository(db)
     pending = await repo.get_active_email_change_request(user.id)
