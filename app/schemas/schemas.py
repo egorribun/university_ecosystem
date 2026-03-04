@@ -172,8 +172,11 @@ class UserSearchFilter(BaseModel):
     search: str | None = None
     group_id: uuid.UUID | None = None
     role: UserRole | None = None
-    limit: int = 100
-    offset: int = 0
+    # RZ-07 (audit 2026-03-04): Enforce a server-side page-size ceiling.
+    # Without bounds, an admin could request 10 000 rows in one call,
+    # causing OOM on the process and read-replica locking under load.
+    limit: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(default=0, ge=0)
 
 
 class UserCreate(UserBase):

@@ -1,5 +1,5 @@
 import uuid
-
+from datetime import datetime
 from sqlalchemy import (
     JSON,
     UUID,
@@ -31,21 +31,20 @@ class DataAccessLog(Base, UUID7PrimaryKeyMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
     )
-    resource_type = Column(String(64), nullable=False, index=True)
-    resource_id = Column(String(128), nullable=True, index=True)
-    action = Column(String(64), nullable=False, index=True)
-    context = Column(JSON, nullable=True)
-    ip_address = Column(String(64))
-    user_agent = Column(String(512))
+    resource_type: Mapped[str] = mapped_column(String(64), index=True)
+    resource_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    context: Mapped[dict | list | None] = mapped_column(JSON)
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
     __table_args__ = ({"postgresql_partition_by": "RANGE (created_at)"},)
-    created_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=False,
         index=True,
         primary_key=not settings.database_url.startswith("sqlite"),
     )
-    signature = Column(String(512), nullable=True)
+    signature: Mapped[str | None] = mapped_column(String(512))
 
     actor = relationship("User", foreign_keys=[actor_user_id])
     subject = relationship("User", foreign_keys=[subject_user_id])

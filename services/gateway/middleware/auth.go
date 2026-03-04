@@ -137,7 +137,11 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 				if msg == nil {
 					continue
 				}
-				key := fmt.Sprintf("session:%s", msg.Payload)
+				// RZ-01 (audit 2026-03-04): Key format MUST match verifySession which stores
+				// and checks under "revoked:jti:{jti}". Using "session:{jti}" here meant that
+				// revocation pub/sub events never purged the correct L1 key → revoked sessions
+				// could still pass the edge-layer check for the entire 30 s cache TTL.
+				key := fmt.Sprintf("revoked:jti:%s", msg.Payload)
 				m.l1cache.Remove(key)
 			}
 		}

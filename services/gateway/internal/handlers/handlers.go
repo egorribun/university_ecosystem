@@ -2,25 +2,27 @@ package handlers
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"net/http"
 	"net/http/httputil"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 )
 
 // ProxyHandler creates a Gin handler that proxies requests
 func ProxyHandler(proxy *httputil.ReverseProxy) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Add request ID header
+		// Add request ID header if absent.
+		// RZ-03: Use crypto-random UUID instead of timestamp prefix — predictable
+		// timestamps in IDs enable timing correlation and replay window estimation.
 		if c.GetHeader("X-Request-ID") == "" {
-			c.Request.Header.Set("X-Request-ID", GenerateRequestID())
+			c.Request.Header.Set("X-Request-ID", uuid.New().String())
 		}
 
 		// Add user info from JWT to headers
@@ -32,16 +34,14 @@ func ProxyHandler(proxy *httputil.ReverseProxy) gin.HandlerFunc {
 	}
 }
 
+// GenerateRequestID returns a cryptographically random UUID v4.
+//
+// RZ-03 (audit 2026-03-04): The previous implementation prefixed the current
+// timestamp, making request IDs partially predictable and leaking server time
+// to API consumers.  A full UUID provides 122 bits of entropy with no timing
+// information.
 func GenerateRequestID() string {
-	return time.Now().Format("20060102150405") + "-" + randomString(8)
-}
-
-func randomString(n int) string {
-	b := make([]byte, n/2+1)
-	if _, err := rand.Read(b); err != nil {
-		return "fallback-" + time.Now().Format("150405")
-	}
-	return hex.EncodeToString(b)[:n]
+	return uuid.New().String()
 }
 
 func HealthHandler(c *gin.Context) {
@@ -49,24 +49,20 @@ func HealthHandler(c *gin.Context) {
 }
 
 func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
-	// Note: grpcMock/Interface usage would be better for testing
-	// For now we pass the concrete client and connection. Or just the client if we don't need conn state.
-	// However, the original code checked conn state.
-
 	return func(c *gin.Context) {
-		// We can't easily check state on the client interface without casting or passing the conn separately.
-		// Assuming we pass conn.
-
-		/*
-			if grpcConn == nil || grpcConn.GetState() != connectivity.Ready && grpcConn.GetState() != connectivity.Idle {
-				// Fallback or error if gRPC unavailable
-				// For now, error out
-				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File processor unavailable"})
-				return
-			}
-		*/
-		// Simplified: Trust the client/dialer to handle connection states or return errors.
-		// If we really need state check, we pass the conn.
+		// RZ-04 (audit 2026-03-04): Restore gRPC connectivity state check.
+		// The previous implementation had this guard commented out, causing the
+		// gateway to forward requests to an unavailable file-processor and return
+		// a generic 500 instead of a semantically correct 503 ServiceUnavailable.
+		if grpcConn == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File processor unavailable"})
+			return
+		}
+		state := grpcConn.GetState()
+		if state != connectivity.Ready && state != connectivity.Idle {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File processor unavailable"})
+			return
+		}
 
 		var req struct {
 			ID        string            `json:"id"`

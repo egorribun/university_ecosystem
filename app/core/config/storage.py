@@ -12,6 +12,13 @@ class StorageSettings(BaseAppSettings):
     storage_backend: str = "static"
     health_storage_probe_enabled: bool = True
 
+    # MinIO / S3-compatible object storage
+    # RZ-12: minio_secure must be True in staging/production.
+    # Set to False ONLY for local developer machines without TLS certificates.
+    minio_secure: bool = False
+    minio_endpoint: str = "minio:9000"
+    minio_bucket: str = "uploads"
+
     storage_static_base_url: str = "/static"
     storage_s3_bucket: str = ""
     storage_s3_region: str = ""

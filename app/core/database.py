@@ -437,19 +437,13 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:
-    for _ in range(3):
-        try:
-            # Usage through the proxy
-            async with async_session() as session:
-                yield session
-            return
-        except DBAPIError as exc:  # pragma: no cover - defensive guard
-            if exc.connection_invalidated:
-                logger.warning("Database connection invalidated; retrying session")
-                continue
-            raise
-    # Only raised if all retries fail
-    raise RuntimeError("Database connection unavailable after retries")
+    # PERF-05 (audit 2026-03-04): Removed the `for _ in range(3)` retry loop.
+    # FastAPI generator dependencies yield exactly once — the loop body after
+    # `yield` is never re-entered, so all three retry iterations were dead code.
+    # Stale connections are already handled by pool_pre_ping=True at engine level.
+    async with async_session() as session:
+        yield session
+
 
 
 async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:

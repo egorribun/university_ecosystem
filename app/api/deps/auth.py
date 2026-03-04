@@ -32,11 +32,32 @@ from app.services.auth.token_service import AuthTokenService
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
+def get_redis_session_service() -> RedisSessionService:
+    """FastAPI Depends factory for RedisSessionService.
+
+    RZ-04 (audit 2026-03-04): Constructing RedisSessionService() inline inside
+    get_current_user() bypasses the application DI container — it cannot be
+    overridden in tests, and its URL implicitly re-reads settings on every
+    request.  A Depends factory makes the dependency explicit and overridable.
+    """
+    return RedisSessionService()
+
+
 async def get_current_user(
     request: Request,
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    # RZ-04: Default None keeps direct callers (unit tests) working.
+    # FastAPI's Depends() always resolves this via get_redis_session_service()
+    # in production; tests that call the function directly fall back to a
+    # fresh instance, which is equivalent to the old inline construction.
+    redis_service: Annotated[
+        RedisSessionService, Depends(get_redis_session_service)
+    ] = None,  # type: ignore[assignment]
 ) -> User:
+    if redis_service is None:
+        redis_service = get_redis_session_service()
+
     locale = resolve_locale(request=request)
 
     # 1. Decode and Validate Token
@@ -60,7 +81,6 @@ async def get_current_user(
         pass
 
     # 3. Redis Session Check (Cache-Aside)
-    redis_service = RedisSessionService()
     cached_session = await redis_service.get_session(jti)
 
     user: User | None = None

@@ -5,6 +5,8 @@ metadata:
   namespace: university-ecosystem
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # RZ-08: proxy-body-size MUST match ContentSizeLimitMiddleware.max_bytes in
+    # app/core/middleware.py (currently 50 MB). Update both together.
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:

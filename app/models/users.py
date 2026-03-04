@@ -90,8 +90,35 @@ class _DelegatedProperty(Generic[_T]):
     def __set__(self, obj: Any, value: _T) -> None:
         related = getattr(obj, self._relation, None)
         if related is None:
-            related = self._factory()
-            setattr(obj, self._relation, related)
+            # Determine whether the owner object is brand-new (transient) or
+            # already persisted (persistent / detached).
+            #
+            # TD-06 (audit 2026-03-04): The original code called self._factory()
+            # unconditionally, creating an orphaned ORM object that shadows the
+            # real DB row after the next db.refresh().  We keep the factory only
+            # for *transient* objects (never added to a session) where there is
+            # no existing row to shadow — e.g. during User(**kwargs) construction.
+            # For *persistent* or *detached* objects the relation must be loaded
+            # explicitly before writing delegated fields.
+            try:
+                from sqlalchemy import inspect as _sa_inspect
+
+                is_transient = _sa_inspect(obj).transient
+            except Exception:
+                # Non-SQLAlchemy object or detached without state — use factory.
+                is_transient = True
+
+            if is_transient:
+                related = self._factory()
+                setattr(obj, self._relation, related)
+            else:
+                raise AttributeError(
+                    f"{type(obj).__name__}."
+                    f"{getattr(self, '_public_name', self._attr)} "
+                    f"cannot be set: relation '{self._relation}' is not loaded. "
+                    f"Ensure '{self._relation}' is eagerly loaded before writing "
+                    f"delegated fields on a persisted object."
+                )
         setattr(related, self._attr, value)
 
 
@@ -229,6 +256,9 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        # selectin fires only when this relationship is included in load options
+        # (e.g. USER_MFA_LOAD_OPTIONS).  USER_AUTH_LOAD_OPTIONS intentionally
+        # omits it so the auth hot-path does not issue extra queries per request.
         lazy="selectin",
     )
     mfa_challenges = relationship(
@@ -257,6 +287,8 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        # Same as totp_enrollments above — selectin fires only when included in
+        # explicit load options, not on every auth request.
         lazy="selectin",
     )
     recovery_codes = relationship(
@@ -543,11 +575,11 @@ class EducationPath(Base):
 class InviteCode(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "invite_codes"
 
-    code = Column(String, unique=True, nullable=False, index=True)
-    role = Column(String, nullable=False)
-    is_active = Column(Boolean, default=True, index=True)
-    is_used = Column(Boolean, default=False, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    code: Mapped[str] = mapped_column(String, unique=True, index=True)
+    role: Mapped[str] = mapped_column(String)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     used_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

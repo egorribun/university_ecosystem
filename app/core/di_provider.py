@@ -147,7 +147,12 @@ class AppProvider(Provider):
         client = aioredis.from_url(
             str(settings.cache_redis_url),
             decode_responses=False,
+            # PERF-04 (audit 2026-03-04): Cap the connection pool. Without this,
+            # redis-py defaults to unlimited connections — under a login burst
+            # every coroutine opens its own socket, exhausting Redis maxclients.
+            max_connections=20,
         )
+
         return FraudDetectionService(redis_client=client)
 
     # ── REQUEST-scoped services ───────────────────────────────────────────────
@@ -263,10 +268,16 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def user_analytics_service(self, db: AsyncDatabaseSession) -> object:
-        # Typed via string to avoid eager import of optional analytics module
-        from app.services.user.analytics_service import (
-            UserAnalyticsService,
-        )
+        # TD-04 (audit 2026-03-04): Ideally this returns `UserAnalyticsService`
+        # for mypy/IDE visibility, but Dishka's @provide parser calls
+        # get_type_hints() at container-creation time. The class is imported
+        # lazily (inside this function) to avoid eager module load of the heavy
+        # analytics module — so the name is never in module globals when Dishka
+        # introspects. The `object` annotation is the Dishka-required compromise.
+        # RESOLUTION PATH (Q3 2026): extract UserAnalyticsServiceProtocol to
+        # app/core/protocols.py (already imported at module level) and use it
+        # as the return type — Dishka resolves Protocol types correctly.
+        from app.services.user.analytics_service import UserAnalyticsService
 
         return UserAnalyticsService(db=db)
 

@@ -155,7 +155,10 @@ class AuditService:
         }
 
         if request:
-            payload["ip"] = request.client.host if request.client else None
+            # RZ-05: Use getattr guard — request.client can be None on unix socket
+            # transports or certain ASGI test clients (AttributeError at runtime).
+            _client = getattr(request, "client", None)
+            payload["ip"] = _client.host if _client and hasattr(_client, "host") else None
             payload["path"] = request.url.path
             payload["method"] = request.method
 
@@ -254,26 +257,29 @@ def auditable(
     It expects the first argument to be 'self' (a service instance with an 'audit' attribute)
     and one of the arguments to be 'request' (FastAPI Request).
     """
+    import functools
+    import inspect
+
+    @functools.lru_cache(maxsize=None)
+    def _get_signature(func: Callable[..., Any]) -> inspect.Signature:
+        """Cache signature per decorated function — avoid per-request overhead (TD-02)."""
+        return inspect.signature(func)
+
     from functools import wraps
 
     def decorator(func: _F) -> _F:
         @wraps(func)
         async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            # We need to find the request object in args/kwargs
-            import inspect
-
             request = kwargs.get("request")
             if not request:
-                # Fallback: look in args
-                sig = inspect.signature(func)
-                bound_args = sig.bind(self, *args, **kwargs)
+                # Fallback: look in positional args using cached signature.
+                bound_args = _get_signature(func).bind(self, *args, **kwargs)
                 request = bound_args.arguments.get("request")
 
             # Find user_id if specified
             user_id = None
             if user_id_param:
-                sig = inspect.signature(func)
-                bound_args = sig.bind(self, *args, **kwargs)
+                bound_args = _get_signature(func).bind(self, *args, **kwargs)
                 user_val = bound_args.arguments.get(user_id_param)
                 if user_val:
                     if hasattr(user_val, "id"):
@@ -285,6 +291,7 @@ def auditable(
                 result = await func(self, *args, **kwargs)
 
                 # Log SUCCESS
+
                 log_kwargs: dict[str, Any] = {}
                 if include_args:
                     log_kwargs["args"] = kwargs
@@ -383,8 +390,16 @@ class SecureAuditService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> DataAccessLogDTO:
-        """Create a signed audit log entry."""
+        """Create a signed audit log entry.
+
+        The HMAC-SHA256 signature is computed from the fully-flushed DTO so that
+        server-generated fields (id, created_at) are included in the digest, then
+        written back to the DB row via repo.update().  This replaces the previous
+        model_copy() + flush() pattern that left signature=NULL in all rows (RZ-06).
+        """
         repo = AuditRepository(db)
+        # Step 1: persist the row — repo.create() flush+refresh gives us the
+        # server-assigned id and created_at used in the HMAC digest.
         log = await repo.create(
             {
                 "actor_user_id": actor_user_id,
@@ -397,12 +412,11 @@ class SecureAuditService:
                 "user_agent": user_agent,
             }
         )
+        # Step 2: compute signature over the flushed DTO (id + created_at locked in).
         signature = self._compute_signature(log)
-        # Update with calculated signature
-        log = log.model_copy(update={"signature": signature})
-
-        await db.flush()
-        return log
+        # Step 3: write the signature back to the actual DB row.
+        updated = await repo.update(log.id, {"signature": signature})
+        return updated if updated is not None else log.model_copy(update={"signature": signature})
 
     def verify_integrity(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
         """Verify the integrity of an audit log entry."""

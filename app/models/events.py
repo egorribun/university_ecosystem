@@ -115,11 +115,11 @@ class EventAttendance(Base, EventEmitterMixin, UUID7PrimaryKeyMixin, UserFK):
         index=True,
         nullable=False,
     )
-    registered_at = Column(
+    registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
-    qr_secret = Column(String, nullable=False)
-    qr_hmac = Column(String, nullable=False)
+    qr_secret: Mapped[str] = mapped_column(String)
+    qr_hmac: Mapped[str] = mapped_column(String)
 
     __table_args__ = (
         UniqueConstraint("user_id", "event_id", name="uq_event_attendance_user_event"),
@@ -142,8 +142,8 @@ class EventFile(Base, UUID7PrimaryKeyMixin):
         index=True,
         nullable=False,
     )
-    file_url = Column(String, nullable=False)
-    description = Column(String)
+    file_url: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
 
     def __repr__(self) -> str:
         return (

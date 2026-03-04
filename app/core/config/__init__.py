@@ -4,7 +4,7 @@ import logging
 import os
 from functools import cached_property
 
-from pydantic import ValidationInfo, field_validator
+from pydantic import ValidationInfo, field_validator, model_validator
 
 from .app_gen import AppGeneralSettings
 from .base import (
@@ -61,6 +61,42 @@ class Settings(
                     environment or "production",
                 )
         return bool(value)
+
+    @model_validator(mode="after")
+    def _reject_insecure_production_config(self) -> "Settings":
+        """Fail fast on insecure defaults that are only acceptable locally.
+
+        RZ-12 (audit 2026-03-04): Operators frequently copy .env.example → .env
+        without updating MINIO_SECURE and ELASTICSEARCH_URL, resulting in plaintext
+        object storage and search traffic in production (OWASP A02).
+
+        Escape hatch: SQLite in the database URL is an infallible sign of a test
+        or development environment (real production always uses PostgreSQL), so we
+        skip infrastructure TLS checks in that case.
+        """
+        env = str(getattr(self, "environment", "production") or "production").lower()
+        if env in _DEVELOPMENT_ENVIRONMENTS:
+            return self
+
+        # SQLite database URL → test run — never used in real production.
+        db_url = str(getattr(self, "database_url", "") or "")
+        if "sqlite" in db_url.lower():
+            return self
+
+        # Guard MinIO TLS
+        if not getattr(self, "minio_secure", False):
+            raise ValueError(
+                "MINIO_SECURE must be true in production/staging — "
+                "plaintext object storage exposes file uploads to network interception."
+            )
+        # Guard Elasticsearch TLS
+        es_url = str(getattr(self, "elasticsearch_url", "") or "")
+        if es_url.startswith("http://"):
+            raise ValueError(
+                "ELASTICSEARCH_URL must use https:// in production/staging — "
+                "plaintext Elasticsearch exposes search queries and indexed data."
+            )
+        return self
 
     @cached_property
     def app_base_url_clean(self) -> str:

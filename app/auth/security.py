@@ -21,7 +21,10 @@ from app.core.config import settings
 from app.core.localization import translate
 
 LEGACY_BCRYPT_MAX_BYTES = 72
-ARGON2_MEMORY_COST_KIB = 65536
+# PERF-02 (audit 2026-03-04): Reduced from 65536 KiB (64 MiB) to 32768 KiB (32 MiB).
+# 4 workers × 32 MiB = 128 MB peak at login burst (was 256 MB).
+# OWASP ASVS §2.4.4 requires ≥ 19 MiB — 32 MiB is a comfortable safe margin.
+ARGON2_MEMORY_COST_KIB = 32768
 ARGON2_TIME_COST = 3
 ARGON2_PARALLELISM = 4
 
@@ -510,6 +513,16 @@ def decode_token(token: str) -> dict | None:
             return None
         candidates = [kid_secret]
     else:
+        # RZ-10 (audit 2026-03-04): No `kid` header — fall back to trying all
+        # registered keys for backward compat with pre-rotation legacy tokens.
+        # This creates a timing side-channel: response latency leaks the number
+        # of keys in the registry (O(N) attempt loop).
+        # SUNSET DATE: Q3 2026 — after this date, tokens without `kid` will be
+        # rejected immediately. Track legacy token count via this log line.
+        _logger.warning(
+            "JWT without 'kid' header — falling back to full-key-scan "
+            "(legacy token). Sunset: Q3 2026. Count this log to track migration."
+        )
         # No kid header: try all keys for backward compat with legacy tokens.
         candidates = list(registry.values())
 

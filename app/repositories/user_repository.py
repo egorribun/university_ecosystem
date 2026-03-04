@@ -162,7 +162,12 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         if filters.role:
             stmt = stmt.where(User.role == filters.role)
 
-        stmt = stmt.limit(filters.limit).offset(filters.offset)
+        # RZ-07 (audit 2026-03-04): Defense-in-depth cap — the schema already
+        # validates limit ≤ 200, but internal callers may bypass schema validation.
+        _MAX_PAGE_SIZE = 200
+        capped_limit = min(filters.limit, _MAX_PAGE_SIZE)
+        stmt = stmt.limit(capped_limit).offset(filters.offset)
+
         result = await self.db.execute(stmt)
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]

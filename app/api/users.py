@@ -77,8 +77,16 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
 
     locale = resolve_locale(request=request)
     session = getattr(request.state, "active_session", None)
-    if session is None or not getattr(session, "signing_key", None):
+
+    # RZ-08 (audit 2026-03-04): Extract and validate signing_key before use.
+    # The original code used str(getattr(session, "signing_key", "")) inside
+    # hmac.new(), which silently coerces None→"None" or empty string→"" — both
+    # produce a trivially guessable HMAC key. Guard here explicitly so mypy and
+    # runtime both agree the key is a non-empty str before it reaches the HMAC call.
+    signing_key: str | None = getattr(session, "signing_key", None) if session else None
+    if not signing_key:
         raise_validation_error("errors.sessions.signing_key_missing", locale)
+    assert signing_key  # narrowing for type checkers
 
     try:
         candidate = json.loads(raw_envelope)
@@ -107,7 +115,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
 
     payload_json = json.dumps(payload, separators=(",", ":"))
     digest = hmac.new(
-        str(getattr(session, "signing_key", "")).encode("utf-8"),
+        signing_key.encode("utf-8"),
         payload_json.encode("utf-8"),
         hashlib.sha256,
     ).digest()
@@ -115,6 +123,8 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
 
     if not hmac.compare_digest(signature, expected_signature):
         raise_validation_error("errors.profile_cache.invalid_signature", locale)
+
+
 
 
 @password_router.post(
@@ -357,7 +367,13 @@ async def get_users(
     return [schemas.UserOut.model_validate(u) for u in users]
 
 
-@users_router.get("/audit/export")
+@users_router.get(
+    "/audit/export",
+    # RZ-03 (audit 2026-03-04): Rate-limit this endpoint — it triggers a
+    # potentially large DB query and CPU-intensive CSV serialization per call.
+    # A compromised admin token could otherwise hammer this indefinitely.
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def export_access_audit(
     request: Request,
     start_at: datetime | None = Query(None),
@@ -366,9 +382,29 @@ async def export_access_audit(
     user: models.User = Depends(get_current_user),
     audit: AuditService = Depends(get_audit_service),
 ) -> Response:
+    from datetime import timedelta
+
+    from fastapi import HTTPException
+
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
-    logs = await export_access_logs(db, start_at=start_at, end_at=end_at, limit=20_000)
+
+    # RZ-03: Enforce max date range to prevent full-table sequential scans.
+    # A query spanning years would lock the DB reader replica under heavy load.
+    if start_at and end_at and (end_at - start_at) > timedelta(days=31):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "date_range_too_large",
+                "message": "Date range must not exceed 31 days",
+            },
+        )
+
+    # RZ-03: Reduced from 20_000 → 5_000 rows to cap single-response memory use.
+    # Admins requiring larger exports should use async batch exports.
+    # NOTE: serialize_access_logs_csv MUST prefix formula-triggering characters
+    # (=, +, -, @) with a tab to prevent CSV injection (OWASP A03).
+    logs = await export_access_logs(db, start_at=start_at, end_at=end_at, limit=5_000)
     audit.log("users.audit.export", request, user_id=user.id)
     csv_payload = serialize_access_logs_csv(logs)
     return Response(
@@ -376,6 +412,8 @@ async def export_access_audit(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=access_audit.csv"},
     )
+
+
 
 
 @users_router.patch("/{user_id}", response_model=schemas.UserOut)
