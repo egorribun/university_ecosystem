@@ -1,22 +1,26 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 import uuid
 from typing import TYPE_CHECKING
 
 from fastapi import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
-from app.core.localization import resolve_locale, translate
+from app.core.exceptions.handlers import asgi_json_problem
+from app.core.localization import resolve_locale
 from app.core.ratelimit.contract import RateLimitStrategy
-from app.core.ratelimit.models import EndpointRateLimit
+from app.core.ratelimit.models import EndpointRateLimit, RateLimitInfo
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import resolve_client_ip
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+logger = logging.getLogger("app.security.ratelimit")
 
 
 class RateLimitMiddleware:
@@ -86,6 +90,12 @@ class RateLimitMiddleware:
             return
 
         if not info.allowed:
+            logger.warning(
+                "Rate limit exceeded: identifier=%s, path=%s, limit=%d",
+                identifier,
+                path,
+                path_limit,
+            )
             retry_after_seconds = max(0, info.retry_after)
             headers = {"Retry-After": str(retry_after_seconds)}
             if self._headers_enabled:
@@ -96,13 +106,15 @@ class RateLimitMiddleware:
                 )
 
             locale = resolve_locale(request=request)
-            message = translate("errors.rate_limit.generic", locale=locale)
-            response = JSONResponse(
+            await asgi_json_problem(
+                send,
                 status_code=429,
-                content={"detail": message},
+                title_key="titles.rate_limit_exceeded",
+                detail_key="errors.rate_limit.generic",
+                locale=locale,
+                instance=str(request.url),
                 headers=headers,
             )
-            await response(scope, receive, send)
             return
 
         if self._headers_enabled:
@@ -166,7 +178,9 @@ class RateLimitMiddleware:
             return True
         return bool(self._is_static_like_path(path) and method == "GET")
 
-    async def _check_limit(self, identifier: str, limit: int, window: int):
+    async def _check_limit(
+        self, identifier: str, limit: int, window: int
+    ) -> RateLimitInfo:
         """Internal method to allow monkeypatching in tests."""
         return await self._strategy.check(identifier, limit, window)
 

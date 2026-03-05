@@ -150,9 +150,10 @@ async def clear_redis_between_tests(mock_global_redis):
     This prevents rate limits and cache data from leaking between tests.
     """
     await mock_global_redis.flushall()
-    from app.core.rate_limit import clear_all_rate_limit_memory
+    from app.core.ratelimit import clear_delay_memory, clear_memory_state
 
-    await clear_all_rate_limit_memory()
+    clear_memory_state()
+    clear_delay_memory()
     yield
 
 

@@ -9,42 +9,45 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisError
 
-from app.core.rate_limit import (
+from app.core.ratelimit.delay import (
     PROGRESSIVE_DELAY_MAX,
     PROGRESSIVE_DELAY_STEPS,
     ProgressiveDelayInfo,
     ProgressiveDelayTracker,
-    _calculate_delay,
-    _progressive_delay_memory,
-    _progressive_delay_memory_lock,
-    get_progressive_delay_tracker,
+    _delay_memory,
+    _delay_memory_lock,
 )
+from app.core.ratelimit.fastapi import get_progressive_delay_tracker
 
 
 class TestProgressiveDelayCalculation:
     """Tests for delay calculation logic."""
 
-    def test_zero_failures_returns_no_delay(self) -> None:
+    @pytest.fixture
+    def tracker(self) -> ProgressiveDelayTracker:
+        return ProgressiveDelayTracker()
+
+    def test_zero_failures_returns_no_delay(self, tracker) -> None:
         """No delay for zero failures."""
-        assert _calculate_delay(0) == 0.0
+        assert tracker._calculate_delay(0) == 0.0
 
-    def test_negative_failures_returns_no_delay(self) -> None:
+    def test_negative_failures_returns_no_delay(self, tracker) -> None:
         """Negative failures treated as no failures."""
-        assert _calculate_delay(-5) == 0.0
+        assert tracker._calculate_delay(-5) == 0.0
 
-    def test_first_failure_returns_first_step(self) -> None:
+    def test_first_failure_returns_first_step(self, tracker) -> None:
         """First failure returns first delay step."""
-        assert _calculate_delay(1) == PROGRESSIVE_DELAY_STEPS[0]
+        assert tracker._calculate_delay(1) == PROGRESSIVE_DELAY_STEPS[0]
 
-    def test_delay_increases_with_failures(self) -> None:
+    def test_delay_increases_with_failures(self, tracker) -> None:
         """Delay increases progressively with failures."""
-        delays = [_calculate_delay(i) for i in range(1, 6)]
+        delays = [tracker._calculate_delay(i) for i in range(1, 6)]
         for i in range(1, len(delays)):
             assert delays[i] >= delays[i - 1]
 
-    def test_delay_capped_at_max(self) -> None:
+    def test_delay_capped_at_max(self, tracker) -> None:
         """Delay does not exceed maximum."""
-        assert _calculate_delay(100) <= PROGRESSIVE_DELAY_MAX
+        assert tracker._calculate_delay(100) <= PROGRESSIVE_DELAY_MAX
 
 
 class TestProgressiveDelayTrackerMemory:
@@ -53,11 +56,11 @@ class TestProgressiveDelayTrackerMemory:
     @pytest.fixture(autouse=True)
     async def clear_memory(self) -> typing.AsyncGenerator[None, None]:
         """Clear memory storage before each test."""
-        async with _progressive_delay_memory_lock:
-            _progressive_delay_memory.clear()
+        async with _delay_memory_lock:
+            _delay_memory.clear()
         yield
-        async with _progressive_delay_memory_lock:
-            _progressive_delay_memory.clear()
+        async with _delay_memory_lock:
+            _delay_memory.clear()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_record_failure_increments_count(self) -> None:

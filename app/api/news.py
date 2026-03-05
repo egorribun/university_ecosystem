@@ -34,6 +34,7 @@ from app.api.validation import (
     require_admin,
 )
 from app.core.cache_versioning import news_cache_version
+from app.core.config import settings
 from app.core.container import get_notification_service, get_vector_service
 from app.core.database import get_read_db
 from app.core.localization import (
@@ -42,6 +43,7 @@ from app.core.localization import (
     resolve_locale,
 )
 from app.core.protocols import AsyncDatabaseSession
+from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
@@ -124,7 +126,11 @@ def _news_cache_keys(news_id: uuid.UUID | None = None) -> list[str]:
     return keys
 
 
-@router.post("", response_model=schemas.NewsOut)
+@router.post(
+    "",
+    response_model=schemas.NewsOut,
+    dependencies=[Depends(sensitive_route_limit(limit_value=settings.rate_limit_news))],
+)
 async def create_news(
     data: schemas.NewsCreate,
     request: Request,
@@ -309,7 +315,11 @@ async def get_news(
     return encoded
 
 
-@router.patch("/{id}", response_model=schemas.NewsOut)
+@router.patch(
+    "/{id}",
+    response_model=schemas.NewsOut,
+    dependencies=[Depends(sensitive_route_limit(limit_value=settings.rate_limit_news))],
+)
 async def update_news(
     id: uuid.UUID,
     request: Request,
@@ -335,7 +345,11 @@ async def update_news(
     return serialized
 
 
-@router.delete("/{id}", response_model=dict)
+@router.delete(
+    "/{id}",
+    response_model=dict,
+    dependencies=[Depends(sensitive_route_limit(limit_value=settings.rate_limit_news))],
+)
 async def delete_news(
     id: uuid.UUID,
     request: Request,
@@ -358,7 +372,12 @@ async def delete_news(
     return {"ok": True}
 
 
-@router.post("/{id}/like")
+@router.post(
+    "/{id}/like",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_interactions))
+    ],
+)
 async def like_news(
     id: uuid.UUID,
     request: Request,
@@ -373,7 +392,13 @@ async def like_news(
     return {"is_liked": is_liked}
 
 
-@router.post("/{id}/comment", response_model=schemas.NewsCommentOut)
+@router.post(
+    "/{id}/comment",
+    response_model=schemas.NewsCommentOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_interactions))
+    ],
+)
 async def comment_on_news(
     id: uuid.UUID,
     request: Request,
@@ -474,7 +499,12 @@ async def delete_comment(
         raise_forbidden(locale)
 
 
-@router.post("/upload_image")
+@router.post(
+    "/upload_image",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
+    ],
+)
 async def upload_news_image(
     file: UploadFile = File(...),
     *,
@@ -488,7 +518,13 @@ async def upload_news_image(
     return {"url": url}
 
 
-@router.get("/search/semantic", response_model=list[schemas.NewsOut])
+@router.get(
+    "/search/semantic",
+    response_model=list[schemas.NewsOut],
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_graphql))
+    ],
+)
 async def semantic_search(
     request: Request,
     response: Response,

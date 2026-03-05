@@ -1,16 +1,22 @@
 import hashlib
 
-from fastapi import APIRouter, Header, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
 from app.api.validation import raise_http_error, raise_not_found
 from app.core.config import settings
+from app.core.ratelimit import sensitive_route_limit
 from app.services.image_proxy import get_transformed_image
 from app.utils.files import _get_storage_backend
 
 router = APIRouter(tags=["images"])
 
 
-@router.get("/img/{path:path}")
+@router.get(
+    "/img/{path:path}",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_static))
+    ],
+)
 async def proxy_image(
     request: Request,
     path: str,

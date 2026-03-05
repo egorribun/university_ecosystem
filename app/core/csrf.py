@@ -47,7 +47,9 @@ import secrets
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
-from starlette.responses import Response
+
+from app.core.exceptions.handlers import asgi_json_problem
+from app.core.localization import resolve_locale
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -90,12 +92,16 @@ def signal_csrf_rotation(request: Request) -> None:
 _REJECT_BODY: bytes = b'{"detail":"CSRF token mismatch"}'
 
 
-def _make_reject_response() -> Response:
-    """Return a fresh 403 JSON response for each CSRF rejection."""
-    return Response(
-        content=_REJECT_BODY,
+async def _reject_csrf(scope: Scope, receive: Receive, send: Send) -> None:
+    """Return a localized 403 JSON response for CSRF rejection."""
+    locale = resolve_locale(request=Request(scope, receive))
+    await asgi_json_problem(
+        send,
         status_code=403,
-        media_type="application/json",
+        title_key="titles.forbidden",
+        detail_key="errors.csrf.mismatch",
+        locale=locale,
+        instance=str(scope.get("path", "")),
     )
 
 
@@ -181,9 +187,6 @@ class CSRFMiddleware:
 
         # ── Core CSRF validation ──────────────────────────────────────────────
         if method in _MUTATION_METHODS:
-            cookie_token: str = request.cookies.get(CSRF_COOKIE_NAME, "")
-            header_token: str = request.headers.get(CSRF_HEADER_NAME, "")
-
             if not cookie_token or not header_token:
                 _logger.warning(
                     "CSRF rejected (missing token): method=%s path=%s "
@@ -193,8 +196,7 @@ class CSRFMiddleware:
                     bool(cookie_token),
                     bool(header_token),
                 )
-                reject = _make_reject_response()
-                await reject(scope, receive, send)
+                await _reject_csrf(scope, receive, send)
                 return
 
             # Constant-time comparison prevents timing-oracle attacks.
@@ -204,8 +206,7 @@ class CSRFMiddleware:
                     method,
                     path,
                 )
-                reject = _make_reject_response()
-                await reject(scope, receive, send)
+                await _reject_csrf(scope, receive, send)
                 return
 
         # ── Inject CSRF cookie into response (no body buffering) ─────────────

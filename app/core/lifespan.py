@@ -305,7 +305,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 4. Workers & Data Warming
     await _startup_background_workers(app)
 
-    from app.core.rate_limit import start_memory_cleanup_task
+    from app.core.ratelimit import start_memory_cleanup_task
 
     start_memory_cleanup_task()
 
@@ -325,7 +325,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     from app.api.websocket import stop_presence_pubsub
     from app.auth.security import close_hibp_client
     from app.core.feature_flags import feature_flags
-    from app.core.rate_limit import stop_memory_cleanup_task
+    from app.core.ratelimit import stop_memory_cleanup_task
     from app.services.geolocation import shutdown_geolocation_service
 
     # TD-3: Signal the periodic scheduler to stop before cancelling tasks,

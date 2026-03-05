@@ -16,7 +16,7 @@ from app.api.deps import (
     get_locale,
     get_read_chat_service,
 )
-from app.core.rate_limit import sensitive_route_limit
+from app.core.ratelimit import sensitive_route_limit
 from app.models.models import User
 from app.schemas.chat import (
     ChatCreate,

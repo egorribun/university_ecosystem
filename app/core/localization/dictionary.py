@@ -41,6 +41,50 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Запись уже существует: {identifier}",
         "en": "Record already exists: {identifier}",
     },
+    "titles.bad_request": {
+        "ru": "Некорректный запрос",
+        "en": "Bad Request",
+    },
+    "titles.unauthorized": {
+        "ru": "Не авторизован",
+        "en": "Unauthorized",
+    },
+    "titles.forbidden": {
+        "ru": "Доступ запрещён",
+        "en": "Access Denied",
+    },
+    "titles.not_found": {
+        "ru": "Ресурс не найден",
+        "en": "Resource Not Found",
+    },
+    "titles.conflict": {
+        "ru": "Конфликт ресурсов",
+        "en": "Resource Conflict",
+    },
+    "titles.validation_error": {
+        "ru": "Ошибка валидации",
+        "en": "Validation Error",
+    },
+    "titles.rate_limit_exceeded": {
+        "ru": "Лимит запросов исчерпан",
+        "en": "Rate Limit Exceeded",
+    },
+    "titles.internal_error": {
+        "ru": "Внутренняя ошибка сервера",
+        "en": "Internal Server Error",
+    },
+    "errors.csrf.mismatch": {
+        "ru": "Несоответствие CSRF-токена",
+        "en": "CSRF token mismatch",
+    },
+    "errors.config.payload_too_large": {
+        "ru": "Размер запроса слишком велик (макс. {limit} МБ)",
+        "en": "Payload Too Large (max {limit} MB)",
+    },
+    "errors.config.invalid_content_length": {
+        "ru": "Некорректный заголовок Content-Length",
+        "en": "Invalid Content-Length header",
+    },
     "notifications.schedule.room_label": {
         "ru": "ауд. {room}",
         "en": "room {room}",

@@ -39,9 +39,11 @@ from app.api.validation import (
 )
 from app.auth.rbac import PermissionChecker
 from app.core.cache_versioning import events_cache_version
+from app.core.config import settings
 from app.core.container import get_notification_service, get_vector_service
 from app.core.database import get_db, get_read_db
 from app.core.localization import normalize_locale, resolve_locale
+from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
@@ -135,7 +137,13 @@ def _encode_payload_with_etag(payload: Any) -> tuple[Any, str, str]:
     return encoded, digest, strong_header
 
 
-@router.post("", response_model=schemas.EventOut)
+@router.post(
+    "",
+    response_model=schemas.EventOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_events))
+    ],
+)
 async def create_event(
     data: schemas.EventCreate,
     request: Request,
@@ -271,6 +279,9 @@ def _to_utc(dt: datetime) -> datetime:
     response_model=schemas.EventAttendanceOut,
     summary="Attend Event",
     description="Register attendance for an event.",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_interactions))
+    ],
 )
 async def attend(
     data: schemas.EventAttendanceCreate,
@@ -334,7 +345,13 @@ async def my_events(
     return encoded
 
 
-@router.post("/{id}/upload_file", response_model=schemas.EventFileOut)
+@router.post(
+    "/{id}/upload_file",
+    response_model=schemas.EventFileOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
+    ],
+)
 async def upload_event_file(
     id: uuid.UUID | int,
     file: UploadFile = File(...),
@@ -382,7 +399,12 @@ async def get_event_files(
     return list(files)
 
 
-@router.post("/upload_image")
+@router.post(
+    "/upload_image",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
+    ],
+)
 async def upload_event_image(
     file: UploadFile = File(...),
     *,
@@ -534,7 +556,13 @@ async def delete_event_file(
     return {"ok": True}
 
 
-@router.get("/search/semantic", response_model=list[schemas.EventOut])
+@router.get(
+    "/search/semantic",
+    response_model=list[schemas.EventOut],
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_graphql))
+    ],
+)
 async def semantic_search(
     request: Request,
     response: Response,

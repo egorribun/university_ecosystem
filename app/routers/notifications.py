@@ -19,7 +19,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
-from app.core.rate_limit import (
+from app.core.ratelimit import (
     RateLimitExceeded,
     RateLimitInfo,
     enforce_rate_limit,

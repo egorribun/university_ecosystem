@@ -8,14 +8,13 @@ from hypothesis import settings as hypo_settings
 from hypothesis import strategies as st
 from redis.exceptions import RedisError
 
+import app.core.ratelimit as rate_limit
+import app.core.ratelimit as ratelimit_module
 from app.auth.security import get_password_hash
-from app.core import rate_limit
-from app.core import rate_limit as ratelimit_module
 from app.core.config import settings
 from app.core.localization import translate
-from app.core.rate_limit import (
-    RateLimitMiddleware,
-)
+from app.core.ratelimit import EndpointRateLimit, RateLimitMiddleware
+from app.core.ratelimit.utils import _TIME_UNITS
 
 
 @pytest.mark.asyncio
@@ -234,7 +233,8 @@ async def test_sensitive_dependency_memory_backend():
     original_uri = settings.rate_limit_storage_uri
     settings.rate_limit_storage_backend = "memory"
     settings.rate_limit_storage_uri = "memory://"
-    ratelimit_module.limiter.reset()
+    ratelimit_module.clear_memory_state()
+    ratelimit_module.clear_delay_memory()
 
     dependency = ratelimit_module.sensitive_route_limit(
         limit=2, window_sec=60, key_prefix="memory-dep"
@@ -272,7 +272,8 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
     settings.rate_limit_storage_backend = "memory"
     settings.rate_limit_storage_uri = "memory://"
     settings.trusted_proxies = "127.0.0.1"
-    ratelimit_module.limiter.reset()
+    ratelimit_module.clear_memory_state()
+    ratelimit_module.clear_delay_memory()
 
     dependency = ratelimit_module.sensitive_route_limit(
         limit=2, window_sec=60, key_prefix="memory-proxy"
@@ -320,7 +321,8 @@ async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_heade
     settings.rate_limit_storage_backend = "memory"
     settings.rate_limit_storage_uri = "memory://"
     settings.trusted_proxies = ""
-    ratelimit_module.limiter.reset()
+    ratelimit_module.clear_memory_state()
+    ratelimit_module.clear_delay_memory()
 
     dependency = ratelimit_module.sensitive_route_limit(
         limit=2, window_sec=60, key_prefix="memory-untrusted-proxy"
@@ -384,7 +386,10 @@ async def test_sensitive_dependency_redis_backend(
             "Memory limiter should not run when Redis backend is configured"
         )
 
-    monkeypatch.setattr(ratelimit_module.limiter, "check", _fail_check)
+    monkeypatch.setattr(
+        "app.core.ratelimit.strategies.memory.MemorySlidingWindowStrategy.check",
+        _fail_check,
+    )
 
     transport = httpx.ASGITransport(app=app)
 
@@ -431,7 +436,10 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
             "Memory limiter should not run when Redis backend is configured"
         )
 
-    monkeypatch.setattr(ratelimit_module.limiter, "check", _fail_check)
+    monkeypatch.setattr(
+        "app.core.ratelimit.strategies.memory.MemorySlidingWindowStrategy.check",
+        _fail_check,
+    )
 
     transport = httpx.ASGITransport(app=app)
 
@@ -470,12 +478,15 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
 
 @pytest.mark.asyncio
 async def test_enforce_rate_limit_falls_back_on_redis_error(monkeypatch):
-    monkeypatch.setattr(rate_limit, "_memory_counters", {})
+    monkeypatch.setattr("app.core.ratelimit.strategies.memory._memory_windows", {})
 
     async def failing_redis(*args, **kwargs):
         raise RedisError("unknown command EVAL")
 
-    monkeypatch.setattr(rate_limit, "_redis_rate_limit", failing_redis)
+    monkeypatch.setattr(
+        "app.core.ratelimit.strategies.redis.RedisSlidingWindowStrategy.check",
+        failing_redis,
+    )
 
     await rate_limit.enforce_rate_limit(
         identifier="demo",
@@ -527,7 +538,7 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
 @hypo_settings(max_examples=25)
 @given(
     count=st.integers(min_value=1, max_value=50),
-    unit=st.sampled_from(list(rate_limit._TIME_UNITS.keys())),
+    unit=st.sampled_from(["s", "m", "h", "d"]),  # Valid units in new parser
     separator=st.sampled_from(["/", " per "]),
     leading_ws=st.text(alphabet=" ", min_size=0, max_size=2),
     trailing_ws=st.text(alphabet=" ", min_size=0, max_size=2),
@@ -539,9 +550,9 @@ def test_parse_rate_limit_accepts_known_units(
     value = f"{leading_ws}{count}{separator}{unit}{trailing_ws}"
     parsed = rate_limit.parse_rate_limit(value, fallback=fallback)
 
-    expected_seconds = rate_limit._TIME_UNITS.get(unit)
+    expected_seconds = _TIME_UNITS.get(unit)
     if expected_seconds is None:
-        expected_seconds = rate_limit._TIME_UNITS.get(unit.rstrip("s"))
+        expected_seconds = _TIME_UNITS.get(unit.rstrip("s"))
     assert parsed == (count, expected_seconds)
 
 
@@ -566,10 +577,12 @@ async def test_check_rate_limit_blocks_after_limit(
 ):
     # Clear redis between hypothesis iterations to ensure clean state
     await _rate_limit_redis_client.flushall()
-    monkeypatch.setattr(rate_limit, "_shared_clients", {})
+    monkeypatch.setattr("app.core.ratelimit.strategies.base._shared_clients", {})
     # Reset the single write lock (replaces the removed _shared_client_locks dict).
     # PERF-3 audit 2026-02-26: per-URL lock dict was replaced by one module-level lock.
-    monkeypatch.setattr(rate_limit, "_shared_clients_write_lock", asyncio.Lock())
+    monkeypatch.setattr(
+        "app.core.ratelimit.strategies.base._shared_clients_write_lock", asyncio.Lock()
+    )
 
     namespace = "prop"
     limit = 2
@@ -596,8 +609,6 @@ async def test_check_rate_limit_blocks_after_limit(
 @pytest.mark.asyncio
 async def test_rate_limit_per_endpoint_limits():
     """Test that different endpoints get different rate limits."""
-    from app.core.rate_limit import EndpointRateLimit
-
     app = FastAPI()
 
     # Create custom endpoint limits for testing
