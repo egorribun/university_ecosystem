@@ -89,13 +89,12 @@ async def _startup_database_and_di(app: FastAPI) -> None:
 
 async def _startup_websocket_and_flags(app: FastAPI) -> None:
     """Stage 2: WebSocket management and feature flag recovery."""
-    import app.api.websocket as _ws_module
-    from app.api.websocket import ConnectionManager, start_presence_pubsub
+    from app.api.ws.connection_manager import ConnectionManager
+    from app.api.ws.presence import start_presence_pubsub
     from app.core.feature_flags import feature_flags
 
     _cm = ConnectionManager()
     app.state.connection_manager = _cm
-    _ws_module.manager = _cm
 
     await feature_flags.initialize()
     await start_presence_pubsub()
@@ -244,7 +243,7 @@ async def _periodic_scheduler_loop() -> None:
             return False  # normal timeout — continue
 
     # Jitter: spread first execution across 0–60 s
-    jitter = random.uniform(0, 60)
+    jitter = random.uniform(0, 60)  # nosec B311
     _logger.debug("Periodic scheduler: initial jitter %.1f s", jitter)
     if await _sleep_or_stop(jitter):
         return
@@ -322,7 +321,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 async def _shutdown_subsystems(app: FastAPI) -> None:
     """Graceful termination of all fanned-out components and pools."""
-    from app.api.websocket import stop_presence_pubsub
+    from app.api.ws.presence import stop_presence_pubsub
     from app.auth.security import close_hibp_client
     from app.core.feature_flags import feature_flags
     from app.core.ratelimit import stop_memory_cleanup_task

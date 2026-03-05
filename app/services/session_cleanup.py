@@ -128,7 +128,7 @@ async def cleanup_expired_sessions(
         ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
     )
 
-    assert db is not None
+    assert db is not None  # nosec B101
     deleted = await delete_sessions_matching(db=db, whereclause=expiry_condition)
     await db.commit()
     if deleted:

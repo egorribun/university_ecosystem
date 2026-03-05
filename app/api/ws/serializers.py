@@ -9,15 +9,11 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from app.core.database import async_session
 from app.models.chat import Message
-from app.repositories.session_repository import SessionRepository
 from app.schemas.chat import ChatParticipant, PresenceStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from app.core.protocols import AsyncDatabaseSession
+    pass
 
 
 def serialize_message(
@@ -58,37 +54,4 @@ def serialize_message(
             }
             for att in (message.attachments or [])
         ],
-    }
-
-
-async def build_presence_map(
-    user_ids: Iterable[uuid.UUID],
-    db: AsyncDatabaseSession | None = None,
-) -> dict[uuid.UUID, PresenceStatus]:
-    """Return presence info for a set of users.
-
-    Accepts an optional open DB session (request-scoped callers) or opens
-    its own session (background tasks / non-request contexts).
-    """
-    # Lazy import avoids a circular dependency with connection_manager.
-    from app.api.ws.connection_manager import manager
-
-    ids = {uid for uid in user_ids if uid is not None}
-    if not ids:
-        return {}
-
-    if db:
-        repo = SessionRepository(db)
-        last_seen_map = await repo.get_last_seen_map(list(ids))
-    else:
-        async with async_session() as new_session:
-            repo = SessionRepository(new_session)
-            last_seen_map = await repo.get_last_seen_map(list(ids))
-
-    return {
-        uid: PresenceStatus(
-            active=manager.is_online(uid),
-            last_seen_at=last_seen_map.get(uid),
-        )
-        for uid in ids
     }

@@ -87,7 +87,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     signing_key: str | None = getattr(session, "signing_key", None) if session else None
     if not signing_key:
         raise_validation_error("errors.sessions.signing_key_missing", locale)
-    assert signing_key  # narrowing for type checkers
+    assert signing_key  # nosec B101 # narrowing for type checkers
 
     try:
         candidate = json.loads(raw_envelope)

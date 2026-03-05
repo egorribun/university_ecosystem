@@ -84,7 +84,7 @@ async def retry_async(
 
             # Add jitter
             if jitter:
-                delay = delay * (0.5 + random.random())
+                delay = delay * (0.5 + random.random())  # nosec B311
 
             logger.debug(
                 "Retry %d/%d for %s after %.2fs: %s",

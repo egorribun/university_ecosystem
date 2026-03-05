@@ -94,7 +94,7 @@ async def cleanup_privacy_artifacts(
             return await cleanup_privacy_artifacts(db=session, config=config)
 
     counts: dict[str, int] = {}
-    assert db is not None
+    assert db is not None  # nosec B101
     async with _METRICS.track_execution() as run:
         counts["sessions"] = await _cleanup_sessions(db, config.session_retention_days)
         counts["mfa_challenges"] = await _cleanup_mfa_challenges(

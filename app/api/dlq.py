@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.api.deps import get_current_admin_user
+from app.api.deps import get_current_admin_user, get_locale
 from app.api.validation import raise_not_found, raise_validation_error
 from app.core.database import get_db, get_read_db
 from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
@@ -102,6 +102,7 @@ async def list_dlq_jobs(
     status: str | None = None,
     limit: int = 20,
     db: AsyncSession = Depends(get_read_db),
+    locale: str = Depends(get_locale),
     _: models.User = Depends(get_current_admin_user),
 ) -> DLQJobsListResponse:
     """
@@ -120,11 +121,9 @@ async def list_dlq_jobs(
         valid_statuses = [s.value for s in JobStatus]
         if status not in valid_statuses:
             raise_validation_error(
-                "errors.common.bad_request",
-                "en",
-                status_details=(
-                    f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
-                ),
+                "errors.dlq.invalid_status",
+                locale,
+                statuses=", ".join(valid_statuses),
             )
         query = query.where(DeadLetterJob.status == status)
 
@@ -172,6 +171,7 @@ async def list_dlq_jobs(
 async def retry_dlq_job(
     job_id: int,
     db: AsyncSession = Depends(get_db),
+    locale: str = Depends(get_locale),
     _: models.User = Depends(get_current_admin_user),
 ) -> dict[str, Any]:
     """
@@ -189,19 +189,23 @@ async def retry_dlq_job(
     job = result.scalar_one_or_none()
 
     if not job:
-        raise_not_found("Job", "en", resource_id=job_id)
+        raise_not_found(
+            "dlq_job", locale, resource_id=job_id, exact_key="errors.events.not_found"
+        )
         raise ValueError("Unreachable")
 
     # Reset for retry
-    job.status = JobStatus.PENDING.value  # type: ignore[assignment]
-    job.next_retry_at = datetime.now(UTC)  # type: ignore[assignment]
-    job.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+    job.status = JobStatus.PENDING.value
+    job.next_retry_at = datetime.now(UTC)
+    job.updated_at = datetime.now(UTC)
 
     await db.commit()
 
+    from app.core.localization import translate
+
     return {
         "success": True,
-        "message": f"Job {job_id} queued for retry",
+        "message": translate("success.dlq.retry_queued", locale=locale, job_id=job_id),
         "job_type": job.job_type,
     }
 

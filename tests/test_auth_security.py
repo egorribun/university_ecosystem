@@ -266,7 +266,7 @@ async def test_create_user_forbidden_for_non_admin(async_client, user_factory):
     body = response.json()
     # RFC 7807 format
     assert body["status"] == 403
-    assert body["title"] == "Permission Denied"
+    assert body["title"] == "Access Denied"
     assert "detail" in body
 
 

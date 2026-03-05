@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -18,7 +17,6 @@ from app.services.file_scanner import (
     check_file_scanner_health,
     scan_for_malware,  # noqa: F401 - imported for test mocking
 )
-from app.services.storage import S3Storage, StaticFSStorage
 from app.utils.files import _get_storage_backend
 from app.utils.migrations import migrations_are_current
 
@@ -52,15 +50,20 @@ def reset_health_cache() -> None:
 
 
 async def _lightweight_storage_probe(backend: Any) -> str | None:
-    if isinstance(backend, StaticFSStorage):
-        exists = await asyncio.to_thread(backend.base_dir.exists)
+    """Perform a lightweight existence check on the storage backend."""
+    from app.services.storage import StorageBackend
+
+    if not isinstance(backend, StorageBackend):
+        return None
+
+    # Use a well-known path or root to check availability
+    # For S3, exists("/") usually checks bucket connectivity/existence
+    # For local FS, it checks the base_dir
+    try:
+        exists = await backend.exists("/")
         return "ok" if exists else "error"
-    if isinstance(backend, S3Storage):
-        await asyncio.to_thread(
-            backend.client.list_objects_v2, Bucket=backend.bucket, MaxKeys=0
-        )
-        return "ok"
-    return None
+    except Exception:
+        return "error"
 
 
 async def _write_delete_storage_probe(backend: Any) -> str:

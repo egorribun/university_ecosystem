@@ -84,8 +84,9 @@ class GraphQLTokenValidator:
             if await _redis.exists(f"revoked:jti:{jti}"):
                 logger.debug("GraphQL: JTI revoked in Redis jti=%s", jti)
                 return False
-        except Exception:
+        except Exception as exc:
             # Redis unavailable → fall through to authoritative DB check.
+            logger.debug("GraphQL token check fallback to DB: %s", exc)  # nosec B110
             pass
         return True
 

@@ -9,12 +9,6 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 
-[manifest]
-members = [
-    "rust-ext",
-    "university-ecosystem",
-]
-
 [[package]]
 name = "aioboto3"
 version = "15.5.0"
@@ -3582,10 +3576,6 @@ wheels = [
 ]
 
 [[package]]
-name = "rust-ext"
-source = { editable = "rust_ext" }
-
-[[package]]
 name = "s3transfer"
 version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3841,6 +3831,27 @@ wheels = [
 ]
 
 [[package]]
+name = "types-pyyaml"
+version = "6.0.12.20250915"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/69/3c51b36d04da19b92f9e815be12753125bd8bc247ba0470a982e6979e71c/types_pyyaml-6.0.12.20250915.tar.gz", hash = "sha256:0f8b54a528c303f0e6f7165687dd33fafa81c807fcac23f632b63aa624ced1d3", size = 17522, upload-time = "2025-09-15T03:01:00.728Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/e0/1eed384f02555dde685fff1a1ac805c1c7dcb6dd019c916fe659b1c1f9ec/types_pyyaml-6.0.12.20250915-py3-none-any.whl", hash = "sha256:e7d4d9e064e89a3b3cae120b4990cd370874d2bf12fa5f46c97018dd5d3c9ab6", size = 20338, upload-time = "2025-09-15T03:00:59.218Z" },
+]
+
+[[package]]
+name = "types-requests"
+version = "2.32.4.20260107"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0f/f3/a0663907082280664d745929205a89d41dffb29e89a50f753af7d57d0a96/types_requests-2.32.4.20260107.tar.gz", hash = "sha256:018a11ac158f801bfa84857ddec1650750e393df8a004a8a9ae2a9bec6fcb24f", size = 23165, upload-time = "2026-01-07T03:20:54.091Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/12/709ea261f2bf91ef0a26a9eed20f2623227a8ed85610c1e54c5805692ecb/types_requests-2.32.4.20260107-py3-none-any.whl", hash = "sha256:b703fe72f8ce5b31ef031264fe9395cac8f46a04661a79f7ed31a80fb308730d", size = 20676, upload-time = "2026-01-07T03:20:52.929Z" },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3936,7 +3947,6 @@ dependencies = [
     { name = "pyvips", marker = "sys_platform != 'win32'" },
     { name = "pywebpush" },
     { name = "redis" },
-    { name = "rust-ext" },
     { name = "sentry-sdk", extra = ["opentelemetry"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "starlette" },
@@ -3965,6 +3975,8 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "types-aiofiles" },
+    { name = "types-pyyaml" },
+    { name = "types-requests" },
     { name = "virtualenv" },
 ]
 
@@ -3983,7 +3995,7 @@ requires-dist = [
     { name = "clamd", specifier = ">=1.0.2" },
     { name = "cryptography", specifier = ">=41" },
     { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "dishka", extras = ["fastapi"], specifier = ">=0.14" },
+    { name = "dishka", specifier = ">=0.14" },
     { name = "diskcache", specifier = ">=5.6.0" },
     { name = "elasticsearch", extras = ["async"], specifier = ">=8.0,<9.0.0" },
     { name = "email-validator", specifier = ">=2.0" },
@@ -4011,7 +4023,7 @@ requires-dist = [
     { name = "opentelemetry-sdk" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "orjson", specifier = ">=3.10" },
-    { name = "pgvector", extras = ["sqlalchemy"], specifier = ">=0.4.2" },
+    { name = "pgvector", specifier = ">=0.4.2" },
     { name = "pillow", specifier = ">=10" },
     { name = "pillow-avif-plugin", specifier = ">=1.4.0" },
     { name = "polars", specifier = ">=1.0" },
@@ -4031,7 +4043,6 @@ requires-dist = [
     { name = "pyvips", marker = "sys_platform != 'win32'", specifier = ">=2.2" },
     { name = "pywebpush", specifier = ">=1.9" },
     { name = "redis", specifier = ">=5,<6" },
-    { name = "rust-ext", editable = "rust_ext" },
     { name = "sentry-sdk", extras = ["opentelemetry"], specifier = ">=2,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.48,<3" },
     { name = "starlette", specifier = ">=0.40" },
@@ -4060,6 +4071,8 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.5" },
     { name = "ruff", specifier = ">=0.15.4" },
     { name = "types-aiofiles", specifier = ">=25.1.0.20251011" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
+    { name = "types-requests", specifier = ">=2.32.4.20260107" },
     { name = "virtualenv", specifier = ">=20.36.2" },
 ]
 

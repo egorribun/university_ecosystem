@@ -264,7 +264,7 @@ def sanitize_url(
             pass
 
         # Block localhost variants
-        if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):  # nosec B104
             return None
 
         return url

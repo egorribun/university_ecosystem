@@ -61,6 +61,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Конфликт ресурсов",
         "en": "Resource Conflict",
     },
+    "titles.method_not_allowed": {
+        "ru": "Метод не поддерживается",
+        "en": "Method Not Allowed",
+    },
     "titles.validation_error": {
         "ru": "Ошибка валидации",
         "en": "Validation Error",
@@ -69,9 +73,13 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Лимит запросов исчерпан",
         "en": "Rate Limit Exceeded",
     },
-    "titles.internal_error": {
+    "titles.internal_server_error": {
         "ru": "Внутренняя ошибка сервера",
         "en": "Internal Server Error",
+    },
+    "titles.http_error": {
+        "ru": "Ошибка протокола HTTP",
+        "en": "HTTP Error",
     },
     "errors.csrf.mismatch": {
         "ru": "Несоответствие CSRF-токена",
@@ -624,5 +632,25 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "validation.events.times_required": {
         "ru": "Укажите время начала и окончания мероприятия одновременно",
         "en": "Provide both start and end times for the event",
+    },
+    "errors.events.attendance_registration_failed": {
+        "ru": "Не удалось зарегистрироваться на мероприятие",
+        "en": "Failed to register for the event",
+    },
+    "errors.dlq.invalid_status": {
+        "ru": "Некорректный статус. Допустимые значения: {statuses}",
+        "en": "Invalid status. Must be one of: {statuses}",
+    },
+    "success.dlq.retry_queued": {
+        "ru": "Задание {job_id} поставлено в очередь на повтор",
+        "en": "Job {job_id} queued for retry",
+    },
+    "errors.spotify.service_unavailable": {
+        "ru": "Служба Spotify временно недоступна",
+        "en": "Spotify service is temporarily unavailable",
+    },
+    "errors.spotify.api_error": {
+        "ru": "Ошибка API Spotify (код {status_code})",
+        "en": "Spotify API error (status {status_code})",
     },
 }

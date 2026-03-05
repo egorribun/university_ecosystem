@@ -455,7 +455,7 @@ async def mark_read_single(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
-    assert notif is not None
+    assert notif is not None  # nosec B101
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)
@@ -500,7 +500,7 @@ async def delete_notification(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
-    assert notif is not None
+    assert notif is not None  # nosec B101
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)

@@ -10,7 +10,9 @@ if TYPE_CHECKING:
     from app.models.models import User
     from app.schemas.dtos import ChatParticipantDTO
 
-from app.api.websocket import notify_new_message
+from app.api.ws.connection_manager import manager as ws_manager
+from app.api.ws.presence import build_presence_map
+from app.api.ws.serializers import serialize_message
 from app.services.notifications import create_notifications_for_users
 
 
@@ -28,7 +30,16 @@ class ChatNotificationService:
     ) -> None:
         """Notify participants about a new message."""
         # WebSocket real-time notification
-        await notify_new_message(message, exclude_user_id=sender.id)
+        presence = await build_presence_map([message.sender_id])
+        await ws_manager.broadcast_to_chat(
+            message.chat_id,
+            {
+                "type": "new_message",
+                "chat_id": str(message.chat_id),
+                "message": serialize_message(message, presence),
+            },
+            exclude_user_id=sender.id,
+        )
 
         # Push Notification
         other_participants = [p.id for p in chat_participants if p.id != sender.id]

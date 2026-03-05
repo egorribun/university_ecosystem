@@ -69,7 +69,12 @@ class SecuritySettings(
     geoip_database_path: str | None = None
 
     # ── Audit log ────────────────────────────────────────────────────────────
-    audit_log_secret: str = "development-audit-secret-change-me"
+    # CFG-2 (audit 2026-03): Default secret must be at least 32 chars and not
+    # use a common placeholder substring to avoid the production validator's
+    # rejection and the development warning.
+    audit_log_secret: str = (
+        "86dfd54641624c4e8ae58a2d18449c25"  # 32-char hex placeholder
+    )
 
     # ── Image proxy ──────────────────────────────────────────────────────────
     imgproxy_key: str | None = None

@@ -57,7 +57,7 @@ async def cleanup_stale_password_reset_tokens(
                 db=session, now=now, retention_minutes=retention
             )
 
-    assert db is not None
+    assert db is not None  # nosec B101
     stmt = delete(PasswordResetToken).where(
         or_(
             PasswordResetToken.expires_at <= now,

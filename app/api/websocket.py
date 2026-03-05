@@ -18,7 +18,6 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -48,10 +47,10 @@ from app.api.ws.presence import (
     PRESENCE_SOURCE_CONNECT,
     PRESENCE_SOURCE_DISCONNECT,
     PRESENCE_SOURCE_PING,
-    PRESENCE_SOURCE_PUBSUB,
+    build_presence_map,
     presence_pubsub,
 )
-from app.api.ws.serializers import build_presence_map, serialize_message
+from app.api.ws.serializers import serialize_message
 from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
@@ -93,42 +92,7 @@ async def stop_presence_pubsub() -> None:
     await presence_pubsub.shutdown()
 
 
-async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
-    """Handle a presence update received from Redis pub/sub.
-
-    RZ-07 (audit 2026-03-04): Validate the user_id from the payload before
-    broadcasting.  A misconfigured or compromised Redis channel could inject
-    arbitrary user_ids, spoofing presence for any user's contacts.
-    Only forward updates for users who already have an active connection on
-    this pod.
-    """
-    try:
-        raw_user_id = payload.get("user_id")
-        if not raw_user_id:
-            return
-        user_id = uuid.UUID(str(raw_user_id))
-    except (ValueError, AttributeError):
-        logger.warning("presence pubsub: invalid user_id in payload")
-        return
-
-    if not manager.is_online(user_id):
-        return
-
-    active = bool(payload.get("active", False))
-    last_seen_raw = payload.get("last_seen")
-    try:
-        last_seen = datetime.fromisoformat(last_seen_raw) if last_seen_raw else None
-    except ValueError:
-        last_seen = None
-
-    await manager.broadcast_presence(
-        user_id,
-        active,
-        last_seen,
-        source=PRESENCE_SOURCE_PUBSUB,
-        force=True,
-        publish=False,
-    )
+# MOVED: _handle_presence_pubsub is now in app/api/ws/presence.py
 
 
 @router.websocket("/chat")
@@ -240,7 +204,8 @@ async def websocket_chat(websocket: WebSocket) -> None:
                             else "",
                         }
                     )
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Fraud detection event recording failed: %s", exc)  # nosec B110
                     pass  # Fraud detection is best-effort, never block the request
                 user, session_jti = await get_user_from_token(token)
                 if user:

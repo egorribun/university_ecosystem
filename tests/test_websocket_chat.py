@@ -6,7 +6,7 @@ import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from app.api.websocket import ConnectionManager
+from app.api.ws.connection_manager import ConnectionManager
 from app.core.config import settings
 from app.models.chat import Chat, Message
 from tests.fixtures.auth.auth_fixtures import create_access_token
@@ -256,7 +256,7 @@ class TestWebSocketAuth:
     @pytest.mark.asyncio
     async def test_get_user_from_token_invalid(self):
         """Test invalid token returns None."""
-        from app.api.websocket import get_user_from_token
+        from app.api.ws.auth import get_user_from_token
 
         result_user, session_jti = await get_user_from_token("invalid-token")
 
@@ -266,7 +266,7 @@ class TestWebSocketAuth:
     @pytest.mark.asyncio
     async def test_get_user_from_token_inactive_user(self, db_session, user_factory):
         """Test inactive user returns None."""
-        from app.api.websocket import get_user_from_token
+        from app.api.ws.auth import get_user_from_token
 
         user = await user_factory(is_active=False)
         token, _ = await create_access_token(str(user.id), db=db_session)

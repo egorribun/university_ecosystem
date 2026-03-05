@@ -3,7 +3,7 @@ import hashlib
 import logging
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import Literal, cast
+from typing import Literal
 from urllib.parse import unquote
 
 # msgspec is used for safe binary serialization of Redis cache payloads.
@@ -13,7 +13,7 @@ try:
     import msgspec.msgpack as _msgpack
 
     def _cache_encode(data: bytes, mime: str) -> bytes:
-        return cast(bytes, _msgpack.encode({"d": data, "m": mime}))
+        return bytes(_msgpack.encode({"d": data, "m": mime}))
 
     def _cache_decode(payload: bytes) -> tuple[bytes, str]:
         obj = _msgpack.decode(payload)
@@ -121,75 +121,27 @@ async def get_transformed_image(
 
 
 async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
-    """Read source bytes from backend. Local files are read directly, S3 via client."""
-    from app.services.storage import S3Storage, StaticFSStorage
+    """Read source bytes from backend.
 
-    # Security: Early validation of user input to block path traversal
-    # This returns a sanitized copy, making the data flow clearer for static analysis
+    RZ-2 (audit 2026-03-05): Uses the abstract backend.read_file() method
+    instead of branching on implementation types. This preserves SRP and
+    eliminates brittle hacks involving internal client access.
+    """
+    # Security: Early validation of user input to block path traversal.
     sanitized_path = _sanitize_path_input(path)
 
     # Normalize path: ensure it doesn't have double slashes and has a
-    # leading slash for extraction logic
+    # leading slash for extraction logic if needed by the backend.
     normalized_path = "/" + sanitized_path.lstrip("/")
 
-    if isinstance(backend, StaticFSStorage):
-        # The path might contain the base_url prefix (e.g. "/static/avatars/...")
-        # StaticFSStorage._extract_relative_path handles stripping this prefix.
-        rel_path = backend._extract_relative_path(normalized_path)
-        if rel_path is None:
-            # Fallback to direct path usage if extraction fails
-            # Safe: sanitized_path has been validated (no "..", no null bytes)
-            rel_path = Path(sanitized_path.lstrip("/"))  # lgtm[py/path-injection]
-
-        # Security: Validate path is within base directory (prevent path traversal)
-        # This is our secondary defense layer after early sanitization
-        full_path = _validate_path_within_base(backend.base_dir, rel_path)
-
-        # Handle case where spaces in URL were meant to be underscores on disk
-        # Safe: full_path is validated to be within base_dir by
-        # _validate_path_within_base
-        if not full_path.exists() and " " in str(rel_path):  # lgtm[py/path-injection]
-            underscored_rel = Path(str(rel_path).replace(" ", "_"))
-            underscored_path = _validate_path_within_base(
-                backend.base_dir, underscored_rel
-            )
-            if underscored_path.exists():  # lgtm[py/path-injection]
-                full_path = underscored_path
-
-        if not full_path.exists():  # lgtm[py/path-injection]
-            raise FileNotFoundError(f"Image not found at {full_path}")
-
-        return await asyncio.to_thread(full_path.read_bytes)  # lgtm[py/path-injection]
-
-    if isinstance(backend, S3Storage):
-        # S3Storage._extract_key handles stripping base_url
-        key = backend._extract_key(normalized_path)
-        if key is None:
-            key = sanitized_path.lstrip("/")
-
-        # Security: Validate key doesn't contain path traversal sequences
-        if ".." in key or key.startswith("/"):
-            raise ValueError("Invalid S3 key: path traversal detected")
-
-        # Handle potential space/underscore mismatch for S3 as well
-        # (Though less likely to be an issue with S3 keys unless manually renamed)
-        loop = asyncio.get_running_loop()
-        try:
-            response = await loop.run_in_executor(
-                None, lambda: backend.client.get_object(Bucket=backend.bucket, Key=key)
-            )
-        except backend.client.exceptions.NoSuchKey:
-            if " " in key:
-                key = key.replace(" ", "_")
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: backend.client.get_object(Bucket=backend.bucket, Key=key),
-                )
-            else:
-                raise
-        return response["Body"].read()  # type: ignore[no-any-return]
-
-    raise ValueError("Unsupported storage backend for image proxy")
+    try:
+        return await backend.read_file(normalized_path)
+    except FileNotFoundError:
+        # Fallback for potential space/underscore mismatch
+        if " " in normalized_path:
+            underscored = normalized_path.replace(" ", "_")
+            return await backend.read_file(underscored)
+        raise
 
 
 def _sanitize_path_input(path: str) -> str:
@@ -293,7 +245,7 @@ def _process_image(
         # If original or fallback
         original_format = img.format or "JPEG"
         img.save(buffer, format=original_format)
-        return buffer.getvalue(), f"image/{original_format.lower()}"
+        return buffer.getvalue(), f"image/{str(original_format).lower()}"
 
 
 def _guess_mime(path: str) -> str:
