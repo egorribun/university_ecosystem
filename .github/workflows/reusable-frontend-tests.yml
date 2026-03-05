@@ -106,8 +106,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # P0-01 (audit 2026-03-06): Replaced unsafe `curl | sh` with taiki-e/install-action.
+      # The action verifies SHA256 checksums from official GitHub releases, preventing
+      # supply chain attacks via DNS hijacking or CDN compromise (OWASP CI/CD C-PPE-1).
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: taiki-e/install-action@385db9cc6bf65d19775b02084a4b698eaca9a4f2 # v2.68.19
+        with:
+          tool: wasm-pack
 
       - name: Build rust-crypto
         run: |

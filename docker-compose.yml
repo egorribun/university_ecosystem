@@ -156,7 +156,9 @@ services:
         required: false
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
-      NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
+      # P0-04 (audit 2026-03-06): Bind to 127.0.0.1 — unauthenticated Prometheus
+      # metrics endpoint exposes latency, queue depths, internal IPs.
+      NOTIFICATIONS_WORKER_METRICS_HOST: 127.0.0.1
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/0
@@ -178,7 +180,9 @@ services:
         condition: service_healthy
     restart: unless-stopped
     ports:
-      - "9102:9101"
+      # P0-04: Bind to localhost only — scraping via internal Docker network.
+      # Access from host: SSH tunnel ssh -L 9102:localhost:9102 host
+      - "127.0.0.1:9102:9101"
     networks:
       - db_net
       - cache_net
@@ -230,16 +234,23 @@ services:
 
   valkey:
     image: valkey/valkey:8-alpine
+    # DEBT-02 (audit 2026-03-06): Without eviction policy, OOM kills rate limiter,
+    # session cache, and CSRF tokens simultaneously → thundering herd on Postgres.
+    # allkeys-lru evicts least-recently-used from all keyspace (optimal for cache).
     command:
-      [
-        "valkey-server",
-        "--requirepass",
-        "${REDIS_PASSWORD}",
-        "--save",
-        "",
-        "--appendonly",
-        "no",
-      ]
+      - valkey-server
+      - --requirepass
+      - "${REDIS_PASSWORD}"
+      - --maxmemory
+      - "200mb"
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --loglevel
+      - warning
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     healthcheck:
@@ -400,7 +411,10 @@ services:
   spicedb:
     image: authzed/spicedb:v1.36.0
     container_name: spicedb
-    command: serve --grpc-preshared-key "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required}" --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=${SPICEDB_PG_SSLMODE:-require}"
+    # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
+    # and `docker inspect` expose full command including secrets. The
+    # SPICEDB_GRPC_PRESHARED_KEY env var (below) is read automatically by SpiceDB.
+    command: serve --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=${SPICEDB_PG_SSLMODE:-require}"
     # Internal only - accessed by backend services
     expose:
       - "50051"

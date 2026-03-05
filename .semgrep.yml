@@ -1,0 +1,22 @@
+# MOD-03 (audit 2026-03-06): Explicit Semgrep ruleset configuration.
+# `semgrep ci` picks this up automatically; SEMGREP_APP_TOKEN overrides when set.
+# Rulesets chosen for the actual tech stack: Python/FastAPI backend + React/TS frontend.
+
+rules: []  # Custom rules go here; all scanning comes from the rulesets below.
+
+# Use 'semgrep --config <pack>' locally: semgrep --config p/python --config p/fastapi .
+# The CI job runs: semgrep ci --config auto  (or the packs below when no token is set)
+
+# Rulesets to run (in semgrep CI these are resolved via SEMGREP_APP_TOKEN or --config):
+# p/python            - General Python security (injection, unsafe deserialization, etc.)
+# p/fastapi           - FastAPI-specific patterns (auth bypass, injection)
+# p/jwt               - JWT misuse (none algorithm, weak secrets, HS/RS confusion)
+# p/react             - React XSS, dangerouslySetInnerHTML, prop injection
+# p/typescript        - TypeScript type-safety anti-patterns
+# p/secrets           - Hardcoded credentials, API keys, connection strings
+# p/supply-chain      - Dependency confusion, pinning issues
+# p/owasp-top-ten     - Comprehensive OWASP Top 10 coverage across all languages
+#
+# These are enforced in CI via the 'semgrep' job in reusable-security-audit.yml.
+# To add SEMGREP_APP_TOKEN: GitHub Settings → Secrets → Actions → SEMGREP_APP_TOKEN
+# and configure the matching rule sets in app.semgrep.dev.

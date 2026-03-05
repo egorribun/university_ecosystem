@@ -17,6 +17,10 @@ spec:
         app.kubernetes.io/name: backend
         app.kubernetes.io/component: api
     spec:
+      # DEBT-01 (audit 2026-03-06): Use dedicated ServiceAccount with no K8s API access.
+      # Prevents SSRF to kubernetes.default.svc via mounted JWT token.
+      serviceAccountName: backend
+      automountServiceAccountToken: false
       containers:
         - name: backend
           image: university-ecosystem/backend:${IMAGE_TAG:-latest}

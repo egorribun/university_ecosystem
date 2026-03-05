@@ -1,0 +1,55 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "packageRules": [
+    {
+      "description": "SHA-pin all GitHub Actions and auto-group weekly PRs",
+      "matchDepTypes": ["action"],
+      "pinDigests": true,
+      "automerge": false,
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Keep Docker base images up-to-date; require manual review for security-sensitive images",
+      "matchManagers": ["docker-compose", "dockerfile"],
+      "matchPackageNames": [
+        "minio/minio",
+        "authzed/spicedb",
+        "temporalio/server",
+        "temporalio/ui"
+      ],
+      "automerge": false,
+      "labels": ["security", "dependencies"]
+    },
+    {
+      "description": "Auto-merge patch updates for frontend npm packages",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "groupName": "Frontend patch updates"
+    },
+    {
+      "description": "Group all Python dependency updates",
+      "matchManagers": ["uv"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": false,
+      "groupName": "Python dependencies"
+    },
+    {
+      "description": "Flag all security vulnerability alerts with the security label",
+      "matchPackagePatterns": ["*"],
+      "vulnerabilityAlerts": {
+        "labels": ["security"],
+        "assignees": []
+      }
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "schedule": ["after 3am and before 7am on Monday"],
+  "commitMessagePrefix": "chore(deps):",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2
+}
