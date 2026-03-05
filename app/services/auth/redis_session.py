@@ -7,7 +7,7 @@ from redis.exceptions import RedisError
 
 from app.auth.fingerprint import SessionFingerprint
 from app.core.config import settings
-from app.core.rate_limit import _get_shared_client
+from app.core.ratelimit import get_shared_client as _get_shared_client
 
 logger = logging.getLogger(__name__)
 

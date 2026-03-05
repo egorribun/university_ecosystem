@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, status
@@ -14,6 +15,8 @@ from app.core.ratelimit.logic import enforce_rate_limit
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import parse_rate_limit, resolve_client_ip
+
+logger = logging.getLogger("app.security.ratelimit")
 
 
 def sensitive_route_limit(
@@ -54,6 +57,12 @@ def sensitive_route_limit(
                 strategy=strategy,
             )
         except RateLimitExceeded as exc:
+            logger.warning(
+                "Sensitive route rate limit exceeded: ip=%s, path=%s, limit=%d",
+                ip,
+                request.url.path,
+                resolved_limit,
+            )
             retry_after = max(0, exc.info.retry_after)
             headers = {"Retry-After": str(retry_after)} if retry_after else None
             raise_http_error(

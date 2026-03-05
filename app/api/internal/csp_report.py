@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request, Response, status
 from fastapi.params import Depends
 
 from app.core.metrics import record_csp_report
-from app.core.rate_limit import sensitive_route_limit
+from app.core.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger(__name__)
 

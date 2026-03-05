@@ -22,11 +22,13 @@ from app.api.deps import (
 )
 from app.api.utils import save_upload
 from app.api.validation import ensure_exists, require_admin
+from app.core.config import settings
 from app.core.localization import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
     resolve_locale,
 )
+from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
@@ -111,7 +113,13 @@ async def list_stories(
     return encoded
 
 
-@router.post("", response_model=schemas.StoryOut)
+@router.post(
+    "",
+    response_model=schemas.StoryOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_stories))
+    ],
+)
 async def create_story(
     data: schemas.StoryCreate,
     request: Request,
@@ -126,7 +134,13 @@ async def create_story(
     return service.serialize_story(record, locale)
 
 
-@router.patch("/{story_id}", response_model=schemas.StoryOut)
+@router.patch(
+    "/{story_id}",
+    response_model=schemas.StoryOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_stories))
+    ],
+)
 async def update_story(
     story_id: uuid.UUID,
     request: Request,
@@ -147,7 +161,13 @@ async def update_story(
     return service.serialize_story(updated, locale)
 
 
-@router.delete("/{story_id}", response_model=dict)
+@router.delete(
+    "/{story_id}",
+    response_model=dict,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_stories))
+    ],
+)
 async def delete_story(
     story_id: uuid.UUID,
     request: Request,
@@ -166,7 +186,12 @@ async def delete_story(
     return {"ok": True}
 
 
-@router.post("/upload_cover")
+@router.post(
+    "/upload_cover",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
+    ],
+)
 async def upload_story_cover(
     file: UploadFile = File(...),
     *,

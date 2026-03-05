@@ -139,7 +139,7 @@ class LoginSessionManager:
         )
 
     def extract_client_info(self, request: Request) -> tuple[str | None, str | None]:
-        from app.core.rate_limit import resolve_client_ip
+        from app.core.ratelimit import resolve_client_ip
 
         client_ip: str | None = resolve_client_ip(request) or None
         user_agent = request.headers.get("user-agent")

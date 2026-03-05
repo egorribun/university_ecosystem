@@ -24,7 +24,7 @@ from app.auth.constants import (
     MFA_METHOD_WEBAUTHN,
 )
 from app.core.config import settings
-from app.core.rate_limit import (
+from app.core.ratelimit import (
     RateLimitExceeded,
     enforce_rate_limit,
     get_default_strategy,

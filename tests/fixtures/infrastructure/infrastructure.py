@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 import pytest_asyncio
 
+import app.core.ratelimit as ratelimit_module
 from app import main
-from app.core import rate_limit as ratelimit_module
 from app.core.config import settings
 from asgi_lifespan import LifespanManager
 

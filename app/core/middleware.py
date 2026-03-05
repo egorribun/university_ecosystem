@@ -5,16 +5,18 @@ from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
 from brotli_asgi import BrotliMiddleware
-from fastapi import Request
+from fastapi import Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.core.csrf import CSRFMiddleware
+from app.core.exceptions.handlers import asgi_json_problem
 from app.core.internal_access import InternalAccessMiddleware
-from app.core.rate_limit import EndpointRateLimit, RateLimitMiddleware, parse_rate_limit
+from app.core.localization import resolve_locale
+from app.core.ratelimit import EndpointRateLimit, RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
 
 try:
@@ -46,16 +48,16 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
     which is a silent, hard-to-debug data-loss bug. (TD-2: audit 2026-02-24)
     """
 
-    _BAD_CONTENT_LENGTH_BODY: bytes = b'{"detail":"Invalid Content-Length header"}'
+    # _BAD_CONTENT_LENGTH_BODY: bytes = b'{"detail":"Invalid Content-Length header"}'
 
-    @staticmethod
-    def _bad_content_length_response() -> Response:
-        """Return a fresh response per call to prevent header pollution."""
-        return Response(
-            content=ContentSizeLimitMiddleware._BAD_CONTENT_LENGTH_BODY,
-            status_code=400,
-            media_type="application/json",
-        )
+    # @staticmethod
+    # def _bad_content_length_response() -> Response:
+    #     """Return a fresh response per call to prevent header pollution."""
+    #     return Response(
+    #         content=ContentSizeLimitMiddleware._BAD_CONTENT_LENGTH_BODY,
+    #         status_code=400,
+    #         media_type="application/json",
+    #     )
 
     def __init__(self, app: Any, *, max_bytes: int = 50 * 1024 * 1024) -> None:
         """Initialise the middleware.
@@ -86,9 +88,32 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
             try:
                 cl = int(cl_header)
             except ValueError:
-                return self._bad_content_length_response()
+                locale = resolve_locale(request=request)
+                await asgi_json_problem(
+                    request.scope["asgi"]["send"],
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    title_key="titles.bad_request",
+                    detail_key="errors.config.invalid_content_length",
+                    locale=locale,
+                    instance=str(request.url),
+                )
+                return Response(
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )  # Dummy response to satisfy type checker
             if cl > self._max_bytes:
-                return self._oversized_response(self._max_bytes)
+                locale = resolve_locale(request=request)
+                await asgi_json_problem(
+                    request.scope["asgi"]["send"],
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    title_key="titles.bad_request",
+                    detail_key="errors.config.payload_too_large",
+                    locale=locale,
+                    instance=str(request.url),
+                    limit=self._max_bytes // (1024 * 1024),
+                )
+                return Response(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                )  # Dummy response to satisfy type checker
 
         # Slow path: chunked / unknown length — stream, accumulate, replay.
         # Extend to DELETE because RFC 9110 permits DELETE with a body, and
@@ -134,7 +159,19 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
                 accumulated += len(chunk)
                 if accumulated > self._max_bytes:
                     await anyio.to_thread.run_sync(tmpfile.close)
-                    return None, self._oversized_response(self._max_bytes)
+                    locale = resolve_locale(request=request)
+                    await asgi_json_problem(
+                        request.scope["asgi"]["send"],
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        title_key="titles.bad_request",
+                        detail_key="errors.config.payload_too_large",
+                        locale=locale,
+                        instance=str(request.url),
+                        limit=self._max_bytes // (1024 * 1024),
+                    )
+                    return None, Response(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                    )
                 await anyio.to_thread.run_sync(tmpfile.write, chunk)
 
             await anyio.to_thread.run_sync(tmpfile.seek, 0)
@@ -148,12 +185,12 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
 
         return Request(request.scope, receive=_replay_receive), None
 
-    @staticmethod
-    def _oversized_response(limit: int) -> JSONResponse:
-        return JSONResponse(
-            status_code=413,
-            content={"detail": f"Payload Too Large (max {limit // (1024 * 1024)} MB)"},
-        )
+    # @staticmethod
+    # def _oversized_response(limit: int) -> JSONResponse:
+    #     return JSONResponse(
+    #         status_code=413,
+    #         content={"detail": f"Payload Too Large (max {limit // (1024 * 1024)} MB)"},
+    #     )
 
 
 def _ensure_vary_header(response: Response, header_name: str) -> None:

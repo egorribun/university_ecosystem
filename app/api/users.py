@@ -27,6 +27,7 @@ from app.api.deps import (
     require_fresh_mfa,
 )
 from app.api.validation import raise_validation_error, require_admin
+from app.core.config import settings
 from app.core.container import (
     get_audit_service,
     get_auth_service,
@@ -38,7 +39,7 @@ from app.core.container import (
 from app.core.database import get_read_db
 from app.core.localization import resolve_locale
 from app.core.protocols import AsyncDatabaseSession
-from app.core.rate_limit import sensitive_route_limit
+from app.core.ratelimit import sensitive_route_limit
 from app.models import models
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
@@ -173,7 +174,12 @@ async def me(
     return schemas.UserOut.model_validate(user)
 
 
-@users_router.put("/me", response_model=schemas.UserOut, summary="Update Me")
+@users_router.put(
+    "/me",
+    response_model=schemas.UserOut,
+    summary="Update Me",
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def update_me(
     data: schemas.UserProfileUpdate,
     request: Request,
@@ -263,7 +269,13 @@ async def delete_current_user_account(
     return await service.delete_user_data(user, request, confirm=payload.confirm)
 
 
-@users_router.post("/me/avatar", response_model=schemas.UserOut)
+@users_router.post(
+    "/me/avatar",
+    response_model=schemas.UserOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
+    ],
+)
 async def upload_avatar(
     file: UploadFile = File(...),
     *,
@@ -276,7 +288,13 @@ async def upload_avatar(
     return schemas.UserOut.model_validate(user_dto)
 
 
-@users_router.post("/me/cover", response_model=schemas.UserOut)
+@users_router.post(
+    "/me/cover",
+    response_model=schemas.UserOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
+    ],
+)
 async def upload_cover(
     file: UploadFile = File(...),
     *,
@@ -289,7 +307,13 @@ async def upload_cover(
     return schemas.UserOut.model_validate(user_dto)
 
 
-@users_router.delete("/me/avatar", response_model=schemas.UserOut)
+@users_router.delete(
+    "/me/avatar",
+    response_model=schemas.UserOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
+    ],
+)
 async def delete_avatar(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
@@ -299,7 +323,13 @@ async def delete_avatar(
     return schemas.UserOut.model_validate(user_dto)
 
 
-@users_router.delete("/me/cover", response_model=schemas.UserOut)
+@users_router.delete(
+    "/me/cover",
+    response_model=schemas.UserOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
+    ],
+)
 async def delete_cover(
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),

@@ -13,6 +13,7 @@ from app.core.localization import resolve_locale
 # (app.core.middleware) instead of via app.main, which would create a circular
 # dependency: stats → main → routers → stats.
 from app.core.middleware import _ensure_vary_header
+from app.core.ratelimit import sensitive_route_limit
 from app.cqrs.queries import GetStatsHandler, GetStatsQuery
 from app.deps.cache import format_etag
 from app.models import models
@@ -87,7 +88,11 @@ async def _handle_stats_query(
     return result.payload  # type: ignore[no-any-return]
 
 
-@router.get("/attendance", response_model=None)
+@router.get(
+    "/attendance",
+    response_model=None,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def attendance_summary(
     request: Request,
     response: Response,
@@ -109,7 +114,11 @@ async def attendance_summary(
     )
 
 
-@router.get("/grades", response_model=None)
+@router.get(
+    "/grades",
+    response_model=None,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def grade_summary(
     request: Request,
     response: Response,
@@ -131,7 +140,11 @@ async def grade_summary(
     )
 
 
-@router.get("/participation", response_model=None)
+@router.get(
+    "/participation",
+    response_model=None,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def participation_summary(
     request: Request,
     response: Response,
@@ -153,7 +166,11 @@ async def participation_summary(
     )
 
 
-@router.get("/summary", response_model=None)
+@router.get(
+    "/summary",
+    response_model=None,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def stats_summary(
     request: Request,
     response: Response,

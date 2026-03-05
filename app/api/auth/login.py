@@ -34,7 +34,7 @@ from app.auth.schemas import (
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
-from app.core.rate_limit import sensitive_route_limit
+from app.core.ratelimit import sensitive_route_limit
 from app.core.timing import ensure_minimum_time
 from app.models.models import User
 from app.schemas.schemas import (
@@ -213,7 +213,12 @@ async def login_json(
 
 
 @router.post(
-    "/mfa/verify", response_model=TokenWithProfile, response_model_exclude_none=True
+    "/mfa/verify",
+    response_model=TokenWithProfile,
+    response_model_exclude_none=True,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_auth_mfa))
+    ],
 )
 @inject
 async def verify_mfa_challenge(

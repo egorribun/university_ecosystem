@@ -18,40 +18,29 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
     while True:
         try:
             await asyncio.sleep(interval_seconds)
-            # now = time.time()  # Unused variable removed
+            import time
 
-            # We don't have a global lock for _memory_windows keys,
-            # but we can prune individual windows under their own locks.
-            # (Note: keys are only added, never removed in current impl to avoid
-            # race conditions with lock creation, but we could prune empty deques)
+            now = time.time()
+            # Prune entries where all timestamps are older than this (1 hour default)
+            max_age = max(interval_seconds * 12, 3600)
+            cutoff = now - max_age
 
             # Create a copy of keys to avoid modification during iteration
-            async with (
-                asyncio.Lock()
-            ):  # This is a placeholder, we use individual locks in strategy
-                pass
-
             keys = list(_memory_windows.keys())
             for key in keys:
                 lock = _shard_lock(key)
-                if not lock:
-                    continue
-
                 async with lock:
                     window = _memory_windows.get(key)
                     if not window:
                         continue
 
-                    # Prune old entries (we don't know the window_seconds here,
-                    # so we use a safe default like 24h or just keep them if they are recent)
-                    # Actually, we don't know the expiration time per deque.
-                    # A better approach is to prune deques that haven't been touched in a long time.
-                    # For now, we'll just implement a basic loop that does nothing or
-                    # we can skip this if we prune-on-access.
+                    # Prune old entries from the front of the deque
+                    while window and window[0] <= cutoff:
+                        window.popleft()
 
-                    # Wait, if we prune-on-access, why do we need a background task?
-                    # The legacy one might have been more aggressive.
-                    pass
+                    # If the deque is now empty, it hasn't been touched in max_age
+                    if not window:
+                        _memory_windows.pop(key, None)
 
         except asyncio.CancelledError:
             break

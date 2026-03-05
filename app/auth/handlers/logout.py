@@ -15,6 +15,7 @@ from starlette import status
 
 from app.api.deps import get_db
 from app.auth.security import decode_token
+from app.core.ratelimit import sensitive_route_limit
 from app.models.models import ActiveSession
 from app.services.auth.login_service import LoginService
 
@@ -24,7 +25,11 @@ if TYPE_CHECKING:
 router = APIRouter(tags=["auth"])
 
 
-@router.post("/logout", status_code=status.HTTP_200_OK)
+@router.post(
+    "/logout",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def logout(
     response: Response,
     request: Request,
