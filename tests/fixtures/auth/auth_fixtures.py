@@ -25,7 +25,18 @@ async def user_factory(
         profile_data = {"full_name": "Test User"}
         pref_data = {}
 
-        profile_keys = {"full_name", "avatar_url", "cover_url", "about", "telegram", "profile_status", "status", "achievements", "position", "department"}
+        profile_keys = {
+            "full_name",
+            "avatar_url",
+            "cover_url",
+            "about",
+            "telegram",
+            "profile_status",
+            "status",
+            "achievements",
+            "position",
+            "department",
+        }
         pref_keys = {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
 
         for k, v in list(kwargs.items()):

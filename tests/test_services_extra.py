@@ -61,7 +61,9 @@ async def test_user_service_basics():
     service = UserService(user_repo, audit, notifications)
 
     user = models.User(id=1, email="u@e.com")
-    user.profile = models.UserProfile(user_id=1, full_name="Old Name", avatar_url=None, cover_url=None)
+    user.profile = models.UserProfile(
+        user_id=1, full_name="Old Name", avatar_url=None, cover_url=None
+    )
     request = MagicMock()
 
     # Mock repo.get to return user

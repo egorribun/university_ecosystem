@@ -61,7 +61,12 @@ async def test_nats_broker_degraded_mode_on_connection_failure() -> None:
     # Patch the connect() coroutine on the class so every instance fails.
     # Cannot patch "app.core.di_provider.asyncio.wait_for" because asyncio is
     # a local import inside the provider method, not a module-level attribute.
-    with patch.object(NatsTaskBroker, "connect", new_callable=AsyncMock, side_effect=Exception("NATS unreachable")):
+    with patch.object(
+        NatsTaskBroker,
+        "connect",
+        new_callable=AsyncMock,
+        side_effect=Exception("NATS unreachable"),
+    ):
         container = create_dishka_container()
         try:
             broker: NatsTaskBroker = await container.get(NatsTaskBroker)

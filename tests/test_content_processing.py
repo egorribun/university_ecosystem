@@ -39,7 +39,9 @@ _OWASP_PAYLOADS: list[tuple[str, str]] = [
 ]
 
 
-@pytest.mark.parametrize("label,payload", _OWASP_PAYLOADS, ids=[p[0] for p in _OWASP_PAYLOADS])
+@pytest.mark.parametrize(
+    "label,payload", _OWASP_PAYLOADS, ids=[p[0] for p in _OWASP_PAYLOADS]
+)
 def test_rich_text_blocks_xss_payload(label: str, payload: str) -> None:
     """RICH_TEXT mode must produce output containing no executable JavaScript constructs.
 
@@ -49,7 +51,9 @@ def test_rich_text_blocks_xss_payload(label: str, payload: str) -> None:
     """
     result = sanitize(payload, mode=SanitizationMode.RICH_TEXT)
 
-    assert "<script" not in result.lower(), f"[{label}] script tag survived sanitization"
+    assert "<script" not in result.lower(), (
+        f"[{label}] script tag survived sanitization"
+    )
     assert "javascript:" not in result.lower(), f"[{label}] javascript: URI survived"
     assert "vbscript:" not in result.lower(), f"[{label}] vbscript: URI survived"
     assert "data:" not in result.lower(), f"[{label}] data: URI survived"
@@ -60,7 +64,9 @@ def test_rich_text_blocks_xss_payload(label: str, payload: str) -> None:
     assert "onstart" not in result.lower(), f"[{label}] onstart handler survived"
 
 
-@pytest.mark.parametrize("label,payload", _OWASP_PAYLOADS, ids=[p[0] for p in _OWASP_PAYLOADS])
+@pytest.mark.parametrize(
+    "label,payload", _OWASP_PAYLOADS, ids=[p[0] for p in _OWASP_PAYLOADS]
+)
 def test_basic_mode_blocks_xss_payload(label: str, payload: str) -> None:
     """BASIC mode must allow only b/i/em/strong — all other tags and handlers stripped."""
     result = sanitize(payload, mode=SanitizationMode.BASIC)
@@ -69,14 +75,18 @@ def test_basic_mode_blocks_xss_payload(label: str, payload: str) -> None:
     # that is safe and correct: plain text cannot execute.  We only assert that
     # executable constructs (script/iframe tags, event handlers, dangerous URI
     # schemes) do not survive.
-    assert "<script" not in result.lower(), f"[{label}] script tag survived basic sanitization"
+    assert "<script" not in result.lower(), (
+        f"[{label}] script tag survived basic sanitization"
+    )
     assert "<iframe" not in result.lower(), f"[{label}] iframe tag survived"
     assert "javascript:" not in result.lower(), f"[{label}] javascript: URI survived"
     assert "onerror" not in result.lower(), f"[{label}] onerror handler survived"
     assert "onload" not in result.lower(), f"[{label}] onload handler survived"
 
 
-@pytest.mark.parametrize("label,payload", _OWASP_PAYLOADS, ids=[p[0] for p in _OWASP_PAYLOADS])
+@pytest.mark.parametrize(
+    "label,payload", _OWASP_PAYLOADS, ids=[p[0] for p in _OWASP_PAYLOADS]
+)
 def test_strip_mode_removes_all_markup(label: str, payload: str) -> None:
     """STRIP mode must return plain text with zero HTML elements.
 
@@ -86,7 +96,9 @@ def test_strip_mode_removes_all_markup(label: str, payload: str) -> None:
     """
     result = sanitize(payload, mode=SanitizationMode.STRIP)
 
-    assert "<" not in result, f"[{label}] HTML tag leaked through STRIP mode (angle bracket present)"
+    assert "<" not in result, (
+        f"[{label}] HTML tag leaked through STRIP mode (angle bracket present)"
+    )
 
 
 def test_rich_text_preserves_safe_formatting() -> None:

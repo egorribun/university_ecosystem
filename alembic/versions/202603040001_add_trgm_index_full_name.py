@@ -70,6 +70,4 @@ def downgrade() -> None:
     if not _is_postgresql():
         return
 
-    op.execute(
-        f"DROP INDEX CONCURRENTLY IF EXISTS {_GIN_INDEX_NAME}"
-    )
+    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_GIN_INDEX_NAME}")

@@ -22,11 +22,12 @@ def service(mock_db):
 @pytest.fixture
 def user():
     from app.models.users import UserProfile
+
     return User(
         id=uuid4(),
         email="test@example.com",
         webauthn_id=None,
-        profile=UserProfile(full_name="Test User")
+        profile=UserProfile(full_name="Test User"),
     )
 
 
