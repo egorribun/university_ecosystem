@@ -42,9 +42,6 @@ from app.api.ws.auth import (
 
 # ── Sub-package imports (re-exported for backwards compat) ─────────────────────
 from app.api.ws.connection_manager import (
-    ConnectionManager,
-    WebSocketRateLimiter,
-    get_connection_manager,
     manager,
 )
 from app.api.ws.presence import (
@@ -52,9 +49,6 @@ from app.api.ws.presence import (
     PRESENCE_SOURCE_DISCONNECT,
     PRESENCE_SOURCE_PING,
     PRESENCE_SOURCE_PUBSUB,
-    PresencePubSub,
-    invalidate_chat_participants_cache,
-    invalidate_presence_audience_cache,
     presence_pubsub,
 )
 from app.api.ws.serializers import build_presence_map, serialize_message
@@ -65,7 +59,6 @@ from app.core.feature_flags import feature_flags
 from app.models.chat import Message
 from app.models.enums import UserRole
 from app.repositories.chat_repository import ChatRepository
-from app.repositories.user_repository import UserRepository
 from app.services.audit_service import SecurityEvent, audit_service
 
 logger = logging.getLogger(__name__)

@@ -252,7 +252,9 @@ async def test_perform_login_mfa_required_no_factors(
         ) as mock_resolve:
             mock_resolve.return_value = {}
             with patch.object(
-                login_service.mfa_coord, "_collect_mfa_challenges", new_callable=AsyncMock
+                login_service.mfa_coord,
+                "_collect_mfa_challenges",
+                new_callable=AsyncMock,
             ) as mock_collect:
                 mock_collect.return_value = []
 
@@ -338,9 +340,7 @@ async def test_finalize_login_success(
     real_user_out = UserOut(id=user.id, email="test@example.com", is_active=True)
 
     # Bypass UserOut validation by returning our pre-made object
-    with patch(
-        "app.schemas.schemas.UserOut.model_validate"
-    ) as mock_validate:
+    with patch("app.schemas.schemas.UserOut.model_validate") as mock_validate:
         mock_validate.return_value = real_user_out
 
         # Mock Redis session service (patch at source)
@@ -349,10 +349,22 @@ async def test_finalize_login_success(
             redis_instance.create_session = AsyncMock()
 
             # Execute
-            with patch("app.services.auth.login_session_manager.ensure_mfa_relationships_loaded", new_callable=AsyncMock, return_value=user):
-                with patch("app.services.auth_service.attach_pending_email", new_callable=AsyncMock, return_value=None):
+            with patch(
+                "app.services.auth.login_session_manager.ensure_mfa_relationships_loaded",
+                new_callable=AsyncMock,
+                return_value=user,
+            ):
+                with patch(
+                    "app.services.auth_service.attach_pending_email",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ):
                     result = await login_service.finalize_login(
-                        user, mock_request, response, mock_background_tasks, mfa_completed=True
+                        user,
+                        mock_request,
+                        response,
+                        mock_background_tasks,
+                        mfa_completed=True,
                     )
 
             # assert result.access_token == "token_string"  # Field removed

@@ -95,7 +95,12 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
 
 def test_is_user_in_quiet_hours_crosses_midnight():
     from app.models.users import UserPreferences
-    user = User(preferences=UserPreferences(dnd_enabled=True, dnd_start=dt.time(22, 0), dnd_end=dt.time(7, 0)))
+
+    user = User(
+        preferences=UserPreferences(
+            dnd_enabled=True, dnd_start=dt.time(22, 0), dnd_end=dt.time(7, 0)
+        )
+    )
     assert is_user_in_quiet_hours(user, now_time=dt.time(23, 15)) is True
     assert is_user_in_quiet_hours(user, now_time=dt.time(6, 45)) is True
     assert is_user_in_quiet_hours(user, now_time=dt.time(12, 0)) is False
@@ -103,6 +108,7 @@ def test_is_user_in_quiet_hours_crosses_midnight():
 
 def test_is_user_in_quiet_hours_uses_user_timezone(monkeypatch: pytest.MonkeyPatch):
     from app.models.users import UserPreferences
+
     user = User(
         preferences=UserPreferences(
             dnd_enabled=True,
@@ -130,7 +136,12 @@ def test_is_user_in_quiet_hours_uses_user_timezone(monkeypatch: pytest.MonkeyPat
 
 def test_is_user_in_quiet_hours_defaults_to_utc(monkeypatch: pytest.MonkeyPatch):
     from app.models.users import UserPreferences
-    user = User(preferences=UserPreferences(dnd_enabled=True, dnd_start=dt.time(1, 0), dnd_end=dt.time(5, 0)))
+
+    user = User(
+        preferences=UserPreferences(
+            dnd_enabled=True, dnd_start=dt.time(1, 0), dnd_end=dt.time(5, 0)
+        )
+    )
 
     base = dt.datetime(2024, 6, 1, 3, 0, tzinfo=dt.UTC)
 
@@ -153,8 +164,13 @@ def test_is_user_in_quiet_hours_defaults_to_utc(monkeypatch: pytest.MonkeyPatch)
 
 def test_prepare_push_payload_applies_silent_mode():
     from app.models.users import UserPreferences
+
     payload = {"title": "Test", "data": {"foo": "bar"}}
-    user = User(preferences=UserPreferences(dnd_enabled=True, dnd_start=dt.time(21, 0), dnd_end=dt.time(6, 0)))
+    user = User(
+        preferences=UserPreferences(
+            dnd_enabled=True, dnd_start=dt.time(21, 0), dnd_end=dt.time(6, 0)
+        )
+    )
 
     result = prepare_push_payload_for_user(payload, user, now_time=dt.time(22, 30))
 
@@ -170,8 +186,13 @@ def test_prepare_push_payload_applies_silent_mode():
 
 def test_prepare_push_payload_keeps_original_when_outside_interval():
     from app.models.users import UserPreferences
+
     payload = {"title": "Test outside", "data": {"foo": "bar"}}
-    user = User(preferences=UserPreferences(dnd_enabled=True, dnd_start=dt.time(22, 0), dnd_end=dt.time(7, 0)))
+    user = User(
+        preferences=UserPreferences(
+            dnd_enabled=True, dnd_start=dt.time(22, 0), dnd_end=dt.time(7, 0)
+        )
+    )
 
     result = prepare_push_payload_for_user(payload, user, now_time=dt.time(15, 0))
 
