@@ -37,8 +37,12 @@ async function main() {
       cwd: path.resolve(process.cwd()),
       shell: true,
     })
+    await run("wasm-pack", ["build", "wasm-sanitizer", "--target", "web"], {
+      cwd: path.resolve(process.cwd()),
+      shell: true,
+    })
   } catch (error) {
-    console.warn("WASM build failed. If this is a non-rust environment, ensure rust-crypto/pkg exists.")
+    console.warn("WASM build failed. If this is a non-rust environment, ensure rust-crypto/pkg and wasm-sanitizer/pkg exist.")
     console.warn(error.message)
   }
 

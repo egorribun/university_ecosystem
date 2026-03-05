@@ -33,10 +33,10 @@ jobs:
       run:
         working-directory: ${{ inputs.working-directory }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -54,7 +54,7 @@ jobs:
           CI: "true"
 
       - name: Upload vitest report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: frontend-vitest-report
           path: ${{ inputs.working-directory }}/vitest-report.xml
@@ -67,10 +67,10 @@ jobs:
       run:
         working-directory: ${{ inputs.working-directory }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -94,10 +94,10 @@ jobs:
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -118,7 +118,7 @@ jobs:
         run: npm run build
 
       - name: Upload production bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: frontend-dist
           path: ${{ inputs.working-directory }}/dist
@@ -135,17 +135,17 @@ jobs:
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
       - name: Download built dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: frontend-dist
           path: ${{ inputs.working-directory }}/dist
@@ -157,7 +157,7 @@ jobs:
         run: npm run lhci
 
       - name: Upload Lighthouse reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: always()
         with:
           name: lighthouse-reports

@@ -241,8 +241,12 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    # RZ-12 (audit 2026-03-05): Hard-cap at 100. The old default of 1000 could
+    # return multi-MB payloads bypassing the router-level MAX_PAGE_SIZE=200.
+    _NOTIFICATIONS_MAX_LIMIT: int = 100
+
     async def get_user_notifications(
-        self, user_id: uuid.UUID | str, limit: int = 1000
+        self, user_id: uuid.UUID | str, limit: int = 100
     ) -> list[models.Notification]:
         """Get user notifications with limit."""
         if isinstance(user_id, str):
@@ -251,17 +255,22 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
             except ValueError:
                 return []
 
+        capped = min(limit, self._NOTIFICATIONS_MAX_LIMIT)
         stmt = (
             select(models.Notification)
             .where(models.Notification.user_id == user_id)
-            .limit(limit)
+            .limit(capped)
             .order_by(models.Notification.created_at.desc())
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    # RZ-12 (audit 2026-03-05): Hard-cap at 50 — MFA challenges are short-lived
+    # objects; returning 1000 at once is never a valid business requirement.
+    _MFA_CHALLENGES_MAX_LIMIT: int = 50
+
     async def get_user_mfa_challenges(
-        self, user_id: uuid.UUID | str, limit: int = 1000
+        self, user_id: uuid.UUID | str, limit: int = 50
     ) -> list[models.MfaChallenge]:
         """Get user MFA challenges."""
         if isinstance(user_id, str):
@@ -270,10 +279,11 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
             except ValueError:
                 return []
 
+        capped = min(limit, self._MFA_CHALLENGES_MAX_LIMIT)
         stmt = (
             select(models.MfaChallenge)
             .where(models.MfaChallenge.user_id == user_id)
-            .limit(limit)
+            .limit(capped)
             .order_by(models.MfaChallenge.created_at.desc())
         )
         result = await self.db.execute(stmt)
@@ -502,10 +512,14 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
             )
         )
 
+    # RZ-12 (audit 2026-03-05): Hard-cap at 200. The old default of 2000 was an
+    # OOM risk — a single GDPR export call could return multi-MB payloads.
+    _ACCESS_LOGS_MAX_LIMIT: int = 200
+
     async def get_user_access_logs(
         self,
         user_id: uuid.UUID | str,
-        limit: int = 2000,
+        limit: int = 200,
         before_dt: datetime | None = None,
     ) -> list[models.DataAccessLog]:
         """Get access logs where user is actor or subject."""
@@ -524,7 +538,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         # So passing BOTH means logic AND.
         # The original code was:
         # export_access_logs(..., actor_user_id=user.id, subject_user_id=user.id, ...)
-        # This implies it wanted logs where user did something to themselves?
+        # This implies it wanted logs where user acted on themselves?
         # Or did it mean OR?
         # Typically "export my data" includes everything involves me.
         # Let's look at data_access.py content again from context.
@@ -543,11 +557,12 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         if before_dt:
             condition = (condition) & (models.DataAccessLog.created_at < before_dt)
 
+        capped = min(limit, self._ACCESS_LOGS_MAX_LIMIT)
         stmt = (
             select(models.DataAccessLog)
             .where(condition)
             .order_by(models.DataAccessLog.created_at.desc())
-            .limit(limit)
+            .limit(capped)
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())

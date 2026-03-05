@@ -254,19 +254,24 @@ def _on_checkout(
 ) -> None:
     """Handle connection checkout from pool."""
     _pool_metrics.record_checkout()
-    pool_health_logger.debug(
-        "Connection checkout: active=%d",
-        _pool_metrics.active_connections,
-    )
+    # PERF-6 (audit 2026-03-05): Guard behind isEnabledFor so the
+    # _pool_metrics.active_connections lock access is skipped at 1000+ RPS
+    # when DEBUG logging is disabled (the common production case).
+    if pool_health_logger.isEnabledFor(logging.DEBUG):
+        pool_health_logger.debug(
+            "Connection checkout: active=%d",
+            _pool_metrics.active_connections,
+        )
 
 
 def _on_checkin(dbapi_connection, connection_record) -> None:
     """Handle connection checkin to pool."""
     _pool_metrics.record_checkin()
-    pool_health_logger.debug(
-        "Connection checkin: active=%d",
-        _pool_metrics.active_connections,
-    )
+    if pool_health_logger.isEnabledFor(logging.DEBUG):
+        pool_health_logger.debug(
+            "Connection checkin: active=%d",
+            _pool_metrics.active_connections,
+        )
 
 
 def _on_invalidate(dbapi_connection, connection_record, exception) -> None:

@@ -86,6 +86,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-// TD-016 (audit 2026-03-04): Local file resolution for protobuf definitions.
-// PLAN: Migrate to native standard 'go work' workspace to natively integrate mono-repo modules.
-replace github.com/university-ecosystem/core/gen/go => ../../gen/go
+// MOD-3 (audit 2026-03-05): replace directive removed. Module resolution is now
+// handled by the repo-root go.work workspace, which is the correct Go idiom for
+// mono-repos. See /go.work for the full workspace configuration.

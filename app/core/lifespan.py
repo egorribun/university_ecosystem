@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import random
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI
@@ -22,28 +24,66 @@ from app.workers.outbox import OutboxWorker
 
 _logger = logging.getLogger(__name__)
 
-# TD-06 (audit 2026-03-04): pydantic-settings marks Settings immutable via
-# model_config = ConfigDict(frozen=True). Using object.__setattr__ to bypass
-# this constraint is undefined behaviour — it violates the class invariant and
-# breaks type-safety. Runtime overrides are tracked here instead.
-# Callers: replace `settings.semantic_search_enabled` reads with
-# `_RUNTIME_FLAGS.get('semantic_search_enabled', settings.semantic_search_enabled)`
-# where the value may change after startup.
+# TD-3 (audit 2026-03-05): Module-level stop event so _shutdown_subsystems can
+# interrupt the scheduler sleep instantly instead of waiting 3600 s to expire.
+_SCHEDULER_STOP: asyncio.Event = asyncio.Event()
+
+
+@dataclass
+class RuntimeFeatureOverrides:
+    """Typed container for post-startup feature flag overrides.
+
+    TD-1 (audit 2026-03-05): Replaces the raw dict[str, bool] pattern which
+    allowed arbitrary keys and provided no IDE auto-complete or type safety.
+    Callers use resolve() to merge the override with the pydantic Settings default.
+
+    Usage:
+        enabled = runtime_flags.resolve(
+            "semantic_search_enabled",
+            default=settings.semantic_search_enabled,
+        )
+    """
+
+    semantic_search_enabled: bool | None = field(default=None)
+
+    def resolve(self, flag: str, *, default: bool) -> bool:
+        """Return override value if set, otherwise the Settings default."""
+        override = getattr(self, flag, None)
+        return default if override is None else override
+
+    def disable(self, flag: str) -> None:
+        """Disable a feature flag at runtime (e.g. when a dependency is unavailable)."""
+        if not hasattr(self, flag):
+            raise AttributeError(f"Unknown runtime flag: {flag!r}")
+        object.__setattr__(self, flag, False)
+
+
+runtime_flags = RuntimeFeatureOverrides()
+# Back-compat alias used inside this module only — external callers should import
+# `runtime_flags` and use .resolve() / .disable().
 _RUNTIME_FLAGS: dict[str, bool] = {}
 
 
 async def _startup_database_and_di(app: FastAPI) -> None:
     """Stage 1: Core infrastructure bootstrapping."""
 
-    # TD-5: Warn at startup when SPOTIFY_TOKEN_SECRET is not independently configured.
-    # Falling back to SHA256(SECRET_KEY) couples Spotify token decryption to JWT signing;
-    # rotating SECRET_KEY will silently invalidate all stored Spotify tokens.
+    # RZ-5 (audit 2026-03-05): Fail fast in production when SPOTIFY_TOKEN_SECRET
+    # is not independently configured. Using SECRET_KEY as fallback couples Spotify
+    # token encryption to JWT signing — a routine SECRET_KEY rotation silently
+    # invalidates all stored Spotify OAuth tokens with no error surfaced to users.
     if not settings.spotify_token_secret:
+        if settings.environment not in {"development", "local", "testing"}:
+            raise RuntimeError(
+                "SPOTIFY_TOKEN_SECRET must be set to an independent Fernet key. "
+                "Falling back to SECRET_KEY couples Spotify token encryption to JWT "
+                "signing — rotating SECRET_KEY will silently invalidate all stored "
+                "Spotify OAuth tokens. Set SPOTIFY_TOKEN_SECRET in your .env file."
+            )
         _logger.warning(
             "SPOTIFY_TOKEN_SECRET is not set — Spotify token encryption falls back to "
             "a key derived from SECRET_KEY. Rotating SECRET_KEY will invalidate all "
             "stored Spotify OAuth tokens. Set SPOTIFY_TOKEN_SECRET to an independent "
-            "Fernet key to decouple the two secrets."
+            "Fernet key to decouple the two secrets. (dev/local/testing mode only)"
         )
 
 
@@ -165,7 +205,17 @@ async def _startup_background_workers(app: FastAPI) -> None:
 
 
 async def _periodic_scheduler_loop() -> None:
-    """Internal loop for fanned-out periodic cleanup tasks."""
+    """Internal loop for fanned-out periodic cleanup tasks.
+
+    Design notes (TD-3, audit 2026-03-05):
+    - Jitter: sleeps a random 0–60 s before the first run to spread load
+      across instances on rolling deploys (thundering herd mitigation).
+    - Deduplication: tracks the last UTC hour in which tasks actually ran;
+      if the event loop wakes within the same hour it skips immediately.
+    - Graceful shutdown: waits on _SCHEDULER_STOP so _shutdown_subsystems
+      can signal termination and the task exits in under 1 s instead of
+      blocking for up to 3600 s.
+    """
     from app.tasks.cleanups import (
         cleanup_dead_letter_jobs_task,
         cleanup_email_change_tokens_task,
@@ -178,8 +228,6 @@ async def _periodic_scheduler_loop() -> None:
         manage_partitions_task,
     )
 
-    await asyncio.sleep(60)
-
     async def _kick(task: Any) -> None:
         try:
             async with asyncio.timeout(300):
@@ -187,31 +235,54 @@ async def _periodic_scheduler_loop() -> None:
         except Exception:
             _logger.exception("Cleanup failed for %s", task.__class__.__name__)
 
-    while True:
+    async def _sleep_or_stop(seconds: float) -> bool:
+        """Sleep for *seconds* or return True immediately if stop is signalled."""
+        try:
+            await asyncio.wait_for(_SCHEDULER_STOP.wait(), timeout=seconds)
+            return True  # stop requested
+        except TimeoutError:
+            return False  # normal timeout — continue
+
+    # Jitter: spread first execution across 0–60 s
+    jitter = random.uniform(0, 60)
+    _logger.debug("Periodic scheduler: initial jitter %.1f s", jitter)
+    if await _sleep_or_stop(jitter):
+        return
+
+    _last_hour_ran: int = -1
+
+    while not _SCHEDULER_STOP.is_set():
         import datetime
 
-        cur_hour = datetime.datetime.now(datetime.UTC).hour
-        tasks = [
-            cleanup_stories_task,
-            cleanup_password_reset_tokens_task,
-            cleanup_email_change_tokens_task,
-            cleanup_mfa_challenges_task,
-        ]
+        now_utc = datetime.datetime.now(datetime.UTC)
+        cur_hour = now_utc.hour
 
-        if cur_hour % 6 == 0:
-            tasks.append(cleanup_sessions_task)
-        if cur_hour == 2:
-            tasks.extend(
-                [
-                    cleanup_notifications_task,
-                    cleanup_dead_letter_jobs_task,
-                    cleanup_privacy_artifacts_task,
-                    manage_partitions_task,
-                ]
-            )
+        # Deduplication: skip if already ran this hour (clock drift / fast restart guard)
+        if cur_hour != _last_hour_ran:
+            tasks = [
+                cleanup_stories_task,
+                cleanup_password_reset_tokens_task,
+                cleanup_email_change_tokens_task,
+                cleanup_mfa_challenges_task,
+            ]
 
-        await asyncio.gather(*(_kick(t) for t in tasks))
-        await asyncio.sleep(3600)
+            if cur_hour % 6 == 0:
+                tasks.append(cleanup_sessions_task)
+            if cur_hour == 2:
+                tasks.extend(
+                    [
+                        cleanup_notifications_task,
+                        cleanup_dead_letter_jobs_task,
+                        cleanup_privacy_artifacts_task,
+                        manage_partitions_task,
+                    ]
+                )
+
+            await asyncio.gather(*(_kick(t) for t in tasks))
+            _last_hour_ran = cur_hour
+
+        if await _sleep_or_stop(3600):
+            break
 
 
 @asynccontextmanager
@@ -256,6 +327,10 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     from app.core.feature_flags import feature_flags
     from app.core.rate_limit import stop_memory_cleanup_task
     from app.services.geolocation import shutdown_geolocation_service
+
+    # TD-3: Signal the periodic scheduler to stop before cancelling tasks,
+    # so it exits its current sleep immediately via asyncio.Event.
+    _SCHEDULER_STOP.set()
 
     # Cancel background noise first
     _bg_tasks = list(getattr(app.state, "background_tasks", set()))

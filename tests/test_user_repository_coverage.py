@@ -16,7 +16,7 @@ async def user_repo(db_session):
 
 @pytest.fixture
 async def test_user(db_session):
-    from app.models.users import UserProfile, UserPreferences
+    from app.models.users import UserPreferences, UserProfile
     user = models.User(
         email="test_repo@example.com",
         hashed_password="hashed_password",

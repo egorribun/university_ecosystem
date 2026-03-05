@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -12,7 +11,7 @@ from app.services.schedule_optimizer import (
 
 @pytest_asyncio.fixture
 async def optimizer_service():
-    service = ScheduleOptimizerService(base_url="http://test", grpc_addr="test:50051")
+    service = ScheduleOptimizerService()
     yield service
     await service.close()
 
@@ -20,49 +19,71 @@ async def optimizer_service():
 @pytest_asyncio.fixture
 async def sample_item():
     return ScheduleItemInternal(
-        weekday="mon",
-        start_time=datetime.now(UTC),
-        end_time=datetime.now(UTC),
-        parity="even",
+        id=1,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+        parity="both",
+        room="101A",
+        teacher="Dr. Smith",
     )
 
 
 @pytest.mark.asyncio
 async def test_detect_conflicts_success(optimizer_service, sample_item):
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        # Mock successful response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "conflicts": [sample_item.model_dump(mode="json")]
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+    # Same weekday, overlapping time, same parity = conflict
+    target = ScheduleItemInternal(
+        id=2,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 30, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 11, 00, tzinfo=UTC),
+        parity="both",
+    )
+    conflicts = await optimizer_service.detect_conflicts(target, [sample_item])
 
-        conflicts = await optimizer_service.detect_conflicts(sample_item, [sample_item])
-
-        assert len(conflicts) == 1
-        assert conflicts[0].weekday == sample_item.weekday
-
-
-@pytest.mark.asyncio
-async def test_detect_conflicts_failure(optimizer_service, sample_item):
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.side_effect = Exception("API Error")
-
-        conflicts = await optimizer_service.detect_conflicts(sample_item, [])
-
-        assert conflicts == []
+    assert len(conflicts) == 1
+    assert conflicts[0].weekday == sample_item.weekday
+    assert conflicts[0].id == 1
+    assert conflicts[0].room == "101A"
 
 
 @pytest.mark.asyncio
-async def test_batch_detect_conflicts(optimizer_service):
-    # Just verifies the fallback/log logic for now
-    result = await optimizer_service.batch_detect_conflicts([])
-    assert result == []
+async def test_detect_conflicts_no_match(optimizer_service, sample_item):
+    # Different weekday = no conflict
+    target = ScheduleItemInternal(
+        id=3,
+        weekday="Tuesday",
+        start_time=datetime(2026, 1, 1, 9, 30, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 11, 00, tzinfo=UTC),
+        parity="both",
+    )
+    conflicts = await optimizer_service.detect_conflicts(target, [sample_item])
+    assert len(conflicts) == 0
 
 
 @pytest.mark.asyncio
-async def test_find_optimal_slot_fallback(optimizer_service, sample_item):
-    # Verifies fallback when stubs unavailable or connection fails
-    result = await optimizer_service.find_optimal_slot(90, [sample_item])
-    assert result is None
+async def test_batch_detect_conflicts(optimizer_service, sample_item):
+    target = ScheduleItemInternal(
+        id=2,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 30, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 11, 00, tzinfo=UTC),
+        parity="both",
+        room="102B",
+    )
+    result = await optimizer_service.batch_detect_conflicts([sample_item, target])
+    assert len(result) == 1
+    a, b = result[0]
+    # Check that metadata was correctly restored
+    assert a.room == "101A" or b.room == "101A"
+    assert a.room == "102B" or b.room == "102B"
+
+
+@pytest.mark.asyncio
+async def test_find_optimal_slot_success(optimizer_service, sample_item):
+    result = await optimizer_service.find_optimal_slot(
+        90, [sample_item], preferred_weekdays=["Tuesday"]
+    )
+    assert result is not None
+    assert result.weekday == "Tuesday"
+    assert result.room == "Auto"

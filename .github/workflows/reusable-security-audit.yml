@@ -2,207 +2,207 @@
 name: Security Audit
 
 on:
-    workflow_call:
-        inputs:
-            python-version:
-                description: "Python version for pip-audit"
-                required: false
-                type: string
-                default: "3.13"
-            node-version:
-                description: "Node.js version for npm audit"
-                required: false
-                type: string
-                default: "22"
-            run-pip-audit:
-                description: "Run pip-audit for Python dependencies"
-                required: false
-                type: boolean
-                default: true
-            run-npm-audit:
-                description: "Run npm audit for Node.js dependencies"
-                required: false
-                type: boolean
-                default: true
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version for pip-audit"
+        required: false
+        type: string
+        default: "3.13"
+      node-version:
+        description: "Node.js version for npm audit"
+        required: false
+        type: string
+        default: "22"
+      run-pip-audit:
+        description: "Run pip-audit for Python dependencies"
+        required: false
+        type: boolean
+        default: true
+      run-npm-audit:
+        description: "Run npm audit for Node.js dependencies"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
-    pip-audit:
-        name: Python Dependency Audit
-        if: ${{ inputs.run-pip-audit }}
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v5
+  pip-audit:
+    name: Python Dependency Audit
+    if: ${{ inputs.run-pip-audit }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
-            - name: Setup Python
-              uses: actions/setup-python@v6
-              with:
-                  python-version: ${{ inputs.python-version }}
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
-            - name: Install uv
-              uses: astral-sh/setup-uv@v5
-              with:
-                  enable-cache: true
-                  cache-dependency-glob: "uv.lock"
+      - name: Install uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-            - name: Install dependencies
-              shell: pwsh
-              run: uv sync --frozen
+      - name: Install dependencies
+        shell: pwsh
+        run: uv sync --frozen
 
-            - name: Run pip-audit with allowlist
-              shell: pwsh
-              run: |
-                  uv run python scripts/audit_dependencies.py `
-                    --allowlist security/audit-allowlist.yaml `
-                    --pip
+      - name: Run pip-audit with allowlist
+        shell: pwsh
+        run: |
+          uv run python scripts/audit_dependencies.py `
+            --allowlist security/audit-allowlist.yaml `
+            --pip
 
-    npm-audit:
-        name: Node.js Dependency Audit
-        if: ${{ inputs.run-npm-audit }}
-        runs-on: ubuntu-latest
-        defaults:
-            run:
-                working-directory: frontend
-        steps:
-            - uses: actions/checkout@v5
+  npm-audit:
+    name: Node.js Dependency Audit
+    if: ${{ inputs.run-npm-audit }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v5
-              with:
-                  node-version: ${{ inputs.node-version }}
-                  cache: npm
-                  cache-dependency-path: frontend/package-lock.json
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-            - name: Setup Python
-              uses: actions/setup-python@v6
-              with:
-                  python-version: ${{ inputs.python-version }}
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
-            - name: Install uv
-              uses: astral-sh/setup-uv@v5
-              with:
-                  enable-cache: true
-                  cache-dependency-glob: "uv.lock"
+      - name: Install uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-            - name: Install dependencies
-              shell: pwsh
-              run: |
-                  npm ci
-                  Set-Location ..
-                  uv sync --frozen
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          Set-Location ..
+          uv sync --frozen
 
-            - name: Run npm audit with allowlist
-              shell: pwsh
-              run: |
-                  Set-Location ..
-                  uv run python scripts/audit_dependencies.py `
-                    --allowlist security/audit-allowlist.yaml `
-                    --npm frontend
+      - name: Run npm audit with allowlist
+        shell: pwsh
+        run: |
+          Set-Location ..
+          uv run python scripts/audit_dependencies.py `
+            --allowlist security/audit-allowlist.yaml `
+            --npm frontend
 
-    docker-security:
-        name: Container Security Scan
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-            security-events: write
-        steps:
-            - uses: actions/checkout@v5
+  docker-security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
-            - name: Run Trivy vulnerability scanner
-              uses: aquasecurity/trivy-action@0.33.1
-              with:
-                  scan-type: "fs"
-                  scan-ref: "."
-                  format: "sarif"
-                  output: "trivy-fs.sarif"
-                  severity: "CRITICAL,HIGH"
-                  exit-code: "1"
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@7aefa1c9aed02ae41531ec219164e64a0f087410 # v0.33.1
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-fs.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
 
-            - name: Upload Trivy scan results
-              uses: github/codeql-action/upload-sarif@v4
-              if: always()
-              continue-on-error: true
-              with:
-                  sarif_file: "trivy-fs.sarif"
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@7aefa1c9aed02ae41531ec219164e64a0f087410 # v4
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-fs.sarif"
 
-    # ── Go vulnerability scanning ──────────────────────────────────────────────
-    govulncheck:
-        name: Go Vulnerability Scan
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v5
+  # ── Go vulnerability scanning ──────────────────────────────────────────────
+  govulncheck:
+    name: Go Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
-            - uses: actions/setup-go@v5
-              with:
-                  go-version: "stable"
-                  cache: true
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "stable"
+          cache: true
 
-            - name: Install govulncheck
-              run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
-            - name: Run govulncheck on all Go modules
-              # Find every go.mod and run govulncheck in that directory.
-              # Exits non-zero if any known vulnerability is found.
-              run: |
-                  find . -name 'go.mod' -not -path '*/vendor/*' | while read modfile; do
-                    dir=$(dirname "$modfile")
-                    echo "=== govulncheck: $dir ==="
-                    (cd "$dir" && govulncheck ./...)
-                  done
+      - name: Run govulncheck on all Go modules
+        # Find every go.mod and run govulncheck in that directory.
+        # Exits non-zero if any known vulnerability is found.
+        run: |
+          find . -name 'go.mod' -not -path '*/vendor/*' | while read modfile; do
+            dir=$(dirname "$modfile")
+            echo "=== govulncheck: $dir ==="
+            (cd "$dir" && govulncheck ./...)
+          done
 
-    # ── SBOM generation ────────────────────────────────────────────────────────
-    sbom:
-        name: Generate SBOM
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v5
+  # ── SBOM generation ────────────────────────────────────────────────────────
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
-            - name: Install Syft
-              uses: anchore/sbom-action/download-syft@v0
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@17ae1740179002c89186b61233e0f892c3118b11 # v0
 
-            - name: Generate SPDX-JSON SBOM
-              # Scans the full repository (all languages/ecosystems Syft detects).
-              # SPDX-JSON is the most interoperable format for downstream tooling.
-              run: |
-                  syft . --output spdx-json=sbom.spdx.json
+      - name: Generate SPDX-JSON SBOM
+        # Scans the full repository (all languages/ecosystems Syft detects).
+        # SPDX-JSON is the most interoperable format for downstream tooling.
+        run: |
+          syft . --output spdx-json=sbom.spdx.json
 
-            - name: Upload SBOM artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: sbom-spdx-json
-                  path: sbom.spdx.json
-                  retention-days: 90
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sbom-spdx-json
+          path: sbom.spdx.json
+          retention-days: 90
 
-    # ── Semgrep SAST ───────────────────────────────────────────────────────────
-    # Uses the official semgrep/semgrep Docker image so no binary installation
-    # is required.  Runs diff-aware analysis on PRs and full-scan on main.
-    # Results are uploaded to GitHub Advanced Security as SARIF so findings
-    # appear in the Security → Code Scanning tab.
-    # SEMGREP_APP_TOKEN secret: Settings → Secrets → Actions → New repository secret.
-    # Without the token Semgrep falls back to OSS rules (still useful, no fail).
-    # (MOD-5: audit 2026-02-24)
-    semgrep:
-        name: Semgrep SAST
-        runs-on: ubuntu-latest
-        if: github.actor != 'dependabot[bot]'
-        permissions:
-            contents: read
-            security-events: write
-            actions: read
-        container:
-            image: semgrep/semgrep
-        steps:
-            - uses: actions/checkout@v5
+  # ── Semgrep SAST ───────────────────────────────────────────────────────────
+  # Uses the official semgrep/semgrep Docker image so no binary installation
+  # is required.  Runs diff-aware analysis on PRs and full-scan on main.
+  # Results are uploaded to GitHub Advanced Security as SARIF so findings
+  # appear in the Security → Code Scanning tab.
+  # SEMGREP_APP_TOKEN secret: Settings → Secrets → Actions → New repository secret.
+  # Without the token Semgrep falls back to OSS rules (still useful, no fail).
+  # (MOD-5: audit 2026-02-24)
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
 
-            - name: Run Semgrep SAST
-              # --sarif-output writes to a file instead of stdout so the exit
-              # code only reflects scan errors, not finding count.
-              run: semgrep ci --sarif --sarif-output=semgrep.sarif
-              env:
-                  SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+      - name: Run Semgrep SAST
+        # --sarif-output writes to a file instead of stdout so the exit
+        # code only reflects scan errors, not finding count.
+        run: semgrep ci --sarif --sarif-output=semgrep.sarif
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
-            - name: Upload SARIF to GitHub Advanced Security
-              uses: github/codeql-action/upload-sarif@v4
-              if: always()
-              continue-on-error: true
-              with:
-                  sarif_file: semgrep.sarif
+      - name: Upload SARIF to GitHub Advanced Security
+        uses: github/codeql-action/upload-sarif@7aefa1c9aed02ae41531ec219164e64a0f087410 # v4
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: semgrep.sarif

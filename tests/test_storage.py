@@ -2,12 +2,12 @@
 
 Coverage targets:
 - StaticFSStorage: save, delete, path normalization, relative path extraction
-- S3Storage: save, delete, key normalization, key extraction (mocked)
+- S3Storage: save, delete, key normalization, key extraction (async aioboto3 mock)
 - get_storage_backend: factory logic
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -85,16 +85,20 @@ def test_static_fs_extract_path(static_storage):
 
 @pytest.fixture
 def mock_s3_client():
-    """Create mock S3 client."""
-    client = MagicMock()
-    # Mock boto3 internals for base_url resolution fallback if needed
-    client.meta.endpoint_url = "https://s3.amazonaws.com"
+    """Async mock matching aioboto3's async client interface."""
+    client = AsyncMock()
+    client.put_object = AsyncMock(return_value={})
+    client.delete_object = AsyncMock(return_value={})
     return client
 
 
 @pytest.fixture
 def s3_storage(mock_s3_client):
-    """Create S3Storage with mock client."""
+    """S3Storage injected with an async mock client.
+
+    PERF-7 (audit 2026-03-05): S3Storage._build_aioboto3_client() returns an
+    async context manager when self._injected_client is set, so we pass it here.
+    """
     return S3Storage(
         bucket="test-bucket", client=mock_s3_client, base_url="https://cdn.example.com"
     )
@@ -102,7 +106,7 @@ def s3_storage(mock_s3_client):
 
 @pytest.mark.asyncio
 async def test_s3_save_file_success(s3_storage, mock_s3_client):
-    """Test saving a file to S3."""
+    """Test saving a file to S3 via async aioboto3 client."""
     data = b"s3 data"
     url = await s3_storage.save_file(
         "docs/file.pdf", data, content_type="application/pdf"
@@ -114,7 +118,7 @@ async def test_s3_save_file_success(s3_storage, mock_s3_client):
 
 @pytest.mark.asyncio
 async def test_s3_delete_file(s3_storage, mock_s3_client):
-    """Test deleting a file from S3."""
+    """Test deleting a file from S3 via async aioboto3 client."""
     await s3_storage.delete_file("https://cdn.example.com/images/old.png")
     mock_s3_client.delete_object.assert_called_once_with(
         Bucket="test-bucket", Key="images/old.png"
@@ -148,9 +152,12 @@ def test_get_storage_backend_static(tmp_path):
     assert backend.base_url == "/static"
 
 
-@patch("boto3.client")
-def test_get_storage_backend_s3(mock_boto_client):
-    """Test factory returns S3Storage when configured."""
+def test_get_storage_backend_s3():
+    """Test factory returns S3Storage when configured.
+
+    PERF-7 note: aioboto3 Session is lazy — no network call at construction
+    time, so no patch needed. The session is only used inside async with.
+    """
     mock_settings = MagicMock()
     mock_settings.storage_backend = "s3"
     mock_settings.storage_s3_bucket = "bucket"

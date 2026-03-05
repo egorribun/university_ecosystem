@@ -209,8 +209,13 @@ def _sanitize_path_input(path: str) -> str:
     Returns the cleaned relative path string.
     Raises ValueError if the path is malicious.
     """
-    # Step 1: URL-decode (apply twice to catch double-encoded sequences)
-    decoded = unquote(unquote(path))
+    # Step 1: URL-decode iteratively to catch multi-encoded sequences
+    decoded = path
+    while True:
+        prev = decoded
+        decoded = unquote(decoded)
+        if decoded == prev:
+            break
 
     # Step 2: Block null bytes in both raw and decoded forms
     if "\x00" in path or "\x00" in decoded:

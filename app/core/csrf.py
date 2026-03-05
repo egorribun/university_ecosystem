@@ -153,7 +153,11 @@ class CSRFMiddleware:
         path: str = request.url.path
 
         # WebSocket upgrade requests cannot carry CSRF tokens the same way.
-        if path.startswith("/ws"):
+        # RZ-4 (audit 2026-03-05): Use the HTTP Upgrade header (RFC 6455) rather
+        # than path prefix matching. path.startswith("/ws") is fragile — any route
+        # like /wsadmin or /wsreport would silently bypass CSRF protection.
+        # The Upgrade header is the canonical, protocol-level indicator of a WS handshake.
+        if request.headers.get("upgrade", "").lower() == "websocket":
             await self._app(scope, receive, send)
             return
 

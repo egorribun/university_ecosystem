@@ -131,7 +131,7 @@ def _encode_payload_with_etag(payload: Any) -> tuple[Any, str, str]:
     ).encode("utf-8")
     digest = hashlib.sha256(serialized).hexdigest()
     # MOD-006 (audit 2026-03-04): Use strong ETags for deterministic JSON
-    strong_header = f'"{format_etag(digest).strip('"')}"'
+    strong_header = f'"{format_etag(digest).strip(chr(34))}"'
     return encoded, digest, strong_header
 
 

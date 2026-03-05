@@ -1,0 +1,17 @@
+// go.work — mono-repo workspace (Go 1.22+)
+//
+// MOD-3 (audit 2026-03-05): Replaces the fragile `replace` directive in
+// services/gateway/go.mod that pointed to ../../gen/go via a relative filesystem
+// path. `go work` natively integrates all three modules so `go build ./...` and
+// `go test ./...` work from the root without any environment-specific path hacks.
+//
+// To add a new module: `go work use ./path/to/module`
+// To regenerate: `go work sync`
+
+go 1.26.0
+
+use (
+	./gen/go
+	./services/gateway
+	./services/ws-hub
+)

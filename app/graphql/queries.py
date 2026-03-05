@@ -80,30 +80,20 @@ class Query:
         offset: int = 0,
     ) -> NewsConnection:
         session = info.context.session
-
-        # Count total
-        count_result = await session.execute(
-            select(func.count()).select_from(
-                select(1)
-                .select_from(__import__("app.models", fromlist=["News"]).News)
-                .subquery()
-            )
-        )
-        total = count_result.scalar() or 0
-
-        # Fetch news with author
         from app.models import News
 
-        result = await session.execute(
-            select(News)
-            .options(selectinload(News.author))
-            .order_by(News.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
+        stmt = select(News).order_by(News.created_at.desc())
+
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_result = await session.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        # Fetch news without selectinload (DataLoaders will handle the author)
+        result = await session.execute(stmt.offset(offset).limit(limit))
         news_list = result.scalars().all()
 
-        items = [_news_to_type(n, getattr(n, "author", None)) for n in news_list]
+        items = [_news_to_type(n) for n in news_list]
 
         return NewsConnection(
             items=items,
@@ -149,12 +139,12 @@ class Query:
 
         session = info.context.session
 
-        # Build query
-        query = select(Event).options(selectinload(Event.organizer))
+        # Build query (removed selectinload to avoid Overfetching)
+        query = select(Event)
         if active_only:
             query = query.where(Event.is_active == True)  # noqa: E712
 
-        # Count
+        # Count without subquery materialization
         count_query = select(func.count()).select_from(query.subquery())
         count_result = await session.execute(count_query)
         total = count_result.scalar() or 0
@@ -165,7 +155,7 @@ class Query:
         )
         events_list = result.scalars().all()
 
-        items = [_event_to_type(e, getattr(e, "organizer", None)) for e in events_list]
+        items = [_event_to_type(e) for e in events_list]
 
         return EventsConnection(
             items=items,

@@ -57,8 +57,11 @@ from app.services.audit_service import (
     SecureAuditService,
     get_secure_audit_service,
 )
+from app.services.auth.credential_validator import CredentialValidator
 from app.services.auth.lockout import LockoutService
 from app.services.auth.login_service import LoginService
+from app.services.auth.login_session_manager import LoginSessionManager
+from app.services.auth.mfa_coordinator import MfaCoordinator
 from app.services.auth.redis_session import RedisSessionService
 from app.services.auth_service import AuthService
 from app.services.chat.attachment_service import ChatAttachmentService
@@ -183,15 +186,16 @@ class AppProvider(Provider):
         return SuspiciousActivityDetector()
 
     @provide(scope=Scope.APP)
-    def fraud_detection_service(self) -> FraudDetectionService:
+    async def fraud_detection_service(self) -> AsyncIterator[FraudDetectionService]:
         """Redis Streams–backed cross-worker fraud event store.
 
         Durable and multi-worker — events survive pod restarts and are visible
         to all uvicorn workers. (MOD-4: audit 2026-02-24)
+
+        PERF-3 (audit 2026-03-05): Converted to async generator so Dishka drives
+        full pool lifecycle. The previous sync provider created the Redis client
+        but never closed it on container teardown, leaking file descriptors.
         """
-        # Use a local import to avoid adding redis-py to the top-level DI
-        # module import graph — it would create a hard startup dependency even
-        # when running in environments without Redis.
         import redis.asyncio as aioredis
 
         from app.core.config import settings
@@ -204,8 +208,10 @@ class AppProvider(Provider):
             # every coroutine opens its own socket, exhausting Redis maxclients.
             max_connections=20,
         )
-
-        return FraudDetectionService(redis_client=client)
+        try:
+            yield FraudDetectionService(redis_client=client)
+        finally:
+            await client.aclose()
 
     # ── REQUEST-scoped services ───────────────────────────────────────────────
 
@@ -486,38 +492,68 @@ class AppProvider(Provider):
 
         return await get_geolocation_service_instance()
 
+    # ── Login sub-providers (TD-2, audit 2026-03-05) ─────────────────────────
+    # Decomposed from the original 9-param god-factory into three cohesive
+    # sub-providers, each ≤ 5 parameters (Rule of Three). The assembly is
+    # transparent — Dishka wires the sub-objects automatically.
+
     @provide(scope=Scope.REQUEST)
-    def login_service(
+    def login_session_manager(
         self,
-        db: AsyncDatabaseSession,
-        auth_repo: AuthRepository,
-        user_repo: UserRepository,
-        profile_service: UserProfileService,
         session_service: SessionService,
-        lockout_service: LockoutService,
-        audit: AuditService,
         redis_session: RedisSessionService,
         geolocation_service: GeolocationService,
-    ) -> LoginService:
-        from app.services.auth.credential_validator import CredentialValidator
-        from app.services.auth.login_session_manager import LoginSessionManager
-        from app.services.auth.mfa_coordinator import MfaCoordinator
+        audit: AuditService,
+    ) -> LoginSessionManager:
+        from app.services.auth.login_session_manager import (
+            LoginSessionManager as _LSM,
+        )
 
-        session_manager = LoginSessionManager(
+        return _LSM(
             session_service=session_service,
             redis_session_service=redis_session,
             geolocation_service=geolocation_service,
             audit=audit,
         )
-        validator = CredentialValidator(
+
+    @provide(scope=Scope.REQUEST)
+    def credential_validator(
+        self,
+        user_repo: UserRepository,
+        profile_service: UserProfileService,
+        lockout_service: LockoutService,
+        audit: AuditService,
+        session_manager: LoginSessionManager,
+    ) -> CredentialValidator:
+        from app.services.auth.credential_validator import (
+            CredentialValidator as _CV,
+        )
+
+        return _CV(
             user_repo=user_repo,
             profile_service=profile_service,
             lockout_service=lockout_service,
             audit=audit,
             session_manager=session_manager,
         )
-        mfa_coord = MfaCoordinator(auth_repo=auth_repo)
 
+    @provide(scope=Scope.REQUEST)
+    def mfa_coordinator(
+        self,
+        auth_repo: AuthRepository,
+    ) -> MfaCoordinator:
+        from app.services.auth.mfa_coordinator import MfaCoordinator as _MC
+
+        return _MC(auth_repo=auth_repo)
+
+    @provide(scope=Scope.REQUEST)
+    def login_service(
+        self,
+        db: AsyncDatabaseSession,
+        validator: CredentialValidator,
+        mfa_coord: MfaCoordinator,
+        session_manager: LoginSessionManager,
+    ) -> LoginService:
         return LoginService(
             validator=validator,
             mfa_coord=mfa_coord,

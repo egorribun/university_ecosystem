@@ -60,7 +60,8 @@ async def test_logout_success_bearer(async_client, user_factory, db_session):
     assert session.revoked_at is None
 
     # Execute: Logout using Bearer token
-    async_client.cookies.clear()
+    if "access_token_v2" in async_client.cookies:
+        async_client.cookies.delete("access_token_v2")
     headers = {"Authorization": f"Bearer {token}"}
     response = await async_client.post("/auth/logout", headers=headers)
 
@@ -70,10 +71,8 @@ async def test_logout_success_bearer(async_client, user_factory, db_session):
     assert session.revoked_at is not None
     assert session.signing_key is not None
 
-
-async def test_logout_no_token(async_client):
     # Execute: Logout without being logged in
-    async_client.cookies.clear()
+    async_client.cookies.delete("access_token_v2")
     response = await async_client.post("/auth/logout")
 
     # Assert: Should still return 200 for idempotency/privacy

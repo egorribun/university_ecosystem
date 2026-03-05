@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.di_provider import AppProvider, create_dishka_container
+from app.core.di_provider import create_dishka_container
 from app.workers.outbox import OutboxWorker
 
 

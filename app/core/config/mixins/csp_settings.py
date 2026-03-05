@@ -29,6 +29,11 @@ class CspSettingsMixin:
     security_csp_report_only: bool | None = None
     security_csp_report_uri: str = ""
     security_hsts_enabled: bool = True
+    # RZ-15 (audit 2026-03-05): When True, Python ASGI middleware suppresses HSTS
+    # because the upstream reverse-proxy (Caddy/nginx) already emits it, preventing
+    # duplicate Strict-Transport-Security headers.
+    # Set SECURITY_HSTS_BEHIND_PROXY=true in your production .env.
+    security_hsts_behind_proxy: bool = False
     security_hsts_max_age: int = 31536000
     security_hsts_include_subdomains: bool = True
     security_hsts_preload: bool = True
@@ -175,6 +180,11 @@ class CspSettingsMixin:
         if not self.strict_security_headers_enabled:
             return False
         if not self.security_hsts_enabled:
+            return False
+        # RZ-15 (audit 2026-03-05): When running behind a trusted proxy (Caddy, nginx)
+        # that already sends Strict-Transport-Security, suppress it from the ASGI layer
+        # to avoid duplicate headers. Set SECURITY_HSTS_BEHIND_PROXY=true in production.
+        if getattr(self, "security_hsts_behind_proxy", False):
             return False
         return getattr(self, "app_base_url_clean", "").startswith("https://")
 
