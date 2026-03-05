@@ -27,10 +27,10 @@ class DummyS3Client:
         self.delete_calls: list[dict[str, object]] = []
         self.meta = types.SimpleNamespace(endpoint_url="https://s3.mock.local")
 
-    def put_object(self, **kwargs):
+    async def put_object(self, **kwargs):
         self.put_calls.append(kwargs)
 
-    def delete_object(self, **kwargs):
+    async def delete_object(self, **kwargs):
         self.delete_calls.append(kwargs)
 
 

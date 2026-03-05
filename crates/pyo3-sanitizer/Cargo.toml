@@ -13,8 +13,8 @@ crate-type = ["cdylib"]
 [dependencies]
 # PyO3 extension-module feature = embed Python only at link time, not startup.
 # This is the correct feature for native Python .so extensions built by maturin.
-pyo3 = { version = "0.23", features = ["extension-module", "abi3-py311"] }
-ammonia = "4"
+pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py311"] }
+ammonia = "4.1.2"
 
 [profile.release]
 # LTO produces significantly smaller binaries for cdylib targets at the cost of

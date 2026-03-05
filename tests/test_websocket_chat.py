@@ -202,7 +202,7 @@ class TestConnectionManager:
         async def _audience(_user_id: uuid.UUID) -> set[uuid.UUID]:
             return {uuid.uuid4()}
 
-        monkeypatch.setattr("app.api.websocket._get_presence_audience", _audience)
+        monkeypatch.setattr("app.api.ws.presence._get_presence_audience", _audience)
         monkeypatch.setattr(
             settings, "presence_ping_min_interval_seconds", 60, raising=False
         )
@@ -241,7 +241,7 @@ class TestWebSocketAuth:
     @pytest.mark.asyncio
     async def test_get_user_from_token_valid(self, db_session, user_factory):
         """Test token validation returns user."""
-        from app.api.websocket import get_user_from_token
+        from app.api.ws.auth import get_user_from_token
 
         user = await user_factory(full_name="Test User")
         token, _ = await create_access_token(str(user.id), db=db_session)
@@ -282,7 +282,7 @@ class TestMessageSerialization:
     @pytest.mark.asyncio
     async def test_serialize_message(self, db_session, user_factory):
         """Test message serialization includes all fields."""
-        from app.api.websocket import serialize_message
+        from app.api.ws.serializers import serialize_message
 
         user = await user_factory(full_name="Test User")
 

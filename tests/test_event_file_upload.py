@@ -651,8 +651,14 @@ async def test_delete_event_removes_all_files(
     for path in stored_paths:
         assert path.exists()
 
+    from unittest.mock import AsyncMock
+
+    mock_checker = type(
+        "MockChecker", (), {"check_permission": AsyncMock(return_value=True)}
+    )()
+
     result = await events.delete_event(
-        event.id, request=None, events=event_service, user=admin
+        event.id, request=None, events=event_service, user=admin, checker=mock_checker
     )
 
     assert result == {"ok": True}

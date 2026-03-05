@@ -99,9 +99,9 @@ async def test_increment_events_list_version_redis():
 
 def test_encode_payload_with_etag():
     payload = {"id": 1, "name": "Event"}
-    encoded, digest, weak_header = _encode_payload_with_etag(payload)
+    encoded, digest, strong_header = _encode_payload_with_etag(payload)
 
     assert encoded == payload
     assert isinstance(digest, str)
-    assert weak_header.startswith("W/")
-    assert digest in weak_header
+    assert strong_header.startswith('"')
+    assert digest in strong_header

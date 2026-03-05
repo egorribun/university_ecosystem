@@ -43,13 +43,13 @@ jobs:
     permissions:
       contents: write # Required to push pre-commit autofix commits back to the branch
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
         with:
           fetch-depth: 0
 
       - name: Run pre-commit (apply fixes)
         id: precommit_apply
-        uses: pre-commit/action@v3.0.1
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         with:
           extra_args: --all-files
         continue-on-error: true
@@ -106,6 +106,18 @@ jobs:
             exit 1
           fi
           echo "Found $count legacy imports."
+      - name: Enforce Dishka Migration Deadline (TD-004)
+        # TD-4 (audit 2026-03-05): Fail if new files appear in app/deps/ to prevent
+        # regression. The baseline at audit time is 12 files. New features MUST use
+        # Dishka (FromDishka[]) instead of the legacy Depends() container.
+        run: |
+          BASELINE=12
+          COUNT=$(find app/deps -name "*.py" ! -name "__init__.py" | wc -l)
+          if [ "$COUNT" -gt "$BASELINE" ]; then
+            echo "::error::New Depends() files detected in app/deps/ ($COUNT > baseline $BASELINE). Add new services as Dishka providers in app/core/di_provider.py instead."
+            exit 1
+          fi
+          echo "OK: $COUNT legacy deps files (baseline: $BASELINE)"
       - name: Validate docker compose configuration
         shell: pwsh
         run: |

@@ -230,6 +230,19 @@ async def scan_for_malware(
     allow_on_unavailable = getattr(
         settings, "event_file_scanner_allow_on_unavailable", False
     )
+    # RZ-13 (audit 2026-03-05): Forbid the allow_on_unavailable escape hatch in
+    # production. If EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE=true leaks from staging
+    # into production, a brief ClamAV blip would silently accept all file uploads
+    # without scanning. Fail hard at startup rather than silently at request time.
+    if (
+        allow_on_unavailable
+        and getattr(settings, "environment", "production") == "production"
+    ):
+        raise RuntimeError(
+            "EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE must not be True in production. "
+            "When set, a ClamAV outage silently accepts file uploads without malware "
+            "scanning. Unset this flag before deploying to production."
+        )
     try:
         async with _clamav_circuit_breaker:
             if backend == "clamd":

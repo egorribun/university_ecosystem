@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Base
-FROM node:22.13.1-alpine3.21 AS base
+FROM node:22.22.0-alpine3.21 AS base
 WORKDIR /app
 
 # Stage 2: Dependencies
@@ -20,7 +20,7 @@ COPY frontend ./
 RUN npm run build
 
 # Stage 4: Runtime
-FROM nginxinc/nginx-unprivileged:1.27.3-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.28.2-alpine AS runtime
 
 # Copy custom nginx config
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf

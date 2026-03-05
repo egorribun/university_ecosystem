@@ -42,10 +42,10 @@ type cacheEntry struct {
 
 // JWTMiddleware validates JWT tokens (HS256 and RS256).
 type JWTMiddleware struct {
-	secret      []byte
-	rsaPublicKey *rsa.PublicKey  // non-nil when RS256/JWKS is configured
-	redis       *redis.Client
-	l1cache     *expirable.LRU[string, cacheEntry]
+	secret       []byte
+	rsaPublicKey *rsa.PublicKey // non-nil when RS256/JWKS is configured
+	redis        *redis.Client
+	l1cache      *expirable.LRU[string, cacheEntry]
 }
 
 var (
@@ -69,10 +69,14 @@ var (
 )
 
 // Claims represents JWT claims
+// RZ-10 (audit 2026-03-05): Email removed from claims. Including email in the
+// JWT body means it is base64-decoded by every proxy, CDN edge, and log aggregator
+// that handles the token — a GDPR Article 25 (Privacy by Design) violation.
+// The gateway only needs UserID, Role and IsActive for routing; if email is
+// required in a handler, fetch it from the user-service cache via UserID.
 type Claims struct {
 	jwt.RegisteredClaims
 	UserID   string `json:"sub"`
-	Email    string `json:"email,omitempty"`
 	Role     string `json:"role,omitempty"`
 	IsActive bool   `json:"is_active,omitempty"`
 }
@@ -366,7 +370,11 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 			return
 		}
 
-		if !roleSet[userRole.(string)] {
+		// TD-10 (audit 2026-03-05): Use ok-guard form of type assertion.
+		// Without it, a non-string value in the Gin context (e.g., nil or int
+		// set by another middleware) causes a goroutine panic → HTTP 500.
+		role, ok := userRole.(string)
+		if !ok || !roleSet[role] {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": "insufficient permissions",
 			})

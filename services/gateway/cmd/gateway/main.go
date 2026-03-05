@@ -116,7 +116,9 @@ func main() {
 			_ = r.Body.Close()
 
 			var data map[string]interface{}
-			if err := json.Unmarshal(body, &data); err != nil {
+			decoder := json.NewDecoder(bytes.NewReader(body))
+			decoder.UseNumber() // RZ-3 Fix (audit 2026-03-05): Prevent precision loss on 64-bit IDs!
+			if err := decoder.Decode(&data); err != nil {
 				// Restore body and return if not JSON
 				r.Body = io.NopCloser(bytes.NewBuffer(body))
 				return nil

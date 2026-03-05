@@ -106,7 +106,10 @@ async def test_send_message_blocks_infected_file(
         )
 
     monkeypatch.setattr(files, "scan_for_malware", infected_scan)
-    monkeypatch.setattr("app.api.websocket.notify_new_message", lambda *_, **__: None)
+    monkeypatch.setattr(
+        "app.services.chat.notification_service.notify_new_message",
+        lambda *_, **__: None,
+    )
 
     repo = ChatRepository(db_session)
     attachments = ChatAttachmentService()
@@ -161,7 +164,9 @@ async def test_send_message_generates_public_urls(
     async def _noop_notify(*_, **__):
         pass
 
-    monkeypatch.setattr("app.api.websocket.notify_new_message", _noop_notify)
+    monkeypatch.setattr(
+        "app.services.chat.notification_service.notify_new_message", _noop_notify
+    )
 
     repo = ChatRepository(db_session)
     attachments = ChatAttachmentService()

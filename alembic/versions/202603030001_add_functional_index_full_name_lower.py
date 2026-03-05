@@ -23,7 +23,6 @@ Revises: See down_revision below
 from __future__ import annotations
 
 from alembic import op
-from sqlalchemy.engine.reflection import Inspector
 
 
 # revision identifiers, used by Alembic.

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlparse
@@ -99,7 +101,12 @@ class StaticFSStorage(StorageBackend):
 
 
 class S3Storage(StorageBackend):
-    """Store files in an S3-compatible object storage."""
+    """Store files in an S3-compatible object storage.
+
+    PERF-7 (audit 2026-03-05): Uses aioboto3 (async-native boto3 wrapper, v15.5.0)
+    instead of synchronous boto3 + asyncio.to_thread. Native async removes the
+    thread-pool overhead on every single S3 operation.
+    """
 
     def __init__(
         self,
@@ -116,32 +123,22 @@ class S3Storage(StorageBackend):
         if not bucket:
             raise ValueError("Bucket name must not be empty")
         self.bucket = bucket
-        if client is None:
-            try:
-                import boto3
-            except (
-                ImportError
-            ) as exc:  # pragma: no cover - import error handled in tests
-                raise RuntimeError("boto3 is required for S3 storage") from exc
-            client = boto3.client(
-                "s3",
-                region_name=region,
-                aws_access_key_id=access_key_id or None,
-                aws_secret_access_key=secret_access_key or None,
-                endpoint_url=endpoint_url or None,
-            )
-        self.client = client
-        self._extra_put_object_args = extra_put_object_args or {}
-        resolved_base_url = base_url.rstrip("/") if base_url else None
+        # client parameter kept for test injection (allows passing a mock async client).
+        self._injected_client = client
+        self._region = region
+        self._access_key_id = access_key_id
+        self._secret_access_key = secret_access_key
+        self._endpoint_url = endpoint_url
+        # Derive the public base URL used in returned file URLs.
+        resolved_base_url = (base_url or "").rstrip("/")
         if not resolved_base_url:
-            endpoint = getattr(getattr(self.client, "meta", None), "endpoint_url", "")
-            endpoint = (endpoint or "").rstrip("/")
-            if endpoint:
-                resolved_base_url = f"{endpoint}/{bucket}"
+            if endpoint_url:
+                resolved_base_url = f"{endpoint_url.rstrip('/')}/{bucket}"
             else:
                 resolved_base_url = f"https://{bucket}.s3.amazonaws.com"
         self.base_url = resolved_base_url
         self._base_url_parsed = urlparse(self.base_url)
+        self._extra_put_object_args: dict[str, str] = extra_put_object_args or {}
 
     def _normalize_key(self, relative_path: str) -> str:
         cleaned = relative_path.strip().strip("/")
@@ -161,19 +158,7 @@ class S3Storage(StorageBackend):
         cache_control: str | None = None,
     ) -> str:
         key = self._normalize_key(relative_path)
-        await asyncio.to_thread(
-            self._put_object, key, data, content_type, cache_control
-        )
-        return f"{self.base_url}/{key}"
-
-    def _put_object(
-        self,
-        key: str,
-        data: bytes,
-        content_type: str | None,
-        cache_control: str | None = None,
-    ) -> None:
-        args = {
+        args: dict = {
             "Bucket": self.bucket,
             "Key": key,
             "Body": data,
@@ -184,10 +169,38 @@ class S3Storage(StorageBackend):
         if cache_control:
             args["CacheControl"] = cache_control
         try:
-            self.client.put_object(**args)
-        except Exception:  # pragma: no cover - depends on boto3 internals
+            async with self._build_aioboto3_client() as s3:
+                await s3.put_object(**args)
+        except Exception:
             logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
             raise
+        return f"{self.base_url}/{key}"
+
+    @asynccontextmanager
+    async def _build_aioboto3_client(self) -> AsyncIterator:
+        """Yield an async S3 client for the duration of a single operation.
+
+        Two modes:
+        - Test injection: if ``_injected_client`` was passed to the constructor
+          it is yielded directly (no real AWS connection).
+        - Production: opens an aioboto3 session and client as async context
+          managers, ensuring the HTTP connection is closed after every call.
+        """
+        if self._injected_client is not None:
+            yield self._injected_client
+            return
+
+        import aioboto3
+
+        session = aioboto3.Session()
+        async with session.client(
+            "s3",
+            region_name=self._region or None,
+            aws_access_key_id=self._access_key_id or None,
+            aws_secret_access_key=self._secret_access_key or None,
+            endpoint_url=self._endpoint_url or None,
+        ) as client:
+            yield client
 
     def _extract_key(self, file_url: str) -> str | None:
         if not file_url:
@@ -217,12 +230,10 @@ class S3Storage(StorageBackend):
         key = self._extract_key(file_url)
         if not key:
             return
-        await asyncio.to_thread(self._delete_object, key)
-
-    def _delete_object(self, key: str) -> None:
         try:
-            self.client.delete_object(Bucket=self.bucket, Key=key)
-        except Exception:  # pragma: no cover - depends on boto3 internals
+            async with self._build_aioboto3_client() as s3:
+                await s3.delete_object(Bucket=self.bucket, Key=key)
+        except Exception:  # pragma: no cover - depends on aioboto3 internals
             logger.warning(
                 "Failed to delete %s from bucket %s", key, self.bucket, exc_info=True
             )

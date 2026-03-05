@@ -4,8 +4,8 @@
 FROM python:3.12-slim-bookworm AS builder
 
 # Pin uv to an exact version for reproducible builds.
-# Use 0.10.6 for proven stability in current scan environments.
-COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uv/bin/uv
+# Use 0.10.8 for proven stability in current scan environments.
+COPY --from=ghcr.io/astral-sh/uv:0.10.8 /uv /uv/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

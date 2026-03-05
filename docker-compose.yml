@@ -17,7 +17,7 @@ services:
       # Caddy internal config (auto-save, optional).
       - caddy_config:/config
     networks:
-      - internal
+      - service_net
       - public
     depends_on:
       backend:
@@ -55,9 +55,9 @@ services:
       ENABLE_METRICS_ENDPOINT: "false"
       METRICS_ALLOWLIST: 127.0.0.1,::1
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
-      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
+      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@valkey:6379/1
       RATE_LIMIT_HEADERS_ENABLED: "true"
       NATS_URL: nats://${NATS_AUTH_TOKEN:-dev-nats-token}@nats:4222
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
@@ -80,7 +80,7 @@ services:
       #       volumes:
       #         - ./app:/app/app
     depends_on:
-      redis:
+      valkey:
         condition: service_healthy
     # SECURITY: port 8000 is NOT exposed to the host. All traffic enters via
     # the Caddy edge proxy which handles TLS and HTTP/3 termination.
@@ -89,7 +89,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      - internal
+      - service_net
+      - db_net
+      - cache_net
+      - event_net
     healthcheck:
       test:
         [
@@ -156,9 +159,9 @@ services:
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
-      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
+      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@valkey:6379/1
       NATS_URL: nats://${NATS_AUTH_TOKEN:-dev-nats-token}@nats:4222
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
       # Push notifications
@@ -171,13 +174,16 @@ services:
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
     depends_on:
-      redis:
+      valkey:
         condition: service_healthy
     restart: unless-stopped
     ports:
       - "9102:9101"
     networks:
-      - internal
+      - db_net
+      - cache_net
+      - event_net
+      - service_net
     healthcheck:
       test:
         [
@@ -213,7 +219,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - internal
+      - db_net
     ports:
       - "127.0.0.1:5432:5432"
     deploy:
@@ -222,11 +228,11 @@ services:
           cpus: "0.50"
           memory: 1G
 
-  redis:
-    image: redis:7.4.2-alpine
+  valkey:
+    image: valkey/valkey:8-alpine
     command:
       [
-        "redis-server",
+        "valkey-server",
         "--requirepass",
         "${REDIS_PASSWORD}",
         "--save",
@@ -237,12 +243,12 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a $REDIS_PASSWORD ping"]
+      test: ["CMD-SHELL", "valkey-cli -a $REDIS_PASSWORD ping"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - internal
+      - cache_net
     deploy:
       resources:
         limits:
@@ -268,7 +274,7 @@ services:
         condition: service_healthy
     restart: on-failure
     networks:
-      - internal
+      - db_net
     deploy:
       resources:
         limits:
@@ -291,7 +297,7 @@ services:
       IMGPROXY_REPORT_DOWNLOADING_ERRORS: "false"
     restart: unless-stopped
     networks:
-      - internal
+      - service_net
     deploy:
       resources:
         limits:
@@ -305,7 +311,9 @@ services:
     image: temporalio/server:1.27.2
     container_name: temporal
     ports:
-      - "7233:7233"
+      # RZ-8 (audit 2026-03-05): Bind to localhost only — Temporal gRPC has no
+      # built-in auth. External access via SSH tunnel: ssh -L 7233:localhost:7233 host
+      - "127.0.0.1:7233:7233"
     environment:
       - DB=postgresql
       - DB_PORT=5432
@@ -317,7 +325,8 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - internal
+      - db_net
+      - service_net
     healthcheck:
       test:
         [
@@ -354,7 +363,7 @@ services:
       temporal:
         condition: service_healthy
     networks:
-      - internal
+      - service_net
     deploy:
       resources:
         limits:
@@ -376,7 +385,7 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - internal
+      - service_net
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -399,7 +408,8 @@ services:
     environment:
       SPICEDB_GRPC_PRESHARED_KEY: ${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required - set in .env file}
     networks:
-      - internal
+      - db_net
+      - service_net
     depends_on:
       postgres:
         condition: service_healthy
@@ -414,28 +424,17 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  rust-optimizer:
-    build:
-      context: .
-      dockerfile: services/rust-optimizer/Dockerfile
-    ports:
-      - "8090:8080"
-    networks:
-      - internal
-      - public
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 256M
+
 
   pyroscope:
     image: grafana/pyroscope:1.7.1
     container_name: pyroscope
     ports:
-      - "4040:4040"
+      # RZ-9 (audit 2026-03-05): Bind to localhost only — Pyroscope CPU flame graphs
+      # expose critical operational intelligence. Access via SSH tunnel for remote.
+      - "127.0.0.1:4040:4040"
     networks:
-      - internal
+      - service_net
     deploy:
       resources:
         limits:
@@ -444,7 +443,13 @@ services:
 
 networks:
   public:
-  internal:
+  service_net:
+    internal: true
+  db_net:
+    internal: true
+  cache_net:
+    internal: true
+  event_net:
     internal: true
 
 volumes:

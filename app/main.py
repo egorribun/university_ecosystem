@@ -9,7 +9,6 @@ import logging
 import os
 
 from fastapi import FastAPI, HTTPException
-
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
