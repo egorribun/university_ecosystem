@@ -15,7 +15,13 @@ import json
 import logging
 import uuid
 from collections import OrderedDict
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from app.core.protocols import AsyncDatabaseSession
+    from app.schemas.chat import PresenceStatus
 
 from redis.asyncio import Redis
 
@@ -158,9 +164,8 @@ class PresencePubSub:
         )
 
     async def _listen_for_updates(self) -> None:
-        # Imported lazily so this module does not create a circular import
-        # with connection_manager.py.
-        from app.api.websocket import _handle_presence_pubsub
+        # Use the locally moved _handle_presence_pubsub
+        # (manager is imported lazily inside it)
 
         if not self._redis:
             return
@@ -187,4 +192,92 @@ class PresencePubSub:
             logger.error("Presence Pub/Sub listener error: %s", exc)
 
 
+async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
+    """Handle a presence update received from Redis pub/sub.
+
+    RZ-07 (audit 2026-03-04): Validate the user_id from the payload before
+    broadcasting.  A misconfigured or compromised Redis channel could inject
+    arbitrary user_ids, spoofing presence for any user's contacts.
+    Only forward updates for users who already have an active connection on
+    this pod.
+    """
+    from datetime import datetime
+
+    from app.api.ws.connection_manager import manager
+
+    try:
+        raw_user_id = payload.get("user_id")
+        if not raw_user_id:
+            return
+        user_id = uuid.UUID(str(raw_user_id))
+    except (ValueError, AttributeError):
+        logger.warning("presence pubsub: invalid user_id in payload")
+        return
+
+    if not manager.is_online(user_id):
+        return
+
+    active = bool(payload.get("active", False))
+    last_seen_raw = payload.get("last_seen")
+    try:
+        last_seen = datetime.fromisoformat(last_seen_raw) if last_seen_raw else None
+    except ValueError:
+        last_seen = None
+
+    await manager.broadcast_presence(
+        user_id,
+        active,
+        last_seen,
+        source=PRESENCE_SOURCE_PUBSUB,
+        force=True,
+        publish=False,
+    )
+
+
 presence_pubsub = PresencePubSub()
+
+
+async def build_presence_map(
+    user_ids: Iterable[uuid.UUID],
+    db: AsyncDatabaseSession | None = None,
+) -> dict[uuid.UUID, PresenceStatus]:
+    """Return presence info for a set of users.
+
+    Accepts an optional open DB session (request-scoped callers) or opens
+    its own session (background tasks / non-request contexts).
+    """
+    # Lazy import avoids a circular dependency with connection_manager.
+    from app.api.ws.connection_manager import manager
+
+    ids = {uid for uid in user_ids if uid is not None}
+    if not ids:
+        return {}
+
+    from app.repositories.session_repository import SessionRepository
+    from app.schemas.chat import PresenceStatus
+
+    if db:
+        repo = SessionRepository(db)
+        last_seen_map = await repo.get_last_seen_map(list(ids))
+    else:
+        async with async_session() as new_session:
+            repo = SessionRepository(new_session)
+            last_seen_map = await repo.get_last_seen_map(list(ids))
+
+    return {
+        uid: PresenceStatus(
+            active=manager.is_online(uid),
+            last_seen_at=last_seen_map.get(uid),
+        )
+        for uid in ids
+    }
+
+
+async def start_presence_pubsub() -> None:
+    """Initialize the presence pub/sub bridge."""
+    await presence_pubsub.initialize()
+
+
+async def stop_presence_pubsub() -> None:
+    """Shut down the presence pub/sub bridge."""
+    await presence_pubsub.shutdown()

@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions.domain import EntityNotFound
-from app.core.localization import normalize_locale
+from app.core.localization import normalize_locale, translate
 from app.models.models import Event
 from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
@@ -39,7 +39,7 @@ class EventService:
         self.repo = repo
         self.vector_service = vector_service
 
-    async def get_event_by_id(self, event_id: uuid.UUID | int) -> Event | None:
+    async def get_event_by_id(self, event_id: uuid.UUID | int) -> EventDTO | None:
         """Fetch a single event by primary key.
 
         Returns None when the event does not exist.  API controllers MUST use
@@ -168,9 +168,10 @@ class EventService:
             if is_registered and attendance:
                 try:
                     my_qr_token = attendance_tokens.issue_token(attendance)
-                except Exception:
+                except Exception as exc:
                     # If token issue fails (missing secret etc),
                     # just ignore for list view
+                    logger.debug("MFA token issuance failed for attendee: %s", exc)  # nosec B110
                     pass
 
             output.append(
@@ -232,7 +233,7 @@ class EventService:
                 raise ValueError(translate("validation.events.end_after_start"))
 
         updated_event = await self.repo.update(event_id, updates)
-        assert updated_event is not None
+        assert updated_event is not None  # nosec B101
 
         await self.repo.commit()
         return updated_event
@@ -283,7 +284,7 @@ class EventService:
                 exist = await self.repo.update_attendance(
                     data.event_id, user_id, updates
                 )
-                assert exist is not None
+                assert exist is not None  # nosec B101
                 await self.repo.commit()
 
             # Helper logic to set token attribute for response
@@ -308,7 +309,9 @@ class EventService:
                 event = await self.repo.get(data.event_id)
                 if not event:
                     raise EntityNotFound("Event", data.event_id) from exc
-                raise ValueError("attendance_registration_failed") from exc
+                raise ValueError(
+                    translate("errors.events.attendance_registration_failed")
+                ) from exc
 
             # Existing found after race
             retry_updates: dict[str, Any] = {}

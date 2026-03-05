@@ -26,7 +26,7 @@ class AttendanceTokenExpired(AttendanceTokenError):
     """Raised when the token has expired."""
 
 
-TOKEN_PURPOSE = "event_attendance"
+TOKEN_PURPOSE = "event_attendance"  # nosec B105
 
 
 def _server_secret() -> bytes:

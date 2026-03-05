@@ -7,7 +7,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@runtime_checkable
 class StorageBackend(Protocol):
     """Protocol implemented by storage backends."""
 
@@ -31,6 +32,12 @@ class StorageBackend(Protocol):
 
     async def delete_file(self, file_url: str) -> None:
         """Delete file referenced by ``file_url`` if it exists."""
+
+    async def exists(self, file_url_or_path: str) -> bool:
+        """Check if file exists."""
+
+    async def read_file(self, file_url_or_path: str) -> bytes:
+        """Read file content as bytes."""
 
 
 class StaticFSStorage(StorageBackend):
@@ -98,6 +105,24 @@ class StaticFSStorage(StorageBackend):
         if relative is None:
             return
         await asyncio.to_thread(self._unlink_ignore_missing, self.base_dir / relative)
+
+    async def exists(self, file_url_or_path: str) -> bool:
+        relative = self._extract_relative_path(file_url_or_path)
+        if relative is None:
+            # Fallback for raw paths
+            relative = Path(file_url_or_path.lstrip("/"))
+        target = self.base_dir / relative
+        return await asyncio.to_thread(target.exists)
+
+    async def read_file(self, file_url_or_path: str) -> bytes:
+        relative = self._extract_relative_path(file_url_or_path)
+        if relative is None:
+            # Fallback for raw paths
+            relative = Path(file_url_or_path.lstrip("/"))
+        target = self.base_dir / relative
+        if not await asyncio.to_thread(target.exists):
+            raise FileNotFoundError(f"File not found: {file_url_or_path}")
+        return await asyncio.to_thread(target.read_bytes)
 
 
 class S3Storage(StorageBackend):
@@ -237,6 +262,30 @@ class S3Storage(StorageBackend):
             logger.warning(
                 "Failed to delete %s from bucket %s", key, self.bucket, exc_info=True
             )
+
+    async def exists(self, file_url_or_path: str) -> bool:
+        key = self._extract_key(file_url_or_path)
+        if not key:
+            key = file_url_or_path.lstrip("/")
+        try:
+            async with self._build_aioboto3_client() as s3:
+                await s3.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except Exception:
+            return False
+
+    async def read_file(self, file_url_or_path: str) -> bytes:
+        key = self._extract_key(file_url_or_path)
+        if not key:
+            key = file_url_or_path.lstrip("/")
+        try:
+            async with self._build_aioboto3_client() as s3:
+                response = await s3.get_object(Bucket=self.bucket, Key=key)
+                async with response["Body"] as stream:
+                    return cast(bytes, await stream.read())
+        except Exception as exc:
+            logger.error("Failed to read %s from bucket %s: %s", key, self.bucket, exc)
+            raise FileNotFoundError(f"S3 file not found: {file_url_or_path}") from exc
 
 
 def get_storage_backend(settings: Settings) -> StorageBackend:

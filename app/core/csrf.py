@@ -186,6 +186,9 @@ class CSRFMiddleware:
             return
 
         # ── Core CSRF validation ──────────────────────────────────────────────
+        cookie_token = request.cookies.get(CSRF_COOKIE_NAME, "")
+        header_token = request.headers.get(CSRF_HEADER_NAME, "")
+
         if method in _MUTATION_METHODS:
             if not cookie_token or not header_token:
                 _logger.warning(
@@ -210,14 +213,12 @@ class CSRFMiddleware:
                 return
 
         # ── Inject CSRF cookie into response (no body buffering) ─────────────
-        existing_cookie: str = request.cookies.get(CSRF_COOKIE_NAME, "")
-
         async def send_with_csrf_cookie(message: Message) -> None:
             """Inject Set-Cookie into http.response.start without buffering body."""
             if message["type"] == "http.response.start":
                 should_rotate: bool = getattr(request.state, _ROTATE_CSRF_KEY, False)
                 # If no existing cookie is present, or the endpoint signaled rotation, inject a new token
-                if not existing_cookie or should_rotate:
+                if not cookie_token or should_rotate:
                     new_token = secrets.token_urlsafe(_TOKEN_BYTES)
                     set_cookie_header = self._build_set_cookie_header(new_token)
                     headers: list[tuple[bytes, bytes]] = list(

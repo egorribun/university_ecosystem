@@ -19,13 +19,11 @@ from app.api.validation import (
     raise_forbidden,
     raise_validation_error,
 )
-from app.api.websocket import (
+from app.api.ws.connection_manager import manager as ws_manager
+from app.api.ws.presence import (
     build_presence_map,
     invalidate_chat_participants_cache,
     invalidate_presence_audience_cache,
-)
-from app.api.websocket import (
-    manager as ws_manager,
 )
 from app.core.config import settings
 from app.core.exceptions import BusinessRuleViolation
@@ -66,7 +64,7 @@ class ChatCommandService:
 
         participant = await self.repository.get_user(participant_id)
         ensure_exists(participant, "users", locale)
-        assert participant is not None
+        assert participant is not None  # nosec B101
 
         from app.deps.cache import get_cache_client
 
@@ -124,7 +122,7 @@ class ChatCommandService:
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None
+        assert chat is not None  # nosec B101
 
         # Check participation (TD-4 security audit)
         is_participant = await self.repository.check_participant(chat_id, user.id)
@@ -207,7 +205,7 @@ class ChatCommandService:
         """Mark all messages in a chat as read by the user."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None
+        assert chat is not None  # nosec B101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -222,7 +220,7 @@ class ChatCommandService:
         """Delete all messages in a chat (but keep the chat)."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None
+        assert chat is not None  # nosec B101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -255,7 +253,7 @@ class ChatCommandService:
         """Permanently delete a chat."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None
+        assert chat is not None  # nosec B101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:

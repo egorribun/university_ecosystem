@@ -1,4 +1,4 @@
-import subprocess
+import subprocess  # nosec B404
 from typing import Annotated
 
 import typer
@@ -30,7 +30,7 @@ def run(
         cmd.append("-x")
 
     typer.echo(f"Running command: {' '.join(cmd)}")
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd)  # nosec B603
 
     if result.returncode != 0:
         typer.secho(
@@ -47,7 +47,7 @@ def smoke():
     # This could run a specific set of tests or a separate script
     typer.echo("Running smoke tests...")
     cmd = ["pytest", "tests/smoke"]
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd)  # nosec B603
 
     if result.returncode != 0:
         typer.secho("Smoke tests failed!", fg=typer.colors.RED)

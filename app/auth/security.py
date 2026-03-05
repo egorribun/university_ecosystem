@@ -115,7 +115,8 @@ def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
         from app.core.metrics import record_legacy_bcrypt_verification
 
         record_legacy_bcrypt_verification()
-    except Exception:
+    except Exception as exc:
+        _logger.debug("Legacy bcrypt metrics recording failed: %s", exc)  # nosec B110
         pass  # Metrics must never break auth
     try:
         password_bytes = plain_password.encode("utf-8")[:LEGACY_BCRYPT_MAX_BYTES]

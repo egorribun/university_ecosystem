@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -29,6 +30,7 @@ from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
 
+_logger = logging.getLogger(__name__)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
@@ -76,8 +78,9 @@ async def get_current_user(
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
         # Redis unavailable: fall through to DB revoked_at check below
+        _logger.debug("Redis revoked-jti check failed: %s", exc)  # nosec B110
         pass
 
     # 3. Redis Session Check (Cache-Aside)
@@ -141,7 +144,7 @@ async def get_current_user(
     # 4. Security Lifecycle Validation
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
-    assert session is not None
+    assert session is not None  # nosec B101
 
     security_service = AuthSecurityService(db, locale)
     security_service.validate_session_expiry(session)

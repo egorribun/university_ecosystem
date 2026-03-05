@@ -12,7 +12,11 @@ BACKEND_ROOT = PROJECT_ROOT
 @pytest.fixture(autouse=True)
 def restore_config_module():
     """Restores the config module to its original state after each test."""
+    original_env = dict(os.environ)
     yield
+    os.environ.clear()
+    os.environ.update(original_env)
+
     from app.core import config as config_module
     from app.core.config import base as base_module
 

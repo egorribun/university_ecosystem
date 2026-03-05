@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 from fastapi import (
     APIRouter,
@@ -229,7 +229,7 @@ async def all_events(
                 _set_language_headers(not_modified, locale)
                 return not_modified
             response.headers["ETag"] = etag_header
-            return cached.payload
+            return cast(dict[str, Any], cached.payload)
 
     payload = await events.get_events(
         user_id=user.id,
@@ -254,7 +254,7 @@ async def all_events(
             _set_language_headers(not_modified, locale)
             return not_modified
         response.headers["ETag"] = etag_header
-        return encoded
+        return cast(dict[str, Any], encoded)
 
     encoded, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
@@ -264,7 +264,7 @@ async def all_events(
         _set_language_headers(not_modified, locale)
         return not_modified
     response.headers["ETag"] = weak_header
-    return encoded
+    return cast(dict[str, Any], encoded)
 
 
 # NOTE: SQLite drops timezone information for "datetime" columns. To keep the
@@ -300,7 +300,7 @@ async def attend(
         raise_forbidden(locale, "errors.events.registration_forbidden")
     event = await db.get(models.Event, data.event_id)
     ensure_exists(event, "events", locale)
-    assert event is not None
+    assert event is not None  # nosec B101
     event_ends_at = _to_utc(event.ends_at)
     if not event.is_active or event_ends_at <= datetime.now(UTC):
         raise_conflict("errors.events.registration_closed", locale)
@@ -363,7 +363,7 @@ async def upload_event_file(
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, id)
     ensure_exists(event, "events", locale)
-    assert event is not None
+    assert event is not None  # nosec B101
     require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_attachment(file, "event_files", f"event_{id}", locale=locale)
@@ -431,7 +431,7 @@ async def update_event(
     locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
     ensure_exists(q, "events", locale)
-    assert q is not None
+    assert q is not None  # nosec B101
 
     # ReBAC: Migrated from require_owner_or_admin
     if not await checker.check_permission(
@@ -540,14 +540,14 @@ async def delete_event_file(
     ef = await db.get(models.EventFile, file_id)
     if not ef:
         raise_not_found("events", locale, exact_key="errors.events.file_not_found")
-    assert ef is not None  # narrowing for type checkers
+    assert ef is not None  # nosec B101 # narrowing for type checkers
     event = await db.get(models.Event, ef.event_id)
     # RZ-004 (audit 2026-03-04): explicitly guard against a concurrently deleted
     # parent event. Without this check `event.created_by` raises AttributeError
     # which propagated as an unhandled 500, while the file deletion still
     # proceeded — an authorization bypass.
     ensure_exists(event, "events", locale)
-    assert event is not None  # narrowing for type checkers
+    assert event is not None  # nosec B101 # narrowing for type checkers
     require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
     file_url = ef.file_url
     await db.delete(ef)

@@ -41,7 +41,7 @@ class SecurityEvent(StrEnum):
     AUTH_LOGOUT = "auth.logout"
     AUTH_LOGOUT_REVOKED = "auth.logout.revoked"
     AUTH_REGISTER = "auth.register"
-    AUTH_TOKEN_REFRESH = "auth.token.refresh"
+    AUTH_TOKEN_REFRESH = "auth.token.refresh"  # nosec B105
 
     # MFA events
     MFA_ENROLL_START = "mfa.enroll.start"
@@ -51,9 +51,9 @@ class SecurityEvent(StrEnum):
     MFA_DISABLE = "mfa.disable"
 
     # Password events
-    PASSWORD_CHANGE = "password.change"
-    PASSWORD_RESET_REQUEST = "password.reset.request"
-    PASSWORD_RESET_COMPLETE = "password.reset.complete"
+    PASSWORD_CHANGE = "password.change"  # nosec B105
+    PASSWORD_RESET_REQUEST = "password.reset.request"  # nosec B105
+    PASSWORD_RESET_COMPLETE = "password.reset.complete"  # nosec B105
 
     # User events
     USER_PROFILE_UPDATE = "users.profile.update"

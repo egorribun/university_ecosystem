@@ -6,6 +6,7 @@ Repository Pattern to separate data access from API layer.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
@@ -14,6 +15,8 @@ from app.schemas.dtos.analytics import HealthStatsDTO
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
+
+_logger = logging.getLogger(__name__)
 
 
 class HealthRepository:
@@ -74,18 +77,18 @@ class HealthRepository:
             row = result.fetchone()
             if row is not None and row[0] >= 0:
                 return int(row[0])
-        except Exception:
+        except Exception as exc:
+            _logger.debug("Fast table count check failed: %s", exc)  # nosec B110
             pass
 
         # Fallback to actual count
         try:
-            from sqlalchemy.sql import quoted_name
+            from sqlalchemy import func, select
+            from sqlalchemy.sql import table
 
-            # Use parameterized table name safely
-            safe_table_name = quoted_name(table_name, quote=True)
-            result = await self._connection.execute(
-                text(f"SELECT COUNT(*) FROM {safe_table_name}")
-            )
+            # Use table/func for safe count expression
+            query = select(func.count()).select_from(table(table_name))
+            result = await self._connection.execute(query)
             row = result.fetchone()
             return int(row[0]) if row is not None else 0
         except Exception:
@@ -118,7 +121,8 @@ class HealthRepository:
                         row[3] / (row[3] + row[4]) if (row[3] + row[4]) > 0 else 1.0
                     ),
                 )
-        except Exception:
+        except Exception as exc:
+            _logger.debug("Database connection stats probe failed: %s", exc)  # nosec B110
             pass
         return HealthStatsDTO(
             active_connections=0, commits=0, rollbacks=0, cache_hit_ratio=1.0

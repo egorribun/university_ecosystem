@@ -138,7 +138,7 @@ class NewsService:
         old_image_url = news.image_url
 
         updated_news = await self.repo.update(news_id, updates)
-        assert updated_news is not None
+        assert updated_news is not None  # nosec B101
 
         await self.repo.commit()
 

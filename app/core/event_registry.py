@@ -72,7 +72,7 @@ def reconstruct_event(event_type: str, payload: dict) -> DomainEvent:
 
     # Only pass keys that the dataclass actually declares — drop unknown keys
     # rather than injecting arbitrary attributes (RZ-010).
-    valid_fields = {field.name for field in dataclasses.fields(cls)}  # type: ignore[arg-type]
+    valid_fields = {field.name for field in dataclasses.fields(cls)}
     filtered = {key: value for key, value in payload.items() if key in valid_fields}
 
     if unknown := set(payload) - valid_fields:
@@ -82,4 +82,4 @@ def reconstruct_event(event_type: str, payload: dict) -> DomainEvent:
             unknown,
         )
 
-    return cls(**filtered)  # type: ignore[return-value]
+    return cls(**filtered)

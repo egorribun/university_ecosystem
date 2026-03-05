@@ -22,9 +22,14 @@ if not hasattr(bcrypt, "__about__"):
 
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
-os.environ["DATABASE_URL"] = os.environ.get(
-    "DATABASE_URL", "sqlite+aiosqlite:///./test.db"
-)
+worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+if worker_id:
+    # Use unique database per worker for parallel testing
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./test_{worker_id}.db"
+else:
+    os.environ["DATABASE_URL"] = os.environ.get(
+        "DATABASE_URL", "sqlite+aiosqlite:///./test.db"
+    )
 os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"
 os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"

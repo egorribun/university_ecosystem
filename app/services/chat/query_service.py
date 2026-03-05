@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from app.schemas.chat import ChatResponse, ChatsListOut, MessagesListOut
 
 from app.api.validation import ensure_exists, raise_forbidden
-from app.api.websocket import build_presence_map
+from app.api.ws.presence import build_presence_map
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
     ChatResponse,
@@ -117,7 +117,7 @@ class ChatQueryService:
         """Get details for a specific chat."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None
+        assert chat is not None  # nosec B101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -154,7 +154,7 @@ class ChatQueryService:
         """Fetch messages for a chat."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None
+        assert chat is not None  # nosec B101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:

@@ -10,7 +10,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Request, WebSocket
 
@@ -287,4 +287,4 @@ def get_connection_manager(request: Request) -> ConnectionManager:
     cm = getattr(request.app.state, "connection_manager", None)
     if cm is None:
         return manager
-    return cm  # type: ignore[return-value]
+    return cast(ConnectionManager, cm)

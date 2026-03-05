@@ -43,8 +43,10 @@ async def check_infra() -> None:
     try:
         cache = get_cache()
         if isinstance(cache, RedisCache):
+            from typing import Any, cast
+
             client = await cache._get_client()
-            await client.ping()
+            await cast(Any, client.ping())
             table.add_row(COMPONENT_REDIS, STATUS_ONLINE, "Ping successful")
         else:
             table.add_row(
