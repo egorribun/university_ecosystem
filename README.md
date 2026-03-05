@@ -1,137 +1,135 @@
-# University Ecosystem Platform
+<div align="center">
 
-Unified platform for university life that delivers schedules, news, stories, events, campus map links, user profiles, push notifications, and Spotify integration. The platform has evolved into a microservices architecture to ensure scalability and high performance.
+![University Ecosystem Hero](file:///C:/Users/egorribun/.gemini/antigravity/brain/d2119911-ae71-4b26-b7d7-89b3b0c71c38/university_ecosystem_hero_1772751378288.png)
 
-## Prerequisites
+# 🎓 University Ecosystem Platform
+### *The Ultimate Digital Hub for Modern Campus Life*
 
-- **Python 3.11+** (3.13 recommended) with `pip` and `uv` (optional but recommended)
-- **Node.js 20.19+** with `npm`
-- **Go 1.24+** (for gateway and WebSocket services)
-- **Rust** (for optimization service)
-- **Docker & Docker Compose** (required for the full stack)
-- **PostgreSQL 17** (with `pgvector` extension)
-- **Redis 7** (for caching, rate limiting, and task queues)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.135+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
+[![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
+[![Rust](https://img.shields.io/badge/Rust-LATEST-black.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 
-## Microservices Architecture
+---
 
-The platform consists of several specialized services:
+**University Ecosystem** is a high-performance, microservices-oriented platform designed to centralize and enhance university experiences. From real-time scheduling and interactive campus maps to secure file processing and instant notifications, we provide the digital infrastructure for the modern student.
 
-- **Core API (app/)**: FastAPI-based backend handling business logic, users, and events.
-- **Frontend (frontend/)**: Vite + React single-page app with Framer Motion animations.
-- **Gateway (services/gateway)**: Go-based entry point for the ecosystem.
-- **WS Hub (services/ws-hub)**: High-performance WebSocket server for real-time chat and updates (Go).
-- **File Processor (services/file-processor)**: Dedicated service for handling file uploads and metadata (Go).
-- **Rust Optimizer (services/rust-optimizer)**: Computational intensive tasks and optimizations (Rust).
+</div>
 
-### Infrastructure Components
-- **Temporal**: Workflow orchestration for reliable background tasks.
-- **SpiceDB**: Fine-grained relationship-based access control (ReBAC).
-- **MinIO**: High-performance S3-compatible object storage.
-- **imgproxy**: On-the-fly image resizing and optimization.
-- **NATS**: Lightweight and high-performance messaging system.
+## ✨ Key Features
 
-## Repository Layout
+- 📅 **Dynamic Scheduling** – Real-time academic calendars and event tracking.
+- 💬 **Real-time Hub** – High-speed WebSockets for chat and instant updates.
+- 🔒 **Enterprise-Grade Auth** – Relationship-based access control (ReBAC) via SpiceDB.
+- 🖼️ **Media Mastery** – On-the-fly image optimization and secure file processing.
+- ⚡ **Rust-Powered** – Computationally intensive tasks optimized with Rust.
+- 🔔 **Push Notifications** – Cross-platform alerts for critical university updates.
+- 🗺️ **Campus Navigation** – Integrated links and maps for seamless movement.
 
+## 🏗️ Architecture Overview
+
+The platform is built on a decentralized, polyglot microservices architecture designed for extreme scalability and resilience.
+
+```mermaid
+graph TD
+    Client["📱 Modern Frontend (React 19)"]
+    Gateway["🚀 Go API Gateway"]
+
+    subgraph "Core Ecosystem"
+        Backend["🐍 Core API (FastAPI)"]
+        WSHub["📡 WS Hub (Go/NATS)"]
+        FileProc["📁 File Processor (Go)"]
+        Optimizer["🦀 Rust Optimizer"]
+    end
+
+    subgraph "Infrastructure Layer"
+        Postgres[("🐘 PostgreSQL 17 + pgvector")]
+        Redis[("⚡ Redis 7 (Cache/Queue)")]
+        MinIO[("📦 MinIO (S3 Storage)")]
+        Temporal["⏳ Temporal (Workflows)"]
+        SpiceDB["🔐 SpiceDB (ReBAC)"]
+    end
+
+    Client --> Gateway
+    Gateway --> Backend
+    Gateway --> WSHub
+    Gateway --> FileProc
+
+    Backend --> Postgres
+    Backend --> Redis
+    Backend --> SpiceDB
+    Backend --> Temporal
+
+    WSHub --> Redis
+    FileProc --> MinIO
+    Optimizer --- Backend
 ```
-.
-├── app/                  # FastAPI application, services, and workers
-├── frontend/             # Vite + React single-page app
-├── services/             # Microservices (Go, Rust)
-│   ├── gateway/          # Go API Gateway
-│   ├── file-processor/   # Go service for file handling
-│   ├── ws-hub/           # Go WebSocket hub
-│   └── rust-optimizer/   # Rust optimization service
-├── alembic/              # Database migrations
-├── charts/               # Helm charts for Kubernetes deployment
-├── docs/                 # Detailed documentation and guides
-├── infrastructure/       # Global infrastructure config (Caddyfile, etc.)
-├── k8s/                  # Kubernetes manifests
-├── scripts/              # Maintenance and automation scripts
-├── tests/                # Global and integration test suites
-├── docker-compose.yml    # Standard development stack
-├── Makefile / justfile   # Unified task management
-└── pyproject.toml        # Python project configuration
-```
 
-## Getting Started
+## 🛠️ Technology Stack
 
-### 1. Configure Environment
+| Layer | Technologies |
+| :--- | :--- |
+| **Frontend** | React 19, Vite, Framer Motion, Tailwind CSS, TanStack Query |
+| **Backend** | FastAPI, Go 1.24, Rust, Dishka (DI), SQLAlchemy |
+| **Real-time** | Go, NATS, WebSockets |
+| **Security** | SpiceDB (AuthZ), JWT, WebAuthn, Argon2 |
+| **Data** | PostgreSQL 17, pgvector, Redis, Elasticsearch |
+| **Infrastructure** | Docker, Temporal, MinIO, imgproxy, OpenTelemetry |
 
-Copy the template and replace placeholder secrets:
+## 🚀 Getting Started
 
+### 1. Environment Configuration
+Copy the template and configure your secrets:
 ```bash
 cp .env.example .env
 ```
 
-Ensure critical values like `DATABASE_URL`, `SECRET_KEY`, and `SPICEDB_PRESHARED_KEY` are correctly set.
-
-### 2. Run the Full Stack (Docker)
-
-The recommended way to start the ecosystem is using Docker Compose:
-
+### 2. Launch the Ecosystem
+We use Docker Compose for a seamless full-stack experience:
 ```bash
 docker compose up --build
 ```
 
-This starts the entire suite, including core services, infrastructure (PostgreSQL, Redis, MinIO, Temporal, SpiceDB), and the frontend.
+### 🌐 Service Endpoints
+- **Frontend UI**: [http://localhost:8081](http://localhost:8081)
+- **API Documentation**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
+- **Metrics Dashboard**: [http://localhost:8000/metrics](http://localhost:8000/metrics)
+- **WS Hub**: [ws://localhost:8082](ws://localhost:8082)
 
-- **Frontend**: http://localhost:8081
-- **Backend API**: http://localhost:8000
-- **Gateway**: http://localhost:8080 (optional mapping)
-- **WebSocket Hub**: http://localhost:8082
-- **Metrics**: http://localhost:8000/metrics
+## 🧪 Development Workflow
 
-### 3. Database Migrations
-
-Migrations are automatically handled by the `migrations` service in Docker Compose. To run them manually:
-
+### **Backend (Python)**
 ```bash
-docker compose run --rm backend alembic upgrade head
+uv sync            # Fast dependency management
+uv run pytest      # Run the test pyramid
+make lint          # Maintain code quality
 ```
 
-## Platform Capabilities
-
-- **Real-time Communication**: WebSocket-based chat powered by Go `ws-hub` and NATS.
-- **Advanced AuthZ**: Relationship-based access control via SpiceDB integration.
-- **Reliable Workflows**: Complex background processes orchestrated by Temporal.
-- **Media Optimization**: Automatic WebP conversion and resizing via `imgproxy`.
-- **Telemetry**: Full-stack observability with OpenTelemetry and Sentry integration.
-- **AI-Ready**: Vector search capabilities supported by `pgvector`.
-
-## Development and Testing
-
-### Backend & Python
-```bash
-# Install dependencies using uv (fast)
-uv sync
-
-# Run tests
-uv run pytest
-
-# Linting
-make lint
-```
-
-### Go Services
-```bash
-cd services/ws-hub
-go test ./...
-go build -o main .
-```
-
-### Frontend
+### **Frontend**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## Documentation
-
-- [Deployment Guide](docs/DEPLOY.md)
-- [Localization Guidelines](docs/LOCALIZATION.md)
-- [Observability Setup](docs/observability/)
-- [Contributing](docs/CONTRIBUTING.md)
+### **Go Microservices**
+```bash
+cd services/ws-hub
+go test ./...
+go build
+```
 
 ---
-© 2026 University Ecosystem Team. Happy hacking!
+
+## 📖 Deep Dives
+- [📘 Deployment Guide](docs/DEPLOY.md)
+- [🌍 Localization Guidelines](docs/LOCALIZATION.md)
+- [🔭 Observability Setup](docs/observability/)
+- [🤝 Contributing](docs/CONTRIBUTING.md)
+
+<div align="center">
+  <br />
+  © 2026 University Ecosystem Team • Generated with ❤️ for the future of education.
+</div>
