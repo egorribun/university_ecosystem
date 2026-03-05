@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import type { Message, MessagesListResponse } from "@/api/chat"
+import type { Message, MessagesListResponse, ChatsListResponse } from "@/api/chat"
 // Auth token storage handled natively via cookies
 import { logDebug, logError } from "@/app/logger"
 
@@ -163,8 +163,25 @@ export function useChatWebSocket({
                     return { ...old, items: [...old.items, data.message!] }
                   }
                 )
-                // Invalidate chats to update unread counts
-                queryClient.invalidateQueries({ queryKey: ["chats"] })
+                // DEBT-04 (audit 2026-03-06): Update chats cache surgically instead of
+                // invalidating the full list (which triggers a network round-trip per message).
+                // unread_count is incremented unconditionally; it resets via the read-receipt
+                // pathway (sendRead → backend → WS "read" event → setQueryData).
+                queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
+                  if (!old) return old
+                  return {
+                    ...old,
+                    items: old.items.map((chat) =>
+                      chat.id === data.chat_id
+                        ? {
+                            ...chat,
+                            last_message: data.message,
+                            unread_count: chat.unread_count + 1,
+                          }
+                        : chat
+                    ),
+                  }
+                })
                 onNewMessageRef.current?.(data.message, data.chat_id)
               }
               break

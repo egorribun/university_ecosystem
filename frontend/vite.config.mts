@@ -206,7 +206,10 @@ export default defineConfig(({ mode }) => {
         type: "module",
       },
     }),
-    process.env.VITE_LHCI !== "true" ? withStrictCspNonce() : null,
+    // DEBT-05 (audit 2026-03-06): CSP nonce always applied. Disabling enforcement
+    // in LHCI mode creates a precedent for bypassing security headers in any mode.
+    // If LHCI tests fail: use --chrome-flags='--disable-web-security' in lhci config.
+    withStrictCspNonce(),
   ]
 
   if (analyze) {
@@ -258,7 +261,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       minify: true,
-      sourcemap: true,
+      // P0-05 (audit 2026-03-06): "hidden" generates .map files for Sentry
+      // symbolication but does NOT add //# sourceMappingURL= to .js bundles,
+      // so browsers and attackers cannot download the full TypeScript source.
+      sourcemap: mode === "production" ? "hidden" : true,
       chunkSizeWarningLimit: 768,
       rollupOptions: {
         output: {

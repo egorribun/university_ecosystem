@@ -182,7 +182,11 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
+    # P1-08 (audit 2026-03-06): MinIO GitHub repo archived 2026-02-13.
+    # Docker Hub images stopped updating in Oct 2025. Last official release:
+    # RELEASE.2025-07-23T15-54-02Z (quay.io registry — Docker Hub no longer maintained).
+    # CRITICAL: Evaluate migration to Garage/SeaweedFS/Rook-Ceph for long-term support.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
@@ -369,12 +373,25 @@ services:
     restart: unless-stopped
 
   spicedb:
+    # P1-06 (audit 2026-03-06): Fixed hardcoded "dev-key" + memory datastore.
+    # memory datastore → ACLs lost on restart; "dev-key" → brute-forceable.
+    # Now uses env var (invisible to `docker ps`) and PostgreSQL for persistence.
     image: authzed/spicedb:v1.36.0
-    command: serve --grpc-preshared-key "dev-key" --datastore-engine memory
-    ports:
-      - "50051:50051"
+    command: >-
+      serve
+      --datastore-engine postgres
+      --datastore-conn-uri "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=disable"
+    # Internal only - accessed by backend services; no host port exposure
+    expose:
+      - "50051"
+    environment:
+      # P1-10: Key is in env var — invisible to `docker ps --no-trunc` / docker inspect env.
+      SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required - set in .env file}"
     networks:
       - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]
       interval: 10s
@@ -394,7 +411,10 @@ services:
       # UI port (8233) not published: use SSH tunnel or internal access only
     environment:
       - TEMPORAL_CLI_ADDRESS=temporal:7233
-    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
+    # P0-03 (audit 2026-03-06): Bind to 127.0.0.1 — Temporal dev-server has no auth.
+    # Without this, ALL containers on the `internal` network can execute arbitrary
+    # Workflows/Activities without authentication (full code execution vector).
+    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 127.0.0.1 --ui-port 8233 --db-filename /tmp/temporal.db" ]
     networks:
       - internal
     healthcheck:
@@ -414,8 +434,11 @@ services:
     ports:
       - "8082:8080"
     environment:
-      IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/,https://*,http://*"
-      IMGPROXY_DEVELOPMENT_ERRORS_MODE: "true"
+      # P1-09 (audit 2026-03-06): Restrict to known sources only — open allowlist
+      # enables SSRF to AWS IMDS (169.254.169.254) or any internal host.
+      IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/static/"
+      # SECURITY: NEVER enable in production — leaks internal paths and stacktraces
+      IMGPROXY_DEVELOPMENT_ERRORS_MODE: "false"
     networks:
       - internal
       - public
@@ -448,7 +471,9 @@ services:
   prometheus:
     image: prom/prometheus:v3.1.0
     ports:
-      - "9090:9090"
+      # P1-07 (audit 2026-03-06): Bind to localhost — unauthenticated Prometheus
+      # exposes latency histograms, queue depths, internal IPs.
+      - "127.0.0.1:9090:9090"
     networks:
       - internal
     deploy:

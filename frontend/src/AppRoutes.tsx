@@ -16,6 +16,11 @@ import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useRouteType } from "@/hooks/useRouteType"
+// DEBT-03 (audit 2026-03-06): Wrap lazy-loaded routes in ErrorBoundary so a
+// render-phase panic in any page component shows a recovery UI instead of a
+// white screen.  PageErrorBoundary auto-resets on route changes and reports to
+// Sentry with componentStack context.
+import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
 
 import PageTransition from "./components/PageTransition"
 
@@ -185,9 +190,11 @@ export function AppRoutes() {
 
   return (
     <MainLayout>
-      <Suspense fallback={fallbackShell}>
-        {reduceMotion || isCompactPage ? routes : <MotionPresence>{routes}</MotionPresence>}
-      </Suspense>
+      <PageErrorBoundary>
+        <Suspense fallback={fallbackShell}>
+          {reduceMotion || isCompactPage ? routes : <MotionPresence>{routes}</MotionPresence>}
+        </Suspense>
+      </PageErrorBoundary>
 
       <BackToTop />
       <LivePushToasts />
