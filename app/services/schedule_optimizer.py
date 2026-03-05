@@ -1,9 +1,8 @@
 import logging
 from datetime import UTC, datetime
 
-from pydantic import BaseModel
-
 import rust_ext
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
