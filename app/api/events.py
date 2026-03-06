@@ -123,18 +123,21 @@ def _set_language_headers(response: Response, locale: str) -> None:
     _get_vary_helper()(response, "Accept-Language")
 
 
-def _encode_payload_with_etag(payload: Any) -> tuple[Any, str, str]:
+def _encode_payload_with_etag(payload: Any) -> tuple[Response, str, str]:
     encoded = jsonable_encoder(payload)
-    serialized = json.dumps(
-        encoded,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    digest = hashlib.sha256(serialized).hexdigest()
-    # MOD-006 (audit 2026-03-04): Use strong ETags for deterministic JSON
+
+    # PERF-1 Optimization: Use rapid JSON serialization and return Response directly
+    # to avoid a secondary automatic FastAPI serialization later in the pipeline
+    import orjson
+    serialized_bytes = orjson.dumps(encoded, option=orjson.OPT_SORT_KEYS)
+    digest = hashlib.sha256(serialized_bytes).hexdigest()
+
     strong_header = f'"{format_etag(digest).strip(chr(34))}"'
-    return encoded, digest, strong_header
+
+    return Response(
+        content=serialized_bytes,
+        media_type="application/json"
+    ), digest, strong_header
 
 
 @router.post(
@@ -256,15 +259,18 @@ async def all_events(
         response.headers["ETag"] = etag_header
         return cast(dict[str, Any], encoded)
 
-    encoded, digest, weak_header = _encode_payload_with_etag(payload)
+    encoded_response, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
         not_modified.headers["ETag"] = weak_header
         not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
         _set_language_headers(not_modified, locale)
         return not_modified
-    response.headers["ETag"] = weak_header
-    return cast(dict[str, Any], encoded)
+
+    encoded_response.headers["ETag"] = weak_header
+    encoded_response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
+    _set_language_headers(encoded_response, locale)
+    return encoded_response
 
 
 # NOTE: SQLite drops timezone information for "datetime" columns. To keep the
@@ -334,15 +340,18 @@ async def my_events(
     _set_language_headers(response, locale)
     response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
     payload = await events.get_my_events(user_id=user.id, locale=locale)
-    encoded, digest, weak_header = _encode_payload_with_etag(payload)
+    encoded_response, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
         not_modified.headers["ETag"] = weak_header
         not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
         _set_language_headers(not_modified, locale)
         return not_modified
-    response.headers["ETag"] = weak_header
-    return encoded
+
+    encoded_response.headers["ETag"] = weak_header
+    encoded_response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
+    _set_language_headers(encoded_response, locale)
+    return encoded_response
 
 
 @router.post(
@@ -359,12 +368,19 @@ async def upload_event_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    checker: PermissionChecker = Depends(),
 ) -> models.EventFile:
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, id)
     ensure_exists(event, "events", locale)
     assert event is not None  # nosec B101
-    require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event.id),
+        permission="edit",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_attachment(file, "event_files", f"event_{id}", locale=locale)
     ef = models.EventFile(event_id=id, file_url=url)
@@ -519,14 +535,16 @@ async def get_event(
     if not payload:
         raise_not_found("events", locale)
 
-    encoded, digest, weak_header = _encode_payload_with_etag(payload)
+    encoded_response, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
         not_modified.headers["ETag"] = weak_header
         _set_language_headers(not_modified, locale)
         return not_modified
-    response.headers["ETag"] = weak_header
-    return encoded
+
+    encoded_response.headers["ETag"] = weak_header
+    _set_language_headers(encoded_response, locale)
+    return encoded_response
 
 
 @router.delete("/file/{file_id}", response_model=dict)
@@ -535,6 +553,7 @@ async def delete_event_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    checker: PermissionChecker = Depends(),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)
@@ -548,7 +567,13 @@ async def delete_event_file(
     # proceeded — an authorization bypass.
     ensure_exists(event, "events", locale)
     assert event is not None  # nosec B101 # narrowing for type checkers
-    require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event.id),
+        permission="edit",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
     file_url = ef.file_url
     await db.delete(ef)
     await db.commit()

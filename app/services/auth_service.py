@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import logging
 import secrets
-import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -79,47 +78,57 @@ class AuthService:
         # normalises the total response time including I/O, preventing user-
         # enumeration via timing differentials (~5-20 ms) between existing and
         # non-existing email lookups (OWASP OTG-IDENT-004).
-        start = time.perf_counter()
-        from app.core.timing import ensure_minimum_time
+        try:
+            user = await self.user_repo.get_by_email(email)
 
-        user = await self.user_repo.get_by_email(email)
+            if user:
+                # RZ-2: 48 bytes (384 bits) exceeds NIST SP 800-131A requirements and
+                # is resistant to brute-force even if the HMAC-SHA256 digest leaks.
+                token = secrets.token_urlsafe(48)
+                token_hash = _hash_token(token)
+                expires = datetime.now(UTC) + timedelta(
+                    minutes=RESET_TOKEN_EXPIRY_MINUTES
+                )
 
-        if user:
-            # RZ-2: 48 bytes (384 bits) exceeds NIST SP 800-131A requirements and
-            # is resistant to brute-force even if the HMAC-SHA256 digest leaks.
-            token = secrets.token_urlsafe(48)
-            token_hash = _hash_token(token)
-            expires = datetime.now(UTC) + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+                await self.auth_repo.create_password_reset_token(
+                    user_id=user.id, token_hash=token_hash, expires_at=expires
+                )
 
-            await self.auth_repo.create_password_reset_token(
-                user_id=user.id, token_hash=token_hash, expires_at=expires
+                await self.auth_repo.commit()
+                base = settings.app_base_url_clean
+                reset_link = f"{base}/reset-password?token={token}"
+                locale = resolve_locale(request=request, user=user)
+
+                # RZ-1 Fix: Offload email fully to background to not block response
+                bg.add_task(
+                    send_auth_email.kick,
+                    str(user.email),
+                    reset_link,
+                    user.full_name or "",
+                    locale,
+                )
+                self.audit.log(
+                    "password.reset.initiated",
+                    request,
+                    user_id=user.id,
+                    reason="initiated",
+                )
+            else:
+                self.audit.log(
+                    "password.reset.initiated",
+                    request,
+                    level=logging.WARNING,
+                    reason="user_not_found",
+                )
+        finally:
+            # Фіксована криптографічна затримка (Constant-time dummy hash)
+            # Незалежно від того знайдений користувач чи ні, ми витрачаємо CPU цикли
+            # роблячи time-based enumeration неможливим.
+            from app.auth.security import get_password_hash
+
+            await get_password_hash(
+                "dummy_constant_time_value", locale="en", validate_policy=False
             )
-
-            await self.auth_repo.commit()
-            base = settings.app_base_url_clean
-            reset_link = f"{base}/reset-password?token={token}"
-            locale = resolve_locale(request=request, user=user)
-            await send_auth_email.kick(  # type: ignore[attr-defined]
-                str(user.email),
-                reset_link,
-                user.full_name or "",
-                locale,
-            )
-            self.audit.log(
-                "password.reset.initiated",
-                request,
-                user_id=user.id,
-                reason="initiated",
-            )
-        else:
-            self.audit.log(
-                "password.reset.initiated",
-                request,
-                level=logging.WARNING,
-                reason="user_not_found",
-            )
-
-        await ensure_minimum_time(start, settings.auth_min_response_time)
 
     async def perform_password_reset(
         self,

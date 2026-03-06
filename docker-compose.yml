@@ -158,7 +158,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       # P0-04 (audit 2026-03-06): Bind to 127.0.0.1 — unauthenticated Prometheus
       # metrics endpoint exposes latency, queue depths, internal IPs.
-      NOTIFICATIONS_WORKER_METRICS_HOST: 127.0.0.1
+      NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/0

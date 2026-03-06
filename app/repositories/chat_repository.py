@@ -85,7 +85,8 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
                 unread_count_subquery.label("unread_count"),
                 last_message_id_subquery.label("last_message_id"),
             )
-            .where(Chat.participants.any(User.id == user_id))
+            .join(chat_participants, Chat.id == chat_participants.c.chat_id)
+            .where(chat_participants.c.user_id == user_id)
             .options(selectinload(Chat.participants))
         )
 

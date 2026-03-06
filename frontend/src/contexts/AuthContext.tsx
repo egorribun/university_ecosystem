@@ -23,8 +23,17 @@ export const AuthContext = createContext<Omit<AuthContextType, "user" | "loading
   resetEtagCache,
 } as unknown as Omit<AuthContextType, "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation">)
 
+import { useShallow } from "zustand/react/shallow"
+
 export const useAuth = (): AuthContextType => {
-  const store = useAuthStore()
+  const store = useAuthStore(
+    useShallow((state) => ({
+      user: state.user,
+      loading: state.loading,
+      pendingMfa: state.pendingMfa,
+      authOperation: state.authOperation,
+    }))
+  )
   const actions = useContext(AuthContext)
   return {
     ...store,

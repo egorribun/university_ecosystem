@@ -66,12 +66,14 @@ class VectorService:
         distance = model.embedding.cosine_distance(embedding)
         score = (1.0 - distance).label("similarity_score")
 
-        stmt = (
-            select(model, score)
-            .where(score >= min_score)
-            .order_by(score.desc())
-            .limit(limit)
-        )
+        stmt = select(model, score).where(score >= min_score)
+
+        if hasattr(model, "is_active"):
+            stmt = stmt.where(model.is_active == True)  # noqa: E712
+        if hasattr(model, "deleted_at"):
+            stmt = stmt.where(model.deleted_at.is_(None))
+
+        stmt = stmt.order_by(score.desc()).limit(limit)
         result = await self.db.execute(stmt)
         return [(row[0], float(row[1])) for row in result.all()]
 

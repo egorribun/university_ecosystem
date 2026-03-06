@@ -65,14 +65,14 @@ func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcess
 		}
 
 		var req struct {
-			ID        string            `json:"id"`
-			Type      string            `json:"type"`
-			SourceKey string            `json:"source_key"`
-			DestKey   string            `json:"dest_key"`
+			ID        string            `json:"id" binding:"required,uuid"`
+			Type      string            `json:"type" binding:"required"`
+			SourceKey string            `json:"source_key" binding:"required"`
+			DestKey   string            `json:"dest_key" binding:"required"`
 			Options   map[string]string `json:"options"`
 		}
 
-		if err := c.BindJSON(&req); err != nil {
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
