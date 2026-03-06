@@ -102,12 +102,17 @@ const persistSessionSigningKey = (_value: string | null) => {
   // The key lives only in React state (useSessionCrypto hook) for the session duration.
 }
 
+/** Maximum consecutive failures before giving up (resets on success or explicit key update). */
+const MAX_SIGNING_KEY_RETRIES = 3
+
 export const useSessionCrypto = () => {
   // Always initialise to null — key lives in memory only, never in Web Storage.
   // ensureSessionSigningKey() will fetch from /auth/session/signing-key on first use.
   const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(null)
   const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
   const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
+  /** Consecutive failure counter — reset to 0 on success or explicit updateSessionSigningKey call. */
+  const signingKeyRetryCountRef = useRef(0)
   const sessionCacheHashRef = useRef<string | null>(null)
 
   const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
@@ -176,6 +181,7 @@ export const useSessionCrypto = () => {
   const updateSessionSigningKey = useCallback(
     async (value: string | null) => {
       sessionSigningKeyRef.current = value
+      signingKeyRetryCountRef.current = 0  // reset circuit breaker on explicit update
       setSessionSigningKeyState(value)
       persistSessionSigningKey(value)
       await sendSessionCacheUpdate(value, { purge: true })
@@ -183,22 +189,37 @@ export const useSessionCrypto = () => {
     [sendSessionCacheUpdate]
   )
 
-  const ensureSessionSigningKey = useCallback(async () => {
+  const ensureSessionSigningKey = useCallback(async (): Promise<string | null> => {
     if (sessionSigningKeyRef.current) {
       return sessionSigningKeyRef.current
     }
+    // Return the in-flight promise to deduplicate concurrent callers
     if (sessionSigningKeyPromiseRef.current) {
       return sessionSigningKeyPromiseRef.current
     }
-    const promise = (async () => {
+    const promise = (async (): Promise<string | null> => {
       try {
         const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
           skipRateLimitQueue: true,
         } as Parameters<typeof api.get>[1])
+        // Success — reset circuit breaker and store key
+        signingKeyRetryCountRef.current = 0
         const key = response.data.signing_key
-        updateSessionSigningKey(key)
+        await updateSessionSigningKey(key)
         return key
+      } catch (err) {
+        // Increment failure counter; log once max retries reached then reset
+        signingKeyRetryCountRef.current += 1
+        if (signingKeyRetryCountRef.current >= MAX_SIGNING_KEY_RETRIES) {
+          if (import.meta.env.DEV) {
+            logWarning("[SessionCrypto] Max retries reached for signing key fetch", { err })
+          }
+          signingKeyRetryCountRef.current = 0
+        }
+        return null
       } finally {
+        // Always clear promise ref so subsequent callers retry rather than
+        // awaiting a settled (rejected) promise indefinitely.
         sessionSigningKeyPromiseRef.current = null
       }
     })()
@@ -221,6 +242,7 @@ export const useSessionCrypto = () => {
     sessionSigningKey,
     sessionSigningKeyRef,
     sessionSigningKeyPromiseRef,
+    signingKeyRetryCountRef,
     updateSessionSigningKey,
     ensureSessionSigningKey,
     sendSessionCacheUpdate,

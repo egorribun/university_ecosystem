@@ -157,7 +157,12 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
 
   if (typeof tag === "string" && tag.trim()) {
     etagCache.set(etagKey, tag)
-    if (response.status === 200 && response.data) {
+    // Only cache JSON responses — caching HTML error pages or other content types
+    // can corrupt the response cache and break the app on 304 cache hit.
+    const contentType = (responseHeaders.get("content-type") as string | null) ?? ""
+    const isJson = contentType.includes("application/json")
+
+    if (response.status === 200 && response.data && isJson) {
       const signingKey = getSigningKey()
       if (signingKey) {
         // Sign and store the response — HMAC guards against localStorage poisoning

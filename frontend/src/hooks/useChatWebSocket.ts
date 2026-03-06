@@ -196,8 +196,11 @@ export function useChatWebSocket({
                   const existing = newMap.get(key)
                   if (existing) clearTimeout(existing.timeout)
 
-                  // Set new typing indicator with 3 second timeout
+                  // Set new typing indicator with 3 second timeout.
+                  // Guard mountedRef.current so the setState after the timeout
+                  // does not fire on an already-unmounted component.
                   const timeout = setTimeout(() => {
+                    if (!mountedRef.current) return
                     setTypingUsers((p) => {
                       const updated = new Map(p)
                       updated.delete(key)

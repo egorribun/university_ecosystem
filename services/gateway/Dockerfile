@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage
-FROM golang:1.25.5-alpine3.21 AS builder
+# MOD-02 (audit 2026-03-06): 1.25.5 → 1.26.3 (Go 1.26 LTS; alpine3.22 for CVE coverage)
+FROM golang:1.26.3-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -25,7 +26,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
   -o gateway ./cmd/gateway
 
 # Runtime stage
-FROM alpine:3.21.2
+FROM alpine:3.22
 
 RUN apk add --no-cache ca-certificates tzdata \
   && addgroup -S app && adduser -S app -G app

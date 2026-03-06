@@ -15,6 +15,14 @@ repos:
       - id: ruff-format
         name: ruff format
 
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets scan
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: ".env.docker.example|.env.example|uv.lock"
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.0
     hooks:
@@ -29,6 +37,19 @@ repos:
         args: ["-c", "pyproject.toml"]
         files: ^app/
         exclude: ^tests/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        name: mypy type-check (auth + services)
+        args: ["--config-file", "pyproject.toml"]
+        files: ^app/(auth|services/auth|api/deps|core)/
+        additional_dependencies:
+          - "pydantic>=2"
+          - "sqlalchemy[mypy]>=2"
+          - "types-redis"
+          - "types-passlib"
 
   - repo: local
     hooks:

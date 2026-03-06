@@ -170,7 +170,9 @@ export default defineConfig(({ mode }) => {
             handler: "StaleWhileRevalidate",
             options: {
               cacheName: "api-cache",
-              cacheableResponse: { statuses: [0, 200, 304] },
+              // MOD-07 (audit 2026-03-06): 304 must NOT be cached by Workbox.
+              // Workbox stores an empty body for 304, returning blank content on cache-first hit.
+              cacheableResponse: { statuses: [0, 200] },
               expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 },
             },
           },
@@ -272,10 +274,15 @@ export default defineConfig(({ mode }) => {
             "vendor-react": ["react", "react-dom", "react-router-dom"],
             "vendor-ui": ["framer-motion", "lucide-react"],
             "vendor-query": ["@tanstack/react-query"],
-            "vendor-utils": ["axios", "i18next", "react-i18next", "@sentry/react"],
+            // PERF-05 (audit 2026-03-06): Split vendor-utils so Sentry and i18n
+            // don't share a chunk — a Sentry release bump no longer re-downloads i18n.
+            "vendor-sentry": ["@sentry/react"],
+            "vendor-i18n": ["i18next", "react-i18next"],
+            "vendor-http": ["axios"],
+            // TD-04 (audit 2026-03-06): @zxcvbn-ts/core removed from this chunk.
+            // Import it dynamically in password-entry components only (register / reset-password).
             "vendor-security": [
               "dompurify",
-              "@zxcvbn-ts/core",
               "@simplewebauthn/browser",
             ],
           },

@@ -54,6 +54,7 @@ web_modules/
 .env.*
 !root/frontend/.env.production
 !.env.example
+!.env.docker.example
 # Docker secrets mount directory — never commit real credentials here.
 # Placeholder examples (*.example) and the README are tracked for documentation.
 .secrets/
