@@ -152,7 +152,7 @@ export function AppRoutes() {
   )
 
   const routes = (
-    <Routes location={location} key={location.pathname}>
+    <Routes location={location}>
       <Route path="/login" element={<PublicRoute>{wrap(<Login />)}</PublicRoute>} />
       <Route path="/register" element={<PublicRoute>{wrap(<Register />)}</PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute>{wrap(<ForgotPassword />)}</PublicRoute>} />

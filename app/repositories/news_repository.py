@@ -32,6 +32,10 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 
 
+def build_news_cache_key(self: Any, *, skip: int = 0, limit: int = 20) -> str:
+    return f"news:published:{skip}:{limit}"
+
+
 class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
     """Repository for News model operations."""
 
@@ -46,21 +50,16 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
     def dto_class(self) -> type[NewsDTO]:
         return NewsDTO
 
+    from app.core.cache import cached
+
+    @cached(cache_instance=news_cache, key_builder=build_news_cache_key)
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
         """Get published news ordered by creation date descending with caching."""
-        cache_key = f"news:published:{skip}:{limit}"
-        cached = await news_cache.get(cache_key)
-        if cached is not None:
-            from typing import cast
-
-            return cast(list[NewsDTO], cached)
-
         result = await self.db.execute(
             select(News).order_by(News.created_at.desc()).offset(skip).limit(limit)
         )
         news_items = list(result.scalars().all())
         dtos = [self._to_dto(obj) for obj in news_items]
-        await news_cache.set(cache_key, dtos)
         return dtos
 
     async def get_latest(self, limit: int = 5) -> list[NewsDTO]:
@@ -133,13 +132,12 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
                 rank_expr = sim_score.label("sim_score")
                 stmt = stmt.where(sim_score > 0.45)
             else:
-                like = f"%{search_query}%"
                 stmt = stmt.where(
                     or_(
-                        News.title.ilike(like),
-                        News.content.ilike(like),
-                        News.title_en.ilike(like),
-                        News.content_en.ilike(like),
+                        News.title.bool_op("%")(search_query),
+                        News.content.bool_op("%")(search_query),
+                        News.title_en.bool_op("%")(search_query),
+                        News.content_en.bool_op("%")(search_query),
                     )
                 )
 

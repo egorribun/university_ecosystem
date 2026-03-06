@@ -14,7 +14,7 @@ from fastapi import (
     status,
 )
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_optional
 from app.api.validation import ensure_exists, require_teacher_or_admin
 from app.core.localization import resolve_locale
 from app.cqrs.bus import CommandBus, QueryBus
@@ -83,6 +83,7 @@ async def get_schedule(
     request: Request,
     response: Response,
     query_bus: FromDishka[QueryBus],
+    user: models.User | None = Depends(get_current_user_optional),
     if_none_match: str | None = Header(default=None),
 ) -> list[schemas.ScheduleOut] | Response:
     locale = resolve_locale(request=request)

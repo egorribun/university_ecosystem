@@ -1,0 +1,162 @@
+import logging
+import uuid
+from typing import Any
+
+from fastapi import WebSocket
+
+from app.api.ws.auth import update_last_seen
+from app.api.ws.presence import PRESENCE_SOURCE_PING
+from app.core.database import async_session
+from app.models.enums import UserRole
+from app.repositories.chat_repository import ChatRepository
+from app.services.audit_service import SecurityEvent, audit_service
+
+logger = logging.getLogger(__name__)
+
+
+class MessageDispatcher:
+    """Dispatches incoming WebSocket messages to appropriate handlers."""
+
+    def __init__(self, manager: Any):
+        self.manager = manager
+
+    async def _get_online_users_for_user(self, user_id: uuid.UUID) -> list[uuid.UUID]:
+        """Return online user IDs limited to the current user's chat participants."""
+        from app.api.ws.presence import _get_presence_audience
+
+        audience = await _get_presence_audience(user_id)
+        return [
+            target_id for target_id in audience if self.manager.is_online(target_id)
+        ]
+
+    def _get_websocket_audit_context(self, websocket: WebSocket) -> dict[str, Any]:
+        client = websocket.client
+        return {
+            "ws_path": websocket.url.path,
+            "ws_client": client.host if client else None,
+        }
+
+    async def dispatch(
+        self,
+        websocket: WebSocket,
+        user: Any,
+        session_jti: str | None,
+        data: dict[str, Any],
+    ) -> None:
+        """Process a single JSON message from the client."""
+        msg_type = data.get("type")
+
+        if msg_type == "ping":
+            last_seen = await update_last_seen(session_jti)
+            await websocket.send_json({"type": "pong"})
+            await self.manager.broadcast_presence(
+                user.id,
+                True,
+                last_seen,
+                source=PRESENCE_SOURCE_PING,
+            )
+
+        elif msg_type == "typing":
+            chat_id = data.get("chat_id")
+            if chat_id:
+                try:
+                    chat_uuid = (
+                        uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
+                    )
+                    async with async_session() as session:
+                        repo = ChatRepository(session)
+                        is_participant = await repo.check_participant(
+                            chat_uuid, user.id
+                        )
+
+                    if not is_participant:
+                        logger.warning(
+                            "Access denied: User %s tried to send typing indicator to chat %s without being a participant",
+                            user.id,
+                            chat_id,
+                        )
+                        await websocket.send_json(
+                            {"type": "error", "message": "Access denied"}
+                        )
+                        return
+                except ValueError:
+                    await websocket.send_json(
+                        {"type": "error", "message": "Invalid chat_id format"}
+                    )
+                    return
+
+                await self.manager.broadcast_to_chat(
+                    chat_uuid,
+                    {
+                        "type": "typing",
+                        "chat_id": str(chat_uuid),
+                        "user_id": str(user.id),
+                        "user_name": getattr(user.profile, "full_name", None)
+                        if getattr(user, "profile", None)
+                        else str(user.email),
+                    },
+                    exclude_user_id=user.id,
+                )
+
+        elif msg_type == "read":
+            chat_id = data.get("chat_id")
+            message_id = data.get("message_id")
+            if chat_id and message_id:
+                async with async_session() as session:
+                    repo = ChatRepository(session)
+                    is_participant = await repo.check_participant(chat_id, user.id)
+
+                    if not is_participant:
+                        logger.warning(
+                            "User %s tried to mark message %s as read in chat %s without being a participant",
+                            user.id,
+                            message_id,
+                            chat_id,
+                        )
+                        await websocket.send_json(
+                            {"type": "error", "message": "Access denied"}
+                        )
+                        return
+
+                    msg = await repo.get_message_by_id(message_id)
+                    if msg and msg.chat_id == chat_id and msg.sender_id != user.id:
+                        await repo.mark_single_message_read(message_id)
+                        await session.commit()
+
+                        await self.manager.send_to_user(
+                            msg.sender_id,
+                            {
+                                "type": "read",
+                                "chat_id": chat_id,
+                                "message_id": message_id,
+                                "user_id": user.id,
+                            },
+                        )
+
+        elif msg_type == "get_online":
+            if user.role != UserRole.ADMIN.value:
+                audit_service.log(
+                    SecurityEvent.ACCESS_DENIED,
+                    user_id=user.id,
+                    reason="admin_required",
+                    action="presence.get_online",
+                    **self._get_websocket_audit_context(websocket),
+                )
+                await websocket.send_json({"type": "error", "message": "Access denied"})
+                return
+
+            online = await self._get_online_users_for_user(user.id)
+            audit_service.log(
+                "presence.online_list",
+                user_id=user.id,
+                action="presence.get_online",
+                result_count=len(online),
+                scope="chat_participants",
+                **self._get_websocket_audit_context(websocket),
+            )
+            await websocket.send_json({"type": "online_list", "users": online})
+
+        else:
+            await websocket.send_json(
+                {"type": "error", "message": f"Unknown message type: {msg_type}"}
+            )

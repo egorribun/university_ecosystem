@@ -71,11 +71,12 @@ async def login_passkey_start(
 ) -> WebAuthnAuthenticationOptionsOut:
     normalized_email = payload.email.strip().lower()
 
+    # RZ-1 Fix: Timer MUST start before the database query to normalize total time
+    start = time.perf_counter()
     user = await profile_service.get_user_by_email(normalized_email)
 
     service = WebAuthnService(db)
 
-    start = time.perf_counter()
     if not user or not user.is_active:
         webauthn_options = service.get_dummy_authentication_options()
         await ensure_minimum_time(start, settings.auth_min_response_time)

@@ -8,9 +8,11 @@ Provides a two-tier caching strategy:
 
 from __future__ import annotations
 
+import functools
 import logging
 import time
 from collections import OrderedDict
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
@@ -281,10 +283,49 @@ def _init_caches() -> tuple[
 user_cache, config_cache, news_cache, schedule_cache = _init_caches()
 
 
+def cached(
+    cache_instance: LRUCache[Any] | MultiLayerCache,
+    key_builder: Callable[..., str],
+    ttl: float | None = None,
+) -> Callable[
+    [Callable[..., Coroutine[Any, Any, Any]]], Callable[..., Coroutine[Any, Any, Any]]
+]:
+    """AOP decorator to cache asynchronous functions."""
+
+    def decorator(
+        func: Callable[..., Coroutine[Any, Any, Any]],
+    ) -> Callable[..., Coroutine[Any, Any, Any]]:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            key = key_builder(*args, **kwargs)
+            # Both LRUCache and MultiLayerCache expose a 'get' method.
+            # MultiLayerCache's get is async; LRUCache's is sync.
+            if hasattr(cache_instance, "_redis"):  # heuristic for MultiLayerCache
+                cached_val = await cache_instance.get(key)
+            else:
+                cached_val = cache_instance.get(key)
+
+            if cached_val is not None:
+                return cached_val
+
+            result = await func(*args, **kwargs)
+            if result is not None:
+                if hasattr(cache_instance, "_redis"):
+                    await cache_instance.set(key, result, l1_ttl=ttl)  # type: ignore[call-arg]
+                else:
+                    cache_instance.set(key, result, ttl=ttl)
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 __all__ = [
     "CacheEntry",
     "LRUCache",
     "MultiLayerCache",
+    "cached",
     "config_cache",
     "news_cache",
     "schedule_cache",

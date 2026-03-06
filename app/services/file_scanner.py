@@ -346,19 +346,84 @@ async def _scan_bytes_with_clamd(data: bytes) -> _ScanResult:
 async def _scan_upload_with_clamd(
     upload: UploadFile, *, size_limit: int
 ) -> _ScanResult:
-    """Scan an uploaded file for malware via ClamAV.
+    """Scan an uploaded file for malware via streaming (async) ClamAV chunking.
 
-    The file content is read fully in the async context before being passed
-    to asyncio.to_thread. This avoids cross-thread access to the underlying
-    SpooledTemporaryFile/BytesIO which is not thread-safe.
-    (PERF-5: audit 2026-02-26)
+    This avoids loading the entire file into memory concurrently to prevent
+    OOM killed scenarios and spike loads on heavy 50MB PDF uploads.
     """
-    await upload.seek(0)
-    # Read fully here — in async context, before handing off to thread pool.
-    data = await upload.read()
-    if size_limit and len(data) > size_limit:
-        raise FileScannerPayloadTooLarge(len(data), limit_bytes=size_limit)
-    return await _scan_bytes_with_clamd(data)
+    import struct
+
+    start_time = time.perf_counter()
+    timeout = float(getattr(settings, "event_file_scanner_timeout", 30.0) or 30.0)
+    socket_path = getattr(settings, "event_file_scanner_socket", "") or ""
+    host = getattr(settings, "event_file_scanner_host", "127.0.0.1")
+    port = int(getattr(settings, "event_file_scanner_port", 3310) or 3310)
+
+    try:
+        async with asyncio.timeout(timeout):
+            if socket_path:
+                reader, writer = await asyncio.open_unix_connection(socket_path)
+            else:
+                reader, writer = await asyncio.open_connection(host, port)
+
+            try:
+                # zINSTREAM expects size+chunk length, terminated with 0 length chunk.
+                writer.write(b"zINSTREAM\0")
+                await writer.drain()
+
+                bytes_scanned = 0
+                await upload.seek(0)
+
+                while True:
+                    chunk = await upload.read(128 * 1024)
+                    if not chunk:
+                        break
+
+                    bytes_scanned += len(chunk)
+                    if size_limit and bytes_scanned > size_limit:
+                        writer.close()
+                        raise FileScannerPayloadTooLarge(
+                            bytes_scanned, limit_bytes=size_limit
+                        )
+
+                    writer.write(struct.pack("!I", len(chunk)))
+                    writer.write(chunk)
+                    await writer.drain()
+
+                writer.write(struct.pack("!I", 0))
+                await writer.drain()
+
+                response = await reader.read(4096)
+            finally:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+    except TimeoutError as exc:
+        raise FileScannerUnavailableError("clamd scan timed out") from exc
+    except Exception as exc:
+        raise FileScannerUnavailableError("clamd scan failed") from exc
+
+    if not response:
+        raise FileScannerUnavailableError("empty response from clamd")
+
+    # Response is typically 'stream: OK\0' or 'stream: EICAR-Test-Signature FOUND\0'
+    resp_text = response.decode("utf-8", errors="replace").strip("\0 ")
+
+    if resp_text.endswith("OK"):
+        signature = None
+    elif resp_text.endswith("FOUND"):
+        # Extract signature name
+        parts = resp_text.split(" ")
+        signature = parts[1] if len(parts) >= 2 else "unknown"
+    else:
+        raise FileScannerUnavailableError(f"clamd error: {resp_text}")
+
+    duration = time.perf_counter() - start_time
+    return _ScanResult(
+        signature=signature, duration=duration, bytes_scanned=bytes_scanned
+    )
 
 
 async def _run_scan(

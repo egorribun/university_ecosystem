@@ -23,19 +23,6 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.api.ws.auth import (
-    extract_bearer_token as _extract_bearer_token,
-)
-from app.api.ws.auth import (
-    extract_token_from_subprotocol as _extract_token_from_subprotocol,
-)
-from app.api.ws.auth import (
-    get_user_from_cookie,
-    get_user_from_token,
-)
-from app.api.ws.auth import (
-    select_subprotocol as _select_subprotocol,
-)
-from app.api.ws.auth import (
     update_last_seen as _update_last_seen,
 )
 
@@ -46,19 +33,13 @@ from app.api.ws.connection_manager import (
 from app.api.ws.presence import (
     PRESENCE_SOURCE_CONNECT,
     PRESENCE_SOURCE_DISCONNECT,
-    PRESENCE_SOURCE_PING,
     build_presence_map,
     presence_pubsub,
 )
 from app.api.ws.serializers import serialize_message
 from app.core import metrics
 from app.core.config import settings
-from app.core.database import async_session
-from app.core.feature_flags import feature_flags
 from app.models.chat import Message
-from app.models.enums import UserRole
-from app.repositories.chat_repository import ChatRepository
-from app.services.audit_service import SecurityEvent, audit_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ws", tags=["websocket"])
@@ -143,87 +124,14 @@ async def websocket_chat(websocket: WebSocket) -> None:
             return
     # ------------------------------------------------------------------
 
-    user = None
-    session_jti = None
+    import orjson
 
-    # Debug: log incoming connection info
+    from app.api.ws.authenticator import authenticator
+    from app.api.ws.dispatcher import MessageDispatcher
 
-    auth_header = websocket.headers.get("authorization")
-    protocol_header = websocket.headers.get("sec-websocket-protocol")
-    header_token = _extract_bearer_token(auth_header)
-    protocol_token = _extract_token_from_subprotocol(protocol_header)
-    selected_subprotocol = _select_subprotocol(protocol_header)
-
-    if header_token or protocol_token:
-        logger.info(
-            "Attempting WebSocket token auth from headers (auth=%s, protocol=%s)",
-            bool(header_token),
-            bool(protocol_token),
-        )
-        token_str = str(header_token or protocol_token)
-        user, session_jti = await get_user_from_token(token_str)
-        if user:
-            logger.info("Token auth successful: user_id=%s", user.id)
-        else:
-            logger.warning("Token auth failed: invalid token")
-
-    # Fallback to cookie-based auth
-    if not user:
-        # MOD-6: Use OpenFeature client for evaluations
-        is_query_param_enabled = feature_flags.of_client.get_boolean_value(
-            "websocket_query_param_compat",
-            default_value=False,
-        )
-        if is_query_param_enabled:
-            token = websocket.query_params.get("token")
-            if token:
-                # RZ-4 (audit 2026-02-26): Query-param tokens appear in nginx/caddy
-                # access logs and browser history. Log a security event WITHOUT
-                # logging the token value, then attempt authentication as normal.
-                logger.warning(
-                    "SECURITY DEPRECATION: WebSocket token passed via query param. "
-                    "This exposure vector will be removed; use Authorization header or "
-                    "Sec-WebSocket-Protocol instead. "
-                    "Disable websocket_query_param_compat feature flag to block this path."
-                )
-                # Emit a structured security event for alerting pipelines.
-                try:
-                    from app.deps.cache import get_cache_client
-                    from app.services.fraud_detection_service import (
-                        FraudDetectionService,
-                    )
-
-                    _rc = await get_cache_client()
-                    _fds = FraudDetectionService(_rc)
-                    await _fds.record_event(
-                        {
-                            "event": "ws.token_query_param",
-                            "severity": "medium",
-                            "client_host": websocket.client.host
-                            if websocket.client
-                            else "",
-                        }
-                    )
-                except Exception as exc:
-                    logger.debug("Fraud detection event recording failed: %s", exc)  # nosec B110
-                    pass  # Fraud detection is best-effort, never block the request
-                user, session_jti = await get_user_from_token(token)
-                if user:
-                    logger.info("Token auth successful: user_id=%s", user.id)
-                else:
-                    logger.warning("Token auth failed: invalid token")
-
-    if not user:
-        access_token = websocket.cookies.get("access_token_v2")
-        logger.info(
-            "Attempting cookie auth, access_token present: %s", bool(access_token)
-        )
-        if access_token:
-            user, session_jti = await get_user_from_cookie(access_token)
-            if user:
-                logger.info("Cookie auth successful: user_id=%s", user.id)
-            else:
-                logger.warning("Cookie auth failed: invalid cookie")
+    user, session_jti, selected_subprotocol = await authenticator.authenticate_upgrade(
+        websocket
+    )
 
     if not user:
         logger.warning("WebSocket auth failed - no valid credentials")
@@ -236,6 +144,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
     )
     if not accepted:
         return  # close frame already sent inside connect()
+
     metrics.inc_ws_connections(path="/ws/chat")
     last_seen = await _update_last_seen(session_jti)
     await manager.broadcast_presence(
@@ -247,9 +156,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
     )
 
     try:
-        # Send initial online status to user's contacts
-        # (In a full implementation, you'd notify friends/chat participants)
-
+        dispatcher = MessageDispatcher(manager)
         while True:
             try:
                 # 1. Message Rate Limiting (Audit 6.3)
@@ -261,138 +168,21 @@ async def websocket_chat(websocket: WebSocket) -> None:
                     await websocket.send_json(
                         {"type": "error", "message": "Rate limit exceeded"}
                     )
-                    # We don't necessarily disconnect, just drop the spam message.
-                    # But we should sleep a bit to prevent tight-looping on the client.
                     await asyncio.sleep(0.1)
                     continue
 
-                data = await websocket.receive_json()
-            except json.JSONDecodeError:
+                text_data = await websocket.receive_text()
+                if len(text_data) > 32768:
+                    logger.warning("WS payload too large from user %s", user.id)
+                    await websocket.close(code=1009, reason="Payload too large")
+                    return
+
+                data = orjson.loads(text_data)
+            except (json.JSONDecodeError, ValueError, orjson.JSONDecodeError):
                 await websocket.send_json({"type": "error", "message": "Invalid JSON"})
                 continue
 
-            msg_type = data.get("type")
-
-            if msg_type == "ping":
-                last_seen = await _update_last_seen(session_jti)
-                await websocket.send_json({"type": "pong"})
-                await manager.broadcast_presence(
-                    user.id,
-                    True,
-                    last_seen,
-                    source=PRESENCE_SOURCE_PING,
-                )
-
-            elif msg_type == "typing":
-                chat_id = data.get("chat_id")
-                if chat_id:
-                    # Validate user is participant to prevent IDOR
-                    try:
-                        chat_uuid = (
-                            uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
-                        )
-                        async with async_session() as session:
-                            repo = ChatRepository(session)
-                            is_participant = await repo.check_participant(
-                                chat_uuid, user.id
-                            )
-
-                        if not is_participant:
-                            logger.warning(
-                                "Access denied: User %s tried to send typing "
-                                "indicator to chat %s without being a participant",
-                                user.id,
-                                chat_id,
-                            )
-                            await websocket.send_json(
-                                {"type": "error", "message": "Access denied"}
-                            )
-                            continue
-                    except ValueError:
-                        await websocket.send_json(
-                            {"type": "error", "message": "Invalid chat_id format"}
-                        )
-                        continue
-
-                    # Broadcast typing indicator to other participants
-                    await manager.broadcast_to_chat(
-                        chat_uuid,
-                        {
-                            "type": "typing",
-                            "chat_id": str(chat_uuid),
-                            "user_id": str(user.id),
-                            "user_name": getattr(user.profile, "full_name", None)
-                            if getattr(user, "profile", None)
-                            else str(user.email),
-                        },
-                        exclude_user_id=user.id,
-                    )
-
-            elif msg_type == "read":
-                chat_id = data.get("chat_id")
-                message_id = data.get("message_id")
-                if chat_id and message_id:
-                    # Update message read status in DB
-                    async with async_session() as session:
-                        repo = ChatRepository(session)
-                        # Verify that the user is a participant of the chat (Fix IDOR)
-                        is_participant = await repo.check_participant(chat_id, user.id)
-
-                        if not is_participant:
-                            logger.warning(
-                                f"User {user.id} tried to mark message {message_id} "
-                                f"as read in chat {chat_id} without being a participant"
-                            )
-                            await websocket.send_json(
-                                {"type": "error", "message": "Access denied"}
-                            )
-                            continue
-
-                        msg = await repo.get_message_by_id(message_id)
-                        if msg and msg.chat_id == chat_id and msg.sender_id != user.id:
-                            await repo.mark_single_message_read(message_id)
-                            await session.commit()
-
-                            # Notify sender that message was read
-                            await manager.send_to_user(
-                                msg.sender_id,
-                                {
-                                    "type": "read",
-                                    "chat_id": chat_id,
-                                    "message_id": message_id,
-                                    "user_id": user.id,
-                                },
-                            )
-
-            elif msg_type == "get_online":
-                if user.role != UserRole.ADMIN.value:
-                    audit_service.log(
-                        SecurityEvent.ACCESS_DENIED,
-                        user_id=user.id,
-                        reason="admin_required",
-                        action="presence.get_online",
-                        **_get_websocket_audit_context(websocket),
-                    )
-                    await websocket.send_json(
-                        {"type": "error", "message": "Access denied"}
-                    )
-                    continue
-
-                online = await _get_online_users_for_user(user.id)
-                audit_service.log(
-                    "presence.online_list",
-                    user_id=user.id,
-                    action="presence.get_online",
-                    result_count=len(online),
-                    scope="chat_participants",
-                    **_get_websocket_audit_context(websocket),
-                )
-                await websocket.send_json({"type": "online_list", "users": online})
-
-            else:
-                await websocket.send_json(
-                    {"type": "error", "message": f"Unknown message type: {msg_type}"}
-                )
+            await dispatcher.dispatch(websocket, user, session_jti, data)
 
     except WebSocketDisconnect:
         await manager.disconnect(websocket)

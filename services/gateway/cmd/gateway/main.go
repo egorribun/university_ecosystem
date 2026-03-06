@@ -172,6 +172,11 @@ func main() {
 
 	// Create router
 	router := gin.New()
+
+	// FIX 1.4: Security Hardening: Explicitly trust only internal networks and local proxies.
+	// Without this, Gin trusts 'X-Forwarded-For' from ANY source, allowing Rate Limit IP spoofing.
+	_ = router.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
+
 	router.Use(gin.Recovery())
 	router.Use(ginzap.Ginzap(logger, time.RFC3339, true))
 	router.Use(ginzap.RecoveryWithZap(logger, true))

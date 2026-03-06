@@ -1,7 +1,7 @@
 import { PageLayout } from "@/components/PageLayout"
 import { logError } from "@/app/logger"
 import EventCard from "@/components/events/EventCard/EventCard"
-import { useEffect, useState, useCallback, useMemo, useRef } from "react"
+import { useState, useCallback, useMemo, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { createEvent } from "@/api/events"
 import { Calendar as EventNoteIcon } from "lucide-react"
@@ -50,37 +50,37 @@ const Events = () => {
   const language = i18n.language?.startsWith("en") ? "en" : "ru"
 
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<EventTabKey>("active")
-  const [search, setSearch] = useState("")
-  const [type, setType] = useState("")
-  const [location, setLocation] = useState("")
-
   const [createOpen, setCreateOpen] = useState(false)
-
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
+
+  // Sync state variables directly from the URL params to prevent stale closures
+  const tab = (searchParams.get("tab") as EventTabKey) || "active"
+  const search = searchParams.get("q") || ""
+  const type = searchParams.get("type") || ""
+  const location = searchParams.get("loc") || ""
+
+  const handleURLChange = useCallback(
+    (key: string, value: string) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        if (value) {
+          next.set(key, value)
+        } else {
+          next.delete(key)
+        }
+        return next
+      }, { replace: true })
+    },
+    [setSearchParams]
+  )
+
+  const setTab = useCallback((val: string) => handleURLChange("tab", val), [handleURLChange])
+  const setSearch = useCallback((val: string) => handleURLChange("q", val), [handleURLChange])
+  const setType = useCallback((val: string) => handleURLChange("type", val), [handleURLChange])
+  const setLocation = useCallback((val: string) => handleURLChange("loc", val), [handleURLChange])
 
   // Tab indicator animation
   const tabContainerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const t = (searchParams.get("tab") as typeof tab) || "active"
-    const s = searchParams.get("q") || ""
-    const ty = searchParams.get("type") || ""
-    const loc = searchParams.get("loc") || ""
-    setTab(t)
-    setSearch(s)
-    setType(ty)
-    setLocation(loc)
-  }, [])
-
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams)
-    next.set("tab", tab)
-    next.set("q", search)
-    next.set("type", type)
-    next.set("loc", location)
-    setSearchParams(next, { replace: true })
-  }, [tab, search, type, location, searchParams, setSearchParams])
 
   const dSearch = useDebounced(search, DEBOUNCE_MS)
   const dType = useDebounced(type, DEBOUNCE_MS)

@@ -226,6 +226,7 @@ async def test_upload_event_file_respects_scanner_limit(
     upload = UploadFile(
         filename="notes.txt",
         file=io.BytesIO(payload),
+        size=len(payload),
         headers=Headers({"content-type": "text/plain"}),
     )
 
