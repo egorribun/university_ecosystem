@@ -1,0 +1,32 @@
+# TD-07 (audit 2026-03-06): NetworkPolicy for frontend pods.
+# Without this policy, frontend pods can initiate arbitrary egress connections.
+# This policy restricts ingress to ingress-nginx and egress to kube-dns only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-network-policy
+  namespace: university-ecosystem
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Accept traffic only from the nginx ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Allow DNS resolution (required for all pods)
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

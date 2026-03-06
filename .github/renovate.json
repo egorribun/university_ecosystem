@@ -29,11 +29,36 @@
       "groupName": "Frontend patch updates"
     },
     {
-      "description": "Group all Python dependency updates",
+      "description": "Auto-merge security patch updates for cryptographic Python packages",
+      "matchManagers": ["uv"],
+      "matchUpdateTypes": ["patch"],
+      "matchPackageNames": [
+        "cryptography",
+        "pyjwt",
+        "bcrypt",
+        "argon2-cffi",
+        "pyotp",
+        "webauthn",
+        "python-jose"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "labels": ["security", "automerge"]
+    },
+    {
+      "description": "Group all other Python dependency updates (manual review)",
       "matchManagers": ["uv"],
       "matchUpdateTypes": ["patch"],
       "automerge": false,
       "groupName": "Python dependencies"
+    },
+    {
+      "description": "Track Go toolchain minor versions (manual review)",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang"],
+      "automerge": false,
+      "labels": ["go-toolchain", "dependencies"]
     },
     {
       "description": "Flag all security vulnerability alerts with the security label",

@@ -72,22 +72,34 @@ export async function readPendingReports() {
   return db.getAll(STORES.REPORT)
 }
 
-export function sanitizeReportPayload(payload: unknown): unknown {
+/** Keys that could enable prototype pollution — always blocked. */
+const BLOCKED_PAYLOAD_KEYS = new Set(["__proto__", "constructor", "prototype"])
+/** Maximum recursion depth to prevent stack overflow on adversarial input. */
+const MAX_SANITIZE_DEPTH = 10
+/** Maximum array length to include (truncate beyond this). */
+const MAX_ARRAY_LENGTH = 100
+
+export function sanitizeReportPayload(payload: unknown, _depth = 0): unknown {
+  if (_depth > MAX_SANITIZE_DEPTH) return "[truncated]"
   if (!payload || typeof payload !== "object") return payload
 
   if (Array.isArray(payload)) {
-    return payload.map(sanitizeReportPayload)
+    // Truncate oversized arrays to prevent DoS via unbounded allocation
+    return payload.slice(0, MAX_ARRAY_LENGTH).map((item) =>
+      sanitizeReportPayload(item, _depth + 1)
+    )
   }
 
   const result: Record<string, unknown> = {}
   const source = payload as Record<string, unknown>
 
-  for (const key in source) {
-    if (Object.prototype.hasOwnProperty.call(source, key)) {
-      const val = source[key]
-      if (typeof val === "function") continue
-      result[key] = sanitizeReportPayload(val)
-    }
+  // Object.keys only returns own enumerable properties, never prototype chain —
+  // safer than for...in which traverses the full prototype chain even with hasOwnProperty.
+  for (const key of Object.keys(source)) {
+    if (BLOCKED_PAYLOAD_KEYS.has(key)) continue
+    const val = source[key]
+    if (typeof val === "function") continue
+    result[key] = sanitizeReportPayload(val, _depth + 1)
   }
   return result
 }
@@ -138,29 +150,35 @@ export async function processPendingReports() {
   }
 }
 
+// PERF-03 (audit 2026-03-06): process all queued interactions concurrently instead
+// of sequentially. The old for-loop stalled on first network failure (break) and
+// kept all subsequent records un-synced for the entire offline period.
+// Promise.allSettled fires every fetch in parallel and collects outcomes without
+// short-circuiting — a single timeout does not block the rest of the queue.
 async function processNewsInteractionQueue(db: IDBPDatabase) {
   const records = await db.getAll(STORES.NEWS_INTERACTION)
-  for (const record of records) {
-    try {
+
+  const results = await Promise.allSettled(
+    records.map(async (record) => {
       const { url, method = "POST", payload } = record
       const options: RequestInit = {
         method,
         headers: { "Content-Type": "application/json" },
-      }
-      if (method !== "GET" && method !== "HEAD") {
-        options.body = JSON.stringify(payload)
+        ...(method !== "GET" && method !== "HEAD"
+          ? { body: JSON.stringify(payload) }
+          : {}),
       }
 
       const response = await fetch(url, options)
-      if (response.ok) {
-        await db.delete(STORES.NEWS_INTERACTION, record.id)
-      } else if (response.status === 400 || response.status === 404) {
-        // Drop invalid requests that will never succeed
+      if (response.ok || response.status === 400 || response.status === 404) {
+        // Drop records that succeeded or can never succeed (client errors)
         await db.delete(STORES.NEWS_INTERACTION, record.id)
       }
-    } catch (err) {
-      warn("Failed to sync news interaction", err)
-      break
-    }
-  }
+    })
+  )
+
+  // Log failures without breaking the loop
+  results
+    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+    .forEach((r) => warn("Failed to sync news interaction", r.reason))
 }

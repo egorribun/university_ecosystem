@@ -2,7 +2,9 @@
 name = "university-ecosystem"
 version = "1.0.0"
 description = "University Ecosystem Platform"
-requires-python = ">=3.11"
+# MOD-03 (audit 2026-03-06): CI and mypy already target 3.12; enforce it here.
+# Benefits: @override decorator, tomllib in stdlib, faster TaskGroup, ~5% CPython throughput.
+requires-python = ">=3.12"
 dependencies = [
     "aiofiles>=23.0",      # No breaking API changes between 23 and 24; pin removed (TD-3: audit 2026-02-24)
     "aiosqlite>=0.19",

@@ -249,14 +249,19 @@ services:
 
   nats:
     image: nats:2.10.25-alpine
-    command:
-      - "--js"
-      - "--sd=/data"
-      - "--http_port=8222"
-      - "--user=${NATS_USER:?NATS_USER is required - set in .env file}"
-      - "--pass=${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}"
+    # TD-09 (audit 2026-03-06): credentials via config file, not CLI args.
+    # --user/--pass appear in `docker ps` output and /proc/<pid>/cmdline.
+    # envsubst renders the template at startup; generated file lives in /tmp (not persisted).
+    entrypoint:
+      - "sh"
+      - "-c"
+      - "envsubst < /etc/nats/nats.conf.template > /tmp/nats.conf && exec nats-server --config /tmp/nats.conf"
+    environment:
+      - NATS_USER=${NATS_USER:?NATS_USER is required - set in .env file}
+      - NATS_PASSWORD=${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}
     # Ports not published: NATS is internal-only. Monitoring (8222) accessible via SSH tunnel.
     volumes:
+      - ./config/nats.conf.template:/etc/nats/nats.conf.template:ro
       - nats-data:/data
     networks:
       - internal

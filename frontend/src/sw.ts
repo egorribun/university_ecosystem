@@ -82,30 +82,35 @@ import { SERVICE_WORKER_MESSAGE_TYPES } from "./constants/serviceWorkerMessages"
 
 // Global Message Listener
 self.addEventListener("message", (event) => {
-  if (!event.data) return
+  // Require both data and a traceable source — messages without a source
+  // (e.g. from BroadcastChannel or non-Window clients) are rejected to
+  // prevent future code paths from accidentally bypassing origin validation.
+  if (!event.data || typeof event.data !== "object") return
+  if (!event.source || !("url" in event.source)) return
 
-  // Origin check: only accept messages from the same origin as this service worker.
-  // Prevents cross-origin iframes or malicious pages from sending control messages.
-  if (event.source && "url" in event.source) {
-    const senderOrigin = new URL((event.source as WindowClient).url).origin
-    const swOrigin = new URL(self.location.href).origin
-    if (senderOrigin !== swOrigin) {
-      if (import.meta.env.DEV) {
-        console.warn("[SW] Rejected postMessage from foreign origin:", senderOrigin)
-      }
-      return
+  // Origin check: only accept messages from the same origin as this SW.
+  const senderOrigin = new URL((event.source as WindowClient).url).origin
+  const swOrigin = new URL(self.location.href).origin
+  if (senderOrigin !== swOrigin) {
+    if (import.meta.env.DEV) {
+      console.warn("[SW] Rejected postMessage from foreign origin:", senderOrigin)
     }
+    return
   }
 
   switch (event.data.type) {
     case SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING:
       self.skipWaiting()
       break
-    case SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY:
-      if (event.data.sessionHash !== undefined) {
-        setSessionHash(event.data.sessionHash)
+    case SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY: {
+      // Strict type guard — sessionHash must be a non-empty string of reasonable length
+      // to prevent null/object/oversized-string injection via postMessage.
+      const hash = event.data.sessionHash
+      if (typeof hash === "string" && hash.length > 0 && hash.length <= 128) {
+        setSessionHash(hash)
       }
       break
+    }
     case SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE:
       event.waitUntil(clearSessionCaches())
       break
