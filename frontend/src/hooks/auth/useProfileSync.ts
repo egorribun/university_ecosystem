@@ -473,8 +473,6 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
   }
 }
 
-
-
 export const useProfileSync = (
   updateSessionSigningKey: (key: string | null) => void,
   sessionSigningKeyRef: React.MutableRefObject<string | null>,
@@ -557,7 +555,9 @@ export const useProfileSync = (
       }
 
       // Read from sessionStorage or the ref for initialization
-      const signingKey = sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) || sessionSigningKeyRef.current
+      const signingKey =
+        sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) ||
+        sessionSigningKeyRef.current
       if (signingKey) {
         const cached = await readCachedUserAsync(signingKey)
         if (mounted && cached) {
@@ -680,7 +680,9 @@ export const useProfileSync = (
     if (typeof window === "undefined") return
 
     const syncFromCache = async () => {
-      const key = sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) || sessionSigningKeyRef.current
+      const key =
+        sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) ||
+        sessionSigningKeyRef.current
       const cached = await readCachedUserAsync(key)
       if (!cached) {
         // Cache was deleted or is invalid - clear user state
