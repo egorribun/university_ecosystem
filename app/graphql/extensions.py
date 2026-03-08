@@ -125,7 +125,7 @@ class QueryCostExtension(SchemaExtension):
                 # If None, we try to use the public API or just log it
                 # Strawberry 1.x allows setting it in constructor but not via attribute
                 # Try to use add_error if available (though not in standard ExecutionContext)
-                self.execution_context.errors = [error] # type: ignore[misc]
+                self.execution_context.errors = [error]  # type: ignore[misc]
         else:
             logger.debug("GraphQL query cost=%d (max=%d)", cost, _MAX_QUERY_COST)
 

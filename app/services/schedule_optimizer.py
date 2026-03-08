@@ -1,6 +1,6 @@
 import logging
-from typing import Any
 from datetime import UTC, datetime
+from typing import Any
 
 import rust_ext
 from pydantic import BaseModel
