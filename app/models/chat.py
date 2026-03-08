@@ -17,7 +17,7 @@ from app.core.database import Base
 from app.models.mixins import UUID7PrimaryKeyMixin
 
 
-def utc_now():
+def utc_now() -> datetime:
     return datetime.now(UTC)
 
 

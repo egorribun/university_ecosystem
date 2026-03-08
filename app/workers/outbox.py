@@ -152,7 +152,7 @@ class OutboxWorker:
                 await db.commit()
                 return len(events)
 
-    async def _dispatch_event(self, se: StoredEvent):
+    async def _dispatch_event(self, se: StoredEvent) -> None:
         # Very simple reconstruction for demonstration.
         # In a real app, this would be more robust.
         with tracer.start_as_current_span("outbox.dispatch_event") as span:
@@ -164,7 +164,7 @@ class OutboxWorker:
             class ReconstructedEvent(DomainEvent):
                 _type: str = ""
 
-                def __post_init__(self):
+                def __post_init__(self) -> None:
                     for k, v in se.payload.items():
                         setattr(self, k, v)
 

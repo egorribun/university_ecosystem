@@ -3,6 +3,7 @@ import hmac
 import json
 import uuid
 from datetime import datetime
+from typing import Any
 
 from app.core.config import settings
 
@@ -13,7 +14,7 @@ def calculate_log_signature(
     resource_type: str,
     resource_id: str | None,
     action: str,
-    context: dict,
+    context: dict[str, Any],
     ip_address: str | None,
     user_agent: str | None,
     created_at: datetime,

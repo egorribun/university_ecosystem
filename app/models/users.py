@@ -215,7 +215,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         lazy="noload",
     )
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         preferences_data = kwargs.pop("preferences", None)
         profile_data = kwargs.pop("profile", None) or kwargs.pop("profile_detail", None)
         education_data = kwargs.pop("education_path", None)

@@ -7,7 +7,7 @@ import httpx
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.database import AsyncDatabaseSession
+from app.core.protocols import AsyncDatabaseSession
 
 logger = logging.getLogger(__name__)
 
@@ -86,5 +86,5 @@ class VectorService:
         )
         return [r[0] for r in results]
 
-    async def close(self):
+    async def close(self) -> None:
         await self._client.aclose()

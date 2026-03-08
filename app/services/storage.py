@@ -7,7 +7,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -138,12 +138,12 @@ class S3Storage(StorageBackend):
         *,
         bucket: str,
         region: str | None = None,
-        access_key_id: str | None = None,
-        secret_access_key: str | None = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
         endpoint_url: str | None = None,
         base_url: str | None = None,
-        client=None,
-        extra_put_object_args: dict[str, str] | None = None,
+        client: Any = None,
+        extra_put_object_args: dict[str, Any] | None = None,
     ) -> None:
         if not bucket:
             raise ValueError("Bucket name must not be empty")
@@ -151,8 +151,8 @@ class S3Storage(StorageBackend):
         # client parameter kept for test injection (allows passing a mock async client).
         self._injected_client = client
         self._region = region
-        self._access_key_id = access_key_id
-        self._secret_access_key = secret_access_key
+        self._access_key_id = access_key
+        self._secret_access_key = secret_key
         self._endpoint_url = endpoint_url
         # Derive the public base URL used in returned file URLs.
         resolved_base_url = (base_url or "").rstrip("/")
@@ -183,7 +183,7 @@ class S3Storage(StorageBackend):
         cache_control: str | None = None,
     ) -> str:
         key = self._normalize_key(relative_path)
-        args: dict = {
+        args: dict[str, Any] = {
             "Bucket": self.bucket,
             "Key": key,
             "Body": data,
@@ -202,7 +202,7 @@ class S3Storage(StorageBackend):
         return f"{self.base_url}/{key}"
 
     @asynccontextmanager
-    async def _build_aioboto3_client(self) -> AsyncIterator:
+    async def _build_aioboto3_client(self) -> AsyncIterator[Any]:
         """Yield an async S3 client for the duration of a single operation.
 
         Two modes:
@@ -298,9 +298,8 @@ def get_storage_backend(settings: Settings) -> StorageBackend:
         return S3Storage(
             bucket=settings.storage_s3_bucket,
             region=getattr(settings, "storage_s3_region", None) or None,
-            access_key_id=getattr(settings, "storage_s3_access_key_id", None) or None,
-            secret_access_key=getattr(settings, "storage_s3_secret_access_key", None)
-            or None,
+            access_key=getattr(settings, "storage_s3_access_key_id", None) or None,
+            secret_key=getattr(settings, "storage_s3_secret_access_key", None) or None,
             endpoint_url=getattr(settings, "storage_s3_endpoint_url", None) or None,
             base_url=getattr(settings, "storage_s3_base_url", None) or None,
         )

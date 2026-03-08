@@ -11,7 +11,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.core.events import DomainEvent, EventBus
@@ -34,7 +34,7 @@ class FailedEvent:
     handler_name: str | None = None
     retry_count: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "event_id": self.event.event_id,
@@ -229,7 +229,7 @@ class DeadLetterQueue:
         )
         return success_count, fail_count
 
-    async def get_stats(self) -> dict:
+    async def get_stats(self) -> dict[str, Any]:
         """Get statistics about the DLQ."""
         async with self._lock:
             events = list(self._queue)

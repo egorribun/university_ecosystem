@@ -30,7 +30,7 @@ class OrmModel(BaseModel):
     created_at: datetime | None = Field(default=None)
 
     @classmethod
-    def from_orm(cls, obj):
+    def from_orm(cls, obj: Any) -> OrmModel:
         return cls.model_validate(obj)
 
 
@@ -325,7 +325,7 @@ class UserOut(OrmModel, UserBase):
         }
 
         # Helper to safely get from related object
-        def get_attr(obj, attr, default=None):
+        def get_attr(obj: Any, attr: str, default: Any = None) -> Any:
             return getattr(obj, attr, default)
 
         # Profile fields
@@ -423,7 +423,7 @@ class UserPublicOut(OrmModel, UserProfilePublicFlattened):
             "is_active": user.is_active,
         }
 
-        def get_attr(obj, attr, default=None):
+        def get_attr(obj: Any, attr: str, default: Any = None) -> Any:
             return getattr(obj, attr, default)
 
         profile = getattr(user, "profile", None)
@@ -598,7 +598,7 @@ class StoryCreate(BaseModel):
     is_active: bool = True
 
     @model_validator(mode="after")
-    def _validate_expiration(self):
+    def _validate_expiration(self) -> StoryCreate:
         published = self.published_at
         expires = self.expires_at
         if expires is not None and published is not None and expires <= published:
@@ -618,7 +618,7 @@ class StoryUpdate(BaseModel):
     is_active: bool | None = None
 
     @model_validator(mode="after")
-    def _validate_expiration(self):
+    def _validate_expiration(self) -> StoryUpdate:
         provided = self.model_fields_set
         if "published_at" in provided and "expires_at" in provided:
             if self.published_at is not None and self.expires_at is not None:
@@ -670,7 +670,7 @@ class EventCreate(BaseModel):
     about_en: SanitizedInput = None
 
     @model_validator(mode="after")
-    def _validate_time_order(self):
+    def _validate_time_order(self) -> EventCreate:
         if self.ends_at <= self.starts_at:
             raise ValueError(translate("validation.events.end_after_start"))
         return self
@@ -694,7 +694,7 @@ class EventUpdate(BaseModel):
     about_en: SanitizedInput = None
 
     @model_validator(mode="after")
-    def _validate_time_updates(self):
+    def _validate_time_updates(self) -> EventUpdate:
         provided = self.model_fields_set
         starts_set = "starts_at" in provided
         ends_set = "ends_at" in provided

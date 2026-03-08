@@ -14,7 +14,7 @@ _RedisFactory = Callable[[str], Redis[Any]]
 
 def _create_redis_pool(url: str) -> Redis[Any]:
     return cast(
-        "Redis",
+        "Redis[Any]",
         Redis.from_url(
             url, encoding="utf-8", decode_responses=False, health_check_interval=30
         ),

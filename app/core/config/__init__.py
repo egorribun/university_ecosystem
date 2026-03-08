@@ -121,7 +121,7 @@ class Settings(
 
 def _load_settings() -> Settings:
     try:
-        return Settings()
+        return Settings()  # type: ignore[call-arg]
     except RuntimeError as exc:
         missing_required = getattr(exc, "missing_required", None)
         # Re-use logic from base but with local check
@@ -133,7 +133,7 @@ def _load_settings() -> Settings:
             exc,
             exc_info=False,
         )
-        fallback = Settings(_allow_missing=True)
+        fallback = Settings(_allow_missing=True)  # type: ignore[call-arg]
         missing = ", ".join(
             name.upper() for name in fallback.development_fallback_fields
         )

@@ -109,7 +109,7 @@ class PermissionChecker:
                     ),
                 )
             )
-            return (
+            return bool(
                 resp.permissionship
                 == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
             )

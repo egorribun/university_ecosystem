@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime, time
 from typing import Any
 
-import rust_ext
+import rust_ext  # type: ignore[import-not-found]
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)

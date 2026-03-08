@@ -51,13 +51,13 @@ try:
     )
 except Exception:  # pragma: no cover - optional dependency guard
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
-    CollectorRegistry = None  # type: ignore[assignment,misc]
-    Counter = None  # type: ignore[assignment,misc]
-    Gauge = None  # type: ignore[assignment,misc]
-    Histogram = None  # type: ignore[assignment,misc]
-    REGISTRY = None  # type: ignore[assignment]
+    CollectorRegistry = None
+    Counter = None
+    Gauge = None
+    Histogram = None
+    REGISTRY = None
 
-    def generate_latest(_: object) -> bytes:  # type: ignore[misc]
+    def generate_latest(_: object) -> bytes:
         raise RuntimeError("prometheus-client is required for worker metrics")
 
 
@@ -71,12 +71,12 @@ try:
             SentrySpanProcessor,
         )
     except Exception:
-        SentrySpanProcessor = None  # type: ignore[assignment,misc]
+        SentrySpanProcessor = None
 except Exception:
-    sentry_init = None  # type: ignore[assignment,misc]
-    FastApiIntegration = None  # type: ignore[assignment,misc]
-    LoggingIntegration = None  # type: ignore[assignment,misc]
-    SentrySpanProcessor = None  # type: ignore[assignment,misc]
+    sentry_init = None
+    FastApiIntegration = None
+    LoggingIntegration = None
+    SentrySpanProcessor = None
 
 
 from app.core.config import settings
@@ -124,7 +124,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         self._header_name = header_name
         self._trace_header_name = trace_header_name
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
         header_value = request.headers.get(self._header_name)
         request_id = header_value or uuid.uuid4().hex
         trace_header_value = request.headers.get(self._trace_header_name)
@@ -319,7 +319,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
     if not settings.enable_otel:
         return None
     if _otel_configured:
-        return trace.get_tracer_provider()  # type: ignore[return-value]
+        return trace.get_tracer_provider()
 
     resource = _create_otel_resource()
 
@@ -417,7 +417,7 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
         app.add_middleware(
-            CorrelationIdMiddleware,  # type: ignore[arg-type]
+            CorrelationIdMiddleware,
             header_name=settings.request_id_header,
             trace_header_name=settings.trace_header,
         )

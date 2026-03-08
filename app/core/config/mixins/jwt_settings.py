@@ -35,8 +35,10 @@ class JwtSettingsMixin:
     def _validate_secret_key_entropy(cls, v: str, info: ValidationInfo) -> str:
         if not v:
             raise ValueError("SECRET_KEY must not be empty")
-        env = (
-            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        env = str(
+            info.data.get("environment")
+            or os.environ.get("ENVIRONMENT", "development")
+            or "development"
         ).lower()
         if env not in _DEVELOPMENT_ENVIRONMENTS and len(v) < 32:
             raise ValueError(
@@ -52,8 +54,10 @@ class JwtSettingsMixin:
         keys = _coerce_str_list(v)
         if not keys:
             return v
-        env = (
-            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        env = str(
+            info.data.get("environment")
+            or os.environ.get("ENVIRONMENT", "development")
+            or "development"
         ).lower()
         if env not in _DEVELOPMENT_ENVIRONMENTS:
             for entry in keys:
@@ -79,8 +83,10 @@ class JwtSettingsMixin:
         verifier into using a public RSA key as an HMAC secret.
         (RZ-3: audit 2026-02-26)
         """
-        env = (
-            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        env = str(
+            info.data.get("environment")
+            or os.environ.get("ENVIRONMENT", "development")
+            or "development"
         ).lower()
         # Explicitly enumerate environments that require asymmetric signing.
         # This prevents a staging deployment that accidentally loads ENVIRONMENT=development
