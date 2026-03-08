@@ -1,6 +1,9 @@
 import * as v from "valibot"
 
-import { createEventApiV1EventsPost, uploadEventImageApiV1EventsUploadImagePost } from "@/api/generated"
+import {
+  createEventApiV1EventsPost,
+  uploadEventImageApiV1EventsUploadImagePost,
+} from "@/api/generated"
 import type { EventCreate } from "@/api/generated"
 import { ensureValidResponse } from "./validation"
 
@@ -17,10 +20,6 @@ export const uploadEventImage = async (file: File) => {
   const { data } = await uploadEventImageApiV1EventsUploadImagePost({
     body: { file },
   })
-  const parsed = ensureValidResponse(
-    uploadResponseSchema,
-    data,
-    "POST /api/v1/events/upload_image"
-  )
+  const parsed = ensureValidResponse(uploadResponseSchema, data, "POST /api/v1/events/upload_image")
   return parsed.url
 }

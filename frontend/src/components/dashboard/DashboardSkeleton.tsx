@@ -69,7 +69,7 @@ export function DashboardSkeleton() {
         </Card>
       </div>
 
-        {/* Weather widget placeholder */}
+      {/* Weather widget placeholder */}
       <div className="mt-8">
         <Card className="inline-flex items-center gap-3 p-4">
           <Skeleton width="3rem" height="3rem" rounded="full" />

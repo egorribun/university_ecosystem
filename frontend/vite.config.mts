@@ -270,7 +270,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 768,
       rollupOptions: {
         output: {
- manualChunks: {
+          manualChunks: {
             "vendor-react": ["react", "react-dom", "react-router-dom"],
             "vendor-ui": ["framer-motion", "lucide-react"],
             "vendor-query": ["@tanstack/react-query"],
@@ -281,10 +281,7 @@ export default defineConfig(({ mode }) => {
             "vendor-http": ["axios"],
             // TD-04 (audit 2026-03-06): @zxcvbn-ts/core removed from this chunk.
             // Import it dynamically in password-entry components only (register / reset-password).
-            "vendor-security": [
-              "dompurify",
-              "@simplewebauthn/browser",
-            ],
+            "vendor-security": ["dompurify", "@simplewebauthn/browser"],
           },
         },
       },

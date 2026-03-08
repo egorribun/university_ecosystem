@@ -194,7 +194,7 @@ export const useSessionCrypto = () => {
   const updateSessionSigningKey = useCallback(
     async (value: string | null) => {
       sessionSigningKeyRef.current = value
-      signingKeyRetryCountRef.current = 0  // reset circuit breaker on explicit update
+      signingKeyRetryCountRef.current = 0 // reset circuit breaker on explicit update
       setSessionSigningKeyState(value)
       persistSessionSigningKey(value)
       await sendSessionCacheUpdate(value, { purge: true })
@@ -244,7 +244,7 @@ export const useSessionCrypto = () => {
           window.dispatchEvent(
             new CustomEvent("auth:session-crypto-failed", {
               detail: { reason: "max_retries_exceeded", backoffMs: backoffDelay },
-            }),
+            })
           )
         }
         return null

@@ -1,7 +1,4 @@
-import axios, {
-  AxiosHeaders,
-  type AxiosRequestConfig,
-} from "axios"
+import axios, { AxiosHeaders, type AxiosRequestConfig } from "axios"
 import { client as generatedClient } from "@/api/generated/client.gen"
 import { applyLanguageHeader } from "./interceptors/language"
 import { updateTraceContext } from "./interceptors/traceContext"
@@ -187,9 +184,12 @@ api.interceptors.response.use(
  */
 export const apiClient = {
   get: <T = unknown>(url: string, config?: AxiosRequestConfig) => api.get<T>(url, config),
-  post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.post<T>(url, data, config),
-  put: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.put<T>(url, data, config),
-  patch: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => api.patch<T>(url, data, config),
+  post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    api.post<T>(url, data, config),
+  put: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    api.put<T>(url, data, config),
+  patch: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    api.patch<T>(url, data, config),
   delete: (url: string, config?: AxiosRequestConfig) => api.delete(url, config),
   request: (config: AxiosRequestConfig) => api.request(config),
 }

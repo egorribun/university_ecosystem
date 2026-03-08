@@ -3,7 +3,11 @@
  * Uses native Web Crypto API to prevent blocking the main thread.
  */
 
-import init, { pbkdf2_derive, scrypt_derive, hmac_sha256_sign } from "../../rust-crypto/pkg/rust_crypto.js"
+import init, {
+  pbkdf2_derive,
+  scrypt_derive,
+  hmac_sha256_sign,
+} from "../../rust-crypto/pkg/rust_crypto.js"
 
 let wasmInitPromise: Promise<unknown> | null = null
 
@@ -23,16 +27,8 @@ self.onmessage = async (event: MessageEvent) => {
     if (type === "SCRYPT") {
       const { password, salt, N, r, p, dkLen } = payload
 
-      const result = scrypt_derive(
-        password,
-        salt,
-        N,
-        r,
-        p,
-        dkLen
-      )
+      const result = scrypt_derive(password, salt, N, r, p, dkLen)
       self.postMessage({ id, result: Array.from(result) })
-
     } else if (type === "PBKDF2") {
       const { value, salt, keySize, iterations } = payload
       /* Previous implementation expected a hex output for pbkdf2 and took keySize in bits.
@@ -44,7 +40,6 @@ self.onmessage = async (event: MessageEvent) => {
       const byteLen = Math.floor(keySize / 8)
       const hex = pbkdf2_derive(value, salt, iterations, byteLen)
       self.postMessage({ id, result: hex })
-
     } else if (type === "HMAC_SHA256") {
       const { json, key } = payload
       const hex = hmac_sha256_sign(key, json)
@@ -60,5 +55,3 @@ self.onmessage = async (event: MessageEvent) => {
     self.postMessage({ id, error: message })
   }
 }
-
-

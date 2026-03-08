@@ -42,7 +42,9 @@ async function main() {
       shell: true,
     })
   } catch (error) {
-    console.warn("WASM build failed. If this is a non-rust environment, ensure rust-crypto/pkg and wasm-sanitizer/pkg exist.")
+    console.warn(
+      "WASM build failed. If this is a non-rust environment, ensure rust-crypto/pkg and wasm-sanitizer/pkg exist."
+    )
     console.warn(error.message)
   }
 

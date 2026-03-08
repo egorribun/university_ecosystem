@@ -79,7 +79,9 @@ export default function Profile() {
   const [fullName, setFullName] = useState(user?.full_name || "")
   const [email, setEmail] = useState(user?.email || "")
   const [about, setAbout] = useState(user?.profile_detail?.about || "")
-  const [recordBookNumber, setRecordBookNumber] = useState(user?.education_path?.record_book_number || "")
+  const [recordBookNumber, setRecordBookNumber] = useState(
+    user?.education_path?.record_book_number || ""
+  )
   const [status, setStatus] = useState(user?.profile_detail?.status || "")
   const [institute, setInstitute] = useState(user?.education_path?.institute || "")
   const [course, setCourse] = useState(user?.education_path?.course || "")
@@ -150,7 +152,7 @@ export default function Profile() {
           education_level: educationLevel,
           track,
           program,
-        }
+        },
       })
       setUser(response.data)
       setEdit(false)

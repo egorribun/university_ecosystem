@@ -7,10 +7,7 @@ import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
 
-
-const NewsCardView = lazy(() =>
-  import("./NewsCardView").then((m) => ({ default: m.NewsCardView }))
-)
+const NewsCardView = lazy(() => import("./NewsCardView").then((m) => ({ default: m.NewsCardView })))
 
 export type NewsCardProps = {
   id: string

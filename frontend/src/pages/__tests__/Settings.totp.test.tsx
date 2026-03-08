@@ -35,8 +35,6 @@ vi.mock("@/hooks/usePushPreferences", () => ({
   }),
 }))
 
-
-
 const createPendingEnrollment = (
   overrides: Partial<MfaTotpEnrollment> = {}
 ): MfaTotpEnrollment => ({
@@ -52,22 +50,21 @@ const createPendingEnrollment = (
 const renderSettings = () => {
   const queryClient = createQueryClient()
 
-
   const TestAuthProvider = ({ children }: PropsWithChildren) => {
     const mockLogout = vi.fn()
     const mockSetUser = vi.fn()
     return (
       <AuthContext.Provider
-          value={{
-            login: vi.fn(),
-            loginWithPasskey: vi.fn(),
-            logout: mockLogout,
-            setUser: mockSetUser,
-            refresh: vi.fn(),
-            submitMfaChallenge: vi.fn(),
-            requireMfa: vi.fn(),
-            resetEtagCache: vi.fn(),
-          }}
+        value={{
+          login: vi.fn(),
+          loginWithPasskey: vi.fn(),
+          logout: mockLogout,
+          setUser: mockSetUser,
+          refresh: vi.fn(),
+          submitMfaChallenge: vi.fn(),
+          requireMfa: vi.fn(),
+          resetEtagCache: vi.fn(),
+        }}
       >
         {children}
       </AuthContext.Provider>
@@ -127,12 +124,14 @@ describe("Settings TOTP enrollment", () => {
     await waitFor(() => expect(otpInputs[0]).not.toBeDisabled())
 
     for (let i = 0; i < 6; i++) {
-        fireEvent.change(otpInputs[i]!, { target: { value: (i + 1).toString() } })
+      fireEvent.change(otpInputs[i]!, { target: { value: (i + 1).toString() } })
     }
 
     await waitFor(
       async () => {
-        const matches = await screen.findAllByText(/Authenticator app connected|Приложение-аутентификатор подключено/i)
+        const matches = await screen.findAllByText(
+          /Authenticator app connected|Приложение-аутентификатор подключено/i
+        )
         expect(matches.length).toBeGreaterThan(0)
       },
       { timeout: 5000 }
@@ -159,7 +158,9 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
-    const accordions = await screen.findAllByText(/Authenticator app|Приложение для аутентификации/i)
+    const accordions = await screen.findAllByText(
+      /Authenticator app|Приложение для аутентификации/i
+    )
     await user.click(accordions[0] as HTMLElement)
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
@@ -171,7 +172,7 @@ describe("Settings TOTP enrollment", () => {
     await waitFor(() => expect(otpInputs[0]).not.toBeDisabled())
 
     for (let i = 0; i < 6; i++) {
-        fireEvent.change(otpInputs[i]!, { target: { value: "0" } })
+      fireEvent.change(otpInputs[i]!, { target: { value: "0" } })
     }
 
     const alerts = await screen.findAllByText(/Invalid verification code/i)
@@ -264,7 +265,10 @@ describe("Settings TOTP enrollment", () => {
 
     expect(
       await screen.findByText((_, element) => {
-        const hasText = (node: Element) => node.textContent?.match(/Only one authenticator app can be connected at a time|Можно подключить только одно приложение/i)
+        const hasText = (node: Element) =>
+          node.textContent?.match(
+            /Only one authenticator app can be connected at a time|Можно подключить только одно приложение/i
+          )
         const nodeHasText = hasText(element as Element)
         const childrenDontHaveText = Array.from(element?.children || []).every(
           (child) => !hasText(child)

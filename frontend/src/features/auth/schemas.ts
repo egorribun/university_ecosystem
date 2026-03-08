@@ -1,7 +1,11 @@
 import * as v from "valibot"
 
 export const loginSchema = v.object({
-  email: v.pipe(v.string(), v.minLength(1, "auth:messages.emailRequired"), v.email("auth:messages.invalidEmail")),
+  email: v.pipe(
+    v.string(),
+    v.minLength(1, "auth:messages.emailRequired"),
+    v.email("auth:messages.invalidEmail")
+  ),
   password: v.pipe(v.string(), v.minLength(1, "Password is required")),
   trustDevice: v.optional(v.boolean()),
 })

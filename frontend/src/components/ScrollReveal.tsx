@@ -90,12 +90,7 @@ export const ScrollReveal = ({
 
   return (
     <div ref={ref} style={{ width }} className={className}>
-      <motion.div
-        variants={variants}
-        initial="hidden"
-        animate={controls}
-        transition={transition}
-      >
+      <motion.div variants={variants} initial="hidden" animate={controls} transition={transition}>
         {children}
       </motion.div>
     </div>

@@ -1,10 +1,14 @@
 import { describe, it, expectTypeOf } from "vitest"
 
-import type {
-  NewsOut,
-} from "@/api/generated"
+import type { NewsOut } from "@/api/generated"
 import { createEvent, uploadEventImage, type CreateEventPayload } from "@/api/events"
-import { createNews, fetchNews, fetchNewsItem, uploadNewsImage, type CreateNewsPayload } from "@/api/news"
+import {
+  createNews,
+  fetchNews,
+  fetchNewsItem,
+  uploadNewsImage,
+  type CreateNewsPayload,
+} from "@/api/news"
 import { fetchNotificationsList, type NotificationsListResult } from "@/api/notifications"
 
 describe("typed api client", () => {
@@ -35,8 +39,8 @@ describe("typed api client", () => {
   })
 
   it("notifications list matches schema", () => {
-    expectTypeOf<ReturnType<typeof fetchNotificationsList>>().resolves.toEqualTypeOf<
-      NotificationsListResult
-    >()
+    expectTypeOf<
+      ReturnType<typeof fetchNotificationsList>
+    >().resolves.toEqualTypeOf<NotificationsListResult>()
   })
 })

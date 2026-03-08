@@ -122,4 +122,3 @@ describe("global skip link", () => {
     expect(container.querySelectorAll("a.skip-link")).toHaveLength(1)
   })
 })
-

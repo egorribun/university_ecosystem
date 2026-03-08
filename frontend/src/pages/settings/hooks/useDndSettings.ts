@@ -100,9 +100,12 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
 
       setDndSaving(true)
       try {
-        const payload: Record<string, unknown> = { preferences: { dnd_enabled: nextEnabled } as Record<string, unknown> }
+        const payload: Record<string, unknown> = {
+          preferences: { dnd_enabled: nextEnabled } as Record<string, unknown>,
+        }
         if (nextEnabled) {
-          ;(payload.preferences as Record<string, unknown>).dnd_start = toServerTime(normalizedStart)
+          ;(payload.preferences as Record<string, unknown>).dnd_start =
+            toServerTime(normalizedStart)
           ;(payload.preferences as Record<string, unknown>).dnd_end = toServerTime(normalizedEnd)
         } else {
           ;(payload.preferences as Record<string, unknown>).dnd_start = null

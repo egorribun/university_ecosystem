@@ -93,7 +93,6 @@ export function MobileMenu({
           "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
-
         tabIndex={-1}
       >
         <div className="flex-1 overflow-y-auto px-4 py-8">

@@ -333,7 +333,10 @@ export default function NewsDetail() {
     return localized || english
   }, [language, query.data?.content, query.data?.content_en])
   const createdAt = query.data?.created_at
-  const createdAtIso = useMemo(() => (createdAt ? toDate(createdAt).toISOString() : ""), [createdAt])
+  const createdAtIso = useMemo(
+    () => (createdAt ? toDate(createdAt).toISOString() : ""),
+    [createdAt]
+  )
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
 
   const readingTimeMinutes = useMemo(() => {

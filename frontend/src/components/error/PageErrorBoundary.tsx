@@ -83,13 +83,16 @@ function PageErrorFallback({
                     </div>
                     <div>{apiError.message}</div>
                     {apiError.traceId && (
-                      <div className="opacity-70 text-(--fs-label-xs)">Trace ID: {apiError.traceId}</div>
+                      <div className="opacity-70 text-(--fs-label-xs)">
+                        Trace ID: {apiError.traceId}
+                      </div>
                     )}
                     {apiError.details && apiError.details.length > 0 && (
                       <ul className="mt-2 list-inside list-disc opacity-80">
                         {apiError.details.map((d, i) => (
                           <li key={i}>
-                            {d.field ? <span className="underline">{d.field}</span> : "Error"}: {d.message}
+                            {d.field ? <span className="underline">{d.field}</span> : "Error"}:{" "}
+                            {d.message}
                           </li>
                         ))}
                       </ul>

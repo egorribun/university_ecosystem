@@ -139,9 +139,7 @@ export default function useActivityData() {
       grades: GradeSummaryResponse | null
       participation: ParticipationSummaryResponse | null
     }
-    type SettledLike<T> =
-      | { status: "fulfilled"; value: { data: T } }
-      | { status: "rejected" }
+    type SettledLike<T> = { status: "fulfilled"; value: { data: T } } | { status: "rejected" }
     const _toSettled = <T>(data: T | null): SettledLike<T> =>
       data != null ? { status: "fulfilled", value: { data } } : { status: "rejected" }
 

@@ -85,9 +85,7 @@ export function sanitizeReportPayload(payload: unknown, _depth = 0): unknown {
 
   if (Array.isArray(payload)) {
     // Truncate oversized arrays to prevent DoS via unbounded allocation
-    return payload.slice(0, MAX_ARRAY_LENGTH).map((item) =>
-      sanitizeReportPayload(item, _depth + 1)
-    )
+    return payload.slice(0, MAX_ARRAY_LENGTH).map((item) => sanitizeReportPayload(item, _depth + 1))
   }
 
   const result: Record<string, unknown> = {}
@@ -149,7 +147,7 @@ export async function processPendingReports() {
       if (response.ok) {
         await db.delete(STORES.REPORT, record.id)
       }
-    }),
+    })
   )
 
   results
@@ -171,9 +169,7 @@ async function processNewsInteractionQueue(db: IDBPDatabase) {
       const options: RequestInit = {
         method,
         headers: { "Content-Type": "application/json" },
-        ...(method !== "GET" && method !== "HEAD"
-          ? { body: JSON.stringify(payload) }
-          : {}),
+        ...(method !== "GET" && method !== "HEAD" ? { body: JSON.stringify(payload) } : {}),
       }
 
       const response = await fetch(url, options)

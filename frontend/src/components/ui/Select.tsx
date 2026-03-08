@@ -34,18 +34,18 @@ interface SelectProps {
  *  - Escape → close
  *  - Type-ahead → focus matching option
  */
-  const Select = ({
-    value,
-    onValueChange,
-    options,
-    placeholder,
-    className,
-    disabled,
-    error,
-    id: externalId,
-    "aria-label": ariaLabel,
-    "aria-labelledby": ariaLabelledBy,
-  }: SelectProps) => {
+const Select = ({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  className,
+  disabled,
+  error,
+  id: externalId,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+}: SelectProps) => {
   const { t } = useTranslation("common")
   const defaultPlaceholder = placeholder ?? t("select.placeholder")
   const generatedId = React.useId()
@@ -234,7 +234,9 @@ interface SelectProps {
           !selectedOption && "text-text-tertiary"
         )}
       >
-        <span className="truncate">{selectedOption ? selectedOption.label : defaultPlaceholder}</span>
+        <span className="truncate">
+          {selectedOption ? selectedOption.label : defaultPlaceholder}
+        </span>
         <ChevronDown
           className={cn(
             "h-4 w-4 shrink-0 text-text-secondary transition-transform duration-base",

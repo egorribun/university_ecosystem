@@ -131,7 +131,6 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
       inputRefs.current[0]?.focus()
     }
     // We only want this on mount for the "fresh" state
-     
   }, [])
 
   return (

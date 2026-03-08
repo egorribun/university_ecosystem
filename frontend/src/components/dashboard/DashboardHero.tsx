@@ -40,7 +40,6 @@ export function DashboardHero({
     isNarrow ? "bg-(--grad-header-135)" : "bg-(--grad-header-125)"
   )
 
-
   const showHeaderMotion = !prefersReducedMotion && !isNarrow
 
   return (
@@ -51,11 +50,10 @@ export function DashboardHero({
         "bg-linear-[145deg,var(--hero-grad-start),var(--hero-grad-end)]"
       )}
       style={{
-        background: "linear-gradient(145deg, var(--hero-grad-start), var(--hero-grad-end))"
+        background: "linear-gradient(145deg, var(--hero-grad-start), var(--hero-grad-end))",
       }}
     >
       <DashboardBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-
 
       <div className="relative z-deep space-y-6">
         <ScrollReveal mode="pop" delay={0.1} width="100%">

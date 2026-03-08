@@ -6,15 +6,16 @@
  */
 
 // Worker instance
-const worker = (typeof Worker !== "undefined")
-  ? new Worker(new URL("../workers/crypto.worker.ts", import.meta.url), {
-      type: "module",
-    })
-  : ({
-      postMessage: () => {},
-      onmessage: () => {},
-      onerror: () => {},
-    } as unknown as Worker)
+const worker =
+  typeof Worker !== "undefined"
+    ? new Worker(new URL("../workers/crypto.worker.ts", import.meta.url), {
+        type: "module",
+      })
+    : ({
+        postMessage: () => {},
+        onmessage: () => {},
+        onerror: () => {},
+      } as unknown as Worker)
 
 // Promise handling
 interface WorkerMessage {
@@ -109,15 +110,15 @@ interface HmacSha256Params {
 
 export const cryptoWorker = {
   /**
-    * PBKDF2 key derivation (via Worker)
-    */
+   * PBKDF2 key derivation (via Worker)
+   */
   async pbkdf2(params: Pbkdf2Params): Promise<string> {
     return post<string>("PBKDF2", params)
   },
 
   /**
-    * Scrypt key derivation (via Worker - uses high-iter PBKDF2 shim)
-    */
+   * Scrypt key derivation (via Worker - uses high-iter PBKDF2 shim)
+   */
   async scrypt(params: ScryptParams): Promise<Uint8Array> {
     // We pass the raw parameters. The worker handles the re-mapping to PBKDF2
     const result = await post<number[]>("SCRYPT", params)
@@ -125,8 +126,8 @@ export const cryptoWorker = {
   },
 
   /**
-    * HMAC-SHA256 signing (via Worker)
-    */
+   * HMAC-SHA256 signing (via Worker)
+   */
   async hmacSha256(params: HmacSha256Params): Promise<string> {
     return post<string>("HMAC_SHA256", params)
   },

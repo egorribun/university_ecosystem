@@ -15,7 +15,7 @@ const MAX_CACHE_ENTRIES = 50
 type SignedCacheEntry = {
   data: unknown
   hmac: string // HMAC-SHA256(JSON.stringify(data), sessionSigningKey) — hex string
-  ts: number   // Unix timestamp (ms) for LRU eviction
+  ts: number // Unix timestamp (ms) for LRU eviction
 }
 
 type EtagEntry = {
@@ -43,7 +43,7 @@ const computeHmac = async (payload: string, key: string): Promise<string> => {
     enc.encode(key),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"],
+    ["sign"]
   )
   const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(payload))
   return Array.from(new Uint8Array(sig))
@@ -218,7 +218,7 @@ export const applyEtagHeader = (config: InternalAxiosRequestConfig, etagKey: str
 
 export const handleEtagResponse = async (response: AxiosResponse, etagKey: string) => {
   const responseHeaders = AxiosHeaders.from(
-    (response.headers ?? undefined) as AxiosHeaders | string | undefined,
+    (response.headers ?? undefined) as AxiosHeaders | string | undefined
   )
   const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
 

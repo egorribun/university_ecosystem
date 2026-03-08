@@ -1,4 +1,3 @@
-
 import * as v from "valibot"
 
 // Max file size 5MB
@@ -20,12 +19,8 @@ export const newsFormSchema = v.object({
   ),
   title_en: v.optional(
     v.union([
-      v.pipe(
-        v.string(),
-        v.trim(),
-        v.maxLength(100, "Title (EN) must be less than 100 characters")
-      ),
-      v.literal("")
+      v.pipe(v.string(), v.trim(), v.maxLength(100, "Title (EN) must be less than 100 characters")),
+      v.literal(""),
     ])
   ),
   content_en: v.optional(
@@ -35,7 +30,7 @@ export const newsFormSchema = v.object({
         v.trim(),
         v.maxLength(3000, "Content (EN) must be less than 3000 characters")
       ),
-      v.literal("")
+      v.literal(""),
     ])
   ),
   image: v.nullable(

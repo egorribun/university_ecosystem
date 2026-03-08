@@ -35,14 +35,11 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     void prefetchDashboardNews(queryClient, language)
   }
 
-  const prepareOnKey = useCallback(
-    (event: KeyboardEvent, callback: () => void) => {
-      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-        callback()
-      }
-    },
-    []
-  )
+  const prepareOnKey = useCallback((event: KeyboardEvent, callback: () => void) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+      callback()
+    }
+  }, [])
 
   return (
     <Card

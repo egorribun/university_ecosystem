@@ -17,17 +17,21 @@ export interface ApiErrorResponse {
 /**
  * Extracts a normalized error response from any caught exception.
  */
-export const extractApiError = (error: unknown, fallbackMessage = "An unexpected error occurred"): ApiErrorResponse => {
+export const extractApiError = (
+  error: unknown,
+  fallbackMessage = "An unexpected error occurred"
+): ApiErrorResponse => {
   if (isAxiosError(error)) {
     const data = error.response?.data as Record<string, unknown> | undefined
     const status = error.response?.status || 0
 
     // Extract standard FastAPI / internal error formats
-    const message = typeof data?.detail === "string"
-      ? data.detail
-      : typeof data?.message === "string"
-        ? data.message
-        : error.message || fallbackMessage
+    const message =
+      typeof data?.detail === "string"
+        ? data.detail
+        : typeof data?.message === "string"
+          ? data.message
+          : error.message || fallbackMessage
 
     const details: ApiErrorDetail[] = []
 
@@ -38,7 +42,7 @@ export const extractApiError = (error: unknown, fallbackMessage = "An unexpected
           details.push({
             code: err.type || "validation_error",
             message: err.msg,
-            field: Array.isArray(err.loc) ? err.loc[err.loc.length - 1]?.toString() : undefined
+            field: Array.isArray(err.loc) ? err.loc[err.loc.length - 1]?.toString() : undefined,
           })
         }
       }
@@ -48,7 +52,7 @@ export const extractApiError = (error: unknown, fallbackMessage = "An unexpected
       status,
       message,
       details: details.length > 0 ? details : undefined,
-      traceId: typeof data?.trace_id === "string" ? data.trace_id : undefined
+      traceId: typeof data?.trace_id === "string" ? data.trace_id : undefined,
     }
   }
 

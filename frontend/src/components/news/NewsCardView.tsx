@@ -94,7 +94,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   onDeleteConfirm,
   onEditSuccess,
   onErrorClose,
-  t
+  t,
 }) => {
   return (
     <motion.article

@@ -12,7 +12,9 @@ const noopSetUser = () => {
   logWarning("AuthContext setUser called outside provider")
 }
 
-export const AuthContext = createContext<Omit<AuthContextType, "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation">>({
+export const AuthContext = createContext<
+  Omit<AuthContextType, "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation">
+>({
   login: async () => null,
   logout: async () => {},
   setUser: noopSetUser,
@@ -21,7 +23,10 @@ export const AuthContext = createContext<Omit<AuthContextType, "user" | "loading
   requireMfa: async () => null,
   loginWithPasskey: async () => {},
   resetEtagCache,
-} as unknown as Omit<AuthContextType, "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation">)
+} as unknown as Omit<
+  AuthContextType,
+  "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation"
+>)
 
 import { useShallow } from "zustand/react/shallow"
 
@@ -68,18 +73,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [sessionSigningKey])
 
-  const {
-    user,
-    setUser,
-    updatePendingMfa,
-    handleUnauthorized,
-    authOperation,
-    setAuthOperation,
-  } = useProfileSync(
-    updateSessionSigningKey,
-    sessionSigningKeyPromiseRef,
-    ensureSessionSigningKey
-  )
+  const { user, setUser, updatePendingMfa, handleUnauthorized, authOperation, setAuthOperation } =
+    useProfileSync(updateSessionSigningKey, sessionSigningKeyPromiseRef, ensureSessionSigningKey)
 
   const { login, logout, submitMfaChallenge, requireMfa, loginWithPasskey, refresh } = useAuthApi(
     user,

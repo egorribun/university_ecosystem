@@ -43,14 +43,11 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
     })
   }
 
-  const prepareOnKey = useCallback(
-    (event: KeyboardEvent, callback: () => void) => {
-      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-        callback()
-      }
-    },
-    []
-  )
+  const prepareOnKey = useCallback((event: KeyboardEvent, callback: () => void) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+      callback()
+    }
+  }, [])
 
   const todayEvents = useMemo(() => {
     const from = new Date()
@@ -61,12 +58,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
     return events
       .filter((e) => e.starts_at)
       .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
-      .filter(
-        (e) =>
-          !isNaN(e.d.getTime()) &&
-          e.d >= from &&
-          e.d <= to
-      )
+      .filter((e) => !isNaN(e.d.getTime()) && e.d >= from && e.d <= to)
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
   }, [events])
@@ -81,12 +73,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
     return events
       .filter((e) => e.starts_at)
       .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
-      .filter(
-        (e) =>
-          !isNaN(e.d.getTime()) &&
-          e.d >= from &&
-          e.d <= to
-      )
+      .filter((e) => !isNaN(e.d.getTime()) && e.d >= from && e.d <= to)
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
   }, [events])
@@ -181,7 +168,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             {scopedEvents.map((e) => {
               // e.d is now a dayjs object from the useMemo above
               return (
-                  <li key={e.id} className="dash-list-item px-0 py-0">
+                <li key={e.id} className="dash-list-item px-0 py-0">
                   <button
                     type="button"
                     className={cn(
@@ -203,7 +190,17 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                       <Badge
                         size="sm"
                         className="border-brand/(--opacity-dim) bg-brand/(--opacity-faint) font-mono text-xs font-medium text-brand dark:bg-brand/(--opacity-subtle)"
-                        label={!isNaN(e.d.getTime()) ? formatDate(e.d, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : ""}
+                        label={
+                          !isNaN(e.d.getTime())
+                            ? formatDate(e.d, {
+                                day: "2-digit",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: false,
+                              })
+                            : ""
+                        }
                       />
                       {!!e.location && (
                         <Badge
@@ -236,7 +233,8 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
         }}
         className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light transition-opacity duration-slow"
         style={{
-          background: "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)"
+          background:
+            "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)",
         }}
       />
       <motion.span

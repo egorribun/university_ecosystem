@@ -219,7 +219,7 @@ export default function MapContent() {
             className="absolute border-none left-0 right-0 block"
             style={{
               top: `calc(-1 * ${MAP_IFRAME_OFFSET})`,
-              bottom: `calc(-1 * ${MAP_IFRAME_OFFSET})`
+              bottom: `calc(-1 * ${MAP_IFRAME_OFFSET})`,
             }}
             allowFullScreen
             loading="lazy"

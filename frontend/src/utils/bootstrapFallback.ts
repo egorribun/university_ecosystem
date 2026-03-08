@@ -136,7 +136,6 @@ export function renderBootstrapFallback({
   reloadButton.style.border = "none"
   reloadButton.style.boxShadow = "var(--shadow-premium, 0 4px 6px -1px rgb(0 0 0 / 0.1))"
 
-
   const clearCacheButton = documentRef.createElement("button")
   clearCacheButton.type = "button"
   clearCacheButton.textContent = copy.clearCacheButtonLabel

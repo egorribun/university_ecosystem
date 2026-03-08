@@ -106,9 +106,7 @@ export default function ForgotPassword() {
                 {t("auth:forgot.title")}
               </h1>
               <p className="text-sm text-(--text-secondary) font-medium">
-                {isSuccess
-                  ? t("auth:forgot.successSent")
-                  : t("auth:forgot.subtitle")}
+                {isSuccess ? t("auth:forgot.successSent") : t("auth:forgot.subtitle")}
               </p>
             </div>
 

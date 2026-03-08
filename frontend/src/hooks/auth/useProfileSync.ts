@@ -297,11 +297,7 @@ const decryptData = async (
 const signPayload = async (payload: CacheSignaturePayload, signingKey: string): Promise<string> => {
   try {
     const enc = new TextEncoder()
-    const signatureBytes = hmac(
-      sha256,
-      enc.encode(signingKey),
-      enc.encode(JSON.stringify(payload))
-    )
+    const signatureBytes = hmac(sha256, enc.encode(signingKey), enc.encode(JSON.stringify(payload)))
     return uint8ToBase64(signatureBytes)
   } catch {
     return ""
@@ -687,8 +683,6 @@ export const useProfileSync = (
     ]
   )
 
-
-
   useEffect(() => {
     if (cachedUserRef.current !== null) {
       queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUserRef.current)
@@ -821,7 +815,7 @@ export const useProfileSync = (
           message: apiError.message,
           status: apiError.status,
           details: apiError.details,
-          traceId: apiError.traceId
+          traceId: apiError.traceId,
         })
       } finally {
         if (!controller.signal.aborted && activeRequestRef.current === controller) {
@@ -844,8 +838,17 @@ export const useProfileSync = (
       setLoading: setInitializing,
       setPendingMfa: setPendingMfaState,
       setAuthOperation,
-    });
-  }, [userState, initializing, authOperation, pendingMfaState, setUser, setInitializing, setPendingMfaState, setAuthOperation]);
+    })
+  }, [
+    userState,
+    initializing,
+    authOperation,
+    pendingMfaState,
+    setUser,
+    setInitializing,
+    setPendingMfaState,
+    setAuthOperation,
+  ])
 
   return {
     user: userState,
