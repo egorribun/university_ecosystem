@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from app.core.config import settings
-from app.core.database import Base, engine, wait_db
+from app.core.database import Base, engine, init_database, wait_db
 from app.core.events import register_event_listeners
 from app.core.observability import shutdown_observability
 from app.deps.cache import shutdown_cache
@@ -66,6 +66,8 @@ _RUNTIME_FLAGS: dict[str, bool] = {}
 
 async def _startup_database_and_di(app: FastAPI) -> None:
     """Stage 1: Core infrastructure bootstrapping."""
+    # RZ-5 (audit 2026-03-05): Initialize database engines and proxies
+    init_database()
 
     # RZ-5 (audit 2026-03-05): Fail fast in production when SPOTIFY_TOKEN_SECRET
     # is not independently configured. Using SECRET_KEY as fallback couples Spotify
