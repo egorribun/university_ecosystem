@@ -372,7 +372,7 @@ class RedisClusterCache(BaseCache):
     def __init__(self, url: str, default_ttl: int) -> None:
         self._url = url
         self._default_ttl = max(int(default_ttl or 0), 0)
-        self._client = None
+        self._client: Any | None = None
         self._client_lock = asyncio.Lock()
 
     async def _get_client(self):
@@ -398,7 +398,7 @@ class RedisClusterCache(BaseCache):
     async def close(self) -> None:
         if self._client is None:
             return
-        client, self._client = self._client, None  # type: ignore[unreachable]
+        client, self._client = self._client, None
         try:
             if hasattr(client, "aclose"):
                 await client.aclose()

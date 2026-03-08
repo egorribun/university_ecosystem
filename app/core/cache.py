@@ -298,7 +298,7 @@ def cached(
             key = key_builder(*args, **kwargs)
             # Both LRUCache and MultiLayerCache expose a 'get' method.
             # MultiLayerCache's get is async; LRUCache's is sync.
-            if hasattr(cache_instance, "_redis"):  # heuristic for MultiLayerCache
+            if isinstance(cache_instance, MultiLayerCache):
                 cached_val = await cache_instance.get(key)
             else:
                 cached_val = cache_instance.get(key)
@@ -308,8 +308,8 @@ def cached(
 
             result = await func(*args, **kwargs)
             if result is not None:
-                if hasattr(cache_instance, "_redis"):
-                    await cache_instance.set(key, result, l1_ttl=ttl)  # type: ignore[call-arg]
+                if isinstance(cache_instance, MultiLayerCache):
+                    await cache_instance.set(key, result, l1_ttl=ttl)
                 else:
                     cache_instance.set(key, result, ttl=ttl)
             return result

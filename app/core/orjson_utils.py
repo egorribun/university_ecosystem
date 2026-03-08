@@ -33,12 +33,12 @@ except ImportError:
         OPT_NAIVE_UTC = 0
 
         @staticmethod
-        def dumps(obj, default=None, option=None):
+        def dumps(obj: Any, default: Any = None, option: Any = None) -> bytes:
             # Ignores option
             return json.dumps(obj, default=default).encode("utf-8")
 
         @staticmethod
-        def loads(obj):
+        def loads(obj: bytes | str) -> Any:
             return json.loads(obj)
 
     orjson: Any = OrJsonMock()  # type: ignore[no-redef]
@@ -106,6 +106,7 @@ def default_serializer(obj: Any) -> Any:
 __all__ = [
     "ORJSON_OPTIONS",
     "default_serializer",
+    "orjson",
     "orjson_dumps",
     "orjson_dumps_str",
     "orjson_loads",

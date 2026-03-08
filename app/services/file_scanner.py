@@ -362,7 +362,7 @@ async def _scan_upload_with_clamd(
     try:
         async with asyncio.timeout(timeout):
             if socket_path:
-                reader, writer = await asyncio.open_unix_connection(socket_path)
+                reader, writer = await asyncio.open_unix_connection(socket_path)  # type: ignore[attr-defined]
             else:
                 reader, writer = await asyncio.open_connection(host, port)
 

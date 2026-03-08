@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Awaitable, Callable, Iterable, Sequence
 
     from starlette.requests import Request
 
@@ -21,7 +21,7 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: Any,
         *,
         allowed_ips: Iterable[str] = (),
         header_name: str | None = None,
@@ -36,7 +36,9 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
             prefix.rstrip("/") for prefix in internal_prefixes
         )
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         path = request.url.path.rstrip("/") or "/"
         if not any(path.startswith(prefix) for prefix in self.internal_prefixes):
             return await call_next(request)

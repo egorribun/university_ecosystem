@@ -47,7 +47,7 @@ async def migrations_are_current(
     script = get_alembic_script()
     expected_heads = set(script.get_heads())
 
-    async def _fetch(c):
+    async def _fetch(c: AsyncConnection) -> set[str]:
         result = await c.execute(text("SELECT version_num FROM alembic_version"))
         return {row[0] for row in result}
 

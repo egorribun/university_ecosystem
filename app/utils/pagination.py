@@ -97,7 +97,7 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
 async def paginate_cursor[T](
     session: AsyncSession,
     stmt: Select[Any],
-    cursor_column,
+    cursor_column: Any,
     params: CursorParams,
     descending: bool = True,
     include_total: bool = False,

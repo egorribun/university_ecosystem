@@ -1,6 +1,6 @@
 import asyncio
 import hashlib
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
@@ -85,7 +85,7 @@ async def _handle_stats_query(
         return not_modified
 
     _set_stats_headers(response, locale=locale, etag=result.etag)
-    return result.payload
+    return cast(dict[str, object], result.payload)
 
 
 @router.get(

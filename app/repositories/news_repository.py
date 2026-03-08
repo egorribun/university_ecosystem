@@ -8,11 +8,11 @@ import asyncio
 import contextlib
 import uuid
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import and_, exists, func, or_, select
 
-from app.core.cache import news_cache
+from app.core.cache import cached, news_cache
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
 from app.models import models
@@ -50,7 +50,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
     def dto_class(self) -> type[NewsDTO]:
         return NewsDTO
 
-    from app.core.cache import cached
 
     @cached(cache_instance=news_cache, key_builder=build_news_cache_key)
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
@@ -64,7 +63,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
 
     async def get_latest(self, limit: int = 5) -> list[NewsDTO]:
         """Get the latest news items."""
-        return await self.get_published(skip=0, limit=limit)
+        return cast(list[NewsDTO], await self.get_published(skip=0, limit=limit))
 
     async def search(
         self, query: str, *, skip: int = 0, limit: int = 20

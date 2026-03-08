@@ -9,12 +9,12 @@ from redis.asyncio import Redis
 if TYPE_CHECKING:
     pass
 
-_RedisFactory = Callable[[str], Redis[Any]]
+_RedisFactory = Callable[[str], Redis]
 
 
-def _create_redis_pool(url: str) -> Redis[Any]:
+def _create_redis_pool(url: str) -> Redis:
     return cast(
-        Redis,
+        "Redis",
         Redis.from_url(
             url, encoding="utf-8", decode_responses=False, health_check_interval=30
         ),
@@ -22,11 +22,11 @@ def _create_redis_pool(url: str) -> Redis[Any]:
 
 
 _redis_factory: _RedisFactory = _create_redis_pool
-_shared_clients: dict[str, Redis[Any]] = {}
+_shared_clients: dict[str, Redis] = {}
 _shared_clients_write_lock: asyncio.Lock | None = None
 
 
-async def get_shared_client(redis_url: str) -> Redis[Any]:
+async def get_shared_client(redis_url: str) -> Redis:
     """Return a shared Redis client for *redis_url*."""
     global _shared_clients_write_lock
     client = _shared_clients.get(redis_url)

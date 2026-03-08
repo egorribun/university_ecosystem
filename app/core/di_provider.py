@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from typing import Any, cast
 
 import redis.asyncio as aioredis
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
@@ -24,11 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.fingerprint import SuspiciousActivityDetector
 from app.auth.redis_session import SessionBackend
-
-# NatsTaskBroker is imported at module level so that Dishka's @provide parser
-# can resolve the return type via get_type_hints() at class-definition time.
-# (A string forward-reference like "app.core.nats_broker.NatsTaskBroker" will
-# cause UndefinedTypeAnalysisError because "app" is not in module globals.)
 from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession, UserAnalyticsServiceProtocol
 from app.cqrs.bus import CommandBus, QueryBus
@@ -198,8 +192,6 @@ class AppProvider(Provider):
         full pool lifecycle. The previous sync provider created the Redis client
         but never closed it on container teardown, leaking file descriptors.
         """
-        import redis.asyncio as aioredis
-
         from app.core.config import settings
 
         client = aioredis.from_url(
@@ -213,7 +205,6 @@ class AppProvider(Provider):
         try:
             yield FraudDetectionService(redis_client=client)
         finally:
-            client: aioredis.Redis[Any] = cast(aioredis.Redis[Any], client)
             await client.aclose()
 
     # ── REQUEST-scoped services ───────────────────────────────────────────────

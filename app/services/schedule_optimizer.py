@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from datetime import UTC, datetime
 
 import rust_ext
@@ -20,7 +21,7 @@ class ScheduleItemInternal(BaseModel):
 class ScheduleOptimizerService:
     """Service to interact with the Rust-based schedule optimizer natively via PyO3."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Kept for backward compatibility with DI containers passing URLs
         pass
 

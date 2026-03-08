@@ -65,9 +65,9 @@ class ETagMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: Any,
         skip_paths: tuple[str, ...] = ("/healthz", "/metrics", "/ws"),
-    ):
+    ) -> None:
         super().__init__(app)
         self.skip_paths = skip_paths
 

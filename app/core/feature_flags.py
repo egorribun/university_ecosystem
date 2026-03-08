@@ -14,7 +14,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any
 
 from openfeature import api
 from openfeature.evaluation_context import EvaluationContext
@@ -189,11 +189,11 @@ class FeatureFlagService:
         self._flags: dict[str, FeatureFlag] = {}
         # Hardcoded defaults (will be used if Redis is empty or fails)
         self._defaults: dict[str, FeatureFlag] = {}
-        self._redis: Redis[Any] | None = None
+        self._redis: Redis | None = None
         self._pubsub_task: asyncio.Task[Any] | None = None
         self._is_initialized = False
 
-    async def initialize(self, redis: Redis[Any] | None = None) -> None:
+    async def initialize(self, redis: Redis | None = None) -> None:
         """
         Initialize the service, loading current state from Redis.
 
@@ -257,8 +257,7 @@ class FeatureFlagService:
         if self._redis:
             # If we created our own client, we should close it.
             # But usually it's passed from lifespan.
-            client: Redis[Any] = cast(Redis[Any], self._redis)
-            await client.aclose()
+            await self._redis.aclose()
 
     async def _listen_for_updates(self):
         """Listen for flag updates via Pub/Sub."""
