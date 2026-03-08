@@ -81,6 +81,8 @@ dependencies = [
     "grpcio-health-checking>=1.60.0",
     "dishka>=0.14",
     "openfeature-sdk>=0.8.4",
+    "rust_ext",
+    "pyo3_sanitizer",
     # RZ-11 (audit 2026-03-05): virtualenv moved to [dependency-groups.dev] —
     # it is a developer tooling package that ships pip/setuptools/wheel and
     # inflates the production image with unnecessary CVE surface.
@@ -276,6 +278,13 @@ dev = [
     "types-requests>=2.32.4.20260107",
     "types-pyyaml>=6.0.12.20250915",
 ]
+
+[tool.uv.workspace]
+members = ["native/rust_ext", "crates/pyo3-sanitizer"]
+
+[tool.uv.sources]
+rust_ext = { workspace = true }
+pyo3_sanitizer = { workspace = true }
 
 [tool.bandit]
 # Bandit static analysis security scanner.
