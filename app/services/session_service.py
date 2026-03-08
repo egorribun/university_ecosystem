@@ -167,7 +167,12 @@ class SessionService:
                     )
 
     def _mint_jwt(
-        self, user_id: UUID, jti: str, iat: datetime, exp: datetime, extra: dict[str, Any] | None
+        self,
+        user_id: UUID,
+        jti: str,
+        iat: datetime,
+        exp: datetime,
+        extra: dict[str, Any] | None,
     ) -> str:
         payload = {
             "sub": str(user_id),

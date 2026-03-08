@@ -38,7 +38,7 @@ def _build_chat_service(session: AsyncDatabaseSession) -> "ChatService":
 
 
 def get_chat_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)]
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "ChatService":
     return _build_chat_service(session)
 
@@ -106,7 +106,7 @@ def _build_story_service(session: AsyncDatabaseSession) -> "StoryService":
 
 
 def get_story_service(
-    session: Annotated[AsyncDatabaseSession, Depends(get_db)]
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "StoryService":
     return _build_story_service(session)
 
@@ -167,7 +167,6 @@ def get_session_service(
 
 async def get_geolocation_service() -> "GeolocationService":
     from app.services.geolocation import (
-        GeolocationService,
         get_geolocation_service_instance,
     )
 
@@ -187,7 +186,9 @@ async def get_login_service(
     redis_session_service: Annotated[
         "RedisSessionService", Depends(get_redis_session_service)
     ],
-    geolocation_service: Annotated["GeolocationService", Depends(get_geolocation_service)],
+    geolocation_service: Annotated[
+        "GeolocationService", Depends(get_geolocation_service)
+    ],
 ) -> "LoginService":
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.user_repository import UserRepository
