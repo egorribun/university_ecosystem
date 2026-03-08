@@ -273,7 +273,9 @@ class AuthRepository(
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def create_webauthn_credential(self, **kwargs: Any) -> models.WebAuthnCredential:
+    async def create_webauthn_credential(
+        self, **kwargs: Any
+    ) -> models.WebAuthnCredential:
         """Create a new WebAuthn credential."""
         record = models.WebAuthnCredential(**kwargs)
         self.db.add(record)

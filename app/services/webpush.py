@@ -35,6 +35,7 @@ from app.services.push_topics import normalize_topic, subscription_supports_topi
 
 if TYPE_CHECKING:
     import uuid
+
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
