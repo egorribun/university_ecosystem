@@ -108,7 +108,6 @@ try {
   const sanitizerWasmBuffer = fs.readFileSync(sanitizerWasmPath)
   initSanitizer(sanitizerWasmBuffer)
 } catch (e) {
-  // eslint-disable-next-line no-console
   console.error("Failed to initialize WASM modules for tests:", e)
 }
 
