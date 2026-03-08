@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Only need templates directory, not full history
           sparse-checkout: |
@@ -82,7 +82,7 @@ jobs:
           category: nuclei-dast
 
       - name: Upload raw JSON findings
-        uses: actions/upload-artifact@ea165f8d65b3bed4a7aa22a0a5e7d1d3e29e5e1a # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: nuclei-results-${{ github.run_id }}

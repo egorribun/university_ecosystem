@@ -36,7 +36,7 @@ jobs:
             python-cache-hit: ${{ steps.python-cache.outputs.cache-hit }}
             node-cache-hit: ${{ steps.node-cache.outputs.cache-hit }}
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
+            - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
             # Python dependencies cache
             - name: Setup Python
