@@ -140,13 +140,11 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
 
 	var capturedUserID interface{}
-	var capturedEmail interface{}
 	var capturedRole interface{}
 
 	router := gin.New()
 	router.GET("/test", middleware.Validate(), func(c *gin.Context) {
 		capturedUserID, _ = c.Get("user_id")
-		capturedEmail, _ = c.Get("user_email")
 		capturedRole, _ = c.Get("user_role")
 		c.Status(http.StatusOK)
 	})
@@ -156,7 +154,6 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
 		UserID:   "user-456",
-		Email:    "test@example.com",
 		Role:     "admin",
 		IsActive: true,
 	}
@@ -170,7 +167,6 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "user-456", capturedUserID)
-	assert.Equal(t, "test@example.com", capturedEmail)
 	assert.Equal(t, "admin", capturedRole)
 }
 
