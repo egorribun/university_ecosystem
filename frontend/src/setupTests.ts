@@ -101,12 +101,10 @@ vi.mock("@/utils/cryptoWorker", () => ({
   cryptoWorker: {
     pbkdf2: vi.fn().mockResolvedValue("mock_pbkdf2"),
     scrypt: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-    hmacSha256: vi
-      .fn()
-      .mockImplementation(async ({ json, key }: { json: string; key: string }) => {
-        const crypto = await import("node:crypto")
-        return crypto.createHmac("sha256", key).update(json).digest("base64")
-      }),
+    hmacSha256: vi.fn().mockImplementation(async ({ json, key }: { json: string; key: string }) => {
+      const crypto = await import("node:crypto")
+      return crypto.createHmac("sha256", key).update(json).digest("base64")
+    }),
   },
 }))
 

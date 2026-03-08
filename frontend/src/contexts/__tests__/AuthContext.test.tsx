@@ -5,11 +5,15 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createQueryClient } from "@/app/queryClient"
 import {
-  AuthProvider,
   PROFILE_CACHE_STORAGE_KEY,
   currentUserQueryKey,
-  useAuth,
-} from "@/contexts/AuthContext"
+  PROFILE_CACHE_SCHEMA_VERSION,
+  type CachedUserSnapshot,
+  type CacheSignaturePayload,
+  encryptData,
+  signPayload,
+} from "../../hooks/auth/useProfileSync"
+import { AuthProvider, useAuth } from "@/contexts/AuthContext"
 import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
 import i18n from "@/i18n/config"
@@ -158,35 +162,42 @@ describe("AuthProvider caching", () => {
   })
 
   it("discards tampered cached envelopes", { timeout: 20000 }, async () => {
-    localStorage.setItem("token", "token-tamper")
-    const { queryClient, wrapper } = setup()
-    const { result } = renderHook(() => useAuth(), { wrapper })
-
-    // Wait for loading to complete and user to be loaded
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
-    await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 15000 })
-
-    // Wait for the cache to be persisted
-    await waitFor(
-      () => {
-        expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeTruthy()
-      },
-      { timeout: 5000 }
-    )
-
-    const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    const parsed = JSON.parse(cachedEnvelope!)
-    // Tamper with the signature to simulate data tampering
-    // (data is now encrypted, so we can't modify it directly)
-    parsed.signature = "tampered_signature"
-    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(parsed))
-
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") {
         return Promise.reject({ response: { status: 401 } })
       }
       return Promise.resolve({ data: { signing_key: mockSigningKey } })
     })
+
+    localStorage.setItem("token", "token-tamper")
+    const { queryClient, wrapper } = setup()
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    // Wait for the initial 401 and stabilization
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    // 1. Setup a valid cache entry (manually simulate re-entry or valid state)
+    const validData: CachedUserSnapshot = {
+      id: "test-id",
+      email: "test@example.com",
+      full_name: "Test User",
+      role: "student",
+      is_active: true,
+    }
+    const encryptedData = await encryptData(validData, mockSigningKey)
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 300000,
+      data: encryptedData!,
+    }
+    const signature = await signPayload(payload, mockSigningKey)
+    const cachedEnvelope = JSON.stringify({ ...payload, signature })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, cachedEnvelope)
+
+    // 2. Tamper
+    const parsed = JSON.parse(cachedEnvelope) as any
+    parsed.signature = "tampered_signature"
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(parsed))
 
     act(() => {
       window.dispatchEvent(
