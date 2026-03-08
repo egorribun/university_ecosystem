@@ -57,14 +57,13 @@ jobs:
 
       - name: Detect changes from pre-commit
         id: changes
-        shell: pwsh
+        shell: bash
         run: |
-          $status = git status --porcelain
-          if ($status) {
-            echo "changed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          } else {
-            echo "changed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          }
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Commit pre-commit fixes
         if: ${{ steps.changes.outputs.changed == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
