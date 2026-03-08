@@ -14,11 +14,13 @@ from strawberry.extensions import (
     MaxTokensLimiter,
     QueryDepthLimiter,
 )
+from strawberry.extensions.tracing import OpenTelemetryExtension
 from strawberry.fastapi import GraphQLRouter
 
 from app.core.config import settings
 from app.graphql.context import GraphQLContext
 from app.graphql.dataloaders import DataLoaderRegistry
+from app.graphql.extensions import QueryCostExtension
 from app.graphql.queries import Query
 
 logger = logging.getLogger(__name__)
@@ -84,12 +86,20 @@ def _build_schema_extensions() -> list:
     schema enumeration and PoC generation by attackers.
     """
     extensions: list = [
+        # P-02 (audit 2026-03-08): Automatic OTel spans for every GraphQL operation
+        # and resolver.  Integrates with the global TracerProvider configured in
+        # observability.py — no extra setup needed.
+        OpenTelemetryExtension,
         # Prevent deeply-nested query DoS (OWASP API8:2023).
         # max_depth=8 is generous for this read-heavy schema while blocking abuse.
         QueryDepthLimiter(max_depth=8),
         # Prevent query amplification via extremely wide selections.
         # 1000 tokens ≈ ~50 medium-complexity fields with aliases.
         MaxTokensLimiter(max_token_count=1000),
+        # D-06 (audit 2026-03-08): Semantic cost analysis — weights list-returning
+        # fields (O(N) resolvers) more than scalars.  Max cost: 200.
+        # Runs AFTER depth/token limiters so their errors take precedence.
+        QueryCostExtension,
     ]
 
     # Disable introspection in production — schema enumeration lets attackers

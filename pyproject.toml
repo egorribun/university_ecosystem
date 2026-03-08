@@ -133,7 +133,7 @@ module = ["pyotp", "pywebpush", "brotli_asgi", "PIL.*", "pyvips"]
 ignore_missing_imports = true
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 exclude = ["gen"]
 

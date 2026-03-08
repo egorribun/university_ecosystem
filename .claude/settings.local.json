@@ -51,7 +51,12 @@
       "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem ls-files .secrets/)",
       "Bash(git rm --cached .secrets/postgres_password)",
       "mcp__plugin_serena_serena__replace_symbol_body",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "mcp__Desktop_Commander__read_file",
+      "Bash(ls -la docker-compose*.yml)",
+      "mcp__Desktop_Commander__get_file_info",
+      "Bash(gh api repos/projectdiscovery/nuclei-action/git/refs/tags)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

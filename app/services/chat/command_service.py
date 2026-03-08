@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -117,8 +118,51 @@ class ChatCommandService:
         content: str,
         files: list[UploadFile],
         locale: str,
+        idempotency_key: str | None = None,
     ) -> MessageResponse:
-        """Send a new message to a chat."""
+        """Send a new message to a chat.
+
+        D-02 (audit 2026-03-08): Supports idempotent sends via the
+        ``Idempotency-Key`` header.  If a key is provided and a cached response
+        exists in Redis (TTL 24 h), it is returned immediately — no duplicate
+        message is created.  The key is namespaced by ``(chat_id, user_id)`` to
+        prevent cross-user and cross-chat replay attacks.
+        """
+        # ── Idempotency check (D-02) ────────────────────────────────────────
+        _idempotency_cache_key: str | None = None
+        if idempotency_key:
+            from app.deps.cache import get_cache_client
+            import json as _json
+
+            _cache = await get_cache_client()
+            _idempotency_cache_key = (
+                f"idempotency:msg:{chat_id}:{user.id}:{idempotency_key}"
+            )
+            _cached = await _cache.get(_idempotency_cache_key)
+            if _cached:
+                # BE-02 (audit 2026-03-08 Wave 5): Cache now stores only the
+                # message ID (slim format) rather than the full serialised
+                # MessageResponse.  This prevents message content from sitting
+                # unencrypted in Redis for 24 h.  Re-fetch the full message from
+                # the DB on cache hit — one extra indexed PK lookup is negligible
+                # compared to avoiding plaintext content storage in the cache.
+                try:
+                    _hit = _json.loads(_cached)
+                    _msg_id = uuid.UUID(_hit["message_id"])
+                except (ValueError, KeyError, TypeError):
+                    # Legacy entry: full JSON from before BE-02 — fall through to
+                    # re-send path (idempotency protection degraded, not broken).
+                    pass
+                else:
+                    _full = await self.repository.get_message_by_id(_msg_id)
+                    if _full is not None:
+                        return MessageResponse(
+                            **_full.model_dump(),
+                            sender_presence=PresenceStatus(
+                                active=ws_manager.is_online(_full.sender_id)
+                            ),
+                        )
+
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
@@ -143,12 +187,23 @@ class ChatCommandService:
         )
         await self.repository.create_message(message)
 
+        # D-03 (audit 2026-03-08): Hard deadline on each individual upload so a
+        # hung ClamAV scan or MinIO connection does not block the ASGI worker
+        # forever.  30s is generous for normal uploads and tight enough to
+        # surface genuine infrastructure failures quickly.
+        _UPLOAD_TIMEOUT_SECONDS = 30.0
+
         saved_urls: list[str] = []
         try:
             for upload in uploads:
-                meta = await self.attachment_service.process_upload(
-                    upload, chat_id, locale=locale
-                )
+                try:
+                    async with asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
+                        meta = await self.attachment_service.process_upload(
+                            upload, chat_id, locale=locale
+                        )
+                except TimeoutError as exc:
+                    await self.attachment_service.cleanup_files(saved_urls)
+                    raise_validation_error("errors.files.upload_timeout", locale) from exc
                 saved_urls.append(str(meta["url"]))
                 attachment = Attachment(
                     message=message,
@@ -198,6 +253,24 @@ class ChatCommandService:
         await self.notification_service.notify_new_message(
             message, chat.participants, user
         )
+
+        # ── Idempotency store (D-02 / BE-02) ────────────────────────────────
+        # BE-02 (audit 2026-03-08 Wave 5): Store only the message ID rather than
+        # the full serialised MessageResponse.  Storing plaintext message content
+        # in Redis for 24 h is a data-protection risk: if Redis is exfiltrated,
+        # attackers gain access to all recently sent messages.  On cache hit we
+        # re-fetch the full message from the DB (one PK lookup — negligible cost).
+        if _idempotency_cache_key:
+            from app.deps.cache import get_cache_client
+            import json as _json
+
+            _cache = await get_cache_client()
+            _slim = _json.dumps({"message_id": str(msg_data.id)})
+            await _cache.setex(
+                _idempotency_cache_key,
+                86400,  # 24 h — covers any reasonable client retry window
+                _slim,
+            )
 
         return msg_data
 
@@ -274,6 +347,20 @@ class ChatCommandService:
         except Exception:
             await self.repository.rollback()
             raise
+
+        # R-02 (audit 2026-03-08): Invalidate ws-hub auth cache immediately after
+        # deleting the chat so participants lose room authorization without waiting
+        # for the 60s TTL to expire (BOLA-01 — stale cache window after deletion).
+        # BE-01 (audit 2026-03-08 Wave 5): Use the module-level singleton via
+        # invalidate_ws_hub_cache() — creating a new WsHubClient() per call
+        # bypasses persistent connection pooling (RZ-F-04) and leaks httpx clients.
+        # asyncio.gather parallelises N invalidations instead of serial awaits.
+        from app.services.ws_hub_client import invalidate_ws_hub_cache
+
+        await asyncio.gather(
+            *(invalidate_ws_hub_cache(str(_pid), str(chat_id)) for _pid in p_ids),
+            return_exceptions=True,  # one failure must not abort the rest
+        )
 
         await self.attachment_service.cleanup_files(attachment_urls)
 

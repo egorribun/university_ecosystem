@@ -3,7 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from opentelemetry import trace
+from sqlalchemy import and_, delete, exists, func, or_, select, update
 from sqlalchemy.orm import selectinload
 
 from app.core.protocols import AsyncDatabaseSession
@@ -12,6 +13,11 @@ from app.models.models import User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+
+# P-02 (audit 2026-03-08): Module-level tracer for chat repository spans.
+# SQLAlchemyInstrumentor (observability.py) already adds DB-level spans;
+# these add semantic context (chat_id, user_id) for easier trace filtering.
+_tracer = trace.get_tracer("app.repositories.chat")
 
 
 class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
@@ -45,47 +51,72 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
     ) -> tuple[list[tuple[ChatDTO, int, str | None]], bool, str | None]:
         """
         Fetch chats for a user with pagination and metadata.
+
+        TD-NEW-03 (audit 2026-03): Replaced 3 correlated scalar subqueries with
+        2 CTEs that each scan the ``message`` table once. The old pattern was
+        O(N×3) per request (a separate index scan per Chat per subquery);
+        the CTE approach is O(1) scans regardless of result-set size.
+
+        CTE layout:
+        - msg_stats: unread count + MAX(created_at) per chat_id in one pass.
+        - last_msg:  DISTINCT ON to get the latest message ID per chat.
+        Both are LEFT-JOINed so chats with no messages still appear.
         """
-        # Subquery: last message timestamp per chat (for ordering)
-        last_message_subquery = (
-            select(Message.created_at)
-            .where(Message.chat_id == Chat.id)
-            .order_by(Message.created_at.desc())
-            .limit(1)
-            .correlate(Chat)
-            .scalar_subquery()
-        )
+        with _tracer.start_as_current_span(
+            "chat_repository.get_chats_for_user",
+            attributes={"user.id": str(user_id), "chat.limit": limit},
+        ):
+            return await self._get_chats_for_user_impl(user_id, cursor, limit)
 
-        # Subquery: unread count per chat
-        unread_count_subquery = (
-            select(func.count())
-            .select_from(Message)
-            .where(
-                Message.chat_id == Chat.id,
-                Message.read_status == False,  # noqa: E712
-                Message.sender_id != user_id,
+    async def _get_chats_for_user_impl(
+        self,
+        user_id: uuid.UUID,
+        cursor: str | None,
+        limit: int,
+    ) -> tuple[list[tuple[ChatDTO, int, str | None]], bool, str | None]:
+        # CTE-1: aggregate message stats per chat in a single table scan.
+        msg_stats_cte = (
+            select(
+                Message.chat_id.label("chat_id"),
+                func.count()
+                .filter(
+                    Message.read_status == False,  # noqa: E712
+                    Message.sender_id != user_id,
+                )
+                .label("unread_count"),
+                func.max(Message.created_at).label("last_message_at"),
             )
-            .correlate(Chat)
-            .scalar_subquery()
+            .select_from(Message)
+            .group_by(Message.chat_id)
+            .cte("msg_stats")
         )
 
-        # Subquery: last message ID per chat
-        last_message_id_subquery = (
-            select(Message.id)
-            .where(Message.chat_id == Chat.id)
-            .order_by(Message.created_at.desc())
-            .limit(1)
-            .correlate(Chat)
-            .scalar_subquery()
+        # CTE-2: latest message ID per chat via PostgreSQL DISTINCT ON.
+        # ORDER BY (chat_id, created_at DESC, id DESC) keeps the tie-break
+        # deterministic when two messages share the same timestamp.
+        last_msg_cte = (
+            select(
+                Message.chat_id.label("chat_id"),
+                Message.id.label("last_message_id"),
+            )
+            .distinct(Message.chat_id)
+            .order_by(
+                Message.chat_id,
+                Message.created_at.desc(),
+                Message.id.desc(),
+            )
+            .cte("last_msg")
         )
 
         query = (
             select(
                 Chat,
-                unread_count_subquery.label("unread_count"),
-                last_message_id_subquery.label("last_message_id"),
+                func.coalesce(msg_stats_cte.c.unread_count, 0).label("unread_count"),
+                last_msg_cte.c.last_message_id.label("last_message_id"),
             )
             .join(chat_participants, Chat.id == chat_participants.c.chat_id)
+            .outerjoin(msg_stats_cte, Chat.id == msg_stats_cte.c.chat_id)
+            .outerjoin(last_msg_cte, Chat.id == last_msg_cte.c.chat_id)
             .where(chat_participants.c.user_id == user_id)
             .options(selectinload(Chat.participants))
         )
@@ -100,9 +131,9 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
                 )
             )
 
-        query = query.order_by(last_message_subquery.desc().nulls_last()).limit(
-            limit + 1
-        )
+        query = query.order_by(
+            msg_stats_cte.c.last_message_at.desc().nulls_last()
+        ).limit(limit + 1)
         result = await self.db.execute(query)
         rows = result.all()
 
@@ -114,6 +145,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
             last_chat = chat_items[-1][0]
             next_cursor = encode_datetime_cursor(last_chat.updated_at, last_chat.id)
 
+        trace.get_current_span().set_attribute("chat.result_count", len(chat_items))
         return (
             [
                 (self._to_dto(row[0]), row[1], str(row[2]) if row[2] else None)
@@ -330,15 +362,22 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
     async def check_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         """Return True iff user_id is a participant of chat_id.
 
-        Uses a direct EXISTS query on the association table — avoids loading
-        Chat or User ORM objects and stays O(1) regardless of chat size.
+        TD-NEW-05 (audit 2026-03): Uses SELECT EXISTS instead of SELECT col +
+        Python null-check so the database short-circuits on the first matching
+        row and returns a single boolean without materialising any data.
         """
-        stmt = select(chat_participants.c.user_id).where(
-            chat_participants.c.chat_id == chat_id,
-            chat_participants.c.user_id == user_id,
-        )
-        result = await self.db.execute(stmt)
-        return result.first() is not None
+        with _tracer.start_as_current_span(
+            "chat_repository.check_participant",
+            attributes={"chat.id": str(chat_id), "user.id": str(user_id)},
+        ):
+            stmt = select(
+                exists().where(
+                    chat_participants.c.chat_id == chat_id,
+                    chat_participants.c.user_id == user_id,
+                )
+            )
+            result = await self.db.execute(stmt)
+            return bool(result.scalar())
 
     async def get_participants(self, chat_id: uuid.UUID) -> list[uuid.UUID]:
         """Fetch all participant IDs for a chat."""
@@ -379,19 +418,27 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
         heavily-connected users. The cache in ``websocket._get_presence_audience``
         shields subsequent calls.
         """
-        chat_ids_subquery = select(chat_participants.c.chat_id).where(
-            chat_participants.c.user_id == user_id
-        )
-        stmt = (
-            select(chat_participants.c.user_id)
-            .distinct()
-            .where(chat_participants.c.chat_id.in_(chat_ids_subquery))
-            .limit(self._PRESENCE_AUDIENCE_LIMIT)
-        )
-        result = await self.db.execute(stmt)
-        audience = {row[0] for row in result.all()}
-        audience.discard(user_id)
-        return audience
+        with _tracer.start_as_current_span(
+            "chat_repository.get_presence_audience",
+            attributes={
+                "user.id": str(user_id),
+                "presence.limit": self._PRESENCE_AUDIENCE_LIMIT,
+            },
+        ) as span:
+            chat_ids_subquery = select(chat_participants.c.chat_id).where(
+                chat_participants.c.user_id == user_id
+            )
+            stmt = (
+                select(chat_participants.c.user_id)
+                .distinct()
+                .where(chat_participants.c.chat_id.in_(chat_ids_subquery))
+                .limit(self._PRESENCE_AUDIENCE_LIMIT)
+            )
+            result = await self.db.execute(stmt)
+            audience = {row[0] for row in result.all()}
+            audience.discard(user_id)
+            span.set_attribute("presence.audience_size", len(audience))
+            return audience
 
 
 def get_chat_repository(db: AsyncDatabaseSession) -> ChatRepository:

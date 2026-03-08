@@ -135,11 +135,18 @@ class CSRFMiddleware:
         exempt_prefixes: Sequence[str] = (),
         cookie_secure: bool = True,
         cookie_samesite: str = "strict",
+        cookie_max_age: int = 86400,
     ) -> None:
         self._app = app
         self._exempt: tuple[str, ...] = tuple(exempt_prefixes)
         self._cookie_secure = cookie_secure
         self._cookie_samesite = cookie_samesite
+        # RZ-F-08 (audit 2026-03-07): Explicit Max-Age prevents the CSRF token
+        # from becoming a permanent session cookie — browsers restore session
+        # cookies on restart ("Continue where you left off"), which effectively
+        # makes them permanent.  Default: 24 h.  Set to match the access token
+        # lifetime at the call site for tighter coupling.
+        self._cookie_max_age = cookie_max_age
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         # Only protect HTTP — pass WebSocket / lifespan through unchanged.
@@ -235,6 +242,7 @@ class CSRFMiddleware:
         parts = [
             f"{CSRF_COOKIE_NAME}={token}",
             "Path=/",
+            f"Max-Age={self._cookie_max_age}",
             "SameSite=" + self._cookie_samesite,
         ]
         if self._cookie_secure:

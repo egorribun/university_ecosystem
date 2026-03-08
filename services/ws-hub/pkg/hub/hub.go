@@ -23,6 +23,10 @@ type Message struct {
 	Payload json.RawMessage `json:"payload"`
 	From    string          `json:"from,omitempty"`
 	To      string          `json:"to,omitempty"`
+	// TraceCtx carries the W3C traceparent/tracestate from the NATS publisher
+	// so that the broadcastMessage OTel span is linked to the originating trace.
+	// WSH-06 (audit 2026-03-08 Wave 5).
+	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
 }
 
 type Hub struct {
@@ -45,6 +49,9 @@ type Hub struct {
 	jwksCache *jwk.Cache
 	// jwksURL is the URL registered with jwksCache; used to retrieve the key set.
 	jwksURL string
+	// maxClients caps the number of concurrently connected WebSocket clients.
+	// 0 means unlimited.  RZ-F-07 (audit 2026-03-07).
+	maxClients int
 }
 
 func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
@@ -62,6 +69,7 @@ func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *c
 		// DDoS without affecting legitimate reconnect scenarios.
 		UpgradeLimiter: NewWSUpgradeRateLimiter(10, 60),
 		jwksCache:      nil, // Initialised via SetupJWKS()
+		maxClients:     cfg.MaxClients,
 	}
 }
 
@@ -106,8 +114,22 @@ func (h *Hub) Run(ctx context.Context) {
 
 		case client := <-h.Register:
 			h.mu.Lock()
+			// RZ-F-07 (audit 2026-03-07): Enforce a maximum connection count so
+			// that a single source cannot exhaust file descriptors or goroutine
+			// stacks.  Reject the client gracefully (Close + drain Send channel)
+			// rather than silently leaking it.
+			if h.maxClients > 0 && len(h.Clients) >= h.maxClients {
+				h.mu.Unlock()
+				h.Logger.Warn("Max connections reached, rejecting client",
+					zap.String("id", client.ID),
+					zap.Int("max", h.maxClients))
+				client.closeOnce.Do(func() { close(client.Send) })
+				_ = client.Conn.Close()
+				continue
+			}
 			h.Clients[client.ID] = client
 			h.mu.Unlock()
+			ActiveConnections.Inc()
 			h.Logger.Info("Client connected", zap.String("id", client.ID))
 
 		case client := <-h.Unregister:
@@ -134,17 +156,30 @@ func (h *Hub) Run(ctx context.Context) {
 				client.mu.Unlock()
 				h.mu.Unlock()
 			})
+			ActiveConnections.Dec()
 			h.Logger.Info("Client disconnected", zap.String("id", client.ID))
 
 		case msg := <-h.Broadcast:
-			h.broadcastMessage(msg)
+			// WSH-06 (audit 2026-03-08 Wave 5): pass a background context here;
+			// trace context is injected per-message via msg.TraceCtx in broadcastMessage.
+			h.broadcastMessage(ctx, msg)
 		}
 	}
 }
 
-func (h *Hub) broadcastMessage(msg *Message) {
+// broadcastMessage fans a message out to the appropriate recipients.
+// WSH-06 (audit 2026-03-08 Wave 5): accepts parent ctx and restores the
+// OTel trace context from msg.TraceCtx (W3C traceparent map) so spans are
+// linked to the upstream NATS publisher trace rather than being orphaned.
+func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
+	// Restore W3C trace context if the publisher embedded it.
+	bctx := parentCtx
+	if len(msg.TraceCtx) > 0 {
+		bctx = otel.GetTextMapPropagator().Extract(parentCtx, propagation.MapCarrier(msg.TraceCtx))
+	}
+
 	tr := otel.Tracer("hub")
-	_, span := tr.Start(context.Background(), "Hub.broadcastMessage",
+	_, span := tr.Start(bctx, "Hub.broadcastMessage",
 		trace.WithAttributes(
 			attribute.String("msg.type", msg.Type),
 			attribute.String("msg.room", msg.Room),
@@ -193,19 +228,23 @@ func (h *Hub) broadcastMessage(msg *Message) {
 
 	// Fan-out happens outside the lock — Register/Unregister can now proceed
 	// concurrently without blocking on our channel writes.
+	//
+	// RZ-F-02 (audit 2026-03-07): Use safeSend instead of a bare select to
+	// guard against the closed-channel race.  Between h.mu.RUnlock() above
+	// and the send below, the Unregister handler can close(client.Send).
+	// A send to a closed channel panics even inside a select statement; only
+	// a recover()-based wrapper handles it safely.
 	for _, r := range recipients {
-		select {
-		case r.client.Send <- data:
-		default:
-			if r.evictOnFull {
-				// Buffer full: schedule eviction via the Unregister channel.
-				// Unregister handler is the sole owner of close(client.Send).
-				h.Logger.Warn("Client buffer full, evicting", zap.String("id", r.client.ID))
-				go func(c *Client) { h.Unregister <- c }(r.client)
-			}
-			// For room/direct messages, silently drop — the client has an
-			// application-level reconnect mechanism.
+		if safeSend(r.client.Send, data) {
+			MessagesDeliveredTotal.Inc()
+		} else if r.evictOnFull {
+			// Buffer full or channel closed: schedule eviction.
+			// Unregister handler is the sole owner of close(client.Send).
+			h.Logger.Warn("Client buffer full or closed, evicting", zap.String("id", r.client.ID))
+			go func(c *Client) { h.Unregister <- c }(r.client)
 		}
+		// For room/direct messages, silently drop — the client has an
+		// application-level reconnect mechanism.
 	}
 }
 
@@ -280,12 +319,14 @@ func (h *Hub) Stop() {
 // AuthorizeRoomJoin verifies that userID is a participant of the given room
 // by delegating to the configured RoomAuthClient.
 // Fails closed: returns false when no client is configured or the check fails.
-func (h *Hub) AuthorizeRoomJoin(userID, room string) bool {
+// WSH-05 (audit 2026-03-08 Wave 5): ctx propagated to CanJoinRoom so that
+// the backend HTTP check is cancelled on context expiry / client disconnect.
+func (h *Hub) AuthorizeRoomJoin(ctx context.Context, userID, room string) bool {
 	if h.authClient == nil {
 		// No auth client configured — deny by default (fail-closed).
 		h.Logger.Warn("AuthorizeRoomJoin: no auth client configured, denying",
 			zap.String("user", userID), zap.String("room", room))
 		return false
 	}
-	return h.authClient.CanJoinRoom(userID, room)
+	return h.authClient.CanJoinRoom(ctx, userID, room)
 }

@@ -9,11 +9,28 @@ from app.api.ws.auth import (
     get_user_from_token,
     select_subprotocol,
 )
-from app.core.feature_flags import feature_flags
 from app.models.models import User
 from app.schemas.dtos import UserDTO
 
 logger = logging.getLogger(__name__)
+
+
+def _get_allowed_ws_origins() -> frozenset[str]:
+    """Build the set of allowed WebSocket upgrade origins.
+
+    R-03 (audit 2026-03-08): Origin validation prevents Cross-Site WebSocket
+    Hijacking (CSWSH).  Returns an empty frozenset in dev/test environments so
+    the check is skipped entirely — avoids breaking local development where
+    frontend and API run on different ports.
+    """
+    from app.core.config import settings
+
+    raw = getattr(settings, "frontend_url", "") or ""
+    origin = raw.rstrip("/")
+    return frozenset([origin]) if origin else frozenset()
+
+
+_ALLOWED_WS_ORIGINS: frozenset[str] = _get_allowed_ws_origins()
 
 
 class WsAuthenticator:
@@ -22,6 +39,19 @@ class WsAuthenticator:
     async def authenticate_upgrade(
         self, websocket: WebSocket
     ) -> tuple[User | UserDTO | None, str | None, str | None]:
+        # R-03 (audit 2026-03-08): Origin validation — reject cross-origin WS
+        # upgrades before any token processing.  _ALLOWED_WS_ORIGINS is empty in
+        # dev/test so the check is skipped entirely there.
+        origin = websocket.headers.get("origin")
+        if _ALLOWED_WS_ORIGINS and origin and origin not in _ALLOWED_WS_ORIGINS:
+            logger.warning(
+                "WebSocket upgrade rejected: invalid Origin %r (allowed: %s)",
+                origin,
+                _ALLOWED_WS_ORIGINS,
+            )
+            await websocket.close(code=1008)  # 1008 = Policy Violation
+            return None, None, None
+
         user = None
         session_jti = None
 
@@ -44,46 +74,11 @@ class WsAuthenticator:
             else:
                 logger.warning("Token auth failed: invalid token")
 
-        # Fallback to cookie-based auth
-        if not user:
-            is_query_param_enabled = feature_flags.of_client.get_boolean_value(
-                "websocket_query_param_compat",
-                default_value=False,
-            )
-            if is_query_param_enabled:
-                token = websocket.query_params.get("token")
-                if token:
-                    logger.warning(
-                        "SECURITY DEPRECATION: WebSocket token passed via query param. "
-                        "This exposure vector will be removed; use Authorization header or "
-                        "Sec-WebSocket-Protocol instead. "
-                        "Disable websocket_query_param_compat feature flag to block this path."
-                    )
-                    try:
-                        from app.deps.cache import get_cache_client
-                        from app.services.fraud_detection_service import (
-                            FraudDetectionService,
-                        )
-
-                        _rc = await get_cache_client()
-                        _fds = FraudDetectionService(_rc)
-                        await _fds.record_event(
-                            {
-                                "event": "ws.token_query_param",
-                                "severity": "medium",
-                                "client_host": websocket.client.host
-                                if websocket.client
-                                else "",
-                            }
-                        )
-                    except Exception as exc:
-                        logger.debug("Fraud detection event recording failed: %s", exc)
-                        pass
-                    user, session_jti = await get_user_from_token(token)
-                    if user:
-                        logger.info("Token auth successful: user_id=%s", user.id)
-                    else:
-                        logger.warning("Token auth failed: invalid token")
+        # R-07 (audit 2026-03-08): Query param token auth permanently removed.
+        # Tokens in URL parameters are logged by Nginx/Caddy in plaintext, cached
+        # by browsers and proxies, and leak via Referer headers.
+        # Supported auth methods: Authorization: Bearer header, Sec-WebSocket-Protocol
+        # subprotocol token (Go ws-hub), HttpOnly access_token_v2 cookie.
 
         if not user:
             access_token = websocket.cookies.get("access_token_v2")

@@ -1,8 +1,0 @@
-{
-  "extends": ["config:recommended"],
-  "docker": { "enabled": true },
-  "packageRules": [
-    { "matchDatasources": ["docker"], "automerge": true, "matchUpdateTypes": ["patch"] },
-    { "matchDatasources": ["pypi"], "automerge": true, "matchUpdateTypes": ["patch"] }
-  ]
-}

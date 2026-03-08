@@ -107,23 +107,19 @@ func (l *WSUpgradeRateLimiter) gcLoop() {
 }
 
 // RealIP extracts the real client IP from X-Forwarded-For (first hop) or
-// falls back to the RemoteAddr. Relies on the reverse proxy being trusted
-// (configured via ProxyHeadersMiddleware upstream).
-// RealIP extracts the real client IP.
-// It only trusts X-Forwarded-For if the immediate RemoteAddr is in trustedProxies.
-func RealIP(r *http.Request, trustedProxies []string) string {
+// falls back to RemoteAddr.  Only trusts X-Forwarded-For when the immediate
+// RemoteAddr is in trustedProxies.
+//
+// P-03 (audit 2026-03-08): accepts a pre-built map[string]struct{} instead of
+// a []string so the lookup is O(1) rather than O(N).  Build the map once at
+// startup via config.LoadConfig() to avoid allocation per request.
+func RealIP(r *http.Request, trustedProxies map[string]struct{}) string {
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		remoteIP = r.RemoteAddr
 	}
 
-	isTrusted := false
-	for _, trusted := range trustedProxies {
-		if remoteIP == trusted {
-			isTrusted = true
-			break
-		}
-	}
+	_, isTrusted := trustedProxies[remoteIP]
 
 	if isTrusted {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {

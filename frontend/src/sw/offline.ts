@@ -128,26 +128,33 @@ export async function processPendingNavigations() {
   }
 }
 
+// RZ-NEW-06 + TD-NEW-06 (audit 2026-03): Replaced sequential for-loop (which
+// aborted remaining records on first failure) with Promise.allSettled so that
+// all reports are attempted in parallel. AbortSignal.timeout(10_000) prevents
+// a single slow endpoint from stalling the entire flush.
 export async function processPendingReports() {
   if (!isOnline()) return
   const db = await getDatabase()
   const records = await db.getAll(STORES.REPORT)
-  for (const record of records) {
-    try {
+
+  const results = await Promise.allSettled(
+    records.map(async (record) => {
       const response = await fetch(record.reportUrl, {
         method: "POST",
         body: JSON.stringify(record.payload),
         headers: { "Content-Type": "application/json" },
         keepalive: true,
+        signal: AbortSignal.timeout(10_000),
       })
       if (response.ok) {
         await db.delete(STORES.REPORT, record.id)
       }
-    } catch (err) {
-      warn("Failed to sync report", err)
-      break
-    }
-  }
+    }),
+  )
+
+  results
+    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+    .forEach((r) => warn("Failed to sync report", r.reason))
 }
 
 // PERF-03 (audit 2026-03-06): process all queued interactions concurrently instead

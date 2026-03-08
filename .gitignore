@@ -306,3 +306,7 @@ merge_diff.patch
 
 # Ad-hoc repro scripts
 test_repro.py
+
+# Audit Snapshots
+AUDIT_2026_03_06_WAVE3.md
+AUDIT_2026_03_07_FINAL.md

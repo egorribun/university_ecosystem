@@ -97,11 +97,18 @@ class AuthRepository(
         self, token_hash: str, with_for_update: bool = False
     ) -> PasswordResetTokenDTO | None:
         """
-        Get a valid (unused) password reset token by hash.
+        Get a valid (unused, non-expired) password reset token by hash.
+
+        RZ-NEW-02 (audit 2026-03): expires_at filter added — previously a
+        consumed-but-not-yet-GCed token with a past expiry could be accepted
+        by callers that only checked ``used=False`` without re-validating the
+        timestamp themselves.
         """
+        now = datetime.now(UTC)
         stmt = select(models.PasswordResetToken).where(
             models.PasswordResetToken.token_hash == token_hash,
             models.PasswordResetToken.used.is_(False),
+            models.PasswordResetToken.expires_at > now,
         )
         if with_for_update:
             stmt = stmt.with_for_update()
@@ -142,10 +149,24 @@ class AuthRepository(
     ) -> EmailChangeTokenDTO:
         """
         Create an email change token, invalidating previous unused ones.
+
+        RZ-NEW-03 (audit 2026-03): SELECT FOR UPDATE added before the
+        invalidation UPDATE so that two concurrent email-change requests for
+        the same user serialise here instead of both passing the "no active
+        token" check and inserting duplicate rows (TOCTOU fix, mirrors the
+        pattern already used in create_password_reset_token).
         """
-        # DB-1 (audit 2026-03): Lock existing rows before invalidating so that
-        # two concurrent email-change requests for the same user can't both pass
-        # the "no active token" check and insert duplicate records.
+        # Lock existing active tokens for this user so concurrent requests queue
+        # behind this transaction rather than racing through the UPDATE+INSERT.
+        await self.db.execute(
+            select(models.EmailChangeToken.id)
+            .where(
+                models.EmailChangeToken.user_id == user_id,
+                models.EmailChangeToken.used.is_(False),
+            )
+            .with_for_update()
+        )
+
         await self.db.execute(
             update(models.EmailChangeToken)
             .where(
@@ -187,9 +208,18 @@ class AuthRepository(
     async def get_valid_email_change_token(
         self, token_hash: str, with_for_update: bool = False
     ) -> EmailChangeTokenDTO | None:
-        """Get a valid (unused) email change token by hash."""
+        """Get a valid (unused, non-expired) email change token by hash.
+
+        RZ-F-01 (audit 2026-03-07): Added used=False and expires_at > now
+        filters — without them, consumed or expired tokens could be replayed
+        for account takeover. Mirrors the fix in get_valid_password_reset_token
+        (RZ-NEW-02, audit 2026-03-06 wave 3).
+        """
+        now = datetime.now(UTC)
         stmt = select(models.EmailChangeToken).where(
             models.EmailChangeToken.token_hash == token_hash,
+            models.EmailChangeToken.used.is_(False),
+            models.EmailChangeToken.expires_at > now,
         )
         if with_for_update:
             stmt = stmt.with_for_update()

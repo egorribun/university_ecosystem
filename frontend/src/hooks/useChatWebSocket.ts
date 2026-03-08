@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import type { Message, MessagesListResponse, ChatsListResponse } from "@/api/chat"
 // Auth token storage handled natively via cookies
 import { logDebug, logError } from "@/app/logger"
+import { parseWsMessage } from "@/api/schemas/wsMessage"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
@@ -148,7 +149,16 @@ export function useChatWebSocket({
 
       ws.onmessage = (event) => {
         try {
-          const data: WebSocketMessage = JSON.parse(event.data)
+          // RZ-NEW-05 (audit 2026-03): Runtime validation via valibot variant schema.
+          // Replaces bare JSON.parse cast that let malformed frames corrupt the query cache.
+          const validated = parseWsMessage(event.data)
+          if (!validated) {
+            logError("[WebSocket] Received invalid or unknown message frame:", event.data)
+            return
+          }
+          // Cast to the existing union type for backward compat with the switch body.
+          // Runtime safety is already guaranteed by valibot above.
+          const data = validated as unknown as WebSocketMessage
 
           switch (data.type) {
             case "new_message":

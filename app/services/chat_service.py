@@ -80,8 +80,11 @@ class ChatService:
         content: str,
         files: list[UploadFile],
         locale: str,
+        idempotency_key: str | None = None,
     ) -> MessageResponse:
-        return await self.commands.send_message(chat_id, user, content, files, locale)
+        return await self.commands.send_message(
+            chat_id, user, content, files, locale, idempotency_key=idempotency_key
+        )
 
     async def mark_read(self, chat_id: uuid.UUID, user: User, locale: str) -> None:
         return await self.commands.mark_read(chat_id, user, locale)
