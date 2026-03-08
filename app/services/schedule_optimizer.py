@@ -1,12 +1,7 @@
 import logging
-<<<<<<< HEAD
-from typing import Any
 import uuid
 from datetime import UTC, datetime, time
-=======
-from datetime import UTC, datetime
 from typing import Any
->>>>>>> bb4bc273fe1326f9ac62394599fa12b14ca84910
 
 import rust_ext
 from pydantic import BaseModel
@@ -50,7 +45,7 @@ class ScheduleOptimizerService:
         st = item.start_time
         if isinstance(st, time):
             st = datetime.combine(datetime.min.date(), st)
-        
+
         et = item.end_time
         if isinstance(et, time):
             et = datetime.combine(datetime.min.date(), et)
