@@ -473,26 +473,11 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
   }
 }
 
-const readStoredSessionSigningKey = (): string | null => {
-  // This is duplicated from useSessionCrypto to avoid circular dependency or extra export
-  // But ideally we should pass the key in.
-  // Actually we pass the key in to useProfileSync.
-  // But initializeCachedUser needs it.
-  // We can read it from sessionStorage directly here as well.
-  if (typeof sessionStorage === "undefined") return null
-  try {
-    // We need the key name from useSessionCrypto but we can't import it if it causes issues?
-    // Actually we can import the constant.
-    // But let's just use the hardcoded string or import it.
-    // I'll import it.
-    return sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`)
-  } catch {
-    return null
-  }
-}
+
 
 export const useProfileSync = (
   updateSessionSigningKey: (key: string | null) => void,
+  sessionSigningKeyRef: React.MutableRefObject<string | null>,
   sessionSigningKeyPromiseRef: React.MutableRefObject<Promise<string | null> | null>,
   ensureSessionSigningKey: () => Promise<string | null>
 ) => {
@@ -571,7 +556,8 @@ export const useProfileSync = (
         // ignore
       }
 
-      const signingKey = readStoredSessionSigningKey()
+      // Read from sessionStorage or the ref for initialization
+      const signingKey = sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) || sessionSigningKeyRef.current
       if (signingKey) {
         const cached = await readCachedUserAsync(signingKey)
         if (mounted && cached) {
@@ -586,7 +572,7 @@ export const useProfileSync = (
     return () => {
       mounted = false
     }
-  }, [])
+  }, [sessionSigningKeyRef])
 
   const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
     if (typeof window === "undefined") return
@@ -627,14 +613,14 @@ export const useProfileSync = (
 
         // Removed side effect: userStateRef.current = normalized
         if (persist) {
-          const key = readStoredSessionSigningKey()
+          const key = sessionSigningKeyRef.current
           persistUserToCacheAsync(normalized, key)
         }
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized
       })
     },
-    [queryClient]
+    [queryClient, sessionSigningKeyRef]
   )
 
   const setUser = useCallback(
@@ -694,7 +680,7 @@ export const useProfileSync = (
     if (typeof window === "undefined") return
 
     const syncFromCache = async () => {
-      const key = readStoredSessionSigningKey()
+      const key = sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) || sessionSigningKeyRef.current
       const cached = await readCachedUserAsync(key)
       if (!cached) {
         // Cache was deleted or is invalid - clear user state

@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { http, HttpResponse } from "msw"
 
 import api, { resetEtagCache } from "@/api/client"
+import { registerSigningKeyAccessor } from "@/api/interceptors/etagCache"
 import { server } from "@/tests/mocks/server"
 
 describe("API ETag interceptor", () => {
   beforeEach(() => {
     resetEtagCache()
+    registerSigningKeyAccessor(() => "test-signing-key-1234567890abcdef")
   })
 
   it("reuses cached ETags for subsequent requests when an etagCacheKey is provided", async () => {

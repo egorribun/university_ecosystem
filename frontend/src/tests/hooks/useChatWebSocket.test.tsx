@@ -82,14 +82,14 @@ describe("useChatWebSocket", () => {
     act(() => {
       socket.receive({
         type: "presence",
-        user_id: 42,
+        user_id: "00000000-0000-0000-0000-000000000042",
         active: true,
         last_seen: "2024-02-01T10:00:00Z",
       })
     })
 
-    expect(presenceSpy).toHaveBeenCalledWith(42, true, "2024-02-01T10:00:00Z")
-    expect(onlineSpy).toHaveBeenCalledWith(42, true)
+    expect(presenceSpy).toHaveBeenCalledWith("00000000-0000-0000-0000-000000000042", true, "2024-02-01T10:00:00Z")
+    expect(onlineSpy).toHaveBeenCalledWith("00000000-0000-0000-0000-000000000042", true)
 
     unmount()
     queryClient.clear()

@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [sessionSigningKey])
 
   const { user, setUser, updatePendingMfa, handleUnauthorized, authOperation, setAuthOperation } =
-    useProfileSync(updateSessionSigningKey, sessionSigningKeyPromiseRef, ensureSessionSigningKey)
+    useProfileSync(updateSessionSigningKey, sessionSigningKeyRef, sessionSigningKeyPromiseRef, ensureSessionSigningKey)
 
   const { login, logout, submitMfaChallenge, requireMfa, loginWithPasskey, refresh } = useAuthApi(
     user,
