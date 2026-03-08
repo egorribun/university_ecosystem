@@ -10,6 +10,12 @@ vi.mock("@/utils/cryptoWorker", () => ({
   },
 }))
 
+vi.mock("wasm-sanitizer", () => ({
+  sanitize_rich_text: vi.fn((html: string) => html),
+  sanitize_html_basic: vi.fn((html: string) => html),
+  strip_html: vi.fn((html: string) => html?.replace(/<[^>]*>?/gm, "") || ""),
+}))
+
 afterEach(() => {
   cleanup()
 })
