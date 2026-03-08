@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -96,7 +96,7 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
 
 async def paginate_cursor[T](
     session: AsyncSession,
-    stmt: Select,
+    stmt: Select[Any],
     cursor_column,
     params: CursorParams,
     descending: bool = True,

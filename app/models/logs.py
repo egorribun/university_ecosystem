@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -34,7 +35,7 @@ class DataAccessLog(Base, UUID7PrimaryKeyMixin):
     resource_type: Mapped[str] = mapped_column(String(64), index=True)
     resource_id: Mapped[str | None] = mapped_column(String(128), index=True)
     action: Mapped[str] = mapped_column(String(64), index=True)
-    context: Mapped[dict | list | None] = mapped_column(JSON)
+    context: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(JSON)
     ip_address: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(String(512))
     __table_args__ = ({"postgresql_partition_by": "RANGE (created_at)"},)

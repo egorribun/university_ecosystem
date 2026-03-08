@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select, update
 
@@ -18,7 +19,7 @@ class AuthRepository(
         models.PasswordResetToken,
         PasswordResetTokenDTO,
         schemas.PasswordResetTokenCreate,
-        dict,
+        dict[str, Any],
     ]
 ):
     """Repository for Authentication-related tokens (Password Reset, Email Change)."""

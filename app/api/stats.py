@@ -85,7 +85,7 @@ async def _handle_stats_query(
         return not_modified
 
     _set_stats_headers(response, locale=locale, etag=result.etag)
-    return result.payload  # type: ignore[no-any-return]
+    return result.payload
 
 
 @router.get(

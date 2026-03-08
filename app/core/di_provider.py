@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
+from typing import Any, cast
 
+import redis.asyncio as aioredis
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -211,6 +213,7 @@ class AppProvider(Provider):
         try:
             yield FraudDetectionService(redis_client=client)
         finally:
+            client: aioredis.Redis[Any] = cast(aioredis.Redis[Any], client)
             await client.aclose()
 
     # ── REQUEST-scoped services ───────────────────────────────────────────────

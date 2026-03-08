@@ -3,22 +3,20 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm.interfaces import LoaderOption
 from sqlalchemy.sql.elements import ClauseElement
 
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession, User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
 
-if TYPE_CHECKING:
-    from app.core.protocols import AsyncDatabaseSession
-
 
 class ActiveSessionRepository(
-    BaseRepository[ActiveSession, ActiveSessionDTO, dict, dict]
+    BaseRepository[ActiveSession, ActiveSessionDTO, dict[str, Any], dict[str, Any]]
 ):
     @property
     def model(self) -> type[ActiveSession]:
@@ -28,7 +26,7 @@ class ActiveSessionRepository(
     def dto_class(self) -> type[ActiveSessionDTO]:
         return ActiveSessionDTO
 
-    async def create(self, data: dict) -> ActiveSessionDTO:
+    async def create(self, data: dict[str, Any]) -> ActiveSessionDTO:
         obj = ActiveSession(**data)
         self.db.add(obj)
         await self.db.flush()
