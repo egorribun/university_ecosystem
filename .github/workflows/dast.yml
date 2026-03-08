@@ -1,0 +1,90 @@
+name: DAST — Nuclei Scan
+
+# MOD-NEW-02 (audit 2026-03-07): Dynamic Application Security Testing workflow.
+# Nuclei scans the deployed staging environment using a curated set of templates.
+# Results are uploaded as SARIF to GitHub Security → Code Scanning.
+#
+# Trigger strategy:
+#   - Weekly (Sunday 02:00 UTC) so findings surface before Monday on-call starts.
+#   - Manual dispatch for ad-hoc scans (e.g. after large feature merges).
+#   - NOT on push/PR — DAST requires a running target and is too slow for CI.
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Target URL to scan (overrides DAST_TARGET_URL secret)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  security-events: write # Required to upload SARIF to Code Scanning
+
+jobs:
+  nuclei:
+    name: Nuclei DAST scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5
+        with:
+          # Only need templates directory, not full history
+          sparse-checkout: |
+            .github
+          sparse-checkout-cone-mode: false
+
+      # MOD-01 (audit 2026-03-08 Wave 5): Previous SHA 9da1d2b...f8a9 was
+      # fabricated — tag v2.3.6 does not exist in projectdiscovery/nuclei-action.
+      # Updated to the verified SHA for v3.1.0 (latest stable as of 2026-03-08).
+      # To re-verify: gh api repos/projectdiscovery/nuclei-action/git/refs/tags
+      - name: Set up Nuclei
+        uses: projectdiscovery/nuclei-action@32a91c0da7be14c07b0ade6c14fa0f6e78d97c9c # v3.1.0
+        with:
+          nuclei-version: v3.3.9
+
+      - name: Run Nuclei scan
+        env:
+          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
+        run: |
+          if [ -z "$TARGET_URL" ]; then
+            echo "::error::No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
+            exit 1
+          fi
+
+          nuclei \
+            -u "$TARGET_URL" \
+            -t cves/ \
+            -t exposures/ \
+            -t misconfiguration/ \
+            -t vulnerabilities/ \
+            -t network/ \
+            -severity critical,high,medium \
+            -exclude-tags dos,fuzz \
+            -rate-limit 50 \
+            -concurrency 10 \
+            -timeout 10 \
+            -max-host-error 30 \
+            -sarif-export nuclei-results.sarif \
+            -json-export nuclei-results.json \
+            -stats \
+            || true  # Don't fail the workflow — findings are uploaded as SARIF
+
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@afb54ba388a7dca6ecae48f608c4ff05bf009137 # v3
+        if: always()
+        with:
+          sarif_file: nuclei-results.sarif
+          category: nuclei-dast
+
+      - name: Upload raw JSON findings
+        uses: actions/upload-artifact@ea165f8d65b3bed4a7aa22a0a5e7d1d3e29e5e1a # v4
+        if: always()
+        with:
+          name: nuclei-results-${{ github.run_id }}
+          path: nuclei-results.json
+          retention-days: 30

@@ -2,9 +2,9 @@ import { AxiosHeaders } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 import { logWarning } from "@/app/logger"
 
-// localStorage-backed ETag cache for persistence across page reloads
+// ETag strings are persisted to localStorage for cross-reload cache hits.
+// Response payloads stay in memory only (RZ-NEW-04: no sensitive data in localStorage).
 const ETAG_CACHE_KEY = "ue:etag-cache"
-const RESPONSE_CACHE_KEY = "ue:response-cache"
 const MAX_CACHE_ENTRIES = 50
 
 /**
@@ -14,8 +14,13 @@ const MAX_CACHE_ENTRIES = 50
  */
 type SignedCacheEntry = {
   data: unknown
-  hmac: string  // HMAC-SHA256(JSON.stringify(data), sessionSigningKey) — hex string
-  ts: number    // Unix timestamp (ms) for future TTL enforcement
+  hmac: string // HMAC-SHA256(JSON.stringify(data), sessionSigningKey) — hex string
+  ts: number   // Unix timestamp (ms) for LRU eviction
+}
+
+type EtagEntry = {
+  tag: string
+  lastUsed: number // Unix timestamp (ms) — used for LRU ordering
 }
 
 /**
@@ -38,7 +43,7 @@ const computeHmac = async (payload: string, key: string): Promise<string> => {
     enc.encode(key),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   )
   const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(payload))
   return Array.from(new Uint8Array(sig))
@@ -56,85 +61,147 @@ const timingSafeEqual = (a: string, b: string): boolean => {
   return result === 0
 }
 
-const loadCache = <T>(storageKey: string): Map<string, T> => {
-  if (typeof window === "undefined") return new Map()
+// ── ETag cache — in-memory primary, debounced localStorage flush ─────────────
+//
+// TD-NEW-01 + TD-NEW-02 (audit 2026-03):
+//   Old impl called loadCache() (full JSON.parse of localStorage) on every
+//   get/set/delete — O(N) per call with FIFO eviction.
+//   New impl hydrates once on first access, keeps an in-memory Map as the
+//   primary store, and debounces the persistence flush to 500ms. Eviction is
+//   LRU by lastUsed timestamp instead of FIFO by Map insertion order.
+
+let _etagMap: Map<string, EtagEntry> | null = null // null = not yet hydrated
+let _flushTimer: ReturnType<typeof setTimeout> | null = null
+
+function getEtagMap(): Map<string, EtagEntry> {
+  if (_etagMap !== null) return _etagMap
+
+  // Hydrate exactly once from localStorage on first access.
+  _etagMap = new Map()
+  if (typeof window === "undefined") return _etagMap
   try {
-    const stored = localStorage.getItem(storageKey)
-    if (stored) {
-      const entries: [string, T][] = JSON.parse(stored)
-      return new Map(entries)
+    const raw = localStorage.getItem(ETAG_CACHE_KEY)
+    if (raw) {
+      const entries = JSON.parse(raw) as [string, EtagEntry][]
+      _etagMap = new Map(entries)
     }
-  } catch (_error) {
-    logWarning(`Failed to load ${storageKey}`, _error)
+  } catch (_err) {
+    logWarning("Failed to hydrate etag cache", _err)
   }
-  return new Map()
+  return _etagMap
 }
 
-const saveCache = <T>(storageKey: string, cache: Map<string, T>) => {
+function scheduleFlush(): void {
   if (typeof window === "undefined") return
+  if (_flushTimer !== null) clearTimeout(_flushTimer)
+  _flushTimer = setTimeout(() => {
+    _flushTimer = null
+    flushEtagCache()
+  }, 500)
+}
+
+function flushEtagCache(): void {
+  if (!_etagMap || typeof window === "undefined") return
   try {
-    if (cache.size > MAX_CACHE_ENTRIES) {
-      const deleteCount = cache.size - MAX_CACHE_ENTRIES
-      const keys = cache.keys()
-      for (let i = 0; i < deleteCount; i++) {
-        const key = keys.next().value
-        if (key) cache.delete(key)
+    localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(Array.from(_etagMap.entries())))
+  } catch (err) {
+    // P-04 (audit 2026-03-08): On QuotaExceededError, evict the oldest 50% of
+    // entries and retry once.  If it still fails, in-memory cache stays intact
+    // (acceptable graceful degradation — cache is rebuilt on next page load).
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      const entries = Array.from(_etagMap.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
+      const evictCount = Math.ceil(_etagMap.size / 2)
+      for (let i = 0; i < evictCount; i++) _etagMap.delete(entries[i][0])
+      try {
+        localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(Array.from(_etagMap.entries())))
+      } catch {
+        // Still over quota — accept in-memory-only mode until next eviction cycle
       }
+    } else {
+      logWarning("Failed to flush etag cache to localStorage", err)
     }
-    const entries = Array.from(cache.entries())
-    localStorage.setItem(storageKey, JSON.stringify(entries))
-  } catch (_error) {
-    logWarning(`Failed to save ${storageKey}`, _error)
+  }
+}
+
+/** Remove least-recently-used entries when the cache exceeds MAX_CACHE_ENTRIES. */
+function evictLruEtag(cache: Map<string, EtagEntry>): void {
+  if (cache.size <= MAX_CACHE_ENTRIES) return
+  const sorted = Array.from(cache.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
+  for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
+    cache.delete(sorted[i][0])
   }
 }
 
 export const etagCache = {
   get(key: string): string | undefined {
-    return loadCache<string>(ETAG_CACHE_KEY).get(key)
+    const cache = getEtagMap()
+    const entry = cache.get(key)
+    if (entry) {
+      entry.lastUsed = Date.now() // LRU touch — update in-place
+    }
+    return entry?.tag
   },
   set(key: string, value: string) {
-    const cache = loadCache<string>(ETAG_CACHE_KEY)
-    cache.set(key, value)
-    saveCache(ETAG_CACHE_KEY, cache)
+    const cache = getEtagMap()
+    cache.set(key, { tag: value, lastUsed: Date.now() })
+    evictLruEtag(cache)
+    scheduleFlush()
   },
   delete(key: string) {
-    const cache = loadCache<string>(ETAG_CACHE_KEY)
-    cache.delete(key)
-    saveCache(ETAG_CACHE_KEY, cache)
+    const cache = getEtagMap()
+    if (cache.has(key)) {
+      cache.delete(key)
+      scheduleFlush()
+    }
   },
   clear() {
+    _etagMap = new Map()
+    if (_flushTimer !== null) {
+      clearTimeout(_flushTimer)
+      _flushTimer = null
+    }
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem(ETAG_CACHE_KEY)
-      } catch (_error) {
-        logWarning("Failed to remove etag cache", _error)
+      } catch (_err) {
+        logWarning("Failed to remove etag cache", _err)
       }
     }
   },
 }
 
+// ── Response cache — purely in-memory ───────────────────────────────────────
+//
+// RZ-NEW-04 (audit 2026-03): Sensitive API response payloads were previously
+// stored in localStorage under RESPONSE_CACHE_KEY. An attacker with filesystem
+// or extension access could read that key. The HMAC provided integrity, not
+// confidentiality. Moving to a pure in-memory Map eliminates the exposure —
+// data lives only in the JS heap and is naturally cleared on page unload.
+// LRU eviction by entry.ts prevents unbounded memory growth.
+
+const _responseMap = new Map<string, SignedCacheEntry>()
+
+function evictLruResponse(): void {
+  if (_responseMap.size <= MAX_CACHE_ENTRIES) return
+  const sorted = Array.from(_responseMap.entries()).sort((a, b) => a[1].ts - b[1].ts)
+  for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
+    _responseMap.delete(sorted[i][0])
+  }
+}
+
 export const responseCache = {
   get(key: string): SignedCacheEntry | undefined {
-    return loadCache<SignedCacheEntry>(RESPONSE_CACHE_KEY).get(key)
+    return _responseMap.get(key)
   },
   set(key: string, value: SignedCacheEntry) {
-    const cache = loadCache<SignedCacheEntry>(RESPONSE_CACHE_KEY)
-    cache.set(key, value)
-    saveCache(RESPONSE_CACHE_KEY, cache)
+    _responseMap.set(key, value)
+    evictLruResponse()
   },
   delete(key: string) {
-    const cache = loadCache<SignedCacheEntry>(RESPONSE_CACHE_KEY)
-    cache.delete(key)
-    saveCache(RESPONSE_CACHE_KEY, cache)
+    _responseMap.delete(key)
   },
   clear() {
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.removeItem(RESPONSE_CACHE_KEY)
-      } catch (_error) {
-        logWarning("Failed to remove response cache", _error)
-      }
-    }
+    _responseMap.clear()
   },
 }
 
@@ -151,7 +218,7 @@ export const applyEtagHeader = (config: InternalAxiosRequestConfig, etagKey: str
 
 export const handleEtagResponse = async (response: AxiosResponse, etagKey: string) => {
   const responseHeaders = AxiosHeaders.from(
-    (response.headers ?? undefined) as AxiosHeaders | string | undefined
+    (response.headers ?? undefined) as AxiosHeaders | string | undefined,
   )
   const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
 
@@ -165,7 +232,7 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
     if (response.status === 200 && response.data && isJson) {
       const signingKey = getSigningKey()
       if (signingKey) {
-        // Sign and store the response — HMAC guards against localStorage poisoning
+        // Sign and store the response — HMAC guards against in-memory poisoning
         const payload = JSON.stringify(response.data)
         const hmac = await computeHmac(payload, signingKey)
         responseCache.set(etagKey, { data: response.data, hmac, ts: Date.now() })
@@ -190,7 +257,7 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
         response.data = entry.data
         response.status = 200
       } else {
-        // HMAC mismatch: localStorage was tampered — evict and force a fresh request
+        // HMAC mismatch: in-memory entry was corrupted — evict and force fresh request
         logWarning("[etagCache] HMAC mismatch for key:", etagKey)
         etagCache.delete(etagKey)
         responseCache.delete(etagKey)

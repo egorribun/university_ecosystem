@@ -34,7 +34,6 @@ from app.api.validation import (
     raise_conflict,
     raise_forbidden,
     raise_not_found,
-    require_owner_or_admin,
     require_teacher_or_admin,
 )
 from app.auth.rbac import PermissionChecker
@@ -129,15 +128,17 @@ def _encode_payload_with_etag(payload: Any) -> tuple[Response, str, str]:
     # PERF-1 Optimization: Use rapid JSON serialization and return Response directly
     # to avoid a secondary automatic FastAPI serialization later in the pipeline
     import orjson
+
     serialized_bytes = orjson.dumps(encoded, option=orjson.OPT_SORT_KEYS)
     digest = hashlib.sha256(serialized_bytes).hexdigest()
 
     strong_header = f'"{format_etag(digest).strip(chr(34))}"'
 
-    return Response(
-        content=serialized_bytes,
-        media_type="application/json"
-    ), digest, strong_header
+    return (
+        Response(content=serialized_bytes, media_type="application/json"),
+        digest,
+        strong_header,
+    )
 
 
 @router.post(

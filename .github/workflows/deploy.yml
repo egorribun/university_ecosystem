@@ -71,6 +71,7 @@ jobs:
       packages: write
       id-token: write  # Required for OIDC-based keyless cosign signing and SLSA provenance
       attestations: write  # Required to push SLSA provenance attestations to GHCR
+      artifact-metadata: write # Required for actions/attest storage records
     outputs:
       backend_digest: ${{ steps.build_backend.outputs.digest }}
       frontend_digest: ${{ steps.build_frontend.outputs.digest }}
@@ -120,7 +121,7 @@ jobs:
       # signing it.  exit-code: "1" fails the build on CRITICAL/HIGH findings,
       # ensuring only clean images are signed and deployed.
       - name: Trivy — scan backend image
-        uses: aquasecurity/trivy-action@7aefa1c9aed02ae41531ec219164e64a0f087410 # v0.33.1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ steps.version.outputs.version }}
           format: sarif
@@ -129,7 +130,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload backend Trivy SARIF
-        uses: github/codeql-action/upload-sarif@7aefa1c9aed02ae41531ec219164e64a0f087410 # v4
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
         if: always()
         continue-on-error: true
         with:
@@ -142,6 +143,27 @@ jobs:
           TAGS: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ steps.version.outputs.version }}
         run: |
           cosign sign --yes "${TAGS}@${DIGEST}"
+
+      # MOD-04 (audit 2026-03-08 Wave 5): Generate and attest a CycloneDX SBOM
+      # for the backend image.  The attestation is uploaded to GitHub's artifact
+      # store and logged to Sigstore's Rekor, making it verifiable via:
+      #   gh attestation verify <image>@<digest> --owner <owner>
+      # Satisfies SOC 2 Type II requirement for software provenance.
+      - name: Generate backend SBOM (CycloneDX)
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ steps.version.outputs.version }}
+          format: cyclonedx-json
+          output-file: sbom-backend.cyclonedx.json
+          upload-artifact: false   # We attest rather than upload raw file
+
+      - name: Attest backend SBOM
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          subject-digest: ${{ steps.build_backend.outputs.digest }}
+          sbom-path: sbom-backend.cyclonedx.json
+          push-to-registry: true
 
       - name: Build and push frontend
         id: build_frontend
@@ -159,7 +181,7 @@ jobs:
           sbom: true
 
       - name: Trivy — scan frontend image
-        uses: aquasecurity/trivy-action@7aefa1c9aed02ae41531ec219164e64a0f087410 # v0.33.1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ steps.version.outputs.version }}
           format: sarif
@@ -168,7 +190,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload frontend Trivy SARIF
-        uses: github/codeql-action/upload-sarif@7aefa1c9aed02ae41531ec219164e64a0f087410 # v4
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
         if: always()
         continue-on-error: true
         with:
@@ -180,6 +202,22 @@ jobs:
           TAGS: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ steps.version.outputs.version }}
         run: |
           cosign sign --yes "${TAGS}@${DIGEST}"
+
+      - name: Generate frontend SBOM (CycloneDX)
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ steps.version.outputs.version }}
+          format: cyclonedx-json
+          output-file: sbom-frontend.cyclonedx.json
+          upload-artifact: false
+
+      - name: Attest frontend SBOM
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          subject-digest: ${{ steps.build_frontend.outputs.digest }}
+          sbom-path: sbom-frontend.cyclonedx.json
+          push-to-registry: true
 
   deploy:
     name: Deploy to ${{ inputs.environment }}

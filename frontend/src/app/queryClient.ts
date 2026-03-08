@@ -39,10 +39,39 @@ export const createQueryClient = () =>
 
 export const queryClient = createQueryClient()
 
+// FE-02 (audit 2026-03-08 Wave 5): Limit IDB persist size to 50 MB.
+// Without a guard, a large query cache (many chats + long event lists) triggers
+// a QuotaExceededError that propagates as an unhandled rejection and crashes the
+// app silently. Graceful degradation: skip persist when too large, clear when
+// the quota is already exhausted.
+const MAX_IDB_PERSIST_BYTES = 50 * 1024 * 1024 // 50 MB
+
 export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
   return {
     persistClient: async (client: PersistedClient) => {
-      await set(idbValidKey, client)
+      try {
+        const serialized = JSON.stringify(client)
+        if (serialized.length > MAX_IDB_PERSIST_BYTES) {
+          // Length in JS is UTF-16 code units ≈ bytes for ASCII-heavy JSON.
+          if (import.meta.env.DEV) {
+            console.warn(
+              `[IDBPersister] Cache too large (${(serialized.length / 1024 / 1024).toFixed(1)} MB) — skipping IDB persist`,
+            )
+          }
+          return
+        }
+        await set(idbValidKey, client)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "QuotaExceededError") {
+          // IndexedDB quota hit: wipe the cache so the app can continue.
+          if (import.meta.env.DEV) {
+            console.warn("[IDBPersister] IndexedDB quota exceeded — clearing persisted cache")
+          }
+          await del(idbValidKey)
+        } else {
+          throw err
+        }
+      }
     },
     restoreClient: async () => {
       return await get<PersistedClient>(idbValidKey)

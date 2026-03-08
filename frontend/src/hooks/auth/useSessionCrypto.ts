@@ -102,8 +102,16 @@ const persistSessionSigningKey = (_value: string | null) => {
   // The key lives only in React state (useSessionCrypto hook) for the session duration.
 }
 
-/** Maximum consecutive failures before giving up (resets on success or explicit key update). */
+/** Maximum consecutive failures before entering backoff (resets on success). */
 const MAX_SIGNING_KEY_RETRIES = 3
+/**
+ * Initial backoff delay after hitting MAX_SIGNING_KEY_RETRIES.
+ * FE-03 (audit 2026-03-08 Wave 5): Without backoff the hook immediately
+ * resets signingKeyRetryCountRef to 0 and starts a fresh 3-attempt cycle on
+ * the next render, creating a thundering-herd of rapid retry bursts against
+ * the /auth/session/signing-key endpoint when the backend is degraded.
+ */
+const SIGNING_KEY_BACKOFF_BASE_MS = 5_000
 
 export const useSessionCrypto = () => {
   // Always initialise to null — key lives in memory only, never in Web Storage.
@@ -111,8 +119,13 @@ export const useSessionCrypto = () => {
   const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(null)
   const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
   const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
-  /** Consecutive failure counter — reset to 0 on success or explicit updateSessionSigningKey call. */
+  /** Consecutive failure counter — reset to 0 on success or after backoff expires. */
   const signingKeyRetryCountRef = useRef(0)
+  /**
+   * Current backoff delay in ms. Doubles on each circuit-open event, capped at 60 s.
+   * FE-03 (audit 2026-03-08 Wave 5): exponential backoff prevents retry storms.
+   */
+  const signingKeyBackoffMsRef = useRef(SIGNING_KEY_BACKOFF_BASE_MS)
   const sessionCacheHashRef = useRef<string | null>(null)
 
   const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
@@ -214,7 +227,25 @@ export const useSessionCrypto = () => {
           if (import.meta.env.DEV) {
             logWarning("[SessionCrypto] Max retries reached for signing key fetch", { err })
           }
-          signingKeyRetryCountRef.current = 0
+          // FE-03 (audit 2026-03-08 Wave 5): Exponential backoff before resetting
+          // the retry counter.  Without this, the hook immediately restarts a fresh
+          // 3-attempt cycle on the next call, creating rapid retry bursts (thundering
+          // herd) against the /auth/session/signing-key endpoint during backend
+          // degradation. Backoff: 5 s → 10 s → 20 s → … capped at 60 s.
+          const backoffDelay = signingKeyBackoffMsRef.current
+          signingKeyBackoffMsRef.current = Math.min(signingKeyBackoffMsRef.current * 2, 60_000)
+          setTimeout(() => {
+            signingKeyRetryCountRef.current = 0
+          }, backoffDelay)
+
+          // P-05 (audit 2026-03-08): Signal the UI layer so it can prompt the
+          // user to re-authenticate rather than silently swallowing the failure.
+          // The event is caught by the SessionCryptoErrorBoundary component.
+          window.dispatchEvent(
+            new CustomEvent("auth:session-crypto-failed", {
+              detail: { reason: "max_retries_exceeded", backoffMs: backoffDelay },
+            }),
+          )
         }
         return null
       } finally {

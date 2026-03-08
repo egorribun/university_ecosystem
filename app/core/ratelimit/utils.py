@@ -120,3 +120,36 @@ def compose_identifier(namespace: str, identifier: str) -> str:
     ident = identifier.strip() or "unknown"
     ns = namespace.strip()
     return f"{ns}:{ident}" if ns else ident
+
+
+def extract_user_id_for_ratelimit(request: Request) -> str | None:
+    """Extract the authenticated user's sub claim for per-user rate limiting.
+
+    D-08 (audit 2026-03-08): Uses a lightweight JWT decode (no DB calls) to
+    retrieve the ``sub`` claim so that ``sensitive_route_limit`` can key on
+    user identity rather than IP.  This is safe for rate-limiting purposes:
+    we are not granting access based on this claim, only bucketing requests.
+
+    Falls back to ``None`` when the token is absent or unparseable — the
+    caller should then fall back to an IP-based key.
+    """
+    token: str | None = None
+
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip() or None
+
+    if not token:
+        token = request.cookies.get("access_token_v2")
+
+    if not token:
+        return None
+
+    try:
+        from app.auth.security import decode_token
+
+        payload = decode_token(token)
+        sub = payload.get("sub") if payload else None
+        return str(sub) if sub else None
+    except Exception:
+        return None

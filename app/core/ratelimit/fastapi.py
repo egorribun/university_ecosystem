@@ -14,7 +14,11 @@ from app.core.ratelimit.exceptions import RateLimitExceeded
 from app.core.ratelimit.logic import enforce_rate_limit
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
-from app.core.ratelimit.utils import parse_rate_limit, resolve_client_ip
+from app.core.ratelimit.utils import (
+    extract_user_id_for_ratelimit,
+    parse_rate_limit,
+    resolve_client_ip,
+)
 
 logger = logging.getLogger("app.security.ratelimit")
 
@@ -40,7 +44,16 @@ def sensitive_route_limit(
             return
 
         ip = resolve_client_ip(request)
-        key = f"{key_prefix}:{ip}:{request.url.path}"
+        # D-08 (audit 2026-03-08): Prefer per-user keying over per-IP.
+        # Authenticated users behind NAT/proxy share an IP — keying by user_id
+        # removes false-positive blocks for innocent co-tenants and tightly
+        # targets the actual authenticated identity.
+        # Lightweight JWT decode (no DB) — used for bucketing only, not authz.
+        user_id = extract_user_id_for_ratelimit(request)
+        if user_id:
+            key = f"{key_prefix}:user:{user_id}:{request.url.path}"
+        else:
+            key = f"{key_prefix}:ip:{ip}:{request.url.path}"
         locale = resolve_locale(request=request)
 
         try:
@@ -58,8 +71,9 @@ def sensitive_route_limit(
             )
         except RateLimitExceeded as exc:
             logger.warning(
-                "Sensitive route rate limit exceeded: ip=%s, path=%s, limit=%d",
-                ip,
+                "Sensitive route rate limit exceeded: %s=%s, path=%s, limit=%d",
+                "user" if user_id else "ip",
+                user_id or ip,
                 request.url.path,
                 resolved_limit,
             )

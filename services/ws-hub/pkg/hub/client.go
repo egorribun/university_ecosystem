@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -18,10 +19,41 @@ type Client struct {
 	Hub       *Hub
 	mu        sync.Mutex
 	closeOnce sync.Once
+	// ctx / cancel are tied to this connection's lifetime.
+	// ctx is cancelled when ReadPump exits (connection closed / client gone).
+	// Pass ctx to AuthorizeRoomJoin so that backend HTTP checks are cancelled
+	// when the client disconnects. (WSH-05, audit 2026-03-08 Wave 5)
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// safeSend writes data to ch without panicking if the channel is already
+// closed.  It returns true when the message was queued and false when either
+// the channel is full (non-evict path) or was closed (RZ-F-02).
+//
+// Background: Go panics on any send to a closed channel, including sends
+// inside a select statement.  After broadcastMessage releases h.mu.RLock,
+// the Unregister handler can close client.Send before the fan-out loop
+// reaches that client.  recover() is the only way to catch that panic safely.
+func safeSend(ch chan []byte, data []byte) (sent bool) {
+	defer func() {
+		if recover() != nil {
+			sent = false
+		}
+	}()
+	select {
+	case ch <- data:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) ReadPump() {
 	defer func() {
+		// Cancel the client context so that any pending AuthorizeRoomJoin
+		// HTTP checks (CanJoinRoom) are aborted immediately on disconnect.
+		c.cancel()
 		c.Hub.Unregister <- c
 		_ = c.Conn.Close()
 	}()
@@ -55,7 +87,7 @@ func (c *Client) ReadPump() {
 			if msg.Room == "" {
 				break
 			}
-			if !c.Hub.AuthorizeRoomJoin(c.UserID, msg.Room) {
+			if !c.Hub.AuthorizeRoomJoin(c.ctx, c.UserID, msg.Room) {
 				c.Hub.Logger.Warn("Unauthorized room join rejected",
 					zap.String("user", c.UserID),
 					zap.String("room", msg.Room))

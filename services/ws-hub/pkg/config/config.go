@@ -26,27 +26,49 @@ type Config struct {
 	// TrustedProxies is a list of IP addresses or ranges (CIDR) that are allowed
 	// to provide the real client IP via X-Forwarded-For. (RZ-5)
 	TrustedProxies []string
+	// TrustedProxiesSet is the O(1)-lookup equivalent of TrustedProxies.
+	// P-03 (audit 2026-03-08): built once at load time so RealIP() does a
+	// map lookup per request instead of an O(N) linear scan of the slice.
+	TrustedProxiesSet map[string]struct{}
 	// SendBufferSize is the size of the per-client outgoing message channel.
 	// 256 slots * ~10 KB/msg ≈ 2.5 MB per concurrent connection. (TD-5)
 	SendBufferSize int
 	// BroadcastBufferSize is the size of the global message channel.
 	// sized for NATS burst peaks (default 4096). (TD-5)
 	BroadcastBufferSize int
+	// InternalSecret is the shared secret used to authenticate internal API calls
+	// from the Python backend (e.g. cache invalidation). Must be set in production.
+	// TD-NEW-07 (audit 2026-03-07)
+	InternalSecret string
+	// MaxClients is the maximum number of concurrently connected WebSocket clients.
+	// 0 means unlimited (not recommended in production).
+	// RZ-F-07 (audit 2026-03-07): without a cap, Hub.Clients grows without bound
+	// allowing a single source to exhaust file descriptors and goroutine stacks.
+	MaxClients int
 }
 
 func LoadConfig() *Config {
+	trustedProxies := getEnvSlice("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"})
+	// P-03 (audit 2026-03-08): Pre-build map for O(1) lookup in RealIP().
+	trustedProxiesSet := make(map[string]struct{}, len(trustedProxies))
+	for _, ip := range trustedProxies {
+		trustedProxiesSet[ip] = struct{}{}
+	}
 	return &Config{
-		Port:           getEnv("WS_HUB_PORT", "8081"),
-		NatsURL:        getEnv("NATS_URL", "nats://nats:4222"),
-		JWTSecrets:     loadJWTSecrets(),
-		SentryDSN:            getEnv("SENTRY_DSN", ""),
-		Environment:          getEnv("VITE_ENVIRONMENT", "development"),
-		AllowedOrigins:       getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
-		TrustedProxies:       getEnvSlice("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"}),
-		BackendURL:           getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
-		JWKSURL:              getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
-		SendBufferSize:       getEnvInt("WS_SEND_BUFFER_SIZE", 256),
-		BroadcastBufferSize:  getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
+		Port:              getEnv("WS_HUB_PORT", "8081"),
+		NatsURL:           getEnv("NATS_URL", "nats://nats:4222"),
+		JWTSecrets:        loadJWTSecrets(),
+		SentryDSN:         getEnv("SENTRY_DSN", ""),
+		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
+		AllowedOrigins:    getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		TrustedProxies:    trustedProxies,
+		TrustedProxiesSet: trustedProxiesSet,
+		BackendURL:        getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
+		JWKSURL:           getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
+		SendBufferSize:    getEnvInt("WS_SEND_BUFFER_SIZE", 256),
+		BroadcastBufferSize: getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
+		InternalSecret:    getEnv("WS_HUB_INTERNAL_SECRET", ""),
+		MaxClients:        getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
 	}
 }
 

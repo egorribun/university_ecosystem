@@ -6,6 +6,7 @@ from fastapi import (
     Depends,
     File,
     Form,
+    Header,
     Query,
     UploadFile,
 )
@@ -31,7 +32,11 @@ from app.services.chat_service import ChatService
 router = APIRouter(prefix="/chats", tags=["chats"])
 
 
-@router.get("", response_model=ChatsListOut)
+@router.get(
+    "",
+    response_model=ChatsListOut,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def get_chats(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_read_chat_service)],
@@ -66,7 +71,11 @@ async def create_chat(
     )
 
 
-@router.get("/{chat_id}", response_model=ChatResponse)
+@router.get(
+    "/{chat_id}",
+    response_model=ChatResponse,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def get_chat(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -79,7 +88,11 @@ async def get_chat(
     return await chat_service.get_chat_details(chat_id, current_user, locale=locale)
 
 
-@router.get("/{chat_id}/messages", response_model=MessagesListOut)
+@router.get(
+    "/{chat_id}/messages",
+    response_model=MessagesListOut,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def get_messages(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -111,19 +124,37 @@ async def send_message(
     locale: Annotated[str, Depends(get_locale)],
     content: str = Form(""),
     files: list[UploadFile] = File(default=[]),
+    idempotency_key: str | None = Header(
+        None,
+        alias="Idempotency-Key",
+        max_length=64,
+        description="Client-generated idempotency key to deduplicate retried sends.",
+    ),
 ) -> MessageResponse:
     """
     Send a message to a chat.
 
     The message is saved to the database and all chat participants
     are notified via WebSocket in real-time.
+
+    Supports the ``Idempotency-Key`` header: identical requests with the same
+    key return the cached response for 24 hours without creating duplicate
+    messages (Stripe-style retry-safe API).
     """
     return await chat_service.send_message(
-        chat_id, current_user, content, files, locale=locale
+        chat_id,
+        current_user,
+        content,
+        files,
+        locale=locale,
+        idempotency_key=idempotency_key,
     )
 
 
-@router.post("/{chat_id}/read")
+@router.post(
+    "/{chat_id}/read",
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def mark_read(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
