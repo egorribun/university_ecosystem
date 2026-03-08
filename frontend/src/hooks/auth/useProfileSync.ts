@@ -358,8 +358,10 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
   let snapshotData: CachedUserSnapshot | null = null
   if (typeof candidate.data === "string") {
     snapshotData = await decryptData(candidate.data, signingKey)
+  } else if (candidate.data && typeof candidate.data === "object") {
+    // Legacy V3 support for unencrypted object data
+    snapshotData = candidate.data as CachedUserSnapshot
   } else {
-    // Legacy support or fallback? strictly string for v4
     snapshotData = null
   }
 
@@ -611,7 +613,7 @@ export const useProfileSync = (
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
 
-        // Removed side effect: userStateRef.current = normalized
+        userStateRef.current = normalized
         if (persist) {
           const key = sessionSigningKeyRef.current
           persistUserToCacheAsync(normalized, key)
@@ -776,7 +778,7 @@ export const useProfileSync = (
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
     const hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    if (userStateRef.current == null && !hasCache) {
+    if (userStateRef.current == null && !hasCache && !initializing) {
       setInitializing(true)
     }
     ;(async () => {

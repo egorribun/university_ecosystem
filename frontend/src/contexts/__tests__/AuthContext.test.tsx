@@ -17,25 +17,7 @@ import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 import { utf8ToBytes } from "@noble/hashes/utils"
 
-vi.mock("@/utils/cryptoWorker", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/utils/cryptoWorker")>()
-  return {
-    ...actual,
-    cryptoWorker: {
-      pbkdf2: vi.fn().mockResolvedValue("mock_pbkdf2"),
-      scrypt: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-      hmacSha256: vi
-        .fn()
-        .mockImplementation(async ({ json, key }: { json: string; key: string }) => {
-          // We import noble hashes inline. ES modules in Vitest support this for dynamic imports.
-          // We can just rely on standard WebCrypto for tests or dynamic noble import.
-          // A much safer bet for Node.js test environments:
-          const crypto = await import("crypto")
-          return crypto.createHmac("sha256", key).update(json).digest("base64")
-        }),
-    },
-  }
-})
+// cryptoWorker is mocked globally in setupTests.ts
 
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
@@ -198,6 +180,13 @@ describe("AuthProvider caching", () => {
     // (data is now encrypted, so we can't modify it directly)
     parsed.signature = "tampered_signature"
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(parsed))
+
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") {
+        return Promise.reject({ response: { status: 401 } })
+      }
+      return Promise.resolve({ data: { signing_key: mockSigningKey } })
+    })
 
     act(() => {
       window.dispatchEvent(
