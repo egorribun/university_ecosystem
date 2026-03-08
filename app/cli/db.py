@@ -41,7 +41,9 @@ def create_admin(
 
             if existing:
                 if not password:
-                    typer.secho("Error: Password required for reset.", fg=typer.colors.RED)
+                    typer.secho(
+                        "Error: Password required for reset.", fg=typer.colors.RED
+                    )
                     raise typer.Exit(1)
                 existing.hashed_password = await get_password_hash(password)
                 await db.commit()
@@ -53,7 +55,9 @@ def create_admin(
             from app.models.users import UserProfile
 
             if not password:
-                typer.secho("Error: Password required for new account.", fg=typer.colors.RED)
+                typer.secho(
+                    "Error: Password required for new account.", fg=typer.colors.RED
+                )
                 raise typer.Exit(1)
             admin = User(
                 email=email,

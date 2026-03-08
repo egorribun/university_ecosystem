@@ -50,7 +50,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     def dto_class(self) -> type[NewsDTO]:
         return NewsDTO
 
-
     @cached(cache_instance=news_cache, key_builder=build_news_cache_key)
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
         """Get published news ordered by creation date descending with caching."""
