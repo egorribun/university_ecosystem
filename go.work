@@ -12,6 +12,8 @@ go 1.26.0
 
 use (
 	./gen/go
+	./services/file-processor
 	./services/gateway
 	./services/ws-hub
+	.
 )
