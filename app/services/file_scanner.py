@@ -363,7 +363,9 @@ async def _scan_upload_with_clamd(
         async with asyncio.timeout(timeout):
             if socket_path:
                 # Use Any cast to avoid platform-specific mypy failures on Windows (open_unix_connection is Unix-only)
-                reader, writer = await cast(Any, asyncio).open_unix_connection(socket_path)
+                reader, writer = await cast(Any, asyncio).open_unix_connection(
+                    socket_path
+                )
             else:
                 reader, writer = await asyncio.open_connection(host, port)
 
