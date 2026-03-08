@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from app.models.models import PushSubscription
 
 if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
+    from sqlalchemy.engine import Connection, Engine
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
@@ -23,13 +23,13 @@ _sync_lock = Lock()
 logger = logging.getLogger(__name__)
 
 
-def _create_schema(bind) -> None:
+def _create_schema(bind: Connection | Engine) -> None:
     PushSubscription.metadata.create_all(
         bind=bind, tables=[cast(Table, PushSubscription.__table__)]
     )
 
 
-def _ensure_columns(bind) -> None:
+def _ensure_columns(bind: Connection) -> None:
     table_name = PushSubscription.__tablename__
     inspector = inspect(bind)
     tables = {name for name in inspector.get_table_names()}
@@ -88,7 +88,7 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
 
         try:
 
-            def _sync_create(sync_session) -> None:
+            def _sync_create(sync_session: Any) -> None:
                 connection = sync_session.connection()
                 _ensure_columns(connection)
 

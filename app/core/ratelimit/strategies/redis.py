@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Awaitable
 from typing import Any, cast
 
 from redis.exceptions import RedisError
@@ -61,17 +60,15 @@ class RedisSlidingWindowStrategy:
         redis_key = f"rate-limit:{key}"
 
         try:
-            result = await cast(
-                Awaitable[Any],
-                client.eval(
-                    _RATE_LIMIT_SCRIPT,
-                    1,
-                    redis_key,
-                    str(limit),
-                    str(now_ms),
-                    str(window_ms),
-                ),
+            eval_result = await client.eval(
+                _RATE_LIMIT_SCRIPT,
+                1,
+                redis_key,
+                str(limit),
+                str(now_ms),
+                str(window_ms),
             )
+            result = cast(list[Any], eval_result)
         except RedisError as exc:
             if "unknown command" not in str(exc).lower():
                 raise

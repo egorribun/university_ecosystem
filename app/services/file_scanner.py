@@ -50,11 +50,11 @@ class FileScannerPayloadTooLarge(RuntimeError):
         self.limit_bytes = limit_bytes
 
 
-def _create_clamd_client():
+def _create_clamd_client() -> Any:
     """Return a configured clamd client instance."""
 
     try:  # Import lazily so environments without clamd stay functional.
-        import clamd
+        import clamd  # type: ignore[import-untyped]
     except ImportError as exc:  # pragma: no cover - depends on optional dependency
         raise FileScannerUnavailableError("python-clamd is not installed") from exc
 
@@ -208,7 +208,7 @@ async def scan_for_malware(
         if size_bytes == 0:
             return
     else:  # pragma: no cover - defensive guard for unexpected inputs
-        return  # type: ignore[unreachable]
+        return
 
     if not getattr(settings, "event_file_scanner_enabled", False):
         return
@@ -362,7 +362,7 @@ async def _scan_upload_with_clamd(
     try:
         async with asyncio.timeout(timeout):
             if socket_path:
-                reader, writer = await asyncio.open_unix_connection(socket_path)
+                reader, writer = await asyncio.open_unix_connection(socket_path)  # type: ignore[attr-defined]
             else:
                 reader, writer = await asyncio.open_connection(host, port)
 
@@ -399,7 +399,7 @@ async def _scan_upload_with_clamd(
                 try:
                     await writer.wait_closed()
                 except Exception:
-                    pass
+                    logger.debug("Failed to close clamd writer cleanly", exc_info=True)
     except TimeoutError as exc:
         raise FileScannerUnavailableError("clamd scan timed out") from exc
     except Exception as exc:

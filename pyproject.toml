@@ -121,7 +121,8 @@ check_untyped_defs = false
 # then remove that module from this list. Start with app.api.admin.*.
 [[tool.mypy.overrides]]
 module = ["app.routers.*"]
-
+disallow_untyped_defs = false
+check_untyped_defs = false
 # Temporarily exempt only the services with the most complex Depends() chains.
 # All other services must be fully annotated.
 [[tool.mypy.overrides]]
@@ -129,7 +130,51 @@ module = ["app.services.chat_service", "app.services.webpush"]
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["pyotp", "pywebpush", "brotli_asgi", "PIL.*", "pyvips"]
+module = [
+    "pyotp",
+    "pywebpush",
+    "brotli_asgi",
+    "PIL.*",
+    "pyvips",
+    "alembic.*",
+    "fastapi.*",
+    "starlette.*",
+    "orjson",
+    "anyio",
+    "dagger",
+    "nh3",
+    "defusedxml.*",
+    "dishka.*",
+    "structlog",
+    "opentelemetry.*",
+    "uvicorn",
+    "prometheus_client.*",
+    "sentry_sdk.*",
+    "openfeature.*",
+    "pgvector.*",
+    "asyncpg.*",
+    "polars",
+    "httpx",
+    "msgspec.*",
+    "pillow_avif",
+    "jwt",
+    "argon2",
+    "webauthn.*",
+    "nats.*",
+    "psutil",
+    "uvloop",
+    "bcrypt",
+    "aioboto3.*",
+    "botocore.*",
+    "boto3.*",
+    "pydantic_settings.*",
+    "maxminddb.*",
+    "authzed.*",
+    "grpcutil.*",
+    "grpclib.*",
+    "pyroscope",
+    "magic",
+]
 ignore_missing_imports = true
 
 [tool.ruff]

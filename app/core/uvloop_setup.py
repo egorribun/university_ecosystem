@@ -11,7 +11,6 @@ gracefully falls back to the standard asyncio event loop.
 from __future__ import annotations
 
 import logging
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +21,7 @@ def configure_uvloop() -> bool:
     Returns True if uvloop was successfully configured, False otherwise.
     Works silently on Windows where uvloop is not supported.
     """
-    if sys.platform.startswith("win"):
-        logger.debug("uvloop not available on Windows, using default asyncio loop")
-        return False
-
-    try:  # type: ignore[unreachable]
+    try:
         import asyncio
 
         import uvloop

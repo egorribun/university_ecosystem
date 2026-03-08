@@ -35,6 +35,7 @@ from app.services.push_topics import normalize_topic, subscription_supports_topi
 
 if TYPE_CHECKING:
     import uuid
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.NOTSET)
@@ -46,7 +47,7 @@ elif _sync_url.drivername.endswith("+aiosqlite"):
     _sync_url = _sync_url.set(drivername="sqlite")
 
 _sync_engine: Engine | None = None
-_Session: sessionmaker | None = None
+_Session: sessionmaker[Session] | None = None
 _sync_init_lock = Lock()
 _async_init_lock = asyncio.Lock()
 
@@ -61,20 +62,20 @@ def _initialize_sync_resources() -> None:
     _Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
-def _ensure_sync_sessionmaker() -> sessionmaker:
+def _ensure_sync_sessionmaker() -> sessionmaker[Session]:
     if _Session is None:
         with _sync_init_lock:
             if _Session is None:
                 _initialize_sync_resources()
-    return cast("sessionmaker", _Session)
+    return cast("sessionmaker[Session]", _Session)
 
 
-async def _ensure_async_sessionmaker() -> sessionmaker:
+async def _ensure_async_sessionmaker() -> sessionmaker[Session]:
     if _Session is None:
         async with _async_init_lock:
             if _Session is None:
                 await asyncio.to_thread(_ensure_sync_sessionmaker)
-    return cast("sessionmaker", _Session)
+    return cast("sessionmaker[Session]", _Session)
 
 
 def cleanup() -> None:
@@ -83,7 +84,7 @@ def cleanup() -> None:
     global _sync_engine, _Session
 
     engine: Engine | None = None
-    session_factory: sessionmaker | None = None
+    session_factory: sessionmaker[Session] | None = None
 
     with _sync_init_lock:
         if _Session is None and _sync_engine is None:
@@ -140,7 +141,7 @@ _TOPIC_RATE_LIMIT = 300
 _RATE_LIMIT_WINDOW_SECONDS = 60
 
 
-def json_dumps(obj):
+def json_dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
 
@@ -573,7 +574,7 @@ def build_payload(
     return payload
 
 
-def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
+def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     user = getattr(sub, "user", None)
     locale = resolve_locale(user=user)
     normalized_payload, meta = _normalize_payload(data, locale=locale)

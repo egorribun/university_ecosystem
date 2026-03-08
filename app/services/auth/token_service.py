@@ -1,4 +1,4 @@
-from typing import Any, NoReturn, cast
+from typing import Any, NoReturn
 from uuid import UUID
 
 from fastapi import Request
@@ -28,7 +28,7 @@ class AuthTokenService:
         if payload is None:
             fail_auth(locale)
 
-        return cast(dict[str, Any], payload)
+        return payload
 
     @staticmethod
     def validate_payload(payload: dict[str, Any], locale: str) -> tuple[UUID, str]:

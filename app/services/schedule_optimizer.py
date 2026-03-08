@@ -1,5 +1,12 @@
 import logging
+<<<<<<< HEAD
+from typing import Any
+import uuid
+from datetime import UTC, datetime, time
+=======
 from datetime import UTC, datetime
+from typing import Any
+>>>>>>> bb4bc273fe1326f9ac62394599fa12b14ca84910
 
 import rust_ext
 from pydantic import BaseModel
@@ -8,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 class ScheduleItemInternal(BaseModel):
-    id: int | None = None
-    weekday: str
-    start_time: datetime
-    end_time: datetime
+    id: uuid.UUID | int | None = None
+    weekday: int | str
+    start_time: datetime | time
+    end_time: datetime | time
     parity: str
     room: str | None = None
     teacher: str | None = None
@@ -20,7 +27,7 @@ class ScheduleItemInternal(BaseModel):
 class ScheduleOptimizerService:
     """Service to interact with the Rust-based schedule optimizer natively via PyO3."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Kept for backward compatibility with DI containers passing URLs
         pass
 
@@ -29,12 +36,31 @@ class ScheduleOptimizerService:
         pass
 
     def _to_rust_item(self, item: ScheduleItemInternal) -> rust_ext.ScheduleItem:
+        # Rust expects i32 for ID, but we use UUID.
+        # For conflict detection, the ID is only used to map back.
+        # We'll use a hash of the UUID if it's a UUID, otherwise the int.
+        rust_id: int | None = None
+        if isinstance(item.id, int):
+            rust_id = item.id
+        elif isinstance(item.id, uuid.UUID):
+            # Deterministic hash to stay within i32 range
+            rust_id = hash(item.id) & 0x7FFFFFFF
+
+        # Convert time to datetime if needed (use a dummy date)
+        st = item.start_time
+        if isinstance(st, time):
+            st = datetime.combine(datetime.min.date(), st)
+        
+        et = item.end_time
+        if isinstance(et, time):
+            et = datetime.combine(datetime.min.date(), et)
+
         return rust_ext.ScheduleItem(
-            weekday=item.weekday,
-            start_time=int(item.start_time.timestamp()),
-            end_time=int(item.end_time.timestamp()),
+            weekday=str(item.weekday),
+            start_time=int(st.timestamp()),
+            end_time=int(et.timestamp()),
             parity=item.parity,
-            id=item.id,
+            id=rust_id,
         )
 
     def _from_rust_item(

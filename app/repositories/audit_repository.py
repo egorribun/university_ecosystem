@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import delete, select
 
@@ -12,7 +13,9 @@ from app.repositories.base import BaseRepository
 from app.schemas.dtos.audit import DataAccessLogDTO
 
 
-class AuditRepository(BaseRepository[DataAccessLog, DataAccessLogDTO, dict, dict]):
+class AuditRepository(
+    BaseRepository[DataAccessLog, DataAccessLogDTO, dict[str, Any], dict[str, Any]]
+):
     """Repository for Audit and Data Access logs."""
 
     @property
@@ -69,7 +72,7 @@ class AuditRepository(BaseRepository[DataAccessLog, DataAccessLogDTO, dict, dict
         result = await self.db.execute(stmt)
         return [self._to_dto(row) for row in result.scalars().all()]
 
-    async def batch_create(self, entries: list[dict]) -> None:
+    async def batch_create(self, entries: list[dict[str, Any]]) -> None:
         """Batch create audit logs."""
         logs = [DataAccessLog(**e) for e in entries]
         self.db.add_all(logs)

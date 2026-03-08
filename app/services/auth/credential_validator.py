@@ -4,7 +4,7 @@ import asyncio
 import logging
 import secrets
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 from fastapi import BackgroundTasks, Request, status
 
@@ -30,7 +30,7 @@ class CredentialValidator:
         lockout_service: LockoutService,
         audit: AuditService,
         session_manager: LoginSessionManager,
-    ):
+    ) -> None:
         self.user_repo = user_repo
         self.profile_service = profile_service
         self.lockout_service = lockout_service
@@ -85,7 +85,6 @@ class CredentialValidator:
         if not user:
             await asyncio.sleep(0.1 + (secrets.randbelow(100) / 1000.0))
             await self._handle_invalid_user(normalized_email, request, locale, bg_tasks)
-            return cast("UserAuthDTO", None)
 
         verified, new_hash = await verify_and_update_password(
             password, str(user.hashed_password)
@@ -98,7 +97,6 @@ class CredentialValidator:
             await self._handle_invalid_password(
                 user, normalized_email, request, user_locale, bg_tasks
             )
-            return cast("UserAuthDTO", None)
 
         if new_hash:
             await self.user_repo.update(user.id, {"hashed_password": new_hash})
@@ -120,7 +118,7 @@ class CredentialValidator:
         request: Request,
         locale: str,
         bg_tasks: BackgroundTasks,
-    ) -> None:
+    ) -> NoReturn:
         (
             lock_until,
             triggered,
@@ -183,7 +181,7 @@ class CredentialValidator:
         request: Request,
         locale: str,
         bg_tasks: BackgroundTasks,
-    ) -> None:
+    ) -> NoReturn:
         (
             lock_until,
             triggered,

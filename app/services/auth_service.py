@@ -101,7 +101,7 @@ class AuthService:
 
                 # RZ-1 Fix: Offload email fully to background to not block response
                 bg.add_task(
-                    send_auth_email.kick,
+                    send_auth_email.kick,  # type: ignore[attr-defined]
                     str(user.email),
                     reset_link,
                     user.full_name or "",

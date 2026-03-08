@@ -5,7 +5,7 @@ Story repository for story data access operations.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 
 
-class StoryRepository(BaseRepository[Story, StoryDTO, dict, dict]):
+class StoryRepository(BaseRepository[Story, StoryDTO, dict[str, Any], dict[str, Any]]):
     """Repository for Story model operations."""
 
     @property

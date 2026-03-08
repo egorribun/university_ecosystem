@@ -64,7 +64,7 @@ type MockState = {
   deadLetterJobs: AdminDeadLetterJob[]
 }
 
-const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK"
+const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK" // pragma: allowlist secret
 
 const createBaseProfile = (): User => ({
   id: "uuid-1",

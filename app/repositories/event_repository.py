@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 
 
-class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
+class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, Any]]):
     """Repository for Event model operations."""
 
     def __init__(self, db: AsyncDatabaseSession):
@@ -294,7 +294,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
         obj = result.scalar_one_or_none()
         return EventAttendanceDTO.model_validate(obj) if obj else None
 
-    async def create_attendance(self, **kwargs) -> EventAttendanceDTO:
+    async def create_attendance(self, **kwargs: Any) -> EventAttendanceDTO:
         """Create a new event attendance record."""
         record = models.EventAttendance(**kwargs)
         self.db.add(record)

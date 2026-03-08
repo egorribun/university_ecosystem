@@ -10,7 +10,7 @@ import anyio
 import dagger
 
 
-async def pipeline():
+async def pipeline() -> None:
     async with dagger.Connection(dagger.Config(log_output=sys.stdout)) as client:
         # 1. Pipeline context: project Root
         src = client.host().directory(".")

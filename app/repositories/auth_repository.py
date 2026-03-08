@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select, update
 
@@ -18,7 +19,7 @@ class AuthRepository(
         models.PasswordResetToken,
         PasswordResetTokenDTO,
         schemas.PasswordResetTokenCreate,
-        dict,
+        dict[str, Any],
     ]
 ):
     """Repository for Authentication-related tokens (Password Reset, Email Change)."""
@@ -272,7 +273,7 @@ class AuthRepository(
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def create_webauthn_credential(self, **kwargs) -> models.WebAuthnCredential:
+    async def create_webauthn_credential(self, **kwargs: Any) -> models.WebAuthnCredential:
         """Create a new WebAuthn credential."""
         record = models.WebAuthnCredential(**kwargs)
         self.db.add(record)
@@ -281,7 +282,7 @@ class AuthRepository(
 
     # Login and MFA Methods
 
-    async def record_login_history(self, **kwargs) -> models.LoginHistory:
+    async def record_login_history(self, **kwargs: Any) -> models.LoginHistory:
         """Create a new login history record."""
         record = models.LoginHistory(**kwargs)
         self.db.add(record)
@@ -348,7 +349,7 @@ class AuthRepository(
             .where(models.FailedLoginAttempt.attempted_at < cutoff)
         )
 
-    async def create_failed_attempt(self, **kwargs) -> models.FailedLoginAttempt:
+    async def create_failed_attempt(self, **kwargs: Any) -> models.FailedLoginAttempt:
         """Register a new failed login attempt."""
         record = models.FailedLoginAttempt(**kwargs)
         self.db.add(record)

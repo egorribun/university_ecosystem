@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect
 from sqlalchemy.orm import joinedload, selectinload
@@ -24,7 +24,7 @@ USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "recovery_codes",
 )
 
-USER_MFA_LOAD_OPTIONS: tuple = (
+USER_MFA_LOAD_OPTIONS: tuple[Any, ...] = (
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
     selectinload(User.webauthn_credentials),
@@ -40,7 +40,7 @@ USER_MFA_LOAD_OPTIONS: tuple = (
 # We use joinedload for 1-to-1 relationships to avoid N+1 'selectin' queries
 # caused by model-level defaults.
 # We intentionally DO NOT load MFA collections (totp, challenges, etc.) here.
-USER_AUTH_LOAD_OPTIONS: tuple = (
+USER_AUTH_LOAD_OPTIONS: tuple[Any, ...] = (
     joinedload(User.preferences),
     joinedload(User.spotify),
     joinedload(User.profile),
@@ -50,7 +50,7 @@ USER_AUTH_LOAD_OPTIONS: tuple = (
 # [NEW] Minimal options for list views (Admin Dashboard, Search)
 # We only load the profile (for full_name) and potentially the group.
 # Preferences, Education Path, Spotify, and all MFA data are omitted.
-USER_LIST_LOAD_OPTIONS: tuple = (joinedload(User.profile),)
+USER_LIST_LOAD_OPTIONS: tuple[Any, ...] = (joinedload(User.profile),)
 
 
 async def ensure_mfa_relationships_loaded(

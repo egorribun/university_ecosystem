@@ -3,14 +3,21 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
     from app.core.protocols import AsyncDatabaseSession
+    from app.models.chat import Attachment
     from app.models.models import User
-    from app.schemas.chat import ChatMaintenanceResult, ChatResponse, MessageResponse
+    from app.schemas.chat import (
+        AttachmentResponse,
+        ChatMaintenanceResult,
+        ChatParticipant,
+        ChatResponse,
+        MessageResponse,
+    )
 
     from .attachment_service import ChatAttachmentService
     from .notification_service import ChatNotificationService
@@ -28,7 +35,8 @@ from app.api.ws.presence import (
 )
 from app.core.config import settings
 from app.core.exceptions import BusinessRuleViolation
-from app.models.chat import Attachment, Message
+from app.models.chat import Attachment
+from app.models.models import Message
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
     ChatMaintenanceResult,
@@ -84,7 +92,9 @@ class ChatCommandService:
             if existing_chat:
                 return ChatResponse(
                     id=existing_chat.id,
-                    participants=existing_chat.participants,
+                    participants=cast(
+                        "list[ChatParticipant]", existing_chat.participants
+                    ),
                     created_at=existing_chat.created_at,
                     updated_at=existing_chat.updated_at,
                 )
@@ -102,7 +112,7 @@ class ChatCommandService:
 
         return ChatResponse(
             id=new_chat.id,
-            participants=new_chat.participants,
+            participants=cast("list[ChatParticipant]", new_chat.participants),
             created_at=new_chat.created_at,
             updated_at=new_chat.updated_at,
             presence={
@@ -131,8 +141,9 @@ class ChatCommandService:
         # ── Idempotency check (D-02) ────────────────────────────────────────
         _idempotency_cache_key: str | None = None
         if idempotency_key:
-            from app.deps.cache import get_cache_client
             import json as _json
+
+            from app.deps.cache import get_cache_client
 
             _cache = await get_cache_client()
             _idempotency_cache_key = (
@@ -201,9 +212,9 @@ class ChatCommandService:
                         meta = await self.attachment_service.process_upload(
                             upload, chat_id, locale=locale
                         )
-                except TimeoutError as exc:
+                except TimeoutError:
                     await self.attachment_service.cleanup_files(saved_urls)
-                    raise_validation_error("errors.files.upload_timeout", locale) from exc
+                    raise_validation_error("errors.files.upload_timeout", locale)
                 saved_urls.append(str(meta["url"]))
                 attachment = Attachment(
                     message=message,
@@ -236,7 +247,7 @@ class ChatCommandService:
                 created_at=message.created_at,
                 read_status=message.read_status,
                 sender=message.sender,
-                attachments=message.attachments,
+                attachments=cast("list[AttachmentResponse]", message.attachments),
                 sender_presence=PresenceStatus(
                     active=ws_manager.is_online(message.sender_id)
                 ),
@@ -261,8 +272,9 @@ class ChatCommandService:
         # attackers gain access to all recently sent messages.  On cache hit we
         # re-fetch the full message from the DB (one PK lookup — negligible cost).
         if _idempotency_cache_key:
-            from app.deps.cache import get_cache_client
             import json as _json
+
+            from app.deps.cache import get_cache_client
 
             _cache = await get_cache_client()
             _slim = _json.dumps({"message_id": str(msg_data.id)})

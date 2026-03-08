@@ -80,7 +80,7 @@ app = FastAPI(
 # Exception handlers
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(DomainException, domain_exception_handler)
-app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
+app.add_exception_handler(HTTPException, http_exception_handler)
 
 # Observability & Metrics
 configure_observability(app, engine=engine)

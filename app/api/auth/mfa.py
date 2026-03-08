@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -447,6 +447,9 @@ async def request_step_up(
     return auth_schemas.PendingMfaResponse(
         user_id=user.id,
         session_id=session.id if session else None,
-        default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
+        default_method=cast(
+            "Literal['totp', 'webauthn'] | None",
+            user.mfa_default_method or mfa.MFA_METHOD_TOTP,
+        ),
         methods=methods,
     )

@@ -8,11 +8,11 @@ import asyncio
 import contextlib
 import uuid
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import and_, exists, func, or_, select
 
-from app.core.cache import news_cache
+from app.core.cache import cached, news_cache
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
 from app.models import models
@@ -36,7 +36,7 @@ def build_news_cache_key(self: Any, *, skip: int = 0, limit: int = 20) -> str:
     return f"news:published:{skip}:{limit}"
 
 
-class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
+class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any]]):
     """Repository for News model operations."""
 
     def __init__(self, db: AsyncDatabaseSession):
@@ -50,8 +50,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
     def dto_class(self) -> type[NewsDTO]:
         return NewsDTO
 
-    from app.core.cache import cached
-
     @cached(cache_instance=news_cache, key_builder=build_news_cache_key)
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
         """Get published news ordered by creation date descending with caching."""
@@ -64,7 +62,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
 
     async def get_latest(self, limit: int = 5) -> list[NewsDTO]:
         """Get the latest news items."""
-        return await self.get_published(skip=0, limit=limit)
+        return cast(list[NewsDTO], await self.get_published(skip=0, limit=limit))
 
     async def search(
         self, query: str, *, skip: int = 0, limit: int = 20
@@ -205,7 +203,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
 
     async def get_with_interactions(
         self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
-    ):
+    ) -> tuple[int, bool]:
         import asyncio
 
         likes_stmt = select(func.count(models.NewsLike.id)).where(

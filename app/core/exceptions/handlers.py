@@ -110,10 +110,11 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
 
 
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Handle FastAPI HTTPExceptions following RFC 7807.
     """
+    assert isinstance(exc, HTTPException)
     locale = resolve_locale(request=request)
 
     status_titles = {

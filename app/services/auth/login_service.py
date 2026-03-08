@@ -29,7 +29,7 @@ class LoginService:
         mfa_coord: MfaCoordinator,
         session_manager: LoginSessionManager,
         db_session: AsyncDatabaseSession,
-    ):
+    ) -> None:
         self.validator = validator
         self.mfa_coord = mfa_coord
         self.session_manager = session_manager

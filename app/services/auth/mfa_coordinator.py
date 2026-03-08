@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 from fastapi import Request, Response, status
 
@@ -45,7 +45,10 @@ class MfaCoordinator:
         await self.repo.commit()
         return auth_schemas.PendingMfaResponse(
             user_id=user.id,
-            default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
+            default_method=cast(
+                "Literal['totp', 'webauthn'] | None",
+                user.mfa_default_method or mfa.MFA_METHOD_TOTP,
+            ),
             methods=methods,
         )
 

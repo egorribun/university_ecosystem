@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
@@ -13,7 +13,7 @@ from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO
 
 if TYPE_CHECKING:
-    from app.core.database import AsyncDatabaseSession
+    from app.core.protocols import AsyncDatabaseSession
 
 
 class GroupRepository(
@@ -94,7 +94,9 @@ class ScheduleRepository(
         result = await self.db.execute(stmt)
         return [self._to_dto(s) for s in result.scalars().all()]
 
-    async def create(self, obj_in: schemas.ScheduleCreate | dict) -> ScheduleDTO:
+    async def create(
+        self, obj_in: schemas.ScheduleCreate | dict[str, Any]
+    ) -> ScheduleDTO:
         # Override to handle UTC conversion if needed
         data = obj_in.model_dump() if hasattr(obj_in, "model_dump") else obj_in.copy()
         data["start_time"] = self._ensure_utc(data["start_time"])

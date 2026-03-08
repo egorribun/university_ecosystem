@@ -6,6 +6,7 @@ included in the FastAPI application.
 
 import logging
 from collections.abc import AsyncGenerator
+from typing import Any
 
 import strawberry
 from fastapi import Request
@@ -77,7 +78,7 @@ async def get_context(
         yield context
 
 
-def _build_schema_extensions() -> list:
+def _build_schema_extensions() -> list[Any]:
     """Build the list of Strawberry schema extensions based on environment.
 
     RZ-5 (audit 2026-02-26): Without depth and token limits an attacker can craft
@@ -85,7 +86,7 @@ def _build_schema_extensions() -> list:
     In production, schema introspection is also disabled to prevent automated
     schema enumeration and PoC generation by attackers.
     """
-    extensions: list = [
+    extensions: list[Any] = [
         # P-02 (audit 2026-03-08): Automatic OTel spans for every GraphQL operation
         # and resolver.  Integrates with the global TracerProvider configured in
         # observability.py — no extra setup needed.

@@ -93,8 +93,8 @@ def _get_client_ip(request: Request) -> str:
     bypass IP-based rate limiting and fingerprinting.
     (RZ-1b: audit 2026-02-24)
     """
-    if request.client:
-        return request.client.host
+    if request.client is not None:
+        return str(request.client.host)
     return "unknown"
 
 

@@ -14,15 +14,13 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
-
-T = TypeVar("T")
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class CacheEntry(Generic[T]):
+class CacheEntry[T]:
     """Cache entry with value and metadata."""
 
     value: T
@@ -34,7 +32,7 @@ class CacheEntry(Generic[T]):
         return time.time() > self.expires_at
 
 
-class LRUCache(Generic[T]):
+class LRUCache[T]:
     """
     Thread-safe LRU cache for L1 caching.
 
@@ -300,7 +298,7 @@ def cached(
             key = key_builder(*args, **kwargs)
             # Both LRUCache and MultiLayerCache expose a 'get' method.
             # MultiLayerCache's get is async; LRUCache's is sync.
-            if hasattr(cache_instance, "_redis"):  # heuristic for MultiLayerCache
+            if isinstance(cache_instance, MultiLayerCache):
                 cached_val = await cache_instance.get(key)
             else:
                 cached_val = cache_instance.get(key)
@@ -310,8 +308,8 @@ def cached(
 
             result = await func(*args, **kwargs)
             if result is not None:
-                if hasattr(cache_instance, "_redis"):
-                    await cache_instance.set(key, result, l1_ttl=ttl)  # type: ignore[call-arg]
+                if isinstance(cache_instance, MultiLayerCache):
+                    await cache_instance.set(key, result, l1_ttl=ttl)
                 else:
                     cache_instance.set(key, result, ttl=ttl)
             return result

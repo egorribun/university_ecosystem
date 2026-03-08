@@ -63,7 +63,7 @@ def configure_logging(
     _configured = True
 
     # Shared processors for all logging
-    shared_processors: list[Callable] = [
+    shared_processors: list[Callable[..., Any]] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -132,7 +132,7 @@ def configure_logging(
         pass
 
 
-def _orjson_serializer(obj: dict, **kwargs) -> bytes:
+def _orjson_serializer(obj: dict[str, Any], **kwargs: Any) -> bytes:
     """Serialize log event to JSON bytes using orjson."""
     return orjson.dumps(obj)
 
@@ -151,7 +151,7 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
 
 
-def bind_context(**kwargs) -> None:
+def bind_context(**kwargs: Any) -> None:
     """Bind context variables for the current async context.
 
     Bound variables will be included in all log messages within the

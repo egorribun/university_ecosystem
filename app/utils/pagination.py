@@ -5,11 +5,9 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
-T = TypeVar("T")
 
 if TYPE_CHECKING:
     from sqlalchemy import Select
@@ -33,7 +31,7 @@ class CursorParams(BaseModel):
 
 
 @dataclass
-class CursorPage(Generic[T]):
+class CursorPage[T]:
     """A page of results with cursor-based pagination."""
 
     items: list[T]
@@ -96,10 +94,10 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return None
 
 
-async def paginate_cursor(
+async def paginate_cursor[T](
     session: AsyncSession,
-    stmt: Select,
-    cursor_column,
+    stmt: Select[Any],
+    cursor_column: Any,
     params: CursorParams,
     descending: bool = True,
     include_total: bool = False,
@@ -177,7 +175,7 @@ async def paginate_cursor(
     )
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     """Standard paginated response schema."""
 
     items: list[T]

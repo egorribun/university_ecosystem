@@ -41,6 +41,8 @@ from app.core.metrics import record_redis_command
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
+
 logger = logging.getLogger(__name__)
 
 
@@ -198,10 +200,10 @@ class RedisCache(BaseCache):
     def __init__(self, url: str, default_ttl: int) -> None:
         self._url = url
         self._default_ttl = max(int(default_ttl or 0), 0)
-        self._client: Redis | None = None
+        self._client: Redis[Any] | None = None
         self._client_lock = asyncio.Lock()
 
-    async def _get_client(self) -> Redis:
+    async def _get_client(self) -> Redis[Any]:
         if self._client is not None:
             return self._client
         async with self._client_lock:
@@ -229,10 +231,9 @@ class RedisCache(BaseCache):
             if hasattr(client, "aclose") and inspect.iscoroutinefunction(client.aclose):
                 await client.aclose()
             elif hasattr(client, "close"):
-                if inspect.iscoroutinefunction(client.close):
-                    await client.close()
-                else:
-                    client.close()
+                res = client.close()
+                if inspect.isawaitable(res):
+                    await res
             success = True
         except (RedisError, OSError, AttributeError):
             logger.debug("Failed to close Redis client", exc_info=True)
@@ -372,10 +373,10 @@ class RedisClusterCache(BaseCache):
     def __init__(self, url: str, default_ttl: int) -> None:
         self._url = url
         self._default_ttl = max(int(default_ttl or 0), 0)
-        self._client = None
+        self._client: Redis[Any] | Any | None = None
         self._client_lock = asyncio.Lock()
 
-    async def _get_client(self):
+    async def _get_client(self) -> Any:
         if self._client is not None:
             return self._client
         async with self._client_lock:
@@ -398,7 +399,7 @@ class RedisClusterCache(BaseCache):
     async def close(self) -> None:
         if self._client is None:
             return
-        client, self._client = self._client, None  # type: ignore[unreachable]
+        client, self._client = self._client, None
         try:
             if hasattr(client, "aclose"):
                 await client.aclose()
@@ -748,16 +749,16 @@ def set_cache_backend(cache: BaseCache | None) -> None:
     _cache_backend = cache
 
 
-async def get_cache_client() -> Redis:
+async def get_cache_client() -> Redis[Any]:
     """Get the underlying Redis client from the global cache backend.
 
     Used for features not exposed by BaseCache, like distributed locks. (RZ-1)
     """
     cache = get_cache()
     if hasattr(cache, "_get_client"):
-        return cast(Redis, await cast(Any, cache)._get_client())
+        return cast("Redis[Any]", await cast(Any, cache)._get_client())
     if hasattr(cache, "l2") and hasattr(cast(Any, cache).l2, "_get_client"):
-        return cast(Redis, await cast(Any, cache.l2)._get_client())
+        return cast("Redis[Any]", await cast(Any, cache.l2)._get_client())
     raise RuntimeError(
         f"Cache backend {type(cache)} does not support direct Redis client access."
     )

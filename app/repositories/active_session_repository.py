@@ -3,22 +3,20 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm.interfaces import LoaderOption
 from sqlalchemy.sql.elements import ClauseElement
 
+from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession, User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
 
-if TYPE_CHECKING:
-    from app.core.protocols import AsyncDatabaseSession
-
 
 class ActiveSessionRepository(
-    BaseRepository[ActiveSession, ActiveSessionDTO, dict, dict]
+    BaseRepository[ActiveSession, ActiveSessionDTO, dict[str, Any], dict[str, Any]]
 ):
     @property
     def model(self) -> type[ActiveSession]:
@@ -28,7 +26,7 @@ class ActiveSessionRepository(
     def dto_class(self) -> type[ActiveSessionDTO]:
         return ActiveSessionDTO
 
-    async def create(self, data: dict) -> ActiveSessionDTO:
+    async def create(self, data: dict[str, Any]) -> ActiveSessionDTO:
         obj = ActiveSession(**data)
         self.db.add(obj)
         await self.db.flush()
@@ -48,7 +46,7 @@ class ActiveSessionRepository(
             .where(ActiveSession.expires_at > now)
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none() or 0
+        return result.scalar() or 0
 
     async def get_oldest_active_sessions(
         self,
@@ -80,7 +78,7 @@ class ActiveSessionRepository(
     async def delete_matching(self, whereclause: ClauseElement) -> int:
         stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
         result = await self.db.execute(stmt)
-        return int(getattr(result, "rowcount", 0) or 0)
+        return cast(int, getattr(result, "rowcount", 0) or 0)
 
     async def get_active_session_with_user(
         self,
@@ -109,7 +107,7 @@ class ActiveSessionRepository(
         row = result.first()
         if not row:
             return None
-        return row[0], row[1]
+        return cast(tuple[User, ActiveSession], (row[0], row[1]))
 
 
 def get_active_session_repository(db: AsyncDatabaseSession) -> ActiveSessionRepository:

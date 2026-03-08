@@ -190,7 +190,7 @@ class FeatureFlagService:
         # Hardcoded defaults (will be used if Redis is empty or fails)
         self._defaults: dict[str, FeatureFlag] = {}
         self._redis: Redis | None = None
-        self._pubsub_task: asyncio.Task | None = None
+        self._pubsub_task: asyncio.Task[Any] | None = None
         self._is_initialized = False
 
     async def initialize(self, redis: Redis | None = None) -> None:
@@ -257,7 +257,7 @@ class FeatureFlagService:
         if self._redis:
             # If we created our own client, we should close it.
             # But usually it's passed from lifespan.
-            pass
+            await self._redis.aclose()
 
     async def _listen_for_updates(self):
         """Listen for flag updates via Pub/Sub."""
