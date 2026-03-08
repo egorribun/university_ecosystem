@@ -34,6 +34,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
+	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
@@ -86,6 +87,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-// MOD-3 (audit 2026-03-05): replace directive removed. Module resolution is now
-// handled by the repo-root go.work workspace, which is the correct Go idiom for
-// mono-repos. See /go.work for the full workspace configuration.
+// MOD-3 (audit 2026-03-05): replace directive was removed, but restored
+// for better tool compatibility in CI/CD environments where go.sum
+// entries for local modules are missing.
+replace github.com/university-ecosystem/core/gen/go => ../../gen/go

@@ -140,15 +140,9 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck on all Go modules
-        # Audit each module in the repository. Since all modules are synchronized
-        # in the root go.work file, govulncheck will correctly resolve local cross-module
-        # dependencies (like gateway -> gen/go) without needing 'replace' directives.
-        run: |
-          find . -name 'go.mod' -not -path '*/vendor/*' | while read modfile; do
-            dir=$(dirname "$modfile")
-            echo "=== govulncheck: $dir ==="
-            (cd "$dir" && govulncheck ./...)
-          done
+        # Audit the entire workspace. Running govulncheck ./... from the root
+        # correctly leverages go.work to resolve all local dependencies.
+        run: govulncheck ./...
 
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:
