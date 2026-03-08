@@ -373,9 +373,17 @@ class _LazyProxy:
     def _get_current_object(self) -> Any:
         obj = self._get_target()
         if obj is None:
+            # TD-5: Automatic lazy initialization with default settings if not
+            # explicitly initialized. This prevents RuntimeError in simple scripts
+            # or shell environments while maintaining explicit control in the
+            # main application lifespan.
+            init_database()
+            obj = self._get_target()
+
+        if obj is None:  # pragma: no cover
             raise RuntimeError(
-                f"Database {self._name} contacted before init_database(). "
-                "Ensure init_database() is called early in the application lifespan."
+                f"Database {self._name} could not be initialized. "
+                "Ensure Settings are correctly configured."
             )
         return obj
 
