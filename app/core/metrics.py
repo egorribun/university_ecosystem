@@ -37,7 +37,7 @@ except Exception:  # pragma: no cover - optional dependency guard
     Histogram: Any = None  # type: ignore[no-redef]
     REGISTRY: Any = None  # type: ignore[no-redef]
 
-    def generate_latest(_: object | None = None) -> bytes:  # type: ignore[misc]
+    def generate_latest(_: object | None = None) -> bytes:
         raise RuntimeError("prometheus-client is required to expose metrics")
 
 
@@ -583,7 +583,7 @@ logger = logging.getLogger(__name__)
 class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if _REQUEST_COUNT is None or _REQUEST_DURATION is None:
-            return cast(Response, await call_next(request))  # type: ignore[unreachable]
+            return cast(Response, await call_next(request))
 
         start = time.perf_counter()
         status_code = "500"
@@ -591,9 +591,9 @@ class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
         path_template = _resolve_path_template(request)
         method = request.method.upper()
         try:
-            response = cast(Response, await call_next(request))
+            response = await call_next(request)
             status_code = str(response.status_code)
-            return response
+            return cast(Response, response)
         except Exception:
             raise
         finally:
@@ -876,7 +876,7 @@ async def _record_db_metrics() -> None:
             _DB_HEALTH.set(1 if success else 0)
 
 
-def _load_gputil():
+def _load_gputil() -> Any:
     spec = importlib.util.find_spec("GPUtil")
     if spec is None:
         return None
@@ -948,7 +948,7 @@ def _ensure_notification_queue_metrics_registry() -> None:
     """Ensure notification queue metrics are registered on the default registry."""
 
     if REGISTRY is None:
-        return  # type: ignore[unreachable]
+        return
 
     try:
         from app.core import observability

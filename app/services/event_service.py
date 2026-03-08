@@ -64,7 +64,7 @@ class EventService:
             if isinstance(f, schemas.EventFileOut):
                 prepared_files.append(f)
             else:
-                prepared_files.append(schemas.EventFileOut.from_orm(f))
+                prepared_files.append(schemas.EventFileOut.model_validate(f))
 
         data: dict[str, Any] = {
             "id": record.id,

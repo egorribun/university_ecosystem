@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import ConfigDict, Field
 
@@ -13,7 +14,7 @@ class AttendanceStatsDTO(SecureBaseModel):
     previous_total: int
     current_attended: int
     previous_attended: int
-    recent_attended_events: list[dict] = Field(
+    recent_attended_events: list[dict[str, Any]] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )  # Can be further refined if needed
 

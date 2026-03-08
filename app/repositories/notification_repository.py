@@ -5,7 +5,7 @@ Notification repository for notification data access operations.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, func, select, update
 
@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 
 
-class NotificationRepository(BaseRepository[Notification, NotificationDTO, dict, dict]):
+class NotificationRepository(
+    BaseRepository[Notification, NotificationDTO, dict[str, Any], dict[str, Any]]
+):
     """Repository for Notification model operations."""
 
     @property

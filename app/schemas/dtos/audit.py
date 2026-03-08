@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import ConfigDict
 
@@ -15,7 +16,7 @@ class DataAccessLogDTO(SecureBaseModel):
     resource_type: str
     resource_id: str | None
     action: str
-    context: dict | None = None
+    context: dict[str, Any] | None = None
     ip_address: str | None = None
     user_agent: str | None = None
     created_at: datetime

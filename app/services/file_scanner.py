@@ -50,11 +50,11 @@ class FileScannerPayloadTooLarge(RuntimeError):
         self.limit_bytes = limit_bytes
 
 
-def _create_clamd_client():
+def _create_clamd_client() -> Any:
     """Return a configured clamd client instance."""
 
     try:  # Import lazily so environments without clamd stay functional.
-        import clamd
+        import clamd  # type: ignore[import-untyped]
     except ImportError as exc:  # pragma: no cover - depends on optional dependency
         raise FileScannerUnavailableError("python-clamd is not installed") from exc
 
@@ -208,7 +208,7 @@ async def scan_for_malware(
         if size_bytes == 0:
             return
     else:  # pragma: no cover - defensive guard for unexpected inputs
-        return  # type: ignore[unreachable]
+        return
 
     if not getattr(settings, "event_file_scanner_enabled", False):
         return

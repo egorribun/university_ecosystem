@@ -36,7 +36,7 @@ def build_news_cache_key(self: Any, *, skip: int = 0, limit: int = 20) -> str:
     return f"news:published:{skip}:{limit}"
 
 
-class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
+class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any]]):
     """Repository for News model operations."""
 
     def __init__(self, db: AsyncDatabaseSession):
@@ -204,7 +204,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
 
     async def get_with_interactions(
         self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
-    ):
+    ) -> tuple[int, bool]:
         import asyncio
 
         likes_stmt = select(func.count(models.NewsLike.id)).where(

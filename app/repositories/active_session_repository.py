@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm.interfaces import LoaderOption
@@ -46,7 +46,7 @@ class ActiveSessionRepository(
             .where(ActiveSession.expires_at > now)
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none() or 0
+        return result.scalar() or 0
 
     async def get_oldest_active_sessions(
         self,
@@ -78,7 +78,7 @@ class ActiveSessionRepository(
     async def delete_matching(self, whereclause: ClauseElement) -> int:
         stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
         result = await self.db.execute(stmt)
-        return int(getattr(result, "rowcount", 0) or 0)
+        return cast(int, getattr(result, "rowcount", 0) or 0)
 
     async def get_active_session_with_user(
         self,
@@ -107,7 +107,7 @@ class ActiveSessionRepository(
         row = result.first()
         if not row:
             return None
-        return row[0], row[1]
+        return cast(tuple[User, ActiveSession], (row[0], row[1]))
 
 
 def get_active_session_repository(db: AsyncDatabaseSession) -> ActiveSessionRepository:

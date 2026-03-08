@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from opentelemetry import trace
 from sqlalchemy import and_, delete, exists, func, or_, select, update
@@ -20,7 +21,7 @@ from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 _tracer = trace.get_tracer("app.repositories.chat")
 
 
-class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
+class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any]]):
     @property
     def model(self) -> type[Chat]:
         return Chat

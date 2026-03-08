@@ -86,7 +86,7 @@ _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
 try:  # pragma: no cover - exercised indirectly via detect_mime_type
     import magic
 except ImportError:  # pragma: no cover - handled at runtime
-    magic = None  # type: ignore[assignment]
+    magic = None
 
 _MAGIC_NOT_INITIALIZED: Final[object] = object()
 _magic_mime_detector: Any = _MAGIC_NOT_INITIALIZED

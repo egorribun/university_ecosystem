@@ -5,6 +5,7 @@ import io
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import Request
 from sqlalchemy import select
@@ -33,7 +34,7 @@ async def log_data_access(
     action: str,
     request: Request,
     resource_id: str | None = None,
-    context: dict | None = None,
+    context: dict[str, Any] | None = None,
     commit: bool = True,
 ) -> DataAccessLogDTO:
     created_at = datetime.now(UTC)
@@ -76,7 +77,7 @@ async def log_data_access(
 async def batch_log_data_access(
     db: AsyncDatabaseSession,
     *,
-    entries: list[dict],
+    entries: list[dict[str, Any]],
     request: Request,
     commit: bool = True,
 ) -> None:

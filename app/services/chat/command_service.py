@@ -3,14 +3,21 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
     from app.core.protocols import AsyncDatabaseSession
+    from app.models.chat import Attachment
     from app.models.models import User
-    from app.schemas.chat import ChatMaintenanceResult, ChatResponse, MessageResponse
+    from app.schemas.chat import (
+        AttachmentResponse,
+        ChatMaintenanceResult,
+        ChatParticipant,
+        ChatResponse,
+        MessageResponse,
+    )
 
     from .attachment_service import ChatAttachmentService
     from .notification_service import ChatNotificationService
@@ -28,7 +35,8 @@ from app.api.ws.presence import (
 )
 from app.core.config import settings
 from app.core.exceptions import BusinessRuleViolation
-from app.models.chat import Attachment, Message
+from app.models.chat import Attachment
+from app.models.models import Message
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
     ChatMaintenanceResult,
@@ -84,7 +92,9 @@ class ChatCommandService:
             if existing_chat:
                 return ChatResponse(
                     id=existing_chat.id,
-                    participants=existing_chat.participants,
+                    participants=cast(
+                        "list[ChatParticipant]", existing_chat.participants
+                    ),
                     created_at=existing_chat.created_at,
                     updated_at=existing_chat.updated_at,
                 )
@@ -102,7 +112,7 @@ class ChatCommandService:
 
         return ChatResponse(
             id=new_chat.id,
-            participants=new_chat.participants,
+            participants=cast("list[ChatParticipant]", new_chat.participants),
             created_at=new_chat.created_at,
             updated_at=new_chat.updated_at,
             presence={
@@ -237,7 +247,7 @@ class ChatCommandService:
                 created_at=message.created_at,
                 read_status=message.read_status,
                 sender=message.sender,
-                attachments=message.attachments,
+                attachments=cast("list[AttachmentResponse]", message.attachments),
                 sender_presence=PresenceStatus(
                     active=ws_manager.is_online(message.sender_id)
                 ),

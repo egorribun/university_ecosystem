@@ -205,7 +205,7 @@ class AppProvider(Provider):
         try:
             yield FraudDetectionService(redis_client=client)
         finally:
-            await client.aclose()
+            await client.close()
 
     # ── REQUEST-scoped services ───────────────────────────────────────────────
 

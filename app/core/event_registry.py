@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.core.events import DomainEvent
@@ -47,7 +47,7 @@ def register_event(cls: type[DomainEvent]) -> type[DomainEvent]:
     return cls
 
 
-def reconstruct_event(event_type: str, payload: dict) -> DomainEvent:
+def reconstruct_event(event_type: str, payload: dict[str, Any]) -> DomainEvent:
     """Safely reconstruct a DomainEvent from an outbox payload dict.
 
     Parameters

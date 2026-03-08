@@ -98,7 +98,7 @@ class NewsService:
         await self.repo.db.commit()
         return liked
 
-    async def get_news(self, news_id: int, user_id: int | None = None):
+    async def get_news(self, news_id: int, user_id: int | None = None) -> NewsDTO | None:
         likes_count, is_liked = await self.repo.get_with_interactions(news_id, user_id)  # type: ignore[arg-type]
         news = await self.repo.get(news_id)
         if news:
@@ -115,7 +115,7 @@ class NewsService:
             pass
         return news
 
-    async def get_news_with_details(self, news_id: int, user_id: int | None = None):
+    async def get_news_with_details(self, news_id: int, user_id: int | None = None) -> NewsDTO | None:
         # Placeholder for complex detail retrieval if needed
         pass
 

@@ -92,7 +92,7 @@ class WebAuthnService:
             user_id=user_id_bytes,
             user_name=str(user.email),
             user_display_name=display_name,
-            exclude_credentials=exclude_credentials,  # type: ignore[arg-type]
+            exclude_credentials=exclude_credentials,
             authenticator_selection=AuthenticatorSelectionCriteria(
                 resident_key=ResidentKeyRequirement.PREFERRED,
                 user_verification=UserVerificationRequirement.PREFERRED,

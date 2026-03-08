@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends
 
@@ -6,8 +6,21 @@ from app.core.container import get_audit_service, get_vector_service
 from app.core.database import get_db, get_read_db
 from app.core.protocols import AsyncDatabaseSession
 
+if TYPE_CHECKING:
+    from app.services.analytics import AnalyticsService
+    from app.services.auth.login_service import LoginService
+    from app.services.auth.redis_session import RedisSessionService
+    from app.services.auth_service import AuthService
+    from app.services.chat_service import ChatService
+    from app.services.event_service import EventService
+    from app.services.geolocation import GeolocationService
+    from app.services.news_service import NewsService
+    from app.services.schedule_service import ScheduleService
+    from app.services.session_service import SessionService
+    from app.services.story_service import StoryService
 
-def _build_chat_service(session: AsyncDatabaseSession) -> Any:
+
+def _build_chat_service(session: AsyncDatabaseSession) -> "ChatService":
     from app.repositories.chat_repository import ChatRepository
     from app.services.chat.attachment_service import ChatAttachmentService
     from app.services.chat.command_service import ChatCommandService
@@ -24,17 +37,21 @@ def _build_chat_service(session: AsyncDatabaseSession) -> Any:
     return ChatService(session, attachments, notifications, queries, commands)
 
 
-def get_chat_service(session: Annotated[AsyncDatabaseSession, Depends(get_db)]) -> Any:
+def get_chat_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)]
+) -> "ChatService":
     return _build_chat_service(session)
 
 
 def get_read_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> Any:
+) -> "ChatService":
     return _build_chat_service(session)
 
 
-def _build_event_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
+def _build_event_service(
+    session: AsyncDatabaseSession, vector_service: Any
+) -> "EventService":
     from app.repositories.event_repository import EventRepository
     from app.services.event_service import EventService
 
@@ -45,18 +62,20 @@ def _build_event_service(session: AsyncDatabaseSession, vector_service: Any) -> 
 def get_event_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
+) -> "EventService":
     return _build_event_service(session, vector_service)
 
 
 def get_read_event_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
+) -> "EventService":
     return _build_event_service(session, vector_service)
 
 
-def _build_news_service(session: AsyncDatabaseSession, vector_service: Any) -> Any:
+def _build_news_service(
+    session: AsyncDatabaseSession, vector_service: Any
+) -> "NewsService":
     from app.repositories.news_repository import NewsRepository
     from app.services.news_service import NewsService
 
@@ -67,18 +86,18 @@ def _build_news_service(session: AsyncDatabaseSession, vector_service: Any) -> A
 def get_news_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
+) -> "NewsService":
     return _build_news_service(session, vector_service)
 
 
 def get_read_news_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
+) -> "NewsService":
     return _build_news_service(session, vector_service)
 
 
-def _build_story_service(session: AsyncDatabaseSession) -> Any:
+def _build_story_service(session: AsyncDatabaseSession) -> "StoryService":
     from app.repositories.story_repository import StoryRepository
     from app.services.story_service import StoryService
 
@@ -86,17 +105,19 @@ def _build_story_service(session: AsyncDatabaseSession) -> Any:
     return StoryService(repo)
 
 
-def get_story_service(session: Annotated[AsyncDatabaseSession, Depends(get_db)]) -> Any:
+def get_story_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)]
+) -> "StoryService":
     return _build_story_service(session)
 
 
 def get_read_story_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> Any:
+) -> "StoryService":
     return _build_story_service(session)
 
 
-def _build_schedule_service(session: AsyncDatabaseSession) -> Any:
+def _build_schedule_service(session: AsyncDatabaseSession) -> "ScheduleService":
     from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
     from app.services.schedule_optimizer import ScheduleOptimizerService
     from app.services.schedule_service import ScheduleService
@@ -109,19 +130,19 @@ def _build_schedule_service(session: AsyncDatabaseSession) -> Any:
 
 def get_schedule_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
+) -> "ScheduleService":
     return _build_schedule_service(session)
 
 
 def get_read_schedule_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> Any:
+) -> "ScheduleService":
     return _build_schedule_service(session)
 
 
 def get_auth_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
+) -> "AuthService":
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.session_repository import SessionRepository
     from app.repositories.user_repository import UserRepository
@@ -136,7 +157,7 @@ def get_auth_service(
 
 def get_session_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> Any:
+) -> "SessionService":
     from app.repositories.active_session_repository import ActiveSessionRepository
     from app.services.session_service import SessionService
 
@@ -144,13 +165,16 @@ def get_session_service(
     return SessionService(session, repo)
 
 
-async def get_geolocation_service() -> Any:
-    from app.services.geolocation import get_geolocation_service_instance
+async def get_geolocation_service() -> "GeolocationService":
+    from app.services.geolocation import (
+        GeolocationService,
+        get_geolocation_service_instance,
+    )
 
     return await get_geolocation_service_instance()
 
 
-async def get_redis_session_service() -> Any:
+async def get_redis_session_service() -> "RedisSessionService":
     from app.services.auth.redis_session import RedisSessionService
 
     return RedisSessionService()
@@ -158,11 +182,13 @@ async def get_redis_session_service() -> Any:
 
 async def get_login_service(
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    session_service: Annotated[Any, Depends(get_session_service)],
+    session_service: Annotated["SessionService", Depends(get_session_service)],
     audit: Annotated[Any, Depends(get_audit_service)],
-    redis_session_service: Annotated[Any, Depends(get_redis_session_service)],
-    geolocation_service: Annotated[Any, Depends(get_geolocation_service)],
-) -> Any:
+    redis_session_service: Annotated[
+        "RedisSessionService", Depends(get_redis_session_service)
+    ],
+    geolocation_service: Annotated["GeolocationService", Depends(get_geolocation_service)],
+) -> "LoginService":
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.user_repository import UserRepository
     from app.services.auth.credential_validator import CredentialValidator
@@ -202,7 +228,28 @@ async def get_login_service(
     )
 
 
-def get_analytics_service() -> Any:
+def get_analytics_service() -> "AnalyticsService":
     from app.services.analytics import get_analytics_service
 
     return get_analytics_service()
+
+
+__all__ = [
+    "get_analytics_service",
+    "get_audit_service",
+    "get_auth_service",
+    "get_chat_service",
+    "get_event_service",
+    "get_geolocation_service",
+    "get_login_service",
+    "get_news_service",
+    "get_read_chat_service",
+    "get_read_event_service",
+    "get_read_news_service",
+    "get_read_schedule_service",
+    "get_read_story_service",
+    "get_redis_session_service",
+    "get_schedule_service",
+    "get_session_service",
+    "get_story_service",
+]

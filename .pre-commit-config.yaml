@@ -47,10 +47,28 @@ repos:
         files: ^app/(auth|services/auth|api/deps|core)/
         additional_dependencies:
           - "pydantic>=2"
+          - "pydantic-settings"
           - "sqlalchemy[mypy]>=2"
           - "types-redis"
           - "types-passlib"
+          - "types-aiofiles"
+          - "types-requests"
+          - "types-pyyaml"
+          - "types-zxcvbn"
           - "strawberry-graphql>=0.250"
+          - "fastapi"
+          - "starlette"
+          - "nh3"
+          - "orjson"
+          - "bcrypt"
+          - "pyjwt"
+          - "argon2-cffi"
+          - "aiofiles"
+          - "clamd"
+          - "python-multipart"
+          - "uvicorn"
+          - "types-psutil"
+          - "dishka"
 
   - repo: local
     hooks:

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 
 
-class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
+class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str, Any]]):
     """Repository for User model operations."""
 
     @property
@@ -328,7 +328,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         )
         return result.scalars().first()
 
-    def _extract_cqrs_data(self, data: dict) -> tuple[dict, dict, dict, dict]:
+    def _extract_cqrs_data(
+        self, data: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
         """Extract profile, preferences, education_path, and core user data from a flat dictionary."""
         profile_keys = {
             "full_name",
@@ -375,7 +377,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
 
         return core_data, profile_data, pref_data, edu_data
 
-    async def create(self, obj_in: schemas.UserCreate | dict) -> UserDTO:
+    async def create(self, obj_in: schemas.UserCreate | dict[str, Any]) -> UserDTO:
         if hasattr(obj_in, "model_dump"):
             obj_data = obj_in.model_dump()
         else:
@@ -404,7 +406,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
         return self._to_dto(user)
 
-    async def update(self, id: uuid.UUID | str, obj_in: Any | dict) -> UserDTO | None:
+    async def update(self, id: uuid.UUID | str, obj_in: Any | dict[str, Any]) -> UserDTO | None:
         db_obj = await self._get_orm(id)
         if db_obj is None:
             return None
@@ -446,7 +448,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         return self._to_dto(db_obj)
 
     async def create_with_invite(
-        self, user_data: dict, invite_code: models.InviteCode | None
+        self, user_data: dict[str, Any], invite_code: models.InviteCode | None
     ) -> UserDTO:
         """Create a user and optionally mark an invite code as used."""
         core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(
@@ -481,7 +483,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
         return self._to_dto(user)
 
-    async def delete_sensitive_data(self, user_id: uuid.UUID | str):
+    async def delete_sensitive_data(self, user_id: uuid.UUID | str) -> None:
         """Cleanup user-related transient records (sessions, challenges, etc)."""
         if isinstance(user_id, str):
             try:

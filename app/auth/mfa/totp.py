@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import pyotp
@@ -56,13 +56,18 @@ def _utcnow() -> datetime:
 
 
 def create_totp_secret(length: int = _TOTP_SECRET_LENGTH) -> str:
-    return pyotp.random_base32(length=length)
+    return cast(str, pyotp.random_base32(length=length))
 
 
 def build_totp_uri(secret: str, *, account_name: str, issuer: str | None = None) -> str:
     issuer_name = issuer or settings.mfa_totp_issuer
     totp = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
-    return totp.provisioning_uri(name=account_name, issuer_name=issuer_name)
+    return cast(
+        str,
+        totp.provisioning_uri(
+            name=account_name, issuer_name=issuer_name or "UniversityEcosystem"
+        ),
+    )
 
 
 def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
@@ -154,7 +159,7 @@ async def complete_totp_enrollment(
     code: str,
 ) -> MfaTotpEnrollment:
     if enrollment.secret is None:
-        logger.warning(  # type: ignore[unreachable]
+        logger.warning(
             "Cannot complete TOTP enrollment %s: decryption failed",
             enrollment.id,
         )
@@ -281,7 +286,7 @@ async def verify_totp_for_user(
 
     for enrollment in enrollments:
         if enrollment.secret is None:
-            logger.warning(  # type: ignore[unreachable]
+            logger.warning(
                 "Skipping TOTP enrollment %s for user %s: decryption failed",
                 enrollment.id,
                 user.id,

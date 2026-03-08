@@ -25,6 +25,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "NotificationsScheduler",
+    "async_session",
+    "asyncio",
+    "run_worker",
+    "start_notifications_scheduler",
+]
+
 
 class NotificationsScheduler:
     """Run the schedule reminder generator on a fixed interval."""

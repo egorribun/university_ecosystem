@@ -12,7 +12,7 @@ the application to ensure consistent serialization behavior.
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Any
+from typing import Any, cast
 
 try:
     import orjson
@@ -58,7 +58,7 @@ def orjson_dumps(obj: Any, *, option: int | None = None) -> bytes:
     opts = ORJSON_OPTIONS
     if option is not None:
         opts |= option
-    return orjson.dumps(obj, option=opts)
+    return cast(bytes, orjson.dumps(obj, option=opts))
 
 
 def orjson_dumps_str(obj: Any, *, option: int | None = None) -> str:

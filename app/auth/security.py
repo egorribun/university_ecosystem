@@ -489,7 +489,7 @@ def _extract_public_key_pem(private_key_pem: str) -> str:
     )
 
 
-def decode_token(token: str) -> dict | None:
+def decode_token(token: str) -> dict[str, Any] | None:
     """Validate JWT signature and return the payload, or None if invalid.
 
     Does NOT check revocation — callers in async context must additionally

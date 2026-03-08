@@ -72,7 +72,7 @@ def _event_to_type(event: Event, organizer: User | None = None) -> EventType:
 
 @strawberry.type(description="Root Query type for the University Ecosystem API")
 class Query:
-    @strawberry.field(description="Get paginated list of news articles")
+    @strawberry.field(description="Get paginated list of news articles")  # type: ignore[misc]
     async def news(
         self: Any,
         info: strawberry.Info[GraphQLContext],
@@ -104,7 +104,7 @@ class Query:
             ),
         )
 
-    @strawberry.field(description="Get a single news article by ID")
+    @strawberry.field(description="Get a single news article by ID")  # type: ignore[misc]
     async def news_by_id(
         self,
         info: strawberry.Info[GraphQLContext],
@@ -127,7 +127,7 @@ class Query:
             return None
         return _news_to_type(news, getattr(news, "author", None))
 
-    @strawberry.field(description="Get paginated list of events")
+    @strawberry.field(description="Get paginated list of events")  # type: ignore[misc]
     async def events(
         self: Any,
         info: strawberry.Info[GraphQLContext],
@@ -166,7 +166,7 @@ class Query:
             ),
         )
 
-    @strawberry.field(description="Get schedule entries for a group")
+    @strawberry.field(description="Get schedule entries for a group")  # type: ignore[misc]
     async def schedule(
         self: Any,
         info: strawberry.Info[GraphQLContext],
@@ -200,9 +200,9 @@ class Query:
             for e in entries
         ]
 
-    @strawberry.field(description="Get current authenticated user")
+    @strawberry.field(description="Get current authenticated user")  # type: ignore[misc]
     async def me(
-        self,
+        self: Any,
         info: strawberry.Info[GraphQLContext],
     ) -> UserType | None:
         user = info.context.current_user

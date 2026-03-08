@@ -9,7 +9,7 @@ proper cache isolation between requests.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from strawberry.dataloader import DataLoader
 
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 async def load_users_by_ids(
     keys: list[int],
     session: AsyncSession,
-) -> Sequence:
+) -> Sequence[Any]:
     """Batch load users by their IDs."""
     from sqlalchemy import select
 
@@ -36,7 +36,7 @@ async def load_users_by_ids(
 async def load_news_by_ids(
     keys: list[str],
     session: AsyncSession,
-) -> Sequence:
+) -> Sequence[Any]:
     """Batch load news articles by their IDs."""
     from sqlalchemy import select
 
@@ -50,7 +50,7 @@ async def load_news_by_ids(
 async def load_events_by_ids(
     keys: list[str],
     session: AsyncSession,
-) -> Sequence:
+) -> Sequence[Any]:
     """Batch load events by their IDs."""
     from sqlalchemy import select
 

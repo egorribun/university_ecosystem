@@ -7,7 +7,7 @@ from app.core.ratelimit.strategies.memory import _memory_windows, _shard_lock
 
 logger = logging.getLogger(__name__)
 
-_cleanup_task: asyncio.Task | None = None
+_cleanup_task: asyncio.Task[None] | None = None
 
 
 async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:

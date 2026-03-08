@@ -226,7 +226,7 @@ def _process_image(
 
         if width and width < w:
             new_h = int(h * (width / w))
-            img = img.resize((width, new_h), resample=_resolve_resample_filter())  # type: ignore[assignment]
+            img = img.resize((width, new_h), resample=_resolve_resample_filter())
 
         buffer = BytesIO()
         if format_pref == "avif":

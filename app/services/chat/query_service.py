@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
     from app.models.models import User
-    from app.schemas.chat import ChatResponse, ChatsListOut, MessagesListOut
+    from app.schemas.chat import (
+        AttachmentResponse,
+        ChatParticipant,
+        ChatResponse,
+        ChatsListOut,
+        MessageResponse,
+        MessagesListOut,
+    )
 
 from app.api.validation import ensure_exists, raise_forbidden
 from app.api.ws.presence import build_presence_map
@@ -65,8 +72,8 @@ class ChatQueryService:
             pre_responses.append(
                 ChatResponse(
                     id=chat.id,
-                    participants=chat.participants,
-                    last_message=last_message,
+                    participants=cast("list[ChatParticipant]", chat.participants),
+                    last_message=cast("MessageResponse | None", last_message),
                     unread_count=data["unread_count"],
                     created_at=chat.created_at,
                     updated_at=chat.updated_at,
@@ -135,8 +142,8 @@ class ChatQueryService:
 
         return ChatResponse(
             id=chat.id,
-            participants=chat.participants,
-            last_message=last_message,
+            participants=cast("list[ChatParticipant]", chat.participants),
+            last_message=cast("MessageResponse | None", last_message),
             unread_count=unread_count,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
@@ -179,7 +186,7 @@ class ChatQueryService:
                 created_at=msg.created_at,
                 read_status=msg.read_status,
                 sender=None,
-                attachments=msg.attachments,
+                attachments=cast("list[AttachmentResponse]", msg.attachments),
                 sender_presence=presence_map.get(msg.sender_id),
             )
             for msg in messages
