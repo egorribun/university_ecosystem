@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
@@ -17,10 +17,8 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-T = TypeVar("T", bound=Base)
 
-
-async def batch_load_ids(
+async def batch_load_ids[T: Base](
     session: AsyncSession,
     model: type[T],
     ids: Sequence[int | str],
@@ -80,7 +78,7 @@ def eager_load_options(
     return [loader_fn(rel) for rel in relationships]
 
 
-def apply_eager_loading(
+def apply_eager_loading[T: Base](
     stmt: Select[tuple[T]],
     *relationships: RelationshipProperty[Any] | InstrumentedAttribute[Any] | str,
     strategy: str = "selectin",
@@ -100,7 +98,7 @@ def apply_eager_loading(
     return stmt.options(*options)
 
 
-class QueryBatcher(Generic[T]):
+class QueryBatcher[T: Base]:
     """
     Batch multiple single-item queries into a single batch query.
 
@@ -156,7 +154,7 @@ class QueryBatcher(Generic[T]):
         return result
 
 
-async def prefetch_related(
+async def prefetch_related[T: Base](
     session: AsyncSession,
     items: Sequence[T],
     relationship: InstrumentedAttribute[Any],

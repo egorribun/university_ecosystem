@@ -50,6 +50,7 @@ repos:
           - "sqlalchemy[mypy]>=2"
           - "types-redis"
           - "types-passlib"
+          - "strawberry-graphql>=0.250"
 
   - repo: local
     hooks:

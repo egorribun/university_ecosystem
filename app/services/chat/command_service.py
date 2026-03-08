@@ -131,8 +131,9 @@ class ChatCommandService:
         # ── Idempotency check (D-02) ────────────────────────────────────────
         _idempotency_cache_key: str | None = None
         if idempotency_key:
-            from app.deps.cache import get_cache_client
             import json as _json
+
+            from app.deps.cache import get_cache_client
 
             _cache = await get_cache_client()
             _idempotency_cache_key = (
@@ -201,9 +202,9 @@ class ChatCommandService:
                         meta = await self.attachment_service.process_upload(
                             upload, chat_id, locale=locale
                         )
-                except TimeoutError as exc:
+                except TimeoutError:
                     await self.attachment_service.cleanup_files(saved_urls)
-                    raise_validation_error("errors.files.upload_timeout", locale) from exc
+                    raise_validation_error("errors.files.upload_timeout", locale)
                 saved_urls.append(str(meta["url"]))
                 attachment = Attachment(
                     message=message,
@@ -261,8 +262,9 @@ class ChatCommandService:
         # attackers gain access to all recently sent messages.  On cache hit we
         # re-fetch the full message from the DB (one PK lookup — negligible cost).
         if _idempotency_cache_key:
-            from app.deps.cache import get_cache_client
             import json as _json
+
+            from app.deps.cache import get_cache_client
 
             _cache = await get_cache_client()
             _slim = _json.dumps({"message_id": str(msg_data.id)})

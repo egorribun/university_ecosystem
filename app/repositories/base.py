@@ -4,7 +4,7 @@ import abc
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
@@ -14,13 +14,8 @@ from sqlalchemy import delete, func, select
 
 from app.core.database import Base
 
-T = TypeVar("T", bound=Base)
-DTOT = TypeVar("DTOT", bound=BaseModel)
-CreateT = TypeVar("CreateT")
-UpdateT = TypeVar("UpdateT")
 
-
-class ReadOnlyRepository(abc.ABC, Generic[T, DTOT]):
+class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
     def __init__(self, db: AsyncDatabaseSession):
         self.db = db
 
@@ -123,7 +118,9 @@ class ReadOnlyRepository(abc.ABC, Generic[T, DTOT]):
         return id_val
 
 
-class BaseRepository(ReadOnlyRepository[T, DTOT], Generic[T, DTOT, CreateT, UpdateT]):
+class BaseRepository[T: Base, DTOT: BaseModel, CreateT, UpdateT](
+    ReadOnlyRepository[T, DTOT]
+):
     async def create(self, obj_in: CreateT | dict[str, Any]) -> DTOT:
         if hasattr(obj_in, "model_dump"):
             obj_data = obj_in.model_dump()

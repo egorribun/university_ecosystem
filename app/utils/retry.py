@@ -10,15 +10,12 @@ import asyncio
 import functools
 import logging
 import random
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 
 class RetryExhausted(Exception):
@@ -30,7 +27,7 @@ class RetryExhausted(Exception):
         super().__init__(f"Retry exhausted after {attempts} attempts")
 
 
-async def retry_async(
+async def retry_async[T](
     fn: Callable[..., Awaitable[T]],
     *args: Any,
     max_attempts: int = 3,
@@ -104,7 +101,7 @@ async def retry_async(
     raise RetryExhausted(max_attempts, last_error)
 
 
-def with_retry(
+def with_retry[T, **P](
     max_attempts: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 60.0,

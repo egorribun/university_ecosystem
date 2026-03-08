@@ -399,7 +399,7 @@ async def _scan_upload_with_clamd(
                 try:
                     await writer.wait_closed()
                 except Exception:
-                    pass
+                    logger.debug("Failed to close clamd writer cleanly", exc_info=True)
     except TimeoutError as exc:
         raise FileScannerUnavailableError("clamd scan timed out") from exc
     except Exception as exc:

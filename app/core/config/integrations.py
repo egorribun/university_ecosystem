@@ -36,10 +36,12 @@ class IntegrationSettings(BaseAppSettings):
 
     # ws-hub internal API (TD-NEW-07: cache invalidation on participant removal)
     ws_hub_internal_url: str = "http://ws-hub:8081"
-    ws_hub_internal_secret: str = ""  # Must match WS_HUB_INTERNAL_SECRET in ws-hub config
+    ws_hub_internal_secret: str = (
+        ""  # Must match WS_HUB_INTERNAL_SECRET in ws-hub config
+    )
 
     @model_validator(mode="after")
-    def _enforce_production_secrets(self) -> "IntegrationSettings":
+    def _enforce_production_secrets(self) -> IntegrationSettings:
         """Fail-fast on startup if critical secrets are missing in production.
 
         R-01 (audit 2026-03-08): Guards against operators deploying with empty or
@@ -49,7 +51,9 @@ class IntegrationSettings(BaseAppSettings):
         CI environments are also exempted to avoid breaking CI pipelines.
         """
         env_name = os.environ.get("ENVIRONMENT", "development").lower()
-        is_ci = os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
+        is_ci = (
+            os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
+        )
         if env_name in _DEV_ENVS or is_ci:
             return self
 

@@ -8,13 +8,11 @@ Decorated handlers are auto-registered when configure_event_handlers() is called
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any, TypeVar, overload
+from typing import TYPE_CHECKING, Any, overload
 
 if TYPE_CHECKING:
     from app.core.events import DomainEvent, EventBus
-
 EventHandler = Callable[["DomainEvent"], Coroutine[Any, Any, None]]
-EventT = TypeVar("EventT", bound="DomainEvent")
 
 # Storage for pending registrations (populated by decorators, consumed on startup)
 _pending_subscriptions: list[tuple[str | type, EventHandler]] = []
@@ -26,7 +24,7 @@ def subscribe(event_type: str) -> Callable[[EventHandler], EventHandler]: ...
 
 
 @overload
-def subscribe(
+def subscribe[EventT: DomainEvent](
     event_type: type[EventT],
 ) -> Callable[[EventHandler], EventHandler]: ...
 
