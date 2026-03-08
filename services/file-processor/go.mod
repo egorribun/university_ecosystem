@@ -88,4 +88,3 @@ require (
 )
 
 
-replace github.com/university-ecosystem/core/gen/go => ../../gen/go

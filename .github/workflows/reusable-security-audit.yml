@@ -140,12 +140,9 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck on all Go modules
-        # Audit each module in isolation. GOWORK=off is required because
-        # the find-loop logic enters each sub-directory; if a root go.work
-        # is present, Go would otherwise try to resolve dependencies via the
-        # workspace, which fails when the tool logic only expects a single module.
-        env:
-          GOWORK: off
+        # Audit each module in the repository. Since all modules are synchronized
+        # in the root go.work file, govulncheck will correctly resolve local cross-module
+        # dependencies (like gateway -> gen/go) without needing 'replace' directives.
         run: |
           find . -name 'go.mod' -not -path '*/vendor/*' | while read modfile; do
             dir=$(dirname "$modfile")
