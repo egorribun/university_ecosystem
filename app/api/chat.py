@@ -142,7 +142,11 @@ async def send_message(
     messages (Stripe-style retry-safe API).
     """
     return await chat_service.send_message(
-        chat_id, current_user, content, files, locale=locale,
+        chat_id,
+        current_user,
+        content,
+        files,
+        locale=locale,
         idempotency_key=idempotency_key,
     )
 
