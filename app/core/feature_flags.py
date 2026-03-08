@@ -12,9 +12,10 @@ import contextlib
 import hashlib
 import json
 import logging
+from collections.abc import Awaitable
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from openfeature import api
 from openfeature.evaluation_context import EvaluationContext
@@ -214,7 +215,9 @@ class FeatureFlagService:
         if self._redis:
             # 1. Load from Redis
             try:
-                stored_flags = await self._redis.hgetall(FEATURE_FLAGS_KEY)
+                stored_flags = await cast(
+                    "Awaitable[dict[str, Any]]", self._redis.hgetall(FEATURE_FLAGS_KEY)
+                )
                 for name, data_str in stored_flags.items():
                     try:
                         data = json.loads(data_str)
@@ -285,7 +288,9 @@ class FeatureFlagService:
             return
 
         try:
-            data_str = await self._redis.hget(FEATURE_FLAGS_KEY, name)
+            data_str = await cast(
+                "Awaitable[Any]", self._redis.hget(FEATURE_FLAGS_KEY, name)
+            )
             if data_str:
                 data = json.loads(data_str)
                 flag = FeatureFlag.from_dict(data)
@@ -360,8 +365,11 @@ class FeatureFlagService:
         # update L2 (Redis)
         if self._redis:
             try:
-                await self._redis.hset(
-                    FEATURE_FLAGS_KEY, name, json.dumps(flag.to_dict())
+                await cast(
+                    "Awaitable[Any]",
+                    self._redis.hset(
+                        FEATURE_FLAGS_KEY, name, json.dumps(flag.to_dict())
+                    ),
                 )
                 # Broadcast update
                 await self._redis.publish(FEATURE_FLAGS_CHANNEL, name)

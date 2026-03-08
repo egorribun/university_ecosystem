@@ -58,7 +58,7 @@ class NatsService:
         self._name = name
         self._client: NatsClient | None = None
         self._js: JetStreamContext | None = None
-        self._subscriptions: list = []
+        self._subscriptions: list[Any] = []
 
     @property
     def is_connected(self) -> bool:
@@ -178,7 +178,7 @@ class NatsService:
         if not self._client:
             raise RuntimeError("Not connected to NATS")
 
-        async def _wrapper(msg):
+        async def _wrapper(msg: Any) -> None:
             wrapped = NatsMessage(
                 subject=msg.subject,
                 data=msg.data,
@@ -209,7 +209,7 @@ class NatsService:
         if not self._js:
             raise RuntimeError("Not connected to NATS")
 
-        async def _wrapper(msg):
+        async def _wrapper(msg: Any) -> None:
             wrapped = NatsMessage(
                 subject=msg.subject,
                 data=msg.data,

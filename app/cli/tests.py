@@ -16,7 +16,7 @@ def run(
     fail_fast: Annotated[
         bool, typer.Option("--ff", help="Stop on first failure.")
     ] = False,
-):
+) -> None:
     """Run the test suite."""
     cmd = ["pytest", path]
 
@@ -42,7 +42,7 @@ def run(
 
 
 @app.command()
-def smoke():
+def smoke() -> None:
     """Run smoke tests against the live environment."""
     # This could run a specific set of tests or a separate script
     typer.echo("Running smoke tests...")

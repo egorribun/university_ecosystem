@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from io import BytesIO
-from typing import cast
+from typing import Any, cast
 
 from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring as parse_svg_string
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
     from PIL.Image import Resampling
 except ImportError:  # pragma: no cover - Pillow < 9.1 compatibility
-    Resampling = int
+    Resampling: Any = int  # type: ignore[no-redef]
 
 
 def _resolve_resample_filter() -> Resampling:

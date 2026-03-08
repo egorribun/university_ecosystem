@@ -183,6 +183,11 @@ module = [
     "grpclib.*",
     "pyroscope",
     "magic",
+    "rust_ext",
+    "pyo3_sanitizer",
+    "zxcvbn",
+    "nats.*",
+    "redis.*",
 ]
 ignore_missing_imports = true
 
@@ -284,6 +289,7 @@ dev = [
     "virtualenv>=20.36.2",
     "types-requests>=2.32.4.20260107",
     "types-pyyaml>=6.0.12.20250915",
+    "types-redis>=4.6.0.20240425",
 ]
 
 [tool.uv.workspace]

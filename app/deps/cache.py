@@ -218,7 +218,7 @@ class RedisCache(BaseCache):
                     retry_on_timeout=True,
                     max_connections=getattr(settings, "redis_pool_size", 20),
                 )
-        return self._client
+        return cast("Redis[Any]", self._client)
 
     async def close(self) -> None:
         if self._client is None:
@@ -372,7 +372,7 @@ class RedisClusterCache(BaseCache):
     def __init__(self, url: str, default_ttl: int) -> None:
         self._url = url
         self._default_ttl = max(int(default_ttl or 0), 0)
-        self._client: Redis[Any] | Any | None = None
+        self._client: Any = None
         self._client_lock = asyncio.Lock()
 
     async def _get_client(self) -> Any:

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
+from typing import Any, cast
 
 import redis.asyncio as aioredis
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
@@ -194,7 +195,7 @@ class AppProvider(Provider):
         """
         from app.core.config import settings
 
-        client = aioredis.from_url(
+        client = cast(Any, aioredis).from_url(
             str(settings.cache_redis_url),
             decode_responses=False,
             # PERF-04 (audit 2026-03-04): Cap the connection pool. Without this,

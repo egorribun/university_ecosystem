@@ -3,7 +3,7 @@ import hashlib
 import logging
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 # msgspec is used for safe binary serialization of Redis cache payloads.
@@ -226,7 +226,9 @@ def _process_image(
 
         if width and width < w:
             new_h = int(h * (width / w))
-            img = img.resize((width, new_h), resample=_resolve_resample_filter())
+            img = cast(
+                Any, img.resize((width, new_h), resample=_resolve_resample_filter())
+            )
 
         buffer = BytesIO()
         if format_pref == "avif":

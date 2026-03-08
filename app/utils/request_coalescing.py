@@ -21,7 +21,7 @@ _in_flight_requests: dict[str, asyncio.Future[Any]] = {}
 _request_locks: dict[str, asyncio.Lock] = {}
 
 
-def _build_request_key(prefix: str, *args, **kwargs) -> str:
+def _build_request_key(prefix: str, *args: Any, **kwargs: Any) -> str:
     """Build a unique key for a request based on its arguments."""
     key_parts = [prefix]
     key_parts.extend(str(arg) for arg in args)

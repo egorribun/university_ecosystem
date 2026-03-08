@@ -28,10 +28,10 @@ def create_admin(
         ),
     ] = None,
     full_name: Annotated[str, typer.Option(help="Admin full name.")] = "Test Admin",
-):
+) -> None:
     """Create a test admin user if not exists."""
 
-    async def _run():
+    async def _run() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
@@ -78,7 +78,7 @@ def create_admin(
 @app.command()
 def create_invite(
     role: Annotated[str, typer.Argument(help="Role for the invite (teacher/admin).")],
-):
+) -> None:
     """Generate a new invite code."""
     if role not in ("teacher", "admin"):
         typer.secho(
@@ -86,7 +86,7 @@ def create_invite(
         )
         raise typer.Exit(1)
 
-    async def _run():
+    async def _run() -> None:
         code = secrets.token_hex(5).upper()
         async with async_session() as session:
             invite = InviteCode(
