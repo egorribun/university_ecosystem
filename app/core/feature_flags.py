@@ -93,7 +93,7 @@ class FeatureFlag:
         return cls(**data)
 
 
-class UniversityFeatureProvider(AbstractProvider):  # type: ignore[misc]
+class UniversityFeatureProvider(AbstractProvider):
     """OpenFeature Provider for University Ecosystem. (MOD-6)
 
     Wraps the existing FeatureFlagService to provide a standardized API.

@@ -585,7 +585,7 @@ logger = logging.getLogger(__name__)
 class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if _REQUEST_COUNT is None or _REQUEST_DURATION is None:
-            return cast(Response, await call_next(request))  # type: ignore[unreachable]
+            return cast(Response, await call_next(request))
 
         start = time.perf_counter()
         status_code = "500"

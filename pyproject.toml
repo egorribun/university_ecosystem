@@ -135,13 +135,20 @@ check_untyped_defs = false
 # Temporarily exempt only the services with the most complex Depends() chains.
 # All other services must be fully annotated.
 [[tool.mypy.overrides]]
-module = [
-    "app.core.feature_flags",
-    "app.core.metrics",
-    "app.utils.files",
-]
+module = "app.core.feature_flags"
 warn_unused_ignores = false
+disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
+module = "app.core.metrics"
 warn_unreachable = false
+warn_unused_ignores = false
+disable_error_code = ["unreachable"]
+
+[[tool.mypy.overrides]]
+module = "app.utils.files"
+warn_unused_ignores = false
+disable_error_code = ["assignment"]
 
 [[tool.mypy.overrides]]
 module = ["app.services.chat_service", "app.services.webpush"]
