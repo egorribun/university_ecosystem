@@ -62,7 +62,7 @@ async def _ensure_push_subscription_schema_once(db: AsyncSession) -> None:
 
     async with _SCHEMA_CHECK_LOCK:
         if _SCHEMA_CHECK_MARKER is not None:
-            return
+            return  # type: ignore[unreachable]
         await ensure_push_subscription_schema(db)
         _SCHEMA_CHECK_MARKER = dt.datetime.now(UTC).timestamp()
 

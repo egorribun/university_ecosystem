@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import pyotp
@@ -56,17 +56,16 @@ def _utcnow() -> datetime:
 
 
 def create_totp_secret(length: int = _TOTP_SECRET_LENGTH) -> str:
-    return cast(str, pyotp.random_base32(length=length))
+    return str(pyotp.random_base32(length=length))
 
 
 def build_totp_uri(secret: str, *, account_name: str, issuer: str | None = None) -> str:
     issuer_name = issuer or settings.mfa_totp_issuer
     totp = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
-    return cast(
-        str,
+    return str(
         totp.provisioning_uri(
             name=account_name, issuer_name=issuer_name or "UniversityEcosystem"
-        ),
+        )
     )
 
 
@@ -158,7 +157,7 @@ async def complete_totp_enrollment(
     enrollment: MfaTotpEnrollment,
     code: str,
 ) -> MfaTotpEnrollment:
-    if enrollment.secret is None:
+    if getattr(enrollment, "secret", None) is None:
         logger.warning(
             "Cannot complete TOTP enrollment %s: decryption failed",
             enrollment.id,
@@ -285,7 +284,7 @@ async def verify_totp_for_user(
     )
 
     for enrollment in enrollments:
-        if enrollment.secret is None:
+        if getattr(enrollment, "secret", None) is None:
             logger.warning(
                 "Skipping TOTP enrollment %s for user %s: decryption failed",
                 enrollment.id,
