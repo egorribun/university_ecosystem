@@ -11,9 +11,10 @@
 go 1.26.0
 
 use (
+	.
 	./gen/go
+	./services/cmd/uni-cli
 	./services/file-processor
 	./services/gateway
 	./services/ws-hub
-	.
 )
