@@ -67,19 +67,21 @@ jobs:
 
       - name: Commit pre-commit fixes
         if: ${{ steps.changes.outputs.changed == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        shell: pwsh
+        shell: bash
         run: |
-          $branch = if ($env:GITHUB_HEAD_REF) { $env:GITHUB_HEAD_REF } else { $env:GITHUB_REF_NAME }
+          BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: pre-commit autofix [skip ci]"
-          # CI-03 (audit 2026-03-04): Replaced --force-with-lease with a
-          # pull-rebase-push pattern. --force-with-lease can still clobber work
-          # if two jobs race on the same ref between the fetch and the push.
-          # A rebase-then-normal-push is safer on shared team branches.
-          git pull --rebase origin "$branch"
-          git push origin "HEAD:$branch"
+          git commit -m "chore: pre-commit autofix [skip ci]" || exit 0
+          
+          # Attempt rebase to avoid push conflicts
+          if ! git pull --rebase origin "$BRANCH"; then
+            echo "::error::Rebase failed. There might be manual conflicts to resolve."
+            exit 1
+          fi
+          
+          git push origin "HEAD:$BRANCH"
 
       - name: Fail if fixes were needed and cannot push (fork PR)
         if: ${{ steps.changes.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
