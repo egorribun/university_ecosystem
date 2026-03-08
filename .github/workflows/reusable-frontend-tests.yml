@@ -45,6 +45,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@385db9cc6bf65d19775b02084a4b698eaca9a4f2 # v2.68.19
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM modules
+        run: |
+          wasm-pack build rust-crypto --target web
+          wasm-pack build wasm-sanitizer --target web
+
       - name: Run type check
         run: npm run typecheck
 
@@ -78,6 +88,16 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@385db9cc6bf65d19775b02084a4b698eaca9a4f2 # v2.68.19
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM modules
+        run: |
+          wasm-pack build rust-crypto --target web
+          wasm-pack build wasm-sanitizer --target web
 
       - name: Run ESLint
         run: npm run lint
