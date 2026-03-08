@@ -152,11 +152,21 @@ export default function ResetPassword() {
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
         <div
           className="absolute bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)"
-          style={{ top: "var(--glow-inset-neg)", right: "var(--glow-inset-subtle-neg)", width: "40%", height: "40%" }}
+          style={{
+            top: "var(--glow-inset-neg)",
+            right: "var(--glow-inset-subtle-neg)",
+            width: "40%",
+            height: "40%",
+          }}
         />
         <div
           className="absolute bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)"
-          style={{ bottom: "var(--glow-inset-neg)", left: "var(--glow-inset-subtle-neg)", width: "40%", height: "40%" }}
+          style={{
+            bottom: "var(--glow-inset-neg)",
+            left: "var(--glow-inset-subtle-neg)",
+            width: "40%",
+            height: "40%",
+          }}
         />
       </div>
 
@@ -277,7 +287,10 @@ export default function ResetPassword() {
 
                       {!!feedback && (
                         <div className="flex gap-2 px-2 py-2 rounded-xs bg-brand/(--opacity-subtle) border border-brand/(--opacity-subtle)">
-                          <ShieldCheck size={16} className="text-(--primary-main) shrink-0 mt-0.5" />
+                          <ShieldCheck
+                            size={16}
+                            className="text-(--primary-main) shrink-0 mt-0.5"
+                          />
                           <p className="text-xs font-medium text-brand/(--opacity-hover) leading-relaxed">
                             {feedback}
                           </p>

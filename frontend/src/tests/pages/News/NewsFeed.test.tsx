@@ -17,7 +17,14 @@ const baseUser: User = {
   avatar_url_optimized: null,
   cover_url: null,
   cover_url_optimized: null,
-  profile_detail: { about: null, telegram: null, status: null, achievements: null, department: null, position: null },
+  profile_detail: {
+    about: null,
+    telegram: null,
+    status: null,
+    achievements: null,
+    department: null,
+    position: null,
+  },
   education_path: undefined,
   preferences: undefined,
   spotify_connected: false,
@@ -35,8 +42,6 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
     import("@/contexts/AuthContext"),
     import("@/contexts/LanguageContext"),
   ])
-
-
 
   const authValue = {
     login: vi.fn().mockResolvedValue(null),
@@ -126,4 +131,3 @@ describe.skip("News page interaction", () => {
     expect(screen.getByText("Headline 2")).toBeInTheDocument()
   })
 })
-

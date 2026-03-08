@@ -30,8 +30,6 @@ import { Badge, Card, ConfirmDialog } from "@/components/ui"
 
 // dayjs extensions removed
 
-
-
 function formatInputDate(value: Date | string | number) {
   return formatForInput(value)
 }
@@ -109,10 +107,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
     }
   }, [coverPreview])
 
-  const timeLeft = useMemo(
-    () => formatTimeLeft(story.expires_at),
-    [story.expires_at]
-  )
+  const timeLeft = useMemo(() => formatTimeLeft(story.expires_at), [story.expires_at])
 
   const handleTimeSave = async () => {
     setActionError(null)
@@ -167,7 +162,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
     setUpdatingCover(true)
     try {
       const uploaded = await uploadStoryCover(coverFile)
-      const url = (uploaded as Record<string, unknown>).url as string | undefined ?? ""
+      const url = ((uploaded as Record<string, unknown>).url as string | undefined) ?? ""
       await updateStory(story.id, { cover_url: url })
       handleCoverReset()
       onRefresh()
@@ -374,7 +369,9 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
       <ConfirmDialog
         open={showDeleteConfirm}
         title={t("stories:list.confirmDelete")}
-        message={t("stories:list.confirmDeleteDescription", { defaultValue: "Are you sure you want to delete this story? This action cannot be undone." })}
+        message={t("stories:list.confirmDeleteDescription", {
+          defaultValue: "Are you sure you want to delete this story? This action cannot be undone.",
+        })}
         confirmText={t("common:buttons.delete")}
         cancelText={t("common:buttons.cancel")}
         variant="danger"
@@ -475,7 +472,7 @@ export default function StoriesAdmin() {
       let coverUrl: string | null = null
       if (coverFile) {
         const uploaded = await uploadStoryCover(coverFile)
-        coverUrl = (uploaded as Record<string, unknown>).url as string | undefined ?? null
+        coverUrl = ((uploaded as Record<string, unknown>).url as string | undefined) ?? null
       }
       await createStory({
         title: formState.titleRu,

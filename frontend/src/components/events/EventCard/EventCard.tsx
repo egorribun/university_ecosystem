@@ -1,7 +1,6 @@
 import { memo, lazy, Suspense, type FC } from "react"
 import type { Event } from "@/types/Event"
 
-
 import { cn } from "@/utils/cn"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"

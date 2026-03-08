@@ -4,7 +4,7 @@ import asyncio
 import logging
 import secrets
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastapi import BackgroundTasks, Request, status
 

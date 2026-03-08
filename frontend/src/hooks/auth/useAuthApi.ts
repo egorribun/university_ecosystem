@@ -363,7 +363,9 @@ export const useAuthApi = (
 
         // 2. Start biometric authentication
         const authResponse = await startAuthentication({
-          optionsJSON: optionsResponse.data.publicKey as unknown as Parameters<typeof startAuthentication>[0]["optionsJSON"],
+          optionsJSON: optionsResponse.data.publicKey as unknown as Parameters<
+            typeof startAuthentication
+          >[0]["optionsJSON"],
         })
 
         // 3. Verify authentication response

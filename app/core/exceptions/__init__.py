@@ -54,7 +54,7 @@ class InvalidOperationException(AppException):
         )
 
 
-async def app_exception_handler(request: Request, exc: Exception):
+async def app_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, AppException):
         return JSONResponse(
             status_code=500,

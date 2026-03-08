@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -38,20 +37,12 @@ func TestGenerateRequestID_ReturnsNonEmptyString(t *testing.T) {
 	assert.NotEmpty(t, requestID)
 }
 
-func TestGenerateRequestID_ContainsDatePrefix(t *testing.T) {
+func TestGenerateRequestID_IsUUID(t *testing.T) {
 	requestID := GenerateRequestID()
 
+	// UUID v4 length is 36 (8-4-4-4-12 hex + 4 hyphens)
+	assert.Len(t, requestID, 36)
 	assert.Contains(t, requestID, "-")
-	parts := strings.Split(requestID, "-")
-	assert.Len(t, parts, 2)
-	assert.Len(t, parts[0], 14) // Format: 20060102150405
-}
-
-func TestGenerateRequestID_HasSuffix(t *testing.T) {
-	requestID := GenerateRequestID()
-
-	parts := strings.Split(requestID, "-")
-	assert.Len(t, parts[1], 8)
 }
 
 func TestHealthHandler_ReturnsOKStatus(t *testing.T) {
@@ -147,21 +138,6 @@ func TestProxyHandler_AddsUserIDHeader(t *testing.T) {
 	assert.Equal(t, "user-456", capturedUserID)
 }
 
-func TestRandomString_ReturnsCorrectLength(t *testing.T) {
-	for _, length := range []int{1, 5, 8, 16, 32} {
-		result := randomString(length)
-		assert.Len(t, result, length)
-	}
-}
-
-func TestRandomString_ContainsOnlyValidCharacters(t *testing.T) {
-	validChars := "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := randomString(100)
-
-	for _, char := range result {
-		assert.Contains(t, validChars, string(char))
-	}
-}
 
 func TestGenerateRequestID_IsUnique(t *testing.T) {
 	ids := make(map[string]bool)

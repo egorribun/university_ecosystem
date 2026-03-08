@@ -1,5 +1,4 @@
 const fallbackNotifications = {
-
   en: {
     defaultTitle: "University Ecosystem",
     defaultBody: "You have a new notification.",

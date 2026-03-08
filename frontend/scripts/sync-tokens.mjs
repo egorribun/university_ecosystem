@@ -246,8 +246,6 @@ GROUPS.forEach((group) => {
     return
   }
 
-
-
   output += `export const ${group.name} = {\n`
 
   const entries = []

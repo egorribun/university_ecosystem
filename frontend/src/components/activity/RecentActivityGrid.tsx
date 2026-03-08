@@ -204,9 +204,7 @@ export function RecentActivityGrid({
         <div className="flex flex-col">
           <div className="mb-2 flex items-center gap-2">
             <SchoolIcon className="text-base text-(--primary-main)" />
-            <h3 className="font-black text-text-primary">
-              {t("activity:sections.grades.recent")}
-            </h3>
+            <h3 className="font-black text-text-primary">{t("activity:sections.grades.recent")}</h3>
           </div>
           <div
             ref={gradesParentRef}

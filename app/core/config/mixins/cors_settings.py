@@ -52,9 +52,10 @@ class CorsSettingsMixin:
 
             from app.core.config.base import _DEVELOPMENT_ENVIRONMENTS
 
-            env = (
+            env = str(
                 info.data.get("environment")
                 or os.environ.get("ENVIRONMENT", "development")
+                or "development"
             ).lower()
             if env not in _DEVELOPMENT_ENVIRONMENTS:
                 import logging

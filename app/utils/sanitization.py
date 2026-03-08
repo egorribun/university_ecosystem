@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import nh3
 
@@ -84,9 +84,9 @@ def sanitize_html(text: str, allow_basic_tags: bool = False) -> str:
         return ""
     if not allow_basic_tags:
         # Strip every tag — pure plain-text output.
-        return cast(str, nh3.clean(text, tags=set()))
+        return nh3.clean(text, tags=set())
     # Allow only the four safe inline-formatting tags; no attributes.
-    return cast(str, nh3.clean(text, tags=_BASIC_TAGS, attributes={}))
+    return nh3.clean(text, tags=_BASIC_TAGS, attributes={})
 
 
 def sanitize_rich_text(html_content: str) -> str:
@@ -106,17 +106,18 @@ def sanitize_rich_text(html_content: str) -> str:
     """
     if not html_content:
         return ""
-    return cast(
-        str,
-        nh3.clean(
+    try:
+        return nh3.clean(
             html_content,
             tags=set(ALLOWED_RICH_TEXT_TAGS),
             attributes=_RICH_TEXT_ATTRIBUTES,
             url_schemes=_SAFE_URL_SCHEMES,
+            strip_comments=True,
             # nh3 automatically adds rel="noopener noreferrer" to every <a> tag.
             link_rel="noopener noreferrer",
-        ),
-    )
+        )
+    except Exception:
+        return ""
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:

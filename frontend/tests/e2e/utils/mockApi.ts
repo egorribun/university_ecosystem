@@ -1,9 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import type {
-  MfaTotpEnrollment,
-  PendingMfaResponse,
-  TotpEnrollmentStart,
-} from "@/types/Mfa"
+import type { MfaTotpEnrollment, PendingMfaResponse, TotpEnrollmentStart } from "@/types/Mfa"
 import type { User } from "@/types/User"
 
 type NewsLogEntry = {
@@ -767,4 +763,3 @@ export async function useMockApi(page: Page) {
     },
   }
 }
-

@@ -210,7 +210,8 @@ export const useEventsListQuery = (
   const placeholderData = useMemo(() => {
     if (typeof window === "undefined") return undefined
     try {
-      const activity = normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
+      const activity =
+        normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
       const storage = new StorageItem<Event[]>(`events:list:${normalized.language}:${activity}`)
       const items = storage.get()
       if (!Array.isArray(items) || items.length === 0) return undefined
@@ -321,7 +322,9 @@ export const useMyEventsQuery = (
   const placeholderData = useMemo(() => {
     if (typeof window === "undefined") return undefined
     try {
-      const storage = new StorageItem<Event[]>(`events:my:${normalized.language}:${normalized.userId}`)
+      const storage = new StorageItem<Event[]>(
+        `events:my:${normalized.language}:${normalized.userId}`
+      )
       const items = storage.get()
       return Array.isArray(items) ? items : undefined
     } catch {

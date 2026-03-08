@@ -41,7 +41,6 @@ from app.core.metrics import record_redis_command
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 
 logger = logging.getLogger(__name__)
 

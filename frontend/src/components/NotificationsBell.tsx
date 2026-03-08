@@ -139,9 +139,7 @@ export default function NotificationsBell() {
         />
         {unreadCount ? (
           <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-            <span
-              className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-strong"
-            />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-strong" />
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-(--error-text) border-2 border-(--bg-surface) dark:border-(--bg-page)" />
           </span>
         ) : null}

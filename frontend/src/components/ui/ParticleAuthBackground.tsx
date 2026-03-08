@@ -66,7 +66,10 @@ const ParticleAuthBackground = () => {
       for (let i = 0; i < CONFIG.particleCount; i++) {
         const angle = Math.random() * Math.PI * 2
         // Gaussian-like distribution for radius (more dense in center)
-        const r = ((Math.random() + Math.random() + Math.random()) / GAUSSIAN_FACTOR) * CONFIG.baseRadius * 2
+        const r =
+          ((Math.random() + Math.random() + Math.random()) / GAUSSIAN_FACTOR) *
+          CONFIG.baseRadius *
+          2
 
         newParticles.push({
           x: width / 2 + Math.cos(angle) * r, // Start at center

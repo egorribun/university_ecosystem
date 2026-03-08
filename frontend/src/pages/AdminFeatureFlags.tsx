@@ -73,9 +73,7 @@ export default function AdminFeatureFlags() {
             <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
               {t("featureFlags.title", "Dynamic Feature Flags")}
             </h1>
-            <p className="mt-2 text-base text-(--text-secondary)">
-              {t("featureFlags.subtitle")}
-            </p>
+            <p className="mt-2 text-base text-(--text-secondary)">{t("featureFlags.subtitle")}</p>
           </motion.div>
 
           <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
@@ -152,7 +150,9 @@ export default function AdminFeatureFlags() {
                                 className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
                               />
                               <div className="flex items-center justify-between text-label-xs font-bold uppercase tracking-widest text-(--text-secondary)">
-                                <span>{t("featureFlags.rollout.percentage", { value: flag.percentage })}</span>
+                                <span>
+                                  {t("featureFlags.rollout.percentage", { value: flag.percentage })}
+                                </span>
                                 <Percent className="h-3 w-3" />
                               </div>
                             </div>

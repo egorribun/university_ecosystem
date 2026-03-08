@@ -95,8 +95,10 @@ class SecuritySettings(
         if not secrets:
             raise ValueError("AUDIT_LOG_SECRET must not be empty")
 
-        env = (
-            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        env = str(
+            info.data.get("environment")
+            or os.environ.get("ENVIRONMENT", "production")
+            or "production"
         ).lower()
         is_dev = env in _DEVELOPMENT_ENVIRONMENTS
 

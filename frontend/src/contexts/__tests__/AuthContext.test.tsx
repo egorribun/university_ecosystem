@@ -24,13 +24,15 @@ vi.mock("@/utils/cryptoWorker", async (importOriginal) => {
     cryptoWorker: {
       pbkdf2: vi.fn().mockResolvedValue("mock_pbkdf2"),
       scrypt: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-      hmacSha256: vi.fn().mockImplementation(async ({ json, key }: { json: string; key: string }) => {
-        // We import noble hashes inline. ES modules in Vitest support this for dynamic imports.
-        // We can just rely on standard WebCrypto for tests or dynamic noble import.
-        // A much safer bet for Node.js test environments:
-        const crypto = await import("crypto")
-        return crypto.createHmac("sha256", key).update(json).digest("base64")
-      }),
+      hmacSha256: vi
+        .fn()
+        .mockImplementation(async ({ json, key }: { json: string; key: string }) => {
+          // We import noble hashes inline. ES modules in Vitest support this for dynamic imports.
+          // We can just rely on standard WebCrypto for tests or dynamic noble import.
+          // A much safer bet for Node.js test environments:
+          const crypto = await import("crypto")
+          return crypto.createHmac("sha256", key).update(json).digest("base64")
+        }),
     },
   }
 })

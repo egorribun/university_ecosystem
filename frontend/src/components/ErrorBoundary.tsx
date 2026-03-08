@@ -50,7 +50,7 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
 
     // Log to console in development
     if (import.meta.env.DEV) {
-    logError("ErrorBoundary caught an error:", { error, errorInfo })
+      logError("ErrorBoundary caught an error:", { error, errorInfo })
     }
   }
 
@@ -83,7 +83,10 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
           {/* Ambient radial glow */}
           <div
             className="pointer-events-none absolute inset-0"
-            style={{ backgroundImage: "radial-gradient(circle at 50% 50%, color-mix(in_srgb, var(--primary-main) var(--opacity-subtle), transparent) 0%, transparent 70%)" }}
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 50% 50%, color-mix(in_srgb, var(--primary-main) var(--opacity-subtle), transparent) 0%, transparent 70%)",
+            }}
           />
 
           <div className="relative z-deep w-full max-w-(--layout-max-modal) rounded-2xl border border-border-subtle bg-(--bg-surface) p-10 text-center shadow-premium backdrop-blur-md">

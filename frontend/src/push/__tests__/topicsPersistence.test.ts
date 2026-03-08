@@ -10,7 +10,9 @@ vi.mock("@/push/subscribe", async (importOriginal) => {
   return {
     ...actual,
     getPersistedTopics: vi.fn().mockImplementation((options) => actual.getPersistedTopics(options)),
-    setPersistedTopics: vi.fn().mockImplementation((topics, options) => actual.setPersistedTopics(topics, options)),
+    setPersistedTopics: vi
+      .fn()
+      .mockImplementation((topics, options) => actual.setPersistedTopics(topics, options)),
   }
 })
 const setActiveUser = (id: string | number | null) => {

@@ -31,7 +31,7 @@ class GeolocationService:
             return
         async with self._init_lock:
             if self._initialized:
-                return  # type: ignore[unreachable]
+                return
 
             if not self.db_path:
                 self._initialized = True
@@ -79,7 +79,7 @@ class GeolocationService:
             logger.error(f"Error resolving IP {ip_address}: {e}")
             return LocationInfo()
 
-    def close(self):
+    def close(self) -> None:
         if self.reader:
             self.reader.close()
 

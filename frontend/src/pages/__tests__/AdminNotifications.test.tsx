@@ -22,10 +22,10 @@ const adminUser: User = {
   avatar_url_optimized: null,
   cover_url: null,
   cover_url_optimized: null,
-    profile_detail: undefined,
-    education_path: undefined,
-    preferences: undefined,
-    spotify_connected: false,
+  profile_detail: undefined,
+  education_path: undefined,
+  preferences: undefined,
+  spotify_connected: false,
   is_active: true,
   mfa_required: false,
   mfa_default_method: null,
@@ -89,7 +89,9 @@ describe("AdminNotifications page", () => {
     expect(await screen.findByText("Webhook failed")).toBeInTheDocument()
     expect(screen.getByText("Total jobs: 2")).toBeInTheDocument()
 
-    const checkbox = await screen.findByRole("checkbox", { name: /Select job 550e8400-e29b-41d4-a716-446655440000/i })
+    const checkbox = await screen.findByRole("checkbox", {
+      name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
+    })
     await userEvent.click(checkbox)
     expect(checkbox).toBeChecked()
 
@@ -99,7 +101,9 @@ describe("AdminNotifications page", () => {
   it("retries and purges selected jobs", async () => {
     const { queryClient } = renderPage()
 
-    const firstJobCheckbox = await screen.findByRole("checkbox", { name: /Select job 550e8400-e29b-41d4-a716-446655440000/i })
+    const firstJobCheckbox = await screen.findByRole("checkbox", {
+      name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
+    })
     await userEvent.click(firstJobCheckbox)
 
     const retryButton = await screen.findByRole("button", { name: /Retry selected/i })
@@ -134,4 +138,3 @@ describe("AdminNotifications page", () => {
     queryClient.clear()
   })
 })
-

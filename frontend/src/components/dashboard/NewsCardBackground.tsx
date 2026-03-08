@@ -18,7 +18,8 @@ export const NewsCardBackground = memo(function NewsCardBackground() {
         }}
         className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light transition-opacity duration-slow"
         style={{
-          background: "radial-gradient(circle at top right, var(--dash-card-news-radial), transparent 68%)"
+          background:
+            "radial-gradient(circle at top right, var(--dash-card-news-radial), transparent 68%)",
         }}
       />
       <motion.span
@@ -37,7 +38,7 @@ export const NewsCardBackground = memo(function NewsCardBackground() {
         }}
         className="pointer-events-none absolute -bottom-20 left-1/3 z-hide h-44 w-44 rounded-full blur-3xl mix-blend-soft-light transition-opacity duration-slower"
         style={{
-          background: "radial-gradient(circle, var(--dash-card-news-orb), transparent)"
+          background: "radial-gradient(circle, var(--dash-card-news-orb), transparent)",
         }}
       />
     </>

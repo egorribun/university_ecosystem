@@ -97,6 +97,20 @@ vi.mock("@/push/subscribe", () => ({
   isPushSupported: vi.fn(() => false),
 }))
 
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+import { initSync as initSanitizer } from "wasm-sanitizer"
+
+try {
+  const dirname = path.dirname(fileURLToPath(import.meta.url))
+  const sanitizerWasmPath = path.resolve(dirname, "../wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm")
+  const sanitizerWasmBuffer = fs.readFileSync(sanitizerWasmPath)
+  initSanitizer(sanitizerWasmBuffer)
+} catch (e) {
+  console.error("Failed to initialize WASM modules for tests:", e)
+}
+
 if (typeof HTMLCanvasElement !== "undefined") {
   HTMLCanvasElement.prototype.getContext = vi.fn(
     () =>

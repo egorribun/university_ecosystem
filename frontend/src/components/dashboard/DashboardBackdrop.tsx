@@ -1,6 +1,5 @@
 import { useMemo, memo } from "react"
 
-
 interface DashboardBackdropProps {
   isNarrow: boolean
   prefersReducedMotion: boolean

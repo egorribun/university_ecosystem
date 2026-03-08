@@ -22,8 +22,8 @@ export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
               <div key={i} className="flex items-center gap-4">
                 <Skeleton width="3rem" height="3rem" rounded="sm" />
                 <div className="flex-1 space-y-2.5">
-                   <Skeleton width="85%" height="1rem" />
-                   <Skeleton width="45%" height="0.75rem" />
+                  <Skeleton width="85%" height="1rem" />
+                  <Skeleton width="45%" height="0.75rem" />
                 </div>
               </div>
             ))}
@@ -34,9 +34,9 @@ export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
           <>
             {Array.from({ length: 2 }).map((_, i) => (
               <div key={i} className="space-y-3 pb-2">
-                 <Skeleton width="100%" height="1.125rem" />
-                 <Skeleton width="90%" height="1.125rem" />
-                 <Skeleton width="60%" height="0.875rem" />
+                <Skeleton width="100%" height="1.125rem" />
+                <Skeleton width="90%" height="1.125rem" />
+                <Skeleton width="60%" height="0.875rem" />
               </div>
             ))}
           </>
@@ -48,8 +48,8 @@ export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
               <div key={i} className="flex items-center gap-4">
                 <Skeleton width="3.5rem" height="3.5rem" rounded="0.875rem" />
                 <div className="flex-1 space-y-2.5">
-                   <Skeleton width="92%" height="1rem" />
-                   <Skeleton width="40%" height="0.75rem" />
+                  <Skeleton width="92%" height="1rem" />
+                  <Skeleton width="40%" height="0.75rem" />
                 </div>
               </div>
             ))}

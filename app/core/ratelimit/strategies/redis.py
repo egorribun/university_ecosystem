@@ -60,7 +60,7 @@ class RedisSlidingWindowStrategy:
         redis_key = f"rate-limit:{key}"
 
         try:
-            eval_result = await client.eval(
+            eval_result = await cast(Any, client).eval(
                 _RATE_LIMIT_SCRIPT,
                 1,
                 redis_key,

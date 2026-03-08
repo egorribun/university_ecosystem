@@ -41,8 +41,6 @@ const ANIMATION_DELAYS = {
 
 const DEBOUNCE_MS = 350
 
-
-
 const Events = () => {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -61,15 +59,18 @@ const Events = () => {
 
   const handleURLChange = useCallback(
     (key: string, value: string) => {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        if (value) {
-          next.set(key, value)
-        } else {
-          next.delete(key)
-        }
-        return next
-      }, { replace: true })
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          if (value) {
+            next.set(key, value)
+          } else {
+            next.delete(key)
+          }
+          return next
+        },
+        { replace: true }
+      )
     },
     [setSearchParams]
   )

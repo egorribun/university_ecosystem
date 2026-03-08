@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
     from PIL.Image import Resampling
 except ImportError:  # pragma: no cover - Pillow < 9.1 compatibility
-    Resampling = int  # type: ignore[misc,assignment]
+    Resampling = int
 
 
 def _resolve_resample_filter() -> Resampling:

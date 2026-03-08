@@ -95,9 +95,14 @@ export const StoryList = ({
                   title={tooltip ?? undefined}
                   data-active={activeStoryId === story.id ? "true" : undefined}
                   className="transition-transform"
-                  style={activeStoryId === story.id ? {
-                    boxShadow: "0 0 0 var(--space-1) color-mix(in_srgb, var(--brand-main) var(--opacity-medium), transparent)"
-                  } : undefined}
+                  style={
+                    activeStoryId === story.id
+                      ? {
+                          boxShadow:
+                            "0 0 0 var(--space-1) color-mix(in_srgb, var(--brand-main) var(--opacity-medium), transparent)",
+                        }
+                      : undefined
+                  }
                 >
                   <div className="relative z-base aspect-[9/16] w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
                     {story.cover_url ? (
@@ -111,7 +116,7 @@ export const StoryList = ({
                         className="flex h-full w-full items-center justify-center font-bold uppercase tracking-wide"
                         style={{
                           fontSize: "var(--fs-h3)",
-                          color: "rgb(255 255 255 / var(--opacity-heavy))"
+                          color: "rgb(255 255 255 / var(--opacity-heavy))",
                         }}
                       >
                         {story.title.slice(0, 2).toUpperCase()}

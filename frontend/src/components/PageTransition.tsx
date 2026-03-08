@@ -63,7 +63,9 @@ const PageTransition: FC<Props> = ({ children }) => {
   }
 
   const { LazyMotion, domAnimation, motion } = motionModule
-  const initial = hasPainted ? { opacity: 0, scale: 0.98, y: "0.75rem", filter: "blur(0.25rem)" } : false
+  const initial = hasPainted
+    ? { opacity: 0, scale: 0.98, y: "0.75rem", filter: "blur(0.25rem)" }
+    : false
 
   return (
     <LazyMotion features={domAnimation}>

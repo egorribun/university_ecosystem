@@ -155,9 +155,18 @@ export function AppRoutes() {
     <Routes location={location}>
       <Route path="/login" element={<PublicRoute>{wrap(<Login />)}</PublicRoute>} />
       <Route path="/register" element={<PublicRoute>{wrap(<Register />)}</PublicRoute>} />
-      <Route path="/forgot-password" element={<PublicRoute>{wrap(<ForgotPassword />)}</PublicRoute>} />
-      <Route path="/reset-password" element={<PublicRoute>{wrap(<ResetPassword />)}</PublicRoute>} />
-      <Route path="/reset-password/:token" element={<PublicRoute>{wrap(<ResetPassword />)}</PublicRoute>} />
+      <Route
+        path="/forgot-password"
+        element={<PublicRoute>{wrap(<ForgotPassword />)}</PublicRoute>}
+      />
+      <Route
+        path="/reset-password"
+        element={<PublicRoute>{wrap(<ResetPassword />)}</PublicRoute>}
+      />
+      <Route
+        path="/reset-password/:token"
+        element={<PublicRoute>{wrap(<ResetPassword />)}</PublicRoute>}
+      />
       <Route path="/dashboard" element={<PrivateRoute>{wrap(<Dashboard />)}</PrivateRoute>} />
       <Route path="/news" element={<PrivateRoute>{wrap(<News />)}</PrivateRoute>} />
       <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />

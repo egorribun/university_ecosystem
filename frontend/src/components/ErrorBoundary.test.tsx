@@ -17,7 +17,9 @@ vi.mock("react-i18next", () => ({
   }),
   withTranslation: () => (Component: React.ComponentType<Record<string, unknown>>) => {
     // Inject mock 't' function into props
-    const TranslatedComponent = (props: Record<string, unknown>) => <Component {...props} t={(key: string) => key} />
+    const TranslatedComponent = (props: Record<string, unknown>) => (
+      <Component {...props} t={(key: string) => key} />
+    )
     return TranslatedComponent
   },
   initReactI18next: { type: "3rdParty", init: vi.fn() },

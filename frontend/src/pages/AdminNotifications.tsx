@@ -315,9 +315,7 @@ export default function AdminNotifications() {
                     <td className="px-4 py-3 text-sm text-text-primary">
                       {formatJobKind(job.kind, t)}
                     </td>
-                    <td
-                      className="max-w-(--w-label-sm) truncate px-4 py-3 font-mono text-sm text-text-primary"
-                    >
+                    <td className="max-w-(--w-label-sm) truncate px-4 py-3 font-mono text-sm text-text-primary">
                       {job.record_id}
                     </td>
                     <td className="px-4 py-3 text-sm text-(--text-secondary)">
@@ -329,13 +327,8 @@ export default function AdminNotifications() {
                     <td className="px-4 py-3 text-sm font-bold text-text-primary">
                       {job.attempts}
                     </td>
-                    <td
-                      className="max-w-(--w-label-md) px-4 py-3 text-sm text-(--text-secondary)"
-                    >
-                      <span
-                        className="max-w-(--w-label-sm) truncate"
-                        title={job.last_error ?? ""}
-                      >
+                    <td className="max-w-(--w-label-md) px-4 py-3 text-sm text-(--text-secondary)">
+                      <span className="max-w-(--w-label-sm) truncate" title={job.last_error ?? ""}>
                         {job.last_error ?? t("admin:notifications.table.noError")}
                       </span>
                     </td>

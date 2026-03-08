@@ -40,22 +40,36 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
         style={{ maxHeight: isOpen ? "1000px" : "0px" }}
       >
         <div className="px-3 pb-6 flex flex-col gap-1">
-          <DetailRow label={t("profile:labels.institute")} value={user?.education_path?.institute} />
+          <DetailRow
+            label={t("profile:labels.institute")}
+            value={user?.education_path?.institute}
+          />
           <Divider className="opacity-subtle mx-4" />
-          <DetailRow label={t("profile:labels.educationLevel")} value={user?.education_path?.education_level} />
+          <DetailRow
+            label={t("profile:labels.educationLevel")}
+            value={user?.education_path?.education_level}
+          />
           <Divider className="opacity-subtle mx-4" />
           <DetailRow
             label={
               user?.role === "teacher" ? t("profile:labels.department") : t("profile:labels.track")
             }
-            value={user?.role === "teacher" ? user?.profile_detail?.department : user?.education_path?.track}
+            value={
+              user?.role === "teacher"
+                ? user?.profile_detail?.department
+                : user?.education_path?.track
+            }
           />
           <Divider className="opacity-subtle mx-4" />
           <DetailRow
             label={
               user?.role === "teacher" ? t("profile:labels.position") : t("profile:labels.program")
             }
-            value={user?.role === "teacher" ? user?.profile_detail?.position : user?.education_path?.program}
+            value={
+              user?.role === "teacher"
+                ? user?.profile_detail?.position
+                : user?.education_path?.program
+            }
           />
           <Divider className="opacity-subtle mx-4" />
           <DetailRow

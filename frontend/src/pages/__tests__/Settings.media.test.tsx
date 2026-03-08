@@ -289,4 +289,3 @@ describe("Settings media actions", () => {
     await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser))
   })
 })
-

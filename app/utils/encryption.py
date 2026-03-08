@@ -6,6 +6,7 @@ import base64
 import hashlib
 import logging
 from functools import lru_cache
+from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy.types import Text, TypeDecorator
@@ -141,8 +142,8 @@ class EncryptedString(TypeDecorator[str]):
     impl = Text
     cache_ok = True
 
-    def process_bind_param(self, value: str | None, dialect):
+    def process_bind_param(self, value: str | None, dialect: Any) -> str | None:
         return encrypt_string(value)
 
-    def process_result_value(self, value: str | None, dialect):
+    def process_result_value(self, value: str | None, dialect: Any) -> str | None:
         return decrypt_string(value)

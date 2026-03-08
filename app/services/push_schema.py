@@ -84,7 +84,7 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
         return
     async with _async_lock:
         if _async_ready:
-            return  # type: ignore[unreachable]
+            return
 
         try:
 
@@ -109,7 +109,7 @@ def ensure_push_subscription_schema_sync(engine: Engine | None) -> None:
         return
     with _sync_lock:
         if _sync_ready:
-            return  # type: ignore[unreachable]
+            return
         try:
             with engine.connect() as connection:
                 _ensure_columns(connection)

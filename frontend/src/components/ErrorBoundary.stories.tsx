@@ -81,10 +81,7 @@ export const CustomFallback: Story = {
             💥
           </span>
           <h2 className="mt-4 text-xl font-bold text-red-400">Custom Error UI</h2>
-          <p
-            className="mt-2 text-red-300"
-            style={{ opacity: "var(--opacity-strong)" }}
-          >
+          <p className="mt-2 text-red-300" style={{ opacity: "var(--opacity-strong)" }}>
             This is a custom fallback component.
           </p>
         </div>

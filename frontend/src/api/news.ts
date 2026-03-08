@@ -28,7 +28,11 @@ export type UpdateNewsPayload = NewsUpdate | null
 
 const newsUploadResponseSchema = v.object({ url: v.pipe(v.string(), v.trim(), v.minLength(1)) })
 
-const applyParsedData = <T extends v.GenericSchema<unknown, unknown>>(response: { data: unknown }, schema: T, context: string) => {
+const applyParsedData = <T extends v.GenericSchema<unknown, unknown>>(
+  response: { data: unknown },
+  schema: T,
+  context: string
+) => {
   const parsed = ensureValidResponse(schema, response.data, context)
   ;(response as { data: v.InferOutput<T> }).data = parsed
 }

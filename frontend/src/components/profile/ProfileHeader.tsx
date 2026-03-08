@@ -70,7 +70,7 @@ export const ProfileHeader = ({
           style={{
             transform: `translateY(${coverParallax}px) scale(${coverScale})`,
             filter: COVER_IMAGE_FILTER,
-            transitionTimingFunction: !reduceMotion ? "cubic-bezier(0.33,1,0.68,1)" : undefined
+            transitionTimingFunction: !reduceMotion ? "cubic-bezier(0.33,1,0.68,1)" : undefined,
           }}
         >
           <SmartImage
@@ -132,7 +132,9 @@ export const ProfileHeader = ({
       {/* Stats Panel */}
       <div className="grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-glass-bg border-glass-border backdrop-blur-glass shadow-glass">
         <div className="flex flex-col items-center justify-center py-2 text-center border-r border-glass-border">
-          <span className="text-xl font-bold text-(--brand-main)">{user?.education_path?.course || "—"}</span>
+          <span className="text-xl font-bold text-(--brand-main)">
+            {user?.education_path?.course || "—"}
+          </span>
           <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
             {t("profile:labels.course")}
           </span>

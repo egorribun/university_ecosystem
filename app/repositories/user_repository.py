@@ -406,7 +406,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
         return self._to_dto(user)
 
-    async def update(self, id: uuid.UUID | str, obj_in: Any | dict[str, Any]) -> UserDTO | None:
+    async def update(
+        self, id: uuid.UUID | str, obj_in: Any | dict[str, Any]
+    ) -> UserDTO | None:
         db_obj = await self._get_orm(id)
         if db_obj is None:
             return None

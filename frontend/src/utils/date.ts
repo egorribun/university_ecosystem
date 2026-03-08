@@ -16,9 +16,13 @@ export function toDate(input: DateInput): Date {
 /**
  * Basic formatting using Intl.DateTimeFormat.
  */
-export function formatDate(input: DateInput, options: Intl.DateTimeFormatOptions = {}, locale = 'en-US'): string {
+export function formatDate(
+  input: DateInput,
+  options: Intl.DateTimeFormatOptions = {},
+  locale = "en-US"
+): string {
   const date = toDate(input)
-  if (isNaN(date.getTime())) return ''
+  if (isNaN(date.getTime())) return ""
   return new Intl.DateTimeFormat(locale, options).format(date)
 }
 
@@ -27,33 +31,45 @@ export function formatDate(input: DateInput, options: Intl.DateTimeFormatOptions
  * Dayjs format strings replaced with native options.
  */
 export const presets = {
-  chatGroup: { month: 'long', day: 'numeric', year: 'numeric' } as Intl.DateTimeFormatOptions,
-  chatTime: { hour: '2-digit', minute: '2-digit', hour12: false } as Intl.DateTimeFormatOptions,
-  auditDate: { month: 'short', day: 'numeric' } as Intl.DateTimeFormatOptions,
-  auditTime: { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false } as Intl.DateTimeFormatOptions,
-  full: { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false } as Intl.DateTimeFormatOptions,
+  chatGroup: { month: "long", day: "numeric", year: "numeric" } as Intl.DateTimeFormatOptions,
+  chatTime: { hour: "2-digit", minute: "2-digit", hour12: false } as Intl.DateTimeFormatOptions,
+  auditDate: { month: "short", day: "numeric" } as Intl.DateTimeFormatOptions,
+  auditTime: {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  } as Intl.DateTimeFormatOptions,
+  full: {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  } as Intl.DateTimeFormatOptions,
 }
 
 /**
  * Relative time formatting (e.g., "5 minutes ago", "in 2 days").
  */
-export function formatRelativeTime(input: DateInput, locale = 'en-US'): string {
+export function formatRelativeTime(input: DateInput, locale = "en-US"): string {
   const date = toDate(input)
   const now = new Date()
   const diffInSeconds = Math.floor((date.getTime() - now.getTime()) / 1000)
 
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" })
 
   const absSeconds = Math.abs(diffInSeconds)
-  if (absSeconds < 60) return rtf.format(Math.sign(diffInSeconds) * absSeconds, 'second')
+  if (absSeconds < 60) return rtf.format(Math.sign(diffInSeconds) * absSeconds, "second")
   const minutes = Math.floor(absSeconds / 60)
-  if (minutes < 60) return rtf.format(Math.sign(diffInSeconds) * minutes, 'minute')
+  if (minutes < 60) return rtf.format(Math.sign(diffInSeconds) * minutes, "minute")
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return rtf.format(Math.sign(diffInSeconds) * hours, 'hour')
+  if (hours < 24) return rtf.format(Math.sign(diffInSeconds) * hours, "hour")
   const days = Math.floor(hours / 24)
-  if (days < 30) return rtf.format(Math.sign(diffInSeconds) * days, 'day')
+  if (days < 30) return rtf.format(Math.sign(diffInSeconds) * days, "day")
   const months = Math.floor(days / 30)
-  return rtf.format(Math.sign(diffInSeconds) * months, 'month')
+  return rtf.format(Math.sign(diffInSeconds) * months, "month")
 }
 
 /**
@@ -62,13 +78,13 @@ export function formatRelativeTime(input: DateInput, locale = 'en-US'): string {
  */
 export function formatForInput(input: DateInput): string {
   const date = toDate(input)
-  if (isNaN(date.getTime())) return ''
+  if (isNaN(date.getTime())) return ""
 
   const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  const hours = String(date.getHours()).padStart(2, "0")
+  const minutes = String(date.getMinutes()).padStart(2, "0")
 
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
@@ -76,22 +92,26 @@ export function formatForInput(input: DateInput): string {
 /**
  * Adds or subtracts units from a date.
  */
-export function add(input: DateInput, count: number, unit: 'day' | 'hour' | 'minute' | 'month' | 'year'): Date {
+export function add(
+  input: DateInput,
+  count: number,
+  unit: "day" | "hour" | "minute" | "month" | "year"
+): Date {
   const date = new Date(toDate(input))
   switch (unit) {
-    case 'year':
+    case "year":
       date.setFullYear(date.getFullYear() + count)
       break
-    case 'month':
+    case "month":
       date.setMonth(date.getMonth() + count)
       break
-    case 'day':
+    case "day":
       date.setDate(date.getDate() + count)
       break
-    case 'hour':
+    case "hour":
       date.setHours(date.getHours() + count)
       break
-    case 'minute':
+    case "minute":
       date.setMinutes(date.getMinutes() + count)
       break
   }
@@ -122,13 +142,16 @@ export function isAfter(a: DateInput, b: DateInput): boolean {
 /**
  * Formats a date to local date and time string.
  */
-export function formatLocalDateTime(input: DateInput, locale = 'en-US'): string {
-  return formatDate(input, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }, locale)
+export function formatLocalDateTime(input: DateInput, locale = "en-US"): string {
+  return formatDate(
+    input,
+    {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+    locale
+  )
 }
-

@@ -150,14 +150,24 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
 
 
 def _before_cursor_execute(
-    conn, cursor, statement, parameters, context, executemany
+    conn: Any,
+    cursor: Any,
+    statement: str,
+    parameters: Any,
+    context: Any,
+    executemany: bool,
 ) -> None:
     """Store the start time before query execution."""
     _query_start_time.set(time.perf_counter())
 
 
 def _after_cursor_execute(
-    conn, cursor, statement, parameters, context, executemany
+    conn: Any,
+    cursor: Any,
+    statement: str,
+    parameters: Any,
+    context: Any,
+    executemany: bool,
 ) -> None:
     """Log if query execution time exceeded threshold."""
     start_time = _query_start_time.get()
@@ -211,7 +221,12 @@ def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -
     )
 
     def _after_cursor_execute_closure(
-        conn, cursor, statement, parameters, context, executemany
+        conn: Any,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any,
+        executemany: bool,
     ) -> None:
         """Log if query execution time exceeded threshold."""
         start_time = _query_start_time.get()
@@ -248,9 +263,9 @@ def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -
 
 
 def _on_checkout(
-    dbapi_connection,
-    connection_record,
-    connection_proxy,
+    dbapi_connection: Any,
+    connection_record: Any,
+    connection_proxy: Any,
 ) -> None:
     """Handle connection checkout from pool."""
     _pool_metrics.record_checkout()
@@ -264,7 +279,7 @@ def _on_checkout(
         )
 
 
-def _on_checkin(dbapi_connection, connection_record) -> None:
+def _on_checkin(dbapi_connection: Any, connection_record: Any) -> None:
     """Handle connection checkin to pool."""
     _pool_metrics.record_checkin()
     if pool_health_logger.isEnabledFor(logging.DEBUG):
@@ -274,7 +289,9 @@ def _on_checkin(dbapi_connection, connection_record) -> None:
         )
 
 
-def _on_invalidate(dbapi_connection, connection_record, exception) -> None:
+def _on_invalidate(
+    dbapi_connection: Any, connection_record: Any, exception: Exception | None
+) -> None:
     """Handle connection invalidation."""
     _pool_metrics.record_invalidation()
     pool_health_logger.warning(
@@ -284,7 +301,7 @@ def _on_invalidate(dbapi_connection, connection_record, exception) -> None:
     )
 
 
-def _on_checkout_failed(exception, pool) -> None:
+def _on_checkout_failed(exception: Exception, pool: Any) -> None:
     """Handle failed checkout (pool exhausted)."""
     _pool_metrics.record_failed_checkout()
     pool_health_logger.error(

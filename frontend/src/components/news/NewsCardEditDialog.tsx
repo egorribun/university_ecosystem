@@ -178,11 +178,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
         </>
       }
     >
-      <form
-        id={`news-edit-form-${id}`}
-        className="space-y-4"
-        onSubmit={handleSubmit(onSubmit)}
-      >
+      <form id={`news-edit-form-${id}`} className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
         <Field
           label={t("news:form.title") ?? ""}
           htmlFor={`news-edit-title-${id}`}
@@ -247,7 +243,10 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
                 variant="outline"
                 size="sm"
                 leadingIcon={<PhotoCamera size={20} />}
-                className={cn("w-full sm:w-auto", errors.image && "border-error-text/50 text-error-text")}
+                className={cn(
+                  "w-full sm:w-auto",
+                  errors.image && "border-error-text/50 text-error-text"
+                )}
                 disabled={imageLoading || isSubmitting}
               >
                 {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
@@ -274,9 +273,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
             />
           ) : null}
         </div>
-        {errors.image?.message ? (
-          <p className={errorClass}>{errors.image.message}</p>
-        ) : null}
+        {errors.image?.message ? <p className={errorClass}>{errors.image.message}</p> : null}
       </form>
     </Dialog>
   )

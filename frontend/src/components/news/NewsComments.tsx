@@ -168,7 +168,8 @@ export function NewsComments({
         open={deleteConfirmationId !== null}
         title={t("news:dialogs.deleteComment.title", { defaultValue: "Deleting comment" })}
         message={t("news:dialogs.deleteComment.confirm", {
-          defaultValue: "Are you sure you want to delete this comment? This action cannot be undone.",
+          defaultValue:
+            "Are you sure you want to delete this comment? This action cannot be undone.",
         })}
         confirmText={t("common:buttons.delete")}
         cancelText={t("common:buttons.cancel")}

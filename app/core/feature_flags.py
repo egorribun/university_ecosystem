@@ -92,7 +92,7 @@ class FeatureFlag:
         return cls(**data)
 
 
-class UniversityFeatureProvider(AbstractProvider):
+class UniversityFeatureProvider(AbstractProvider):  # type: ignore[misc]
     """OpenFeature Provider for University Ecosystem. (MOD-6)
 
     Wraps the existing FeatureFlagService to provide a standardized API.
@@ -189,11 +189,11 @@ class FeatureFlagService:
         self._flags: dict[str, FeatureFlag] = {}
         # Hardcoded defaults (will be used if Redis is empty or fails)
         self._defaults: dict[str, FeatureFlag] = {}
-        self._redis: Redis | None = None
+        self._redis: Redis[Any] | None = None
         self._pubsub_task: asyncio.Task[Any] | None = None
         self._is_initialized = False
 
-    async def initialize(self, redis: Redis | None = None) -> None:
+    async def initialize(self, redis: Redis[Any] | None = None) -> None:
         """
         Initialize the service, loading current state from Redis.
 
@@ -214,7 +214,7 @@ class FeatureFlagService:
         if self._redis:
             # 1. Load from Redis
             try:
-                stored_flags = await self._redis.hgetall(FEATURE_FLAGS_KEY)  # type: ignore[misc]
+                stored_flags = await self._redis.hgetall(FEATURE_FLAGS_KEY)
                 for name, data_str in stored_flags.items():
                     try:
                         data = json.loads(data_str)
@@ -257,9 +257,9 @@ class FeatureFlagService:
         if self._redis:
             # If we created our own client, we should close it.
             # But usually it's passed from lifespan.
-            await self._redis.aclose()
+            await self._redis.close()
 
-    async def _listen_for_updates(self):
+    async def _listen_for_updates(self) -> None:
         """Listen for flag updates via Pub/Sub."""
         if not self._redis:
             return
@@ -270,22 +270,22 @@ class FeatureFlagService:
         try:
             async for message in ps.listen():
                 if message["type"] == "message":
-                    name = message["data"]
+                    name: str = message["data"]
                     logger.debug("Received update for flag: %s", name)
                     await self._reload_flag(name)
         except asyncio.CancelledError:
             await ps.unsubscribe(FEATURE_FLAGS_CHANNEL)
-            await ps.aclose()
+            await ps.close()
         except Exception as e:
             logger.error("Error in feature flag Pub/Sub listener: %s", e)
 
-    async def _reload_flag(self, name: str):
+    async def _reload_flag(self, name: str) -> None:
         """Reload a specific flag from Redis."""
         if not self._redis:
             return
 
         try:
-            data_str = await self._redis.hget(FEATURE_FLAGS_KEY, name)  # type: ignore[misc]
+            data_str = await self._redis.hget(FEATURE_FLAGS_KEY, name)
             if data_str:
                 data = json.loads(data_str)
                 flag = FeatureFlag.from_dict(data)
@@ -340,7 +340,7 @@ class FeatureFlagService:
             flag.status = FlagStatus.PERCENTAGE
             flag.percentage = max(0, min(100, percentage))
 
-    async def update(self, name: str, **kwargs) -> bool:
+    async def update(self, name: str, **kwargs: Any) -> bool:
         """
         Update a feature flag and persist to Redis.
 
@@ -360,7 +360,7 @@ class FeatureFlagService:
         # update L2 (Redis)
         if self._redis:
             try:
-                await self._redis.hset(  # type: ignore[misc]
+                await self._redis.hset(
                     FEATURE_FLAGS_KEY, name, json.dumps(flag.to_dict())
                 )
                 # Broadcast update

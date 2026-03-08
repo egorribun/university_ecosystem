@@ -55,7 +55,7 @@ export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
           // Length in JS is UTF-16 code units ≈ bytes for ASCII-heavy JSON.
           if (import.meta.env.DEV) {
             console.warn(
-              `[IDBPersister] Cache too large (${(serialized.length / 1024 / 1024).toFixed(1)} MB) — skipping IDB persist`,
+              `[IDBPersister] Cache too large (${(serialized.length / 1024 / 1024).toFixed(1)} MB) — skipping IDB persist`
             )
           }
           return

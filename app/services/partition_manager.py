@@ -138,7 +138,7 @@ async def start_partition_management_scheduler(
     """
     import asyncio
 
-    async def run_periodically():
+    async def run_periodically() -> None:
         while True:
             try:
                 await ensure_partitions_exist()

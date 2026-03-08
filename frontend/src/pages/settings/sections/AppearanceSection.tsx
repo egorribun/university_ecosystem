@@ -18,8 +18,6 @@ import {
 
 import type { SettingsSectionProps } from "@/pages/settings/types"
 
-
-
 export function AppearanceSection(_props: SettingsSectionProps) {
   const { t } = useTranslation(["settings", "common"])
   const { language, setLanguage, available: availableLanguages } = useLanguage()
@@ -70,7 +68,9 @@ export function AppearanceSection(_props: SettingsSectionProps) {
                     key={code}
                     value={code}
                     control={<Radio />}
-                    label={t(`settings:appearance.language.options.${code}`, { defaultValue: code })}
+                    label={t(`settings:appearance.language.options.${code}`, {
+                      defaultValue: code,
+                    })}
                   />
                 ))}
               </RadioGroup>

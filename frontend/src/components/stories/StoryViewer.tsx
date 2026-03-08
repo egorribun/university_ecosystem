@@ -166,7 +166,7 @@ export const StoryViewer = ({
           style={{
             maxHeight: "92vh",
             aspectRatio: "9/16",
-            width: "min(96%, 960px)"
+            width: "min(96%, 960px)",
           }}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}

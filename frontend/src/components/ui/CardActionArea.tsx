@@ -14,7 +14,6 @@ export type CardActionAreaProps<T extends ElementType = "button"> = {
 
 export const CardActionArea = forwardRef<HTMLButtonElement, CardActionAreaProps>(
   ({ as: Component = "button", className, children, disabled, ...props }, ref) => {
-
     // If it's a button, we ensure type="button" to prevent form submission
     const typeProps = Component === "button" ? { type: "button" as const } : {}
 

@@ -275,9 +275,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                   </div>
                 ) : null}
               </div>
-              {errors.image?.message ? (
-                <p className={errorClass}>{errors.image.message}</p>
-              ) : null}
+              {errors.image?.message ? <p className={errorClass}>{errors.image.message}</p> : null}
             </div>
           </div>
         </form>
@@ -304,4 +302,3 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
     </Dialog>
   )
 }
-
