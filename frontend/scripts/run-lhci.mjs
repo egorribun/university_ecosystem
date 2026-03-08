@@ -134,8 +134,12 @@ async function run() {
   // Build and prepare dist for LHCI mode if not using remote preview
   const useRemotePreview = Boolean(process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? "")
   if (!useRemotePreview) {
-    console.log("Building for LHCI...")
-    await runCommand("npm", ["run", "build"], "npm run build")
+    if (!process.env.SKIP_BUILD) {
+      console.log("Building for LHCI...")
+      await runCommand("npm", ["run", "build"], "npm run build")
+    } else {
+      console.log("SKIP_BUILD is set, skipping npm run build.")
+    }
     console.log("Preparing LHCI routes...")
     await runCommand("node", ["scripts/prepare-lhci-routes.mjs"], "prepare-lhci-routes")
   }

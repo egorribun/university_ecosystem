@@ -159,6 +159,8 @@ jobs:
         run: npm ci
 
       - name: Run Lighthouse CI
+        env:
+          SKIP_BUILD: "true"
         run: npm run lhci
 
       - name: Upload Lighthouse reports
