@@ -7,7 +7,7 @@ import io
 import logging
 import time
 from dataclasses import dataclass
-from typing import IO, TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any, cast
 
 from fastapi import UploadFile, status
 
@@ -362,7 +362,8 @@ async def _scan_upload_with_clamd(
     try:
         async with asyncio.timeout(timeout):
             if socket_path:
-                reader, writer = await asyncio.open_unix_connection(socket_path)  # type: ignore[attr-defined]
+                # Use Any cast to avoid platform-specific mypy failures on Windows (open_unix_connection is Unix-only)
+                reader, writer = await cast(Any, asyncio).open_unix_connection(socket_path)
             else:
                 reader, writer = await asyncio.open_connection(host, port)
 
