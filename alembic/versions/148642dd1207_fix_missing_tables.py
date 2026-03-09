@@ -1309,9 +1309,13 @@ def downgrade() -> None:
     existing_users_columns = {c["name"] for c in inspector.get_columns("users")}
     with safe_batch_alter_table("users", schema=None) as batch_op:
         if "spotify_user_id" not in existing_users_columns:
-            batch_op.add_column(sa.Column("spotify_user_id", sa.VARCHAR(), nullable=True))
+            batch_op.add_column(
+                sa.Column("spotify_user_id", sa.VARCHAR(), nullable=True)
+            )
         if "timezone" not in existing_users_columns:
-            batch_op.add_column(sa.Column("timezone", sa.VARCHAR(length=64), nullable=True))
+            batch_op.add_column(
+                sa.Column("timezone", sa.VARCHAR(length=64), nullable=True)
+            )
         if "spotify_token_expires_at" not in existing_users_columns:
             batch_op.add_column(
                 sa.Column("spotify_token_expires_at", sa.DateTime(), nullable=True)
@@ -1352,7 +1356,9 @@ def downgrade() -> None:
                 sa.Column("spotify_last_track_url", sa.VARCHAR(), nullable=True)
             )
         if "spotify_access_token" not in existing_users_columns:
-            batch_op.add_column(sa.Column("spotify_access_token", sa.TEXT(), nullable=True))
+            batch_op.add_column(
+                sa.Column("spotify_access_token", sa.TEXT(), nullable=True)
+            )
         existing_users_fks = {fk["name"] for fk in inspector.get_foreign_keys("users")}
         if "fk_users_group_id_groups" in existing_users_fks:
             batch_op.drop_constraint("fk_users_group_id_groups", type_="foreignkey")

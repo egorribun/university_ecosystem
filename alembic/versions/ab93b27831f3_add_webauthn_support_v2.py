@@ -446,7 +446,8 @@ def downgrade() -> None:
             op.f("ix_webauthn_credentials_user_id"), table_name="webauthn_credentials"
         )
         op.drop_index(
-            op.f("ix_webauthn_credentials_credential_id"), table_name="webauthn_credentials"
+            op.f("ix_webauthn_credentials_credential_id"),
+            table_name="webauthn_credentials",
         )
         op.drop_table("webauthn_credentials")
     # ### end Alembic commands ###

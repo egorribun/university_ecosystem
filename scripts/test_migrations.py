@@ -15,7 +15,9 @@ def get_alembic_cmd():
 
     # Priority 2: 'uv run alembic' if uv is present
     try:
-        subprocess.run(["uv", "run", "alembic", "--version"], capture_output=True, check=True)
+        subprocess.run(
+            ["uv", "run", "alembic", "--version"], capture_output=True, check=True
+        )
         return "uv run alembic"
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass

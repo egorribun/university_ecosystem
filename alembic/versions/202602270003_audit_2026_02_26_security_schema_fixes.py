@@ -68,7 +68,9 @@ def upgrade() -> None:
                 )
 
             # Index allows fast "how many failures from this IP in last N seconds" queries.
-            existing_indexes = {idx["name"] for idx in inspector.get_indexes("failed_login_attempts")}
+            existing_indexes = {
+                idx["name"] for idx in inspector.get_indexes("failed_login_attempts")
+            }
             if "ix_failed_login_attempts_ip_attempted_at" not in existing_indexes:
                 batch_op.create_index(
                     "ix_failed_login_attempts_ip_attempted_at",
@@ -150,7 +152,9 @@ def downgrade() -> None:
     # ── 1. failed_login_attempts — remove added columns and index ─────────────
     if inspector.has_table("failed_login_attempts"):
         columns = {c["name"] for c in inspector.get_columns("failed_login_attempts")}
-        existing_indexes = {idx["name"] for idx in inspector.get_indexes("failed_login_attempts")}
+        existing_indexes = {
+            idx["name"] for idx in inspector.get_indexes("failed_login_attempts")
+        }
         with op.batch_alter_table("failed_login_attempts") as batch_op:
             if "ix_failed_login_attempts_ip_attempted_at" in existing_indexes:
                 batch_op.drop_index("ix_failed_login_attempts_ip_attempted_at")

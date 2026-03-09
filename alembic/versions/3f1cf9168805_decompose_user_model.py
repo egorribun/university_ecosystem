@@ -131,7 +131,9 @@ def downgrade() -> None:
         if "institute" not in existing_users_columns:
             batch_op.add_column(sa.Column("institute", sa.VARCHAR(), nullable=True))
         if "education_level" not in existing_users_columns:
-            batch_op.add_column(sa.Column("education_level", sa.VARCHAR(), nullable=True))
+            batch_op.add_column(
+                sa.Column("education_level", sa.VARCHAR(), nullable=True)
+            )
         if "status" not in existing_users_columns:
             batch_op.add_column(sa.Column("status", sa.VARCHAR(), nullable=True))
         if "record_book_number" not in existing_users_columns:
