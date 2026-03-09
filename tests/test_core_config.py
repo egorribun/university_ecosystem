@@ -207,6 +207,8 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy_nats_token")
     monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
+    monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
+    monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -237,6 +239,8 @@ def test_auto_create_schema_warns_when_enabled_in_production(
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy_nats_token")
     monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
+    monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
+    monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

@@ -5334,7 +5334,7 @@
           "chats"
         ],
         "summary": "Send Message",
-        "description": "Send a message to a chat.\n\nThe message is saved to the database and all chat participants\nare notified via WebSocket in real-time.",
+        "description": "Send a message to a chat.\n\nThe message is saved to the database and all chat participants\nare notified via WebSocket in real-time.\n\nSupports the ``Idempotency-Key`` header: identical requests with the same\nkey return the cached response for 24 hours without creating duplicate\nmessages (Stripe-style retry-safe API).",
         "operationId": "send_message_api_v1_chats__chat_id__messages_post",
         "security": [
           {

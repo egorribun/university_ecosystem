@@ -98,10 +98,16 @@ async def test_increment_events_list_version_redis():
 
 
 def test_encode_payload_with_etag():
-    payload = {"id": 1, "name": "Event"}
-    encoded, digest, strong_header = _encode_payload_with_etag(payload)
+    import json
 
-    assert encoded == payload
+    from starlette.responses import Response
+
+    payload = {"id": 1, "name": "Event"}
+    response, digest, strong_header = _encode_payload_with_etag(payload)
+
+    assert isinstance(response, Response)
+    assert response.media_type == "application/json"
+    assert json.loads(response.body) == payload
     assert isinstance(digest, str)
     assert strong_header.startswith('"')
     assert digest in strong_header

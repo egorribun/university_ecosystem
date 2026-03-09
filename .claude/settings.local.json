@@ -56,7 +56,31 @@
       "Bash(ls -la docker-compose*.yml)",
       "mcp__Desktop_Commander__get_file_info",
       "Bash(gh api repos/projectdiscovery/nuclei-action/git/refs/tags)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(docker compose -f docker-compose.test.yml up --build --exit-code-from tests)",
+      "Bash(docker compose -f docker-compose.test.yml up -d postgres)",
+      "Bash(docker compose -f docker-compose.test.yml run --rm tests sh -c \"alembic upgrade 148642dd1207 2>&1 | tail -20\")",
+      "Bash(docker stop university_ecosystem-tests-run-02a438951c46)",
+      "Bash(docker rm university_ecosystem-tests-run-02a438951c46)",
+      "Bash(docker compose -f docker-compose.test.yml down -v)",
+      "Bash(docker compose -f docker-compose.test.yml up -d postgres redis)",
+      "Bash(docker compose -f docker-compose.test.yml run --rm tests sh -c \":*)",
+      "Bash(docker compose -f docker-compose.test.yml up --exit-code-from tests)",
+      "Bash(docker ps --filter \"name=tests-1\" --format \"{{.Status}}\")",
+      "Bash(docker wait university_ecosystem-tests-1)",
+      "Bash(docker ps --filter \"name=university_ecosystem-tests\" --format \"{{.Status}}\")",
+      "Bash(docker ps -a --filter \"name=university_ecosystem\" --format \"table {{.Names}}\\\\t{{.Status}}\")",
+      "Bash(docker ps --filter \"name=university_ecosystem\" --format \"table {{.Names}}\\\\t{{.Status}}\")",
+      "Bash(docker compose -f docker-compose.test.yml down --volumes --remove-orphans)",
+      "Bash(docker system prune -f)",
+      "Bash(docker info)",
+      "Bash(docker ps --filter \"name=university_ecosystem\" --format \"{{.Status}}\")",
+      "Bash(docker compose -f docker-compose.test.yml ps)",
+      "Bash(jobs -l)",
+      "Bash(xargs head -120)",
+      "Bash(kill 702)",
+      "Bash(xargs head -60)",
+      "Bash(python3 -c \":*)"
     ]
   }
 }
