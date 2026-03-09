@@ -5,9 +5,9 @@ Tests for event file uploads.
 import asyncio
 import io
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
@@ -183,7 +183,12 @@ async def test_upload_event_file_cleans_up_on_commit_failure(
 
     with pytest.raises(RuntimeError):
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     folder = tmp_path / "event_files"
@@ -213,7 +218,12 @@ async def test_upload_event_file_rejects_large_payload(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
@@ -250,7 +260,12 @@ async def test_upload_event_file_respects_scanner_limit(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
@@ -279,7 +294,12 @@ async def test_upload_event_file_rejects_forbidden_type(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -315,7 +335,12 @@ async def test_upload_event_file_rejects_mismatched_metadata(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -362,7 +387,12 @@ async def test_upload_event_file_rejects_infected_payload(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -392,7 +422,12 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -465,7 +500,12 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -505,7 +545,12 @@ async def test_upload_event_file_quarantines_svg_with_js(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -650,7 +695,12 @@ async def test_delete_event_removes_all_files(
             headers=Headers({"content-type": "text/plain"}),
         )
         event_file = await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+            event.id,
+            upload,
+            request=None,
+            db=db_session,
+            user=admin,
+            checker=mock_checker,
         )
         stored_paths.append(
             tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
