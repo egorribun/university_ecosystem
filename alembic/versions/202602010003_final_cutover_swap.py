@@ -253,7 +253,9 @@ def upgrade():
         set(TABLES_TO_SWAP) | set(fks_to_drop.keys()) | {t for t, _, _, _ in FK_TO_SWAP}
     )
     # Filter by actual existence to avoid processing dropped/missing tables
-    all_affected_tables_set = {t for t in all_affected_tables_set if inspector.has_table(t)}
+    all_affected_tables_set = {
+        t for t in all_affected_tables_set if inspector.has_table(t)
+    }
 
     # Pass 0: Detect partitions to avoid direct manipulation (must be done on parent)
     partitions = set()

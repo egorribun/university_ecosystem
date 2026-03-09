@@ -36,7 +36,9 @@ def upgrade() -> None:
             existing_columns = {c["name"] for c in inspector.get_columns("events")}
             if "embedding" not in existing_columns:
                 batch_op.add_column(
-                    sa.Column("embedding", pgvector.sqlalchemy.Vector(dim=1536), nullable=True)
+                    sa.Column(
+                        "embedding", pgvector.sqlalchemy.Vector(dim=1536), nullable=True
+                    )
                 )
 
     if "news" in existing_tables:
@@ -44,7 +46,9 @@ def upgrade() -> None:
             existing_columns = {c["name"] for c in inspector.get_columns("news")}
             if "embedding" not in existing_columns:
                 batch_op.add_column(
-                    sa.Column("embedding", pgvector.sqlalchemy.Vector(dim=1536), nullable=True)
+                    sa.Column(
+                        "embedding", pgvector.sqlalchemy.Vector(dim=1536), nullable=True
+                    )
                 )
 
     # Add HNSW indexes for cosine distance
