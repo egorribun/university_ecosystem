@@ -70,6 +70,9 @@ def upgrade():
     inspector = sa.inspect(bind)
 
     for table_name in TABLES:
+        if not inspector.has_table(table_name):
+            continue
+
         existing_cols = {c["name"]: c for c in inspector.get_columns(table_name)}
 
         # Check if already migrated (id is UUID)
@@ -105,7 +108,7 @@ def downgrade():
 
     for table_name in TABLES:
         # Check if table still exists (might have been dropped in earlier steps)
-        if table_name not in inspector.get_table_names():
+        if not inspector.has_table(table_name):
             continue
 
         # On PostgreSQL, a UNIQUE index created with unique=True

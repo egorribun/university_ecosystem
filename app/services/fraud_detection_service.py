@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -63,11 +64,14 @@ class FraudDetectionService:
         ``within_seconds=300`` queries, returning values up to 12x too large.
         """
         try:
-            await self._redis.xadd(
-                _STREAM_KEY,
-                cast(Any, event_data),
-                maxlen=_MAX_STREAM_LEN,
-                approximate=True,  # Trim ~MAX_STREAM_LEN (O(1) rather than O(N))
+            await cast(
+                "Awaitable[Any]",
+                self._redis.xadd(
+                    _STREAM_KEY,
+                    cast(Any, event_data),
+                    maxlen=_MAX_STREAM_LEN,
+                    approximate=True,  # Trim ~MAX_STREAM_LEN (O(1) rather than O(N))
+                ),
             )
 
             # Sliding-window Sorted Set for high-severity events per user.
@@ -83,7 +87,7 @@ class FraudDetectionService:
                 pipe.zadd(zset_key, {str(now_ms): now_ms})
                 # Keep the set auto-expired 1 hour after last write.
                 pipe.expire(zset_key, _HIGH_SEVERITY_COUNTER_TTL)
-                await pipe.execute()
+                await cast("Awaitable[Any]", pipe.execute())
 
         except Exception:
             # Security events must never crash application code.
@@ -117,8 +121,11 @@ class FraudDetectionService:
             min_id = f"{min_ts}-0"
 
         try:
-            raw: list[tuple[bytes, dict[bytes, bytes]]] = await self._redis.xrevrange(
-                _STREAM_KEY, max="+", min=min_id, count=fetch_count
+            raw: list[tuple[bytes, dict[bytes, bytes]]] = await cast(
+                "Awaitable[Any]",
+                self._redis.xrevrange(
+                    _STREAM_KEY, max="+", min=min_id, count=fetch_count
+                ),
             )
         except Exception:
             logger.exception("FraudDetectionService: failed to read events")
@@ -156,7 +163,9 @@ class FraudDetectionService:
         now_ms = int(_time.time() * 1000)
         since_ms = now_ms - (within_seconds * 1000)
         try:
-            count = await self._redis.zcount(zset_key, since_ms, now_ms)
+            count = await cast(
+                "Awaitable[Any]", self._redis.zcount(zset_key, since_ms, now_ms)
+            )
             return int(count)
         except Exception:
             logger.exception("FraudDetectionService: failed to read high_count (zset)")

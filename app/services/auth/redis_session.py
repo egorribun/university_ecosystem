@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Awaitable
 from datetime import UTC, datetime
 from typing import Any, TypedDict, cast
 from uuid import UUID
@@ -65,10 +66,12 @@ class RedisSessionService:
         }
 
         try:
-            client = await _get_shared_client(self.redis_url)
+            client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
             # Use HSET (Redis 4.0+)
-            await client.hset(key, mapping=cast("dict[Any, Any]", data))
-            await client.expire(key, self.ttl_seconds)
+            await cast(
+                "Awaitable[Any]", client.hset(key, mapping=cast("dict[Any, Any]", data))
+            )
+            await cast("Awaitable[Any]", client.expire(key, self.ttl_seconds))
         except (RedisError, OSError) as e:
             logger.warning(f"Failed to cache session {jti} in Redis: {e}")
 
@@ -84,8 +87,8 @@ class RedisSessionService:
 
         key = f"{self.KEY_PREFIX}{jti}"
         try:
-            client = await _get_shared_client(self.redis_url)
-            raw = await client.hgetall(key)
+            client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
+            raw = await cast("Awaitable[Any]", client.hgetall(key))
             if not raw:
                 return None
 
@@ -126,11 +129,11 @@ class RedisSessionService:
         key = f"{self.KEY_PREFIX}{jti}"
         now_str = datetime.now(UTC).isoformat()
         try:
-            client = await _get_shared_client(self.redis_url)
+            client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
             # Fire and forget update
-            await client.hset(key, "last_seen_at", now_str)
+            await cast("Awaitable[Any]", client.hset(key, "last_seen_at", now_str))
             # Refresh TTL
-            await client.expire(key, self.ttl_seconds)
+            await cast("Awaitable[Any]", client.expire(key, self.ttl_seconds))
         except (RedisError, OSError):
             pass
 
@@ -151,11 +154,11 @@ class RedisSessionService:
 
         key = f"{self.KEY_PREFIX}{jti}"
         try:
-            client = await _get_shared_client(self.redis_url)
+            client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
             # Step 1: Mark inactive immediately — checked in get_session().
-            await client.hset(key, "is_active", "0")
+            await cast("Awaitable[Any]", client.hset(key, "is_active", "0"))
             # Step 2: Delete for cleanup (TTL would handle this anyway).
-            await client.delete(key)
+            await cast("Awaitable[Any]", client.delete(key))
         except (RedisError, OSError) as e:
             logger.error(
                 "Failed to revoke session %s in Redis: %s — "

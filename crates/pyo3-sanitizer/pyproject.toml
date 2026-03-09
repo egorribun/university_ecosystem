@@ -5,6 +5,7 @@ build-backend = "maturin"
 [project]
 name = "pyo3_sanitizer"
 # The version is read from Cargo.toml at build time by maturin.
+dynamic = ["version"]
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Rust",

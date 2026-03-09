@@ -207,8 +207,8 @@ async def scan_for_malware(
         data = b""
         if size_bytes == 0:
             return
-    else:  # pragma: no cover - defensive guard for unexpected inputs
-        return
+    else:  # pragma: no cover
+        return  # type: ignore[unreachable]
 
     if not getattr(settings, "event_file_scanner_enabled", False):
         return

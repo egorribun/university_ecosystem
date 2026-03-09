@@ -9,7 +9,7 @@ from redis.asyncio import Redis
 if TYPE_CHECKING:
     pass
 
-_RedisFactory = Callable[[str], Redis[Any]]
+type _RedisFactory = Callable[[str], Redis[Any]]
 
 
 def _create_redis_pool(url: str) -> Redis[Any]:

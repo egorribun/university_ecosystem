@@ -122,10 +122,10 @@ class PresencePubSub:
     """Optional Redis pub/sub bridge for presence events."""
 
     def __init__(self) -> None:
-        self._redis: Redis[str] | None = None
+        self._redis: Redis[Any] | None = None
         self._pubsub_task: asyncio.Task[Any] | None = None
 
-    async def initialize(self, redis: Redis[str] | None = None) -> None:
+    async def initialize(self, redis: Redis[Any] | None = None) -> None:
         if self._redis or not settings.presence_pubsub_enabled:
             return
         if redis is not None:

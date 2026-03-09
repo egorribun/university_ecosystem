@@ -8,6 +8,13 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+members = [
+    "pyo3-sanitizer",
+    "rust-ext",
+    "university-ecosystem",
+]
+
 [[package]]
 name = "aioboto3"
 version = "15.5.0"
@@ -2927,6 +2934,10 @@ wheels = [
 ]
 
 [[package]]
+name = "pyo3-sanitizer"
+source = { editable = "crates/pyo3-sanitizer" }
+
+[[package]]
 name = "pyopenssl"
 version = "25.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3210,6 +3221,10 @@ wheels = [
 ]
 
 [[package]]
+name = "rust-ext"
+source = { editable = "native/rust_ext" }
+
+[[package]]
 name = "s3transfer"
 version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3404,12 +3419,50 @@ wheels = [
 ]
 
 [[package]]
+name = "types-cffi"
+version = "1.17.0.20260307"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-setuptools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/cf/f727256b5b17e8d54a08e3c40877b3c49fdb35e7f683f9ee295bd4df51e1/types_cffi-1.17.0.20260307.tar.gz", hash = "sha256:1a4f1168d43ed8cd2b0ed40a3eb870cda685a154d98478b0a65862084f190a02", size = 17437, upload-time = "2026-03-07T03:49:26.106Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/15/4564f173d031f64bf56964d192b6b705e679fc23c02704b84ccbcb809396/types_cffi-1.17.0.20260307-py3-none-any.whl", hash = "sha256:89b5b2c798d32fc6e3304903ed99af93fd608b741483ce7d57fa69eda40430e5", size = 20115, upload-time = "2026-03-07T03:49:25.031Z" },
+]
+
+[[package]]
+name = "types-pyopenssl"
+version = "24.1.0.20240722"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "types-cffi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/93/29/47a346550fd2020dac9a7a6d033ea03fccb92fa47c726056618cc889745e/types-pyOpenSSL-24.1.0.20240722.tar.gz", hash = "sha256:47913b4678a01d879f503a12044468221ed8576263c1540dcb0484ca21b08c39", size = 8458, upload-time = "2024-07-22T02:32:22.558Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/05/c868a850b6fbb79c26f5f299b768ee0adc1f9816d3461dcf4287916f655b/types_pyOpenSSL-24.1.0.20240722-py3-none-any.whl", hash = "sha256:6a7a5d2ec042537934cfb4c9d4deb0e16c4c6250b09358df1f083682fe6fda54", size = 7499, upload-time = "2024-07-22T02:32:21.232Z" },
+]
+
+[[package]]
 name = "types-pyyaml"
 version = "6.0.12.20250915"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7e/69/3c51b36d04da19b92f9e815be12753125bd8bc247ba0470a982e6979e71c/types_pyyaml-6.0.12.20250915.tar.gz", hash = "sha256:0f8b54a528c303f0e6f7165687dd33fafa81c807fcac23f632b63aa624ced1d3", size = 17522, upload-time = "2025-09-15T03:01:00.728Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/e0/1eed384f02555dde685fff1a1ac805c1c7dcb6dd019c916fe659b1c1f9ec/types_pyyaml-6.0.12.20250915-py3-none-any.whl", hash = "sha256:e7d4d9e064e89a3b3cae120b4990cd370874d2bf12fa5f46c97018dd5d3c9ab6", size = 20338, upload-time = "2025-09-15T03:00:59.218Z" },
+]
+
+[[package]]
+name = "types-redis"
+version = "4.6.0.20241004"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "types-pyopenssl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/95/c054d3ac940e8bac4ca216470c80c26688a0e79e09f520a942bb27da3386/types-redis-4.6.0.20241004.tar.gz", hash = "sha256:5f17d2b3f9091ab75384153bfa276619ffa1cf6a38da60e10d5e6749cc5b902e", size = 49679, upload-time = "2024-10-04T02:43:59.224Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/82/7d25dce10aad92d2226b269bce2f85cfd843b4477cd50245d7d40ecf8f89/types_redis-4.6.0.20241004-py3-none-any.whl", hash = "sha256:ef5da68cb827e5f606c8f9c0b49eeee4c2669d6d97122f301d3a55dc6a63f6ed", size = 58737, upload-time = "2024-10-04T02:43:57.968Z" },
 ]
 
 [[package]]
@@ -3422,6 +3475,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0f/f3/a0663907082280664d745929205a89d41dffb29e89a50f753af7d57d0a96/types_requests-2.32.4.20260107.tar.gz", hash = "sha256:018a11ac158f801bfa84857ddec1650750e393df8a004a8a9ae2a9bec6fcb24f", size = 23165, upload-time = "2026-01-07T03:20:54.091Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/12/709ea261f2bf91ef0a26a9eed20f2623227a8ed85610c1e54c5805692ecb/types_requests-2.32.4.20260107-py3-none-any.whl", hash = "sha256:b703fe72f8ce5b31ef031264fe9395cac8f46a04661a79f7ed31a80fb308730d", size = 20676, upload-time = "2026-01-07T03:20:52.929Z" },
+]
+
+[[package]]
+name = "types-setuptools"
+version = "82.0.0.20260210"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/90/796ac8c774a7f535084aacbaa6b7053d16fff5c630eff87c3ecff7896c37/types_setuptools-82.0.0.20260210.tar.gz", hash = "sha256:d9719fbbeb185254480ade1f25327c4654f8c00efda3fec36823379cebcdee58", size = 44768, upload-time = "2026-02-10T04:22:02.107Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/54/3489432b1d9bc713c9d8aa810296b8f5b0088403662959fb63a8acdbd4fc/types_setuptools-82.0.0.20260210-py3-none-any.whl", hash = "sha256:5124a7daf67f195c6054e0f00f1d97c69caad12fdcf9113eba33eff0bce8cd2b", size = 68433, upload-time = "2026-02-10T04:22:00.876Z" },
 ]
 
 [[package]]
@@ -3512,6 +3574,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
+    { name = "pyo3-sanitizer" },
     { name = "pyotp" },
     { name = "pyroscope-io", marker = "sys_platform != 'win32'" },
     { name = "python-dotenv" },
@@ -3520,6 +3583,7 @@ dependencies = [
     { name = "pyvips", marker = "sys_platform != 'win32'" },
     { name = "pywebpush" },
     { name = "redis" },
+    { name = "rust-ext" },
     { name = "sentry-sdk", extra = ["opentelemetry"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "starlette" },
@@ -3549,6 +3613,7 @@ dev = [
     { name = "ruff" },
     { name = "types-aiofiles" },
     { name = "types-pyyaml" },
+    { name = "types-redis" },
     { name = "types-requests" },
     { name = "virtualenv" },
 ]
@@ -3608,6 +3673,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5,<3" },
     { name = "pydantic-settings", specifier = ">=2.13.0,<3" },
     { name = "pyjwt", specifier = ">=2.10.1" },
+    { name = "pyo3-sanitizer", editable = "crates/pyo3-sanitizer" },
     { name = "pyotp", specifier = ">=2.9" },
     { name = "pyroscope-io", marker = "sys_platform != 'win32'", specifier = ">=0.8.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
@@ -3616,6 +3682,7 @@ requires-dist = [
     { name = "pyvips", marker = "sys_platform != 'win32'", specifier = ">=2.2" },
     { name = "pywebpush", specifier = ">=1.9" },
     { name = "redis", specifier = ">=5,<6" },
+    { name = "rust-ext", editable = "native/rust_ext" },
     { name = "sentry-sdk", extras = ["opentelemetry"], specifier = ">=2,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.48,<3" },
     { name = "starlette", specifier = ">=0.40" },
@@ -3645,6 +3712,7 @@ dev = [
     { name = "ruff", specifier = ">=0.15.4" },
     { name = "types-aiofiles", specifier = ">=25.1.0.20251011" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
+    { name = "types-redis", specifier = ">=4.6.0.20240425" },
     { name = "types-requests", specifier = ">=2.32.4.20260107" },
     { name = "virtualenv", specifier = ">=20.36.2" },
 ]

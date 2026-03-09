@@ -100,7 +100,9 @@ class SearchService:
             Tuple of (success_count, failed_count)
         """
 
-        def generate_actions():
+        from collections.abc import Generator
+
+        def generate_actions() -> Generator[dict[str, Any], None, None]:
             for doc in documents:
                 yield {
                     "_index": index,

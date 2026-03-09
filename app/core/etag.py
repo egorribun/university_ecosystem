@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -95,7 +95,7 @@ class ETagMiddleware(BaseHTTPMiddleware):
         # Read response body
         body = b""
         if hasattr(response, "body"):
-            body = response.body
+            body = cast(Any, response).body
         elif isinstance(response, StreamingResponse):
             async for chunk in response.body_iterator:
                 if isinstance(chunk, str):

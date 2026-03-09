@@ -31,7 +31,7 @@ class GeolocationService:
             return
         async with self._init_lock:
             if self._initialized:
-                return
+                return  # type: ignore[unreachable]
 
             if not self.db_path:
                 self._initialized = True

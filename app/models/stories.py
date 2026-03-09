@@ -78,17 +78,17 @@ class Story(Base, UUID7PrimaryKeyMixin):
 
 @event.listens_for(Story, "before_insert")
 def _set_story_expiration(_: Any, __: Any, target: "Story") -> None:
-    if target.published_at is None:
+    if getattr(target, "published_at", None) is None:
         target.published_at = _utcnow()
-    if target.expires_at is None:
+    if getattr(target, "expires_at", None) is None:
         if target.published_at is not None:
             target.expires_at = target.published_at + timedelta(hours=24)
 
 
 @event.listens_for(Story, "before_update")
 def _ensure_story_expiration(_: Any, __: Any, target: "Story") -> None:
-    if target.published_at is None:
+    if getattr(target, "published_at", None) is None:
         target.published_at = _utcnow()
-    if target.expires_at is None:
+    if getattr(target, "expires_at", None) is None:
         if target.published_at is not None:
             target.expires_at = target.published_at + timedelta(hours=24)

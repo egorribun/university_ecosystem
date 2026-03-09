@@ -37,8 +37,10 @@ except Exception:  # pragma: no cover - optional dependency guard
     Histogram: Any = None  # type: ignore[no-redef]
     REGISTRY: Any = None  # type: ignore[no-redef]
 
-    def generate_latest(_: object | None = None) -> bytes:
+    def _generate_latest_fallback(registry: Any = None, escaping: str = "") -> bytes:
         raise RuntimeError("prometheus-client is required to expose metrics")
+
+    generate_latest = _generate_latest_fallback
 
 
 _REQUEST_COUNT = (

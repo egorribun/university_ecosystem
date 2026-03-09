@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar, cast
 
 import nats
+from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind
@@ -31,7 +32,7 @@ class NatsTaskBroker:
     """
 
     def __init__(self) -> None:
-        self._nc: nats.NATS | None = None
+        self._nc: NATS | None = None
         self._js: JetStreamContext | None = None
         self._tasks: dict[str, Callable[..., Any]] = {}
         self._stream_name = "TASK_QUEUE"

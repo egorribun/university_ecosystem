@@ -73,10 +73,10 @@ class WebAuthnService:
         # Get existing credentials to exclude them
         result = await self.repo.list_user_webauthn_credentials(user.id)
         exclude_credentials = [
-            {
-                "id": base64.urlsafe_b64decode(cre.credential_id + "=="),
-                "type": "public-key",
-            }
+            PublicKeyCredentialDescriptor(
+                id=base64.urlsafe_b64decode(cre.credential_id + "=="),
+                type=PublicKeyCredentialType.PUBLIC_KEY,
+            )
             for cre in result
         ]
 

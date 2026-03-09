@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mappin
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import uvicorn
 from fastapi import FastAPI
@@ -51,14 +51,18 @@ try:
     )
 except Exception:  # pragma: no cover - optional dependency guard
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
-    CollectorRegistry = None
-    Counter = None
-    Gauge = None
-    Histogram = None
-    REGISTRY = None
+    CollectorRegistry: Any = None  # type: ignore[no-redef]
+    Counter: Any = None  # type: ignore[no-redef]
+    Gauge: Any = None  # type: ignore[no-redef]
+    Histogram: Any = None  # type: ignore[no-redef]
+    REGISTRY: Any = None  # type: ignore[no-redef]
 
-    def generate_latest(_: object) -> bytes:
+    def _generate_latest_fallback(
+        registry: Any = REGISTRY, escaping: str = ""
+    ) -> bytes:
         raise RuntimeError("prometheus-client is required for worker metrics")
+
+    generate_latest = _generate_latest_fallback
 
 
 try:
@@ -71,12 +75,12 @@ try:
             SentrySpanProcessor,
         )
     except Exception:
-        SentrySpanProcessor = None
+        SentrySpanProcessor: Any = None  # type: ignore[no-redef]
 except Exception:
-    sentry_init = None
-    FastApiIntegration = None
-    LoggingIntegration = None
-    SentrySpanProcessor = None
+    sentry_init: Any = None  # type: ignore[no-redef]
+    FastApiIntegration: Any = None  # type: ignore[no-redef]
+    LoggingIntegration: Any = None  # type: ignore[no-redef]
+    SentrySpanProcessor: Any = None  # type: ignore[no-redef]
 
 
 from app.core.config import settings
@@ -319,7 +323,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
     if not settings.enable_otel:
         return None
     if _otel_configured:
-        return trace.get_tracer_provider()
+        return cast("TracerProvider | None", trace.get_tracer_provider())
 
     resource = _create_otel_resource()
 
@@ -417,7 +421,7 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
         app.add_middleware(
-            CorrelationIdMiddleware,
+            cast(Any, CorrelationIdMiddleware),
             header_name=settings.request_id_header,
             trace_header_name=settings.trace_header,
         )
@@ -456,7 +460,7 @@ def shutdown_observability() -> None:
 
     if _otel_logger_provider is not None:
         with suppress(Exception):
-            _otel_logger_provider.shutdown()
+            cast(Any, _otel_logger_provider).shutdown()
 
 
 def _sanitize_metric_name(name: str) -> str:

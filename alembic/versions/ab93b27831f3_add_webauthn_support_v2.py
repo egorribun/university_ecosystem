@@ -439,11 +439,15 @@ def downgrade() -> None:
         type_=postgresql.JSONB(astext_type=sa.Text()),
         existing_nullable=True,
     )
-    op.drop_index(
-        op.f("ix_webauthn_credentials_user_id"), table_name="webauthn_credentials"
-    )
-    op.drop_index(
-        op.f("ix_webauthn_credentials_credential_id"), table_name="webauthn_credentials"
-    )
-    op.drop_table("webauthn_credentials")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table("webauthn_credentials"):
+        op.drop_index(
+            op.f("ix_webauthn_credentials_user_id"), table_name="webauthn_credentials"
+        )
+        op.drop_index(
+            op.f("ix_webauthn_credentials_credential_id"),
+            table_name="webauthn_credentials",
+        )
+        op.drop_table("webauthn_credentials")
     # ### end Alembic commands ###

@@ -13,7 +13,7 @@ import { extractApiError } from "@/utils/error"
 import { useAuthStore } from "@/stores/useAuthStore"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-const PROFILE_CACHE_SCHEMA_VERSION = 7
+export const PROFILE_CACHE_SCHEMA_VERSION = 7
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
 const LEGACY_PROFILE_CACHE_KEYS = [
@@ -27,7 +27,7 @@ const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 
 export const currentUserQueryKey = ["users", "me"] as const
 
-type CachedUserSnapshot = Pick<
+export type CachedUserSnapshot = Pick<
   User,
   | "id"
   | "email"
@@ -54,7 +54,7 @@ type CachedProfileEnvelope = {
   signature: string
 }
 
-type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
+export type CacheSignaturePayload = Pick<CachedProfileEnvelope, "version" | "expiresAt" | "data">
 
 type ProfileBroadcastMessage =
   | { type: "unauthorized" }
@@ -113,10 +113,17 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   cover_url_optimized: null,
 })
 
-const clearProfileCacheStorage = () => {
+const clearProfileCacheStorage = (
+  reason:
+    | "parse_error"
+    | "invalid_signature"
+    | "expired"
+    | "version_mismatch"
+    | "invalid_data" = "parse_error"
+) => {
   if (typeof localStorage === "undefined") return
   try {
-    logWarning("profile_cache.cleared", { reason: "parse_error" })
+    logWarning("profile_cache.cleared", { reason })
     localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
     localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
   } catch {
@@ -133,7 +140,7 @@ const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
     if (!parsed || typeof parsed !== "object") return undefined
     return parsed as CachedProfileEnvelope
   } catch {
-    clearProfileCacheStorage()
+    clearProfileCacheStorage("parse_error")
     return undefined
   }
 }
@@ -229,7 +236,7 @@ const verifyHmacAsync = async (
   }
 }
 
-const encryptData = async (
+export const encryptData = async (
   data: CachedUserSnapshot,
   signingKey: string
 ): Promise<string | null> => {
@@ -294,7 +301,10 @@ const decryptData = async (
 }
 
 // HMAC Signature using noble hashes (consistent with sync version and works in JSDOM)
-const signPayload = async (payload: CacheSignaturePayload, signingKey: string): Promise<string> => {
+export const signPayload = async (
+  payload: CacheSignaturePayload,
+  signingKey: string
+): Promise<string> => {
   try {
     const enc = new TextEncoder()
     const signatureBytes = hmac(sha256, enc.encode(signingKey), enc.encode(JSON.stringify(payload)))
@@ -327,7 +337,7 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
   const candidate = readCachedEnvelope()
   if (!candidate) return undefined
   if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) {
-    clearProfileCacheStorage()
+    clearProfileCacheStorage("version_mismatch")
     return undefined
   }
   if (
@@ -335,11 +345,11 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
     !candidate.data ||
     typeof candidate.signature !== "string"
   ) {
-    clearProfileCacheStorage()
+    clearProfileCacheStorage("invalid_data")
     return undefined
   }
   if (candidate.expiresAt <= Date.now()) {
-    clearProfileCacheStorage()
+    clearProfileCacheStorage("expired")
     return undefined
   }
 
@@ -351,20 +361,22 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
   }
   const signatureValid = await verifyHmacAsync(payload, candidate.signature, signingKey)
   if (!signatureValid) {
-    clearProfileCacheStorage()
+    clearProfileCacheStorage("invalid_signature")
     return undefined
   }
 
   let snapshotData: CachedUserSnapshot | null = null
   if (typeof candidate.data === "string") {
     snapshotData = await decryptData(candidate.data, signingKey)
+  } else if (candidate.data && typeof candidate.data === "object") {
+    // Legacy V3 support for unencrypted object data
+    snapshotData = candidate.data as CachedUserSnapshot
   } else {
-    // Legacy support or fallback? strictly string for v4
     snapshotData = null
   }
 
   if (!snapshotData || typeof snapshotData.id !== "string") {
-    clearProfileCacheStorage()
+    clearProfileCacheStorage("invalid_data")
     return undefined
   }
   return createOptimisticUser(snapshotData)
@@ -611,7 +623,7 @@ export const useProfileSync = (
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
 
-        // Removed side effect: userStateRef.current = normalized
+        userStateRef.current = normalized
         if (persist) {
           const key = sessionSigningKeyRef.current
           persistUserToCacheAsync(normalized, key)
@@ -776,7 +788,7 @@ export const useProfileSync = (
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
     const hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    if (userStateRef.current == null && !hasCache) {
+    if (userStateRef.current == null && !hasCache && !initializing) {
       setInitializing(true)
     }
     ;(async () => {
