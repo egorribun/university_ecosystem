@@ -45,9 +45,9 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         render_as_batch=True,
+        transactional_ddl=False,  # Allow non-transactional DDL
     )
-    with context.begin_transaction():
-        context.run_migrations()
+    context.run_migrations()
 
 
 def _configure_context(connection: SyncConnection) -> None:
@@ -56,6 +56,7 @@ def _configure_context(connection: SyncConnection) -> None:
         target_metadata=target_metadata,
         compare_type=True,
         render_as_batch=True,
+        transactional_ddl=False,  # Allow non-transactional DDL
     )
 
 
@@ -70,8 +71,11 @@ def run_migrations_online() -> None:
 
     def run_sync_migrations(connection: SyncConnection) -> None:
         _configure_context(connection)
-        with context.begin_transaction():
-            context.run_migrations()
+        # P0-05 (audit 2026-03-09): Removed the global `begin_transaction()` wrapper.
+        # PostgreSQL commands like `CREATE INDEX CONCURRENTLY` cannot run inside
+        # a transaction block. Migrations that require transactions must manage
+        # them explicitly or rely on Alembic's per-migration transaction control.
+        context.run_migrations()
 
     connection: Any = config.attributes.get("connection")
     if connection:
@@ -97,7 +101,12 @@ def run_migrations_online() -> None:
 
             for attempt in range(max_retries):
                 try:
-                    async with engine.connect() as connection:
+                    # RZ-12 (audit 2026-03-09): Use AUTOCOMMIT isolation level.
+                    # This ensures SQLAlchemy/asyncpg doesn't start an implicit
+                    # transaction, allowing `CREATE INDEX CONCURRENTLY` to work.
+                    async with engine.connect().execution_options(
+                        isolation_level="AUTOCOMMIT"
+                    ) as connection:
                         await connection.run_sync(run_sync_migrations)
                     return
                 except Exception as e:
