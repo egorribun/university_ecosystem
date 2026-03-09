@@ -139,10 +139,12 @@ def downgrade() -> None:
                 existing_nullable=True,
             )
 
-    # Restore table name only if we are on a version that expects the old name
-    # but since this migration chain now standardizes on user_profiles,
-    # downgrading column types is usually enough. If a hard downgrade to
-    # user_profile_details is needed, it would be here.
+    # Restore table name
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = inspector.get_table_names()
+    if "user_profiles" in tables and "user_profile_details" not in tables:
+        op.rename_table("user_profiles", "user_profile_details")
 
     with op.batch_alter_table("user_education_paths") as batch_op:
         for col in (

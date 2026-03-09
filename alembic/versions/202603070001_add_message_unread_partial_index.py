@@ -41,7 +41,7 @@ down_revision: str | None = "202603060001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_IDX_UNREAD = "ix_message_unread_chat_sender"
+_IDX_UNREAD = "ix_messages_unread_chat_sender"
 
 
 def _is_postgresql() -> bool:
@@ -56,7 +56,7 @@ def upgrade() -> None:
     op.execute(
         f"""
         CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_UNREAD}
-        ON message (chat_id, sender_id)
+        ON messages (chat_id, sender_id)
         WHERE read_status = FALSE
         """
     )

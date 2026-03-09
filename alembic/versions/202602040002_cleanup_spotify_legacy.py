@@ -20,6 +20,9 @@ depends_on = None
 def upgrade():
     conn = op.get_bind()
     inspector = sa.inspect(conn)
+    if not inspector.has_table("spotify_integrations"):
+        return
+
     columns = [c["name"] for c in inspector.get_columns("spotify_integrations")]
 
     if "legacy_user_id" in columns:
@@ -28,6 +31,11 @@ def upgrade():
 
 
 def downgrade():
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if not inspector.has_table("spotify_integrations"):
+        return
+
     # We cannot easily restore legacy_user_id without data loss or complex logic
     op.add_column(
         "spotify_integrations", sa.Column("legacy_user_id", sa.Integer(), nullable=True)

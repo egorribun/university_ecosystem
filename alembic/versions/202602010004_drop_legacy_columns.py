@@ -109,6 +109,10 @@ def upgrade():
 
     # 1. Drop the legacy primary key columns and their unique constraints
     for table in TABLES_TO_CLEANUP:
+        if not op.get_bind().dialect.has_table(op.get_bind(), table):
+            logger.info(f"Skipping drop for missing table {table}")
+            continue
+
         print(f"Cleaning legacy_id {table}...")
         try:
             if dialect == "postgresql":
@@ -137,6 +141,9 @@ def upgrade():
 
     # 2. Drop the legacy foreign key columns
     for table, legacy_col in FK_TO_CLEANUP:
+        if not op.get_bind().dialect.has_table(op.get_bind(), table):
+            continue
+
         print(f"Cleaning FK {legacy_col} in {table}...")
         try:
             if dialect == "postgresql":
@@ -160,7 +167,10 @@ def downgrade():
 
     # Restore legacy columns as nullable to avoid errors in previous downgrades.
     # Note: Data loss for these columns is expected after upgrade.
+    inspector = sa.inspect(bind)
     for table in TABLES_TO_CLEANUP:
+        if not inspector.has_table(table):
+            continue
         # Use String for tables known to have String IDs, default to Integer
         col_type_str = (
             "VARCHAR" if table in ("chats", "messages", "attachments") else "INTEGER"
@@ -183,6 +193,8 @@ def downgrade():
                 logger.warning(f"Could not restore legacy_id for {table}: {e}")
 
     for table, legacy_col in FK_TO_CLEANUP:
+        if not inspector.has_table(table):
+            continue
         col_type_str = (
             "VARCHAR"
             if "chat_id" in legacy_col or "message_id" in legacy_col

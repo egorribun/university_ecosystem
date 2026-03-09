@@ -64,6 +64,9 @@ def upgrade():
     inspector = sa.inspect(bind)
 
     for table_name, col_name in FK_TABLES:
+        if not inspector.has_table(table_name):
+            continue
+
         existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
         if col_name not in existing_cols:
             op.add_column(
@@ -82,10 +85,9 @@ def downgrade():
     inspector = sa.inspect(bind)
 
     # Cache tables to avoid repeated lookups
-    tables_in_db = set(inspector.get_table_names())
 
     for table_name, col_name in FK_TABLES:
-        if table_name not in tables_in_db:
+        if not inspector.has_table(table_name):
             continue
 
         existing_indexes = {idx["name"] for idx in inspector.get_indexes(table_name)}

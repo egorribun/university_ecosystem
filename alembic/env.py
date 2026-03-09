@@ -94,6 +94,10 @@ def run_migrations_online() -> None:
         async def async_run_migrations() -> None:
             # Cast connectable to AsyncEngine to ensure connect() returns AsyncConnection
             engine = cast(AsyncEngine, connectable)
+            # RZ-12 (audit 2026-03-09): Use an engine with AUTOCOMMIT isolation level.
+            # This ensures SQLAlchemy/asyncpg doesn't start an implicit
+            # transaction, allowing `CREATE INDEX CONCURRENTLY` to work.
+            autocommit_engine = engine.execution_options(isolation_level="AUTOCOMMIT")
 
             max_retries = 10
             retry_delay = 2
@@ -101,12 +105,7 @@ def run_migrations_online() -> None:
 
             for attempt in range(max_retries):
                 try:
-                    # RZ-12 (audit 2026-03-09): Use AUTOCOMMIT isolation level.
-                    # This ensures SQLAlchemy/asyncpg doesn't start an implicit
-                    # transaction, allowing `CREATE INDEX CONCURRENTLY` to work.
-                    async with engine.connect().execution_options(
-                        isolation_level="AUTOCOMMIT"
-                    ) as connection:
+                    async with autocommit_engine.connect() as connection:
                         await connection.run_sync(run_sync_migrations)
                     return
                 except Exception as e:

@@ -5,20 +5,28 @@ import sys
 
 
 def get_alembic_cmd():
-    # If UV_PROJECT_ENVIRONMENT is set or we are in a container,
-    # we might not want/need 'uv run'
-    if os.environ.get("UV_PROJECT_ENVIRONMENT") or os.environ.get("DOCKER_CONTAINER"):
-        return "python -m alembic"
-
-    # Try to see if 'uv' is present
+    # Priority 1: Direct 'alembic' script in PATH
     try:
-        subprocess.run(["uv", "--version"], capture_output=True, check=True)
+        # Check if alembic exists and is runnable
+        subprocess.run(["alembic", "--version"], capture_output=True, check=True)
+        return "alembic"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Priority 2: 'uv run alembic' if uv is present
+    try:
+        subprocess.run(["uv", "run", "alembic", "--version"], capture_output=True, check=True)
         return "uv run alembic"
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return "python -m alembic"
+        pass
+
+    # Priority 3: python module (some environments might prefer this)
+    # Note: 'python -m alembic' sometimes fails if __main__ is missing.
+    return "python -m alembic"
 
 
 ALEMBIC_BASE_CMD = get_alembic_cmd()
+print(f"INFO: Using Alembic command: {ALEMBIC_BASE_CMD}")
 
 
 def run_command(cmd, env=None):
