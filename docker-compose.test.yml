@@ -1,6 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg17
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: test
@@ -13,11 +14,6 @@ services:
       retries: 5
     networks:
       - test-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
 
   redis:
     image: redis:7.4.2-alpine
@@ -28,11 +24,6 @@ services:
       retries: 5
     networks:
       - test-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 128M
 
   tests:
     build:
@@ -45,6 +36,10 @@ services:
       NATS_URL: nats://test-nats:4222
       SECRET_KEY: test_secret_key
       ALEMBIC_CONFIG: alembic.ini
+      # Keep pool small so multiple tests sharing the global engine stay well
+      # under PostgreSQL's max_connections=200 limit.
+      DATABASE_POOL_SIZE: 5
+      DATABASE_MAX_OVERFLOW: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,11 +51,6 @@ services:
       - .:/app
     command: >
       sh -c "alembic upgrade head && pytest tests/ -v --tb=short --ignore=tests/performance"
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
 
 networks:
   test-net:

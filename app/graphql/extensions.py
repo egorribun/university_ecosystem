@@ -85,8 +85,10 @@ class QueryCostExtension(SchemaExtension):
     def on_validate(self) -> Iterator[None]:
         yield  # let QueryDepthLimiter, MaxTokensLimiter, and other rules run first
 
-        # If prior validators already rejected the query, no need to compute cost.
-        if self.execution_context.errors:  # type: ignore[attr-defined]
+        # If prior validators already rejected the query, skip cost analysis.
+        # Use getattr for compatibility — execution_context.errors is not
+        # guaranteed to exist during the validation phase in all Strawberry versions.
+        if getattr(self.execution_context, "errors", None):
             return
 
         document: DocumentNode | None = getattr(
@@ -105,27 +107,13 @@ class QueryCostExtension(SchemaExtension):
                 cost,
                 _MAX_QUERY_COST,
             )
-            # D-06 (audit 2026-03-08): Use ensure_errors pattern since .errors
-            # is read-only in newer Strawberry/graphql-core versions.
-            error = GraphQLError(
+            # Raise GraphQLError — Strawberry's extension runner catches it and
+            # adds it to the query error list without crashing the server.
+            raise GraphQLError(
                 f"Query cost {cost} exceeds the maximum allowed cost of "
                 f"{_MAX_QUERY_COST}. Reduce the number of requested fields, "
                 "especially list fields (chats, messages, users, etc.)."
             )
-            if self.execution_context.errors is None:  # type: ignore[attr-defined]
-                # Bypass read-only by using internal list if it exists, or let it crash
-                # if the framework doesn't provide a way to set it.
-                # Actually Strawberry's ExecutionContext usually has a list.
-                # If not, we can't easily set it.
-                pass
-            # Most reliable way across versions: append if not None
-            if self.execution_context.errors is not None:  # type: ignore[attr-defined]
-                self.execution_context.errors.append(error)  # type: ignore[attr-defined]
-            else:
-                # RZ-4: If None, we try to use the public API or just log it
-                # Strawberry 1.x allows setting it in constructor but not via attribute
-                # Try to use add_error if available (though not in standard ExecutionContext)
-                self.execution_context.errors = [error]  # type: ignore[attr-defined]
         else:
             logger.debug("GraphQL query cost=%d (max=%d)", cost, _MAX_QUERY_COST)
 

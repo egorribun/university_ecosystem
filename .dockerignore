@@ -54,6 +54,11 @@ env/
 *.sw?
 .DS_Store
 
+# Rust build artifacts
+target/
+native/rust_ext/target/
+crates/pyo3-sanitizer/target/
+
 # Misc
 Dockerfile*
 docker-compose*.yml

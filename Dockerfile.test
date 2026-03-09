@@ -16,14 +16,26 @@ RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash app
 
+# Install Rust toolchain (required by maturin to build pyo3-sanitizer and rust_ext)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:$PATH"
+
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.5.21 /uv /uv/bin/uv
 ENV PATH="/uv/bin:$PATH"
 
+# Copy workspace member manifests + sources so uv can resolve the workspace before sync
+COPY native/rust_ext/pyproject.toml native/rust_ext/Cargo.toml native/rust_ext/Cargo.lock native/rust_ext/
+COPY native/rust_ext/src native/rust_ext/src
+COPY crates/pyo3-sanitizer/pyproject.toml crates/pyo3-sanitizer/Cargo.toml crates/pyo3-sanitizer/Cargo.lock crates/pyo3-sanitizer/
+COPY crates/pyo3-sanitizer/src crates/pyo3-sanitizer/src
+
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies into virtualenv
+# Install dependencies into virtualenv (builds Rust extensions via maturin)
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cargo/registry \
     uv sync --frozen
 
 COPY . .

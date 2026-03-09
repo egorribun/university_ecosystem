@@ -440,8 +440,21 @@ if TYPE_CHECKING:
 def init_database(current_settings: Settings | None = None) -> None:
     """Initialise database engines from *current_settings* (defaults to the global
     ``settings`` singleton).
+
+    Idempotent when called without explicit settings and the engine is already
+    initialised.  This prevents the test suite from creating a fresh connection
+    pool on every test that uses the app lifespan (LifespanManager), which would
+    exhaust PostgreSQL's max_connections limit after only a handful of tests.
     """
     global _engine, _async_session, _read_replica_engine, _read_session_factory
+
+    # Skip re-initialisation if the engine is already set and no explicit
+    # override settings were provided.  In production the lifespan runs exactly
+    # once, so this guard is a no-op there.  In tests the session-scoped
+    # fixtures initialise the engine first; subsequent lifespan calls are safe
+    # to skip because they share the same Settings singleton.
+    if _engine is not None and current_settings is None:
+        return
 
     s = current_settings or settings
     _engine, _async_session, _read_replica_engine = create_session_factory(s)

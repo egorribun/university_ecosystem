@@ -5,6 +5,7 @@ Tests for event file uploads.
 import asyncio
 import io
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,12 @@ def _mock_mime_detection(monkeypatch):
     monkeypatch.setattr(files, "detect_mime_type", _fallback_detect_mime)
 
 
+@pytest.fixture
+def mock_checker():
+    """Mock PermissionChecker that always grants permissions."""
+    return type("MockChecker", (), {"check_permission": AsyncMock(return_value=True)})()
+
+
 MULTIPAGE_PDF_BYTES = b"""%PDF-1.4\n\
 1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
 2 0 obj\n<< /Type /Pages /Count 2 /Kids [3 0 R 4 0 R] >>\nendobj\n\
@@ -103,7 +110,7 @@ async def _create_event(db_session, user: models.User) -> models.Event:
 
 @pytest.mark.asyncio
 async def test_upload_event_file_offloads_io(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -129,7 +136,7 @@ async def test_upload_event_file_offloads_io(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     result = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin
+        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
     )
 
     assert result.event_id == event.id
@@ -143,7 +150,7 @@ async def test_upload_event_file_offloads_io(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_cleans_up_on_commit_failure(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -176,7 +183,7 @@ async def test_upload_event_file_cleans_up_on_commit_failure(
 
     with pytest.raises(RuntimeError):
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     folder = tmp_path / "event_files"
@@ -187,7 +194,7 @@ async def test_upload_event_file_cleans_up_on_commit_failure(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_rejects_large_payload(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -206,7 +213,7 @@ async def test_upload_event_file_rejects_large_payload(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
@@ -217,7 +224,7 @@ async def test_upload_event_file_rejects_large_payload(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_respects_scanner_limit(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -243,7 +250,7 @@ async def test_upload_event_file_respects_scanner_limit(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
@@ -254,7 +261,7 @@ async def test_upload_event_file_respects_scanner_limit(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_rejects_forbidden_type(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -272,7 +279,7 @@ async def test_upload_event_file_rejects_forbidden_type(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -285,7 +292,7 @@ async def test_upload_event_file_rejects_forbidden_type(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_rejects_mismatched_metadata(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -308,7 +315,7 @@ async def test_upload_event_file_rejects_mismatched_metadata(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -323,7 +330,7 @@ async def test_upload_event_file_rejects_mismatched_metadata(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_rejects_infected_payload(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -355,7 +362,7 @@ async def test_upload_event_file_rejects_infected_payload(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -366,7 +373,7 @@ async def test_upload_event_file_rejects_infected_payload(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_rejects_detected_type_not_allowed(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -385,7 +392,7 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -398,7 +405,7 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_allows_multipage_pdf(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -427,7 +434,7 @@ async def test_upload_event_file_allows_multipage_pdf(
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
 
     result = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin
+        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
     )
 
     assert result.event_id == event.id
@@ -439,7 +446,7 @@ async def test_upload_event_file_allows_multipage_pdf(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_quarantines_polyglot_pdf(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -458,7 +465,7 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -473,7 +480,7 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_quarantines_svg_with_js(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -498,7 +505,7 @@ async def test_upload_event_file_quarantines_svg_with_js(
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -513,7 +520,7 @@ async def test_upload_event_file_quarantines_svg_with_js(
 
 @pytest.mark.asyncio
 async def test_upload_event_file_allows_clean_payload_with_scanner(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -544,7 +551,7 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
 
     result = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin
+        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
     )
 
     assert result.event_id == event.id
@@ -584,7 +591,7 @@ async def test_update_event_replaces_image_removes_old_file(
 
 @pytest.mark.asyncio
 async def test_delete_event_file_removes_payload(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -602,14 +609,14 @@ async def test_delete_event_file_removes_payload(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     event_file = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin
+        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
     )
 
     stored_path = tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
     assert stored_path.exists()
 
     result = await events.delete_event_file(
-        event_file.id, request=None, db=db_session, user=admin
+        event_file.id, request=None, db=db_session, user=admin, checker=mock_checker
     )
 
     assert result == {"ok": True}
@@ -618,7 +625,7 @@ async def test_delete_event_file_removes_payload(
 
 @pytest.mark.asyncio
 async def test_delete_event_removes_all_files(
-    tmp_path, monkeypatch, db_session, user_factory, event_service
+    tmp_path, monkeypatch, db_session, user_factory, event_service, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -643,7 +650,7 @@ async def test_delete_event_removes_all_files(
             headers=Headers({"content-type": "text/plain"}),
         )
         event_file = await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
+            event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
         )
         stored_paths.append(
             tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
@@ -651,12 +658,6 @@ async def test_delete_event_removes_all_files(
 
     for path in stored_paths:
         assert path.exists()
-
-    from unittest.mock import AsyncMock
-
-    mock_checker = type(
-        "MockChecker", (), {"check_permission": AsyncMock(return_value=True)}
-    )()
 
     result = await events.delete_event(
         event.id, request=None, events=event_service, user=admin, checker=mock_checker

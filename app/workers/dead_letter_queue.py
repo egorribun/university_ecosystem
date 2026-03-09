@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
+    DateTime,
     Index,
     String,
     Text,
@@ -63,11 +64,14 @@ class DeadLetterJob(Base):
     status: Mapped[str] = mapped_column(
         String(20), default=JobStatus.PENDING.value, nullable=False, index=True
     )
-    next_retry_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
