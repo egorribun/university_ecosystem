@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid as _uuid_module
 from collections.abc import Awaitable, Callable, Coroutine
 from contextvars import ContextVar
@@ -86,7 +85,6 @@ class RequestIDMiddleware:
         ctx_token = request_id_ctx.set(request_id)
         # Binds request_id to the current asyncio task context for structlog.
         bind_context(request_id=request_id)
-
 
         async def _send_with_id(message: Any) -> None:
             if message["type"] == "http.response.start":

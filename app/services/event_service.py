@@ -10,11 +10,10 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import normalize_locale, translate
 from app.models.models import Event
-from app.repositories.event_repository import EventRepository
+from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
 from app.services import attendance_tokens, stats_cache
-from app.repositories.unit_of_work import UnitOfWork
 from app.services.vector_service import VectorService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 

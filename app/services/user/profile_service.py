@@ -9,13 +9,12 @@ from fastapi import Request
 from app.auth import mfa
 from app.core.exceptions.domain import EntityNotFound, PermissionDenied
 from app.core.localization import resolve_locale, translate
-from app.repositories.user_repository import UserRepository
+from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.auth_service import attach_pending_email
 from app.services.notification_service import NotificationService
-from app.repositories.unit_of_work import UnitOfWork
 from app.services.user.logic import update_user_attributes
 
 if TYPE_CHECKING:

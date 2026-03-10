@@ -15,7 +15,6 @@ from app.core.protocols import AsyncDatabaseSession
 from app.models import models
 from app.models.models import User, UserProfile
 from app.models.user_loaders import (
-    USER_LIST_LOAD_OPTIONS,
     USER_MFA_LOAD_OPTIONS,
     USER_MFA_RELATIONSHIP_NAMES,
 )
@@ -412,9 +411,17 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         ``user.profile`` without a None-guard.
         """
         user = models.User(**core_data)
-        user.profile = models.UserProfile(**profile_data) if profile_data else models.UserProfile()
-        user.preferences = models.UserPreferences(**pref_data) if pref_data else models.UserPreferences()
-        user.education_path = models.EducationPath(**edu_data) if edu_data else models.EducationPath()
+        user.profile = (
+            models.UserProfile(**profile_data) if profile_data else models.UserProfile()
+        )
+        user.preferences = (
+            models.UserPreferences(**pref_data)
+            if pref_data
+            else models.UserPreferences()
+        )
+        user.education_path = (
+            models.EducationPath(**edu_data) if edu_data else models.EducationPath()
+        )
         return user
 
     async def create(self, obj_in: schemas.UserCreate | dict[str, Any]) -> UserDTO:
@@ -478,7 +485,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         self, user_data: dict[str, Any], invite_code: models.InviteCode | None
     ) -> UserDTO:
         """Create a user and optionally mark an invite code as used."""
-        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(user_data)
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(
+            user_data
+        )
         user = self._build_user_aggregate(core_data, profile_data, pref_data, edu_data)
 
         self.db.add(user)

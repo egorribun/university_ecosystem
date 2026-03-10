@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
-from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.story_repository import StoryRepository
 from app.repositories.user_repository import UserRepository
 

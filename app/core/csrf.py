@@ -49,7 +49,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
 import secrets
 from typing import TYPE_CHECKING
 

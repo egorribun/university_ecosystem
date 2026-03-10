@@ -187,7 +187,9 @@ class SuspiciousActivityDetector:
         self._events: deque[SuspiciousActivityEvent] = deque(maxlen=self._MAX_EVENTS)
         # Per-user index: user_id → list of their events (unbounded per user,
         # but total is capped by the ring buffer eviction logic below).
-        self._user_index: dict[uuid.UUID, list[SuspiciousActivityEvent]] = defaultdict(list)
+        self._user_index: dict[uuid.UUID, list[SuspiciousActivityEvent]] = defaultdict(
+            list
+        )
         self._lock = threading.Lock()
 
     def check_fingerprint_mismatch(

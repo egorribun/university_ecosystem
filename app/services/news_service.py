@@ -1,7 +1,7 @@
 import contextlib
 import logging
 
-from app.repositories.news_repository import NewsRepository
+from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import (
     NewsCommentDTO,
@@ -9,7 +9,6 @@ from app.schemas.dtos import (
     NewsInteractionsDTO,
     NewsListingDTO,
 )
-from app.repositories.unit_of_work import UnitOfWork
 from app.services.vector_service import VectorService
 
 logger = logging.getLogger(__name__)

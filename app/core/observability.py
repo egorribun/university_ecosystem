@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 import socket
 import time
-import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
@@ -36,7 +34,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 try:
@@ -87,7 +84,6 @@ from app.core.config import settings
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
-    from starlette.requests import Request
 
 _logging_configured = False
 _otel_configured = False
@@ -119,6 +115,7 @@ def _resolve_current_trace_id() -> str | None:
 
 from app.core.logging import configure_logging as _configure_structured_logging
 
+
 def _resolve_headers(value: str) -> Mapping[str, str]:
     headers: dict[str, str] = {}
     if not value:
@@ -134,7 +131,6 @@ def _resolve_headers(value: str) -> Mapping[str, str]:
 
 
 def _configure_logging() -> None:
-
     """Delegates logging setup to the central structlog configuration.
 
     M-001 (audit 2026-03-10): All logging is now unified in app/core/logging.py.
