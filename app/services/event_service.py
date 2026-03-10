@@ -14,6 +14,7 @@ from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
 from app.services import attendance_tokens, stats_cache
+from app.repositories.unit_of_work import UnitOfWork
 from app.services.vector_service import VectorService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
@@ -35,8 +36,9 @@ def _localized_event_field(
 
 
 class EventService:
-    def __init__(self, repo: EventRepository, vector_service: VectorService):
-        self.repo = repo
+    def __init__(self, uow: UnitOfWork, vector_service: VectorService):
+        self.uow = uow
+        self.repo = uow.events
         self.vector_service = vector_service
 
     async def get_event_by_id(self, event_id: uuid.UUID | int) -> EventDTO | None:
@@ -213,7 +215,8 @@ class EventService:
         obj_data["created_by"] = user_id
         event = await self.repo.create(obj_data)
         # EventCreated(event_id_entity=event.id, title=str(event.title))
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return event
 
     async def update_event(
@@ -235,7 +238,8 @@ class EventService:
         updated_event = await self.repo.update(event_id, updates)
         assert updated_event is not None  # nosec B101
 
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return updated_event
 
     async def delete_event(self, event_id: uuid.UUID | int) -> bool:
@@ -250,7 +254,8 @@ class EventService:
         # Delete files records via repo
         await self.repo.delete_event_files(event_id)
         await self.repo.delete(event_id)
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         from app.utils.files import delete_static_file
 
@@ -285,7 +290,8 @@ class EventService:
                     data.event_id, user_id, updates
                 )
                 assert exist is not None  # nosec B101
-                await self.repo.commit()
+                async with self.uow:
+                    await self.uow.commit()
 
             # Helper logic to set token attribute for response
             token = attendance_tokens.issue_token(exist)
@@ -300,9 +306,10 @@ class EventService:
                 qr_hmac=attendance_tokens.compute_secret_hmac(secret),
                 registered_at=datetime.now(UTC),
             )
-            await self.repo.commit()
+            async with self.uow:
+                await self.uow.commit()
         except IntegrityError as exc:
-            await self.repo.rollback()
+            await self.uow.rollback()
             # Race condition retry
             exist = await self.repo.get_attendance(data.event_id, user_id)
             if not exist:
@@ -327,7 +334,8 @@ class EventService:
                 )
                 if updated_exist:
                     exist = updated_exist
-                await self.repo.commit()
+                async with self.uow:
+                    await self.uow.commit()
 
             enriched_exist = exist.model_copy(
                 update={"qr_token": attendance_tokens.issue_token(exist)}
@@ -353,7 +361,8 @@ class EventService:
     ) -> dict[str, bool]:
         ok = await self.repo.delete_attendance(data.event_id, user_id)
         if ok:
-            await self.repo.commit()
+            async with self.uow:
+                await self.uow.commit()
             await stats_cache.invalidate_user_stats_cache(
                 user_ids=user_id,
                 kinds=("attendance", "participation"),
@@ -413,7 +422,8 @@ class EventService:
                 await self.repo.update_attendance(
                     event_record.id, attendance.user_id, updates
                 )
-                await self.repo.commit()
+                async with self.uow:
+                    await self.uow.commit()
 
             qr_token = attendance_tokens.issue_token(attendance)
 

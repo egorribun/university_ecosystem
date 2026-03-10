@@ -15,6 +15,7 @@ from sqlalchemy.orm import exc as orm_exc
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
     from app.models import models as _models
+    from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
     _AnyUser = _models.User | UserAuthDTO | UserDTO
@@ -53,11 +54,13 @@ class AuthService:
         auth_repo: AuthRepository,
         user_repo: UserRepository,
         session_repo: SessionRepository,
+        uow: UnitOfWork,
     ) -> None:
         self.audit = audit
         self.auth_repo = auth_repo
         self.user_repo = user_repo
         self.session_repo = session_repo
+        self.uow = uow
 
     async def initiate_password_reset(
         self,
@@ -94,7 +97,8 @@ class AuthService:
                     user_id=user.id, token_hash=token_hash, expires_at=expires
                 )
 
-                await self.auth_repo.commit()
+                async with self.uow:
+                    await self.uow.commit()
                 base = settings.app_base_url_clean
                 reset_link = f"{base}/reset-password?token={token}"
                 locale = resolve_locale(request=request, user=user)
@@ -199,7 +203,8 @@ class AuthService:
         # Invalidate all other active tokens for this user
         await self.auth_repo.invalidate_all_user_password_reset_tokens(user.id)
 
-        await self.auth_repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         self.audit.log(
             "password.reset.completed",
             request,
@@ -251,7 +256,8 @@ class AuthService:
             expires_at=expires,
         )
 
-        await self.auth_repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         if not hasattr(db_user, "model_dump"):  # Check if it's NOT a Pydantic DTO
             await self.auth_repo.refresh(db_user)
@@ -318,7 +324,8 @@ class AuthService:
                 user.id, exclude_token_id=record.id
             )
 
-            await self.auth_repo.commit()
+            async with self.uow:
+                await self.uow.commit()
             await attach_pending_email(self.auth_repo.db, user)
             raise_validation_error(
                 "errors.users.email_confirmation_conflict",
@@ -336,7 +343,8 @@ class AuthService:
             user.id, exclude_token_id=record.id
         )
 
-        await self.auth_repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
         await attach_pending_email(self.auth_repo.db, db_user)
 
@@ -394,7 +402,8 @@ class AuthService:
         else:
             revoked = await self.session_repo.revoke_all_for_user(user_id=user.id)
 
-        await self.auth_repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         # AUTH-4 (audit 2026-03): rotate CSRF token on password change to
         # invalidate any CSRF tokens captured before the privilege escalation.

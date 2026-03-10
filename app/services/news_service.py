@@ -9,14 +9,16 @@ from app.schemas.dtos import (
     NewsInteractionsDTO,
     NewsListingDTO,
 )
+from app.repositories.unit_of_work import UnitOfWork
 from app.services.vector_service import VectorService
 
 logger = logging.getLogger(__name__)
 
 
 class NewsService:
-    def __init__(self, repo: NewsRepository, vector_service: VectorService):
-        self.repo = repo
+    def __init__(self, uow: UnitOfWork, vector_service: VectorService):
+        self.uow = uow
+        self.repo = uow.news
         self.vector_service = vector_service
 
     async def list_news(
@@ -90,12 +92,14 @@ class NewsService:
         # Actually models.record_event adds to a list on the object.
         # Since I have a DTO, I can't.
 
-        await self.repo.db.commit()
+        async with self.uow:
+            await self.uow.commit()
         return news
 
     async def toggle_like(self, news_id: int, user_id: int) -> bool:
         liked = await self.repo.toggle_like(news_id, user_id)  # type: ignore[arg-type]
-        await self.repo.db.commit()
+        async with self.uow:
+            await self.uow.commit()
         return liked
 
     async def get_news(
@@ -144,7 +148,8 @@ class NewsService:
         updated_news = await self.repo.update(news_id, updates)
         assert updated_news is not None  # nosec B101
 
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         from app.utils.files import delete_static_file
 
@@ -161,9 +166,9 @@ class NewsService:
 
         image_url = news.image_url
         await self.repo.delete(news_id)
-        await (
-            self.repo.db.commit()
-        )  # Repository delete does execute/rowcount but usually not commit?
+        async with self.uow:
+            await self.uow.commit()
+        # Repository delete does execute/rowcount but usually not commit?
         # BaseRepository delete: execute delete stmt. Does NOT commit.
         # So we need to commit.
 
@@ -200,7 +205,8 @@ class NewsService:
         if comment.user_id != user_id and not is_admin:
             raise PermissionError("forbidden")
         await self.repo.delete_comment(comment)
-        await self.repo.db.commit()
+        async with self.uow:
+            await self.uow.commit()
 
     async def get_interactions(
         self, news_id: int, user_id: int | None = None, limit: int = 50, offset: int = 0

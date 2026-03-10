@@ -107,6 +107,33 @@ class NatsTaskBroker:
 
         return decorator
 
+    async def publish(self, subject: str, payload: dict[str, Any]) -> None:
+        """Publish a generic event to JetStream with trace context propagation.
+
+        W-03 (audit 2026-03-10): Generic publisher for event-driven patterns where
+        the payload does not represent a discrete task to be executed by the
+        python-worker durable consumer.
+        """
+        if self._js is None:
+            await self.connect()
+
+        with tracer.start_as_current_span(
+            f"nats.publish:{subject}", kind=SpanKind.PRODUCER
+        ) as span:
+            # Inject trace context into headers
+            headers: dict[str, str] = {}
+            propagate.inject(headers)
+
+            span.set_attribute("messaging.system", "nats")
+            span.set_attribute("messaging.destination", subject)
+
+            if self._js:
+                await self._js.publish(
+                    subject,
+                    json.dumps(payload).encode(),
+                    headers=headers,
+                )
+
     async def enqueue(self, task_name: str, *args: Any, **kwargs: Any) -> str:
         """Push a task to the JetStream queue with trace context propagation."""
         if self._js is None:
@@ -135,7 +162,11 @@ class NatsTaskBroker:
 
             if self._js:
                 subject = f"{self._subject_prefix}.{task_name}"
-                await self._js.publish(subject, json.dumps(payload).encode())
+                await self._js.publish(
+                    subject,
+                    json.dumps(payload).encode(),
+                    headers=headers,
+                )
             return task_id
 
     async def run_worker(self) -> None:

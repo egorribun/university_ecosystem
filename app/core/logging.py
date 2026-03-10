@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from app.core.config import settings
 from app.core.orjson_utils import orjson
 
 if TYPE_CHECKING:
@@ -62,8 +63,10 @@ def configure_logging(
         return
     _configured = True
 
-    # Shared processors for all logging
+    # Shared processors for all logging — used by both structlog and stdlib (if bridged)
     shared_processors: list[Callable[..., Any]] = [
+        # Pulls bound variables from structlog.contextvars into the event_dict.
+        # This is where request_id, user_id, etc. are injected.
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -73,40 +76,45 @@ def configure_logging(
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.processors.EventRenamer("message"),
+        # Add service context to every log record
         lambda _, __, event_dict: (
-            event_dict.update({"service": "backend"}) or event_dict
+            event_dict.update({"service": "backend", "environment": getattr(settings, "environment", "production")}) or event_dict
         ),
     ]
 
     processors: list[Any]
     if json_output:
-        # Production: JSON output with orjson
+        # Production: JSON output with orjson (fastest serializer)
         processors = [
+            structlog.stdlib.filter_by_level,
             *shared_processors,
+            structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.JSONRenderer(serializer=_orjson_serializer),
         ]
-        factory: Any = structlog.BytesLoggerFactory()
+        factory: Any = structlog.stdlib.LoggerFactory()
     else:
-        # Development: colored console output
+        # Development: colored console output with better human readability
         processors = [
+            structlog.stdlib.filter_by_level,
             *shared_processors,
             structlog.dev.ConsoleRenderer(colors=True),
         ]
-        factory = structlog.PrintLoggerFactory()
+        factory = structlog.stdlib.LoggerFactory()
 
     structlog.configure(
         processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(level),
         logger_factory=factory,
+        wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
 
-    # Configure standard logging to use structlog
+    # Configure standard logging to bridge into structlog
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
         level=level,
     )
+
 
     # MOD-6 (audit 2026-03-05): Bridge stdlib logging into the OTel SDK so that
     # every log record is correlated with active traces (trace_id / span_id) in

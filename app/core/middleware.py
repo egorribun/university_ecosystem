@@ -18,6 +18,7 @@ from app.core.csrf import CSRFMiddleware
 from app.core.exceptions.handlers import asgi_json_problem
 from app.core.internal_access import InternalAccessMiddleware
 from app.core.localization import resolve_locale
+from app.core.logging import bind_context, get_logger
 from app.core.ratelimit import EndpointRateLimit, RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
 
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
 
     from app.core.config import Settings
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 # D-04 (audit 2026-03-08): Correlation ID available to any logger in this process
 # via request_id_ctx.get().  Set by RequestIDMiddleware on every HTTP request.
@@ -83,6 +84,9 @@ class RequestIDMiddleware:
 
         scope.setdefault("state", {})["request_id"] = request_id
         ctx_token = request_id_ctx.set(request_id)
+        # Binds request_id to the current asyncio task context for structlog.
+        bind_context(request_id=request_id)
+
 
         async def _send_with_id(message: Any) -> None:
             if message["type"] == "http.response.start":
@@ -213,9 +217,12 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
 
         import anyio
 
-        accumulated = 0
-        tmpfile = tempfile.SpooledTemporaryFile(
-            max_size=self._MEM_BUFFER_THRESHOLD, mode="w+b"
+        # PERF-006 (audit 2026-03-10): SpooledTemporaryFile() may create a real
+        # temp file on disk when data exceeds max_size — a blocking open() syscall.
+        # Run construction in a thread pool to keep the event loop responsive.
+        _threshold = self._MEM_BUFFER_THRESHOLD
+        tmpfile = await anyio.to_thread.run_sync(
+            lambda: tempfile.SpooledTemporaryFile(max_size=_threshold, mode="w+b")
         )
         try:
             async for chunk in request.stream():
@@ -328,6 +335,10 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         # access token lifetime.  Without this, the cookie persists 24h after
         # logout/session expiry, creating a CSRF replay window.
         cookie_max_age=settings.access_token_expire_minutes * 60,
+        # RZ-003 (audit 2026-03-10): Pass the HMAC signing key so tokens are
+        # bound to the session_id (Signed Double-Submit Cookie pattern).
+        # When empty, CSRFMiddleware falls back to unsigned Double-Submit with a warning.
+        csrf_hmac_secret=settings.csrf_hmac_secret,
     )
 
     app.add_middleware(

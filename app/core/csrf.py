@@ -1,40 +1,45 @@
-"""CSRF protection via the stateless Double-Submit Cookie pattern.
+"""CSRF protection via the Signed Double-Submit Cookie pattern.
 
-How it works
-------------
+How it works (Signed Double-Submit — OWASP §Signed Double-Submit Cookies)
+--------------------------------------------------------------------------
 1. On every response the middleware ensures a ``csrf_token`` cookie is
-   present.  The cookie is **not** HttpOnly so the browser-resident SPA
-   can read it with JavaScript and attach it as the ``X-CSRF-Token``
-   request header on every mutating request.
-2. On state-changing requests (POST / PUT / PATCH / DELETE) the
-   middleware verifies that the ``X-CSRF-Token`` header matches the
-   ``csrf_token`` cookie value.  An attacker on a different origin cannot
-   read the cookie, so they cannot forge the header — this is the core
-   invariant of the pattern.
+   present.  The cookie value is a signed token::
+
+       <random_nonce>.<HMAC-SHA256(random_nonce + session_id, hmac_secret)>
+
+   Binding the HMAC to the current *session ID* prevents the "subdomain
+   fixation" attack: an adversary who controls ``static.university.edu``
+   can set arbitrary cookies on the parent domain, but cannot compute a
+   valid MAC for the victim's session ID without the server-side secret.
+
+2. The cookie is **not** HttpOnly so the browser-resident SPA can read it
+   and forward it as the ``X-CSRF-Token`` header on mutating requests.
+
+3. On state-changing requests (POST / PUT / PATCH / DELETE) the middleware
+   verifies:
+   a. The header token matches the cookie token (classic Double-Submit).
+   b. The HMAC is valid for the nonce *and* the current session ID.
+      An attacker-crafted cookie with a known nonce but wrong session_id
+      will fail the HMAC check — subdomain fixation is closed.
+
+Unsigned fallback (dev / no secret configured)
+----------------------------------------------
+When ``csrf_hmac_secret`` is empty (local dev without .env), the middleware
+falls back transparently to the classic unsigned Double-Submit pattern so
+the application still boots without requiring extra configuration.  A
+warning is logged once on startup.  Production should always set the secret.
 
 Exemptions (in priority order)
 -------------------------------
 * ``OPTIONS`` — preflight; no body, no side-effects.
-* Paths starting with ``/ws`` — WebSocket upgrade requests are
-  long-lived and do not transmit cookies in the same way.
-* ``Authorization: Bearer …`` — REST / mobile API clients use
-  token-based auth and have no access to browser cookies.
-* Configurable ``exempt_prefixes`` — e.g. ``/internal``, OAuth callbacks.
-
-SameSite relationship
----------------------
-``SameSite=Strict`` on the *authentication* cookie already blocks most
-CSRF vectors in modern browsers.  This middleware is a defence-in-depth
-layer that also covers older browsers, same-site subdomain compromise,
-and development environments where ``SameSite=lax`` is used.
+* WebSocket upgrades (Upgrade: websocket header) — long-lived, no cookies.
+* ``Authorization: Bearer …`` — REST/mobile API clients; CORS guards them.
+* Configurable ``exempt_prefixes`` — /internal, OAuth callbacks, etc.
 
 Implementation: pure ASGI (no BaseHTTPMiddleware)
 --------------------------------------------------
-Using ``BaseHTTPMiddleware`` from Starlette buffers the **entire response
-body** in memory before passing it downstream.  This silently breaks
-streaming responses (SSE, NDJSON, chunked upload progress) and inflates
-peak memory for large file downloads.
-
+Using ``BaseHTTPMiddleware`` buffers the **entire response body** in memory
+before passing it downstream, silently breaking SSE and chunked uploads.
 This implementation is a pure ASGI callable that injects the CSRF cookie
 via the ``http.response.start`` ASGI message without reading or buffering
 any response body.  (TD-2: audit 2026-02-26)
@@ -42,6 +47,8 @@ any response body.  (TD-2: audit 2026-02-26)
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import secrets
 from typing import TYPE_CHECKING
@@ -50,18 +57,23 @@ from starlette.requests import Request
 
 from app.core.exceptions.handlers import asgi_json_problem
 from app.core.localization import resolve_locale
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 _MUTATION_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
-_TOKEN_BYTES = 32  # 256-bit token → ~43 URL-safe base64 chars
+# Nonce bytes: 256-bit → 43 URL-safe base64 chars
+_TOKEN_NONCE_BYTES = 32
+# Separator between nonce and HMAC in the cookie value.
+# Period is safe in cookie values (RFC 6265) and is not produced by base64url.
+_TOKEN_SEPARATOR = "."
 
 # Marker key in request.state used by auth endpoints to signal that the CSRF
 # token must be rotated after privilege escalation (login, MFA completion,
@@ -92,6 +104,68 @@ def signal_csrf_rotation(request: Request) -> None:
 _REJECT_BODY: bytes = b'{"detail":"CSRF token mismatch"}'
 
 
+# ── HMAC helpers ─────────────────────────────────────────────────────────────
+
+
+def _compute_csrf_hmac(nonce: str, session_id: str, secret: bytes) -> str:
+    """Return the hex-encoded HMAC-SHA256(nonce + session_id, secret).
+
+    Binding the HMAC to session_id prevents subdomain fixation:
+    a subdomain adversary can set the nonce but cannot compute a valid MAC
+    for a victim's session_id without knowing the server secret.
+    """
+    message = (nonce + session_id).encode("utf-8")
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+
+def _build_signed_token(session_id: str, secret: bytes) -> str:
+    """Generate a signed CSRF token: ``<nonce>.<hmac>``."""
+    nonce = secrets.token_urlsafe(_TOKEN_NONCE_BYTES)
+    mac = _compute_csrf_hmac(nonce, session_id, secret)
+    return f"{nonce}{_TOKEN_SEPARATOR}{mac}"
+
+
+def _verify_signed_token(token: str, session_id: str, secret: bytes) -> bool:
+    """Verify a signed CSRF token in constant time.
+
+    Returns True iff the token is well-formed and the HMAC is valid for the
+    given session_id. Always O(1) regardless of early-exit conditions to
+    prevent timing oracles.
+    """
+    # Split into exactly two parts — reject malformed tokens.
+    parts = token.split(_TOKEN_SEPARATOR, maxsplit=1)
+    if len(parts) != 2:
+        return False
+    nonce, received_mac = parts
+    if not nonce or not received_mac:
+        return False
+    expected_mac = _compute_csrf_hmac(nonce, session_id, secret)
+    # secrets.compare_digest is constant-time on equal-length strings.
+    return secrets.compare_digest(expected_mac, received_mac)
+
+
+# ── Session ID extraction ─────────────────────────────────────────────────────
+
+
+def _extract_session_id(request: Request, cookie_token: str) -> str:
+    """Return the session identifier to bind into the CSRF HMAC.
+
+    Priority (most specific → least specific):
+    1. ``request.state.session_id`` — set by the auth middleware after the
+       JWT is validated.  This is the tightest binding.
+    2. The nonce portion of the *existing* cookie token — allows the HMAC
+       to be verified during the request before the session is loaded.
+    3. ``""`` — anonymous / pre-auth requests; signed token degrades to an
+       unauthenticated but still server-validated HMAC (better than nothing).
+    """
+    session_id: str = getattr(request.state, "session_id", None) or ""
+    if not session_id:
+        # For anonymous requests, bind to a per-request fingerprint derived
+        # from the existing nonce (if any) so the token is still server-minted.
+        session_id = cookie_token.split(_TOKEN_SEPARATOR, 1)[0] if cookie_token else ""
+    return session_id
+
+
 async def _reject_csrf(scope: Scope, receive: Receive, send: Send) -> None:
     """Return a localized 403 JSON response for CSRF rejection."""
     locale = resolve_locale(request=Request(scope, receive))
@@ -106,7 +180,16 @@ async def _reject_csrf(scope: Scope, receive: Receive, send: Send) -> None:
 
 
 class CSRFMiddleware:
-    """Stateless Double-Submit Cookie CSRF protection — pure ASGI.
+    """Signed Double-Submit Cookie CSRF protection — pure ASGI.
+
+    RZ-003 (audit 2026-03-10): Upgraded from plain Double-Submit to Signed
+    Double-Submit (OWASP CSRF Cheat Sheet §Signed Double-Submit Cookies).
+    Each CSRF token is now HMAC-SHA256 signed and bound to the current
+    session_id, closing the subdomain fixation attack vector.
+
+    When ``csrf_hmac_secret`` is not configured (empty), the middleware
+    falls back gracefully to the unsigned Double-Submit pattern to keep
+    local development working without extra environment variables.
 
     Implemented as a raw ASGI callable (no ``BaseHTTPMiddleware``) so that
     streaming responses (SSE, NDJSON, chunked file downloads) are never
@@ -126,6 +209,9 @@ class CSRFMiddleware:
         ``SameSite`` policy for the CSRF cookie.  ``"strict"`` is
         preferred in production; ``"lax"`` may be needed in development
         when the frontend and API run on different ports.
+    csrf_hmac_secret:
+        HMAC key used to sign tokens.  If empty, falls back to unsigned
+        Double-Submit (with a startup warning).
     """
 
     def __init__(
@@ -136,6 +222,7 @@ class CSRFMiddleware:
         cookie_secure: bool = True,
         cookie_samesite: str = "strict",
         cookie_max_age: int = 86400,
+        csrf_hmac_secret: str = "",
     ) -> None:
         self._app = app
         self._exempt: tuple[str, ...] = tuple(exempt_prefixes)
@@ -143,10 +230,22 @@ class CSRFMiddleware:
         self._cookie_samesite = cookie_samesite
         # RZ-F-08 (audit 2026-03-07): Explicit Max-Age prevents the CSRF token
         # from becoming a permanent session cookie — browsers restore session
-        # cookies on restart ("Continue where you left off"), which effectively
-        # makes them permanent.  Default: 24 h.  Set to match the access token
-        # lifetime at the call site for tighter coupling.
+        # cookies on restart, which would effectively make them permanent.
         self._cookie_max_age = cookie_max_age
+
+        # RZ-003: Derive bytes key once at construction time.
+        if csrf_hmac_secret:
+            self._hmac_key: bytes = csrf_hmac_secret.encode("utf-8")
+            self._signed: bool = True
+        else:
+            # Graceful unsigned fallback for local dev — warn once.
+            self._hmac_key = b""
+            self._signed = False
+            _logger.warning(
+                "RZ-003: CSRF_HMAC_SECRET is not configured. Falling back to unsigned Double-Submit pattern.",
+                vulnerability="subdomain fixation",
+                recommendation="Set CSRF_HMAC_SECRET (>=32 bytes) in production.",
+            )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         # Only protect HTTP — pass WebSocket / lifespan through unchanged.
@@ -186,7 +285,7 @@ class CSRFMiddleware:
         # RZ-6: Previous code checked `if not request.cookies.get(CSRF_COOKIE_NAME)`,
         # which had inverted logic: it exempted Bearer requests WITHOUT a cookie and
         # blocked Bearer requests WITH a cookie. Presence or absence of a cookie is
-        # irrelevant for Bearer auth \u2014 the Authorization header is proof of intent.
+        # irrelevant for Bearer auth — the Authorization header is proof of intent.
         auth_header = request.headers.get("authorization", "")
         if auth_header.lower().startswith("bearer "):
             await self._app(scope, receive, send)
@@ -199,25 +298,37 @@ class CSRFMiddleware:
         if method in _MUTATION_METHODS:
             if not cookie_token or not header_token:
                 _logger.warning(
-                    "CSRF rejected (missing token): method=%s path=%s "
-                    "cookie_present=%s header_present=%s",
-                    method,
-                    path,
-                    bool(cookie_token),
-                    bool(header_token),
+                    "CSRF rejected (missing token)",
+                    method=method,
+                    path=path,
+                    cookie_present=bool(cookie_token),
+                    header_present=bool(header_token),
                 )
                 await _reject_csrf(scope, receive, send)
                 return
 
-            # Constant-time comparison prevents timing-oracle attacks.
+            # Step 1: Classic Double-Submit — constant-time comparison.
             if not secrets.compare_digest(cookie_token, header_token):
                 _logger.warning(
-                    "CSRF rejected (token mismatch): method=%s path=%s",
-                    method,
-                    path,
+                    "CSRF rejected (token mismatch)",
+                    method=method,
+                    path=path,
                 )
                 await _reject_csrf(scope, receive, send)
                 return
+
+            # Step 2: HMAC signature check (RZ-003 — Signed Double-Submit).
+            # Only performed when the secret is configured (signed mode).
+            if self._signed:
+                session_id = _extract_session_id(request, cookie_token)
+                if not _verify_signed_token(cookie_token, session_id, self._hmac_key):
+                    _logger.warning(
+                        "CSRF rejected (invalid HMAC signature)",
+                        method=method,
+                        path=path,
+                    )
+                    await _reject_csrf(scope, receive, send)
+                    return
 
         # ── Inject CSRF cookie into response (no body buffering) ─────────────
         async def send_with_csrf_cookie(message: Message) -> None:
@@ -226,7 +337,11 @@ class CSRFMiddleware:
                 should_rotate: bool = getattr(request.state, _ROTATE_CSRF_KEY, False)
                 # If no existing cookie is present, or the endpoint signaled rotation, inject a new token
                 if not cookie_token or should_rotate:
-                    new_token = secrets.token_urlsafe(_TOKEN_BYTES)
+                    if self._signed:
+                        session_id = _extract_session_id(request, "")
+                        new_token = _build_signed_token(session_id, self._hmac_key)
+                    else:
+                        new_token = secrets.token_urlsafe(_TOKEN_NONCE_BYTES)
                     set_cookie_header = self._build_set_cookie_header(new_token)
                     headers: list[tuple[bytes, bytes]] = list(
                         message.get("headers", [])

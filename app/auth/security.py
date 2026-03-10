@@ -19,6 +19,7 @@ from zxcvbn import zxcvbn
 
 from app.core.config import settings
 from app.core.localization import translate
+from app.core.logging import get_logger
 
 LEGACY_BCRYPT_MAX_BYTES = 72
 # PERF-02 (audit 2026-03-04): Reduced from 65536 KiB (64 MiB) to 32768 KiB (32 MiB).
@@ -31,7 +32,7 @@ ARGON2_PARALLELISM = 4
 DEFAULT_SCHEME = "argon2"
 LEGACY_SCHEME = "bcrypt"
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 # Executor for CPU-bound auth operations (Argon2 hashing).
@@ -74,10 +75,28 @@ _auth_executor = ThreadPoolExecutor(
 # The semaphore provides backpressure: excess callers await a free slot instead
 # of all racing to the executor at once. Always >=1 to avoid deadlock.
 _ARGON2_CONCURRENCY_LIMIT: int = max(1, _AUTH_EXECUTOR_WORKERS - 1)
+
+# RZ-001 (audit 2026-03-10): asyncio.Semaphore is NOT fork-safe.
+# When Gunicorn uses --preload, worker processes are forked AFTER the module is
+# imported but BEFORE the asyncio event loop starts. A module-level Semaphore
+# created in the master process is bound to the master's (non-existent) event
+# loop — all workers share a dead object and deadlock on the first acquire().
+#
+# Fix: create the Semaphore lazily inside _get_argon2_semaphore() which is
+# called at request-time, AFTER the worker's event loop is running.
+# Using a module-level None sentinel means each forked process initializes
+# its own Semaphore on first use (safe — Python's GIL makes the None check
+# and assignment atomic for CPython).
 _argon2_semaphore: asyncio.Semaphore | None = None
 
 
 def _get_argon2_semaphore() -> asyncio.Semaphore:
+    """Return (or lazily create) a per-worker asyncio.Semaphore.
+
+    Must be called from within a running event loop. Each forked Gunicorn
+    worker creates its own Semaphore on first request — fork-safe by design.
+    The CPython GIL makes the None-check + assignment effectively atomic.
+    """
     global _argon2_semaphore
     if _argon2_semaphore is None:
         _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
@@ -122,7 +141,10 @@ def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
         password_bytes = plain_password.encode("utf-8")[:LEGACY_BCRYPT_MAX_BYTES]
         return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
     except Exception as exc:
-        _logger.warning("Legacy bcrypt verification failed: %s", type(exc).__name__)
+        _logger.warning(
+            "Legacy bcrypt verification failed",
+            error_type=type(exc).__name__,
+        )
         return False
 
 
@@ -149,14 +171,20 @@ def _calculate_lookup_hash(input_data: str) -> str:
     )
 
 
-# RZ-10: Lock created lazily using a threading.Lock constraint to prevent
-# double-allocation TOCTOU while safely binding the inner asyncio.Lock to the
-# local ASGI worker event loop.
+# RZ-002 (audit 2026-03-10): asyncio.Lock is NOT fork-safe.
+# Same issue as _argon2_semaphore above: the Lock must be created AFTER the
+# worker process forks and its event loop is running. Lazy init on first use
+# is the correct pattern — each worker creates its own Lock independently.
 _hibp_client: httpx.AsyncClient | None = None
 _hibp_client_lock: asyncio.Lock | None = None
 
 
 def _get_hibp_client_lock() -> asyncio.Lock:
+    """Return (or lazily create) a per-worker asyncio.Lock for HIBP client init.
+
+    Called at request-time, after the worker's event loop is running.
+    Fork-safe: each forked Gunicorn worker creates its own Lock on first use.
+    """
     global _hibp_client_lock
     if _hibp_client_lock is None:
         _hibp_client_lock = asyncio.Lock()
@@ -522,14 +550,14 @@ def decode_token(token: str) -> dict[str, Any] | None:
         kid_secret = registry.get(kid)
         if not kid_secret:
             # kid present but unknown — reject immediately; do not fall back.
-            _logger.warning("JWT rejected: unknown kid=%r", kid)
+            _logger.warning("JWT rejected", reason="unknown kid", kid=kid)
             return None
         candidates = [kid_secret]
     else:
         # RZ-10 (audit 2026-03-04) fix:
         # Tokens without `kid` are immediately rejected.
         # This closes the O(N) timing side-channel attack vector.
-        _logger.warning("JWT rejected: missing 'kid' header.")
+        _logger.warning("JWT rejected", reason="missing kid header")
         return None
 
     for secret in candidates:

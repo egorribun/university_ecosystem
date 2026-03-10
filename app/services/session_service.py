@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
 from app.models.models import ActiveSession
 from app.repositories.active_session_repository import ActiveSessionRepository
+from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import ActiveSessionDTO
 
 logger = logging.getLogger(__name__)
@@ -52,9 +53,10 @@ async def register_session_bg(
 
 
 class SessionService:
-    def __init__(self, db: AsyncDatabaseSession, repo: ActiveSessionRepository):
-        self.db = db
-        self.repo = repo
+    def __init__(self, uow: UnitOfWork):
+        self.uow = uow
+        self.repo = uow.sessions
+        self.db = uow.session
 
     async def create_access_token(
         self,
@@ -116,7 +118,8 @@ class SessionService:
         # 2. Enforce concurrent session limit (lock-free soft limit)
         await self._enforce_concurrent_limit(user_id, jti, now)
 
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         # 4. Mint JWT
         token = self._mint_jwt(user_id, jti, now, expires_at, extra_claims)
@@ -236,8 +239,8 @@ class SessionService:
 
         session.revoked_at = session.revoked_at or now
         session.signing_key = secrets.token_urlsafe(32)
-        await self.db.commit()
-        await self.db.refresh(session)
+        async with self.uow:
+            await self.uow.commit()
 
         # Best effort backend revocation
         from contextlib import suppress
@@ -267,5 +270,6 @@ class SessionService:
         revoked = await revoke_sessions_matching(
             db=self.db, whereclause=and_(*where_parts)
         )
-        await self.db.commit()
+        async with self.uow:
+            await self.uow.commit()
         return revoked

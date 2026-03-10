@@ -117,128 +117,7 @@ def _resolve_current_trace_id() -> str | None:
     return get_trace_id() or get_request_id()
 
 
-class CorrelationIdMiddleware(BaseHTTPMiddleware):
-    def __init__(
-        self,
-        app: FastAPI,
-        header_name: str = "x-request-id",
-        trace_header_name: str = "x-trace-id",
-    ) -> None:
-        super().__init__(app)
-        self._header_name = header_name
-        self._trace_header_name = trace_header_name
-
-    async def dispatch(self, request: Request, call_next: Any) -> Response:
-        header_value = request.headers.get(self._header_name)
-        request_id = header_value or uuid.uuid4().hex
-        trace_header_value = request.headers.get(self._trace_header_name)
-        trace_id = trace_header_value or request_id
-        request_token = _request_id_ctx.set(request_id)
-        trace_token = _trace_id_ctx.set(trace_id)
-        try:
-            response: Response = await call_next(request)
-        finally:
-            _request_id_ctx.reset(request_token)
-            _trace_id_ctx.reset(trace_token)
-        resolved_trace_id = _resolve_current_trace_id() or trace_id
-        response.headers[self._header_name] = request_id
-        response.headers[self._trace_header_name] = resolved_trace_id
-        return response
-
-
-class TraceContextFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        span = trace.get_current_span()
-        span_context = span.get_span_context()
-        if span_context is not None and span_context.is_valid:
-            record.trace_id = f"{span_context.trace_id:032x}"
-            record.span_id = f"{span_context.span_id:016x}"
-        else:
-            record.trace_id = _resolve_current_trace_id() or ""
-            record.span_id = ""
-        request_id = get_request_id()
-        record.request_id = request_id or ""
-        record.service_name = settings.otel_service_name
-        record.environment = settings.environment
-        return True
-
-
-class JSONLogFormatter(logging.Formatter):
-    """JSON formatter that captures all extra fields for structured logging."""
-
-    default_time_format = "%Y-%m-%dT%H:%M:%S"
-    default_msec_format = "%s.%03dZ"
-
-    # Standard LogRecord attributes to exclude from extras
-    _STANDARD_ATTRS: frozenset[str] = frozenset(
-        {
-            "name",
-            "msg",
-            "args",
-            "created",
-            "filename",
-            "funcName",
-            "levelname",
-            "levelno",
-            "lineno",
-            "module",
-            "msecs",
-            "pathname",
-            "process",
-            "processName",
-            "relativeCreated",
-            "stack_info",
-            "exc_info",
-            "exc_text",
-            "thread",
-            "threadName",
-            "taskName",
-            "message",
-        }
-    )
-
-    def format(self, record: logging.LogRecord) -> str:
-        log_record: dict[str, Any] = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-
-        # Known trace context fields (prioritized)
-        trace_fields = {
-            "trace_id": getattr(record, "trace_id", None),
-            "span_id": getattr(record, "span_id", None),
-            "request_id": getattr(record, "request_id", None),
-            "service_name": getattr(record, "service_name", None),
-            "environment": getattr(record, "environment", None),
-        }
-        for key, value in trace_fields.items():
-            if value:
-                log_record[key] = value
-
-        # Capture all custom extra fields
-        for key, value in record.__dict__.items():
-            if key in self._STANDARD_ATTRS or key in trace_fields:
-                continue
-            if key.startswith("_"):
-                continue
-            if value is None:
-                continue
-            # Ensure JSON serializable
-            try:
-                json.dumps(value)
-                log_record[key] = value
-            except (TypeError, ValueError):
-                log_record[key] = str(value)
-
-        if record.exc_info:
-            log_record["exc_info"] = self.formatException(record.exc_info)
-        if record.stack_info:
-            log_record["stack_info"] = self.formatStack(record.stack_info)
-
-        return json.dumps(log_record, ensure_ascii=False)
-
+from app.core.logging import configure_logging as _configure_structured_logging
 
 def _resolve_headers(value: str) -> Mapping[str, str]:
     headers: dict[str, str] = {}
@@ -255,26 +134,18 @@ def _resolve_headers(value: str) -> Mapping[str, str]:
 
 
 def _configure_logging() -> None:
-    global _logging_configured
-    if _logging_configured:
-        return
 
-    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    """Delegates logging setup to the central structlog configuration.
 
-    handler = logging.StreamHandler()
-    handler.setFormatter(JSONLogFormatter())
-    handler.addFilter(TraceContextFilter())
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    root_logger.handlers = [handler]
-
-    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "uvicorn.asgi"):
-        logger = logging.getLogger(logger_name)
-        logger.handlers = []
-        logger.propagate = True
-
-    _logging_configured = True
+    M-001 (audit 2026-03-10): All logging is now unified in app/core/logging.py.
+    The custom JSONLogFormatter and CorrelationIdMiddleware previously defined
+    here have been removed to eliminate duplicate logic and ensure consistent
+    request ID binding via structlog contextvars.
+    """
+    _configure_structured_logging(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        json_output=settings.environment not in {"development", "local", "testing"},
+    )
 
 
 def _configure_sentry(tracer_provider: TracerProvider | None) -> None:
@@ -387,6 +258,8 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
                 tracer_provider=tracer_provider,
                 enable_metrics=settings.enable_otel_metrics,
                 meter_provider=meter_provider if settings.enable_otel_metrics else None,
+                enable_commenter=True,
+                commenter_options={"opentelemetry_values": True},
             )
             _sqlalchemy_instrumented = True
         except RuntimeError:
@@ -420,11 +293,6 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
 
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
-        app.add_middleware(
-            cast(Any, CorrelationIdMiddleware),
-            header_name=settings.request_id_header,
-            trace_header_name=settings.trace_header,
-        )
         tracer_provider = _configure_otel(engine)
         _configure_sentry(tracer_provider)
 

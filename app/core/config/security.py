@@ -81,6 +81,19 @@ class SecuritySettings(
     imgproxy_salt: str | None = None
     imgproxy_base_url: str = "http://localhost:8081"
 
+    # ── CSRF (RZ-003, audit 2026-03-10) ──────────────────────────────────────
+    # Used to sign CSRF tokens with HMAC-SHA256, binding each token to the
+    # session_id of the authenticated user. Without this binding, a subdomain
+    # compromise (e.g. static.university.edu XSS) can set a known CSRF cookie
+    # value and bypass the Double-Submit validation — the "subdomain fixation"
+    # attack (OWASP CSRF Cheat Sheet §Signed Double-Submit Cookies).
+    #
+    # Must be set to an independent random secret (≥32 bytes) via env var.
+    # Default: derived from SECRET_KEY only in dev/testing to keep the
+    # application bootable without extra config in local environments.
+    csrf_hmac_secret: str = ""
+
+
     @field_validator("audit_log_secret")
     @classmethod
     def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:

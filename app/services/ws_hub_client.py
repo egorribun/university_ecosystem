@@ -22,56 +22,41 @@ logger = logging.getLogger(__name__)
 
 
 class WsHubClient:
-    """Thin async client for ws-hub internal cache invalidation endpoint.
+    """Async client for ws-hub distributed cache invalidation via NATS.
 
-    RZ-F-04 (audit 2026-03-07): Uses a persistent httpx.AsyncClient so that
-    TCP connections are reused across calls instead of being created and torn
-    down on every invalidation request.  The previous `async with
-    httpx.AsyncClient()` pattern did a full TCP+TLS handshake per call, which
-    exhausts ephemeral ports under high participant-removal throughput.
+    M-007 (audit 2026-03-10): Replaces the legacy HTTP-based invalidation with
+    asynchronous NATS JetStream events. This ensures that the Python backend
+    never blocks on the ws-hub internal API, and invalidation messages are
+    persisted in JetStream if the ws-hub is temporarily unreachable.
     """
 
     def __init__(self) -> None:
-        base = settings.ws_hub_internal_url.rstrip("/")
-        self._url = f"{base}/internal/cache/invalidate"
-        self._secret = settings.ws_hub_internal_secret
-        # Persistent connection pool — reused for the lifetime of the process.
-        self._client = httpx.AsyncClient(timeout=2.0)
+        from app.core.nats_broker import broker
 
-    def _headers(self) -> dict[str, str]:
-        if self._secret:
-            return {"Authorization": f"Bearer {self._secret}"}
-        return {}
+        self._broker = broker
 
     async def invalidate_cache(
         self,
         user_id: str | uuid.UUID,
         room_id: str | uuid.UUID,
     ) -> None:
-        """Evict the (user_id, room_id) entry from the ws-hub auth cache.
+        """Publish an invalidation event to NATS JetStream.
 
-        Failures are logged but never raised — a failed invalidation means the
-        old cached result lingers for at most 60 seconds, which is tolerable.
-        The calling code should not block on this best-effort call.
+        Events are published to 'cache.invalidate' subject. The ws-hub
+        subscribes to this subject to flush its internal auth cache.
         """
-        params = {"user_id": str(user_id), "room_id": str(room_id)}
+        payload = {
+            "user_id": str(user_id),
+            "room_id": str(room_id),
+            "timestamp": uuid.uuid1().time,  # record order
+        }
         try:
-            response = await self._client.post(
-                self._url,
-                params=params,
-                headers=self._headers(),
-            )
-            if response.status_code not in (204, 404):
-                logger.warning(
-                    "ws-hub cache invalidation returned unexpected status %d "
-                    "for user_id=%s room_id=%s",
-                    response.status_code,
-                    user_id,
-                    room_id,
-                )
+            # We don't await the full persistence if we want maximum speed,
+            # but nats_broker.publish is async and we should await it for safety.
+            await self._broker.publish("cache.invalidate", payload)
         except Exception:
             logger.warning(
-                "ws-hub cache invalidation failed for user_id=%s room_id=%s",
+                "Failed to publish ws-hub cache invalidation to NATS for user_id=%s room_id=%s",
                 user_id,
                 room_id,
                 exc_info=True,

@@ -96,47 +96,6 @@ func main() {
 	// network only (not exposed to the public internet via ingress).
 	http.Handle("/metrics", promhttp.Handler())
 
-	// TD-NEW-07 (audit 2026-03-07): Cache invalidation endpoint — called by the
-	// Python backend whenever a participant is removed from a chat room so that
-	// the stale "allowed" cache entry is evicted immediately (previously it
-	// persisted for up to 60 seconds).
-	//
-	// Security: gated by a shared secret passed in the Authorization header
-	// ("Bearer <WS_HUB_INTERNAL_SECRET>"). Only reachable from the internal
-	// Docker network; port is not exposed to the public internet.
-	http.Handle("/internal/cache/invalidate", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// WSH-01 (audit 2026-03-08 Wave 5): Fail-closed auth.
-		// If WS_HUB_INTERNAL_SECRET is not set the endpoint is misconfigured —
-		// deny all requests rather than silently allowing them (fail-open).
-		if cfg.InternalSecret == "" {
-			logger.Error("WS_HUB_INTERNAL_SECRET not configured; " +
-				"rejecting cache invalidation request to avoid fail-open")
-			http.Error(w, "service misconfigured", http.StatusServiceUnavailable)
-			return
-		}
-		authHeader := r.Header.Get("Authorization")
-		expected := "Bearer " + cfg.InternalSecret
-		if authHeader != expected {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		userID := r.URL.Query().Get("user_id")
-		roomID := r.URL.Query().Get("room_id")
-		if userID == "" || roomID == "" {
-			http.Error(w, "user_id and room_id are required", http.StatusBadRequest)
-			return
-		}
-
-		authClient.Invalidate(userID, roomID)
-		w.WriteHeader(http.StatusNoContent)
-	}), "cache_invalidate"))
-
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		ReadTimeout:  10 * time.Second,

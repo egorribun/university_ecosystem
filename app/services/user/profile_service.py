@@ -15,6 +15,7 @@ from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.auth_service import attach_pending_email
 from app.services.notification_service import NotificationService
+from app.repositories.unit_of_work import UnitOfWork
 from app.services.user.logic import update_user_attributes
 
 if TYPE_CHECKING:
@@ -26,11 +27,12 @@ logger = logging.getLogger(__name__)
 class UserProfileService:
     def __init__(
         self,
-        user_repo: UserRepository,
+        uow: UnitOfWork,
         audit: AuditService,
         notifications: NotificationService,
     ) -> None:
-        self.repo = user_repo
+        self.uow = uow
+        self.repo = uow.users
         self.audit = audit
         self.notifications = notifications
 
@@ -72,8 +74,8 @@ class UserProfileService:
         update_user_attributes(db_user, payload)
 
         self.repo.add(db_user)
-        await self.repo.flush()
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         # Convert back to DTO
         updated_user = self.repo._to_dto(db_user)
@@ -143,7 +145,8 @@ class UserProfileService:
             # It likely mutates the DB via session.
             await mfa.reset_user_mfa(self.repo.db, user_id=user_id)
 
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         if reset_requested:
             log_id = uuid.UUID(str(user_id)) if isinstance(user_id, str) else user_id

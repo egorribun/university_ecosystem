@@ -299,6 +299,33 @@ func (h *Hub) SubscribeToNATS() {
 	}
 	h.subs = append(h.subs, notifSub)
 
+	// M-007 (audit 2026-03-10): Distributed cache invalidation subscription.
+	// Receives events from the Python backend when a participant is removed.
+	invSub, err := h.Nats.Subscribe("cache.invalidate", func(msg *nats.Msg) {
+		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
+		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.CacheInvalidate")
+		defer span.End()
+
+		var inv struct {
+			UserID string `json:"user_id"`
+			RoomID string `json:"room_id"`
+		}
+		if err := json.Unmarshal(msg.Data, &inv); err == nil {
+			if h.authClient != nil {
+				h.authClient.Invalidate(inv.UserID, inv.RoomID)
+				h.Logger.Debug("Invalidated auth cache via NATS",
+					zap.String("user_id", inv.UserID),
+					zap.String("room_id", inv.RoomID))
+			}
+		} else {
+			h.Logger.Warn("Failed to unmarshal cache invalidation message", zap.Error(err))
+		}
+	})
+	if err != nil {
+		h.Logger.Fatal("NATS cache invalidation subscription failed", zap.Error(err))
+	}
+	h.subs = append(h.subs, invSub)
+
 	h.Logger.Info("Subscribed to NATS topics")
 }
 

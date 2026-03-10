@@ -332,30 +332,6 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         stmt = update(Chat).where(Chat.id == chat_id).values(updated_at=timestamp)
         await self.db.execute(stmt)
 
-    # ------------------------------------------------------------------ #
-    # Transaction proxies — callers should never access session directly.  #
-    # ------------------------------------------------------------------ #
-
-    async def commit(self) -> None:
-        """Commit the current unit of work."""
-        await self.db.commit()
-
-    async def rollback(self) -> None:
-        """Roll back the current unit of work."""
-        await self.db.rollback()
-
-    async def refresh(self, obj: object) -> None:
-        """Refresh *obj* from the database."""
-        await self.db.refresh(obj)
-
-    def add(self, obj: object) -> None:
-        """Stage *obj* for insertion/update."""
-        self.db.add(obj)
-
-    async def delete_obj(self, obj: object) -> None:
-        """Delete *obj* from the database."""
-        await self.db.delete(obj)
-
     async def get_user(self, user_id: uuid.UUID) -> User | None:
         """Fetch a User by primary key — used by ChatService to resolve participants."""
         return await self.db.get(User, user_id)
