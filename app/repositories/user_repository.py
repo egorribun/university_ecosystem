@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, exists, func, or_, select
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from app.core.protocols import AsyncDatabaseSession
 from app.models import models
@@ -90,15 +90,18 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         obj = result.scalars().first()
         return UserAuthDTO.model_validate(obj) if obj else None
 
-    async def get_by_login(self, login: str) -> UserDTO | None:
-        """Find user by email or username/login."""
+    async def get_by_email_only(self, login: str) -> UserDTO | None:
+        """Find user by email address (case-insensitive).
+
+        TD-002 (audit 2026-03-10): Renamed from ``get_by_login`` and the dead
+        ``or_()`` wrapper removed. The previous docstring claimed to search by
+        "email or username/login" but the or_() had only one branch (email),
+        making the promise a lie. Until a username field is added to the User
+        model, this method correctly documents its single search key.
+        """
         stmt = (
             select(User)
-            .where(
-                or_(
-                    func.lower(User.email) == login.lower(),
-                )
-            )
+            .where(func.lower(User.email) == login.strip().lower())
             .options(*USER_MFA_LOAD_OPTIONS)
         )
         result = await self.db.execute(stmt)
@@ -148,22 +151,33 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         filters: schemas.UserSearchFilter | None = None,
     ) -> list[UserDTO]:
         filters = filters or schemas.UserSearchFilter()
+
+        # PERF-001 (audit 2026-03-10): Replaced User.profile.has(...) correlated
+        # subquery with an explicit INNER JOIN. SQLAlchemy's .has() generates an
+        # EXISTS (SELECT 1 FROM user_profile WHERE ...) subquery evaluated per-row —
+        # effectively an N+1 query pattern. The JOIN + contains_eager resolves the
+        # filter in a single pass and tells SQLAlchemy the relationship is already
+        # loaded so it does not issue a second round-trip.
         stmt = (
             select(User)
-            .where(User.profile.has(UserProfile.status != "deleted"))
+            .join(User.profile)
+            .where(UserProfile.status != "deleted")
             .options(
-                # TD-2: Replaced __import__() dynamic lookup with explicit top-level import.
-                # Dynamic imports break IDE navigation, refactoring tools, and mypy.
-                *USER_LIST_LOAD_OPTIONS,
+                # PERF-001 (audit 2026-03-10): contains_eager() tells SQLAlchemy
+                # that User.profile is already loaded via the explicit JOIN above.
+                # USER_LIST_LOAD_OPTIONS is intentionally excluded — it contains
+                # joinedload(User.profile) which conflicts with contains_eager on
+                # the same ORM path (raises InvalidRequestError). The JOIN already
+                # replaces the joinedload with zero extra round-trips.
+                contains_eager(User.profile),
                 selectinload(User.group),
             )
         )
         if filters.group_id:
             stmt = stmt.where(User.group_id == filters.group_id)
         if filters.full_name:
-            stmt = stmt.where(
-                User.profile.has(UserProfile.full_name.ilike(f"%{filters.full_name}%"))
-            )
+            # Profile is already joined above — filter directly on UserProfile column.
+            stmt = stmt.where(UserProfile.full_name.ilike(f"%{filters.full_name}%"))
         if filters.role:
             stmt = stmt.where(User.role == filters.role)
 
@@ -174,7 +188,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         stmt = stmt.limit(capped_limit).offset(filters.offset)
 
         result = await self.db.execute(stmt)
-        objs = result.scalars().all()
+        # unique() is required after contains_eager to deduplicate rows produced
+        # by the JOIN (a user with multiple profile associations would appear twice).
+        objs = result.unique().scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
     async def get_active_users(
@@ -377,6 +393,30 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
 
         return core_data, profile_data, pref_data, edu_data
 
+    def _build_user_aggregate(
+        self,
+        core_data: dict[str, Any],
+        profile_data: dict[str, Any],
+        pref_data: dict[str, Any],
+        edu_data: dict[str, Any],
+    ) -> models.User:
+        """Construct a User ORM aggregate with all nested sub-objects.
+
+        TD-004 (audit 2026-03-10): Extracted from the duplicate 14-line
+        construction block that appeared verbatim in both ``create()`` and
+        ``create_with_invite()``. A single change point for the aggregate
+        structure ensures both code paths stay consistent.
+
+        Always populates profile / preferences / education_path — even when
+        no data is provided — so downstream code can safely access
+        ``user.profile`` without a None-guard.
+        """
+        user = models.User(**core_data)
+        user.profile = models.UserProfile(**profile_data) if profile_data else models.UserProfile()
+        user.preferences = models.UserPreferences(**pref_data) if pref_data else models.UserPreferences()
+        user.education_path = models.EducationPath(**edu_data) if edu_data else models.EducationPath()
+        return user
+
     async def create(self, obj_in: schemas.UserCreate | dict[str, Any]) -> UserDTO:
         if hasattr(obj_in, "model_dump"):
             obj_data = obj_in.model_dump()
@@ -384,22 +424,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             obj_data = obj_in
 
         core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(obj_data)
-
-        user = models.User(**core_data)
-        if profile_data:
-            user.profile = models.UserProfile(**profile_data)
-        else:
-            user.profile = models.UserProfile()
-
-        if pref_data:
-            user.preferences = models.UserPreferences(**pref_data)
-        else:
-            user.preferences = models.UserPreferences()
-
-        if edu_data:
-            user.education_path = models.EducationPath(**edu_data)
-        else:
-            user.education_path = models.EducationPath()
+        user = self._build_user_aggregate(core_data, profile_data, pref_data, edu_data)
 
         self.db.add(user)
         await self.db.flush()
@@ -453,25 +478,8 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         self, user_data: dict[str, Any], invite_code: models.InviteCode | None
     ) -> UserDTO:
         """Create a user and optionally mark an invite code as used."""
-        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(
-            user_data
-        )
-
-        user = models.User(**core_data)
-        if profile_data:
-            user.profile = models.UserProfile(**profile_data)
-        else:
-            user.profile = models.UserProfile()
-
-        if pref_data:
-            user.preferences = models.UserPreferences(**pref_data)
-        else:
-            user.preferences = models.UserPreferences()
-
-        if edu_data:
-            user.education_path = models.EducationPath(**edu_data)
-        else:
-            user.education_path = models.EducationPath()
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(user_data)
+        user = self._build_user_aggregate(core_data, profile_data, pref_data, edu_data)
 
         self.db.add(user)
         await self.db.flush()  # Get ID

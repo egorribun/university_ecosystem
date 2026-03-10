@@ -42,24 +42,10 @@ from app.services.file_scanner import (
 # Re-exports for test compatibility and internal use
 scan_for_malware = _scan_for_malware
 
-# Initialize Pyroscope
-if os.getenv("ENABLE_PROFILING", "false").lower() == "true":
-    try:
-        import pyroscope
+# Initialize Profiler (TD-003: audit 2026-03-10)
+from app.core.profiling import get_profiler
 
-        pyroscope.configure(
-            application_name="university-backend",
-            server_address=os.getenv(
-                "PYROSCOPE_SERVER_ADDRESS", "http://pyroscope:4040"
-            ),
-        )
-        logging.info("Pyroscope continuous profiling enabled.")
-    except ImportError:
-        logging.warning(
-            "Pyroscope is enabled via ENABLE_PROFILING but the 'pyroscope-io' package is not installed."
-        )
-    except Exception as e:
-        logging.error(f"Failed to initialize Pyroscope: {e}")
+get_profiler().configure()
 
 # Disable interactive API documentation in non-development environments to
 # reduce attack surface (schema enumeration, PoC generation by attackers).

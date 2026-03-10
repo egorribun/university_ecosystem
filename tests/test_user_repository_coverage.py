@@ -45,9 +45,10 @@ async def test_get_by_email(user_repo, test_user):
 
 
 @pytest.mark.asyncio
-async def test_get_by_login_found(user_repo, test_user):
-    # Should work with email
-    user = await user_repo.get_by_login(test_user.email)
+async def test_get_by_email_only_found(user_repo, test_user):
+    # TD-002 (audit 2026-03-10): method renamed from get_by_login to
+    # get_by_email_only to reflect that it only searches by email, never username.
+    user = await user_repo.get_by_email_only(test_user.email)
     assert user is not None
     assert user.id == test_user.id
 

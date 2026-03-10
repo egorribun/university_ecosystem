@@ -9,7 +9,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService
-from app.services.notification_service import NotificationService
+from app.repositories.unit_of_work import UnitOfWork
 from app.services.user.compliance_service import UserComplianceService
 from app.services.user.media_service import UserMediaService
 from app.services.user.profile_service import UserProfileService
@@ -25,17 +25,18 @@ class UserService:
 
     def __init__(
         self,
-        user_repo: UserRepository,
+        uow: UnitOfWork,
         audit: AuditService,
         notifications: NotificationService,
     ) -> None:
-        self.repo = user_repo
+        self.uow = uow
+        self.repo = uow.users
         self.audit = audit
         self.notifications = notifications
 
-        self.profile_service = UserProfileService(user_repo, audit, notifications)
-        self.media_service = UserMediaService(user_repo)
-        self.compliance_service = UserComplianceService(user_repo, audit)
+        self.profile_service = UserProfileService(uow, audit, notifications)
+        self.media_service = UserMediaService(uow)
+        self.compliance_service = UserComplianceService(uow, audit)
 
     async def get_user_by_id(self, user_id: uuid.UUID | str) -> UserDTO | None:
         return await self.profile_service.get_user_by_id(user_id)

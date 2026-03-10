@@ -1,5 +1,6 @@
 """Unit tests for session fingerprinting module."""
 
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
@@ -232,9 +233,11 @@ class TestSuspiciousActivityEvent:
     """Tests for SuspiciousActivityEvent."""
 
     def test_to_log_record(self):
+        user_uuid = uuid.UUID("00000000-0000-0000-0000-000000000042")
+        session_uuid = uuid.UUID("00000000-0000-0000-0000-000000000100")
         event = SuspiciousActivityEvent(
-            user_id=42,
-            session_id=100,
+            user_id=user_uuid,
+            session_id=session_uuid,
             event_type="fingerprint_mismatch",
             details={"mismatched_fields": ["user_agent"]},
             timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
@@ -244,8 +247,8 @@ class TestSuspiciousActivityEvent:
         record = event.to_log_record()
 
         assert record["event"] == "suspicious_activity"
-        assert record["user_id"] == 42
-        assert record["session_id"] == 100
+        assert record["user_id"] == user_uuid
+        assert record["session_id"] == session_uuid
         assert record["event_type"] == "fingerprint_mismatch"
         assert record["severity"] == "high"
         assert record["mismatched_fields"] == ["user_agent"]
@@ -253,6 +256,10 @@ class TestSuspiciousActivityEvent:
 
 class TestSuspiciousActivityDetector:
     """Tests for SuspiciousActivityDetector class."""
+
+    def _uid(self, n: int = 1) -> uuid.UUID:
+        """Generate a deterministic test UUID."""
+        return uuid.UUID(f"00000000-0000-0000-0000-{n:012d}")
 
     def test_check_fingerprint_mismatch_no_mismatch(self):
         detector = SuspiciousActivityDetector()
@@ -263,7 +270,7 @@ class TestSuspiciousActivityDetector:
             fingerprint_hash="abc",
         )
 
-        result = detector.check_fingerprint_mismatch(1, 1, fp, fp)
+        result = detector.check_fingerprint_mismatch(self._uid(1), self._uid(1), fp, fp)
         assert result is None
 
     def test_check_fingerprint_mismatch_user_agent_change(self):
@@ -281,7 +288,7 @@ class TestSuspiciousActivityDetector:
             fingerprint_hash="def",
         )
 
-        result = detector.check_fingerprint_mismatch(1, 1, fp1, fp2)
+        result = detector.check_fingerprint_mismatch(self._uid(1), self._uid(1), fp1, fp2)
 
         assert result is not None
         assert result.severity == "high"
@@ -291,8 +298,8 @@ class TestSuspiciousActivityDetector:
         detector = SuspiciousActivityDetector()
 
         result = detector.check_rapid_location_change(
-            user_id=1,
-            session_id=1,
+            user_id=self._uid(1),
+            session_id=self._uid(1),
             previous_ip="1.2.3.4",
             current_ip="1.2.3.4",
             time_elapsed_seconds=10,
@@ -303,8 +310,8 @@ class TestSuspiciousActivityDetector:
         detector = SuspiciousActivityDetector()
 
         result = detector.check_rapid_location_change(
-            user_id=1,
-            session_id=1,
+            user_id=self._uid(1),
+            session_id=self._uid(1),
             previous_ip="1.2.3.4",
             current_ip="5.6.7.8",
             time_elapsed_seconds=120,  # More than 60 seconds
@@ -315,8 +322,8 @@ class TestSuspiciousActivityDetector:
         detector = SuspiciousActivityDetector()
 
         result = detector.check_rapid_location_change(
-            user_id=1,
-            session_id=1,
+            user_id=self._uid(1),
+            session_id=self._uid(1),
             previous_ip="1.2.3.4",
             current_ip="5.6.7.8",
             time_elapsed_seconds=30,  # Less than 60 seconds
@@ -330,14 +337,16 @@ class TestSuspiciousActivityDetector:
         detector = SuspiciousActivityDetector()
         fp1 = SessionFingerprint("A", "en", "1.1.1.1", "h1")
         fp2 = SessionFingerprint("B", "en", "1.1.1.1", "h2")
+        uid1 = uuid.UUID("00000000-0000-0000-0000-000000000001")
+        uid2 = uuid.UUID("00000000-0000-0000-0000-000000000002")
 
-        detector.check_fingerprint_mismatch(1, 1, fp1, fp2)
-        detector.check_rapid_location_change(2, 2, "1.1.1.1", "2.2.2.2", 10)
+        detector.check_fingerprint_mismatch(uid1, uid1, fp1, fp2)
+        detector.check_rapid_location_change(uid2, uid2, "1.1.1.1", "2.2.2.2", 10)
 
         all_events = detector.get_recent_events()
         assert len(all_events) == 2
 
-        user_1_events = detector.get_recent_events(user_id=1)
+        user_1_events = detector.get_recent_events(user_id=uid1)
         assert len(user_1_events) == 1
 
     def test_get_recent_events_limit(self):
@@ -346,7 +355,8 @@ class TestSuspiciousActivityDetector:
         fp2 = SessionFingerprint("B", "en", "1.1.1.1", "h2")
 
         for i in range(10):
-            detector.check_fingerprint_mismatch(i, i, fp1, fp2)
+            uid = uuid.UUID(f"00000000-0000-0000-0000-{i:012d}")
+            detector.check_fingerprint_mismatch(uid, uid, fp1, fp2)
 
         events = detector.get_recent_events(limit=5)
         assert len(events) == 5

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.repositories.auth_repository import AuthRepository
+from app.repositories.chat_repository import ChatRepository
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
 from app.repositories.notification_repository import NotificationRepository
-from app.repositories.session_repository import SessionRepository
+from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.story_repository import StoryRepository
 from app.repositories.user_repository import UserRepository
 
@@ -42,11 +45,15 @@ class UnitOfWork:
 
         # Initialize all repositories with the same session
         self.users = UserRepository(self._session)
+        self.auth = AuthRepository(self._session)
+        self.chats = ChatRepository(self._session)
         self.events = EventRepository(self._session)
         self.notifications = NotificationRepository(self._session)
         self.news = NewsRepository(self._session)
         self.stories = StoryRepository(self._session)
-        self.sessions = SessionRepository(self._session)
+        self.sessions = ActiveSessionRepository(self._session)
+        self.schedules = ScheduleRepository(self._session)
+        self.groups = GroupRepository(self._session)
 
         return self
 

@@ -22,6 +22,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings, settings
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 
 
@@ -38,9 +39,9 @@ def configure_database() -> None:
     sqlite3.register_adapter(datetime, adapt_datetime)
 
 
-logger = logging.getLogger(__name__)
-slow_query_logger = logging.getLogger("slow_queries")
-pool_health_logger = logging.getLogger("pool_health")
+logger = get_logger(__name__)
+slow_query_logger = get_logger("slow_queries")
+pool_health_logger = get_logger("pool_health")
 
 # Context variable to store query start time (async-safe)
 _query_start_time: ContextVar[float | None] = ContextVar(
@@ -189,15 +190,12 @@ def _after_cursor_execute(
         # or use specialized APM tools.
 
         slow_query_logger.warning(
-            "Slow query detected: %.2fms - %s",
-            elapsed_ms,
-            truncated_statement.replace("\n", " ").strip(),
-            extra={
-                "elapsed_ms": elapsed_ms,
-                "statement_length": len(statement),
-                "executemany": executemany,
-                "threshold_ms": threshold,
-            },
+            "Slow query detected",
+            elapsed_ms=elapsed_ms,
+            statement=truncated_statement.replace("\n", " ").strip(),
+            statement_length=len(statement),
+            executemany=executemany,
+            threshold_ms=threshold,
         )
 
 
@@ -251,14 +249,22 @@ def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -
             )
 
     sync_engine = engine.sync_engine
+
+    # PERF-002 (audit 2026-03-10): Guard against double-registration.
+    # Multiple calls to _setup_slow_query_logging() (e.g. from test fixtures or
+    # lifespan reinit) would stack duplicate listeners, doubling the perf_counter
+    # overhead on every query. event.contains() is the canonical check.
+    if event.contains(sync_engine, "before_cursor_execute", _before_cursor_execute):
+        return  # Already registered — idempotent, no-op.
+
     event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
     # PERF-2: Use the closure that captured _threshold_ms at setup time,
     # replacing the module-level _after_cursor_execute which called
     # getattr(settings, ...) on every single query execution.
     event.listen(sync_engine, "after_cursor_execute", _after_cursor_execute_closure)
     logger.info(
-        "Slow query logging enabled (threshold: %.0fms)",
-        _threshold_ms,
+        "Slow query logging enabled",
+        threshold_ms=_threshold_ms,
     )
 
 
@@ -295,9 +301,9 @@ def _on_invalidate(
     """Handle connection invalidation."""
     _pool_metrics.record_invalidation()
     pool_health_logger.warning(
-        "Connection invalidated: active=%d, exception=%s",
-        _pool_metrics.active_connections,
-        type(exception).__name__ if exception else "None",
+        "Connection invalidated",
+        active_connections=_pool_metrics.active_connections,
+        exception=type(exception).__name__ if exception else "None",
     )
 
 
@@ -305,9 +311,9 @@ def _on_checkout_failed(exception: Exception, pool: Any) -> None:
     """Handle failed checkout (pool exhausted)."""
     _pool_metrics.record_failed_checkout()
     pool_health_logger.error(
-        "Pool checkout failed (exhausted): failed_total=%d, pool_size=%d",
-        _pool_metrics.failed_checkouts,
-        pool.size(),
+        "Pool checkout failed (exhausted)",
+        failed_total=_pool_metrics.failed_checkouts,
+        pool_size=pool.size(),
     )
 
 

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
     from app.models.chat import Attachment
     from app.models.models import User
+    from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.chat import (
         AttachmentResponse,
         ChatMaintenanceResult,
@@ -51,13 +52,13 @@ class ChatCommandService:
 
     def __init__(
         self,
-        session: AsyncDatabaseSession,
-        repository: ChatRepository,
+        uow: UnitOfWork,
         attachment_service: ChatAttachmentService,
         notification_service: ChatNotificationService,
     ):
-        self.session = session
-        self.repository = repository
+        self.uow = uow
+        self.repository = uow.chats
+        self.session = uow.session
         self.attachment_service = attachment_service
         self.notification_service = notification_service
 
@@ -100,7 +101,8 @@ class ChatCommandService:
                 )
 
             new_chat = await self.repository.create_chat([user, participant])
-            await self.session.commit()
+            async with self.uow:
+                await self.uow.commit()
 
         participant_ids = [p.id for p in new_chat.participants]
         await invalidate_chat_participants_cache(new_chat.id)
@@ -226,9 +228,10 @@ class ChatCommandService:
                 self.repository.add(attachment)
 
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
-            await self.repository.commit()
+            async with self.uow:
+                await self.uow.commit()
         except Exception:
-            await self.repository.rollback()
+            await self.uow.rollback()
             await self.attachment_service.cleanup_files(saved_urls)
             raise
 
@@ -297,7 +300,8 @@ class ChatCommandService:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         await self.repository.mark_messages_read(chat_id, user.id)
-        await self.repository.commit()
+        async with self.uow:
+            await self.uow.commit()
 
     async def clear_history(
         self, chat_id: uuid.UUID, user: User, locale: str
@@ -318,9 +322,10 @@ class ChatCommandService:
         try:
             await self.repository.delete_messages([m.id for m in chat.messages])
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
-            await self.repository.commit()
+            async with self.uow:
+                await self.uow.commit()
         except Exception:
-            await self.repository.rollback()
+            await self.uow.rollback()
             raise
 
         await self.attachment_service.cleanup_files(attachment_urls)
@@ -352,12 +357,13 @@ class ChatCommandService:
 
         try:
             await self.repository.delete_chat(chat_id)
-            await self.repository.commit()
+            async with self.uow:
+                await self.uow.commit()
 
             await invalidate_chat_participants_cache(chat_id)
             await invalidate_presence_audience_cache(*p_ids)
         except Exception:
-            await self.repository.rollback()
+            await self.uow.rollback()
             raise
 
         # R-02 (audit 2026-03-08): Invalidate ws-hub auth cache immediately after

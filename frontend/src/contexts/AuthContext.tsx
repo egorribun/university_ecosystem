@@ -1,4 +1,7 @@
 import { createContext, useContext, useEffect, useMemo } from "react"
+// TD-006 (audit 2026-03-10): moved from line 31 (after createContext usage) to
+// top of file where all imports must appear per ESLint import/order rules.
+import { useShallow } from "zustand/react/shallow"
 import { resetEtagCache, registerSigningKeyAccessor } from "@/api/client"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import { useProfileSync, fetchCurrentUser, currentUserQueryKey } from "@/hooks/auth/useProfileSync"
@@ -28,7 +31,6 @@ export const AuthContext = createContext<
   "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation"
 >)
 
-import { useShallow } from "zustand/react/shallow"
 
 export const useAuth = (): AuthContextType => {
   const store = useAuthStore(
@@ -103,7 +105,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       loginWithPasskey,
       resetEtagCache,
     }),
-    [login, logout, setUser, refresh, submitMfaChallenge, requireMfa, loginWithPasskey]
+    // PERF-003 (audit 2026-03-10): resetEtagCache was used in the memo value but
+    // absent from deps. It is a stable module-level function reference (no extra
+    // re-renders), but must be listed for react-hooks/exhaustive-deps compliance
+    // and correctness if it ever becomes a hook-based function in the future.
+    [login, logout, setUser, refresh, submitMfaChallenge, requireMfa, loginWithPasskey, resetEtagCache]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

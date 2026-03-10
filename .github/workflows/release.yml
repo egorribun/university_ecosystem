@@ -32,6 +32,38 @@ jobs:
         run: npm ci
 
       - name: Release
+        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: npx semantic-release
+
+  build:
+    name: Build & Sign Releases
+    needs: [release]
+    strategy:
+      matrix:
+        include:
+          - image_name: "backend"
+            file: "backend.Dockerfile"
+            context: "."
+          - image_name: "frontend"
+            file: "frontend.Dockerfile"
+            context: "."
+          - image_name: "ws-hub"
+            file: "services/ws-hub/Dockerfile"
+            context: "services/ws-hub"
+          - image_name: "gateway"
+            file: "services/gateway/Dockerfile"
+            context: "services/gateway"
+          - image_name: "file-processor"
+            file: "services/file-processor/Dockerfile"
+            context: "services/file-processor"
+    uses: ./.github/workflows/reusable-build-and-sign.yml
+    with:
+      image_name: ${{ matrix.image_name }}
+      context: ${{ matrix.context }}
+      file: ${{ matrix.file }}
+      tags: |
+        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:latest
+        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ github.sha }}
+    secrets: inherit

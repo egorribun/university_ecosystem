@@ -48,6 +48,7 @@ from app.repositories.chat_repository import ChatRepository
 from app.repositories.event_repository import get_event_repository
 from app.repositories.news_repository import get_news_repository
 from app.repositories.session_repository import get_session_repository
+from app.repositories.unit_of_work import UnitOfWork, get_unit_of_work
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import (
     AuditService,
@@ -75,6 +76,8 @@ from app.services.group_service import GroupService
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
 from app.services.schedule_service import ScheduleService
+from app.services.session_service import SessionService
+from app.services.story_service import StoryService
 from app.services.session_service import SessionService
 from app.services.user.compliance_service import UserComplianceService
 from app.services.user.media_service import UserMediaService
@@ -229,13 +232,12 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def user_service(
         self,
-        db: AsyncDatabaseSession,
+        uow: UnitOfWork,
         audit: AuditService,
         notifications: NotificationService,
-        user_repo: UserRepository,
     ) -> UserService:
         return UserService(
-            user_repo=user_repo,
+            uow=uow,
             audit=audit,
             notifications=notifications,
         )
@@ -272,51 +274,62 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def event_service(
         self,
-        db: AsyncDatabaseSession,
+        uow: UnitOfWork,
         vector: VectorService,
     ) -> EventService:
-        return EventService(repo=get_event_repository(db), vector_service=vector)
+        return EventService(
+            uow=uow,
+            vector_service=vector,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def story_service(
+        self,
+        uow: UnitOfWork,
+    ) -> StoryService:
+        return StoryService(uow=uow)
 
     @provide(scope=Scope.REQUEST)
     def news_service(
         self,
-        db: AsyncDatabaseSession,
+        uow: UnitOfWork,
         vector: VectorService,
     ) -> NewsService:
-        return NewsService(repo=get_news_repository(db), vector_service=vector)
+        return NewsService(
+            uow=uow,
+            vector_service=vector,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def unit_of_work(self, db: AsyncDatabaseSession) -> UnitOfWork:
+        return get_unit_of_work(lambda: db)
 
     @provide(scope=Scope.REQUEST)
     def auth_service(
         self,
-        db: AsyncDatabaseSession,
         audit: AuditService,
-        auth_repo: AuthRepository,
-        user_repo: UserRepository,
+        uow: UnitOfWork,
     ) -> AuthService:
         return AuthService(
             audit=audit,
-            auth_repo=auth_repo,
-            user_repo=user_repo,
-            session_repo=get_session_repository(db),
+            auth_repo=uow.auth,
+            user_repo=uow.users,
+            session_repo=uow.sessions,
+            uow=uow,
         )
 
     @provide(scope=Scope.REQUEST)
     def schedule_service(
         self,
-        db: AsyncDatabaseSession,
+        uow: UnitOfWork,
     ) -> ScheduleService:
-        from app.repositories.schedule_repository import (
-            GroupRepository,
-            ScheduleRepository,
-        )
         from app.services.schedule_optimizer import (
             ScheduleOptimizerService,
         )
 
         return ScheduleService(
-            repo=ScheduleRepository(db),
-            group_repo=GroupRepository(db),
-            optimizer=ScheduleOptimizerService(),
+            uow=uow,
+            optimizer=ScheduleOptimizerService(uow=uow),
         )
 
     @provide(scope=Scope.REQUEST)
@@ -403,21 +416,19 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def chat_query_service(
-        self, db: AsyncDatabaseSession, repo: ChatRepository
+        self, uow: UnitOfWork
     ) -> ChatQueryService:
-        return ChatQueryService(session=db, repository=repo)
+        return ChatQueryService(session=uow.session, repository=uow.chats)
 
     @provide(scope=Scope.REQUEST)
     def chat_command_service(
         self,
-        db: AsyncDatabaseSession,
-        repo: ChatRepository,
+        uow: UnitOfWork,
         attachments: ChatAttachmentService,
         notifications: ChatWSNotificationService,
     ) -> ChatCommandService:
         return ChatCommandService(
-            session=db,
-            repository=repo,
+            uow=uow,
             attachment_service=attachments,
             notification_service=notifications,
         )
@@ -457,9 +468,9 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def session_service(
-        self, db: AsyncDatabaseSession, repo: ActiveSessionRepository
+        self, uow: UnitOfWork
     ) -> SessionService:
-        return SessionService(db=db, repo=repo)
+        return SessionService(uow=uow)
 
     @provide(scope=Scope.REQUEST)
     def lockout_service(self, db: AsyncDatabaseSession) -> LockoutService:

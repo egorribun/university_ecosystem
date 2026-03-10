@@ -60,11 +60,21 @@ def mock_repo():
     repo._get_orm = AsyncMock()
     repo._to_dto = MagicMock()
     repo.add = MagicMock()
-    repo.commit = AsyncMock()
-    repo.rollback = AsyncMock()
-    repo.flush = AsyncMock()
     repo.update = AsyncMock()
     return repo
+
+
+@pytest.fixture
+def mock_uow(mock_repo, mock_db):
+    """Create mock UnitOfWork."""
+    uow = AsyncMock()
+    uow.users = mock_repo
+    uow.commit = AsyncMock()
+    uow.rollback = AsyncMock()
+    # Handle context manager protocol
+    uow.__aenter__ = AsyncMock(return_value=uow)
+    uow.__aexit__ = AsyncMock(return_value=None)
+    return uow
 
 
 @pytest.fixture
@@ -129,7 +139,7 @@ async def test_delete_avatar_with_existing(service, mock_db, mock_user):
         await service.delete_avatar(mock_user)
 
     mock_delete.assert_called_once_with("/static/avatars/test.jpg")
-    service.repo.commit.assert_called_once()
+    service.uow.commit.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -182,7 +192,7 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
             result = await service.upload_avatar(mock_user, mock_file)
 
     assert result.profile.avatar_url == "/static/avatars/new.jpg"
-    service.repo.commit.assert_called_once()
+    service.uow.commit.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -190,7 +200,7 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
     """Test avatar upload rolls back on commit failure."""
     service.repo._get_orm.return_value = mock_user
     mock_user.profile.avatar_url = "/old.jpg"
-    service.repo.commit.side_effect = Exception("Commit failed")
+    service.uow.commit.side_effect = Exception("Commit failed")
     mock_file = MagicMock()
     mock_file.content_type = "image/jpeg"
 
@@ -208,7 +218,7 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
                 with pytest.raises(Exception, match="Commit failed"):
                     await service.upload_avatar(mock_user, mock_file)
 
-    service.repo.rollback.assert_called_once()
+    service.uow.rollback.assert_called_once()
     assert mock_delete.call_count == 2
     mock_delete.assert_any_call("/old.jpg")
     mock_delete.assert_any_call("/static/avatars/new.jpg")
@@ -227,10 +237,10 @@ def mock_admin_user():
 
 
 @pytest.fixture
-def service(mock_db, mock_repo, mock_audit, mock_notifications, monkeypatch):
+def service(mock_uow, mock_db, mock_repo, mock_audit, mock_notifications, monkeypatch):
     mock_repo.db = mock_db
     s = UserService(
-        user_repo=mock_repo,
+        uow=mock_uow,
         audit=mock_audit,
         notifications=mock_notifications,
     )
@@ -271,7 +281,7 @@ async def test_update_user_profile_success(service, mock_db, mock_user, mock_req
         result = await service.update_user_profile(mock_user, data, mock_request)
 
     assert result.id == mock_user.id
-    service.repo.commit.assert_called_once()
+    service.uow.commit.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -319,7 +329,7 @@ async def test_update_user_profile_preferences(
         service.repo._get_orm.return_value = mock_user
         await service.update_user_profile(mock_user, data, mock_request)
 
-    service.repo.commit.assert_called_once()
+    service.uow.commit.assert_called_once()
 
 
 # ============================================================
@@ -452,6 +462,7 @@ async def test_admin_update_user_success(
 ):
     """Test successful admin user update."""
     data = MagicMock()
+    data.model_dump.return_value = {}
     updated_user = MagicMock()
     import uuid
 
@@ -562,7 +573,7 @@ async def test_admin_delete_user_success(
     )
 
     assert result["deleted"] is True
-    service.repo.commit.assert_called_once()
+    service.uow.commit.assert_called_once()
     mock_audit.log.assert_called()
 
 

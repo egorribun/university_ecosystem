@@ -9,17 +9,18 @@ from app.services.schedule_optimizer import (
     ScheduleItemInternal,
     ScheduleOptimizerService,
 )
+from app.repositories.unit_of_work import UnitOfWork
 
 
 class ScheduleService:
     def __init__(
         self,
-        repo: ScheduleRepository,
-        group_repo: GroupRepository,
+        uow: UnitOfWork,
         optimizer: ScheduleOptimizerService,
     ):
-        self.repo = repo
-        self.group_repo = group_repo
+        self.uow = uow
+        self.repo = uow.schedules
+        self.group_repo = uow.groups
         self.optimizer = optimizer
 
     async def create_schedule(
@@ -60,7 +61,8 @@ class ScheduleService:
             )
 
         schedule = await self.repo.create(data)
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
 
         return schedule
 
@@ -80,7 +82,8 @@ class ScheduleService:
         updated = await self.repo.update(schedule_id, data)
         if updated is None:
             raise ValueError(translate("errors.schedule.not_found"))
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return updated
 
     async def delete_schedule(self, schedule_id: uuid.UUID | str) -> bool:
@@ -89,7 +92,8 @@ class ScheduleService:
             return False
 
         await self.repo.delete(schedule_id)
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return True
 
     # Group methods
@@ -98,5 +102,6 @@ class ScheduleService:
 
     async def create_group(self, data: schemas.GroupCreate) -> GroupDTO:
         group = await self.group_repo.create(data)
-        await self.group_repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return group

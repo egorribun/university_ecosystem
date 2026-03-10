@@ -4,7 +4,7 @@ from fastapi import UploadFile
 
 from app.api.utils import save_upload
 from app.core.exceptions.domain import EntityNotFound
-from app.repositories.user_repository import UserRepository
+from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import UserDTO
 from app.services.user.logic import update_user_attributes
 from app.utils.files import delete_static_file
@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class UserMediaService:
-    def __init__(self, user_repo: UserRepository) -> None:
-        self.repo = user_repo
+    def __init__(self, uow: UnitOfWork) -> None:
+        self.uow = uow
+        self.repo = uow.users
 
     async def upload_avatar(self, user: UserDTO, file: UploadFile) -> UserDTO:
         db_user = await self.repo._get_orm(user.id, with_for_update=True)
@@ -30,11 +31,11 @@ class UserMediaService:
             # Apply nested update via domain logic
             update_user_attributes(db_user, {"avatar_url": file_url})
             self.repo.add(db_user)
-            await self.repo.flush()
-            await self.repo.commit()
+            async with self.uow:
+                await self.uow.commit()
             return self.repo._to_dto(db_user)
         except Exception:
-            await self.repo.rollback()
+            await self.uow.rollback()
             await delete_static_file(file_url)
             raise
 
@@ -52,11 +53,11 @@ class UserMediaService:
             # Apply nested update via domain logic
             update_user_attributes(db_user, {"cover_url": file_url})
             self.repo.add(db_user)
-            await self.repo.flush()
-            await self.repo.commit()
+            async with self.uow:
+                await self.uow.commit()
             return self.repo._to_dto(db_user)
         except Exception:
-            await self.repo.rollback()
+            await self.uow.rollback()
             await delete_static_file(file_url)
             raise
 
@@ -70,8 +71,8 @@ class UserMediaService:
         # Apply nested update via domain logic
         update_user_attributes(db_user, {"avatar_url": None})
         self.repo.add(db_user)
-        await self.repo.flush()
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return self.repo._to_dto(db_user)
 
     async def delete_cover(self, user: UserDTO) -> UserDTO:
@@ -84,6 +85,6 @@ class UserMediaService:
         # Apply nested update via domain logic
         update_user_attributes(db_user, {"cover_url": None})
         self.repo.add(db_user)
-        await self.repo.flush()
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return self.repo._to_dto(db_user)

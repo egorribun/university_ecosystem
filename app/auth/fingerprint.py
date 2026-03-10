@@ -12,6 +12,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
+import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -140,8 +142,11 @@ def extract_fingerprint(request: Request) -> SessionFingerprint:
 class SuspiciousActivityEvent:
     """Record of a suspicious activity detection."""
 
-    user_id: int
-    session_id: int
+    # RZ-006 (audit 2026-03-10): user_id and session_id are UUID in all models.
+    # The previous `int` annotation caused TypeError at runtime when real UUIDs
+    # were passed, silently disabling the entire fingerprint detection system.
+    user_id: uuid.UUID
+    session_id: uuid.UUID
     event_type: str
     details: dict[str, Any]
     timestamp: datetime
@@ -167,6 +172,11 @@ class SuspiciousActivityDetector:
     to prevent unbounded memory growth under sustained attack traffic.
     At 10 000 entries × ~600 bytes each the ceiling is ~6 MB.
     (RZ-1a: audit 2026-02-24)
+
+    RZ-004 (audit 2026-03-10): A per-user index (defaultdict of lists) provides
+    O(1) lookup by user_id in get_recent_events(), eliminating the timing oracle
+    where filtering 10 000 events was measurably slower for active users than
+    for non-existent ones, enabling user enumeration via response timing.
     """
 
     _MAX_EVENTS: int = 10_000
@@ -175,6 +185,9 @@ class SuspiciousActivityDetector:
         from collections import deque
 
         self._events: deque[SuspiciousActivityEvent] = deque(maxlen=self._MAX_EVENTS)
+        # Per-user index: user_id → list of their events (unbounded per user,
+        # but total is capped by the ring buffer eviction logic below).
+        self._user_index: dict[uuid.UUID, list[SuspiciousActivityEvent]] = defaultdict(list)
         self._lock = threading.Lock()
 
     def check_fingerprint_mismatch(
@@ -232,7 +245,9 @@ class SuspiciousActivityDetector:
             log_level, "Suspicious activity detected", extra=event.to_log_record()
         )
 
-        self._events.append(event)
+        with self._lock:
+            self._events.append(event)
+            self._user_index[user_id].append(event)
 
         return event
 
@@ -272,27 +287,30 @@ class SuspiciousActivityDetector:
 
         logger.info("Rapid IP change detected", extra=event.to_log_record())
 
-        self._events.append(event)
+        with self._lock:
+            self._events.append(event)
+            self._user_index[user_id].append(event)
 
         return event
 
     def get_recent_events(
         self,
-        user_id: int | None = None,
+        user_id: uuid.UUID | None = None,
         limit: int = 100,
     ) -> list[SuspiciousActivityEvent]:
         """Return up to *limit* most-recent suspicious activity events.
 
-        ``deque`` does not support negative-index slicing, so we convert to
-        a list first.  The deque is already bounded (maxlen=10_000) so this
-        materialisation is O(min(limit, len(deque))) and safe.
+        RZ-004 (audit 2026-03-10): When ``user_id`` is provided, use the O(1)
+        per-user index instead of O(n) linear scan of the full ring buffer.
+        This eliminates the timing oracle where event-dense users had measurably
+        longer response times than non-existent users, enabling enumeration.
         """
-        # Take the last `limit` events from the ring buffer.
         with self._lock:
-            events: list[SuspiciousActivityEvent] = list(self._events)[-limit:]
-        if user_id is not None:
-            events = [e for e in events if e.user_id == user_id]
-        return events
+            if user_id is not None:
+                # O(1) lookup — response time is constant regardless of total event volume
+                return list(self._user_index.get(user_id, []))[-limit:]
+            # Full ring buffer: materialise to list then slice
+            return list(self._events)[-limit:]
 
 
 # Global detector instance

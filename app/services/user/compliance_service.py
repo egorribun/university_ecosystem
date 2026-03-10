@@ -14,7 +14,7 @@ from app.core.exceptions.domain import (
     PermissionDenied,
 )
 from app.models.enums import UserRole
-from app.repositories.user_repository import UserRepository
+from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import UserDTO
 from app.services.audit_service import AuditService, SecurityEvent, auditable
@@ -25,8 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 class UserComplianceService:
-    def __init__(self, user_repo: UserRepository, audit: AuditService) -> None:
-        self.repo = user_repo
+    def __init__(self, uow: UnitOfWork, audit: AuditService) -> None:
+        self.uow = uow
+        self.repo = uow.users
         self.audit = audit
 
     @auditable(SecurityEvent.ADMIN_USER_DELETE, user_id_param="user_id")
@@ -51,7 +52,8 @@ class UserComplianceService:
         await anonymize_user_data(db_user)
         await self.repo.delete_sensitive_data(db_user.id)
 
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         return {"deleted": True, "user_id": user_id}
 
     @auditable("users.data_export", user_id_param="user")
@@ -184,7 +186,8 @@ class UserComplianceService:
             request=request,
         )
 
-        await self.repo.commit()
+        async with self.uow:
+            await self.uow.commit()
         # Refresh to get anonymized email
         updated_user = await self.repo.get(user.id)
         assert updated_user is not None  # nosec B101
@@ -233,14 +236,15 @@ class UserComplianceService:
         )
         try:
             db_user = await self.repo.create_with_invite(user_data, code)
-            await self.repo.commit()
+            async with self.uow:
+                await self.uow.commit()
             # create_with_invite now returns DTO
             return db_user
         except Exception as exc:
             import traceback
 
             traceback.print_exc()
-            await self.repo.rollback()
+            await self.uow.rollback()
             raise BusinessRuleViolation("errors.users.create_failed") from exc
 
     @auditable(SecurityEvent.ADMIN_USER_CREATE)
@@ -271,10 +275,11 @@ class UserComplianceService:
 
         try:
             user = await self.repo.create(user_data)
-            await self.repo.commit()
+            async with self.uow:
+                await self.uow.commit()
             return user
         except IntegrityError as exc:
-            await self.repo.rollback()
+            await self.uow.rollback()
             error_str = str(exc.orig).lower() if exc.orig else str(exc).lower()
             if "email" in error_str or "users_email_key" in error_str:
                 raise EntityAlreadyExists("User", data.email) from exc
