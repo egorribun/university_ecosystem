@@ -97,4 +97,26 @@ def get_unit_of_work(session_factory: Callable[[], AsyncDatabaseSession]) -> Uni
     return UnitOfWork(session_factory)
 
 
-__all__ = ["UnitOfWork", "get_unit_of_work"]
+def uow_from_session(session: "AsyncDatabaseSession") -> UnitOfWork:
+    """Create an eagerly-initialized UnitOfWork from an existing open session.
+
+    Use this when you already have a session (e.g. from FastAPI Depends() or a
+    test fixture) and need to pass a UnitOfWork to services that access
+    ``uow.users``, ``uow.events``, etc. in their ``__init__``.
+    """
+    uow = UnitOfWork(lambda: session)
+    uow._session = session
+    uow.users = UserRepository(session)
+    uow.auth = AuthRepository(session)
+    uow.chats = ChatRepository(session)
+    uow.events = EventRepository(session)
+    uow.notifications = NotificationRepository(session)
+    uow.news = NewsRepository(session)
+    uow.stories = StoryRepository(session)
+    uow.sessions = ActiveSessionRepository(session)
+    uow.schedules = ScheduleRepository(session)
+    uow.groups = GroupRepository(session)
+    return uow
+
+
+__all__ = ["UnitOfWork", "get_unit_of_work", "uow_from_session"]

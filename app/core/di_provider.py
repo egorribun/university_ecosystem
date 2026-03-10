@@ -45,9 +45,12 @@ from app.deps.cache import BaseCache, create_cache_backend
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
-from app.repositories.event_repository import get_event_repository
-from app.repositories.news_repository import get_news_repository
+from app.repositories.event_repository import EventRepository, get_event_repository
+from app.repositories.news_repository import NewsRepository, get_news_repository
+from app.repositories.notification_repository import NotificationRepository
+from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
 from app.repositories.session_repository import get_session_repository
+from app.repositories.story_repository import StoryRepository
 from app.repositories.unit_of_work import UnitOfWork, get_unit_of_work
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import (
@@ -245,13 +248,12 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def user_profile_service(
         self,
-        db: AsyncDatabaseSession,
+        uow: UnitOfWork,
         audit: AuditService,
         notifications: NotificationService,
-        user_repo: UserRepository,
     ) -> UserProfileService:
         return UserProfileService(
-            user_repo=user_repo,
+            uow=uow,
             audit=audit,
             notifications=notifications,
         )
@@ -259,17 +261,16 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def user_compliance_service(
         self,
-        db: AsyncDatabaseSession,
+        uow: UnitOfWork,
         audit: AuditService,
-        user_repo: UserRepository,
     ) -> UserComplianceService:
-        return UserComplianceService(user_repo=user_repo, audit=audit)
+        return UserComplianceService(uow=uow, audit=audit)
 
     @provide(scope=Scope.REQUEST)
     def user_media_service(
-        self, db: AsyncDatabaseSession, user_repo: UserRepository
+        self, uow: UnitOfWork
     ) -> UserMediaService:
-        return UserMediaService(user_repo=user_repo)
+        return UserMediaService(uow=uow)
 
     @provide(scope=Scope.REQUEST)
     def event_service(
@@ -302,7 +303,21 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def unit_of_work(self, db: AsyncDatabaseSession) -> UnitOfWork:
-        return get_unit_of_work(lambda: db)
+        uow = get_unit_of_work(lambda: db)
+        # Eagerly bind the live session so services can access uow.users,
+        # uow.events, etc. in __init__ without entering the async context.
+        uow._session = db
+        uow.users = UserRepository(db)
+        uow.auth = AuthRepository(db)
+        uow.chats = ChatRepository(db)
+        uow.events = EventRepository(db)
+        uow.notifications = NotificationRepository(db)
+        uow.news = NewsRepository(db)
+        uow.stories = StoryRepository(db)
+        uow.sessions = ActiveSessionRepository(db)
+        uow.schedules = ScheduleRepository(db)
+        uow.groups = GroupRepository(db)
+        return uow
 
     @provide(scope=Scope.REQUEST)
     def auth_service(

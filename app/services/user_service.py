@@ -10,6 +10,7 @@ from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService
 from app.repositories.unit_of_work import UnitOfWork
+from app.services.notification_service import NotificationService
 from app.services.user.compliance_service import UserComplianceService
 from app.services.user.media_service import UserMediaService
 from app.services.user.profile_service import UserProfileService

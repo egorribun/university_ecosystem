@@ -1,7 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    command: ["postgres", "-c", "max_connections=200"]
+    command: ["postgres", "-c", "max_connections=500"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: test
@@ -39,7 +39,7 @@ services:
       # Keep pool small so multiple tests sharing the global engine stay well
       # under PostgreSQL's max_connections=200 limit.
       DATABASE_POOL_SIZE: 5
-      DATABASE_MAX_OVERFLOW: 5
+      DATABASE_MAX_OVERFLOW: 10
     depends_on:
       postgres:
         condition: service_healthy

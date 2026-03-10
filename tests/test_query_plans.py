@@ -88,7 +88,12 @@ class TestCriticalQueryPlans:
     async def test_user_by_email_uses_index(self):
         """Verify that looking up users by email uses an index."""
         async with async_session() as session:
-            query = "SELECT * FROM users WHERE email = 'test@example.com'"
+            # Disable seq scans so the planner must use the index even on an
+            # empty table (where it would otherwise prefer a sequential scan).
+            await session.execute(text("SET enable_seqscan = OFF"))
+            # The email index is a functional index on lower(email) — the query
+            # must use the same expression to trigger index usage.
+            query = "SELECT * FROM users WHERE lower(email) = lower('test@example.com')"
             plan = await analyze_query_plan(session, query)
 
             # Email should be indexed

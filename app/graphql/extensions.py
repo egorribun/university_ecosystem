@@ -61,6 +61,7 @@ class _CostVisitor(Visitor):
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self.cost: int = 0
 
     def enter_field(self, node: FieldNode, *_args: object) -> None:

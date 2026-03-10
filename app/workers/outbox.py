@@ -45,28 +45,32 @@ class OutboxWorker:
 
         listen_task = asyncio.create_task(self._listen_loop())
 
-        while self._is_running:
-            try:
-                processed = await self.process_batch()
+        try:
+            while self._is_running:
+                try:
+                    processed = await self.process_batch()
 
-                # Wait for next notification or timeout
-                # We always wait if we processed all pending events or if none were found
-                if processed < self.batch_size:
-                    try:
-                        await asyncio.wait_for(
-                            self._wakeup_event.wait(), timeout=self.poll_interval
-                        )
-                    except TimeoutError:
-                        pass
-                    finally:
-                        self._wakeup_event.clear()
-            except Exception:
-                logger.exception("Error in OutboxWorker loop")
-                await asyncio.sleep(self.poll_interval)
-
-        listen_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await listen_task
+                    # Wait for next notification or timeout
+                    # We always wait if we processed all pending events or if none were found
+                    if processed < self.batch_size:
+                        try:
+                            await asyncio.wait_for(
+                                self._wakeup_event.wait(), timeout=self.poll_interval
+                            )
+                        except TimeoutError:
+                            pass
+                        finally:
+                            self._wakeup_event.clear()
+                except Exception:
+                    logger.exception("Error in OutboxWorker loop")
+                    await asyncio.sleep(self.poll_interval)
+        finally:
+            # Always cancel the listen task so the raw asyncpg LISTEN connection
+            # is closed, even if run_forever is cancelled externally (e.g. during
+            # LifespanManager teardown in tests).
+            listen_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.shield(listen_task)
 
     async def _listen_loop(self) -> None:
         """Listen for PostgreSQL NOTIFY events to wake up the worker."""
