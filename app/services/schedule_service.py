@@ -2,14 +2,13 @@ import uuid
 from collections.abc import Sequence
 
 from app.core.localization import translate
-from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO
 from app.services.schedule_optimizer import (
     ScheduleItemInternal,
     ScheduleOptimizerService,
 )
-from app.repositories.unit_of_work import UnitOfWork
 
 
 class ScheduleService:

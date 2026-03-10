@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
-from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.story_repository import StoryRepository
 from app.repositories.user_repository import UserRepository
 
@@ -97,7 +97,7 @@ def get_unit_of_work(session_factory: Callable[[], AsyncDatabaseSession]) -> Uni
     return UnitOfWork(session_factory)
 
 
-def uow_from_session(session: "AsyncDatabaseSession") -> UnitOfWork:
+def uow_from_session(session: AsyncDatabaseSession) -> UnitOfWork:
     """Create an eagerly-initialized UnitOfWork from an existing open session.
 
     Use this when you already have a session (e.g. from FastAPI Depends() or a

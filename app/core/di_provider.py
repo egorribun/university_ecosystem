@@ -45,11 +45,10 @@ from app.deps.cache import BaseCache, create_cache_backend
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
-from app.repositories.event_repository import EventRepository, get_event_repository
-from app.repositories.news_repository import NewsRepository, get_news_repository
+from app.repositories.event_repository import EventRepository
+from app.repositories.news_repository import NewsRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
-from app.repositories.session_repository import get_session_repository
 from app.repositories.story_repository import StoryRepository
 from app.repositories.unit_of_work import UnitOfWork, get_unit_of_work
 from app.repositories.user_repository import UserRepository
@@ -81,7 +80,6 @@ from app.services.notification_service import NotificationService
 from app.services.schedule_service import ScheduleService
 from app.services.session_service import SessionService
 from app.services.story_service import StoryService
-from app.services.session_service import SessionService
 from app.services.user.compliance_service import UserComplianceService
 from app.services.user.media_service import UserMediaService
 from app.services.user.profile_service import UserProfileService
@@ -267,9 +265,7 @@ class AppProvider(Provider):
         return UserComplianceService(uow=uow, audit=audit)
 
     @provide(scope=Scope.REQUEST)
-    def user_media_service(
-        self, uow: UnitOfWork
-    ) -> UserMediaService:
+    def user_media_service(self, uow: UnitOfWork) -> UserMediaService:
         return UserMediaService(uow=uow)
 
     @provide(scope=Scope.REQUEST)
@@ -430,9 +426,7 @@ class AppProvider(Provider):
         return ChatWSNotificationService(session=db)
 
     @provide(scope=Scope.REQUEST)
-    def chat_query_service(
-        self, uow: UnitOfWork
-    ) -> ChatQueryService:
+    def chat_query_service(self, uow: UnitOfWork) -> ChatQueryService:
         return ChatQueryService(session=uow.session, repository=uow.chats)
 
     @provide(scope=Scope.REQUEST)
@@ -482,9 +476,7 @@ class AppProvider(Provider):
         return AuthRepository(db)
 
     @provide(scope=Scope.REQUEST)
-    def session_service(
-        self, uow: UnitOfWork
-    ) -> SessionService:
+    def session_service(self, uow: UnitOfWork) -> SessionService:
         return SessionService(uow=uow)
 
     @provide(scope=Scope.REQUEST)

@@ -288,7 +288,9 @@ class TestSuspiciousActivityDetector:
             fingerprint_hash="def",
         )
 
-        result = detector.check_fingerprint_mismatch(self._uid(1), self._uid(1), fp1, fp2)
+        result = detector.check_fingerprint_mismatch(
+            self._uid(1), self._uid(1), fp1, fp2
+        )
 
         assert result is not None
         assert result.severity == "high"

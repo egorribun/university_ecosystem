@@ -3,7 +3,6 @@ import logging
 import uuid
 
 from app.core.localization import localized_text, normalize_locale
-from app.repositories.story_repository import StoryRepository
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO
