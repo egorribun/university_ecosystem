@@ -3,21 +3,21 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.models import models
-from app.repositories.news_repository import NewsRepository
+from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.services.news_service import NewsService
 
 
 @pytest.fixture
 def news_service(db_session):
-    repo = NewsRepository(db_session)
+    uow = uow_from_session(db_session)
     vector = MagicMock()
 
     async def _embed(*args, **kwargs):
         return [0.1] * 1536
 
     vector.get_embedding.side_effect = _embed
-    return NewsService(repo, vector)
+    return NewsService(uow, vector)
 
 
 def _assert_news_headers(response, expected_language: str) -> None:

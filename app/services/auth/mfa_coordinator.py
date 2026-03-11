@@ -12,11 +12,13 @@ from app.core.config import settings
 if TYPE_CHECKING:
     from app.models.models import ActiveSession, User
     from app.repositories.auth_repository import AuthRepository
+    from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
 
 class MfaCoordinator:
-    def __init__(self, auth_repo: AuthRepository):
+    def __init__(self, uow: UnitOfWork, auth_repo: AuthRepository):
+        self.uow = uow
         self.repo = auth_repo
 
     async def check_and_issue_challenges(
@@ -42,7 +44,7 @@ class MfaCoordinator:
         if response:
             response.status_code = status.HTTP_202_ACCEPTED
 
-        await self.repo.commit()
+        await self.uow.commit()
         return auth_schemas.PendingMfaResponse(
             user_id=user.id,
             default_method=cast(

@@ -194,8 +194,8 @@ class SuspiciousActivityDetector:
 
     def check_fingerprint_mismatch(
         self,
-        user_id: int,
-        session_id: int,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
         stored_fingerprint: SessionFingerprint,
         current_fingerprint: SessionFingerprint,
     ) -> SuspiciousActivityEvent | None:
@@ -255,8 +255,8 @@ class SuspiciousActivityDetector:
 
     def check_rapid_location_change(
         self,
-        user_id: int,
-        session_id: int,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
         previous_ip: str,
         current_ip: str,
         time_elapsed_seconds: float,

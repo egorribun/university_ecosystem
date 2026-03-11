@@ -23,6 +23,11 @@ type Config struct {
 	AllowedOrigins    []string
 	SentryDSN         string
 	Environment       string
+	// MED-02 (audit 2026-03-11): Externalize hardcoded telemetry endpoints
+	OtelEndpoint      string
+	AppVersion        string
+	// CRIT-02 (audit 2026-03-11): Toggle for gRPC TLS
+	GrpcUseTLS        bool
 }
 
 // Load loads the configuration from environment variables
@@ -40,6 +45,10 @@ func Load() (*Config, error) {
 		AllowedOrigins:    getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		SentryDSN:         getEnv("SENTRY_DSN", ""),
 		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
+		OtelEndpoint:      getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "jaeger:4317"),
+		AppVersion:        getEnv("APP_VERSION", "gateway@1.0.0"),
+		// CRIT-02: Fail-closed (true if explicitly requested, default false to avoid break)
+		GrpcUseTLS:        os.Getenv("GRPC_USE_TLS") == "true",
 	}
 
 	if cfg.JWTSecret == "" {

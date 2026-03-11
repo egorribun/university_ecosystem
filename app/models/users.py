@@ -216,6 +216,13 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     def __init__(self, **kwargs: Any) -> None:
+        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        forbidden = {"id", "created_at"}
+        if intersections := forbidden.intersection(kwargs.keys()):
+            raise ValueError(
+                f"Cannot manually assign system-controlled fields: {intersections}"
+            )
+
         preferences_data = kwargs.pop("preferences", None)
         profile_data = kwargs.pop("profile", None) or kwargs.pop("profile_detail", None)
         education_data = kwargs.pop("education_path", None)
@@ -248,8 +255,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         hashed_password: str,
         role: str = "student",
         is_active: bool = True,
-        is_superuser: bool = False,
-        is_verified: bool = False,
         preferences: "UserPreferences | dict[str, Any] | None" = None,
         profile: "UserProfile | dict[str, Any] | None" = None,
         education_path: "EducationPath | dict[str, Any] | None" = None,
@@ -261,8 +266,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             hashed_password=hashed_password,
             role=role,
             is_active=is_active,
-            is_superuser=is_superuser,
-            is_verified=is_verified,
             preferences=preferences,
             profile=profile,
             education_path=education_path,

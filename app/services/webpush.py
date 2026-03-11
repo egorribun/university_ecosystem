@@ -29,7 +29,6 @@ from app.core.ratelimit import (
     get_default_strategy,
 )
 from app.models.models import PushSubscription, User
-from app.services import push_schema
 from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 
@@ -58,7 +57,6 @@ def _initialize_sync_resources() -> None:
     if _Session is not None:
         return
     engine = create_engine(str(_sync_url), pool_pre_ping=True, future=True)
-    push_schema.ensure_push_subscription_schema_sync(engine)
     _sync_engine = engine
     _Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 

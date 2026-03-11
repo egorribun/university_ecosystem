@@ -328,17 +328,17 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock, MagicMock
 
-    service = UserService(AsyncMock(), AuditService(), AsyncMock())
+    mock_uow = AsyncMock()
+    mock_uow.users = AsyncMock()
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+    mock_uow.rollback = AsyncMock()
+
+    service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
-
-    async def failing_commit(*_args, **_kwargs):
-        raise RuntimeError("commit failed")
-
-    # Route the failure through service.repo.commit — the actual path used by
-    # upload_avatar; db_session is no longer reached directly by UserService.
-    service.repo.commit = failing_commit
 
     with pytest.raises(RuntimeError):
         await service.upload_avatar(user, upload)
@@ -377,17 +377,17 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock, MagicMock
 
-    service = UserService(AsyncMock(), AuditService(), AsyncMock())
+    mock_uow = AsyncMock()
+    mock_uow.users = AsyncMock()
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+    mock_uow.rollback = AsyncMock()
+
+    service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
-
-    async def failing_commit(*_args, **_kwargs):
-        raise RuntimeError("commit failed")
-
-    # Route the failure through service.repo.commit — the actual path used by
-    # upload_cover; db_session is no longer reached directly by UserService.
-    service.repo.commit = failing_commit
 
     with pytest.raises(RuntimeError):
         await service.upload_cover(user, upload)

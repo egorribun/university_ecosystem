@@ -59,9 +59,6 @@ class RuntimeFeatureOverrides:
 
 
 runtime_flags = RuntimeFeatureOverrides()
-# Back-compat alias used inside this module only — external callers should import
-# `runtime_flags` and use .resolve() / .disable().
-_RUNTIME_FLAGS: dict[str, bool] = {}
 
 
 async def _startup_database_and_di(app: FastAPI) -> None:
@@ -151,7 +148,7 @@ async def _handle_schema_and_extensions() -> None:
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
                 except Exception as e:
                     _logger.warning("pgvector unavailable: %s", e)
-                    _RUNTIME_FLAGS["semantic_search_enabled"] = False
+                    runtime_flags.disable("semantic_search_enabled")
             else:
                 # Patch SQLite for tests
                 for table in Base.metadata.tables.values():
@@ -161,9 +158,7 @@ async def _handle_schema_and_extensions() -> None:
                         ):
                             column.computed = None
 
-            await conn.run_sync(
-                lambda sc: Base.metadata.create_all(bind=sc, checkfirst=True)
-            )
+            await conn.run_sync(Base.metadata.create_all)
     except Exception as exc:
         if settings.environment not in {"development", "local", "testing"}:
             raise
@@ -185,14 +180,21 @@ async def _startup_background_workers(app: FastAPI) -> None:
     )
 
     # Boot components from DI container
-    outbox_worker = await app.state.dishka_container.get(OutboxWorker)
-    outbox_task = asyncio.create_task(outbox_worker.run_forever(), name="outbox_worker")
-    app.state.background_tasks.add(outbox_task)
+    if settings.environment != "testing":
+        outbox_worker = await app.state.dishka_container.get(OutboxWorker)
+        outbox_task = asyncio.create_task(
+            outbox_worker.run_forever(), name="outbox_worker"
+        )
+        app.state.background_tasks.add(outbox_task)
 
-    nats_broker = await app.state.dishka_container.get(NatsTaskBroker)
-    if nats_broker.is_connected:
-        app.state.background_tasks.add(
-            asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
+        nats_broker = await app.state.dishka_container.get(NatsTaskBroker)
+        if nats_broker.is_connected:
+            app.state.background_tasks.add(
+                asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
+            )
+    else:
+        _logger.info(
+            "Background workers (Outbox, NATS) disabled in testing environment"
         )
 
     if settings.partition_management_enabled:
@@ -310,10 +312,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     start_memory_cleanup_task()
 
-    try:
-        await warm_cache()
-    except Exception as exc:
-        _logger.warning("Warm cache failed: %s", exc)
+    if settings.environment != "testing":
+        try:
+            await warm_cache()
+        except Exception as exc:
+            _logger.warning("Warm cache failed: %s", exc)
 
     try:
         yield

@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.auth.security import get_password_hash
 from app.core.localization import translate
 from app.models import models
-from app.repositories.event_repository import EventRepository
+from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.services.event_service import EventService
 from app.services.vector_service import VectorService
@@ -63,7 +63,7 @@ async def test_create_event_guard(db_session, user_factory):
         image_url=None,
         about=None,
     )
-    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    e_service = EventService(uow_from_session(db_session), VectorService(db_session))
     with pytest.raises(
         ValueError,
         match=translate("validation.events.end_after_start"),
@@ -80,7 +80,7 @@ async def test_update_event_guard(db_session, user_factory):
         starts_at=starts,
         ends_at=ends,
     )
-    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    e_service = EventService(uow_from_session(db_session), VectorService(db_session))
     record = await e_service.create_event(valid, user_id=user.id)
     invalid_update = schemas.EventUpdate.model_construct(
         starts_at=starts,
@@ -132,7 +132,7 @@ async def test_get_all_events_respects_locale(db_session, user_factory):
     await db_session.commit()
     await db_session.refresh(event)
 
-    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    e_service = EventService(uow_from_session(db_session), VectorService(db_session))
     ru_events = await e_service.get_events(user_id=student.id, locale="ru")
     en_events = await e_service.get_events(user_id=student.id, locale="en")
 
@@ -188,7 +188,7 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     # Get test event IDs to filter results
     test_event_ids = {e.id for e in initial_events}
 
-    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    e_service = EventService(uow_from_session(db_session), VectorService(db_session))
     first_page = await e_service.get_events(
         user_id=student.id,
         locale="en",
@@ -248,7 +248,7 @@ async def test_get_all_events_cursor_skips_total_on_followup_pages(
     for event_record in events:
         await db_session.refresh(event_record)
 
-    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    e_service = EventService(uow_from_session(db_session), VectorService(db_session))
     first_page = await e_service.get_events(
         user_id=student.id,
         locale="en",

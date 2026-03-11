@@ -18,6 +18,7 @@ from app.api import events
 from app.core.config import settings
 from app.core.localization import translate
 from app.models import models
+from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.utils import files
 
@@ -28,12 +29,11 @@ FIXTURE_UPLOADS = Path(__file__).parent / "fixtures" / "uploads"
 def event_service(db_session):
     from unittest.mock import MagicMock
 
-    from app.repositories.event_repository import EventRepository
     from app.services.event_service import EventService
 
-    repo = EventRepository(db_session)
+    uow = uow_from_session(db_session)
     vector = MagicMock()
-    return EventService(repo, vector)
+    return EventService(uow, vector)
 
 
 def _fallback_detect_mime(data: bytes) -> str | None:

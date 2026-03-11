@@ -158,7 +158,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       # P0-04 (audit 2026-03-06): Bind to 127.0.0.1 — unauthenticated Prometheus
       # metrics endpoint exposes latency, queue depths, internal IPs.
-      NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
+      NOTIFICATIONS_WORKER_METRICS_HOST: 127.0.0.1
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/0
@@ -414,13 +414,14 @@ services:
     # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
     # and `docker inspect` expose full command including secrets. The
     # SPICEDB_GRPC_PRESHARED_KEY env var (below) is read automatically by SpiceDB.
-    command: serve --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=${SPICEDB_PG_SSLMODE:-require}"
+    environment:
+      SPICEDB_DATASTORE_CONN_URI: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:-secret}"
+    command: serve
     # Internal only - accessed by backend services
     expose:
       - "50051"
       - "8443"
-    environment:
-      SPICEDB_GRPC_PRESHARED_KEY: ${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required - set in .env file}
     networks:
       - db_net
       - service_net

@@ -27,7 +27,13 @@ async def test_user_service_mega():
     repo.add = MagicMock()
     repo.add_all = MagicMock()
     repo._to_dto = MagicMock()
-    service = UserService(repo, audit, notifications)
+    mock_uow = AsyncMock()
+    mock_uow.users = repo
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock()
+    mock_uow.rollback = AsyncMock()
+    service = UserService(mock_uow, audit, notifications)
 
     admin_user = models.User(
         id=uuid.uuid4(),
@@ -57,8 +63,8 @@ async def test_user_service_mega():
     file = MagicMock(spec=UploadFile)
     repo.get.return_value = student_dto
     repo._get_orm.return_value = student_user
-    # Commit is routed through service.repo.commit() after refactor.
-    repo.commit.side_effect = BusinessRuleViolation("db error")
+    # Commit is routed through service.uow.commit() after refactor.
+    mock_uow.commit.side_effect = BusinessRuleViolation("db error")
     repo.check_email_exists.return_value = True
     with (
         patch("app.services.user.media_service.save_upload", return_value="/url"),
@@ -69,7 +75,7 @@ async def test_user_service_mega():
     ):
         with pytest.raises(Exception, match="db error"):
             await service.upload_avatar(student_user, file)
-        repo.rollback.assert_called()
+        mock_uow.rollback.assert_called()
         m_del.assert_called_with("/url")
 
         # upload_cover error
@@ -77,7 +83,7 @@ async def test_user_service_mega():
             await service.upload_cover(student_user, file)
 
     # 4. admin create_user branches
-    repo.commit.side_effect = None
+    mock_uow.commit.side_effect = None
     repo.check_email_exists.return_value = False
     data_user = schemas.UserCreate(
         email="n@e.com",
@@ -208,7 +214,12 @@ async def test_service_advanced_branches():
     from app.utils.pagination import encode_datetime_cursor as _encode_event_cursor
 
     e_repo = EventRepository(db)
-    e_service = EventService(e_repo, VectorService(db))
+    mock_uow_events = AsyncMock()
+    mock_uow_events.events = e_repo
+    mock_uow_events.__aenter__ = AsyncMock(return_value=mock_uow_events)
+    mock_uow_events.__aexit__ = AsyncMock(return_value=None)
+    mock_uow_events.commit = AsyncMock()
+    e_service = EventService(mock_uow_events, VectorService(db))
 
     cursor = _encode_event_cursor(datetime.datetime.now(datetime.UTC), 10)
     mock_res_events = MagicMock()

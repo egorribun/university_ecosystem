@@ -9,6 +9,7 @@ from fastapi import Request
 from app.auth import mfa
 from app.core.exceptions.domain import EntityNotFound, PermissionDenied
 from app.core.localization import resolve_locale, translate
+from app.core.protocols import UserLike
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
@@ -50,7 +51,7 @@ class UserProfileService:
     @auditable(SecurityEvent.USER_PROFILE_UPDATE, user_id_param="user")
     async def update_user_profile(
         self,
-        user: UserDTO,
+        user: UserLike,
         data: schemas.UserProfileUpdate,
         request: Request,
     ) -> UserDTO:
@@ -64,8 +65,10 @@ class UserProfileService:
                 self.repo, payload["email"], exclude_user_id=user.id
             )
 
-        # Fetch ORM user with lock
-        db_user = await self.repo._get_orm(user.id, with_for_update=True)
+        # Fetch ORM user with lock.
+        # Handle UserLike (could be ID, DTO or ORM)
+        user_identity = getattr(user, "id", user)
+        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
             raise EntityNotFound("User", user.id)
 
@@ -135,7 +138,7 @@ class UserProfileService:
         update_user_attributes(db_user, payload)
 
         self.repo.add(db_user)
-        await self.repo.flush()
+        await self.uow.flush()
         updated_user = self.repo._to_dto(db_user)
 
         if reset_requested:

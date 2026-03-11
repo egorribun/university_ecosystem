@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import async_session
 
 pytestmark = pytest.mark.asyncio
@@ -85,6 +86,10 @@ async def analyze_query_plan(session: AsyncSession, query: str) -> dict:
 class TestCriticalQueryPlans:
     """Test execution plans for critical queries."""
 
+    @pytest.mark.skipif(
+        "sqlite" in settings.database_url,
+        reason="PostgreSQL-specific index hint/scanning configuration",
+    )
     async def test_user_by_email_uses_index(self):
         """Verify that looking up users by email uses an index."""
         async with async_session() as session:

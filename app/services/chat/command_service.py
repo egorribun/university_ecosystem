@@ -239,7 +239,7 @@ class ChatCommandService:
 
         if not full_message:
             # Fallback if something went wrong, though unlikely
-            await self.repository.refresh(message)
+            await self.session.refresh(message)
             msg_data = MessageResponse(
                 id=message.id,
                 chat_id=message.chat_id,

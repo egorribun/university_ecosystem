@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import logging
 import traceback
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -13,7 +12,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.core.events import DomainEvent, EventMetadata, event_bus
+from app.core.events import EventMetadata, event_bus
 from app.models.domain_events import StoredEvent
 
 logger = logging.getLogger(__name__)
@@ -157,26 +156,33 @@ class OutboxWorker:
                 return len(events)
 
     async def _dispatch_event(self, se: StoredEvent) -> None:
-        # Very simple reconstruction for demonstration.
-        # In a real app, this would be more robust.
-        with tracer.start_as_current_span("outbox.dispatch_event") as span:
-            span.set_attribute("outbox.event_type", se.event_type)
-            span.set_attribute("outbox.aggregate_type", se.aggregate_type)
-            span.set_attribute("outbox.aggregate_id", se.aggregate_id)
+        """
+        Reconstruct the DomainEvent from the StoredEvent and publish it.
 
-            @dataclass
-            class ReconstructedEvent(DomainEvent):
-                _type: str = ""
+        HIGH-04 (audit 2026-03-11): Uses the _EVENT_REGISTRY to safely
+        instantiate only registered event types. Blind setattr is prohibited
+        to prevent unintended attribute injection.
+        """
+        from app.core.events import _EVENT_REGISTRY
 
-                def __post_init__(self) -> None:
-                    for k, v in se.payload.items():
-                        setattr(self, k, v)
+        event_cls = _EVENT_REGISTRY.get(se.event_type)
+        if event_cls is None:
+            logger.error(
+                "OutboxWorker: unknown event_type %r in stored event %s — skipping",
+                se.event_type, se.id,
+            )
+            se.error_count += 1
+            return
 
-                @property
-                def event_type(self) -> str:
-                    return self._type
+        import dataclasses
+        # 1. Reconstruct using known dataclass fields only
+        known_fields = {f.name for f in dataclasses.fields(event_cls)}
+        safe_payload = {k: v for k, v in se.payload.items() if k in known_fields}
 
-            event = ReconstructedEvent(_type=se.event_type)
+        try:
+            event = event_cls(**safe_payload)
+
+            # 2. Restore metadata if present
             if se.metadata_:
                 event.event_id = se.metadata_.get("event_id", event.event_id)
                 event.metadata = EventMetadata(
@@ -184,4 +190,12 @@ class OutboxWorker:
                     user_id=se.metadata_.get("user_id"),
                 )
 
-            await event_bus.publish(event)
+            with tracer.start_as_current_span("outbox.dispatch_event") as span:
+                span.set_attribute("outbox.event_type", se.event_type)
+                span.set_attribute("outbox.stored_event_id", str(se.id))
+                await event_bus.publish(event)
+
+        except Exception as e:
+            logger.error("Failed to reconstruct event %s: %s", se.id, e)
+            se.error_count += 1
+            raise

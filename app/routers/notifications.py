@@ -39,7 +39,6 @@ from app.schemas.notifications import (
     PushTopicsResponse,
     SendTestResponse,
 )
-from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_service import deliver_push_to_subscriptions
 from app.services.push_topics import (
     get_allowed_topics,
@@ -220,7 +219,6 @@ async def subscribe(
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
-    await ensure_push_subscription_schema(db)
     endpoint, p256dh, auth = await _validate_subscription_payload(
         payload, locale=locale
     )
@@ -411,7 +409,6 @@ async def update_subscription_topics(
     user: Annotated[User, Depends(get_current_user)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
-    await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
         raise HTTPException(
@@ -463,7 +460,6 @@ async def unsubscribe(
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
-    await ensure_push_subscription_schema(db)
     endpoint = payload.endpoint.strip()
     if not endpoint:
         raise HTTPException(
@@ -550,7 +546,6 @@ async def send_test(
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
-    await ensure_push_subscription_schema(db)
     if user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -778,7 +773,6 @@ async def disable_user_push(
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, int | bool]:
     locale = resolve_locale(request=request, user=user)
-    await ensure_push_subscription_schema(db)
     if user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -833,7 +827,6 @@ async def broadcast(
     user: Annotated[User, Depends(get_current_user)],
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
-    await ensure_push_subscription_schema(db)
     if user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

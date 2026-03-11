@@ -33,8 +33,21 @@ def mock_vector_service():
 
 
 @pytest.fixture
-def event_service(mock_repo, mock_vector_service):
-    return EventService(repo=mock_repo, vector_service=mock_vector_service)
+def mock_uow(mock_repo):
+    uow = AsyncMock()
+    uow.events = mock_repo
+    uow.session = mock_repo.db
+    uow.__aenter__ = AsyncMock(return_value=uow)
+    uow.__aexit__ = AsyncMock(return_value=None)
+    uow.commit = AsyncMock()
+    uow.flush = AsyncMock()
+    uow.rollback = AsyncMock()
+    return uow
+
+
+@pytest.fixture
+def event_service(mock_uow, mock_vector_service):
+    return EventService(uow=mock_uow, vector_service=mock_vector_service)
 
 
 def create_mock_event(event_id=None):
@@ -128,7 +141,7 @@ async def test_get_events_issue_token_fails(
 
 
 @pytest.mark.asyncio
-async def test_create_event(event_service, mock_repo):
+async def test_create_event(event_service, mock_uow, mock_repo):
     user_id = uuid4()
     now = datetime.now(UTC)
     event_data = schemas.EventCreate(
@@ -146,7 +159,7 @@ async def test_create_event(event_service, mock_repo):
     result = await event_service.create_event(event_data, user_id)
 
     mock_repo.create.assert_awaited_once()
-    mock_repo.commit.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
     assert result == mock_event
 
 
@@ -164,7 +177,7 @@ async def test_create_event_invalid_time(event_service):
 
 
 @pytest.mark.asyncio
-async def test_update_event(event_service, mock_repo):
+async def test_update_event(event_service, mock_uow, mock_repo):
     event_id = uuid4()
     update_data = schemas.EventUpdate(title="Updated Title")
 
@@ -179,7 +192,7 @@ async def test_update_event(event_service, mock_repo):
 
     mock_repo.get.assert_awaited_once_with(event_id)
     mock_repo.update.assert_awaited_once()
-    mock_repo.commit.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
     assert result == updated_event
 
 
@@ -224,7 +237,7 @@ async def test_serialize_event(event_service):
 
 
 @pytest.mark.asyncio
-async def test_delete_event(event_service, mock_repo):
+async def test_delete_event(event_service, mock_uow, mock_repo):
     event_id = uuid4()
     mock_event = create_mock_event(event_id)
     mock_repo.get.return_value = mock_event
@@ -237,11 +250,11 @@ async def test_delete_event(event_service, mock_repo):
     assert success is True
     mock_repo.get.assert_awaited_once_with(event_id)
     mock_repo.delete.assert_awaited_once_with(event_id)
-    mock_repo.commit.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_attendance_registration(event_service, mock_repo):
+async def test_attendance_registration(event_service, mock_uow, mock_repo):
     data = schemas.EventAttendanceCreate(event_id=uuid4())
     user_id = uuid4()
 
@@ -270,7 +283,7 @@ async def test_attendance_registration(event_service, mock_repo):
         assert record.user_id == user_id
         assert record.event_id == data.event_id
         mock_repo.create_attendance.assert_called()
-        mock_repo.commit.assert_awaited()
+        mock_uow.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -326,12 +339,12 @@ async def test_register_attendance_race_condition(event_service, mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_register_attendance_full_failure(event_service, mock_repo):
+async def test_register_attendance_full_failure(event_service, mock_uow, mock_repo):
     data = schemas.EventAttendanceCreate(event_id=uuid4())
     user_id = uuid4()
 
     mock_repo.get_attendance.return_value = None
-    mock_repo.commit.side_effect = IntegrityError("stmt", "params", "orig")
+    mock_uow.commit.side_effect = IntegrityError("stmt", "params", "orig")
     mock_repo.get.return_value = None  # Event not found after retry
 
     with (
@@ -351,7 +364,7 @@ async def test_register_attendance_full_failure(event_service, mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_unregister_attendance(event_service, mock_repo):
+async def test_unregister_attendance(event_service, mock_uow, mock_repo):
     data = schemas.EventAttendanceCreate(event_id=uuid4())
     user_id = uuid4()
 
@@ -362,7 +375,7 @@ async def test_unregister_attendance(event_service, mock_repo):
     res = await event_service.unregister_attendance(data, user_id)
     assert res == {"ok": True}
     mock_repo.delete_attendance.assert_awaited_once_with(data.event_id, user_id)
-    mock_repo.commit.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

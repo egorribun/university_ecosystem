@@ -113,7 +113,9 @@ def _resolve_current_trace_id() -> str | None:
     return get_trace_id() or get_request_id()
 
 
-from app.core.logging import configure_logging as _configure_structured_logging
+from app.core.logging import (
+    configure_logging as _configure_structured_logging,
+)
 
 
 def _resolve_headers(value: str) -> Mapping[str, str]:

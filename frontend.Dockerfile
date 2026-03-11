@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Base
-FROM node:22.22.0-alpine3.21 AS base
+FROM node:22-alpine AS base
 WORKDIR /app
 
 # Stage 2: Dependencies

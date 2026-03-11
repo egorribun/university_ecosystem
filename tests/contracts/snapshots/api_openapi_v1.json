@@ -7463,6 +7463,25 @@
               "title": "Chat Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Client-generated idempotency key to deduplicate retried sends.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Client-generated idempotency key to deduplicate retried sends.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -7854,6 +7873,14 @@
                 }
               ],
               "title": "File Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
             }
           }
         ],
@@ -8368,6 +8395,14 @@
                 }
               ],
               "title": "Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel"
             }
           }
         ],
@@ -10212,6 +10247,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "summary": "Get Schedule",
         "tags": [
           "schedule"

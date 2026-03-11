@@ -48,7 +48,10 @@ async def test_monster_coverage_run():
     e_repo.get_events = AsyncMock(return_value=MagicMock(items=[]))
     mock_vector = MagicMock()
     mock_vector.get_embedding = AsyncMock(return_value=[0.1])
-    e_service = event_service.EventService(e_repo, mock_vector)
+    mock_uow = MagicMock()
+    mock_uow.commit = AsyncMock()
+    mock_uow.events = e_repo
+    e_service = event_service.EventService(mock_uow, mock_vector)
     user_id = uuid.uuid4()
     await e_service.get_events(user_id=user_id, search="s", locale="ru")
 
@@ -165,14 +168,18 @@ async def test_monster_coverage_run():
         geolocation_service=AsyncMock(),
         audit=mock_audit,
     )
+    auth_uow = MagicMock()
+    auth_uow.commit = AsyncMock()
+    auth_uow.auth = mock_auth_repo
     validator = CredentialValidator(
+        uow=auth_uow,
         user_repo=mock_user_service,
         profile_service=mock_profile_service,
         lockout_service=mock_lockout_service,
         audit=mock_audit,
         session_manager=session_manager,
     )
-    mfa_coord = MfaCoordinator(auth_repo=mock_auth_repo)
+    mfa_coord = MfaCoordinator(uow=auth_uow, auth_repo=mock_auth_repo)
 
     login_service = LoginService(
         validator=validator,

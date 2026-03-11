@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import models
+from app.repositories.unit_of_work import uow_from_session
 from app.utils.pagination import (
     CursorParams,
     decode_cursor,
@@ -252,12 +253,11 @@ class TestNewsServicePagination:
 
     @pytest.fixture
     def news_service(self, db_session: AsyncSession):
-        from app.repositories.news_repository import NewsRepository
         from app.services.news_service import NewsService
         from app.services.vector_service import VectorService
 
-        repo = NewsRepository(db_session)
-        service = NewsService(repo, VectorService(db_session))
+        uow = uow_from_session(db_session)
+        service = NewsService(uow, VectorService(db_session))
         return service
 
     @pytest.mark.asyncio

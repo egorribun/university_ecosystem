@@ -9,7 +9,6 @@ from app.auth.security import get_password_hash
 from app.core.database import get_db, get_read_db
 from app.main import app
 from app.models.chat import Chat, Message
-from app.repositories.chat_repository import ChatRepository
 from app.services.chat.attachment_service import ChatAttachmentService
 from app.services.chat.command_service import ChatCommandService
 from app.services.chat.notification_service import ChatNotificationService
@@ -254,11 +253,13 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
 
     # Override read dependencies to use same session
     def _get_mock_chat_service():
-        repo = ChatRepository(db_session)
+        from app.repositories.unit_of_work import uow_from_session
+
+        uow = uow_from_session(db_session)
         attachments = ChatAttachmentService()
         notifications = ChatNotificationService(db_session)
-        queries = ChatQueryService(db_session, repo)
-        commands = ChatCommandService(db_session, repo, attachments, notifications)
+        queries = ChatQueryService(db_session, uow.chats)
+        commands = ChatCommandService(uow, attachments, notifications)
         return ChatService(db_session, attachments, notifications, queries, commands)
 
     app.dependency_overrides[get_read_db] = lambda: db_session

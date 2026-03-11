@@ -147,7 +147,8 @@ async def test_mark_job_retrying(dlq, mock_session):
     await dlq.mark_job_retrying(job)
 
     assert job.status == JobStatus.RETRYING
-    mock_session.commit.assert_called_once()
+    mock_session.flush.assert_called_once()
+    mock_session.commit.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -160,7 +161,8 @@ async def test_mark_job_completed(dlq, mock_session):
     await dlq.mark_job_completed(job)
 
     assert job.status == JobStatus.COMPLETED
-    mock_session.commit.assert_called_once()
+    mock_session.flush.assert_called_once()
+    mock_session.commit.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -195,4 +197,5 @@ async def test_cleanup_completed_jobs(dlq, mock_session):
     deleted = await dlq.cleanup_completed_jobs(older_than_days=7)
 
     assert deleted == 10
-    mock_session.commit.assert_called_once()
+    mock_session.flush.assert_called_once()
+    mock_session.commit.assert_not_called()

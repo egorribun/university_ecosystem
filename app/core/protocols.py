@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, Union, runtime_checkable
 
+if TYPE_CHECKING:
+    from app.models.models import User
+    from app.schemas.dtos import UserDTO
 
-@runtime_checkable
-class UserLike(Protocol):
-    """
-    Protocol for objects that behave like a User in the context of email updates.
-    This allows both ORM entities and DTOs to be handled by the same logic.
-    """
-
-    id: uuid.UUID
-    pending_email: str | None
+# TD-07: Standardized UserLike union for service signatures
+UserLike = Union["User", "UserDTO", uuid.UUID, str]
 
 
 @runtime_checkable

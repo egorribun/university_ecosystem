@@ -7,11 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, get_read_db
 from app.deps.cache import BaseCache, get_cache
-from app.repositories.auth_repository import get_auth_repository
-from app.repositories.event_repository import get_event_repository
-from app.repositories.news_repository import get_news_repository
-from app.repositories.session_repository import get_session_repository
-from app.repositories.user_repository import get_user_repository
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,
@@ -67,9 +62,11 @@ def get_user_service(
     audit: AuditService = Depends(get_audit_service),
     notifications: NotificationService = Depends(get_notification_service),
 ) -> UserService:
-    repo = get_user_repository(db)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db)
     return UserService(
-        user_repo=repo,
+        uow=uow,
         audit=audit,
         notifications=notifications,
     )
@@ -80,39 +77,49 @@ def get_user_profile_service(
     audit: AuditService = Depends(get_audit_service),
     notifications: NotificationService = Depends(get_notification_service),
 ) -> UserProfileService:
-    repo = get_user_repository(db)
-    return UserProfileService(user_repo=repo, audit=audit, notifications=notifications)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db)
+    return UserProfileService(uow=uow, audit=audit, notifications=notifications)
 
 
 def get_user_compliance_service(
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
 ) -> UserComplianceService:
-    repo = get_user_repository(db)
-    return UserComplianceService(user_repo=repo, audit=audit)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db)
+    return UserComplianceService(uow=uow, audit=audit)
 
 
 def get_user_media_service(
     db: AsyncSession = Depends(get_db),
 ) -> UserMediaService:
-    repo = get_user_repository(db)
-    return UserMediaService(user_repo=repo)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db)
+    return UserMediaService(uow=uow)
 
 
 def get_event_service(
     db: AsyncSession = Depends(get_db),
     vector_service: VectorService = Depends(get_vector_service),
 ) -> EventService:
-    repo = get_event_repository(db)
-    return EventService(repo=repo, vector_service=vector_service)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db)
+    return EventService(uow=uow, vector_service=vector_service)
 
 
 def get_news_service(
     db: AsyncSession = Depends(get_db),
     vector_service: VectorService = Depends(get_vector_service),
 ) -> NewsService:
-    repo = get_news_repository(db)
-    return NewsService(repo=repo, vector_service=vector_service)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db)
+    return NewsService(uow=uow, vector_service=vector_service)
 
 
 def get_schedule_handler(
@@ -165,12 +172,13 @@ def get_auth_service(
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
 ) -> AuthService:
-    auth_repo = get_auth_repository(db)
-    user_repo = get_user_repository(db)
-    session_repo = get_session_repository(db)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db)
     return AuthService(
         audit=audit,
-        auth_repo=auth_repo,
-        user_repo=user_repo,
-        session_repo=session_repo,
+        auth_repo=uow.auth,
+        user_repo=uow.users,
+        session_repo=uow.sessions,
+        uow=uow,
     )

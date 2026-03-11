@@ -173,13 +173,13 @@ class DeadLetterQueue:
         job.status = JobStatus.RETRYING.value
         job.retry_count = int(getattr(job, "retry_count", 0)) + 1
         job.updated_at = datetime.now(UTC)
-        await self.session.commit()
+        await self.session.flush()
 
     async def mark_job_completed(self, job: DeadLetterJob) -> None:
         """Mark a job as successfully completed after retry."""
         job.status = JobStatus.COMPLETED.value
         job.updated_at = datetime.now(UTC)
-        await self.session.commit()
+        await self.session.flush()
 
         logger.info(
             "DLQ job completed: type=%s, hash=%s, retries=%d",
@@ -226,7 +226,7 @@ class DeadLetterQueue:
                 job.next_retry_at.isoformat(),
             )
 
-        await self.session.commit()
+        await self.session.flush()
 
     async def get_queue_stats(self) -> dict[str, int]:
         """Get statistics about the dead letter queue."""
@@ -260,7 +260,7 @@ class DeadLetterQueue:
             )
         )
 
-        await self.session.commit()
+        await self.session.flush()
         deleted = getattr(result, "rowcount", 0) or 0
 
         if deleted > 0:

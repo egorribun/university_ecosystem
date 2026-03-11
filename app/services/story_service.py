@@ -87,7 +87,7 @@ class StoryService:
         if updates.get("expires_at"):
             updates["expires_at"] = self.repo._ensure_utc(updates["expires_at"])
 
-        await self.repo.update(story.id, updates)
+        updated_story = await self.repo.update(story.id, updates)
         assert updated_story is not None  # nosec B101
 
         # Cleanup old cover if changed

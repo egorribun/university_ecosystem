@@ -86,7 +86,7 @@ async def test_container_close_finalizes_nats_broker() -> None:
     mock_broker.connect = AsyncMock(side_effect=Exception("no NATS"))
     mock_broker.close = AsyncMock()
 
-    with patch("app.core.di_provider.NatsTaskBroker", return_value=mock_broker):
+    with patch("app.core.nats_broker.broker", new=mock_broker):
         container = create_dishka_container()
         try:
             await container.get(NatsTaskBroker)

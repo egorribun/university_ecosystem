@@ -32,9 +32,14 @@ def mock_notifications():
 async def test_update_user_profile_decomposed_fields():
     # Setup
     repo = AsyncMock()
+    mock_uow = AsyncMock()
+    mock_uow.users = repo
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock()
     audit = MagicMock()
     notifications = MagicMock()
-    service = UserService(repo, audit, notifications)
+    service = UserService(mock_uow, audit, notifications)
 
     user = models.User(id=1, email="test@example.com")
     repo.get.return_value = user
@@ -69,16 +74,21 @@ async def test_update_user_profile_decomposed_fields():
     assert updated_user.profile.about == "New about"
     assert updated_user.education_path.institute == "New institute"
     assert updated_user.preferences.timezone == "Europe/Moscow"
-    repo.commit.assert_called_once()
+    mock_uow.commit.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_update_user_profile_email_change():
     # Setup
     repo = AsyncMock()
+    mock_uow = AsyncMock()
+    mock_uow.users = repo
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock()
     audit = MagicMock()
     notifications = MagicMock()
-    service = UserService(repo, audit, notifications)
+    service = UserService(mock_uow, audit, notifications)
 
     user = models.User(id=1, email="old@example.com")
     repo.get.return_value = user
@@ -108,4 +118,4 @@ async def test_update_user_profile_email_change():
 
     # Verify
     assert updated_user.email == "new@example.com"
-    repo.commit.assert_called_once()
+    mock_uow.commit.assert_called_once()

@@ -36,7 +36,7 @@ class SessionBackend(ABC):
 
 
 class RedisSessionBackend(SessionBackend):
-    def __init__(self, redis_client: Redis[Any]) -> None:
+    def __init__(self, redis_client: Redis) -> None:
         self._redis = redis_client
         self._prefix = "session:"
 

@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import Request
 from sqlalchemy.exc import IntegrityError
 
-from app.auth.security import _validate_password_hibp, get_password_hash
+from app.auth.security import get_password_hash, validate_password_hibp
 from app.core.config import settings
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
@@ -13,6 +13,7 @@ from app.core.exceptions.domain import (
     EntityNotFound,
     PermissionDenied,
 )
+from app.core.protocols import UserLike
 from app.models.enums import UserRole
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
@@ -35,7 +36,7 @@ class UserComplianceService:
         self,
         user_id: uuid.UUID | str,
         request: Request,
-        current_user: UserDTO,
+        current_user: UserLike,
     ) -> dict[str, Any]:
         if current_user.role != "admin":
             raise PermissionDenied()
@@ -58,11 +59,12 @@ class UserComplianceService:
 
     @auditable("users.data_export", user_id_param="user")
     async def export_user_data(
-        self, user: UserDTO, request: Request
+        self, user: UserLike, request: Request
     ) -> schemas.DataExportOut:
-        db_user = await self.repo.get(user.id)
+        user_identity = getattr(user, "id", user)
+        db_user = await self.repo.get(user_identity)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_identity)
 
         # db_user is already a DTO and has mfa_challenges/totp_enrollments
         profile = db_user.model_dump()
@@ -160,7 +162,7 @@ class UserComplianceService:
     @auditable(SecurityEvent.USER_DELETE, user_id_param="user")
     async def delete_user_data(
         self,
-        user: UserDTO,
+        user: UserLike,
         request: Request,
         *,
         confirm: bool,
@@ -169,9 +171,10 @@ class UserComplianceService:
             raise BusinessRuleViolation("errors.users.confirmation_required")
 
         # Fetch ORM user
-        db_user = await self.repo._get_orm(user.id)
+        user_identity = getattr(user, "id", user)
+        db_user = await self.repo._get_orm(user_identity)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_identity)
 
         await anonymize_user_data(db_user)
         await self.repo.delete_sensitive_data(db_user.id)
@@ -219,7 +222,7 @@ class UserComplianceService:
             code = code_obj
 
         if settings.password_hibp_check_enabled:
-            await _validate_password_hibp(user_in.password)
+            await validate_password_hibp(user_in.password)
         hashed_password = await get_password_hash(user_in.password)
 
         user_data = user_in.model_dump(
@@ -252,7 +255,7 @@ class UserComplianceService:
         self,
         data: schemas.UserCreate,
         request: Request,
-        current_user: UserDTO,
+        current_user: UserLike,
     ) -> UserDTO:
         if current_user.role != "admin":
             raise PermissionDenied()
@@ -265,7 +268,7 @@ class UserComplianceService:
             raise BusinessRuleViolation("errors.users.invite_code_required")
 
         if settings.password_hibp_check_enabled:
-            await _validate_password_hibp(data.password)
+            await validate_password_hibp(data.password)
         hashed = await get_password_hash(data.password)
 
         user_data = data.model_dump(
