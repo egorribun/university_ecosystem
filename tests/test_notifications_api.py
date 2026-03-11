@@ -48,9 +48,22 @@ async def test_clear_notifications_removes_only_current_user(
     headers = await _login(async_client, user.email, password)
 
     notices = [
-        Notification(user_id=user.id, title="Первое уведомление", body="Тест 1", _allow_system_managed_assignment=True),
-        Notification(user_id=user.id, title="Второе уведомление", _allow_system_managed_assignment=True),
-        Notification(user_id=other.id, title="Чужое уведомление", _allow_system_managed_assignment=True),
+        Notification(
+            user_id=user.id,
+            title="Первое уведомление",
+            body="Тест 1",
+            _allow_system_managed_assignment=True,
+        ),
+        Notification(
+            user_id=user.id,
+            title="Второе уведомление",
+            _allow_system_managed_assignment=True,
+        ),
+        Notification(
+            user_id=other.id,
+            title="Чужое уведомление",
+            _allow_system_managed_assignment=True,
+        ),
     ]
     db_session.add_all(notices)
     await db_session.commit()

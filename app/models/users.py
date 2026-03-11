@@ -220,7 +220,9 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         # RZ-01: Allow bypass for testing fixtures (e.g. mock DB matching).
         allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
         forbidden = {"id", "created_at"}
-        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
+        if not allow_manual and (
+            intersections := forbidden.intersection(kwargs.keys())
+        ):
             raise ValueError(
                 f"Cannot manually assign system-controlled fields: {intersections}"
             )
@@ -393,7 +395,9 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
         # RZ-01: Allow bypass for testing fixtures.
         allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
         forbidden = {"id", "created_at"}
-        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
+        if not allow_manual and (
+            intersections := forbidden.intersection(kwargs.keys())
+        ):
             raise ValueError(
                 f"Cannot manually assign system-controlled fields: {intersections}"
             )

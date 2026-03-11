@@ -41,7 +41,9 @@ async def test_update_user_profile_decomposed_fields():
     notifications = MagicMock()
     service = UserService(mock_uow, audit, notifications)
 
-    user = models.User(id=1, email="test@example.com", _allow_system_managed_assignment=True)
+    user = models.User(
+        id=1, email="test@example.com", _allow_system_managed_assignment=True
+    )
     repo.get.return_value = user
 
     update_data = schemas.UserProfileUpdate(
@@ -90,7 +92,9 @@ async def test_update_user_profile_email_change():
     notifications = MagicMock()
     service = UserService(mock_uow, audit, notifications)
 
-    user = models.User(id=1, email="old@example.com", _allow_system_managed_assignment=True)
+    user = models.User(
+        id=1, email="old@example.com", _allow_system_managed_assignment=True
+    )
     repo.get.return_value = user
 
     # Mock email uniqueness check

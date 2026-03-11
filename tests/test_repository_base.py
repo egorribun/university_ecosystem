@@ -84,7 +84,9 @@ def test_repository_init(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_found(repository, mock_db):
     """Test get returns record when found."""
-    mock_user = User(id=1, email="test@example.com", _allow_system_managed_assignment=True)
+    mock_user = User(
+        id=1, email="test@example.com", _allow_system_managed_assignment=True
+    )
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -111,7 +113,9 @@ async def test_repository_get_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_or_raise_found(repository, mock_db):
     """Test get_or_raise returns record when found."""
-    mock_user = User(id=1, email="test@example.com", _allow_system_managed_assignment=True)
+    mock_user = User(
+        id=1, email="test@example.com", _allow_system_managed_assignment=True
+    )
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -252,7 +256,9 @@ async def test_repository_create_with_pydantic(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_update_found(repository, mock_db):
     """Test update modifies existing record."""
-    mock_user = User(id=1, email="old@example.com", _allow_system_managed_assignment=True)
+    mock_user = User(
+        id=1, email="old@example.com", _allow_system_managed_assignment=True
+    )
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -279,7 +285,9 @@ async def test_repository_update_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_update_with_pydantic(repository, mock_db):
     """Test update with Pydantic-like object."""
-    mock_user = User(id=1, email="old@example.com", _allow_system_managed_assignment=True)
+    mock_user = User(
+        id=1, email="old@example.com", _allow_system_managed_assignment=True
+    )
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -373,7 +381,9 @@ async def test_repository_exists_none(repository, mock_db):
 @pytest.mark.asyncio
 async def test_readonly_repository_get(readonly_repository, mock_db):
     """Test ReadOnlyRepository get method."""
-    mock_user = User(id=1, email="test@example.com", _allow_system_managed_assignment=True)
+    mock_user = User(
+        id=1, email="test@example.com", _allow_system_managed_assignment=True
+    )
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
