@@ -217,8 +217,10 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
 
     def __init__(self, **kwargs: Any) -> None:
         # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        # RZ-01: Allow bypass for testing fixtures (e.g. mock DB matching).
+        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
         forbidden = {"id", "created_at"}
-        if intersections := forbidden.intersection(kwargs.keys()):
+        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
             raise ValueError(
                 f"Cannot manually assign system-controlled fields: {intersections}"
             )
@@ -385,6 +387,17 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
         index=True,
         nullable=True,
     )
+
+    def __init__(self, **kwargs: Any) -> None:
+        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        # RZ-01: Allow bypass for testing fixtures.
+        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
+        forbidden = {"id", "created_at"}
+        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
+            raise ValueError(
+                f"Cannot manually assign system-controlled fields: {intersections}"
+            )
+        super().__init__(**kwargs)
 
     def __repr__(self) -> str:
         return f"<InviteCode(id={self.id}, code='{self.code}', used={self.is_used})>"

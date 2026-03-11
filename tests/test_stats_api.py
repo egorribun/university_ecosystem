@@ -154,6 +154,7 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
             }
         ),
         created_at=now - timedelta(days=4),
+        _allow_system_managed_assignment=True,
     )
     current_grade_two = models.Notification(
         user_id=student.id,
@@ -168,6 +169,7 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
             }
         ),
         created_at=now - timedelta(days=2),
+        _allow_system_managed_assignment=True,
     )
     # Third grade within 30-day window (inside existing Jan 2026 partition)
     third_grade = models.Notification(
@@ -183,6 +185,7 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
             }
         ),
         created_at=now - timedelta(days=3),
+        _allow_system_managed_assignment=True,
     )
 
     db_session.add_all([current_grade_one, current_grade_two, third_grade])

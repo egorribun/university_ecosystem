@@ -19,6 +19,7 @@ async def test_mark_all_read(root_client: AsyncClient, db_session, user_factory)
             body="B",
             read=False,
             created_at=datetime.now(UTC),
+            _allow_system_managed_assignment=True,
         )
         db_session.add(n)
     await db_session.commit()
@@ -122,6 +123,7 @@ async def test_notification_pagination(
             title=f"N{i}",
             body="B",
             created_at=datetime.now(UTC) - timedelta(minutes=i),
+            _allow_system_managed_assignment=True,
         )
         db_session.add(n)
     await db_session.commit()

@@ -84,7 +84,7 @@ def test_repository_init(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_found(repository, mock_db):
     """Test get returns record when found."""
-    mock_user = User(id=1, email="test@example.com")
+    mock_user = User(id=1, email="test@example.com", _allow_system_managed_assignment=True)
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -111,7 +111,7 @@ async def test_repository_get_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_or_raise_found(repository, mock_db):
     """Test get_or_raise returns record when found."""
-    mock_user = User(id=1, email="test@example.com")
+    mock_user = User(id=1, email="test@example.com", _allow_system_managed_assignment=True)
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -135,7 +135,10 @@ async def test_repository_get_or_raise_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_by_ids_returns_records(repository, mock_db):
     """Test get_by_ids returns multiple records."""
-    mock_users = [User(id=1, email="u1@e.com"), User(id=2, email="u2@e.com")]
+    mock_users = [
+        User(id=1, email="u1@e.com", _allow_system_managed_assignment=True),
+        User(id=2, email="u2@e.com", _allow_system_managed_assignment=True),
+    ]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users
     mock_db.execute.return_value = mock_result
@@ -158,7 +161,10 @@ async def test_repository_get_by_ids_empty_list(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_list_with_pagination(repository, mock_db):
     """Test list with skip and limit."""
-    mock_users = [User(id=1, email="u1@e.com"), User(id=2, email="u2@e.com")]
+    mock_users = [
+        User(id=1, email="u1@e.com", _allow_system_managed_assignment=True),
+        User(id=2, email="u2@e.com", _allow_system_managed_assignment=True),
+    ]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users
     mock_db.execute.return_value = mock_result
@@ -246,7 +252,7 @@ async def test_repository_create_with_pydantic(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_update_found(repository, mock_db):
     """Test update modifies existing record."""
-    mock_user = User(id=1, email="old@example.com")
+    mock_user = User(id=1, email="old@example.com", _allow_system_managed_assignment=True)
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -273,7 +279,7 @@ async def test_repository_update_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_update_with_pydantic(repository, mock_db):
     """Test update with Pydantic-like object."""
-    mock_user = User(id=1, email="old@example.com")
+    mock_user = User(id=1, email="old@example.com", _allow_system_managed_assignment=True)
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -367,7 +373,7 @@ async def test_repository_exists_none(repository, mock_db):
 @pytest.mark.asyncio
 async def test_readonly_repository_get(readonly_repository, mock_db):
     """Test ReadOnlyRepository get method."""
-    mock_user = User(id=1, email="test@example.com")
+    mock_user = User(id=1, email="test@example.com", _allow_system_managed_assignment=True)
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -381,8 +387,8 @@ async def test_readonly_repository_get(readonly_repository, mock_db):
 async def test_readonly_repository_list(readonly_repository, mock_db):
     """Test ReadOnlyRepository list method."""
     mock_users = [
-        User(id=1, email="u1@example.com"),
-        User(id=2, email="u2@example.com"),
+        User(id=1, email="u1@example.com", _allow_system_managed_assignment=True),
+        User(id=2, email="u2@example.com", _allow_system_managed_assignment=True),
     ]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users

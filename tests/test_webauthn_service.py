@@ -28,6 +28,7 @@ def user():
         email="test@example.com",
         webauthn_id=None,
         profile=UserProfile(full_name="Test User"),
+        _allow_system_managed_assignment=True,
     )
 
 
@@ -110,6 +111,7 @@ async def test_verify_authentication_success(service, mock_db, user):
         credential_id="Y3JlZDEyMw",
         public_key="cHVia2V5MTIz",  # pubkey123
         sign_count=10,
+        _allow_system_managed_assignment=True,
     )
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = db_credential

@@ -31,12 +31,14 @@ async def test_notifications_localization(async_client, db_session, user_factory
         body="Русский текст",
         title_en="New notification",
         body_en="English body",
+        _allow_system_managed_assignment=True,
     )
     fallback = models.Notification(
         user_id=user.id,
         created_at=now,
         title="Без перевода",
         body="Только русский текст",
+        _allow_system_managed_assignment=True,
     )
     db_session.add_all([primary, fallback])
     await db_session.commit()

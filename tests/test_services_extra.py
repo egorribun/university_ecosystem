@@ -63,7 +63,7 @@ async def test_user_service_basics():
     user_repo._to_dto = MagicMock()
     service = UserService(mock_uow, audit, notifications)
 
-    user = models.User(id=1, email="u@e.com")
+    user = models.User(id=1, email="u@e.com", _allow_system_managed_assignment=True)
     user.profile = models.UserProfile(
         user_id=1, full_name="Old Name", avatar_url=None, cover_url=None
     )
@@ -127,7 +127,7 @@ async def test_auth_service_basics():
     mock_uow.commit = AsyncMock()
 
     service = AuthService(audit, auth_repo, user_repo, session_repo, mock_uow)
-    user = models.User(id=1, email="u@e.com", hashed_password="old_hash")
+    user = models.User(id=1, email="u@e.com", hashed_password="old_hash", _allow_system_managed_assignment=True)
     request = MagicMock()
 
     # revoke_sessions_matching uses auth_repo.db.execute under the hood;

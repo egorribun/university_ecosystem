@@ -99,7 +99,8 @@ def test_is_user_in_quiet_hours_crosses_midnight():
     user = User(
         preferences=UserPreferences(
             dnd_enabled=True, dnd_start=dt.time(22, 0), dnd_end=dt.time(7, 0)
-        )
+        ),
+        _allow_system_managed_assignment=True,
     )
     assert is_user_in_quiet_hours(user, now_time=dt.time(23, 15)) is True
     assert is_user_in_quiet_hours(user, now_time=dt.time(6, 45)) is True
@@ -115,7 +116,8 @@ def test_is_user_in_quiet_hours_uses_user_timezone(monkeypatch: pytest.MonkeyPat
             dnd_start=dt.time(21, 0),
             dnd_end=dt.time(6, 0),
             timezone="America/New_York",
-        )
+        ),
+        _allow_system_managed_assignment=True,
     )
 
     base = dt.datetime(2024, 1, 1, 2, 30, tzinfo=dt.UTC)
@@ -140,7 +142,8 @@ def test_is_user_in_quiet_hours_defaults_to_utc(monkeypatch: pytest.MonkeyPatch)
     user = User(
         preferences=UserPreferences(
             dnd_enabled=True, dnd_start=dt.time(1, 0), dnd_end=dt.time(5, 0)
-        )
+        ),
+        _allow_system_managed_assignment=True,
     )
 
     base = dt.datetime(2024, 6, 1, 3, 0, tzinfo=dt.UTC)
@@ -169,7 +172,8 @@ def test_prepare_push_payload_applies_silent_mode():
     user = User(
         preferences=UserPreferences(
             dnd_enabled=True, dnd_start=dt.time(21, 0), dnd_end=dt.time(6, 0)
-        )
+        ),
+        _allow_system_managed_assignment=True,
     )
 
     result = prepare_push_payload_for_user(payload, user, now_time=dt.time(22, 30))
@@ -191,7 +195,8 @@ def test_prepare_push_payload_keeps_original_when_outside_interval():
     user = User(
         preferences=UserPreferences(
             dnd_enabled=True, dnd_start=dt.time(22, 0), dnd_end=dt.time(7, 0)
-        )
+        ),
+        _allow_system_managed_assignment=True,
     )
 
     result = prepare_push_payload_for_user(payload, user, now_time=dt.time(15, 0))
