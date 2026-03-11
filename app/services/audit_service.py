@@ -373,9 +373,9 @@ class SecureAuditService:
         """Return the signing key that matches the stored signature, if any."""
         if not log.signature:
             return None
-        
+
         import rust_ext
-        
+
         data_parts = [
             str(log.id or ""),
             str(log.actor_user_id or ""),
@@ -391,10 +391,10 @@ class SecureAuditService:
             ),
         ]
         data = "|".join(data_parts)
-        
+
         # Convert bytes keys to strings for the Rust extension
         keys_str = [k.decode("utf-8") for k in self._signing_keys]
-        
+
         if rust_ext.verify_audit_signature(keys_str, data, str(log.signature)):
             # Find which exact key matched (needed for re-signing logic)
             # In a high-performance scenario, Rust handles the bulk check.

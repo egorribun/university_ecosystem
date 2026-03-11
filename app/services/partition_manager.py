@@ -1,7 +1,7 @@
 import contextlib
 import logging
 from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
@@ -33,6 +33,7 @@ async def ensure_partitions_exist() -> None:
 
         # 1. Ensure future partitions exist
         import rust_ext
+
         for table, _ in PARTITIONED_TABLES:
             for i in range(settings.partition_warmup_months + 1):
                 try:

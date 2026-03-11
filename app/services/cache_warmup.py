@@ -171,7 +171,7 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
             cache_prefix="ue:news:list",
             version=version,
             locale=locale,
-            params={"limit": 20, "cursor": None}
+            params={"limit": 20, "cursor": None},
         )
         cached = await cache.get(cache_key)
         if cached and _is_entry_fresh(cached):
@@ -209,7 +209,7 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
                 "is_active": True,
                 "limit": 20,
                 "cursor": None,
-            }
+            },
         )
         cached = await cache.get(cache_key)
         if cached and _is_entry_fresh(cached):

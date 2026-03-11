@@ -1,5 +1,5 @@
 import rust_ext
-from datetime import UTC, datetime
+
 
 def test_rust_partition_logic():
     print("Testing get_partition_info...")
@@ -21,6 +21,7 @@ def test_rust_partition_logic():
     is_expired_old = rust_ext.is_partition_expired(old_name, "notifications", 30)
     print(f"  Old {old_name}: expired={is_expired_old}")
     assert is_expired_old
+
 
 if __name__ == "__main__":
     test_rust_partition_logic()

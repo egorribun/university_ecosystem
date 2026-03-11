@@ -1,10 +1,7 @@
-import hashlib
-import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from functools import lru_cache
-from typing import Any, cast
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -19,7 +16,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +24,7 @@ from app.api.deps import (
     get_event_service,
     get_read_event_service,
 )
+from app.api.deps.etag import _set_language_headers, cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import (
     ensure_exists,
@@ -44,7 +41,6 @@ from app.core.database import get_db, get_read_db
 from app.core.localization import normalize_locale, resolve_locale
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
-from app.api.deps.etag import cached_endpoint, _set_language_headers
 from app.models import models
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO

@@ -64,6 +64,3 @@ async def test_increment_events_list_version_redis():
     mock_client.get.return_value = b"10"
     await events_cache_version.increment(mock_cache)
     mock_client.set.assert_called_with("events:list:version", "11")
-
-
-

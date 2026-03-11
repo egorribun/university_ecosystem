@@ -487,9 +487,10 @@ class NatsKVCache(BaseCache):
         async with self._lock:
             if self._kv is None:
                 from app.core.nats_broker import broker as global_broker
+
                 if not global_broker.is_connected:
                     await global_broker.connect()
-                
+
                 js = global_broker.js
                 if js is None:
                     raise RuntimeError("NATS JetStream not initialized")

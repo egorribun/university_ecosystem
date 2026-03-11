@@ -11,15 +11,14 @@ from fastapi import (
     Request,
     Response,
     UploadFile,
-    status,
 )
-from fastapi.encoders import jsonable_encoder
 
 from app.api.deps import (
     get_current_user,
     get_read_story_service,
     get_story_service,
 )
+from app.api.deps.etag import cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import ensure_exists, require_admin
 from app.core.config import settings
@@ -29,8 +28,7 @@ from app.core.localization import (
     resolve_locale,
 )
 from app.core.ratelimit import sensitive_route_limit
-from app.deps.cache import etag_matches, format_etag, get_cache
-from app.api.deps.etag import cached_endpoint
+from app.deps.cache import get_cache
 from app.models import models
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
@@ -52,7 +50,9 @@ class MockStoriesVersionResolver:
     async def get_version(self, cache: Any) -> str:
         return "v1"
 
+
 mock_stories_version = MockStoriesVersionResolver()
+
 
 @router.get("", response_model=list[schemas.StoryOut])
 @cached_endpoint(

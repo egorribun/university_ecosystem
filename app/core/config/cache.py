@@ -55,7 +55,9 @@ class CacheSettings(BaseAppSettings):
     def _validate_cache_backend(cls, value: str) -> str:
         normalized = value.strip().lower()
         if normalized not in {"redis", "memory", "tiered", "none", "nats"}:
-            raise ValueError("CACHE_BACKEND must be redis, memory, tiered, none, or nats")
+            raise ValueError(
+                "CACHE_BACKEND must be redis, memory, tiered, none, or nats"
+            )
         return normalized
 
     @field_validator("cache_warmup_max_age_seconds")

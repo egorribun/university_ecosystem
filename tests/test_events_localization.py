@@ -461,6 +461,3 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert capped.status_code == status.HTTP_200_OK
     # MAX_EVENTS_LIMIT was 100 in crud
     assert capped.json()["limit"] == 100
-
-
-

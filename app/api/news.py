@@ -17,7 +17,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import exists, func, literal, select
 
 from app.api.deps import (
@@ -26,6 +25,7 @@ from app.api.deps import (
     get_news_service,
     get_read_news_service,
 )
+from app.api.deps.etag import _set_language_headers, cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import (
     raise_forbidden,
@@ -45,7 +45,6 @@ from app.core.localization import (
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
-from app.api.deps.etag import cached_endpoint, _set_language_headers
 from app.models import models
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
@@ -186,7 +185,7 @@ async def get_news(
     Returns 404 if not found.
     """
     locale = resolve_locale(request=request)
-    
+
     # Subqueries for counts
     likes_sub = (
         select(func.count(models.NewsLike.id))
