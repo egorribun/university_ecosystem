@@ -292,6 +292,7 @@ dev = [
     "hypothesis>=6.112",
     "maturin>=1.7,<2",
     "mypy>=1.19.1",
+    "pyright>=1.1.400",
     "pre-commit>=3.8",
     "bandit[toml]>=1.9.4",
     "pytest>=8.3",
@@ -314,6 +315,25 @@ members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 [tool.uv.sources]
 rust_ext = { workspace = true }
 pyo3_sanitizer = { workspace = true }
+
+[tool.pyright]
+# MOD-05 (audit 2026-03-11): Pyright added as an ADDITIONAL type checker alongside
+# mypy. Not replacing mypy yet — target Q2 2026 to assess findings and migrate.
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
+typeCheckingMode = "standard"
+# Paths to check
+include = ["app"]
+exclude = ["app/deps", "**/migrations", "**/__pycache__", "**/*.pyi"]
+# Use virtual environment
+venvPath = "."
+venv = ".venv"
+# Strict settings for new code
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnusedImports = true
+reportUnusedVariable = "warning"
+reportDuplicateImport = true
 
 [tool.bandit]
 # Bandit static analysis security scanner.

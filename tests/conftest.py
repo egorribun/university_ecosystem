@@ -128,9 +128,7 @@ def mock_global_redis(monkeypatch_session):
 @pytest.fixture(scope="session", autouse=True)
 def monkeypatch_session():
     """Helper fixture to provide monkeypatch at session scope."""
-    from _pytest.monkeypatch import MonkeyPatch
-
-    mp = MonkeyPatch()
+    mp = pytest.MonkeyPatch()
     yield mp
     mp.undo()
 

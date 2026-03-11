@@ -258,7 +258,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         preferences: "UserPreferences | dict[str, Any] | None" = None,
         profile: "UserProfile | dict[str, Any] | None" = None,
         education_path: "EducationPath | dict[str, Any] | None" = None,
-        **kwargs: "Any",
     ) -> "User":
         """Factory method with explicit types over dynamic __init__ kwargs."""
         return cls(
@@ -269,7 +268,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             preferences=preferences,
             profile=profile,
             education_path=education_path,
-            **kwargs,
         )
 
     @property

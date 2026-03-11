@@ -83,7 +83,8 @@
       "Bash(python3 -c \":*)",
       "Bash(kill 1674)",
       "Bash(docker compose -f /c/Users/egorribun/Documents/university_ecosystem/docker-compose.test.yml down -v)",
-      "Bash(docker ps -a --format \"table {{.Names}}\\\\t{{.Status}}\")"
+      "Bash(docker ps -a --format \"table {{.Names}}\\\\t{{.Status}}\")",
+      "mcp__plugin_context7_context7__query-docs"
     ]
   }
 }

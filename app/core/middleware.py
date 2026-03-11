@@ -371,6 +371,9 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         "/api/v1/password/forgot": settings.rate_limit_auth_password_reset,
         "/api/v1/users/me": settings.rate_limit_users_me,
         "/graphql": settings.rate_limit_graphql,
+        # WebSocket upgrade rate limit (MED-05): throttle connection creation,
+        # not in-flight frames. Mirrors the Caddy-level zone as defense-in-depth.
+        "/ws": settings.rate_limit_websocket,
     }
 
     for pattern, limit_str in limit_map.items():

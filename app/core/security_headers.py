@@ -17,6 +17,12 @@ class SecurityHeadersMiddleware:
     def __init__(self, app: ASGIApp, *, settings: Settings) -> None:
         self._app = app
         self._settings = settings
+        # PERF-05 (audit 2026-03-11): Build all non-CSP headers once at startup.
+        # HSTS, X-Frame-Options, Permissions-Policy, X-Content-Type-Options,
+        # Referrer-Policy, and COOP/COEP/CORP are purely configuration-driven
+        # and never vary per-request.  Pre-building them avoids redundant
+        # conditional checks and string allocations on every HTTP call.
+        self._static_headers: list[tuple[str, str]] = self._build_static_headers()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -29,8 +35,11 @@ class SecurityHeadersMiddleware:
             nonce = secrets.token_urlsafe(16)
             request.state.csp_nonce = nonce
 
-        # Build a frozen set of headers to inject
-        extra_headers = self._build_security_headers(nonce=nonce)
+        # PERF-05 (audit 2026-03-11): Combine pre-built static headers with the
+        # per-request CSP header (nonce changes every call).  Static headers are
+        # computed once in __init__; only _build_csp_header() runs here.
+        csp_header = self._build_csp_header(nonce=nonce)
+        extra_headers = [csp_header, *self._static_headers]
 
         is_html = False
         html_body: list[bytes] = []
@@ -173,10 +182,12 @@ class SecurityHeadersMiddleware:
 
         await self._app(scope, receive, send_with_security_headers)
 
-    def _build_security_headers(self, *, nonce: str | None) -> list[tuple[str, str]]:
-        headers: list[tuple[str, str]] = []
+    def _build_csp_header(self, *, nonce: str | None) -> tuple[str, str]:
+        """Return the (name, value) pair for the CSP/CSP-Report-Only header.
 
-        # CSP
+        PERF-05: Called on every request because the nonce changes each time.
+        All other security headers are pre-built in _build_static_headers().
+        """
         report_only = self._settings.security_csp_report_only_effective
         policy = self._settings.build_csp_policy(nonce=nonce, report_only=report_only)
         header_name = (
@@ -184,7 +195,17 @@ class SecurityHeadersMiddleware:
             if report_only
             else "Content-Security-Policy"
         )
-        headers.append((header_name, policy))
+        return (header_name, policy)
+
+    def _build_static_headers(self) -> list[tuple[str, str]]:
+        """Build all non-CSP security headers once at startup.
+
+        PERF-05 (audit 2026-03-11): These headers are purely configuration-driven
+        and never vary per request (no nonce, no user-specific values).
+        Pre-building them in __init__ eliminates redundant conditional checks and
+        string concatenation on every HTTP call.
+        """
+        headers: list[tuple[str, str]] = []
 
         # HSTS
         if self._settings.security_hsts_enabled_effective:

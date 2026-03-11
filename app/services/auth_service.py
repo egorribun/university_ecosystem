@@ -125,9 +125,9 @@ class AuthService:
                     reason="user_not_found",
                 )
         finally:
-            # Фіксована криптографічна затримка (Constant-time dummy hash)
-            # Незалежно від того знайдений користувач чи ні, ми витрачаємо CPU цикли
-            # роблячи time-based enumeration неможливим.
+            # Fixed-duration cryptographic delay (constant-time dummy hash).
+            # Regardless of whether a user was found, we spend CPU cycles hashing
+            # a dummy value, making timing-based user enumeration impossible.
             from app.auth.security import get_password_hash
 
             await get_password_hash(

@@ -18,6 +18,7 @@ from app.services.audit_service import (
     SecureAuditService,
     get_secure_audit_service,
 )
+from app.services.auth.redis_session import RedisSessionService
 from app.services.fraud_detection_service import FraudDetectionService
 from app.services.geolocation import GeolocationService
 from app.workers.outbox import OutboxWorker
@@ -33,7 +34,12 @@ class InfrastructureProvider(Provider):
 
     @provide(scope=Scope.APP)
     def outbox_worker(self) -> OutboxWorker:
-        return OutboxWorker()
+        from app.core.config import settings
+
+        return OutboxWorker(
+            poll_interval=settings.outbox_poll_interval_seconds,
+            batch_size=settings.outbox_batch_size,
+        )
 
     @provide(scope=Scope.APP)
     async def nats_broker(self) -> AsyncIterator[NatsTaskBroker]:
@@ -94,8 +100,7 @@ class InfrastructureProvider(Provider):
         return await get_session_backend()
 
     @provide(scope=Scope.APP)
-    def redis_session_service(self) -> Any:
-        from app.services.auth.redis_session import RedisSessionService
+    def redis_session_service(self) -> RedisSessionService:
         return RedisSessionService()
 
     @provide(scope=Scope.REQUEST)

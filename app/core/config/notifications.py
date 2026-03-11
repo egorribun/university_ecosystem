@@ -78,6 +78,10 @@ class NotificationSettings(BaseAppSettings):
     )
     notifications_queue_max_attempts: int = 5
 
+    # Outbox worker tuning (PERF-04)
+    outbox_poll_interval_seconds: float = 5.0
+    outbox_batch_size: int = 20
+
     @field_validator("smtp_security", mode="before")
     @classmethod
     def _normalize_smtp_security(cls, value: str | None) -> str:

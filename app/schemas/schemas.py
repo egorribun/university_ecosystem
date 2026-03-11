@@ -181,6 +181,10 @@ class UserSearchFilter(BaseModel):
     # causing OOM on the process and read-replica locking under load.
     limit: int = Field(default=50, ge=1, le=200)
     offset: int = Field(default=0, ge=0)
+    after_id: uuid.UUID | None = Field(
+        default=None,
+        description="Keyset cursor: fetch users with id > after_id",
+    )
 
 
 class UserCreate(UserBase):

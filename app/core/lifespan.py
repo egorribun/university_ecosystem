@@ -281,7 +281,18 @@ async def _periodic_scheduler_loop() -> None:
                     ]
                 )
 
-            await asyncio.gather(*(_kick(t) for t in tasks))
+            # PERF-06 (audit 2026-03-11): asyncio.TaskGroup provides structured
+            # concurrency with proper error isolation — each task failure is
+            # collected independently and does not cancel sibling tasks before
+            # they start (unlike asyncio.gather which short-circuits on the
+            # first unhandled exception when return_exceptions=False).
+            # _kick() already absorbs all exceptions internally, so TaskGroup
+            # will never see a propagating exception here; this change is
+            # forward-safe for any future _kick() refactor that drops the
+            # bare-except.  Python 3.11+ required (available since py3.12 env).
+            async with asyncio.TaskGroup() as tg:
+                for task in tasks:
+                    tg.create_task(_kick(task))
             _last_hour_ran = cur_hour
 
         if await _sleep_or_stop(3600):

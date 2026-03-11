@@ -17,6 +17,10 @@ from app.services.user_service import UserService
 
 class UserProvider(Provider):
     @provide(scope=Scope.REQUEST)
+    def notification_service(self, db: AsyncDatabaseSession) -> NotificationService:
+        return NotificationService(db=db)
+
+    @provide(scope=Scope.REQUEST)
     def user_service(
         self,
         uow: UnitOfWork,

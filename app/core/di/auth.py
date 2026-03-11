@@ -21,6 +21,10 @@ from app.services.user.profile_service import UserProfileService
 
 class AuthProvider(Provider):
     @provide(scope=Scope.REQUEST)
+    def auth_repository(self, db: AsyncDatabaseSession) -> AuthRepository:
+        return AuthRepository(db)
+
+    @provide(scope=Scope.REQUEST)
     def auth_service(
         self,
         audit: AuditService,

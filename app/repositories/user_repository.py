@@ -251,7 +251,15 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         # validates limit ≤ 200, but internal callers may bypass schema validation.
         _MAX_PAGE_SIZE = 200
         capped_limit = min(filters.limit, _MAX_PAGE_SIZE)
-        stmt = stmt.limit(capped_limit).offset(filters.offset)
+
+        # TD-11/PERF-03 (audit 2026-03-11): Keyset pagination avoids the
+        # O(offset) sequential scan that OFFSET imposes.  When after_id is
+        # supplied the query becomes a bounded range scan on the PK index.
+        # The legacy offset branch is preserved for backwards compatibility.
+        if filters.after_id is not None:
+            stmt = stmt.where(User.id > filters.after_id).order_by(User.id).limit(capped_limit)
+        else:
+            stmt = stmt.limit(capped_limit).offset(filters.offset)
 
         result = await self.db.execute(stmt)
         # unique() is required after contains_eager to deduplicate rows produced

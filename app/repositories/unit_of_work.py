@@ -39,22 +39,23 @@ class UnitOfWork:
         self._session_factory = session_factory
         self._session: AsyncDatabaseSession | None = None
 
+    def _bind_repositories(self, session: AsyncDatabaseSession) -> None:
+        """Bind all repositories to *session*. Single source of truth."""
+        self.users = UserRepository(session)
+        self.auth = AuthRepository(session)
+        self.chats = ChatRepository(session)
+        self.events = EventRepository(session)
+        self.notifications = NotificationRepository(session)
+        self.news = NewsRepository(session)
+        self.stories = StoryRepository(session)
+        self.sessions = ActiveSessionRepository(session)
+        self.schedules = ScheduleRepository(session)
+        self.groups = GroupRepository(session)
+
     async def __aenter__(self) -> UnitOfWork:
         """Enter async context and initialize repositories."""
         self._session = self._session_factory()
-
-        # Initialize all repositories with the same session
-        self.users = UserRepository(self._session)
-        self.auth = AuthRepository(self._session)
-        self.chats = ChatRepository(self._session)
-        self.events = EventRepository(self._session)
-        self.notifications = NotificationRepository(self._session)
-        self.news = NewsRepository(self._session)
-        self.stories = StoryRepository(self._session)
-        self.sessions = ActiveSessionRepository(self._session)
-        self.schedules = ScheduleRepository(self._session)
-        self.groups = GroupRepository(self._session)
-
+        self._bind_repositories(self._session)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -106,16 +107,7 @@ def uow_from_session(session: AsyncDatabaseSession) -> UnitOfWork:
     """
     uow = UnitOfWork(lambda: session)
     uow._session = session
-    uow.users = UserRepository(session)
-    uow.auth = AuthRepository(session)
-    uow.chats = ChatRepository(session)
-    uow.events = EventRepository(session)
-    uow.notifications = NotificationRepository(session)
-    uow.news = NewsRepository(session)
-    uow.stories = StoryRepository(session)
-    uow.sessions = ActiveSessionRepository(session)
-    uow.schedules = ScheduleRepository(session)
-    uow.groups = GroupRepository(session)
+    uow._bind_repositories(session)
     return uow
 
 

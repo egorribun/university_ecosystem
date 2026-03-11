@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dishka import AsyncContainer, Provider, Scope, provide
 
-from app.deps.cache import BaseCache
 from app.core.protocols import AsyncDatabaseSession, UserAnalyticsServiceProtocol
 from app.cqrs.bus import CommandBus, LoggingMiddleware, QueryBus
 from app.cqrs.commands.schedule import (
@@ -19,6 +18,7 @@ from app.cqrs.queries import (
     GetStatsHandler,
     GetStatsQuery,
 )
+from app.deps.cache import BaseCache
 from app.services.schedule_service import ScheduleService
 
 

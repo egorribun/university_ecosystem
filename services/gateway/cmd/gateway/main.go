@@ -35,6 +35,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
@@ -153,12 +154,10 @@ func main() {
 		return nil
 	}
 
-	// Connect to File Processor gRPC (CRIT-02: Optional mTLS)
+	// Connect to File Processor gRPC (CRIT-02: Optional TLS via system CA pool)
 	var grpcCreds grpc.DialOption
 	if cfg.GrpcUseTLS {
-		// In a real prod env, we'd load CA certs here.
-		// For now, setting it to fail if TLS is required but untrusted.
-		grpcCreds = grpc.WithTransportCredentials(nil) // Placeholder: requires actual TLS config
+		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	} else {
 		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
@@ -272,8 +271,12 @@ func main() {
 	router.Any("/graphql", handlers.ProxyHandler(proxy))
 	router.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy))
 
-	// NoRoute fallback for static assets or non-API routes
+	// NoRoute fallback: return 404 for unmatched /api/ paths; proxy everything else (static assets, etc.)
 	router.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
+			return
+		}
 		handlers.ProxyHandler(proxy)(c)
 	})
 	logger.Info("JWT validation enabled")

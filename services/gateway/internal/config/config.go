@@ -46,7 +46,7 @@ func Load() (*Config, error) {
 		SentryDSN:         getEnv("SENTRY_DSN", ""),
 		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
 		OtelEndpoint:      getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "jaeger:4317"),
-		AppVersion:        getEnv("APP_VERSION", "gateway@1.0.0"),
+		AppVersion:        getEnv("APP_VERSION", "unknown"),
 		// CRIT-02: Fail-closed (true if explicitly requested, default false to avoid break)
 		GrpcUseTLS:        os.Getenv("GRPC_USE_TLS") == "true",
 	}
