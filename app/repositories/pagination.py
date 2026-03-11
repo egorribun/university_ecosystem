@@ -24,6 +24,7 @@ Design notes:
 - ``Page.next_cursor`` is None when there are no more rows, allowing clients to
   detect the last page without a separate COUNT query.
 """
+
 from __future__ import annotations
 
 import base64
