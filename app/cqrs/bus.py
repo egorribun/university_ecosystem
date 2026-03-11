@@ -20,8 +20,7 @@ class Middleware(Protocol):
         self,
         message: Query | Command,
         next_handler: Callable[[Query | Command], Any],
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
 
 class LoggingMiddleware:

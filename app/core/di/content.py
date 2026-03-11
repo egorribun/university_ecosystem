@@ -19,6 +19,7 @@ class ContentProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def notification_service(self, db: AsyncDatabaseSession) -> Any:
         from app.services.notification_service import NotificationService
+
         return NotificationService(db=db)
 
     @provide(scope=Scope.REQUEST)
@@ -66,6 +67,7 @@ class ContentProvider(Provider):
         from app.services.schedule_optimizer import (
             ScheduleOptimizerService,
         )
+
         return ScheduleService(
             uow=uow,
             optimizer=ScheduleOptimizerService(uow=uow),
@@ -76,4 +78,5 @@ class ContentProvider(Provider):
         self, db: AsyncDatabaseSession
     ) -> UserAnalyticsServiceProtocol:
         from app.services.user.analytics_service import UserAnalyticsService
+
         return UserAnalyticsService(db=db)

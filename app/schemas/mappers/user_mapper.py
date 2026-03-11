@@ -8,6 +8,7 @@ def map_user_orm_to_dict(user: Any) -> dict[str, Any]:
 
     This logic corresponds to the internal _flatten_user_data in UserOut.
     """
+
     # Helper to safely get from related object
     def get_attr(obj: Any, attr: str, default: Any = None) -> Any:
         return getattr(obj, attr, default)
@@ -96,6 +97,7 @@ def map_user_orm_to_public_dict(user: Any) -> dict[str, Any]:
 
     This logic corresponds to the internal _flatten_public_data in UserPublicOut.
     """
+
     def get_attr(obj: Any, attr: str, default: Any = None) -> Any:
         return getattr(obj, attr, default)
 

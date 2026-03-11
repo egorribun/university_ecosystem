@@ -529,8 +529,8 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as client:
-        # HIGH-05 (audit 2026-03-11): Test that we now FAIL-CLOSED (429) instead of 
-        # failing open (200) when Redis is down. 
+        # HIGH-05 (audit 2026-03-11): Test that we now FAIL-CLOSED (429) instead of
+        # failing open (200) when Redis is down.
         # The middleware falls back to MemorySlidingWindowStrategy.
         # Since limit is 1, and this is the first request in memory, it might pass,
         # but we want to verify that it's NOT just ignoring the error.
@@ -542,7 +542,6 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
         assert response2.status_code == status.HTTP_429_TOO_MANY_REQUESTS
         # Header is present in memory strategy
         assert "X-RateLimit-Limit" in response1.headers
-
 
 
 @hypo_settings(max_examples=25)

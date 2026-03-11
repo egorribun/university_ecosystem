@@ -243,7 +243,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             # single-char brute-force enumeration of column values.
             # Profile is already joined above — filter directly on UserProfile column.
             safe_name = self._escape_like(filters.full_name)
-            stmt = stmt.where(UserProfile.full_name.ilike(f"%{safe_name}%", escape="\\"))
+            stmt = stmt.where(
+                UserProfile.full_name.ilike(f"%{safe_name}%", escape="\\")
+            )
         if filters.role:
             stmt = stmt.where(User.role == filters.role)
 
@@ -441,15 +443,19 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             "profile_department",
         }
     )
-    _PREF_KEYS: frozenset[str] = frozenset({"timezone", "dnd_enabled", "dnd_start", "dnd_end"})
-    _EDU_KEYS: frozenset[str] = frozenset({
-        "institute",
-        "course",
-        "education_level",
-        "track",
-        "program",
-        "record_book_number",
-    })
+    _PREF_KEYS: frozenset[str] = frozenset(
+        {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
+    )
+    _EDU_KEYS: frozenset[str] = frozenset(
+        {
+            "institute",
+            "course",
+            "education_level",
+            "track",
+            "program",
+            "record_book_number",
+        }
+    )
 
     def _extract_cqrs_data(
         self, data: dict[str, Any]

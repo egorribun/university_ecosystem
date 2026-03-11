@@ -10,7 +10,7 @@ from app.core.di.users import UserProvider
 
 def create_dishka_container() -> AsyncContainer:
     """Create and return the application-level dishka async container.
-    
+
     Decomposed into domain-specific providers for SOLID compliance and
     improved maintainability as per TD-01 and TD-03 of the security audit.
     """

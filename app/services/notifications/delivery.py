@@ -47,8 +47,6 @@ logger = logging.getLogger(__name__)
 send_web_push = webpush_module.send_web_push
 
 
-
-
 def only_active_users(stmt: Select[Any]) -> Select[Any]:
     """Limit a user selection to accounts that are currently active."""
 

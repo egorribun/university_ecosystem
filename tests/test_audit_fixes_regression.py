@@ -33,36 +33,53 @@ async def test_user_repository_like_escaping(db_session):
 
     assert len(results) >= 1, f"Expected at least 1 result for '%', got {len(results)}"
     emails = [u.email for u in results]
-    assert "wildcard@example.com" in emails, f"wildcard user missing from results: {emails}"
-    assert "normal@example.com" not in emails, f"normal user incorrectly included in results: {emails}"
+    assert "wildcard@example.com" in emails, (
+        f"wildcard user missing from results: {emails}"
+    )
+    assert "normal@example.com" not in emails, (
+        f"normal user incorrectly included in results: {emails}"
+    )
 
     # Search for '_' — should return nothing if no one has underscore
     # safe_query becomes '\_' -> pattern becomes '%\_%'
     results = await repo.search_by_name("_")
     emails = [u.email for u in results]
-    assert "wildcard@example.com" not in emails, f"wildcard user incorrectly included for '_': {emails}"
+    assert "wildcard@example.com" not in emails, (
+        f"wildcard user incorrectly included for '_': {emails}"
+    )
+
 
 @pytest.mark.asyncio
 async def test_event_registry_contains_all_events():
     """Verify that all standard domain events are registered."""
     expected_events = {
-        "UserCreated", "UserUpdated", "UserDeleted",
-        "UserLoggedIn", "MfaEnabled",
-        "EventCreated", "EventUpdated", "EventRegistration",
-        "NewsCreated", "NewsUpdated", "NotificationSent"
+        "UserCreated",
+        "UserUpdated",
+        "UserDeleted",
+        "UserLoggedIn",
+        "MfaEnabled",
+        "EventCreated",
+        "EventUpdated",
+        "EventRegistration",
+        "NewsCreated",
+        "NewsUpdated",
+        "NotificationSent",
     }
     for event_name in expected_events:
         assert event_name in _EVENT_REGISTRY, f"{event_name} missing from registry"
 
+
 def test_csrf_anonymous_session_binding():
     """Verify that anonymous CSRF binding uses empty string, not nonce."""
+
     class MockRequest:
         def __init__(self):
-            self.state = type('State', (), {'session_id': None})
+            self.state = type("State", (), {"session_id": None})
 
     request = MockRequest()
     session_id = _extract_session_id(request, cookie_token="nonce:hmac")
     assert session_id == ""
+
 
 @pytest.mark.asyncio
 async def test_outbox_worker_safe_reconstruction(db_session):
@@ -78,8 +95,8 @@ async def test_outbox_worker_safe_reconstruction(db_session):
         payload={
             "user_id": str(uuid.uuid4()),
             "email": "test@example.com",
-            "malicious_attr": "evil" # Should be filtered out
-        }
+            "malicious_attr": "evil",  # Should be filtered out
+        },
     )
     # Add dummy metadata to avoid missing field errors if any
     se.metadata_ = {"event_id": str(uuid.uuid4())}
@@ -89,7 +106,9 @@ async def test_outbox_worker_safe_reconstruction(db_session):
     # We use the actual registry key
     assert "UserCreated" in _EVENT_REGISTRY
 
-    with mock.patch.object(event_bus, 'publish', new_callable=mock.AsyncMock) as mock_publish:
+    with mock.patch.object(
+        event_bus, "publish", new_callable=mock.AsyncMock
+    ) as mock_publish:
         await worker._dispatch_event(se)
 
         assert mock_publish.called
