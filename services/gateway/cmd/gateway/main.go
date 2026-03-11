@@ -35,6 +35,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
@@ -73,7 +74,7 @@ func main() {
 		err := sentry.Init(sentry.ClientOptions{
 			Dsn:              cfg.SentryDSN,
 			Environment:      cfg.Environment,
-			Release:          "gateway@1.0.0",
+			Release:          cfg.AppVersion,
 			TracesSampleRate: 1.0,
 		})
 		if err != nil {
@@ -153,10 +154,15 @@ func main() {
 		return nil
 	}
 
-	// Connect to File Processor gRPC
-	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	// Connect to File Processor gRPC (CRIT-02: Optional TLS via system CA pool)
+	var grpcCreds grpc.DialOption
+	if cfg.GrpcUseTLS {
+		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
+	} else {
+		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+
+	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds)
 	if err != nil {
 		logger.Warn("Failed to connect to File Processor gRPC", zap.Error(err))
 	} else {
@@ -242,26 +248,34 @@ func main() {
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
 	jwtMiddleware.ListenForRevocations(ctx)
 
-	// Protected specific routes
-	protected := router.Group("/")
-	protected.Use(jwtMiddleware.Validate())
+	// --- API Grouping & JWT Architecture (CRIT-04) ---
+	// 1. Core API (Always Validated)
+	api := router.Group("/api")
+	api.Use(jwtMiddleware.Validate())
 	{
+		// Proxies to backend for all v1 and admin routes
+		api.Any("/v1/*path", handlers.ProxyHandler(proxy))
+		api.Any("/admin/*path", handlers.ProxyHandler(proxy))
+
 		// New gRPC Endpoint for Synchronous File Processing - register BEFORE catch-all
-		protected.POST("/api/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
+		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
 	}
 
-	// Catch-all Proxy for remaining routes (BFF fallback)
-	// We use NoRoute but we need it to still respect JWT for /api/v1/ and /api/admin/
-	router.NoRoute(jwtMiddleware.Optional(), func(c *gin.Context) {
-		path := c.Request.URL.Path
-		if strings.HasPrefix(path, "/api/v1/") || strings.HasPrefix(path, "/api/admin/") {
-			// Require full validation for these paths if they weren't matched by specific routes
-			// (jwtMiddleware.Optional already set user info if valid, but here we can enforce it if needed)
-			// For BFF simplicity, we re-run Validate() for these specific prefixes in NoRoute
-			jwtMiddleware.Validate()(c)
-			if c.IsAborted() {
-				return
-			}
+	// 2. Public API (No Auth or Optional)
+	publicAPI := router.Group("/api/public")
+	{
+		publicAPI.Any("/*path", handlers.ProxyHandler(proxy))
+	}
+
+	// 3. Other Core Endpoints
+	router.Any("/graphql", handlers.ProxyHandler(proxy))
+	router.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy))
+
+	// NoRoute fallback: return 404 for unmatched /api/ paths; proxy everything else (static assets, etc.)
+	router.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
+			return
 		}
 		handlers.ProxyHandler(proxy)(c)
 	})
@@ -301,7 +315,7 @@ func main() {
 func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
 	exporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint("jaeger:4317"), // Default OTEL endpoint
+		otlptracegrpc.WithEndpoint(cfg.OtelEndpoint),
 	)
 	if err != nil {
 		return nil, err

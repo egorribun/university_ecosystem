@@ -18,9 +18,7 @@ from app.services.notifications.core import (
     async_session,
 )
 from app.services.notifications.delivery import (
-    _ensure_push_subscription_schema_once,
     create_notifications_for_users,
-    invalidate_push_subscription_schema_cache,
     only_active_users,
     send_web_push,  # Re-exported from delivery for test compatibility
 )
@@ -47,8 +45,6 @@ __all__ = [
     "_build_delivery_row",
     "_coerce_optional_text",
     "_ensure_aware",
-    # Delivery
-    "_ensure_push_subscription_schema_once",
     "_fetch_active_user_ids",
     "_normalize_translation_map",
     "_plain_text",
@@ -65,7 +61,6 @@ __all__ = [
     # Internal module re-exports for test patching
     "dt",
     "generate_schedule_reminders",
-    "invalidate_push_subscription_schema_cache",
     # Quiet hours
     "is_user_in_quiet_hours",
     # News & Events

@@ -64,7 +64,7 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 		// indefinitely, cascading into a connection exhaustion outage.
 		// On timeout we fail-open (allow the request) to maintain availability,
 		// consistent with the existing Redis-error behaviour below.
-		rCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Millisecond)
+		rCtx, cancel := context.WithTimeout(c.Request.Context(), 50*time.Millisecond)
 		defer cancel()
 
 		// Apply rate limit

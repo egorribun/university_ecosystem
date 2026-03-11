@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 from app.api.validation import raise_validation_error
 from app.auth.security import (
-    _validate_password_hibp,
     get_password_hash,
+    validate_password_hibp,
     verify_password,
 )
 from app.core.config import settings
@@ -32,8 +32,8 @@ from app.core.localization import resolve_locale
 from app.core.protocols import UserLike
 from app.models import models
 from app.models.user_loaders import ensure_mfa_relationships_loaded
+from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
-from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.schemas.dtos import UserDTO
@@ -53,7 +53,7 @@ class AuthService:
         audit: AuditService,
         auth_repo: AuthRepository,
         user_repo: UserRepository,
-        session_repo: SessionRepository,
+        session_repo: ActiveSessionRepository,
         uow: UnitOfWork,
     ) -> None:
         self.audit = audit
@@ -125,9 +125,9 @@ class AuthService:
                     reason="user_not_found",
                 )
         finally:
-            # Фіксована криптографічна затримка (Constant-time dummy hash)
-            # Незалежно від того знайдений користувач чи ні, ми витрачаємо CPU цикли
-            # роблячи time-based enumeration неможливим.
+            # Fixed-duration cryptographic delay (constant-time dummy hash).
+            # Regardless of whether a user was found, we spend CPU cycles hashing
+            # a dummy value, making timing-based user enumeration impossible.
             from app.auth.security import get_password_hash
 
             await get_password_hash(
@@ -188,10 +188,10 @@ class AuthService:
             raise_validation_error("errors.password.invalid_link", locale)
 
         try:
-            from app.auth.security import _validate_password_hibp
+            from app.auth.security import validate_password_hibp
 
             # HIBP check must be done before hashing (async, network call)
-            await _validate_password_hibp(new_password, locale=locale)
+            await validate_password_hibp(new_password, locale=locale)
             new_hashed = await get_password_hash(new_password, locale=locale)
             await self.user_repo.update(rec.user_id, {"hashed_password": new_hashed})
         except ValueError as exc:
@@ -258,9 +258,8 @@ class AuthService:
 
         async with self.uow:
             await self.uow.commit()
-
-        if not hasattr(db_user, "model_dump"):  # Check if it's NOT a Pydantic DTO
-            await self.auth_repo.refresh(db_user)
+            if not hasattr(db_user, "model_dump"):  # Check if it's NOT a Pydantic DTO
+                await self.uow.session.refresh(db_user)
 
         loaded_user = await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
         enriched_user = await attach_pending_email(self.auth_repo.db, loaded_user)
@@ -381,7 +380,7 @@ class AuthService:
             raise_validation_error("errors.users.password_same", locale)
 
         try:
-            await _validate_password_hibp(payload.new_password, locale=locale)
+            await validate_password_hibp(payload.new_password, locale=locale)
             hashed_password = await get_password_hash(
                 payload.new_password, locale=locale
             )

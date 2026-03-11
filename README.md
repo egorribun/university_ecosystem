@@ -9,7 +9,7 @@
 [![Python 3.13](https://img.shields.io/badge/Python-3.13-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.135+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
-[![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
+[![Go 1.26](https://img.shields.io/badge/Go-1.24-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
 [![Rust](https://img.shields.io/badge/Rust-LATEST-black.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 
 ---
@@ -72,7 +72,7 @@ graph TD
 | Layer | Technologies |
 | :--- | :--- |
 | **Frontend** | React 19, Vite, Framer Motion, Tailwind CSS, TanStack Query |
-| **Backend** | FastAPI, Go 1.24, Rust, Dishka (DI), SQLAlchemy |
+| **Backend** | FastAPI, Go 1.26, Rust, Dishka (DI), SQLAlchemy |
 | **Real-time** | Go, NATS, WebSockets |
 | **Security** | SpiceDB (AuthZ), JWT, WebAuthn, Argon2 |
 | **Data** | PostgreSQL 17, pgvector, Redis, Elasticsearch |

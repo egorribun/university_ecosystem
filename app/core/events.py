@@ -57,7 +57,39 @@ class DomainEvent(ABC):
         ...
 
 
+# ── Event Registry ────────────────────────────────────────────────────────────
+
+_EVENT_REGISTRY: dict[str, type[DomainEvent]] = {}
+
+
+def register_domain_event(cls: type[DomainEvent]) -> type[DomainEvent]:
+    """Register a DomainEvent subclass for safe Outbox/CDC deserialization.
+
+    HIGH-04 (audit 2026-03-11): Replaces the insecure blind ``setattr`` pattern
+    used during event reconstruction. By registering allowed event types, we
+    ensure only intended classes are instantiated and only known fields are
+    populated using standard dataclass constructors.
+
+    Registers the class under both its class name and its ``event_type`` property.
+    """
+    _EVENT_REGISTRY[cls.__name__] = cls
+    # Also register by the string event_type if defined (needs an instance or property lookup)
+    # We'll use the property if accessible on the class/proto.
+    try:
+        # Create a dummy instance to get the event_type property value
+        # This assumes no-arg or default-factory constructor for the fields
+        # used in event_type property logic.
+        instance = cls()
+        _EVENT_REGISTRY[instance.event_type] = cls
+    except Exception:
+        # Fallback: if we can't instantiate it safely, callers must use class name.
+        pass
+
+    return cls
+
+
 # User Events
+@register_domain_event
 @dataclass
 class UserCreated(DomainEvent):
     """Fired when a new user is created."""
@@ -70,6 +102,7 @@ class UserCreated(DomainEvent):
         return "user.created"
 
 
+@register_domain_event
 @dataclass
 class UserUpdated(DomainEvent):
     """Fired when a user profile is updated."""
@@ -82,6 +115,7 @@ class UserUpdated(DomainEvent):
         return "user.updated"
 
 
+@register_domain_event
 @dataclass
 class UserDeleted(DomainEvent):
     """Fired when a user is deleted."""
@@ -94,6 +128,7 @@ class UserDeleted(DomainEvent):
 
 
 # Auth Events
+@register_domain_event
 @dataclass
 class UserLoggedIn(DomainEvent):
     """Fired when a user logs in successfully."""
@@ -106,6 +141,7 @@ class UserLoggedIn(DomainEvent):
         return "auth.login"
 
 
+@register_domain_event
 @dataclass
 class MfaEnabled(DomainEvent):
     """Fired when MFA is enabled for a user."""
@@ -119,6 +155,7 @@ class MfaEnabled(DomainEvent):
 
 
 # Event Events
+@register_domain_event
 @dataclass
 class EventCreated(DomainEvent):
     """Fired when a new event is created."""
@@ -132,6 +169,7 @@ class EventCreated(DomainEvent):
         return "event.created"
 
 
+@register_domain_event
 @dataclass
 class EventUpdated(DomainEvent):
     """Fired when an existing event is updated."""
@@ -144,6 +182,7 @@ class EventUpdated(DomainEvent):
         return "event.updated"
 
 
+@register_domain_event
 @dataclass
 class EventRegistration(DomainEvent):
     """Fired when a user registers for an event."""
@@ -156,6 +195,7 @@ class EventRegistration(DomainEvent):
         return "event.registration"
 
 
+@register_domain_event
 @dataclass
 class NewsCreated(DomainEvent):
     """Fired when a new news article is created."""
@@ -168,6 +208,7 @@ class NewsCreated(DomainEvent):
         return "news.created"
 
 
+@register_domain_event
 @dataclass
 class NewsUpdated(DomainEvent):
     """Fired when an existing news article is updated."""
@@ -181,6 +222,7 @@ class NewsUpdated(DomainEvent):
 
 
 # Notification Events
+@register_domain_event
 @dataclass
 class NotificationSent(DomainEvent):
     """Fired when a notification is sent."""

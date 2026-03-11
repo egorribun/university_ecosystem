@@ -101,6 +101,29 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
                 return id_val
         return id_val
 
+    @staticmethod
+    def _escape_like(value: str, escape_char: str = "\\") -> str:
+        """Escape SQL LIKE wildcards to prevent pattern injection.
+
+        CRIT-01/05 (audit 2026-03-11): Unescaped user input in LIKE patterns
+        allows two attacks:
+        1. DoS — ``%`` or ``_`` turns a selective query into a full-table scan.
+        2. Data disclosure — crafted patterns can enumerate rows by exploiting
+           `_` (single-char wildcard) to brute-force column values.
+
+        Must be paired with ``.like(pattern, escape=escape_char)`` or
+        ``.ilike(pattern, escape=escape_char)`` in the calling query.
+
+        Example::
+
+            safe = self._escape_like(user_input)
+            stmt = stmt.where(Column.ilike(f"%{safe}%", escape="\\\\"))
+        """
+        # Order matters: escape the escape character first
+        for ch in (escape_char, "%", "_"):
+            value = value.replace(ch, f"{escape_char}{ch}")
+        return value
+
 
 class BaseRepository[T: Base, DTOT: BaseModel, CreateT, UpdateT](
     ReadOnlyRepository[T, DTOT]

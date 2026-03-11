@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid as _uuid_module
 from collections.abc import Awaitable, Callable, Coroutine
 from contextvars import ContextVar
@@ -86,7 +85,6 @@ class RequestIDMiddleware:
         ctx_token = request_id_ctx.set(request_id)
         # Binds request_id to the current asyncio task context for structlog.
         bind_context(request_id=request_id)
-
 
         async def _send_with_id(message: Any) -> None:
             if message["type"] == "http.response.start":
@@ -224,6 +222,7 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         tmpfile = await anyio.to_thread.run_sync(
             lambda: tempfile.SpooledTemporaryFile(max_size=_threshold, mode="w+b")
         )
+        accumulated = 0
         try:
             async for chunk in request.stream():
                 accumulated += len(chunk)
@@ -372,6 +371,9 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         "/api/v1/password/forgot": settings.rate_limit_auth_password_reset,
         "/api/v1/users/me": settings.rate_limit_users_me,
         "/graphql": settings.rate_limit_graphql,
+        # WebSocket upgrade rate limit (MED-05): throttle connection creation,
+        # not in-flight frames. Mirrors the Caddy-level zone as defense-in-depth.
+        "/ws": settings.rate_limit_websocket,
     }
 
     for pattern, limit_str in limit_map.items():

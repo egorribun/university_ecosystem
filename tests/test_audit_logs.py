@@ -130,7 +130,7 @@ async def test_password_reset_completed_audit(
     )
     await db_session.commit()
 
-    with patch("app.auth.security._validate_password_hibp", new_callable=AsyncMock):
+    with patch("app.auth.security.validate_password_hibp", new_callable=AsyncMock):
         response = await async_client.post(
             "/password/reset",
             json={"token": token, "password": "BrandNewPass123!"},

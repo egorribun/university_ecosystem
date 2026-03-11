@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -229,7 +228,7 @@ async def close_hibp_client() -> None:
         _hibp_client = None
 
 
-async def _validate_password_hibp(password: str, *, locale: str | None = None) -> None:
+async def validate_password_hibp(password: str, *, locale: str | None = None) -> None:
     # SHA-1 is required by the "Have I Been Pwned" API for their k-Anonymity model.
     # We only send the first 5 characters of the hash prefix to the API.
     # The full hash is never transmitted or stored.
@@ -348,7 +347,7 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
     # HIBP (Have I Been Pwned) check is intentionally excluded here.
     # It requires an async HTTP call and is handled separately by async
     # service-layer callers (auth_service, user_service) via
-    # _validate_password_hibp().  This keeps get_password_hash() synchronous
+    # validate_password_hibp().  This keeps get_password_hash() synchronous
     # so it remains usable from CLI commands and MFA code generation.
 
 

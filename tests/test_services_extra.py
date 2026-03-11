@@ -53,12 +53,15 @@ async def test_user_service_basics():
     notifications = AsyncMock()
     db = AsyncMock()
     user_repo = AsyncMock()
-    AsyncMock()
+    mock_uow = AsyncMock()
+    mock_uow.users = user_repo
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
 
     # Inject Repos
     user_repo.add = MagicMock()
     user_repo._to_dto = MagicMock()
-    service = UserService(user_repo, audit, notifications)
+    service = UserService(mock_uow, audit, notifications)
 
     user = models.User(id=1, email="u@e.com")
     user.profile = models.UserProfile(
@@ -115,8 +118,15 @@ async def test_auth_service_basics():
     auth_repo = AsyncMock()
     user_repo = AsyncMock()
     session_repo = AsyncMock()
+    mock_uow = AsyncMock()
+    mock_uow.auth = auth_repo
+    mock_uow.users = user_repo
+    mock_uow.sessions = session_repo
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock()
 
-    service = AuthService(audit, auth_repo, user_repo, session_repo)
+    service = AuthService(audit, auth_repo, user_repo, session_repo, mock_uow)
     user = models.User(id=1, email="u@e.com", hashed_password="old_hash")
     request = MagicMock()
 
@@ -146,15 +156,15 @@ async def test_auth_service_basics():
         ),
         patch("app.services.user.profile_service.resolve_locale", return_value="en"),
         patch(
-            "app.services.auth_service._validate_password_hibp",
+            "app.services.auth_service.validate_password_hibp",
             new_callable=AsyncMock,
         ),
     ):
         m_verify.side_effect = [True, False]
         await service.change_password(user, data, request)
         assert user.hashed_password == "new_hash"
-        # Commit now goes through auth_repo proxy, not the raw session.
-        auth_repo.commit.assert_called()
+        # Commit now goes through UOW, not the raw session or repo.
+        mock_uow.commit.assert_called()
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ import math
 import time
 from typing import Any, cast
 
-from redis.exceptions import RedisError
+from redis.exceptions import NoScriptError, RedisError, ResponseError
 
 from app.core.ratelimit.models import RateLimitInfo
 from app.core.ratelimit.strategies.base import get_shared_client
@@ -70,7 +70,20 @@ class RedisSlidingWindowStrategy:
             )
             result = cast(list[Any], eval_result)
         except RedisError as exc:
-            if "unknown command" not in str(exc).lower():
+            # NoScriptError: EVALSHA cache miss — script not loaded on this node.
+            # ResponseError: covers Redis Cluster "unknown command" for EVAL/scripting.
+            # All other RedisError subtypes (ConnectionError, TimeoutError, etc.) are re-raised.
+            if isinstance(exc, NoScriptError):
+                pass  # always fall back
+            elif isinstance(exc, ResponseError):
+                err_str = str(exc).lower()
+                if (
+                    "unknown command" not in err_str
+                    and "noscript" not in err_str
+                    and not err_str.startswith("err")
+                ):
+                    raise
+            else:
                 raise
             # Fallback: fixed-window pipeline (Redis Cluster compatibility)
             return await self._fallback_fixed_window(

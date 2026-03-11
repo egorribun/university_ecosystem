@@ -12,6 +12,7 @@ from app.auth.security import verify_and_update_password
 from app.core import metrics
 
 if TYPE_CHECKING:
+    from app.repositories.unit_of_work import UnitOfWork
     from app.repositories.user_repository import UserRepository
     from app.schemas.dtos import UserAuthDTO
     from app.services.audit_service import AuditService
@@ -25,12 +26,14 @@ logger = logging.getLogger(__name__)
 class CredentialValidator:
     def __init__(
         self,
+        uow: UnitOfWork,
         user_repo: UserRepository,
         profile_service: UserProfileService,
         lockout_service: LockoutService,
         audit: AuditService,
         session_manager: LoginSessionManager,
     ) -> None:
+        self.uow = uow
         self.user_repo = user_repo
         self.profile_service = profile_service
         self.lockout_service = lockout_service
@@ -100,7 +103,7 @@ class CredentialValidator:
 
         if new_hash:
             await self.user_repo.update(user.id, {"hashed_password": new_hash})
-            await self.user_repo.commit()
+            await self.uow.commit()
 
         if await self.lockout_service.clear_failed_attempts(normalized_email) > 0:
             self.audit.log(

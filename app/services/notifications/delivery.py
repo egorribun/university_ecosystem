@@ -33,7 +33,6 @@ from app.services.notifications.core import (
     _normalize_translation_map,
 )
 from app.services.notifications.quiet_hours import prepare_push_payload_for_user
-from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import WebPushResult
 
@@ -46,32 +45,6 @@ logger = logging.getLogger(__name__)
 
 # Re-export for backward compatibility (used in _send_push)
 send_web_push = webpush_module.send_web_push
-
-
-_SCHEMA_CHECK_LOCK = asyncio.Lock()
-_SCHEMA_CHECK_MARKER: float | None = None
-
-
-async def _ensure_push_subscription_schema_once(db: AsyncSession) -> None:
-    """Ensure the push subscription schema exists once per process."""
-
-    global _SCHEMA_CHECK_MARKER
-
-    if _SCHEMA_CHECK_MARKER is not None:
-        return
-
-    async with _SCHEMA_CHECK_LOCK:
-        if _SCHEMA_CHECK_MARKER is not None:
-            return  # type: ignore[unreachable]
-        await ensure_push_subscription_schema(db)
-        _SCHEMA_CHECK_MARKER = dt.datetime.now(UTC).timestamp()
-
-
-def invalidate_push_subscription_schema_cache() -> None:
-    """Reset the cached schema check state so it runs again on next use."""
-
-    global _SCHEMA_CHECK_MARKER
-    _SCHEMA_CHECK_MARKER = None
 
 
 def only_active_users(stmt: Select[Any]) -> Select[Any]:
@@ -169,7 +142,6 @@ async def create_notifications_for_users(
                 )
             )
     else:
-        await _ensure_push_subscription_schema_once(db)
         subs = (
             (
                 await db.execute(

@@ -78,7 +78,13 @@ def configure_logging(
         structlog.processors.EventRenamer("message"),
         # Add service context to every log record
         lambda _, __, event_dict: (
-            event_dict.update({"service": "backend", "environment": getattr(settings, "environment", "production")}) or event_dict
+            event_dict.update(
+                {
+                    "service": "backend",
+                    "environment": getattr(settings, "environment", "production"),
+                }
+            )
+            or event_dict
         ),
     ]
 
@@ -114,7 +120,6 @@ def configure_logging(
         stream=sys.stdout,
         level=level,
     )
-
 
     # MOD-6 (audit 2026-03-05): Bridge stdlib logging into the OTel SDK so that
     # every log record is correlated with active traces (trace_id / span_id) in

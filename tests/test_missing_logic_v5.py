@@ -39,7 +39,13 @@ async def test_service_missing_branches():
     notifications = AsyncMock()
     repo.get_invite_code = AsyncMock(return_value=None)
     repo.check_email_exists = AsyncMock(return_value=False)
-    service = UserService(repo, audit, notifications)
+    mock_uow = AsyncMock()
+    mock_uow.users = repo
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock()
+    mock_uow.rollback = AsyncMock()
+    service = UserService(mock_uow, audit, notifications)
 
     user_in = schemas.UserCreate(
         email="test@e.com",
@@ -75,7 +81,12 @@ async def test_service_missing_branches():
     from app.services.vector_service import VectorService
 
     n_repo = AsyncMock()
-    n_service = NewsService(n_repo, VectorService(db))
+    mock_uow_news = AsyncMock()
+    mock_uow_news.news = n_repo
+    mock_uow_news.__aenter__ = AsyncMock(return_value=mock_uow_news)
+    mock_uow_news.__aexit__ = AsyncMock(return_value=None)
+    mock_uow_news.commit = AsyncMock()
+    n_service = NewsService(mock_uow_news, VectorService(db))
     news_in = schemas.NewsCreate(title="T", content="C")
 
     # Mock the repo.create to return a news object

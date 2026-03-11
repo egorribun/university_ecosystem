@@ -8,7 +8,6 @@ from starlette.datastructures import Headers
 from app.core.config import settings
 from app.core.localization import translate
 from app.models.chat import Attachment, Chat
-from app.repositories.chat_repository import ChatRepository
 from app.services.chat.attachment_service import ChatAttachmentService
 from app.services.chat.command_service import ChatCommandService
 from app.services.chat.notification_service import ChatNotificationService
@@ -112,11 +111,13 @@ async def test_send_message_blocks_infected_file(
         lambda *_, **__: None,
     )
 
-    repo = ChatRepository(db_session)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db_session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(db_session)
-    queries = ChatQueryService(db_session, repo)
-    commands = ChatCommandService(db_session, repo, attachments, notifications)
+    queries = ChatQueryService(db_session, uow.chats)
+    commands = ChatCommandService(uow, attachments, notifications)
     service = ChatService(db_session, attachments, notifications, queries, commands)
 
     with pytest.raises(HTTPException) as excinfo:
@@ -167,11 +168,13 @@ async def test_send_message_generates_public_urls(
 
     monkeypatch.setattr(ChatNotificationService, "notify_new_message", _noop_notify)
 
-    repo = ChatRepository(db_session)
+    from app.repositories.unit_of_work import uow_from_session
+
+    uow = uow_from_session(db_session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(db_session)
-    queries = ChatQueryService(db_session, repo)
-    commands = ChatCommandService(db_session, repo, attachments, notifications)
+    queries = ChatQueryService(db_session, uow.chats)
+    commands = ChatCommandService(uow, attachments, notifications)
     service = ChatService(db_session, attachments, notifications, queries, commands)
     message = await service.send_message(
         chat.id,

@@ -31,7 +31,6 @@ def test_create_admin_success(mock_db_session, mock_engine):
     """Test creating a new admin user."""
     with (
         patch("app.cli.db.async_session", return_value=mock_db_session),
-        patch("app.cli.db.engine", mock_engine),
         patch(
             "app.cli.db.get_password_hash",
             new_callable=AsyncMock,
@@ -57,7 +56,6 @@ def test_create_admin_existing(mock_db_session, mock_engine):
     """Test updating password for existing admin."""
     with (
         patch("app.cli.db.async_session", return_value=mock_db_session),
-        patch("app.cli.db.engine", mock_engine),
         patch(
             "app.cli.db.get_password_hash",
             new_callable=AsyncMock,

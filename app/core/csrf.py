@@ -49,7 +49,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
 import secrets
 from typing import TYPE_CHECKING
 
@@ -160,9 +159,12 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
     """
     session_id: str = getattr(request.state, "session_id", None) or ""
     if not session_id:
-        # For anonymous requests, bind to a per-request fingerprint derived
-        # from the existing nonce (if any) so the token is still server-minted.
-        session_id = cookie_token.split(_TOKEN_SEPARATOR, 1)[0] if cookie_token else ""
+        # RZ-03 (audit 2026-03-11): Anonymous requests bind to an empty string.
+        # Using the existing nonce as session_id was self-referential:
+        # an attacker who can read the cookie (e.g. via subdomain XSS) could
+        # replay the same token for any anonymous request. Binding to ""
+        # ensures the HMAC is server-validated but not self-bound.
+        session_id = ""
     return session_id
 
 

@@ -3,7 +3,6 @@ import logging
 import uuid
 
 from app.core.localization import localized_text, normalize_locale
-from app.repositories.story_repository import StoryRepository
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO
@@ -88,7 +87,7 @@ class StoryService:
         if updates.get("expires_at"):
             updates["expires_at"] = self.repo._ensure_utc(updates["expires_at"])
 
-        await self.repo.update(story.id, updates)
+        updated_story = await self.repo.update(story.id, updates)
         assert updated_story is not None  # nosec B101
 
         # Cleanup old cover if changed

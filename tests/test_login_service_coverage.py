@@ -65,6 +65,11 @@ def login_service(
     from app.services.auth.login_session_manager import LoginSessionManager
     from app.services.auth.mfa_coordinator import MfaCoordinator
 
+    mock_uow = MagicMock()
+    mock_uow.commit = AsyncMock()
+    mock_uow.rollback = AsyncMock()
+    mock_uow.auth = mock_db
+
     session_manager = LoginSessionManager(
         session_service=mock_session_service,
         redis_session_service=AsyncMock(),
@@ -72,13 +77,14 @@ def login_service(
         audit=mock_audit_service,
     )
     validator = CredentialValidator(
+        uow=mock_uow,
         user_repo=mock_user_service,
         profile_service=mock_profile_service,
         lockout_service=mock_lockout_service,
         audit=mock_audit_service,
         session_manager=session_manager,
     )
-    mfa_coord = MfaCoordinator(auth_repo=mock_db)
+    mfa_coord = MfaCoordinator(uow=mock_uow, auth_repo=mock_db)
 
     ls = LoginService(
         validator=validator,

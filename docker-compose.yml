@@ -2,7 +2,11 @@ services:
   caddy:
     # HTTP/3 (QUIC) edge reverse proxy — sole public HTTPS entry point.
     # Terminates TLS + QUIC; forwards plain HTTP/1.1 to the backend internally.
-    image: caddy:2-alpine
+    # Custom build includes the caddy-ratelimit plugin for WebSocket upgrade
+    # throttling (MED-05). See services/caddy/Dockerfile.
+    build:
+      context: ./services/caddy
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       # TCP: HTTP/1.1, HTTP/2, and the TLS upgrade for HTTP/3.
@@ -70,6 +74,8 @@ services:
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+      # MOD-06 (audit 2026-03-11): Send OTLP traces to Tempo via gRPC.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
     volumes:
       - static-data:/app/app/static
       # SECURITY: No live source mount in production.
@@ -93,6 +99,7 @@ services:
       - db_net
       - cache_net
       - event_net
+      - internal
     healthcheck:
       test:
         [
@@ -158,7 +165,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       # P0-04 (audit 2026-03-06): Bind to 127.0.0.1 — unauthenticated Prometheus
       # metrics endpoint exposes latency, queue depths, internal IPs.
-      NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
+      NOTIFICATIONS_WORKER_METRICS_HOST: 127.0.0.1
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/0
@@ -414,13 +421,14 @@ services:
     # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
     # and `docker inspect` expose full command including secrets. The
     # SPICEDB_GRPC_PRESHARED_KEY env var (below) is read automatically by SpiceDB.
-    command: serve --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=${SPICEDB_PG_SSLMODE:-require}"
+    environment:
+      SPICEDB_DATASTORE_CONN_URI: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:-secret}"
+    command: serve
     # Internal only - accessed by backend services
     expose:
       - "50051"
       - "8443"
-    environment:
-      SPICEDB_GRPC_PRESHARED_KEY: ${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required - set in .env file}
     networks:
       - db_net
       - service_net
@@ -455,6 +463,27 @@ services:
           cpus: "0.25"
           memory: 512M
 
+  tempo:
+    # MOD-06 (audit 2026-03-11): Grafana Tempo for distributed tracing via OTLP.
+    # Backend sends traces to tempo:4317 (gRPC) via OTEL_EXPORTER_OTLP_ENDPOINT.
+    image: grafana/tempo:2.6.1
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./config/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"   # Tempo HTTP API (localhost only — admin UI/queries)
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3200/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
 networks:
   public:
   service_net:
@@ -464,6 +493,8 @@ networks:
   cache_net:
     internal: true
   event_net:
+    internal: true
+  internal:
     internal: true
 
 volumes:
@@ -475,3 +506,4 @@ volumes:
   caddy_data:
   # Caddy auto-save config (optional, enables zero-downtime reloads on restart).
   caddy_config:
+  tempo_data:

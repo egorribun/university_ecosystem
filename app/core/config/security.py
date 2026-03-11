@@ -93,7 +93,6 @@ class SecuritySettings(
     # application bootable without extra config in local environments.
     csrf_hmac_secret: str = ""
 
-
     @field_validator("audit_log_secret")
     @classmethod
     def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:

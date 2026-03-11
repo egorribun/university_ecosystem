@@ -29,12 +29,25 @@ def mock_vector_service():
 
 
 @pytest.fixture
-def news_service(mock_repo, mock_vector_service):
-    return NewsService(repo=mock_repo, vector_service=mock_vector_service)
+def mock_uow(mock_repo):
+    uow = AsyncMock()
+    uow.news = mock_repo
+    uow.session = mock_repo.db
+    uow.__aenter__ = AsyncMock(return_value=uow)
+    uow.__aexit__ = AsyncMock(return_value=None)
+    uow.commit = AsyncMock()
+    uow.flush = AsyncMock()
+    uow.rollback = AsyncMock()
+    return uow
+
+
+@pytest.fixture
+def news_service(mock_uow, mock_vector_service):
+    return NewsService(uow=mock_uow, vector_service=mock_vector_service)
 
 
 @pytest.mark.asyncio
-async def test_list_news(news_service, mock_repo, mock_vector_service):
+async def test_list_news(news_service, mock_uow, mock_repo, mock_vector_service):
     # Test with search to trigger vector service
     search_query = "something"
 
@@ -66,7 +79,7 @@ async def test_list_news(news_service, mock_repo, mock_vector_service):
 
 
 @pytest.mark.asyncio
-async def test_create_news(news_service, mock_repo):
+async def test_create_news(news_service, mock_uow, mock_repo):
     data = schemas.NewsCreate(title="News", content="Content")
 
     start_event_id = 1
@@ -78,12 +91,12 @@ async def test_create_news(news_service, mock_repo):
     result = await news_service.create_news(data)
 
     mock_repo.create.assert_awaited_once()
-    mock_repo.db.commit.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
     assert result == mock_news
 
 
 @pytest.mark.asyncio
-async def test_toggle_like(news_service, mock_repo):
+async def test_toggle_like(news_service, mock_uow, mock_repo):
     news_id = 1
     user_id = 2
     mock_repo.toggle_like.return_value = True
@@ -91,5 +104,5 @@ async def test_toggle_like(news_service, mock_repo):
     result = await news_service.toggle_like(news_id, user_id)
 
     mock_repo.toggle_like.assert_awaited_once_with(news_id, user_id)
-    mock_repo.db.commit.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
     assert result is True

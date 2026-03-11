@@ -190,11 +190,11 @@ class FeatureFlagService:
         self._flags: dict[str, FeatureFlag] = {}
         # Hardcoded defaults (will be used if Redis is empty or fails)
         self._defaults: dict[str, FeatureFlag] = {}
-        self._redis: Redis[Any] | None = None
+        self._redis: Redis | None = None
         self._pubsub_task: asyncio.Task[Any] | None = None
         self._is_initialized = False
 
-    async def initialize(self, redis: Redis[Any] | None = None) -> None:
+    async def initialize(self, redis: Redis | None = None) -> None:
         """
         Initialize the service, loading current state from Redis.
 
@@ -260,7 +260,7 @@ class FeatureFlagService:
         if self._redis:
             # If we created our own client, we should close it.
             # But usually it's passed from lifespan.
-            await self._redis.close()
+            await self._redis.aclose()
 
     async def _listen_for_updates(self) -> None:
         """Listen for flag updates via Pub/Sub."""
@@ -278,7 +278,7 @@ class FeatureFlagService:
                     await self._reload_flag(name)
         except asyncio.CancelledError:
             await ps.unsubscribe(FEATURE_FLAGS_CHANNEL)
-            await ps.close()
+            await ps.aclose()  # type: ignore[no-untyped-call]
         except Exception as e:
             logger.error("Error in feature flag Pub/Sub listener: %s", e)
 

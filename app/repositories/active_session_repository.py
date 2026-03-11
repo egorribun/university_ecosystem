@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.orm.interfaces import LoaderOption
 from sqlalchemy.sql.elements import ClauseElement
 
@@ -108,6 +108,41 @@ class ActiveSessionRepository(
         if not row:
             return None
         return cast(tuple[User, ActiveSession], (row[0], row[1]))
+
+    async def revoke_all_except(
+        self, user_id: uuid.UUID, current_session_id: uuid.UUID
+    ) -> int:
+        """Revoke all sessions except the current one. Returns count of revoked."""
+        now = datetime.now(UTC)
+        result = await self.db.execute(
+            update(ActiveSession)
+            .where(
+                and_(
+                    ActiveSession.user_id == user_id,
+                    ActiveSession.id != current_session_id,
+                    ActiveSession.revoked_at.is_(None),
+                )
+            )
+            .values(revoked_at=now)
+        )
+        await self.db.flush()
+        return int(getattr(result, "rowcount", 0) or 0)
+
+    async def revoke_all_for_user(self, user_id: uuid.UUID) -> int:
+        """Revoke all sessions for a user. Returns count of revoked."""
+        now = datetime.now(UTC)
+        result = await self.db.execute(
+            update(ActiveSession)
+            .where(
+                and_(
+                    ActiveSession.user_id == user_id,
+                    ActiveSession.revoked_at.is_(None),
+                )
+            )
+            .values(revoked_at=now)
+        )
+        await self.db.flush()
+        return int(getattr(result, "rowcount", 0) or 0)
 
 
 def get_active_session_repository(db: AsyncDatabaseSession) -> ActiveSessionRepository:

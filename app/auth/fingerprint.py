@@ -187,13 +187,15 @@ class SuspiciousActivityDetector:
         self._events: deque[SuspiciousActivityEvent] = deque(maxlen=self._MAX_EVENTS)
         # Per-user index: user_id → list of their events (unbounded per user,
         # but total is capped by the ring buffer eviction logic below).
-        self._user_index: dict[uuid.UUID, list[SuspiciousActivityEvent]] = defaultdict(list)
+        self._user_index: dict[uuid.UUID, list[SuspiciousActivityEvent]] = defaultdict(
+            list
+        )
         self._lock = threading.Lock()
 
     def check_fingerprint_mismatch(
         self,
-        user_id: int,
-        session_id: int,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
         stored_fingerprint: SessionFingerprint,
         current_fingerprint: SessionFingerprint,
     ) -> SuspiciousActivityEvent | None:
@@ -253,8 +255,8 @@ class SuspiciousActivityDetector:
 
     def check_rapid_location_change(
         self,
-        user_id: int,
-        session_id: int,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
         previous_ip: str,
         current_ip: str,
         time_elapsed_seconds: float,

@@ -94,10 +94,12 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         self, query: str, *, skip: int = 0, limit: int = 20
     ) -> list[EventDTO]:
         """Search events by title (case-insensitive)."""
-        pattern = f"%{query.strip().lower()}%"
+        # CRIT-01 (audit 2026-03-11): Escape LIKE wildcards before embedding.
+        safe_query = self._escape_like(query.strip().lower())
+        pattern = f"%{safe_query}%"
         result = await self.db.execute(
             select(Event)
-            .where(func.lower(Event.title).like(pattern))
+            .where(func.lower(Event.title).like(pattern, escape="\\"))
             .order_by(Event.starts_at.desc())
             .offset(skip)
             .limit(limit)
@@ -146,10 +148,12 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             )
 
         if location:
+            # CRIT-01 (audit 2026-03-11): Escape ILIKE wildcards before embedding.
+            safe_loc = self._escape_like(location)
             conditions.append(
                 or_(
-                    Event.location.ilike(f"%{location}%"),
-                    Event.location_en.ilike(f"%{location}%"),
+                    Event.location.ilike(f"%{safe_loc}%", escape="\\"),
+                    Event.location_en.ilike(f"%{safe_loc}%", escape="\\"),
                 )
             )
 

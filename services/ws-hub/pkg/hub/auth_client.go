@@ -16,6 +16,7 @@ import (
 // context so that in-flight backend checks are cancelled on disconnect or shutdown.
 type RoomAuthClient interface {
 	CanJoinRoom(ctx context.Context, userID, roomID string) bool
+	Invalidate(userID, roomID string)
 }
 
 type cacheEntry struct {

@@ -68,10 +68,12 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         self, query: str, *, skip: int = 0, limit: int = 20
     ) -> list[NewsDTO]:
         """Search news by title (case-insensitive)."""
-        pattern = f"%{query.strip().lower()}%"
+        # CRIT-01 (audit 2026-03-11): Escape LIKE wildcards before embedding.
+        safe_query = self._escape_like(query.strip().lower())
+        pattern = f"%{safe_query}%"
         result = await self.db.execute(
             select(News)
-            .where(func.lower(News.title).like(pattern))
+            .where(func.lower(News.title).like(pattern, escape="\\"))
             .order_by(News.created_at.desc())
             .offset(skip)
             .limit(limit)

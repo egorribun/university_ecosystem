@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session, engine
 from app.models.models import PushSubscription, User
-from app.services.push_schema import ensure_push_subscription_schema
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,7 +88,6 @@ async def run_weekly_cleanup() -> dict[str, int | None]:
     removed_orphaned = 0
     removed_stale = 0
     async with async_session() as session:
-        await ensure_push_subscription_schema(session)
         removed_orphaned = await _delete_orphaned_subscriptions(session)
         removed_stale = await _delete_stale_subscriptions(session)
     await _reindex_database()

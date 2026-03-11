@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
-    from app.core.protocols import AsyncDatabaseSession
     from app.models.chat import Attachment
     from app.models.models import User
     from app.repositories.unit_of_work import UnitOfWork
@@ -38,7 +37,6 @@ from app.core.config import settings
 from app.core.exceptions import BusinessRuleViolation
 from app.models.chat import Attachment
 from app.models.models import Message
-from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
     ChatMaintenanceResult,
     ChatResponse,
@@ -241,7 +239,7 @@ class ChatCommandService:
 
         if not full_message:
             # Fallback if something went wrong, though unlikely
-            await self.repository.refresh(message)
+            await self.session.refresh(message)
             msg_data = MessageResponse(
                 id=message.id,
                 chat_id=message.chat_id,

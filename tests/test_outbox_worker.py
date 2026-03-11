@@ -11,14 +11,14 @@ from app.workers.outbox import OutboxWorker
 async def test_outbox_worker_process_batch(db_session):
     worker = OutboxWorker()
 
-    # Create a stored event
+    # Create a stored event (Use a registered event type for HIGH-04)
     event_id = uuid.uuid4()
     se = StoredEvent(
         id=event_id,
-        event_type="test_event",
-        aggregate_type="test_agg",
+        event_type="UserCreated",
+        aggregate_type="User",
         aggregate_id="123",
-        payload={"foo": "bar"},
+        payload={"user_id": "123", "email": "test@example.com"},
         metadata_={"correlation_id": "test-corr"},
     )
     db_session.add(se)

@@ -21,18 +21,18 @@ if TYPE_CHECKING:
 
 
 def _build_chat_service(session: AsyncDatabaseSession) -> "ChatService":
-    from app.repositories.chat_repository import ChatRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.attachment_service import ChatAttachmentService
     from app.services.chat.command_service import ChatCommandService
     from app.services.chat.notification_service import ChatNotificationService
     from app.services.chat.query_service import ChatQueryService
     from app.services.chat_service import ChatService
 
-    repo = ChatRepository(session)
+    uow = uow_from_session(session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(session)
-    queries = ChatQueryService(session, repo)
-    commands = ChatCommandService(session, repo, attachments, notifications)
+    queries = ChatQueryService(session, uow.chats)
+    commands = ChatCommandService(uow, attachments, notifications)
 
     return ChatService(session, attachments, notifications, queries, commands)
 
@@ -52,11 +52,11 @@ def get_read_chat_service(
 def _build_event_service(
     session: AsyncDatabaseSession, vector_service: Any
 ) -> "EventService":
-    from app.repositories.event_repository import EventRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.event_service import EventService
 
-    repo = EventRepository(session)
-    return EventService(repo, vector_service)
+    uow = uow_from_session(session)
+    return EventService(uow, vector_service)
 
 
 def get_event_service(
@@ -76,11 +76,11 @@ def get_read_event_service(
 def _build_news_service(
     session: AsyncDatabaseSession, vector_service: Any
 ) -> "NewsService":
-    from app.repositories.news_repository import NewsRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.news_service import NewsService
 
-    repo = NewsRepository(session)
-    return NewsService(repo, vector_service)
+    uow = uow_from_session(session)
+    return NewsService(uow, vector_service)
 
 
 def get_news_service(
@@ -98,11 +98,11 @@ def get_read_news_service(
 
 
 def _build_story_service(session: AsyncDatabaseSession) -> "StoryService":
-    from app.repositories.story_repository import StoryRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.story_service import StoryService
 
-    repo = StoryRepository(session)
-    return StoryService(repo)
+    uow = uow_from_session(session)
+    return StoryService(uow)
 
 
 def get_story_service(
@@ -118,14 +118,13 @@ def get_read_story_service(
 
 
 def _build_schedule_service(session: AsyncDatabaseSession) -> "ScheduleService":
-    from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.schedule_optimizer import ScheduleOptimizerService
     from app.services.schedule_service import ScheduleService
 
-    repo = ScheduleRepository(session)
-    group_repo = GroupRepository(session)
+    uow = uow_from_session(session)
     optimizer = ScheduleOptimizerService()
-    return ScheduleService(repo, group_repo, optimizer)
+    return ScheduleService(uow, optimizer)
 
 
 def get_schedule_service(
@@ -143,26 +142,28 @@ def get_read_schedule_service(
 def get_auth_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "AuthService":
-    from app.repositories.auth_repository import AuthRepository
-    from app.repositories.session_repository import SessionRepository
-    from app.repositories.user_repository import UserRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.audit_service import audit_service
     from app.services.auth_service import AuthService
 
-    auth_repo = AuthRepository(session)
-    user_repo = UserRepository(session)
-    session_repo = SessionRepository(session)
-    return AuthService(audit_service, auth_repo, user_repo, session_repo)
+    uow = uow_from_session(session)
+    return AuthService(
+        audit=audit_service,
+        auth_repo=uow.auth,
+        user_repo=uow.users,
+        session_repo=uow.sessions,
+        uow=uow,
+    )
 
 
 def get_session_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "SessionService":
-    from app.repositories.active_session_repository import ActiveSessionRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.session_service import SessionService
 
-    repo = ActiveSessionRepository(session)
-    return SessionService(session, repo)
+    uow = uow_from_session(session)
+    return SessionService(uow)
 
 
 async def get_geolocation_service() -> "GeolocationService":
@@ -190,8 +191,7 @@ async def get_login_service(
         "GeolocationService", Depends(get_geolocation_service)
     ],
 ) -> "LoginService":
-    from app.repositories.auth_repository import AuthRepository
-    from app.repositories.user_repository import UserRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.auth.credential_validator import CredentialValidator
     from app.services.auth.lockout import LockoutService
     from app.services.auth.login_service import LoginService
@@ -200,10 +200,11 @@ async def get_login_service(
     from app.services.notification_service import NotificationService
     from app.services.user.profile_service import UserProfileService
 
-    auth_repo = AuthRepository(db)
-    user_repo = UserRepository(db)
+    uow = uow_from_session(db)
+    auth_repo = uow.auth
+    user_repo = uow.users
     notifications = NotificationService(db)
-    profile_service = UserProfileService(user_repo, audit, notifications)
+    profile_service = UserProfileService(uow, audit, notifications)
     lockout_service = LockoutService(db)
 
     session_manager = LoginSessionManager(
@@ -213,13 +214,14 @@ async def get_login_service(
         audit=audit,
     )
     validator = CredentialValidator(
+        uow=uow,
         user_repo=user_repo,
         profile_service=profile_service,
         lockout_service=lockout_service,
         audit=audit,
         session_manager=session_manager,
     )
-    mfa_coord = MfaCoordinator(auth_repo=auth_repo)
+    mfa_coord = MfaCoordinator(uow=uow, auth_repo=auth_repo)
 
     return LoginService(
         validator=validator,

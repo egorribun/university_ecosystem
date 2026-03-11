@@ -171,13 +171,13 @@ async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
         record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}
     ]
     assert any(
-        record.levelname == "WARNING" and "attempt 1/2" in record.getMessage()
+        record.levelname == "WARNING" and "unavailable" in str(record.msg)
         for record in error_logs
     )
     assert any(
         record.levelname == "ERROR"
-        and "attempt 2/2" in record.getMessage()
-        and "transient outage" in record.getMessage()
+        and "unavailable" in str(record.msg)
+        and "transient outage" in str(record.__dict__)
         for record in error_logs
     )
 

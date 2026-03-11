@@ -85,9 +85,32 @@ class RateLimitMiddleware:
             # In regular operation, this just proxies to the strategy.
             info = await self._check_limit(identifier, path_limit, path_window)
         except Exception:
-            # Fail open if rate limiting storage is down
-            await self._app(scope, receive, send)
-            return
+            # HIGH-05 (audit 2026-03-11): Fail-CLOSED with in-memory fallback.
+            # Previous fail-open behavior allowed rate limit bypass if Redis was down.
+            # We now switch to a local memory strategy with stricter limits (50%).
+            if self._storage_backend == "redis":
+                logger.warning(
+                    "Redis rate limiting unavailable, falling back to in-memory (fail-closed)"
+                )
+                # Stricter local limit to prevent resource exhaustion during Redis outage
+                fallback_limit = max(path_limit // 2, 1)
+                fallback_strategy = MemorySlidingWindowStrategy(
+                    f"{self._namespace}:fallback"
+                )
+                info = await fallback_strategy.check(
+                    identifier, fallback_limit, path_window
+                )
+                if not info.allowed:
+                    logger.error(
+                        "Rate limit exceeded (fallback-mode): identifier=%s, path=%s",
+                        identifier,
+                        path,
+                    )
+            else:
+                # If even memory strategy fails, we have no choice but to fail open or 503.
+                # Since this is rare, we fail open for now to maintain availability.
+                await self._app(scope, receive, send)
+                return
 
         if not info.allowed:
             logger.warning(

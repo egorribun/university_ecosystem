@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
-from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.story_repository import StoryRepository
 from app.repositories.user_repository import UserRepository
 
@@ -39,22 +39,23 @@ class UnitOfWork:
         self._session_factory = session_factory
         self._session: AsyncDatabaseSession | None = None
 
+    def _bind_repositories(self, session: AsyncDatabaseSession) -> None:
+        """Bind all repositories to *session*. Single source of truth."""
+        self.users = UserRepository(session)
+        self.auth = AuthRepository(session)
+        self.chats = ChatRepository(session)
+        self.events = EventRepository(session)
+        self.notifications = NotificationRepository(session)
+        self.news = NewsRepository(session)
+        self.stories = StoryRepository(session)
+        self.sessions = ActiveSessionRepository(session)
+        self.schedules = ScheduleRepository(session)
+        self.groups = GroupRepository(session)
+
     async def __aenter__(self) -> UnitOfWork:
         """Enter async context and initialize repositories."""
         self._session = self._session_factory()
-
-        # Initialize all repositories with the same session
-        self.users = UserRepository(self._session)
-        self.auth = AuthRepository(self._session)
-        self.chats = ChatRepository(self._session)
-        self.events = EventRepository(self._session)
-        self.notifications = NotificationRepository(self._session)
-        self.news = NewsRepository(self._session)
-        self.stories = StoryRepository(self._session)
-        self.sessions = ActiveSessionRepository(self._session)
-        self.schedules = ScheduleRepository(self._session)
-        self.groups = GroupRepository(self._session)
-
+        self._bind_repositories(self._session)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -97,4 +98,17 @@ def get_unit_of_work(session_factory: Callable[[], AsyncDatabaseSession]) -> Uni
     return UnitOfWork(session_factory)
 
 
-__all__ = ["UnitOfWork", "get_unit_of_work"]
+def uow_from_session(session: AsyncDatabaseSession) -> UnitOfWork:
+    """Create an eagerly-initialized UnitOfWork from an existing open session.
+
+    Use this when you already have a session (e.g. from FastAPI Depends() or a
+    test fixture) and need to pass a UnitOfWork to services that access
+    ``uow.users``, ``uow.events``, etc. in their ``__init__``.
+    """
+    uow = UnitOfWork(lambda: session)
+    uow._session = session
+    uow._bind_repositories(session)
+    return uow
+
+
+__all__ = ["UnitOfWork", "get_unit_of_work", "uow_from_session"]

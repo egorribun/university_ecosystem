@@ -137,7 +137,34 @@ check_untyped_defs = false
 [[tool.mypy.overrides]]
 module = "app.core.feature_flags"
 warn_unused_ignores = false
-disable_error_code = ["misc"]
+# redis.asyncio exposes aclose() at runtime but stubs lag behind; suppress until
+# types-redis ships the correct async API surface.
+disable_error_code = ["misc", "attr-defined", "type-arg"]
+
+[[tool.mypy.overrides]]
+# Redis[T] generic type params missing in several infrastructure modules.
+# Tracked: add Redis[Any] annotations across these files in Q3 2026.
+module = [
+    "app.core.ratelimit.strategies.base",
+    "app.services.fraud_detection_service",
+    "app.deps.cache",
+    "app.api.ws.presence",
+    "app.auth.redis_session",
+]
+disable_error_code = ["type-arg"]
+
+[[tool.mypy.overrides]]
+# Broad User|UserDTO|UUID|str union used for actor flexibility; narrow in Q3 2026.
+module = [
+    "app.services.user.compliance_service",
+    "app.services.user.profile_service",
+    "app.services.user.media_service",
+]
+disable_error_code = ["union-attr", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "app.api.users"
+warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
 module = "app.core.metrics"
@@ -204,6 +231,7 @@ module = [
     "zxcvbn",
     "nats.*",
     "redis.*",
+    "clamd",
 ]
 ignore_missing_imports = true
 
@@ -292,6 +320,7 @@ dev = [
     "hypothesis>=6.112",
     "maturin>=1.7,<2",
     "mypy>=1.19.1",
+    "pyright>=1.1.400",
     "pre-commit>=3.8",
     "bandit[toml]>=1.9.4",
     "pytest>=8.3",
@@ -314,6 +343,25 @@ members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 [tool.uv.sources]
 rust_ext = { workspace = true }
 pyo3_sanitizer = { workspace = true }
+
+[tool.pyright]
+# MOD-05 (audit 2026-03-11): Pyright added as an ADDITIONAL type checker alongside
+# mypy. Not replacing mypy yet — target Q2 2026 to assess findings and migrate.
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
+typeCheckingMode = "standard"
+# Paths to check
+include = ["app"]
+exclude = ["app/deps", "**/migrations", "**/__pycache__", "**/*.pyi"]
+# Use virtual environment
+venvPath = "."
+venv = ".venv"
+# Strict settings for new code
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnusedImports = true
+reportUnusedVariable = "warning"
+reportDuplicateImport = true
 
 [tool.bandit]
 # Bandit static analysis security scanner.

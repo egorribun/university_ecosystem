@@ -15,7 +15,6 @@ from app.core.protocols import AsyncDatabaseSession
 from app.models import models
 from app.models.models import User, UserProfile
 from app.models.user_loaders import (
-    USER_LIST_LOAD_OPTIONS,
     USER_MFA_LOAD_OPTIONS,
     USER_MFA_RELATIONSHIP_NAMES,
 )
@@ -43,51 +42,88 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
     async def get(
         self, id: uuid.UUID | str, *, with_for_update: bool = False
     ) -> UserDTO | None:
-        """Get user by ID with MFA options loaded."""
+        """Get user by ID with lightweight options + conditional MFA."""
         if isinstance(id, str):
             try:
                 id = uuid.UUID(id)
             except ValueError:
                 return None
-        stmt = select(User).where(User.id == id).options(*USER_MFA_LOAD_OPTIONS)
+        from app.models.user_loaders import (
+            USER_AUTH_LOAD_OPTIONS,
+            ensure_mfa_relationships_loaded,
+        )
+
+        stmt = select(User).where(User.id == id).options(*USER_AUTH_LOAD_OPTIONS)
         if with_for_update:
             stmt = stmt.with_for_update()
+
         result = await self.db.execute(stmt)
         obj = result.scalars().first()
+
+        if obj and obj.mfa_required:
+            await ensure_mfa_relationships_loaded(self.db, obj)
+
         return self._to_dto(obj) if obj else None
 
     async def get_by_email(self, email: str) -> UserDTO | None:
-        """Get user by email (case-insensitive)."""
+        """Get user by email (case-insensitive) with conditional MFA."""
         normalized = email.strip().lower()
+        from app.models.user_loaders import (
+            USER_AUTH_LOAD_OPTIONS,
+            ensure_mfa_relationships_loaded,
+        )
+
         result = await self.db.execute(
             select(User)
             .where(func.lower(User.email) == normalized)
-            .options(*USER_MFA_LOAD_OPTIONS)
+            .options(*USER_AUTH_LOAD_OPTIONS)
         )
         obj = result.scalars().first()
+
+        if obj and obj.mfa_required:
+            await ensure_mfa_relationships_loaded(self.db, obj)
+
         return self._to_dto(obj) if obj else None
 
     async def get_auth_by_email(self, email: str) -> UserAuthDTO | None:
-        """Get user authentication data by email."""
+        """Get user authentication data by email with conditional MFA."""
         normalized = email.strip().lower()
+        from app.models.user_loaders import (
+            USER_AUTH_LOAD_OPTIONS,
+            ensure_mfa_relationships_loaded,
+        )
+
         result = await self.db.execute(
             select(User)
             .where(func.lower(User.email) == normalized)
-            .options(*USER_MFA_LOAD_OPTIONS)
+            .options(*USER_AUTH_LOAD_OPTIONS)
         )
         obj = result.scalars().first()
+
+        if obj and obj.mfa_required:
+            await ensure_mfa_relationships_loaded(self.db, obj)
+
         return UserAuthDTO.model_validate(obj) if obj else None
 
     async def get_auth_by_id(self, id: uuid.UUID | str) -> UserAuthDTO | None:
-        """Get user authentication data by ID."""
+        """Get user authentication data by ID with conditional MFA."""
         if isinstance(id, str):
             try:
                 id = uuid.UUID(id)
             except ValueError:
                 return None
-        stmt = select(User).where(User.id == id).options(*USER_MFA_LOAD_OPTIONS)
+        from app.models.user_loaders import (
+            USER_AUTH_LOAD_OPTIONS,
+            ensure_mfa_relationships_loaded,
+        )
+
+        stmt = select(User).where(User.id == id).options(*USER_AUTH_LOAD_OPTIONS)
         result = await self.db.execute(stmt)
         obj = result.scalars().first()
+
+        if obj and obj.mfa_required:
+            await ensure_mfa_relationships_loaded(self.db, obj)
+
         return UserAuthDTO.model_validate(obj) if obj else None
 
     async def get_by_email_only(self, login: str) -> UserDTO | None:
@@ -176,8 +212,14 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         if filters.group_id:
             stmt = stmt.where(User.group_id == filters.group_id)
         if filters.full_name:
+            # CRIT-01 (audit 2026-03-11): Escape wildcards before embedding in LIKE.
+            # Unescaped % or _ turns this into a full-table scan (DoS) or allows
+            # single-char brute-force enumeration of column values.
             # Profile is already joined above — filter directly on UserProfile column.
-            stmt = stmt.where(UserProfile.full_name.ilike(f"%{filters.full_name}%"))
+            safe_name = self._escape_like(filters.full_name)
+            stmt = stmt.where(
+                UserProfile.full_name.ilike(f"%{safe_name}%", escape="\\")
+            )
         if filters.role:
             stmt = stmt.where(User.role == filters.role)
 
@@ -185,7 +227,19 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         # validates limit ≤ 200, but internal callers may bypass schema validation.
         _MAX_PAGE_SIZE = 200
         capped_limit = min(filters.limit, _MAX_PAGE_SIZE)
-        stmt = stmt.limit(capped_limit).offset(filters.offset)
+
+        # TD-11/PERF-03 (audit 2026-03-11): Keyset pagination avoids the
+        # O(offset) sequential scan that OFFSET imposes.  When after_id is
+        # supplied the query becomes a bounded range scan on the PK index.
+        # The legacy offset branch is preserved for backwards compatibility.
+        if filters.after_id is not None:
+            stmt = (
+                stmt.where(User.id > filters.after_id)
+                .order_by(User.id)
+                .limit(capped_limit)
+            )
+        else:
+            stmt = stmt.limit(capped_limit).offset(filters.offset)
 
         result = await self.db.execute(stmt)
         # unique() is required after contains_eager to deduplicate rows produced
@@ -225,11 +279,13 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         self, query: str, *, skip: int = 0, limit: int = 20
     ) -> list[UserDTO]:
         """Search users by name (case-insensitive)."""
-        pattern = f"%{query.strip().lower()}%"
+        # CRIT-01 (audit 2026-03-11): Escape LIKE wildcards before embedding.
+        safe_query = self._escape_like(query.strip().lower())
+        pattern = f"%{safe_query}%"
         result = await self.db.execute(
             select(User)
             .join(User.profile)
-            .where(func.lower(UserProfile.full_name).like(pattern))
+            .where(func.lower(UserProfile.full_name).like(pattern, escape="\\"))
             .where(User.is_active.is_(True))
             .offset(skip)
             .limit(limit)
@@ -337,18 +393,29 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         result = await self.db.execute(stmt)
         return bool(result.scalar())
 
-    async def get_invite_code(self, code: str) -> models.InviteCode | None:
-        """Get invite code by value."""
-        result = await self.db.execute(
-            select(models.InviteCode).where(models.InviteCode.code == code)
-        )
+    async def get_invite_code(
+        self, code: str, *, with_for_update: bool = True
+    ) -> models.InviteCode | None:
+        """Get invite code by value.
+
+        CRIT-06 (audit 2026-03-11): Acquires a row-level lock by default
+        (skip_locked=True so concurrent registrations don't block each other;
+        they simply fail to acquire the code and must retry). Without this lock,
+        two concurrent registrations with the same invite code both read
+        uses_remaining > 0, decrement it, and both succeed — effectively
+        doubling the allowed registrations.
+        """
+        stmt = select(models.InviteCode).where(models.InviteCode.code == code)
+        if with_for_update:
+            stmt = stmt.with_for_update(skip_locked=True)
+        result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    def _extract_cqrs_data(
-        self, data: dict[str, Any]
-    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
-        """Extract profile, preferences, education_path, and core user data from a flat dictionary."""
-        profile_keys = {
+    # PERF-02 (audit 2026-03-11): Hoist field-set literals to class-level frozensets.
+    # Recreating 3 plain sets on every _extract_cqrs_data() call (called for every
+    # user update) allocates 3 objects needlessly @ high write throughput.
+    _PROFILE_KEYS: frozenset[str] = frozenset(
+        {
             "full_name",
             "avatar_url",
             "cover_url",
@@ -361,8 +428,12 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             "department",
             "profile_department",
         }
-        pref_keys = {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
-        edu_keys = {
+    )
+    _PREF_KEYS: frozenset[str] = frozenset(
+        {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
+    )
+    _EDU_KEYS: frozenset[str] = frozenset(
+        {
             "institute",
             "course",
             "education_level",
@@ -370,7 +441,15 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             "program",
             "record_book_number",
         }
+    )
 
+    def _extract_cqrs_data(
+        self, data: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """Extract profile, preferences, education_path, and core user data from a flat dictionary."""
+        profile_keys = self._PROFILE_KEYS
+        pref_keys = self._PREF_KEYS
+        edu_keys = self._EDU_KEYS
         profile_data = {}
         pref_data = {}
         edu_data = {}
@@ -412,9 +491,17 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         ``user.profile`` without a None-guard.
         """
         user = models.User(**core_data)
-        user.profile = models.UserProfile(**profile_data) if profile_data else models.UserProfile()
-        user.preferences = models.UserPreferences(**pref_data) if pref_data else models.UserPreferences()
-        user.education_path = models.EducationPath(**edu_data) if edu_data else models.EducationPath()
+        user.profile = (
+            models.UserProfile(**profile_data) if profile_data else models.UserProfile()
+        )
+        user.preferences = (
+            models.UserPreferences(**pref_data)
+            if pref_data
+            else models.UserPreferences()
+        )
+        user.education_path = (
+            models.EducationPath(**edu_data) if edu_data else models.EducationPath()
+        )
         return user
 
     async def create(self, obj_in: schemas.UserCreate | dict[str, Any]) -> UserDTO:
@@ -478,7 +565,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         self, user_data: dict[str, Any], invite_code: models.InviteCode | None
     ) -> UserDTO:
         """Create a user and optionally mark an invite code as used."""
-        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(user_data)
+        core_data, profile_data, pref_data, edu_data = self._extract_cqrs_data(
+            user_data
+        )
         user = self._build_user_aggregate(core_data, profile_data, pref_data, edu_data)
 
         self.db.add(user)

@@ -7,8 +7,8 @@ import typer
 from sqlalchemy import select
 
 from app.auth.security import get_password_hash
-from app.core.database import async_session, engine
-from app.models.models import Base, InviteCode, User
+from app.core.database import async_session
+from app.models.models import InviteCode, User
 
 app = typer.Typer(help="Database management commands.")
 
@@ -32,9 +32,6 @@ def create_admin(
     """Create a test admin user if not exists."""
 
     async def _run() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
         async with async_session() as db:
             result = await db.execute(select(User).where(User.email == email))
             existing = result.scalar_one_or_none()

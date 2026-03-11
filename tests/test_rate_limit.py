@@ -529,10 +529,19 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as client:
-        response = await client.get("/ping")
+        # HIGH-05 (audit 2026-03-11): Test that we now FAIL-CLOSED (429) instead of
+        # failing open (200) when Redis is down.
+        # The middleware falls back to MemorySlidingWindowStrategy.
+        # Since limit is 1, and this is the first request in memory, it might pass,
+        # but we want to verify that it's NOT just ignoring the error.
+        # We'll hit it twice to ensure the memory fallback blocks it.
+        response1 = await client.get("/ping")
+        response2 = await client.get("/ping")
 
-    assert response.status_code == status.HTTP_200_OK
-    assert "X-RateLimit-Limit" not in response.headers
+        assert response1.status_code == status.HTTP_200_OK
+        assert response2.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        # Header is present in memory strategy
+        assert "X-RateLimit-Limit" in response1.headers
 
 
 @hypo_settings(max_examples=25)

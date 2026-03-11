@@ -43,14 +43,13 @@ async def _warm_schedule_group(
     if cached and _is_entry_fresh(cached):
         return
 
-    from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.schedule_optimizer import ScheduleOptimizerService
     from app.services.schedule_service import ScheduleService
 
-    repo = ScheduleRepository(db)
-    group_repo = GroupRepository(db)
+    uow = uow_from_session(db)
     optimizer = ScheduleOptimizerService()
-    service = ScheduleService(repo, group_repo, optimizer)
+    service = ScheduleService(uow, optimizer)
 
     rows = await service.get_schedule(group_id)
     if not rows:
@@ -161,13 +160,13 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
     version = await _get_news_list_version()
 
     from app.core.container import get_vector_service
-    from app.repositories.news_repository import NewsRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.news_service import NewsService
 
+    uow = uow_from_session(db)
     # We need vector service for NewsService init
     vector_service = get_vector_service(db)
-    repo = NewsRepository(db)
-    service = NewsService(repo, vector_service)
+    service = NewsService(uow, vector_service)
 
     for locale in ["ru", "en"]:
         cache_key = _news_list_cache_key(locale, 20, None, version)
@@ -209,10 +208,11 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
         if cached and _is_entry_fresh(cached):
             continue
 
-    from app.repositories.event_repository import EventRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.event_service import EventService
     from app.services.vector_service import VectorService
 
+    uow = uow_from_session(db)
     # We need a vector service instance, but for warmup of *list* we probably don't
     # need actual embeddings if the search query is empty. However, EventService
     # requires it. We can rely on DI container or construct it manually.
@@ -220,8 +220,7 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
     # VectorService needs settings.
 
     vector_service = VectorService(db)
-    repo = EventRepository(db)
-    service = EventService(repo, vector_service)
+    service = EventService(uow, vector_service)
 
     payload = await service.get_events(
         user_id=None,  # System-level warmup

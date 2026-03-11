@@ -4,6 +4,7 @@ from fastapi import UploadFile
 
 from app.api.utils import save_upload
 from app.core.exceptions.domain import EntityNotFound
+from app.core.protocols import UserLike
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import UserDTO
 from app.services.user.logic import update_user_attributes
@@ -17,10 +18,11 @@ class UserMediaService:
         self.uow = uow
         self.repo = uow.users
 
-    async def upload_avatar(self, user: UserDTO, file: UploadFile) -> UserDTO:
-        db_user = await self.repo._get_orm(user.id, with_for_update=True)
+    async def upload_avatar(self, user: UserLike, file: UploadFile) -> UserDTO:
+        user_identity = getattr(user, "id", user)
+        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_identity)
 
         file_url = await save_upload(file, "avatars", f"user_{user.id}_avatar")
 
@@ -39,10 +41,11 @@ class UserMediaService:
             await delete_static_file(file_url)
             raise
 
-    async def upload_cover(self, user: UserDTO, file: UploadFile) -> UserDTO:
-        db_user = await self.repo._get_orm(user.id, with_for_update=True)
+    async def upload_cover(self, user: UserLike, file: UploadFile) -> UserDTO:
+        user_identity = getattr(user, "id", user)
+        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_identity)
 
         file_url = await save_upload(file, "covers", f"user_{user.id}_cover")
 
@@ -61,10 +64,11 @@ class UserMediaService:
             await delete_static_file(file_url)
             raise
 
-    async def delete_avatar(self, user: UserDTO) -> UserDTO:
-        db_user = await self.repo._get_orm(user.id, with_for_update=True)
+    async def delete_avatar(self, user: UserLike) -> UserDTO:
+        user_identity = getattr(user, "id", user)
+        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_identity)
         if db_user.profile and db_user.profile.avatar_url:
             await delete_static_file(db_user.profile.avatar_url)
 
@@ -75,10 +79,11 @@ class UserMediaService:
             await self.uow.commit()
         return self.repo._to_dto(db_user)
 
-    async def delete_cover(self, user: UserDTO) -> UserDTO:
-        db_user = await self.repo._get_orm(user.id, with_for_update=True)
+    async def delete_cover(self, user: UserLike) -> UserDTO:
+        user_identity = getattr(user, "id", user)
+        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_identity)
         if db_user.profile and db_user.profile.cover_url:
             await delete_static_file(db_user.profile.cover_url)
 

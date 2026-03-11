@@ -6,7 +6,6 @@ from app.core.uvloop_setup import configure_uvloop
 configure_uvloop()
 
 import logging
-import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
