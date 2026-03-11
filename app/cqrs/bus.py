@@ -20,8 +20,7 @@ class Middleware(Protocol):
         self,
         message: Query | Command,
         next_handler: Callable[[Query | Command], Any],
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
 
 class LoggingMiddleware:
@@ -70,14 +69,16 @@ class QueryBus:
             raise ValueError(f"No handler registered for query: {type(query).__name__}")
 
         async def _handle(msg: Any) -> Any:
-            handler = await self._container.get(handler_type)  # type: ignore[arg-type]
+            handler = await self._container.get(handler_type)
             return await handler.handle(msg)
 
         # Build middleware chain
-        chain = _handle
+        chain: Callable[[Any], Any] = _handle
         for m in reversed(self._middleware):
 
-            def wrap(current_m: Middleware, next_h: Callable[[Any], Any]):
+            def wrap(
+                current_m: Middleware, next_h: Callable[[Any], Any]
+            ) -> Callable[[Any], Any]:
                 async def _wrapper(msg: Any) -> Any:
                     return await current_m(msg, next_h)
 
@@ -116,14 +117,16 @@ class CommandBus:
             )
 
         async def _handle(msg: Any) -> Any:
-            handler = await self._container.get(handler_type)  # type: ignore[arg-type]
+            handler = await self._container.get(handler_type)
             return await handler.handle(msg)
 
         # Build middleware chain
-        chain = _handle
+        chain: Callable[[Any], Any] = _handle
         for m in reversed(self._middleware):
 
-            def wrap(current_m: Middleware, next_h: Callable[[Any], Any]):
+            def wrap(
+                current_m: Middleware, next_h: Callable[[Any], Any]
+            ) -> Callable[[Any], Any]:
                 async def _wrapper(msg: Any) -> Any:
                     return await current_m(msg, next_h)
 

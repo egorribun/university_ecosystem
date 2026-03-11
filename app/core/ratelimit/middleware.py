@@ -94,12 +94,17 @@ class RateLimitMiddleware:
                 )
                 # Stricter local limit to prevent resource exhaustion during Redis outage
                 fallback_limit = max(path_limit // 2, 1)
-                fallback_strategy = MemorySlidingWindowStrategy(f"{self._namespace}:fallback")
-                info = await fallback_strategy.check(identifier, fallback_limit, path_window)
+                fallback_strategy = MemorySlidingWindowStrategy(
+                    f"{self._namespace}:fallback"
+                )
+                info = await fallback_strategy.check(
+                    identifier, fallback_limit, path_window
+                )
                 if not info.allowed:
                     logger.error(
                         "Rate limit exceeded (fallback-mode): identifier=%s, path=%s",
-                        identifier, path
+                        identifier,
+                        path,
                     )
             else:
                 # If even memory strategy fails, we have no choice but to fail open or 503.

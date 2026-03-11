@@ -53,6 +53,7 @@ class AuthProvider(Provider):
         from app.services.auth.login_session_manager import (
             LoginSessionManager as _LSM,
         )
+
         return _LSM(
             session_service=session_service,
             redis_session_service=redis_session,
@@ -73,6 +74,7 @@ class AuthProvider(Provider):
         from app.services.auth.credential_validator import (
             CredentialValidator as _CV,
         )
+
         return _CV(
             uow=uow,
             user_repo=user_repo,
@@ -89,6 +91,7 @@ class AuthProvider(Provider):
         auth_repo: AuthRepository,
     ) -> MfaCoordinator:
         from app.services.auth.mfa_coordinator import MfaCoordinator as _MC
+
         return _MC(uow=uow, auth_repo=auth_repo)
 
     @provide(scope=Scope.REQUEST)

@@ -30,6 +30,7 @@ class InfrastructureProvider(Provider):
     @provide(scope=Scope.APP)
     def _session_factory(self) -> async_sessionmaker[AsyncSession]:
         from app.core.database import engine
+
         return async_sessionmaker(engine, expire_on_commit=False)
 
     @provide(scope=Scope.APP)
@@ -84,6 +85,7 @@ class InfrastructureProvider(Provider):
     @provide(scope=Scope.APP)
     async def fraud_detection_service(self) -> AsyncIterator[FraudDetectionService]:
         from app.core.config import settings
+
         client = cast(Any, aioredis).from_url(
             str(settings.cache_redis_url),
             decode_responses=False,
@@ -97,6 +99,7 @@ class InfrastructureProvider(Provider):
     @provide(scope=Scope.APP)
     async def session_backend(self) -> SessionBackend:
         from app.auth.redis_session import get_session_backend
+
         return await get_session_backend()
 
     @provide(scope=Scope.APP)
@@ -106,4 +109,5 @@ class InfrastructureProvider(Provider):
     @provide(scope=Scope.REQUEST)
     async def geolocation_service(self) -> GeolocationService:
         from app.services.geolocation import get_geolocation_service_instance
+
         return await get_geolocation_service_instance()

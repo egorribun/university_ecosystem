@@ -39,32 +39,6 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
     def dto_class(self) -> type[UserDTO]:
         return UserDTO
 
-    # PERF-02: Class-level constants to avoid repeated set/frozenset allocation during mapping
-    _PROFILE_KEYS = frozenset(
-        {
-            "full_name",
-            "avatar_url",
-            "cover_url",
-            "about",
-            "telegram",
-            "status",
-            "achievements",
-            "department",
-            "position",
-        }
-    )
-    _PREF_KEYS = frozenset({"dnd_enabled", "dnd_start", "dnd_end", "timezone"})
-    _EDU_KEYS = frozenset(
-        {
-            "institute",
-            "course",
-            "education_level",
-            "track",
-            "program",
-            "record_book_number",
-        }
-    )
-
     async def get(
         self, id: uuid.UUID | str, *, with_for_update: bool = False
     ) -> UserDTO | None:
@@ -243,7 +217,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             # single-char brute-force enumeration of column values.
             # Profile is already joined above — filter directly on UserProfile column.
             safe_name = self._escape_like(filters.full_name)
-            stmt = stmt.where(UserProfile.full_name.ilike(f"%{safe_name}%", escape="\\"))
+            stmt = stmt.where(
+                UserProfile.full_name.ilike(f"%{safe_name}%", escape="\\")
+            )
         if filters.role:
             stmt = stmt.where(User.role == filters.role)
 
@@ -257,7 +233,11 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         # supplied the query becomes a bounded range scan on the PK index.
         # The legacy offset branch is preserved for backwards compatibility.
         if filters.after_id is not None:
-            stmt = stmt.where(User.id > filters.after_id).order_by(User.id).limit(capped_limit)
+            stmt = (
+                stmt.where(User.id > filters.after_id)
+                .order_by(User.id)
+                .limit(capped_limit)
+            )
         else:
             stmt = stmt.limit(capped_limit).offset(filters.offset)
 
@@ -449,15 +429,19 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             "profile_department",
         }
     )
-    _PREF_KEYS: frozenset[str] = frozenset({"timezone", "dnd_enabled", "dnd_start", "dnd_end"})
-    _EDU_KEYS: frozenset[str] = frozenset({
-        "institute",
-        "course",
-        "education_level",
-        "track",
-        "program",
-        "record_book_number",
-    })
+    _PREF_KEYS: frozenset[str] = frozenset(
+        {"timezone", "dnd_enabled", "dnd_start", "dnd_end"}
+    )
+    _EDU_KEYS: frozenset[str] = frozenset(
+        {
+            "institute",
+            "course",
+            "education_level",
+            "track",
+            "program",
+            "record_book_number",
+        }
+    )
 
     def _extract_cqrs_data(
         self, data: dict[str, Any]

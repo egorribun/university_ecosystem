@@ -169,12 +169,14 @@ class OutboxWorker:
         if event_cls is None:
             logger.error(
                 "OutboxWorker: unknown event_type %r in stored event %s — skipping",
-                se.event_type, se.id,
+                se.event_type,
+                se.id,
             )
             se.error_count += 1
             return
 
         import dataclasses
+
         # 1. Reconstruct using known dataclass fields only
         known_fields = {f.name for f in dataclasses.fields(event_cls)}
         safe_payload = {k: v for k, v in se.payload.items() if k in known_fields}
