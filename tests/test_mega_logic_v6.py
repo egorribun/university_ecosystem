@@ -41,6 +41,7 @@ async def test_user_service_mega():
         role="admin",
         is_active=True,
         mfa_required=False,
+        _allow_system_managed_assignment=True,
     )
     admin_dto = UserDTO.model_validate(admin_user, from_attributes=True)
     student_user = models.User(
@@ -49,6 +50,7 @@ async def test_user_service_mega():
         role="student",
         is_active=True,
         mfa_required=False,
+        _allow_system_managed_assignment=True,
     )
     student_dto = UserDTO.model_validate(student_user, from_attributes=True)
     request = MagicMock()
@@ -119,6 +121,7 @@ async def test_user_service_mega():
         role="student",
         is_active=True,
         mfa_required=False,
+        _allow_system_managed_assignment=True,
     )
     repo.get.return_value = UserDTO.model_validate(db_user, from_attributes=True)
     with (

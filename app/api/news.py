@@ -17,7 +17,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import exists, func, literal, select
 
 from app.api.deps import (
@@ -26,6 +25,7 @@ from app.api.deps import (
     get_news_service,
     get_read_news_service,
 )
+from app.api.deps.etag import _set_language_headers, cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import (
     raise_forbidden,
@@ -72,58 +72,24 @@ def _normalized_cache_locale(locale: str | None) -> str:
     return DEFAULT_LOCALE
 
 
-async def _get_news_list_version() -> str:
-    return await news_cache_version.get_version()
+async def _get_news_list_version(cache: Any | None = None) -> str:
+    return await news_cache_version.get_version(cache)
 
 
-async def _increment_news_list_version() -> None:
-    await news_cache_version.increment()
+async def _increment_news_list_version(cache: Any | None = None) -> None:
+    if cache is not None:
+        await news_cache_version.increment(cache)
 
 
-def _news_list_cache_key(
-    locale: str | None, limit: int, cursor: str | None, version: str
-) -> str:
-    normalized = _normalized_cache_locale(locale)
-    return news_cache_version.build_cache_key(
-        locale=normalized,
-        version=version,
-        limit=limit,
-        cursor=cursor,
-    )
+def _news_item_cache_key(id: uuid.UUID | int, locale: str) -> str:
+    return f"ue:news:item:{id}:{locale}"
 
 
-def _news_item_cache_key(news_id: uuid.UUID, locale: str | None) -> str:
-    normalized = _normalized_cache_locale(locale)
-    return f"news:item:{news_id}:{normalized}"
+def _legacy_news_item_cache_key(id: uuid.UUID | int) -> str:
+    return f"news:item:{id}"
 
 
-def _legacy_news_item_cache_key(news_id: uuid.UUID) -> str:
-    return f"{_LEGACY_NEWS_ITEM_PREFIX}:{news_id}"
-
-
-def _non_empty_text(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    if value.strip():
-        return value
-    return None
-
-
-def _set_language_headers(response: Response, locale: str) -> None:
-    from app.main import _ensure_vary_header as ensure_vary_header
-
-    response.headers["Content-Language"] = locale
-    response.headers["Cache-Control"] = _NEWS_CACHE_CONTROL
-    ensure_vary_header(response, "Accept-Language")
-
-
-def _news_cache_keys(news_id: uuid.UUID | None = None) -> list[str]:
-    keys: list[str] = [_LEGACY_NEWS_LIST_CACHE_KEY]
-    keys.extend(f"{_NEWS_LIST_CACHE_PREFIX}:{locale}:*" for locale in _CACHE_LOCALES)
-    if news_id is not None:
-        keys.append(_legacy_news_item_cache_key(news_id))
-        keys.extend(_news_item_cache_key(news_id, locale) for locale in _CACHE_LOCALES)
-    return keys
+# Obsolete cache key helpers removed
 
 
 @router.post(
@@ -142,7 +108,8 @@ async def create_news(
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     record = await service.create_news(data)
-    await _increment_news_list_version()
+    if request:
+        await _increment_news_list_version(getattr(request.app.state, "cache", None))
     serialized = service.serialize_news(record, locale)
     await notifications.dispatch_news_created(record.id, locale, background)
     return serialized
@@ -153,6 +120,11 @@ async def create_news(
     response_model=schemas.PaginatedNews,
     summary="List News",
     description="Get a paginated list of news articles.",
+)
+@cached_endpoint(
+    version_resolver=news_cache_version,
+    cache_prefix=_NEWS_LIST_CACHE_PREFIX,
+    cache_control=_NEWS_CACHE_CONTROL,
 )
 async def news_list(
     request: Request,
@@ -174,28 +146,6 @@ async def news_list(
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
 
-    cache = get_cache()
-    cache_key: str | None = None
-    if cache.enabled:
-        version = await _get_news_list_version()
-        cache_key = _news_list_cache_key(normalized_locale, limit, cursor, version)
-
-    if cache.enabled:
-        cached = await cache.get(cache_key)  # type: ignore[arg-type]
-        if cached:
-            etag_header = format_etag(cached.etag)
-            if etag_matches(cached.etag, if_none_match):
-                not_modified = Response(
-                    status_code=status.HTTP_304_NOT_MODIFIED,
-                    headers={"ETag": etag_header},
-                )
-                _set_language_headers(not_modified, normalized_locale)
-                return not_modified
-            response.headers["ETag"] = etag_header
-            _set_language_headers(response, normalized_locale)
-            return cached.payload
-
-    # Get news with pagination
     results = await service.list_news(
         limit=limit,
         cursor=cursor,
@@ -203,14 +153,6 @@ async def news_list(
         search=None,
         locale=normalized_locale,
     )
-
-    if cache.enabled and cache_key:
-        encoded = jsonable_encoder(results)
-        entry = await cache.set(cache_key, encoded)
-        etag_header = format_etag(entry.etag)
-        response.headers["ETag"] = etag_header
-        _set_language_headers(response, normalized_locale)
-        return encoded
 
     return results
 
@@ -220,6 +162,11 @@ async def news_list(
     response_model=schemas.NewsOut,
     summary="Get News Item",
     description="Get a specific news article by ID.",
+)
+@cached_endpoint(
+    version_resolver=news_cache_version,
+    cache_prefix="ue:news:item",
+    cache_control=_NEWS_CACHE_CONTROL,
 )
 async def get_news(
     id: uuid.UUID,
@@ -238,26 +185,7 @@ async def get_news(
     Returns 404 if not found.
     """
     locale = resolve_locale(request=request)
-    cache = get_cache()
-    normalized_locale = _normalized_cache_locale(locale)
-    cache_key = _news_item_cache_key(id, locale)
-    legacy_key = _legacy_news_item_cache_key(id) if locale == DEFAULT_LOCALE else None
-    if cache.enabled:
-        cached = await cache.get(cache_key)
-        if not cached and legacy_key:
-            cached = await cache.get(legacy_key)
-        if cached:
-            etag_header = format_etag(cached.etag)
-            if etag_matches(cached.etag, if_none_match):
-                not_modified = Response(
-                    status_code=status.HTTP_304_NOT_MODIFIED,
-                    headers={"ETag": etag_header},
-                )
-                _set_language_headers(not_modified, normalized_locale)
-                return not_modified
-            response.headers["ETag"] = etag_header
-            _set_language_headers(response, normalized_locale)
-            return cached.payload
+
     # Subqueries for counts
     likes_sub = (
         select(func.count(models.NewsLike.id))
@@ -307,12 +235,7 @@ async def get_news(
     news_obj.is_liked = bool(liked)
 
     serialized = service.serialize_news(news_obj, locale)
-    encoded = jsonable_encoder(serialized)
-    if cache.enabled:
-        entry = await cache.set(cache_key, encoded)
-        response.headers["ETag"] = format_etag(entry.etag)
-    _set_language_headers(response, normalized_locale)
-    return encoded
+    return serialized
 
 
 @router.patch(
@@ -335,7 +258,8 @@ async def update_news(
     except ValueError:
         raise_not_found("news", locale)
 
-    await _increment_news_list_version()
+    if request:
+        await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(
@@ -363,7 +287,8 @@ async def delete_news(
     if not deleted:
         raise_not_found("news", locale)
 
-    await _increment_news_list_version()
+    if request:
+        await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(
@@ -544,7 +469,8 @@ async def semantic_search(
 
     # Note: We don't cache semantic search results easily due to query variety,
     # but we can use ETag based on the content version.
-    version = await _get_news_list_version()
+    cache = get_cache()
+    version = await _get_news_list_version(cache)
     etag = format_etag(f"semantic:{version}:{query}:{limit}:{min_score}")
     if etag_matches(etag, if_none_match):
         return Response(status_code=status.HTTP_304_NOT_MODIFIED)

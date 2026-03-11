@@ -59,7 +59,7 @@ async def test_get_current_user_redis_hit():
         "fingerprint_hash": "hash",
     }
 
-    user = User(id=user_id, is_active=True)
+    user = User(id=user_id, is_active=True, _allow_system_managed_assignment=True)
     session = ActiveSession(
         id=uuid.uuid4(),
         jti=jti,
@@ -106,7 +106,7 @@ async def test_get_current_user_redis_hit():
 @pytest.mark.asyncio
 async def test_get_current_admin_user():
     request = MagicMock(spec=Request)
-    user = User(id=uuid.uuid4(), role="admin")
+    user = User(id=uuid.uuid4(), role="admin", _allow_system_managed_assignment=True)
     checker = MagicMock()
     checker.check_admin = AsyncMock(return_value=True)
 
@@ -125,7 +125,7 @@ async def test_get_current_admin_user():
 @pytest.mark.asyncio
 async def test_get_locale():
     request = MagicMock(spec=Request)
-    user = User(id=uuid.uuid4())
+    user = User(id=uuid.uuid4(), _allow_system_managed_assignment=True)
 
     with patch("app.api.deps.localization.resolve_locale", return_value="en"):
         # Test default
@@ -139,7 +139,7 @@ async def test_get_locale():
 @pytest.mark.asyncio
 async def test_require_fresh_mfa():
     request = MagicMock(spec=Request)
-    user = User(id=uuid.uuid4())
+    user = User(id=uuid.uuid4(), _allow_system_managed_assignment=True)
     session = ActiveSession(mfa_verified_at=datetime.now(UTC) - timedelta(minutes=1))
     request.state.active_session = session
 

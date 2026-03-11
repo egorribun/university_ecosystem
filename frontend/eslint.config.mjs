@@ -9,6 +9,7 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import prettier from "eslint-config-prettier";
 import i18nextPlugin from "eslint-plugin-i18next";
 import boundaries from "eslint-plugin-boundaries";
+import reactCompiler from "eslint-plugin-react-compiler";
 
 
 export default tseslint.config({
@@ -43,7 +44,8 @@ export default tseslint.config({
   plugins: {
     "react-hooks": reactHooks,
     i18next: i18nextPlugin,
-    boundaries: boundaries
+    boundaries: boundaries,
+    "react-compiler": reactCompiler
   },
   settings: {
     react: { version: "detect" },
@@ -102,7 +104,8 @@ export default tseslint.config({
           }
         ]
       }
-    ]
+    ],
+    "react-compiler/react-compiler": "error"
   }
 }, {
   files: [

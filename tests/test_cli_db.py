@@ -4,6 +4,7 @@ import pytest
 from typer.testing import CliRunner
 
 from app.cli.db import app
+from app.models.users import InviteCode
 
 runner = CliRunner()
 
@@ -85,7 +86,15 @@ def test_create_admin_existing(mock_db_session, mock_engine):
 
 def test_create_invite_success(mock_db_session):
     """Test creating an invite code."""
-    with patch("app.cli.db.async_session", return_value=mock_db_session):
+    with (
+        patch("app.cli.db.async_session", return_value=mock_db_session),
+        patch(
+            "app.cli.db.InviteCode",
+            side_effect=lambda **kw: InviteCode(
+                _allow_system_managed_assignment=True, **kw
+            ),
+        ),
+    ):
         result = runner.invoke(app, ["create-invite", "teacher"])
 
         assert result.exit_code == 0

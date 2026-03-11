@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PropsWithChildren,
 } from "react"
 
@@ -117,26 +118,25 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
   const overlaysRef = useRef<OverlayMap>(new Map())
   const previousOverflowRef = useRef<string>("")
 
-  const applyOverlayState = useCallback(() => {
-    if (!isBrowser) return
-    const overlays = overlaysRef.current
-    const values = Array.from(overlays.values())
-    const shouldBlur = values.some((state) => state.blurred)
-    const shouldLockScroll = values.some((state) => state.scrollLocked)
+  const [overlayStatus, setOverlayStatus] = useState({ blurred: false, scrollLocked: false })
 
-    if (shouldBlur) {
+  useEffect(() => {
+    if (!isBrowser) return
+    const { blurred, scrollLocked } = overlayStatus
+
+    if (blurred) {
       document.body.classList.add("blurred")
     } else {
       document.body.classList.remove("blurred")
     }
 
-    if (shouldLockScroll) {
+    if (scrollLocked) {
       previousOverflowRef.current = document.body.style.overflow
       document.body.style.overflow = "hidden"
     } else {
       document.body.style.overflow = previousOverflowRef.current || ""
     }
-  }, [])
+  }, [overlayStatus])
 
   const setOverlayState = useCallback(
     (id: string, state: OverlayState | null) => {
@@ -146,9 +146,14 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
       } else {
         map.delete(id)
       }
-      applyOverlayState()
+      
+      const values = Array.from(map.values())
+      setOverlayStatus({
+        blurred: values.some((s) => s.blurred),
+        scrollLocked: values.some((s) => s.scrollLocked)
+      })
     },
-    [applyOverlayState]
+    []
   )
 
   useEffect(

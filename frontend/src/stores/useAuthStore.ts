@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { useShallow } from "zustand/react/shallow"
 import type { PendingMfaState, UserState } from "@/types/Auth"
 
 // Ensure we have access to the constants and functions we need,
@@ -32,3 +33,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   setPendingMfa: (pendingMfa) => set({ pendingMfa }),
   setAuthOperation: (authOperation) => set({ authOperation }),
 }))
+
+// PERF-01 (audit 2026-03): Strict selectors to prevent entire-tree re-renders
+// when authOperation or pendingMfa flash during background state syncs.
+export const useAuthUser = () => useAuthStore((state) => state.user)
+export const useAuthLoading = () => useAuthStore((state) => state.loading)
+export const useAuthPendingMfa = () => useAuthStore((state) => state.pendingMfa)
+
+export const useAuthActions = () =>
+  useAuthStore(
+    useShallow((state) => ({
+      setUser: state.setUser,
+      setLoading: state.setLoading,
+      setPendingMfa: state.setPendingMfa,
+      setAuthOperation: state.setAuthOperation,
+    }))
+  )

@@ -43,6 +43,11 @@ class NatsTaskBroker:
         """Check if broker is connected to NATS."""
         return self._nc is not None and self._nc.is_connected
 
+    @property
+    def js(self) -> JetStreamContext | None:
+        """Get the JetStream context."""
+        return self._js
+
     async def connect(self) -> None:
         """Connect to NATS and ensure JetStream is initialized."""
         if self._nc is not None:

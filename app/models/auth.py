@@ -264,6 +264,19 @@ class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
 
     user = relationship("User", back_populates="webauthn_credentials")
 
+    def __init__(self, **kwargs: Any) -> None:
+        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        # RZ-01: Allow bypass for testing fixtures.
+        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
+        forbidden = {"id", "created_at"}
+        if not allow_manual and (
+            intersections := forbidden.intersection(kwargs.keys())
+        ):
+            raise ValueError(
+                f"Cannot manually assign system-controlled fields: {intersections}"
+            )
+        super().__init__(**kwargs)
+
 
 class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "recovery_codes"

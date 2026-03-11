@@ -19,17 +19,65 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         mock_engine = MagicMock()
         mock_conn = AsyncMock()
         mock_conn.dialect.name = "postgresql"
-        mock_engine.connect.return_value.__aenter__.return_value = mock_conn
+
+        # Correctly mock the async context manager for engine.connect()
+        mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__aexit__ = AsyncMock()
 
         # Monkeypatch the engine in the module
         monkeypatch.setattr("app.services.partition_manager.engine", mock_engine)
 
         # Mock result for partition listing
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = ["notifications_y1999m01"]
-        mock_conn.execute.return_value = mock_result
+        mock_future_partitions = MagicMock()
+        mock_future_partitions.scalars.return_value.all.return_value = []
 
-        await ensure_partitions_exist()
+        mock_old_partitions = MagicMock()
+        mock_old_partitions.scalars.return_value.all.return_value = [
+            "notifications_y1999m01"
+        ]
+
+        mock_conn.execute.side_effect = [
+            # Future partitions check (for loop range(settings.partition_warmup_months + 1))
+            mock_future_partitions,
+            # Prune old partitions check (one for each PARTITIONED_TABLES entry)
+            # Actually, there is one execute per table in PARTITIONED_TABLES
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+            mock_old_partitions,
+        ]
+
+        # Mock rust_ext
+        mock_rust = MagicMock()
+        mock_rust.get_partition_info.return_value = MagicMock(
+            name="notifications_y1999m01",
+            start_date="1999-01-01",
+            end_date="1999-02-01",
+        )
+        mock_rust.is_partition_expired.return_value = True
+
+        with patch.dict("sys.modules", {"rust_ext": mock_rust}):
+            await ensure_partitions_exist()
 
         # Verify execute was called for CREATE TABLE
         # We check the SQL string inside the TextClause

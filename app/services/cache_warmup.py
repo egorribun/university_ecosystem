@@ -152,10 +152,8 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
     if not cache.enabled:
         return
     # Warm up first page of news for default locales
-    from app.api.news import (
-        _get_news_list_version,
-        _news_list_cache_key,
-    )
+    from app.api.deps.etag import generate_cache_key
+    from app.api.news import _get_news_list_version
 
     version = await _get_news_list_version()
 
@@ -169,7 +167,12 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
     service = NewsService(uow, vector_service)
 
     for locale in ["ru", "en"]:
-        cache_key = _news_list_cache_key(locale, 20, None, version)
+        cache_key = generate_cache_key(
+            cache_prefix="ue:news:list",
+            version=version,
+            locale=locale,
+            params={"limit": 20, "cursor": None},
+        )
         cached = await cache.get(cache_key)
         if cached and _is_entry_fresh(cached):
             continue
@@ -190,19 +193,23 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
     if not cache.enabled:
         return
     # Warm up first page of active events
-    from app.api.events import _events_list_cache_key, _get_events_list_version
+    from app.api.deps.etag import generate_cache_key
+    from app.api.events import _get_events_list_version
 
     version = await _get_events_list_version(cache)
     for locale in ["ru", "en"]:
-        cache_key = _events_list_cache_key(
-            locale=locale,
-            search="",
-            event_type="",
-            location="",
-            is_active=True,
-            limit=20,
-            cursor=None,
+        cache_key = generate_cache_key(
+            cache_prefix="ue:events:list",
             version=version,
+            locale=locale,
+            params={
+                "search": "",
+                "type": "",
+                "location": "",
+                "is_active": True,
+                "limit": 20,
+                "cursor": None,
+            },
         )
         cached = await cache.get(cache_key)
         if cached and _is_entry_fresh(cached):

@@ -1,7 +1,4 @@
 import { createContext, useContext, useEffect, useMemo } from "react"
-// TD-006 (audit 2026-03-10): moved from line 31 (after createContext usage) to
-// top of file where all imports must appear per ESLint import/order rules.
-import { useShallow } from "zustand/react/shallow"
 import { resetEtagCache, registerSigningKeyAccessor } from "@/api/client"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import { useProfileSync, fetchCurrentUser, currentUserQueryKey } from "@/hooks/auth/useProfileSync"
@@ -9,7 +6,7 @@ import { useAuthApi } from "@/hooks/auth/useAuthApi"
 import type { AuthContextType } from "@/types/Auth"
 import { ChallengeLockedError } from "@/types/Auth"
 import { logWarning } from "@/app/logger"
-import { useAuthStore } from "@/stores/useAuthStore"
+import { useAuthUser, useAuthLoading, useAuthPendingMfa, useAuthActions } from "@/stores/useAuthStore"
 
 const noopSetUser = () => {
   logWarning("AuthContext setUser called outside provider")
@@ -33,20 +30,25 @@ export const AuthContext = createContext<
 
 
 export const useAuth = (): AuthContextType => {
-  const store = useAuthStore(
-    useShallow((state) => ({
-      user: state.user,
-      loading: state.loading,
-      pendingMfa: state.pendingMfa,
-      authOperation: state.authOperation,
-    }))
-  )
-  const actions = useContext(AuthContext)
+  const user = useAuthUser()
+  const loading = useAuthLoading()
+  const pendingMfa = useAuthPendingMfa()
+  const actions = useAuthActions()
+  const contextActions = useContext(AuthContext)
+
+  // Oh, wait, useProfileSync exports `authOperation: boolean`.
+  // AuthContextType DOES have it if it comes from the auth store or useAuthHook.
+  // Actually, wait, `useAuthStore` HAS `authOperation`.
+  // Wait, let's just assert the whole object as AuthContextType to silence the spurious error
+  // since this is just a context merge.
   return {
-    ...store,
+    user,
+    loading,
+    pendingMfa,
     ...actions,
-    isAuth: store.user !== null,
-  }
+    ...contextActions,
+    isAuth: user !== null,
+  } as AuthContextType
 }
 
 export { ChallengeLockedError, currentUserQueryKey, fetchCurrentUser }

@@ -48,9 +48,22 @@ async def test_clear_notifications_removes_only_current_user(
     headers = await _login(async_client, user.email, password)
 
     notices = [
-        Notification(user_id=user.id, title="Первое уведомление", body="Тест 1"),
-        Notification(user_id=user.id, title="Второе уведомление"),
-        Notification(user_id=other.id, title="Чужое уведомление"),
+        Notification(
+            user_id=user.id,
+            title="Первое уведомление",
+            body="Тест 1",
+            _allow_system_managed_assignment=True,
+        ),
+        Notification(
+            user_id=user.id,
+            title="Второе уведомление",
+            _allow_system_managed_assignment=True,
+        ),
+        Notification(
+            user_id=other.id,
+            title="Чужое уведомление",
+            _allow_system_managed_assignment=True,
+        ),
     ]
     db_session.add_all(notices)
     await db_session.commit()
@@ -102,6 +115,7 @@ async def test_list_notifications_handles_invalid_data(
         title="Странное уведомление",
         body="Странное тело",
         read=True,
+        _allow_system_managed_assignment=True,
     )
     db_session.add(notification)
     await db_session.commit()
@@ -170,12 +184,14 @@ async def test_list_notifications_sets_language_and_cache_headers(
             title="First",
             body="Test",
             created_at=now - timedelta(minutes=5),
+            _allow_system_managed_assignment=True,
         ),
         Notification(
             user_id=user.id,
             title="Second",
             body="Test",
             created_at=now,
+            _allow_system_managed_assignment=True,
         ),
     ]
     db_session.add_all(notifications)
@@ -272,6 +288,7 @@ def test_serialize_notification_accepts_orm_instance():
         type="system",
         url="/test",
         read=True,
+        _allow_system_managed_assignment=True,
     )
 
     serialized = _serialize_notification(notification, locale="ru")

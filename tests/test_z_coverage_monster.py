@@ -87,6 +87,7 @@ async def test_monster_coverage_run():
             body=json.dumps({"score": 5, "course": "C"}),
             title="T",
             created_at=datetime.datetime.now(datetime.UTC),
+            _allow_system_managed_assignment=True,
         )
         res_grad = MagicMock()
         res_grad.scalars.return_value.all.return_value = [notif]
@@ -133,6 +134,7 @@ async def test_monster_coverage_run():
         mfa_required=False,
         role="student",
         profile=models.UserProfile(full_name="Test User"),
+        _allow_system_managed_assignment=True,
     )
 
     mock_user_service = AsyncMock()

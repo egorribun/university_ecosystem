@@ -107,6 +107,7 @@ async def create_notifications_for_users(
             dedupe_key=dedupe_key,
             created_at=now,
             read=False,
+            _allow_system_managed_assignment=True,
         )
         notifications.append(notification)
     db.add_all(notifications)
