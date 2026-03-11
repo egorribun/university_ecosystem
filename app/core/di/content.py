@@ -10,6 +10,7 @@ from app.repositories.unit_of_work import UnitOfWork
 from app.services.event_service import EventService
 from app.services.group_service import GroupService
 from app.services.news_service import NewsService
+from app.services.notification_service import NotificationService
 from app.services.schedule_service import ScheduleService
 from app.services.story_service import StoryService
 from app.services.vector_service import VectorService
@@ -17,9 +18,7 @@ from app.services.vector_service import VectorService
 
 class ContentProvider(Provider):
     @provide(scope=Scope.REQUEST)
-    def notification_service(self, db: AsyncDatabaseSession) -> Any:
-        from app.services.notification_service import NotificationService
-
+    def notification_service(self, db: AsyncDatabaseSession) -> NotificationService:
         return NotificationService(db=db)
 
     @provide(scope=Scope.REQUEST)

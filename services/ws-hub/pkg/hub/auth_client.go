@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -133,7 +134,14 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	if err != nil {
 		return false
 	}
-	resp.Body.Close() //nolint:errcheck
+	defer resp.Body.Close() //nolint:errcheck
+
+	// RZ-01 (audit 2026-03): CRITICAL FIX for socket exhaustion.
+	// We must read the body to EOF to allow standard library net/http
+	// to reuse the TCP connection (keep-alive). Otherwise, the connection
+	// is closed and enters TIME_WAIT, quickly exhausting ephemeral ports.
+	_, _ = io.Copy(io.Discard, resp.Body)
+
 	return resp.StatusCode == http.StatusOK
 }
 

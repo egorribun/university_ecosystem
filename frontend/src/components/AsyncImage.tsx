@@ -2,6 +2,7 @@ import {
   forwardRef,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type CSSProperties,
@@ -49,7 +50,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
     },
     ref
   ) => {
-    const containerRef = useMemo(() => ({ current: null as HTMLDivElement | null }), [])
+    const containerRef = useRef<HTMLDivElement>(null)
     const observer = useIntersectionObserver(containerRef, {
       rootMargin: LAZY_ROOT_MARGIN,
       freezeOnceVisible: true,
@@ -84,9 +85,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
 
     return (
       <div
-        ref={(el) => {
-          containerRef.current = el
-        }}
+        ref={containerRef}
         className={cn(
           "relative overflow-hidden rounded-lg bg-(--bg-surface)/(--opacity-subtle)",
           className

@@ -44,6 +44,7 @@ from app.core.database import get_db, get_read_db
 from app.core.localization import normalize_locale, resolve_locale
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
+from app.api.deps.etag import cached_endpoint, _set_language_headers
 from app.models import models
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO
@@ -65,80 +66,12 @@ async def _get_events_list_version(cache: Any) -> str:
     return await events_cache_version.get_version(cache)
 
 
-async def _increment_events_list_version(cache: Any) -> None:
-    await events_cache_version.increment(cache)
+async def _increment_events_list_version(cache: Any | None) -> None:
+    if cache is not None:
+        await events_cache_version.increment(cache)
 
 
-def _events_list_cache_key(
-    *,
-    locale: str | None,
-    search: str,
-    event_type: str,
-    location: str,
-    is_active: bool,
-    limit: int,
-    cursor: str | None,
-    version: str,
-) -> str:
-    normalized_locale = normalize_locale(locale)
-    normalized_search = (search or "").strip().lower()
-    normalized_type = (event_type or "").strip().lower()
-    normalized_location = (location or "").strip().lower()
-    normalized_cursor = (cursor or "").strip()
-    normalized_version = str(version or "0").strip() or "0"
-    signature = json.dumps(
-        {
-            "search": normalized_search,
-            "type": normalized_type,
-            "location": normalized_location,
-            "is_active": bool(is_active),
-            "limit": int(limit),
-            "cursor": normalized_cursor,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    digest = hashlib.sha256(signature).hexdigest()
-    return (
-        f"{_EVENTS_LIST_CACHE_PREFIX}:{normalized_version}:{normalized_locale}:{digest}"
-    )
-
-
-async def _invalidate_events_list_cache() -> None:
-    cache = get_cache()
-    await _increment_events_list_version(cache)
-
-
-@lru_cache(maxsize=1)
-def _get_vary_helper() -> Any:
-    from app.main import _ensure_vary_header
-
-    return _ensure_vary_header
-
-
-def _set_language_headers(response: Response, locale: str) -> None:
-    response.headers["Content-Language"] = locale
-    _get_vary_helper()(response, "Accept-Language")
-
-
-def _encode_payload_with_etag(payload: Any) -> tuple[Response, str, str]:
-    encoded = jsonable_encoder(payload)
-
-    # PERF-1 Optimization: Use rapid JSON serialization and return Response directly
-    # to avoid a secondary automatic FastAPI serialization later in the pipeline
-    import orjson
-
-    serialized_bytes = orjson.dumps(encoded, option=orjson.OPT_SORT_KEYS)
-    digest = hashlib.sha256(serialized_bytes).hexdigest()
-
-    strong_header = f'"{format_etag(digest).strip(chr(34))}"'
-
-    return (
-        Response(content=serialized_bytes, media_type="application/json"),
-        digest,
-        strong_header,
-    )
+# Removed obsolete cache key extraction and serialization helpers (now in deps/etag.py)
 
 
 @router.post(
@@ -164,7 +97,8 @@ async def create_event(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
-    await _invalidate_events_list_cache()
+    if request:
+        await _increment_events_list_version(getattr(request.app.state, "cache", None))
     await notifications.dispatch_event_created(record.id, locale, background)
     return events.serialize_event(record, locale)
 
@@ -174,6 +108,11 @@ async def create_event(
     response_model=schemas.PaginatedEvents,
     summary="List Events",
     description="Get a paginated list of events.",
+)
+@cached_endpoint(
+    version_resolver=events_cache_version,
+    cache_prefix=_EVENTS_LIST_CACHE_PREFIX,
+    cache_control=_EVENTS_CACHE_CONTROL,
 )
 async def all_events(
     request: Request,
@@ -206,34 +145,6 @@ async def all_events(
     Returns events ordered by start date (newest first).
     """
     locale = resolve_locale(request=request, user=user)
-    _set_language_headers(response, locale)
-    response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-    cache = get_cache()
-    cache_key: str | None = None
-    cache_version: str | None = None
-    if cache.enabled:
-        cache_version = await _get_events_list_version(cache)
-        cache_key = _events_list_cache_key(
-            locale=locale,
-            search=search,
-            event_type=type,
-            location=location,
-            is_active=is_active,
-            limit=limit,
-            cursor=cursor,
-            version=cache_version,
-        )
-        cached = await cache.get(cache_key)
-        if cached:
-            etag_header = format_etag(cached.etag)
-            if etag_matches(cached.etag, if_none_match):
-                not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
-                not_modified.headers["ETag"] = etag_header
-                not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-                _set_language_headers(not_modified, locale)
-                return not_modified
-            response.headers["ETag"] = etag_header
-            return cast(dict[str, Any], cached.payload)
 
     payload = await events.get_events(
         user_id=user.id,
@@ -246,32 +157,10 @@ async def all_events(
         cursor=cursor,
     )
 
-    encoded = jsonable_encoder(payload)
-
-    if cache.enabled and cache_key:
-        entry = await cache.set(cache_key, encoded)
-        etag_header = format_etag(entry.etag)
-        if etag_matches(entry.etag, if_none_match):
-            not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
-            not_modified.headers["ETag"] = etag_header
-            not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-            _set_language_headers(not_modified, locale)
-            return not_modified
-        response.headers["ETag"] = etag_header
-        return cast(dict[str, Any], encoded)
-
-    encoded_response, digest, weak_header = _encode_payload_with_etag(payload)
-    if etag_matches(digest, if_none_match):
-        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
-        not_modified.headers["ETag"] = weak_header
-        not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-        _set_language_headers(not_modified, locale)
-        return not_modified
-
-    encoded_response.headers["ETag"] = weak_header
-    encoded_response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-    _set_language_headers(encoded_response, locale)
-    return encoded_response
+    # TD-01 & PERF-02 (audit 2026-03): Delegated all ETag formatting, 304 Not Modified
+    # logic, Redis version checking, and serialization to `deps.etag.cached_endpoint`.
+    # This keeps the router focused strictly on business logic and routing.
+    return payload
 
 
 # NOTE: SQLite drops timezone information for "datetime" columns. To keep the
@@ -330,6 +219,11 @@ async def unregister_event(
 
 
 @router.get("/my", response_model=list[schemas.EventOut])
+@cached_endpoint(
+    version_resolver=events_cache_version,
+    cache_prefix="ue:events:my",
+    cache_control=_EVENTS_CACHE_CONTROL,
+)
 async def my_events(
     request: Request,
     response: Response,
@@ -338,21 +232,8 @@ async def my_events(
     events: EventService = Depends(get_read_event_service),
 ) -> list[schemas.EventOut] | Response | Any:
     locale = resolve_locale(request=request, user=user)
-    _set_language_headers(response, locale)
-    response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
     payload = await events.get_my_events(user_id=user.id, locale=locale)
-    encoded_response, digest, weak_header = _encode_payload_with_etag(payload)
-    if etag_matches(digest, if_none_match):
-        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
-        not_modified.headers["ETag"] = weak_header
-        not_modified.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-        _set_language_headers(not_modified, locale)
-        return not_modified
-
-    encoded_response.headers["ETag"] = weak_header
-    encoded_response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-    _set_language_headers(encoded_response, locale)
-    return encoded_response
+    return payload
 
 
 @router.post(
@@ -481,7 +362,8 @@ async def update_event(
     )
     participant_count = participant_count_res.scalar() or 0
 
-    await _invalidate_events_list_cache()
+    if request:
+        await _increment_events_list_version(getattr(request.app.state, "cache", None))
     return events.serialize_event(
         event_dto,
         locale,
@@ -516,11 +398,17 @@ async def delete_event(
         raise_forbidden(locale)
 
     await events.delete_event(event_id)
-    await _invalidate_events_list_cache()
+    if request:
+        await _increment_events_list_version(getattr(request.app.state, "cache", None))
     return {"ok": True}
 
 
 @router.get("/{id}", response_model=schemas.EventOut)
+@cached_endpoint(
+    version_resolver=events_cache_version,
+    cache_prefix="ue:events:detail",
+    cache_control=_EVENTS_CACHE_CONTROL,
+)
 async def get_event(
     id: uuid.UUID | int,
     request: Request,
@@ -530,22 +418,12 @@ async def get_event(
     events: EventService = Depends(get_read_event_service),
 ) -> schemas.EventOut | Response | Any:
     locale = resolve_locale(request=request, user=user)
-    _set_language_headers(response, locale)
 
     payload = await events.get_event_detail(id, user.id, locale=locale)
     if not payload:
         raise_not_found("events", locale)
 
-    encoded_response, digest, weak_header = _encode_payload_with_etag(payload)
-    if etag_matches(digest, if_none_match):
-        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
-        not_modified.headers["ETag"] = weak_header
-        _set_language_headers(not_modified, locale)
-        return not_modified
-
-    encoded_response.headers["ETag"] = weak_header
-    _set_language_headers(encoded_response, locale)
-    return encoded_response
+    return payload
 
 
 @router.delete("/file/{file_id}", response_model=dict)

@@ -19,6 +19,8 @@ class CacheSettings(BaseAppSettings):
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     nats_url: str = "nats://127.0.0.1:4222"
     nats_auth_token: str | None = None
+    cache_nats_bucket: str = "ue_cache"
+    cache_nats_ttl_seconds: int = 3600
     session_storage_backend: str = "redis"
     cache_default_ttl_seconds: int = 300
     stats_cache_ttl_seconds: int = 180
@@ -52,8 +54,8 @@ class CacheSettings(BaseAppSettings):
     @classmethod
     def _validate_cache_backend(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"redis", "memory", "tiered", "none"}:
-            raise ValueError("CACHE_BACKEND must be redis, memory, tiered, or none")
+        if normalized not in {"redis", "memory", "tiered", "none", "nats"}:
+            raise ValueError("CACHE_BACKEND must be redis, memory, tiered, none, or nats")
         return normalized
 
     @field_validator("cache_warmup_max_age_seconds")

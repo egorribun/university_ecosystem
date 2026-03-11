@@ -467,6 +467,102 @@ class RedisClusterCache(BaseCache):
                 "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
             )
 
+        return max(int(ttl or 0), 0)
+
+
+class NatsKVCache(BaseCache):
+    """NATS Key-Value store cache backend."""
+
+    enabled = True
+
+    def __init__(self, bucket: str, default_ttl: int) -> None:
+        self._bucket_name = bucket
+        self._default_ttl = default_ttl
+        self._kv: Any = None
+        self._lock = asyncio.Lock()
+
+    async def _get_kv(self) -> Any:
+        if self._kv is not None:
+            return self._kv
+        async with self._lock:
+            if self._kv is None:
+                from app.core.nats_broker import broker as global_broker
+                if not global_broker.is_connected:
+                    await global_broker.connect()
+                
+                js = global_broker.js
+                if js is None:
+                    raise RuntimeError("NATS JetStream not initialized")
+                self._kv = await js.key_value(bucket=self._bucket_name)
+        return self._kv
+
+    async def get(self, key: str) -> CacheEntry | None:
+        try:
+            kv = await self._get_kv()
+            entry = await kv.get(key)
+            if entry is None:
+                return None
+            parsed = orjson.loads(entry.value)
+            return CacheEntry(
+                etag=str(parsed.get("etag", "")),
+                payload=parsed.get("payload"),
+                stored_at=float(parsed.get("stored_at") or time_module.time()),
+                ttl_seconds=float(parsed.get("ttl_seconds") or 0.0),
+            )
+        except Exception as exc:
+            # nats.js.errors.KeyNotFoundError is common on cache miss if bucket exists
+            # but key doesn't.
+            logger.debug("NATS KV get failed for key %s: %s", key, exc)
+            return None
+
+    async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
+        normalized, serialized = _normalize_payload(payload)
+        etag = hashlib.sha256(serialized).hexdigest()
+        effective_ttl = self._resolve_ttl(ttl)
+        stored_at = time_module.time()
+        envelope = orjson.dumps(
+            {
+                "etag": etag,
+                "payload": normalized,
+                "stored_at": stored_at,
+                "ttl_seconds": float(effective_ttl),
+            }
+        )
+        try:
+            kv = await self._get_kv()
+            await kv.put(key, envelope)
+        except Exception as exc:
+            logger.warning("NATS KV set failed for key %s: %s", key, exc)
+        return CacheEntry(
+            etag=etag,
+            payload=normalized,
+            stored_at=stored_at,
+            ttl_seconds=float(effective_ttl),
+        )
+
+    async def invalidate(self, *keys: str) -> None:
+        filtered = [str(k) for k in keys if k]
+        if not filtered:
+            return
+        try:
+            kv = await self._get_kv()
+            for key in filtered:
+                if "*" in key:
+                    # NATS KV doesn't support pattern deletion easily without listing.
+                    # For simplicity in this migration, we only support exact keys.
+                    # If patterns are needed, we'd need to use kv.keys() and filter.
+                    keys_to_del = await kv.keys()
+                    for k in keys_to_del:
+                        if fnmatch.fnmatch(k, key):
+                            await kv.delete(k)
+                else:
+                    await kv.delete(key)
+        except Exception as exc:
+            logger.warning("NATS KV invalidate failed: %s", exc)
+
+    async def close(self) -> None:
+        self._kv = None
+
     def _resolve_ttl(self, ttl: int | None) -> int:
         if ttl is None:
             ttl = self._default_ttl
@@ -726,14 +822,17 @@ def create_cache_backend() -> BaseCache:
         l2 = RedisCache(url=l2_url, default_ttl=ttl)
         return TieredCache(l1, l2)
 
-    if backend != "redis":
-        return NullCache()
+    if backend == "redis":
+        url = (settings.cache_redis_url or "").strip()
+        if not url:
+            return NullCache()
+        return RedisCache(url=url, default_ttl=ttl)
 
-    url = (settings.cache_redis_url or "").strip()
-    if not url:
-        return NullCache()
+    if backend == "nats":
+        bucket = getattr(settings, "cache_nats_bucket", "ue_cache")
+        return NatsKVCache(bucket=bucket, default_ttl=ttl)
 
-    return RedisCache(url=url, default_ttl=ttl)
+    return NullCache()
 
 
 def get_cache() -> BaseCache:
@@ -804,6 +903,7 @@ __all__ = [
     "BaseCache",
     "CacheEntry",
     "MemoryCache",
+    "NatsKVCache",
     "NullCache",
     "RedisCache",
     "TieredCache",

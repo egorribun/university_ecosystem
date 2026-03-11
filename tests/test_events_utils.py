@@ -2,39 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.api.events import (
-    _encode_payload_with_etag,
-    _events_list_cache_key,
-    events_cache_version,
-)
+from app.api.events import events_cache_version
 from app.deps.cache import RedisCache
-
-
-@pytest.mark.asyncio
-async def test_events_list_cache_key():
-    key = _events_list_cache_key(
-        locale="en",
-        search="Test",
-        event_type="workshop",
-        location="Room 101",
-        is_active=True,
-        limit=10,
-        cursor=None,
-        version="1",
-    )
-    assert "events:list:1:en:" in key
-    # Check normalization
-    key2 = _events_list_cache_key(
-        locale="EN",
-        search="  test  ",
-        event_type="Workshop",
-        location="room 101",
-        is_active=True,
-        limit=10,
-        cursor=None,
-        version="1",
-    )
-    assert key == key2
 
 
 @pytest.mark.asyncio
@@ -97,17 +66,4 @@ async def test_increment_events_list_version_redis():
     mock_client.set.assert_called_with("events:list:version", "11")
 
 
-def test_encode_payload_with_etag():
-    import json
 
-    from starlette.responses import Response
-
-    payload = {"id": 1, "name": "Event"}
-    response, digest, strong_header = _encode_payload_with_etag(payload)
-
-    assert isinstance(response, Response)
-    assert response.media_type == "application/json"
-    assert json.loads(response.body) == payload
-    assert isinstance(digest, str)
-    assert strong_header.startswith('"')
-    assert digest in strong_header
