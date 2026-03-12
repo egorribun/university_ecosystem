@@ -1,0 +1,22 @@
+# SOPS configuration for environment secrets.
+# Used by Mozilla SOPS to encrypt files transparently.
+
+creation_rules:
+  # Encrypt standard dotenv variants across all directories
+  - path_regex: \.env(\..+)?$
+    # Example KMS configuration (uncomment and replace with your actual KMS ARN)
+    # kms: 'arn:aws:kms:us-east-1:123456789012:key/xxxx-xxxx-xxxx-xxxx'
+
+    # We use age (X25519) by default for simplicity during local development
+    # Developers should generate a local identity: `age-keygen -o ~/.config/sops/age/keys.txt`
+    key_groups:
+      - age:
+          # Add developer public keys here:
+          - "age1dev..." # Alice
+          - "age1dev..." # Bob
+
+  # Production secrets might require distinct boundaries
+  - path_regex: secrets/prod\.yaml$
+    key_groups:
+      - age:
+          - "age1prod..."

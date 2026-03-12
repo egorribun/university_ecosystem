@@ -72,7 +72,7 @@ CSRF_HEADER_NAME = "x-csrf-token"
 _TOKEN_NONCE_BYTES = 32
 # Separator between nonce and HMAC in the cookie value.
 # Period is safe in cookie values (RFC 6265) and is not produced by base64url.
-_TOKEN_SEPARATOR = "."
+_TOKEN_SEPARATOR = "."  # nosec B105
 
 # Marker key in request.state used by auth endpoints to signal that the CSRF
 # token must be rotated after privilege escalation (login, MFA completion,
@@ -154,6 +154,7 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
        JWT is validated.  This is the tightest binding.
     2. The nonce portion of the *existing* cookie token — allows the HMAC
        to be verified during the request before the session is loaded.
+    """
     session_id: str = getattr(request.state, "session_id", None) or ""
     if not session_id:
         # RZ-03/NEW-SEC-002 (audit 2026-03-12): Anonymous requests bind to client fingerprint.
@@ -182,7 +183,7 @@ async def _reject_csrf(scope: Scope, receive: Receive, send: Send) -> None:
 class CSRFMiddleware:
     """Signed Double-Submit Cookie CSRF protection - pure ASGI.
 
-    RZ-3 (audit 2026-03-10): Upgraded from plain Double-Submit to Signed
+    RZ-3 (audit Mar 2026): Upgraded from plain Double-Submit to Signed
     Double-Submit (OWASP CSRF Cheat Sheet §Signed Double-Submit Cookies).
     Each CSRF token is now HMAC-SHA256 signed and bound to the current
     session_id, closing the subdomain fixation attack vector.

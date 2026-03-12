@@ -9,7 +9,7 @@ from fastapi import Request
 from app.auth import mfa
 from app.core.exceptions.domain import EntityNotFound, PermissionDenied
 from app.core.localization import resolve_locale, translate
-from app.core.protocols import UserLike
+from app.core.protocols import UserLike, extract_user_id
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
@@ -61,16 +61,17 @@ class UserProfileService:
         if "email" in payload and payload["email"] is not None:
             from app.services.user.logic import validate_user_email
 
+            user_identity = extract_user_id(user)
             payload["email"] = await validate_user_email(
-                self.repo, payload["email"], exclude_user_id=user.id
+                self.repo, payload["email"], exclude_user_id=user_identity
             )
 
         # Fetch ORM user with lock.
         # Handle UserLike (could be ID, DTO or ORM)
-        user_identity = getattr(user, "id", user)
+        user_identity = extract_user_id(user)
         db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_identity)
 
         # Apply nested updates
         update_user_attributes(db_user, payload)

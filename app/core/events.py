@@ -209,6 +209,8 @@ class NotificationSent(DomainEvent):
 class EventEmitterMixin:
     """Mixin for models that emit domain events to be persisted."""
 
+    _pending_domain_events: list[DomainEvent]
+
     def record_event(self, event: DomainEvent) -> None:
         """Queue a domain event for persistence (Thread-safe init)."""
         # SEC-004: Atomic-like initialization of the list to prevent race conditions
@@ -251,11 +253,11 @@ def capture_domain_events(
             # SEC-007 (Wave 6 audit): Safe ID extraction with typed validation.
             # Prevents storing junk stringified complex objects as IDs.
             raw_id = getattr(obj, "id", "unknown")
-            if not isinstance(raw_id, (str, uuid.UUID, int)):
+            if not isinstance(raw_id, (str, UUID, int)):
                 # If ID is complex or None, we log and fall back to "unknown" rather than str([])
-                logger.warning(
+                logger.warning(  # type: ignore[unreachable]
                     "Unsafe aggregate ID detected",
-                    aggregate_type=obj.__class__.__name__,
+                    extra={"aggregate_type": obj.__class__.__name__},
                 )
                 raw_id = "unknown"
 
@@ -398,8 +400,10 @@ class EventBus:
         except TimeoutError:
             logger.error(
                 "Event production timed out (10s)",
-                event_type=event_type,
-                event_id=event.event_id,
+                extra={
+                    "event_type": event_type,
+                    "event_id": event.event_id,
+                },
             )
 
     async def _safe_handle(self, handler: EventHandler, event: DomainEvent) -> None:
@@ -422,10 +426,12 @@ class EventBus:
                     # the error is catastrophic and visible.
                     logger.critical(
                         "DOMAIN EVENT LOST: Both handler and DLQ failed",
-                        original_error=str(e),
-                        dlq_error=str(dlq_err),
-                        event_type=event.event_type,
-                        event_id=event.event_id,
+                        extra={
+                            "original_error": str(e),
+                            "dlq_error": str(dlq_err),
+                            "event_type": event.event_type,
+                            "event_id": event.event_id,
+                        },
                     )
 
 

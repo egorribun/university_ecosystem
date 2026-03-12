@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
@@ -182,7 +183,7 @@ def subscription_supports_topic(
 async def upsert_user_topics(
     db: AsyncSession,
     *,
-    user_id: int,
+    user_id: uuid.UUID,
     topics: Iterable[str] | None,
     allowed_topics: Collection[str] | None = None,
     settings_obj: Settings | None = None,
@@ -207,7 +208,7 @@ async def upsert_user_topics(
 async def synchronize_user_topics(
     db: AsyncSession,
     *,
-    user_id: int,
+    user_id: uuid.UUID,
     topics: Iterable[str] | None,
     allowed_topics: Collection[str] | None = None,
     settings_obj: Settings | None = None,
