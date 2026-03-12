@@ -99,6 +99,7 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
 
 def upgrade() -> None:
     """Upgrade schema."""
+    SKIPPED_TABLES.clear()
     bind = op.get_bind()
     is_postgresql = bind.dialect.name == "postgresql"
     try:
@@ -1034,6 +1035,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    SKIPPED_TABLES.clear()
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
@@ -1385,22 +1387,27 @@ def downgrade() -> None:
                 ["spotify_last_track_id"],
                 unique=False,
             )
-        if "ix_users_id" not in existing_users_indexes:
+        if "ix_users_id" in existing_users_indexes:
             batch_op.create_index(batch_op.f("ix_users_id"), ["id"], unique=False)
-        batch_op.drop_column("achievements")
-        batch_op.drop_column("telegram")
-        batch_op.drop_column("program")
-        batch_op.drop_column("track")
-        batch_op.drop_column("education_level")
-        batch_op.drop_column("course")
-        batch_op.drop_column("institute")
-        batch_op.drop_column("status")
-        batch_op.drop_column("record_book_number")
-        batch_op.drop_column("about")
-        batch_op.drop_column("cover_url")
-        batch_op.drop_column("avatar_url")
-        batch_op.drop_column("webauthn_id")
-        batch_op.drop_column("group_id")
+
+        for col_to_drop in [
+            "achievements",
+            "telegram",
+            "program",
+            "track",
+            "education_level",
+            "course",
+            "institute",
+            "status",
+            "record_book_number",
+            "about",
+            "cover_url",
+            "avatar_url",
+            "webauthn_id",
+            "group_id",
+        ]:
+            if col_to_drop in existing_users_columns:
+                batch_op.drop_column(col_to_drop)
 
     existing_push_topics_indexes = {
         i["name"] for i in inspector.get_indexes("user_push_topics")

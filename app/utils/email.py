@@ -6,6 +6,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
+from app.core.logging import is_logger_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def _log_event(
 
     target = (
         logger
-        if logger.isEnabledFor(level) and not logger.disabled
+        if is_logger_enabled(logger, level) and not logger.disabled
         else logging.getLogger()
     )
     target.log(level, message, extra=extra, exc_info=exc_info, stacklevel=3)

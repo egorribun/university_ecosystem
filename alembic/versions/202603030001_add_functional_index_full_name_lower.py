@@ -23,6 +23,7 @@ Revises: See down_revision below
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -46,15 +47,20 @@ def upgrade() -> None:
         # SQLite does not support CREATE INDEX ON (expression); skip gracefully.
         return
 
+    # CONCURRENTLY requires running outside an explicit transaction block.
+    conn = op.get_bind()
+    conn.execute(text("COMMIT"))
     # Functional index: lower(full_name) with text_pattern_ops operator class.
     # text_pattern_ops allows LIKE 'prefix%' patterns to use the index even
     # though the column is TEXT; without it, PostgreSQL would fall back to seqscan.
-    op.execute(
-        f"""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS {_INDEX_NAME}
-        ON {_TABLE_NAME} (lower(full_name) text_pattern_ops)
-        WHERE full_name IS NOT NULL
-        """
+    conn.execute(
+        text(
+            f"""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_INDEX_NAME}
+            ON {_TABLE_NAME} (lower(full_name) text_pattern_ops)
+            WHERE full_name IS NOT NULL
+            """
+        )
     )
 
 
@@ -62,4 +68,6 @@ def downgrade() -> None:
     if not _is_postgresql():
         return
 
-    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}")
+    conn = op.get_bind()
+    conn.execute(text("COMMIT"))
+    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}"))

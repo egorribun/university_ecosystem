@@ -27,6 +27,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = "202603060001"
@@ -50,23 +51,28 @@ def upgrade() -> None:
         # SQLite used in unit tests does not support CONCURRENTLY; skip.
         return
 
+    conn = op.get_bind()
+    # CONCURRENTLY requires running outside an explicit transaction block.
+    conn.execute(text("COMMIT"))
+
     # Index 1: user_id → chat_id covering index.
-    # Enables Index Only Scan for "fetch all chats a user belongs to".
-    op.execute(
-        f"""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_USER_CHAT}
-        ON {_TABLE} (user_id, chat_id)
-        """
+    conn.execute(
+        text(
+            f"""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_USER_CHAT}
+            ON {_TABLE} (user_id, chat_id)
+            """
+        )
     )
 
     # Index 2: chat_id → user_id covering index.
-    # Enables Index Only Scan for the DISTINCT sub-query inside
-    # get_presence_audience (chat_id IN (...) → user_id lookup).
-    op.execute(
-        f"""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_CHAT_USER}
-        ON {_TABLE} (chat_id, user_id)
-        """
+    conn.execute(
+        text(
+            f"""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_CHAT_USER}
+            ON {_TABLE} (chat_id, user_id)
+            """
+        )
     )
 
 
@@ -75,5 +81,7 @@ def downgrade() -> None:
     if not _is_postgresql():
         return
 
-    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_USER_CHAT}")
-    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_CHAT_USER}")
+    conn = op.get_bind()
+    conn.execute(text("COMMIT"))
+    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_USER_CHAT}"))
+    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_CHAT_USER}"))

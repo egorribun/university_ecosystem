@@ -89,7 +89,14 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(docker compose:*)",
-      "Bash(tee /tmp/test_output.txt)"
+      "Bash(tee /tmp/test_output.txt)",
+      "Bash(ls C:UsersegorribunDocumentsuniversity_ecosystem.env*)",
+      "Bash(ls /c/Users/egorribun/Documents/university_ecosystem/.env*)",
+      "Bash(/c/Users/egorribun/Documents/university_ecosystem/.env:*)",
+      "Bash(echo \"EXIT_CODE:$?\")",
+      "Bash(docker run:*)",
+      "Bash(docker build:*)",
+      "Bash(docker kill:*)"
     ]
   }
 }

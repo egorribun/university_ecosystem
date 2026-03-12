@@ -22,7 +22,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings, settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, is_logger_enabled
 from app.core.protocols import AsyncDatabaseSession
 
 
@@ -269,10 +269,10 @@ def _on_checkout(
 ) -> None:
     """Handle connection checkout from pool."""
     _pool_metrics.record_checkout()
-    # PERF-6 (audit 2026-03-05): Guard behind isEnabledFor so the
+    # PERF-6 (audit 2026-03-05): Guard behind is_logger_enabled so the
     # _pool_metrics.active_connections lock access is skipped at 1000+ RPS
     # when DEBUG logging is disabled (the common production case).
-    if pool_health_logger.isEnabledFor(logging.DEBUG):
+    if is_logger_enabled(pool_health_logger, logging.DEBUG):
         pool_health_logger.debug(
             "Connection checkout: active=%d",
             _pool_metrics.active_connections,
@@ -282,7 +282,7 @@ def _on_checkout(
 def _on_checkin(dbapi_connection: Any, connection_record: Any) -> None:
     """Handle connection checkin to pool."""
     _pool_metrics.record_checkin()
-    if pool_health_logger.isEnabledFor(logging.DEBUG):
+    if is_logger_enabled(pool_health_logger, logging.DEBUG):
         pool_health_logger.debug(
             "Connection checkin: active=%d",
             _pool_metrics.active_connections,

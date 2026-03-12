@@ -34,6 +34,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = "202603070001"
@@ -53,12 +54,17 @@ def upgrade() -> None:
         # SQLite does not support CONCURRENTLY or partial indexes; skip in tests.
         return
 
-    op.execute(
-        f"""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_UNREAD}
-        ON messages (chat_id, sender_id)
-        WHERE read_status = FALSE
-        """
+    conn = op.get_bind()
+    # CONCURRENTLY requires running outside an explicit transaction block.
+    conn.execute(text("COMMIT"))
+    conn.execute(
+        text(
+            f"""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_UNREAD}
+            ON messages (chat_id, sender_id)
+            WHERE read_status = FALSE
+            """
+        )
     )
 
 
@@ -66,4 +72,6 @@ def downgrade() -> None:
     if not _is_postgresql():
         return
 
-    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_UNREAD}")
+    conn = op.get_bind()
+    conn.execute(text("COMMIT"))
+    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_UNREAD}"))

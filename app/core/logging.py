@@ -176,6 +176,21 @@ def bind_context(**kwargs: Any) -> None:
     structlog.contextvars.bind_contextvars(**kwargs)
 
 
+def is_logger_enabled(logger: Any, level: int) -> bool:
+    """Check if a logger is enabled for a given level.
+
+    Works for both standard logging.Logger (isEnabledFor) and
+    structlog's make_filtering_bound_logger (is_enabled_for)
+    at runtime, while bridging the gap between local and CI
+    mypy environments.
+    """
+    # PEP 8 compliant method name used by structlog filtering
+    if hasattr(logger, "is_enabled_for"):
+        return bool(logger.is_enabled_for(level))
+    # Standard library method name
+    return bool(logger.isEnabledFor(level))
+
+
 def clear_context() -> None:
     """Clear all bound context variables."""
     structlog.contextvars.clear_contextvars()
@@ -186,4 +201,5 @@ __all__ = [
     "clear_context",
     "configure_logging",
     "get_logger",
+    "is_logger_enabled",
 ]
