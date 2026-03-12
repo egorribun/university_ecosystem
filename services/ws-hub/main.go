@@ -73,7 +73,11 @@ func main() {
 		logger.Warn("Redis connection failed, continuing without L2 cache", zap.Error(err))
 		rdb = nil
 	} else {
-		defer rdb.Close()
+		defer func() {
+			if err := rdb.Close(); err != nil {
+				logger.Error("Failed to close Redis connection", zap.Error(err))
+			}
+		}()
 		logger.Info("Redis connected (L2 Cache enabled)", zap.String("addr", cfg.RedisURL))
 	}
 

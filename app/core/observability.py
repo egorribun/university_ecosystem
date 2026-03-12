@@ -113,7 +113,7 @@ def _resolve_current_trace_id() -> str | None:
     return get_trace_id() or get_request_id()
 
 
-from app.core.logging import (
+from app.core.logging import (  # noqa: E402
     configure_logging as _configure_structured_logging,
 )
 

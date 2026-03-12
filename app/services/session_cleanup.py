@@ -89,16 +89,14 @@ async def revoke_sessions_matching(
 ) -> int:
     """Mark matching sessions as revoked without deleting their rows."""
 
-    exec_result = await db.execute(select(ActiveSession).where(whereclause))  # type: ignore[arg-type]
-    sessions = exec_result.scalars().all()
-    if not sessions:
-        return 0
+    stmt = select(ActiveSession).where(whereclause).execution_options(yield_per=1000)  # type: ignore[arg-type]
+    exec_result = await db.stream(stmt)
 
     session_backend = await get_session_backend()
     now = datetime.now(UTC)
     revoked = 0
 
-    for session in sessions:
+    async for session in exec_result.scalars():
         revoked += 1
         if session.revoked_at is None:
             session.revoked_at = now

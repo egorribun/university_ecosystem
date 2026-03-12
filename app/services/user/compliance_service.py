@@ -13,7 +13,7 @@ from app.core.exceptions.domain import (
     EntityNotFound,
     PermissionDenied,
 )
-from app.core.protocols import UserLike
+from app.core.protocols import UserLike, extract_user_id
 from app.models.enums import UserRole
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
@@ -38,7 +38,7 @@ class UserComplianceService:
         request: Request,
         current_user: UserLike,
     ) -> dict[str, Any]:
-        if current_user.role != "admin":
+        if getattr(current_user, "role", None) != "admin":
             raise PermissionDenied()
 
         # Fetch ORM user
@@ -46,7 +46,7 @@ class UserComplianceService:
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
-        if db_user.id == current_user.id:
+        if db_user.id == extract_user_id(current_user):
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
         # Perform anonymization
@@ -61,7 +61,7 @@ class UserComplianceService:
     async def export_user_data(
         self, user: UserLike, request: Request
     ) -> schemas.DataExportOut:
-        user_identity = getattr(user, "id", user)
+        user_identity = extract_user_id(user)
         db_user = await self.repo.get(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
@@ -73,9 +73,9 @@ class UserComplianceService:
 
         # PERF-010 (audit 2026-03-04): Gather independent I/O fetches concurrently
         sessions_list, notifications_list, access_logs = await asyncio.gather(
-            self.repo.get_user_sessions(user.id),
-            self.repo.get_user_notifications(user.id),
-            self.repo.get_user_access_logs(user.id, limit=2000),
+            self.repo.get_user_sessions(user_identity),
+            self.repo.get_user_notifications(user_identity),
+            self.repo.get_user_access_logs(user_identity, limit=2000),
         )
 
         sessions = [
@@ -142,10 +142,10 @@ class UserComplianceService:
 
         await log_data_access(
             self.repo.db,
-            actor_user_id=user.id,
-            subject_user_id=user.id,
+            actor_user_id=user_identity,
+            subject_user_id=user_identity,
             resource_type="profile",
-            resource_id=str(user.id),
+            resource_id=str(user_identity),
             action="export",
             request=request,
         )
@@ -171,7 +171,7 @@ class UserComplianceService:
             raise BusinessRuleViolation("errors.users.confirmation_required")
 
         # Fetch ORM user
-        user_identity = getattr(user, "id", user)
+        user_identity = extract_user_id(user)
         db_user = await self.repo._get_orm(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
@@ -181,10 +181,10 @@ class UserComplianceService:
 
         await log_data_access(
             self.repo.db,
-            actor_user_id=user.id,
-            subject_user_id=user.id,
+            actor_user_id=user_identity,
+            subject_user_id=user_identity,
             resource_type="profile",
-            resource_id=str(user.id),
+            resource_id=str(user_identity),
             action="delete",
             request=request,
         )
@@ -192,7 +192,7 @@ class UserComplianceService:
         async with self.uow:
             await self.uow.commit()
         # Refresh to get anonymized email
-        updated_user = await self.repo.get(user.id)
+        updated_user = await self.repo.get(user_identity)
         assert updated_user is not None  # nosec B101
         return schemas.DataDeletionOut(
             deleted=True, anonymized_email=updated_user.email
@@ -257,7 +257,7 @@ class UserComplianceService:
         request: Request,
         current_user: UserLike,
     ) -> UserDTO:
-        if current_user.role != "admin":
+        if getattr(current_user, "role", None) != "admin":
             raise PermissionDenied()
 
         if data.invite_code:

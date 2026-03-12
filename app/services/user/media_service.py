@@ -4,7 +4,7 @@ from fastapi import UploadFile
 
 from app.api.utils import save_upload
 from app.core.exceptions.domain import EntityNotFound
-from app.core.protocols import UserLike
+from app.core.protocols import UserLike, extract_user_id
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import UserDTO
 from app.services.user.logic import update_user_attributes
@@ -19,12 +19,12 @@ class UserMediaService:
         self.repo = uow.users
 
     async def upload_avatar(self, user: UserLike, file: UploadFile) -> UserDTO:
-        user_identity = getattr(user, "id", user)
+        user_identity = extract_user_id(user)
         db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
-        file_url = await save_upload(file, "avatars", f"user_{user.id}_avatar")
+        file_url = await save_upload(file, "avatars", f"user_{user_identity}_avatar")
 
         if db_user.profile and db_user.profile.avatar_url:
             await delete_static_file(db_user.profile.avatar_url)
@@ -42,12 +42,12 @@ class UserMediaService:
             raise
 
     async def upload_cover(self, user: UserLike, file: UploadFile) -> UserDTO:
-        user_identity = getattr(user, "id", user)
+        user_identity = extract_user_id(user)
         db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
-        file_url = await save_upload(file, "covers", f"user_{user.id}_cover")
+        file_url = await save_upload(file, "covers", f"user_{user_identity}_cover")
 
         if db_user.profile and db_user.profile.cover_url:
             await delete_static_file(db_user.profile.cover_url)
@@ -65,7 +65,7 @@ class UserMediaService:
             raise
 
     async def delete_avatar(self, user: UserLike) -> UserDTO:
-        user_identity = getattr(user, "id", user)
+        user_identity = extract_user_id(user)
         db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
             raise EntityNotFound("User", user_identity)
@@ -80,7 +80,7 @@ class UserMediaService:
         return self.repo._to_dto(db_user)
 
     async def delete_cover(self, user: UserLike) -> UserDTO:
-        user_identity = getattr(user, "id", user)
+        user_identity = extract_user_id(user)
         db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
             raise EntityNotFound("User", user_identity)

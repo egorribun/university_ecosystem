@@ -275,7 +275,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             # oldest message is the last one in the desc list
             oldest_message = rows[-1]
             next_cursor = encode_datetime_cursor(
-                oldest_message.created_at, oldest_message.id
+                oldest_message.created_at, str(oldest_message.id)
             )
 
         return [MessageDTO.model_validate(m) for m in rows], has_more, next_cursor

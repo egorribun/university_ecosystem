@@ -311,3 +311,4 @@ test_repro.py
 AUDIT_2026_03_06_WAVE3.md
 AUDIT_2026_03_07_FINAL.md
 rustup-init.exe
+/frontend/openapi.json

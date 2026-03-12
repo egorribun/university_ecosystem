@@ -130,7 +130,7 @@ async def test_auth_service_basics():
     user = models.User(
         id=1,
         email="u@e.com",
-        hashed_password="old_hash",
+        hashed_password="old_hash",  # pragma: allowlist secret
         _allow_system_managed_assignment=True,
     )
     request = MagicMock()

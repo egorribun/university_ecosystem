@@ -1,9 +1,10 @@
 import asyncio
 import hashlib
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache, partial
+from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -86,19 +87,25 @@ _ARGON2_CONCURRENCY_LIMIT: int = max(1, _AUTH_EXECUTOR_WORKERS - 1)
 # Using a module-level None sentinel means each forked process initializes
 # its own Semaphore on first use (safe — Python's GIL makes the None check
 # and assignment atomic for CPython).
+
 _argon2_semaphore: asyncio.Semaphore | None = None
+_argon2_semaphore_python_lock = threading.Lock()
 
 
 def _get_argon2_semaphore() -> asyncio.Semaphore:
     """Return (or lazily create) a per-worker asyncio.Semaphore.
 
-    Must be called from within a running event loop. Each forked Gunicorn
-    worker creates its own Semaphore on first request — fork-safe by design.
-    The CPython GIL makes the None-check + assignment effectively atomic.
+    Uses double-checked locking with threading.Lock to eliminate race condition
+    between coroutines during burst logins on worker startup.
     """
     global _argon2_semaphore
-    if _argon2_semaphore is None:
-        _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+    if _argon2_semaphore is not None:
+        return _argon2_semaphore
+
+    with _argon2_semaphore_python_lock:
+        if _argon2_semaphore is None:
+            _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+
     return _argon2_semaphore
 
 
@@ -497,23 +504,36 @@ def _mint_pure_jwt(
     )
 
 
-@lru_cache(maxsize=32)
-def _extract_public_key_pem(private_key_pem: str) -> str:
+_public_key_cache: dict[str, str] = {}
+
+
+def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
     """Derive and cache the RSA public key PEM from a private key PEM.
 
-    lru_cache is keyed on the PEM string, so cache entries are automatically
-    invalidated when keys rotate (new PEM = new cache key).
-    maxsize=32 accommodates multi-key rotation scenarios with headroom.
+    PERF-NEW-003: Replaces `lru_cache` with a manual dictionary cache. `lru_cache`
+    retains its arguments in memory indefinitely as part of the caching keys, meaning
+    the raw Private Key string was leaking into the heap. This custom implementation
+    extracts the public key and only stores it mapped against the `kid`.
     """
-    key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
-    return (
-        key.public_key()
-        .public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    cache_key = kid or hashlib.sha256(private_key_pem.encode()).hexdigest()
+
+    if cache_key not in _public_key_cache:
+        # Prevent unbound memory growth by arbitrarily clearing if it grows beyond bounds
+        if len(_public_key_cache) >= 32:
+            _public_key_cache.clear()
+
+        key = serialization.load_pem_private_key(
+            private_key_pem.encode(), password=None
         )
-        .decode()
-    )
+        _public_key_cache[cache_key] = (
+            key.public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            .decode()
+        )
+    return _public_key_cache[cache_key]
 
 
 def decode_token(token: str) -> dict[str, Any] | None:
@@ -572,9 +592,10 @@ def decode_token(token: str) -> dict[str, Any] | None:
                         # RZ-5: Cache RSA public key extraction with lru_cache.
                         # load_pem_private_key + public_bytes is a full RSA operation:
                         # O(key_size). Without caching this runs on EVERY JWT request,
-                        # creating a significant CPU spike at scale. lru_cache keyed on
-                        # the PEM string auto-invalidates on key rotation.
-                        verification_key = _extract_public_key_pem(secret)
+                        # Creating a significant CPU spike at scale. lru_cache keyed on
+                        # the kid/PEM string auto-invalidates on key rotation.
+                        # PERF-NEW-003: Now cached via tied kid+secret.
+                        verification_key = _get_cached_public_key_pem(kid, secret)
                     except Exception as exc:
                         _logger.error(
                             "Failed to extract public key from PEM for RS256 verification: %s",
@@ -585,7 +606,13 @@ def decode_token(token: str) -> dict[str, Any] | None:
                     verification_key = secret
 
             payload = jwt.decode(
-                token, verification_key, algorithms=[settings.algorithm]
+                token,
+                verification_key,
+                algorithms=[settings.algorithm],
+                options={
+                    "require": ["exp", "iat", "sub", "jti"],
+                },
+                audience=getattr(settings, "jwt_audience", "university-ecosystem-api"),
             )
             return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:

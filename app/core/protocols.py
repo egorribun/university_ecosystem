@@ -11,6 +11,21 @@ if TYPE_CHECKING:
 UserLike = Union["User", "UserDTO", uuid.UUID, str]
 
 
+class HasID(Protocol):
+    """Protocol for objects that have an 'id' attribute."""
+
+    id: Any
+
+
+def extract_user_id(user: UserLike) -> uuid.UUID:
+    """Safely extracts a UUID from any UserLike object for strict type compliance."""
+    if isinstance(user, str):
+        return uuid.UUID(user)
+    if isinstance(user, uuid.UUID):
+        return user
+    return user.id
+
+
 @runtime_checkable
 class DatabaseSession(Protocol):
     """Sync session protocol (for completeness if needed)."""

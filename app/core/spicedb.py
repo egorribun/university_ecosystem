@@ -3,7 +3,7 @@
 Provides two interfaces:
 - ``get_spicedb_client()``: legacy synchronous authzed.Client, kept for any
   remaining sync callers (CLI, management commands).
-- ``get_async_spicedb_channel()``: async-native grpclib.Channel for use in
+- ``get_async_spicedb_channel()``: async-native grpc.aio.Channel for use in
   FastAPI route handlers and async services. Calling synchronous gRPC stubs
   inside the asyncio event loop blocks the entire process — this factory
   resolves that P0 issue (RZ-1: audit 2026-02-26).
@@ -105,11 +105,11 @@ def get_spicedb_client() -> Client:
 
 
 async def get_async_spicedb_channel() -> AsyncIterator[object]:
-    """Yield an async-native grpclib.Channel for the duration of a request.
+    """Yield an async-native grpc.aio.Channel for the duration of a request.
 
     The channel is closed when the generator is exhausted (Dishka REQUEST scope
     cleans up after each request). A new connection is established per-request;
-    grpclib handles HTTP/2 multiplexing internally so this is cost-effective.
+    grpc.aio handles HTTP/2 multiplexing internally so this is cost-effective.
 
     Usage with Dishka:
         @provide(scope=Scope.REQUEST)
@@ -117,28 +117,23 @@ async def get_async_spicedb_channel() -> AsyncIterator[object]:
             async for ch in get_async_spicedb_channel():
                 yield ch
     """
-    try:
-        from grpclib.client import Channel
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError(
-            "grpclib is required for async SpiceDB access. "
-            "Add 'grpclib>=0.4.7' to your dependencies."
-        ) from exc
+    import grpc
 
     host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
+    target = f"{host}:{port}"
+    token = settings.spicedb_preshared_key
 
-    ssl_ctx = None
     if use_ssl:
-        import ssl as _ssl
+        from grpcutil import bearer_token_credentials
 
-        ssl_ctx = _ssl.create_default_context()
+        credentials = bearer_token_credentials(token)
+        channel = grpc.aio.secure_channel(target, credentials)
+    else:
+        channel = grpc.aio.insecure_channel(target)
 
-    channel = Channel(host=host, port=port, ssl=ssl_ctx)
-    logger.debug(
-        "SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl is not None
-    )
+    logger.debug("SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl)
     try:
         yield channel
     finally:
-        channel.close()
+        await channel.close()
         logger.debug("SpiceDB async channel closed: %s:%s", host, port)

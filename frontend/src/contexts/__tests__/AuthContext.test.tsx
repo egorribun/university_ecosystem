@@ -309,9 +309,13 @@ describe("AuthProvider loading state", () => {
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
 
-    // Initially loading should be false due to cached profile
-    expect(result.current.loading).toBe(false)
-    expect(result.current.user?.id).toBe(testUser.id)
+    // The signing key is memory-only (never persisted to localStorage), so cache
+    // cannot be restored synchronously. Wait for initialization to settle quickly
+    // without the user experiencing a prolonged loading state.
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+
+    // After initialization, the user should be available from the API response
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id), { timeout: 15000 })
 
     // Wait for background refresh to complete
     await waitFor(

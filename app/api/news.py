@@ -254,7 +254,7 @@ async def update_news(
     require_admin(user, locale)
 
     try:
-        updated = await service.update_news(id, data or schemas.NewsUpdate())  # type: ignore[arg-type]
+        updated = await service.update_news(id, data or schemas.NewsUpdate())
     except ValueError:
         raise_not_found("news", locale)
 
@@ -283,7 +283,7 @@ async def delete_news(
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
 
-    deleted = await service.delete_news(id)  # type: ignore[arg-type]
+    deleted = await service.delete_news(id)
     if not deleted:
         raise_not_found("news", locale)
 
@@ -310,10 +310,10 @@ async def like_news(
     user: models.User = Depends(get_current_user),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
-    news = await service.get_news_item(id)  # type: ignore[arg-type]
+    news = await service.get_news_item(id)
     if not news:
         raise_not_found("news", locale)
-    is_liked = await service.toggle_like(id, user.id)  # type: ignore[arg-type]
+    is_liked = await service.toggle_like(id, user.id)
     return {"is_liked": is_liked}
 
 
@@ -334,13 +334,13 @@ async def comment_on_news(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> schemas.NewsCommentOut | dict[str, Any]:
     locale = resolve_locale(request=request, user=user)
-    news = await service.get_news_item(id)  # type: ignore[arg-type]
+    news = await service.get_news_item(id)
     if not news:
         raise_not_found("news", locale)
     if not content.strip():
         raise_validation_error("errors.validation.required", locale)
 
-    comment = await service.create_comment(id, user.id, content)  # type: ignore[arg-type]
+    comment = await service.create_comment(id, user.id, content)
 
     # Notify admins about new comment
     await notifications.dispatch_comment_created(  # type: ignore[attr-defined]
@@ -366,12 +366,12 @@ async def get_news_interact(
     user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.NewsInteractionsOut:
     locale = resolve_locale(request=request)
-    news = await service.get_news_item(id)  # type: ignore[arg-type]
+    news = await service.get_news_item(id)
     if not news:
         raise_not_found("news", locale, resource_id=id)
 
     interactions = await service.get_interactions(
-        id,  # type: ignore[arg-type]
+        id,
         user.id if user else None,
         limit=limit,
         offset=offset,
@@ -389,7 +389,7 @@ async def update_comment(
 ) -> schemas.NewsCommentOut | dict[str, Any]:
     locale = resolve_locale(request=request, user=user)
     try:
-        comment = await service.update_comment(comment_id, user.id, data.content)  # type: ignore[arg-type]
+        comment = await service.update_comment(comment_id, user.id, data.content)
         return {
             "id": comment.id,
             "content": comment.content,
@@ -413,7 +413,7 @@ async def delete_comment(
     locale = resolve_locale(request=request, user=user)
     try:
         await service.delete_comment(
-            comment_id,  # type: ignore[arg-type]
+            comment_id,
             user.id,
             is_admin=(user.role == "admin"),
         )

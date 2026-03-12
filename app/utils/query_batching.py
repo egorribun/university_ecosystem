@@ -44,7 +44,7 @@ async def batch_load_ids[T: Base](
     if not ids:
         return []
 
-    column = id_column if id_column is not None else model.id
+    column = id_column if id_column is not None else model.id  # type: ignore[attr-defined]
     unique_ids = list(set(ids))
     results: list[T] = []
 
@@ -121,7 +121,7 @@ class QueryBatcher[T: Base]:
     ) -> None:
         self._session = session
         self._model = model
-        self._id_column = id_column if id_column is not None else model.id
+        self._id_column = id_column if id_column is not None else model.id  # type: ignore[attr-defined]
         self._pending_ids: list[int | str] = []
 
     def add(self, item_id: int | str) -> None:

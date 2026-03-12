@@ -138,23 +138,20 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
     }
   }, [overlayStatus])
 
-  const setOverlayState = useCallback(
-    (id: string, state: OverlayState | null) => {
-      const map = overlaysRef.current
-      if (state) {
-        map.set(id, state)
-      } else {
-        map.delete(id)
-      }
-      
-      const values = Array.from(map.values())
-      setOverlayStatus({
-        blurred: values.some((s) => s.blurred),
-        scrollLocked: values.some((s) => s.scrollLocked)
-      })
-    },
-    []
-  )
+  const setOverlayState = useCallback((id: string, state: OverlayState | null) => {
+    const map = overlaysRef.current
+    if (state) {
+      map.set(id, state)
+    } else {
+      map.delete(id)
+    }
+
+    const values = Array.from(map.values())
+    setOverlayStatus({
+      blurred: values.some((s) => s.blurred),
+      scrollLocked: values.some((s) => s.scrollLocked),
+    })
+  }, [])
 
   useEffect(
     () => () => {

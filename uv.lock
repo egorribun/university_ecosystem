@@ -1294,19 +1294,6 @@ wheels = [
 ]
 
 [[package]]
-name = "grpclib"
-version = "0.4.9"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "h2" },
-    { name = "multidict" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5b/28/5a2c299ec82a876a252c5919aa895a6f1d1d35c96417c5ce4a4660dc3a80/grpclib-0.4.9.tar.gz", hash = "sha256:cc589c330fa81004c6400a52a566407574498cb5b055fa927013361e21466c46", size = 84798, upload-time = "2025-12-14T22:23:14.349Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/90/b0cbbd9efcc82816c58f31a34963071aa19fb792a212a5d9caf8e0fc3097/grpclib-0.4.9-py3-none-any.whl", hash = "sha256:7762ec1c8ed94dfad597475152dd35cbd11aecaaca2f243e29702435ca24cf0e", size = 77063, upload-time = "2025-12-14T22:23:13.224Z" },
-]
-
-[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1401,6 +1388,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
+]
+
+[package.optional-dependencies]
+http2 = [
+    { name = "h2" },
 ]
 
 [[package]]
@@ -3557,8 +3549,7 @@ dependencies = [
     { name = "gputil" },
     { name = "grpcio" },
     { name = "grpcio-health-checking" },
-    { name = "grpclib" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["http2"] },
     { name = "minio" },
     { name = "nats-py" },
     { name = "nh3" },
@@ -3657,8 +3648,7 @@ requires-dist = [
     { name = "gputil", specifier = ">=1.4.0" },
     { name = "grpcio", specifier = ">=1.60.0" },
     { name = "grpcio-health-checking", specifier = ">=1.60.0" },
-    { name = "grpclib", specifier = ">=0.4.7" },
-    { name = "httpx", specifier = ">=0.27" },
+    { name = "httpx", extras = ["http2"], specifier = ">=0.27" },
     { name = "minio", specifier = ">=7.2" },
     { name = "nats-py", specifier = ">=2.9" },
     { name = "nh3", specifier = ">=0.2.17" },

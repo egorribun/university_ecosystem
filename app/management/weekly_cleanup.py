@@ -24,48 +24,59 @@ STALE_SUBSCRIPTION_DAYS = 180
 
 
 async def _delete_orphaned_subscriptions(session: AsyncSession) -> int:
-    orphaned = (
-        (
-            await session.execute(
-                delete(PushSubscription)
-                .where(~PushSubscription.user_id.in_(select(User.id)))
-                .returning(PushSubscription.id)
-            )
+    total_orphaned = 0
+    while True:
+        stmt = (
+            delete(PushSubscription)
+            .where(~PushSubscription.user_id.in_(select(User.id)))
+            .returning(PushSubscription.id)
         )
-        .scalars()
-        .all()
-    )
-    if orphaned:
+
+        result = await session.execute(stmt)
+        orphaned = result.scalars().fetchmany(1000)
+
+        if not orphaned:
+            break
+
+        total_orphaned += len(orphaned)
         await session.commit()
+
+    if total_orphaned:
         logger.info(
             "weekly_cleanup.deleted_orphaned_subscriptions",
-            extra={"count": len(orphaned)},
+            extra={"count": total_orphaned},
         )
-    return len(orphaned)
+    return total_orphaned
 
 
 async def _delete_stale_subscriptions(session: AsyncSession) -> int:
     cutoff = datetime.now(UTC) - timedelta(days=STALE_SUBSCRIPTION_DAYS)
-    stale = (
-        (
-            await session.execute(
-                delete(PushSubscription)
-                .where(
-                    (PushSubscription.last_seen_at.is_(None))
-                    | (PushSubscription.last_seen_at < cutoff)
-                )
-                .returning(PushSubscription.id)
+    total_stale = 0
+
+    while True:
+        stmt = (
+            delete(PushSubscription)
+            .where(
+                (PushSubscription.last_seen_at.is_(None))
+                | (PushSubscription.last_seen_at < cutoff)
             )
+            .returning(PushSubscription.id)
         )
-        .scalars()
-        .all()
-    )
-    if stale:
+
+        result = await session.execute(stmt)
+        stale = result.scalars().fetchmany(1000)
+
+        if not stale:
+            break
+
+        total_stale += len(stale)
         await session.commit()
+
+    if total_stale:
         logger.info(
-            "weekly_cleanup.deleted_stale_subscriptions", extra={"count": len(stale)}
+            "weekly_cleanup.deleted_stale_subscriptions", extra={"count": total_stale}
         )
-    return len(stale)
+    return total_stale
 
 
 async def _reindex_database() -> None:

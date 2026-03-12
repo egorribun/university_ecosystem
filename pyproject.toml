@@ -29,8 +29,7 @@ dependencies = [
     "geoip2>=4.0",
     "gputil>=1.4.0",
     "grpcio>=1.60.0",
-    "grpclib>=0.4.7",
-    "httpx>=0.27",
+    "httpx[http2]>=0.27",
     "minio>=7.2",
     "nats-py>=2.9",
     "nh3>=0.2.17",
@@ -97,7 +96,7 @@ strict = true
 plugins = [
     "pydantic.mypy",
     "sqlalchemy.ext.mypy.plugin",
-    "strawberry.ext.mypy_plugin"
+    "strawberry.ext.mypy_plugin",
 ]
 files = ["app"]
 mypy_path = "."
@@ -146,14 +145,6 @@ module = [
 ]
 disable_error_code = ["type-arg"]
 
-[[tool.mypy.overrides]]
-# Broad User|UserDTO|UUID|str union used for actor flexibility; narrow in Q3 2026.
-module = [
-    "app.services.user.compliance_service",
-    "app.services.user.profile_service",
-    "app.services.user.media_service",
-]
-disable_error_code = ["union-attr", "arg-type"]
 
 [[tool.mypy.overrides]]
 module = "app.api.users"
@@ -224,6 +215,8 @@ module = [
     "zxcvbn",
     "nats.*",
     "redis.*",
+    "grpc.*",
+    "grpc",
     "clamd",
 ]
 ignore_missing_imports = true

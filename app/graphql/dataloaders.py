@@ -9,6 +9,7 @@ proper cache isolation between requests.
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from strawberry.dataloader import DataLoader
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 
 
 async def load_users_by_ids(
-    keys: list[int],
+    keys: list[uuid.UUID],
     session: AsyncSession,
 ) -> Sequence[Any]:
     """Batch load users by their IDs."""
@@ -34,7 +35,7 @@ async def load_users_by_ids(
 
 
 async def load_news_by_ids(
-    keys: list[str],
+    keys: list[uuid.UUID],
     session: AsyncSession,
 ) -> Sequence[Any]:
     """Batch load news articles by their IDs."""
@@ -48,7 +49,7 @@ async def load_news_by_ids(
 
 
 async def load_events_by_ids(
-    keys: list[str],
+    keys: list[uuid.UUID],
     session: AsyncSession,
 ) -> Sequence[Any]:
     """Batch load events by their IDs."""
@@ -70,12 +71,12 @@ class DataLoaderRegistry:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
-        self._users: DataLoader[int, object] | None = None
-        self._news: DataLoader[str, object] | None = None
-        self._events: DataLoader[str, object] | None = None
+        self._users: DataLoader[uuid.UUID, object] | None = None
+        self._news: DataLoader[uuid.UUID, object] | None = None
+        self._events: DataLoader[uuid.UUID, object] | None = None
 
     @property
-    def users(self) -> DataLoader[int, object]:
+    def users(self) -> DataLoader[uuid.UUID, object]:
         if self._users is None:
             self._users = DataLoader(
                 load_fn=lambda keys: load_users_by_ids(keys, self._session)
@@ -83,7 +84,7 @@ class DataLoaderRegistry:
         return self._users
 
     @property
-    def news(self) -> DataLoader[str, object]:
+    def news(self) -> DataLoader[uuid.UUID, object]:
         if self._news is None:
             self._news = DataLoader(
                 load_fn=lambda keys: load_news_by_ids(keys, self._session)
@@ -91,7 +92,7 @@ class DataLoaderRegistry:
         return self._news
 
     @property
-    def events(self) -> DataLoader[str, object]:
+    def events(self) -> DataLoader[uuid.UUID, object]:
         if self._events is None:
             self._events = DataLoader(
                 load_fn=lambda keys: load_events_by_ids(keys, self._session)

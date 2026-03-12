@@ -81,9 +81,10 @@ graph TD
 ## 🚀 Getting Started
 
 ### 1. Environment Configuration
-Copy the template and configure your secrets:
+We use [Mozilla SOPS](https://github.com/getsops/sops) for secure, transparent `.env` encryption.
+First, ensure you have your `age` identity loaded, then decrypt the environment template:
 ```bash
-cp .env.example .env
+sops -d .env.enc > .env
 ```
 
 ### 2. Launch the Ecosystem
