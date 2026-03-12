@@ -77,7 +77,8 @@ jobs:
             go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v8
         with:
           version: v2.3.0
+          install-mode: goinstall
           working-directory: ${{ inputs.service-directory }}
