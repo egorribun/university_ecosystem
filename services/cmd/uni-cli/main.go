@@ -66,7 +66,7 @@ func cacheCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to connect to Redis: %w", err)
 			}
-			defer client.Close()
+			defer func() { _ = client.Close() }()
 
 			ctx := context.Background()
 
@@ -108,7 +108,7 @@ func cacheCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Close()
+			defer func() { _ = client.Close() }()
 
 			ctx := context.Background()
 
@@ -150,7 +150,7 @@ func healthCmd() *cobra.Command {
 				} else {
 					fmt.Println("✅ Connected")
 				}
-				client.Close()
+				_ = client.Close()
 			}
 
 			// Add more health checks as needed
@@ -175,7 +175,7 @@ func metricsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Close()
+			defer func() { _ = client.Close() }()
 
 			ctx := context.Background()
 
