@@ -43,7 +43,7 @@ class EventMetadata:
 
 
 @dataclass
-class DomainEvent(ABC):
+class DomainEvent(ABC):  # noqa: B024
     """Base class for all domain events."""
 
     event_id: str = field(default_factory=lambda: str(uuid4()))

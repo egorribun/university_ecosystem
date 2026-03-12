@@ -150,7 +150,7 @@ def apply_cursor(
 # ---------------------------------------------------------------------------
 
 
-class Page(BaseModel, Generic[T]):
+class Page(BaseModel, Generic[T]):  # noqa: UP046
     """A single page of results with a cursor for the next page.
 
     ``items`` contains at most ``limit`` elements.

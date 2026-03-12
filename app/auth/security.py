@@ -4,7 +4,7 @@ import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache, partial
+from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -504,24 +504,36 @@ def _mint_pure_jwt(
     )
 
 
-@lru_cache(maxsize=32)
+_public_key_cache: dict[str, str] = {}
+
+
 def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
     """Derive and cache the RSA public key PEM from a private key PEM.
 
-    lru_cache is keyed on the `kid` and PEM string, so cache entries are automatically
-    invalidated when keys rotate (new PEM/kid = new cache key) and old kids get evicted.
-    Since we need to pass private_key_pem to derive it, we will retain the private key as part of the key
-    but it's much safer than before because eviction is strictly coupled to the kid lifecycle.
+    PERF-NEW-003: Replaces `lru_cache` with a manual dictionary cache. `lru_cache`
+    retains its arguments in memory indefinitely as part of the caching keys, meaning
+    the raw Private Key string was leaking into the heap. This custom implementation
+    extracts the public key and only stores it mapped against the `kid`.
     """
-    key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
-    return (
-        key.public_key()
-        .public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    cache_key = kid or hashlib.sha256(private_key_pem.encode()).hexdigest()
+
+    if cache_key not in _public_key_cache:
+        # Prevent unbound memory growth by arbitrarily clearing if it grows beyond bounds
+        if len(_public_key_cache) >= 32:
+            _public_key_cache.clear()
+
+        key = serialization.load_pem_private_key(
+            private_key_pem.encode(), password=None
         )
-        .decode()
-    )
+        _public_key_cache[cache_key] = (
+            key.public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            .decode()
+        )
+    return _public_key_cache[cache_key]
 
 
 def decode_token(token: str) -> dict[str, Any] | None:

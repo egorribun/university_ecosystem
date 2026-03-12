@@ -135,22 +135,40 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
             return self._build_replay(request, body_bytes), None
 
         # Slow-path for chunked data or huge files
-        tmpfile = await anyio.to_thread.run_sync(
-            lambda: tempfile.SpooledTemporaryFile(max_size=_threshold, mode="w+b")
-        )
+        buffer = bytearray()
+        tmpfile = None
         accumulated = 0
         try:
             async for chunk in request.stream():
                 accumulated += len(chunk)
                 if accumulated > self._max_bytes:
-                    await anyio.to_thread.run_sync(tmpfile.close)
+                    if tmpfile is not None:
+                        await anyio.to_thread.run_sync(tmpfile.close)
                     return None, await self._generate_payload_error(request)
-                await anyio.to_thread.run_sync(tmpfile.write, chunk)
 
-            await anyio.to_thread.run_sync(tmpfile.seek, 0)
-            body_bytes = await anyio.to_thread.run_sync(tmpfile.read)
+                if tmpfile is None:
+                    if accumulated <= _threshold:
+                        buffer.extend(chunk)
+                    else:
+                        # Switch from pure RAM to temporary thread-bounded file
+                        tmpfile = await anyio.to_thread.run_sync(
+                            lambda: tempfile.SpooledTemporaryFile(
+                                max_size=_threshold, mode="w+b"
+                            )
+                        )
+                        await anyio.to_thread.run_sync(tmpfile.write, buffer)
+                        await anyio.to_thread.run_sync(tmpfile.write, chunk)
+                        buffer.clear()  # Free memory
+                else:
+                    await anyio.to_thread.run_sync(tmpfile.write, chunk)
+
+            if tmpfile is None:
+                body_bytes = bytes(buffer)
+            else:
+                await anyio.to_thread.run_sync(tmpfile.seek, 0)
+                body_bytes = await anyio.to_thread.run_sync(tmpfile.read)
         finally:
-            if not tmpfile.closed:
+            if tmpfile is not None and not tmpfile.closed:
                 await anyio.to_thread.run_sync(tmpfile.close)
 
         async def _replay_receive() -> dict[str, Any]:

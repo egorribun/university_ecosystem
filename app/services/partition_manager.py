@@ -1,7 +1,6 @@
 import contextlib
 import logging
 from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
@@ -28,8 +27,6 @@ async def ensure_partitions_exist() -> None:
         if conn.dialect.name != "postgresql":
             logger.debug("Partition management skipped: not a PostgreSQL database")
             return
-
-        now = datetime.now(UTC)
 
         # 1. Ensure future partitions exist
         import rust_ext
