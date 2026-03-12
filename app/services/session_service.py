@@ -116,8 +116,7 @@ class SessionService:
         # 2. Enforce concurrent session limit (lock-free soft limit)
         await self._enforce_concurrent_limit(user_id, jti, now)
 
-        async with self.uow:
-            await self.uow.commit()
+        await self.db.commit()
 
         # 4. Mint JWT
         token = self._mint_jwt(user_id, jti, now, expires_at, extra_claims)
@@ -177,6 +176,7 @@ class SessionService:
     ) -> str:
         payload = {
             "sub": str(user_id),
+            "aud": settings.jwt_audience,
             "iat": iat,
             "nbf": iat,
             "exp": exp,
@@ -237,8 +237,7 @@ class SessionService:
 
         session.revoked_at = session.revoked_at or now
         session.signing_key = secrets.token_urlsafe(32)
-        async with self.uow:
-            await self.uow.commit()
+        await self.db.commit()
 
         # Best effort backend revocation
         from contextlib import suppress
@@ -268,6 +267,5 @@ class SessionService:
         revoked = await revoke_sessions_matching(
             db=self.db, whereclause=and_(*where_parts)
         )
-        async with self.uow:
-            await self.uow.commit()
+        await self.db.commit()
         return revoked

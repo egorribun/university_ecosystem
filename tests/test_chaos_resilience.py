@@ -54,8 +54,10 @@ class TestSpiceDBChaos:
         """When SpiceDB CheckPermission fails, PermissionChecker should raise SpiceDBUnavailableError."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        mock_stub = AsyncMock()
-        mock_stub.CheckPermission.side_effect = Exception("gRPC connection failed")
+        mock_stub = MagicMock()
+        mock_stub.CheckPermission = AsyncMock(
+            side_effect=Exception("gRPC connection failed")
+        )
 
         # Define mock classes for the imports in rbac.py
         MockRequest = MagicMock()
@@ -70,6 +72,7 @@ class TestSpiceDBChaos:
         authzed_v1.CheckPermissionResponse = MockResponse
         authzed_v1.ObjectReference = MockObjectRef
         authzed_v1.SubjectReference = MockSubjectRef
+        authzed_v1.PermissionsServiceStub = MagicMock(return_value=mock_stub)
 
         # Create a mock module for the gRPC service
         authzed_grpc = MagicMock()

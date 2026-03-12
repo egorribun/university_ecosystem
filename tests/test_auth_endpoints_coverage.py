@@ -20,8 +20,13 @@ async def test_register_endpoint(async_client: AsyncClient, db_session):
 
     # Verify in DB
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
-    stmt = select(models.User).where(models.User.email == "newuser@example.com")
+    stmt = (
+        select(models.User)
+        .where(models.User.email == "newuser@example.com")
+        .options(selectinload(models.User.profile))
+    )
     user = (await db_session.execute(stmt)).scalar_one()
     assert user.profile.full_name == "New User"
 

@@ -488,6 +488,7 @@ def _mint_pure_jwt(
     now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "sub": str(subject),
+        "aud": settings.jwt_audience,
         "iat": now,
         "nbf": now,
         "exp": now + timedelta(minutes=minutes),
