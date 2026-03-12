@@ -90,33 +90,37 @@ async def create_notifications_for_users(
     title_map = _normalize_translation_map(title_translations)
     body_map = _normalize_translation_map(body_translations)
 
-    notifications: list[Notification] = []
-    for uid in uids:
-        title_ru = title_map.get("ru") or str(title)
-        body_ru = body_map.get("ru") or _coerce_optional_text(body)
-        notification_title_en = title_map.get("en")
-        notification_body_en = body_map.get("en")
-        notification = Notification(
-            user_id=uid,
-            title=title_ru,
-            title_en=notification_title_en,
-            body=body_ru,
-            body_en=notification_body_en,
-            type=type,
-            url=url,
-            dedupe_key=dedupe_key,
-            created_at=now,
-            read=False,
-            _allow_system_managed_assignment=True,
-        )
-        notifications.append(notification)
-    db.add_all(notifications)
-    await db.flush()
-    notification_ids_by_user = {
-        uuid.UUID(str(notification.user_id)): notification.id
-        for notification in notifications
-        if notification.id is not None
-    }
+    title_ru = title_map.get("ru") or str(title)
+    body_ru = body_map.get("ru") or _coerce_optional_text(body)
+    notification_title_en = title_map.get("en")
+    notification_body_en = body_map.get("en")
+
+    notifications_data = [
+        {
+            "user_id": uid,
+            "title": title_ru,
+            "title_en": notification_title_en,
+            "body": body_ru,
+            "body_en": notification_body_en,
+            "type": type,
+            "url": url,
+            "dedupe_key": dedupe_key,
+            "created_at": now,
+            "read": False,
+        }
+        for uid in uids
+    ]
+
+    batch_size = 5000
+    notification_ids_by_user = {}
+
+    for i in range(0, len(notifications_data), batch_size):
+        batch = notifications_data[i:i + batch_size]
+        stmt = insert(Notification).values(batch).returning(Notification.id, Notification.user_id)
+        db_result = await db.execute(stmt)
+        for row in db_result.mappings():
+            notification_ids_by_user[uuid.UUID(str(row["user_id"]))] = row["id"]
+
     await db.commit()
 
     if notification_ids_by_user and type == "grade":
@@ -298,4 +302,4 @@ async def create_notifications_for_users(
         await db.execute(insert(NotificationDelivery).values(delivery_rows))
         await db.commit()
 
-    return len(notifications)
+    return len(notifications_data)

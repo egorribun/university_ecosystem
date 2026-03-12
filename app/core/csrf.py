@@ -154,17 +154,15 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
        JWT is validated.  This is the tightest binding.
     2. The nonce portion of the *existing* cookie token — allows the HMAC
        to be verified during the request before the session is loaded.
-    3. ``""`` — anonymous / pre-auth requests; signed token degrades to an
-       unauthenticated but still server-validated HMAC (better than nothing).
-    """
     session_id: str = getattr(request.state, "session_id", None) or ""
     if not session_id:
-        # RZ-03 (audit 2026-03-11): Anonymous requests bind to an empty string.
-        # Using the existing nonce as session_id was self-referential:
-        # an attacker who can read the cookie (e.g. via subdomain XSS) could
-        # replay the same token for any anonymous request. Binding to ""
-        # ensures the HMAC is server-validated but not self-bound.
-        session_id = ""
+        # RZ-03/NEW-SEC-002 (audit 2026-03-12): Anonymous requests bind to client fingerprint.
+        # Binding to "" allowed an attacker on a subdomain to set a broadly valid token.
+        # Deterministic string provides better-than-nothing resistance against cross-origin
+        # generic token spraying by forcing it to match the client's network origin.
+        client_host = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "unknown")
+        session_id = f"anon:{client_host}:{user_agent}"
     return session_id
 
 
@@ -182,9 +180,9 @@ async def _reject_csrf(scope: Scope, receive: Receive, send: Send) -> None:
 
 
 class CSRFMiddleware:
-    """Signed Double-Submit Cookie CSRF protection — pure ASGI.
+    """Signed Double-Submit Cookie CSRF protection - pure ASGI.
 
-    RZ-003 (audit 2026-03-10): Upgraded from plain Double-Submit to Signed
+    RZ-3 (audit 2026-03-10): Upgraded from plain Double-Submit to Signed
     Double-Submit (OWASP CSRF Cheat Sheet §Signed Double-Submit Cookies).
     Each CSRF token is now HMAC-SHA256 signed and bound to the current
     session_id, closing the subdomain fixation attack vector.

@@ -11,36 +11,48 @@ import { LanguageProvider } from "@/contexts/LanguageContext"
 import i18n from "../../i18n/config"
 import { resetTestSessions, testSessions } from "@/tests/mocks/handlers"
 
-vi.mock("@/stores/useAuthStore", () => ({
-  useAuthStore: () => ({
-    user: {
-      id: "uuid-1",
-      email: "test@example.com",
-      full_name: "Test User",
-      role: "student",
-      group_id: "group-1",
-      avatar_url: "/media/avatars/original.png",
-      avatar_url_optimized: null,
-      cover_url: "/media/covers/original.jpg",
-      cover_url_optimized: null,
-      profile_detail: undefined,
-      education_path: undefined,
-      preferences: { dnd_enabled: false, timezone: null, dnd_start: null, dnd_end: null },
-      spotify_connected: false,
-      is_active: true,
-      mfa_required: false,
-      mfa_default_method: null,
-      mfa_last_verified_at: null,
-      recovery_codes_left: 0,
-      totp_enrollments: [],
-      mfa_challenges: [],
-    },
-    loading: false,
-    pendingMfa: null,
-    authOperation: false,
-    setUser: vi.fn(),
-  }),
-}))
+vi.mock("@/stores/useAuthStore", () => {
+  const user = {
+    id: "uuid-1",
+    email: "test@example.com",
+    full_name: "Test User",
+    role: "student",
+    group_id: "group-1",
+    avatar_url: "/media/avatars/original.png",
+    avatar_url_optimized: null,
+    cover_url: "/media/covers/original.jpg",
+    cover_url_optimized: null,
+    profile_detail: undefined,
+    education_path: undefined,
+    preferences: { dnd_enabled: false, timezone: null, dnd_start: null, dnd_end: null },
+    spotify_connected: false,
+    is_active: true,
+    mfa_required: false,
+    mfa_default_method: null,
+    mfa_last_verified_at: null,
+    recovery_codes_left: 0,
+    totp_enrollments: [],
+    mfa_challenges: [],
+  }
+  return {
+    useAuthStore: () => ({
+      user,
+      loading: false,
+      pendingMfa: null,
+      authOperation: false,
+      setUser: vi.fn(),
+    }),
+    useAuthUser: () => user,
+    useAuthLoading: () => false,
+    useAuthPendingMfa: () => null,
+    useAuthActions: () => ({
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      setPendingMfa: vi.fn(),
+      setAuthOperation: vi.fn(),
+    }),
+  }
+})
 
 const renderSettings = () => {
   const queryClient = createQueryClient()

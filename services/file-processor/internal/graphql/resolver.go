@@ -2,7 +2,9 @@ package graphql
 
 import (
 	"context"
-	"fmt"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/university-ecosystem/file-processor/internal/workflow"
@@ -18,10 +20,26 @@ func (r *Resolver) Health() string {
 	return "OK"
 }
 
+func sanitizeKey(key string) (string, error) {
+	cleaned := path.Clean("/" + key)
+	if cleaned == "/" || strings.Contains(key, "..") {
+		return "", fmt.Errorf("invalid path string")
+	}
+	return cleaned[1:], nil
+}
+
 func (r *Resolver) File(args struct{ ID string }) *FileResolver {
+	safeID, err := sanitizeKey(args.ID)
+	if err != nil {
+		// In a real GraphQL context, return an error, but here we fallback to safe empty
+		safeID = "invalid-path"
+	}
+
+	escapedSafeID := url.PathEscape(safeID)
+
 	return &FileResolver{
-		id:  args.ID,
-		url: fmt.Sprintf("http://localhost:9000/%s/%s", r.MinioBucket, args.ID),
+		id:  safeID,
+		url: fmt.Sprintf("http://localhost:9000/%s/%s", r.MinioBucket, escapedSafeID),
 	}
 }
 
@@ -34,11 +52,21 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 		options["height"] = int(*args.Input.Height)
 	}
 
+	safeSourceKey, err := sanitizeKey(args.Input.SourceKey)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source key: %v", err)
+	}
+
+	safeDestKey, err := sanitizeKey(args.Input.DestKey)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination key: %v", err)
+	}
+
 	job := workflow.ProcessJob{
 		ID:        generateID(),
 		Type:      args.Input.Type,
-		SourceKey: args.Input.SourceKey,
-		DestKey:   args.Input.DestKey,
+		SourceKey: safeSourceKey,
+		DestKey:   safeDestKey,
 		Options:   options,
 	}
 

@@ -123,15 +123,8 @@ module = ["alembic.*", "tests.*"]
 disallow_untyped_defs = false
 check_untyped_defs = false
 
-# Routers and services contain many FastAPI route handlers decorated with
-# Depends(); their signatures are validated by FastAPI at startup rather than
-# mypy.  Allow missing annotations in these modules during the migration period.
-# DEADLINE: 2026-Q3 | Action: annotate each route function one PR at a time,
-# then remove that module from this list. Start with app.api.admin.*.
-[[tool.mypy.overrides]]
-module = ["app.routers.*"]
-disallow_untyped_defs = false
-check_untyped_defs = false
+# The initial type hints exception for app.routers.* has been removed.
+# Routers must now adhere to strict typing standards using Annotated.
 # Temporarily exempt only the services with the most complex Depends() chains.
 # All other services must be fully annotated.
 [[tool.mypy.overrides]]

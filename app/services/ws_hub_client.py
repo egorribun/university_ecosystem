@@ -27,29 +27,51 @@ class WsHubClient:
     """
 
     def __init__(self) -> None:
+        from app.core.config import settings
         from app.core.nats_broker import broker
 
         self._broker = broker
+        self._secret = settings.ws_hub_internal_secret
 
     async def invalidate_cache(
         self,
         user_id: str | uuid.UUID,
         room_id: str | uuid.UUID,
     ) -> None:
-        """Publish an invalidation event to NATS JetStream.
+        """Publish an signed invalidation event to NATS JetStream.
 
         Events are published to 'cache.invalidate' subject. The ws-hub
-        subscribes to this subject to flush its internal auth cache.
+        subscribes to this subject and verifies the signature using the
+        shared InternalSecret.
         """
-        payload = {
+        import hashlib
+        import hmac
+        import json
+
+        payload_content = {
             "user_id": str(user_id),
             "room_id": str(room_id),
             "timestamp": uuid.uuid1().time,  # record order
         }
+
+        # TD-NEW-07: Sign the payload to prevent unauthorized cache flushes.
+        # Use deterministic JSON serialization for consistent signing.
+        json_payload = json.dumps(payload_content, sort_keys=True, separators=(",", ":"))
+        signature = hmac.new(
+            self._secret.encode(),
+            json_payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+        full_payload = {
+            "data": payload_content,
+            "signature": signature,
+        }
+
         try:
             # We don't await the full persistence if we want maximum speed,
             # but nats_broker.publish is async and we should await it for safety.
-            await self._broker.publish("cache.invalidate", payload)
+            await self._broker.publish("cache.invalidate", full_payload)
         except Exception:
             logger.warning(
                 "Failed to publish ws-hub cache invalidation to NATS for user_id=%s room_id=%s",

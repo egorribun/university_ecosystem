@@ -13,7 +13,7 @@ from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
@@ -50,11 +50,13 @@ class DomainEvent(ABC):
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: EventMetadata = field(default_factory=EventMetadata)
 
+    # ClassVar string identifying the event. Subclasses MUST override this.
+    EVENT_TYPE: ClassVar[str] = "domain_event.base"
+
     @property
-    @abstractmethod
     def event_type(self) -> str:
-        """Return the event type name."""
-        ...
+        """Return the event type name (backward compatibility)."""
+        return self.EVENT_TYPE
 
 
 # ── Event Registry ────────────────────────────────────────────────────────────
@@ -73,18 +75,8 @@ def register_domain_event(cls: type[DomainEvent]) -> type[DomainEvent]:
     Registers the class under both its class name and its ``event_type`` property.
     """
     _EVENT_REGISTRY[cls.__name__] = cls
-    # Also register by the string event_type if defined (needs an instance or property lookup)
-    # We'll use the property if accessible on the class/proto.
-    try:
-        # Create a dummy instance to get the event_type property value
-        # This assumes no-arg or default-factory constructor for the fields
-        # used in event_type property logic.
-        instance = cls()
-        _EVENT_REGISTRY[instance.event_type] = cls
-    except Exception:
-        # Fallback: if we can't instantiate it safely, callers must use class name.
-        pass
-
+    if hasattr(cls, "EVENT_TYPE"):
+        _EVENT_REGISTRY[cls.EVENT_TYPE] = cls
     return cls
 
 
@@ -97,9 +89,7 @@ class UserCreated(DomainEvent):
     user_id: UUID | None = None
     email: str = ""
 
-    @property
-    def event_type(self) -> str:
-        return "user.created"
+    EVENT_TYPE: ClassVar[str] = "user.created"
 
 
 @register_domain_event
@@ -110,9 +100,7 @@ class UserUpdated(DomainEvent):
     user_id: UUID | None = None
     updated_fields: list[str] = field(default_factory=list)
 
-    @property
-    def event_type(self) -> str:
-        return "user.updated"
+    EVENT_TYPE: ClassVar[str] = "user.updated"
 
 
 @register_domain_event
@@ -122,9 +110,7 @@ class UserDeleted(DomainEvent):
 
     user_id: UUID | None = None
 
-    @property
-    def event_type(self) -> str:
-        return "user.deleted"
+    EVENT_TYPE: ClassVar[str] = "user.deleted"
 
 
 # Auth Events
@@ -136,9 +122,7 @@ class UserLoggedIn(DomainEvent):
     user_id: UUID | None = None
     ip_address: str | None = None
 
-    @property
-    def event_type(self) -> str:
-        return "auth.login"
+    EVENT_TYPE: ClassVar[str] = "auth.login"
 
 
 @register_domain_event
@@ -149,9 +133,7 @@ class MfaEnabled(DomainEvent):
     user_id: UUID | None = None
     method: str = "totp"
 
-    @property
-    def event_type(self) -> str:
-        return "auth.mfa_enabled"
+    EVENT_TYPE: ClassVar[str] = "auth.mfa_enabled"
 
 
 # Event Events
@@ -164,9 +146,7 @@ class EventCreated(DomainEvent):
     organizer_id: UUID | None = None
     title: str = ""
 
-    @property
-    def event_type(self) -> str:
-        return "event.created"
+    EVENT_TYPE: ClassVar[str] = "event.created"
 
 
 @register_domain_event
@@ -177,9 +157,7 @@ class EventUpdated(DomainEvent):
     event_id_entity: UUID | None = None
     title: str = ""
 
-    @property
-    def event_type(self) -> str:
-        return "event.updated"
+    EVENT_TYPE: ClassVar[str] = "event.updated"
 
 
 @register_domain_event
@@ -190,9 +168,7 @@ class EventRegistration(DomainEvent):
     event_id_entity: UUID | None = None
     user_id: UUID | None = None
 
-    @property
-    def event_type(self) -> str:
-        return "event.registration"
+    EVENT_TYPE: ClassVar[str] = "event.registration"
 
 
 @register_domain_event
@@ -203,9 +179,7 @@ class NewsCreated(DomainEvent):
     news_id: UUID | None = None
     title: str = ""
 
-    @property
-    def event_type(self) -> str:
-        return "news.created"
+    EVENT_TYPE: ClassVar[str] = "news.created"
 
 
 @register_domain_event
@@ -216,9 +190,7 @@ class NewsUpdated(DomainEvent):
     news_id: UUID | None = None
     title: str = ""
 
-    @property
-    def event_type(self) -> str:
-        return "news.updated"
+    EVENT_TYPE: ClassVar[str] = "news.updated"
 
 
 # Notification Events
@@ -231,23 +203,24 @@ class NotificationSent(DomainEvent):
     user_id: UUID | None = None
     notification_type: str = ""
 
-    @property
-    def event_type(self) -> str:
-        return "notification.sent"
+    EVENT_TYPE: ClassVar[str] = "notification.sent"
 
 
 class EventEmitterMixin:
     """Mixin for models that emit domain events to be persisted."""
 
     def record_event(self, event: DomainEvent) -> None:
-        """Queue a domain event for persistence."""
-        if not hasattr(self, "_pending_domain_events"):
-            self._pending_domain_events: list[DomainEvent] = []
+        """Queue a domain event for persistence (Thread-safe init)."""
+        # SEC-004: Atomic-like initialization of the list to prevent race conditions
+        # in the common hasattr -> setattr pattern during concurrent flushes.
+        if "_pending_domain_events" not in self.__dict__:
+            # Use object.__setattr__ for bypass to avoid any potential proxy interference
+            object.__setattr__(self, "_pending_domain_events", [])
         self._pending_domain_events.append(event)
 
     def clear_events(self) -> None:
         """Clear all pending events."""
-        self._pending_domain_events = []
+        object.__setattr__(self, "_pending_domain_events", [])
 
 
 def capture_domain_events(
@@ -258,44 +231,51 @@ def capture_domain_events(
 
     events_to_store = []
 
-    # Check all objects in session for pending events
-    # We use session.new | session.dirty | session.deleted to catch all changes
-    for obj in session.new | session.dirty | session.deleted:
-        if isinstance(obj, EventEmitterMixin) and hasattr(
-            obj, "_pending_domain_events"
-        ):
-            for event_data in obj._pending_domain_events:
-                # payload = asdict(event_data)
-                # But event_data might have metadata we don't want in payload
-                # We'll use a simpler approach: serialize the entire event if possible,
-                # or just use its __dict__ without the base DomainEvent fields.
+    # Pre-filter using generator/comprehension for C-level speed, checking only for the attribute
+    changed_objects = session.new | session.dirty | session.deleted
+    emitters = (
+        obj for obj in changed_objects
+        if getattr(obj, "_pending_domain_events", None)
+    )
 
-                payload = {
-                    k: v
-                    for k, v in event_data.__dict__.items()
-                    if k not in ("event_id", "occurred_at", "metadata")
-                }
+    for obj in emitters:
+        for event_data in obj._pending_domain_events:
+            # We'll use a simpler approach: serialize the entire event if possible,
+            # or just use its __dict__ without the base DomainEvent fields.
 
-                stored_event = StoredEvent(
-                    event_type=event_data.event_type,
-                    aggregate_type=obj.__class__.__name__,
-                    aggregate_id=str(getattr(obj, "id", "unknown")),
-                    payload=payload,
-                    metadata_={
-                        "event_id": event_data.event_id,
-                        "occurred_at": event_data.occurred_at.isoformat(),
-                        "correlation_id": event_data.metadata.correlation_id,
-                        "user_id": event_data.metadata.user_id,
-                    },
-                )
-                events_to_store.append(stored_event)
+            payload = {
+                k: v
+                for k, v in event_data.__dict__.items()
+                if k not in ("event_id", "occurred_at", "metadata")
+            }
 
-            # Clear pending events after capturing
-            obj.clear_events()
+            # SEC-007 (Wave 6 audit): Safe ID extraction with typed validation.
+            # Prevents storing junk stringified complex objects as IDs.
+            raw_id = getattr(obj, "id", "unknown")
+            if not isinstance(raw_id, (str, uuid.UUID, int)):
+                # If ID is complex or None, we log and fall back to "unknown" rather than str([])
+                logger.warning("Unsafe aggregate ID detected", aggregate_type=obj.__class__.__name__)
+                raw_id = "unknown"
+
+            stored_event = StoredEvent(
+                event_type=event_data.event_type,
+                aggregate_type=obj.__class__.__name__,
+                aggregate_id=str(raw_id),
+                payload=payload,
+                metadata_={
+                    "event_id": event_data.event_id,
+                    "occurred_at": event_data.occurred_at.isoformat(),
+                    "correlation_id": event_data.metadata.correlation_id,
+                    "user_id": event_data.metadata.user_id,
+                },
+            )
+            events_to_store.append(stored_event)
+
+        # Clear pending events after capturing
+        obj.clear_events()
 
     if events_to_store:
-        for event_to_add in events_to_store:
-            session.add(event_to_add)
+        session.add_all(events_to_store)
 
 
 async def register_event_listeners() -> None:
@@ -409,8 +389,16 @@ class EventBus:
 
             handler_chain = wrapped
 
-        # Execute the chain
-        await handler_chain(event)
+        # Execute the chain with a global failsafe timeout (PERF-002).
+        # Ensures a slow or stuck middleware/handler doesn't hang the request thread.
+        try:
+            await asyncio.wait_for(handler_chain(event), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.error(
+                "Event production timed out (10s)",
+                event_type=event_type,
+                event_id=event.event_id,
+            )
 
     async def _safe_handle(self, handler: EventHandler, event: DomainEvent) -> None:
         """Execute handler with error protection and optional DLQ."""
@@ -425,7 +413,18 @@ class EventBus:
             )
             # Send to DLQ if configured
             if self._dlq is not None:
-                await self._dlq.add(event, e, handler.__name__)
+                try:
+                    await self._dlq.add(event, e, handler.__name__)
+                except Exception as dlq_err:
+                    # NEW-SEC-003: Critical fallback. If DLQ fails, we MUST ensure
+                    # the error is catastrophic and visible.
+                    logger.critical(
+                        "DOMAIN EVENT LOST: Both handler and DLQ failed",
+                        original_error=str(e),
+                        dlq_error=str(dlq_err),
+                        event_type=event.event_type,
+                        event_id=event.event_id,
+                    )
 
 
 # Global event bus instance

@@ -11,6 +11,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 
@@ -62,7 +63,21 @@ func main() {
 	}
 	defer nc.Close()
 
-	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL)
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisURL,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+	// Check connection
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		logger.Warn("Redis connection failed, continuing without L2 cache", zap.Error(err))
+		rdb = nil
+	} else {
+		defer rdb.Close()
+		logger.Info("Redis connected (L2 Cache enabled)", zap.String("addr", cfg.RedisURL))
+	}
+
+	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL, rdb)
 	// WSH-07 (audit 2026-03-08 Wave 5): Start background eviction goroutine for
 	// the auth cache. Without eviction the cache map grows unboundedly when users
 	// visit many unique (user, room) pairs. The goroutine exits when ctx is done.

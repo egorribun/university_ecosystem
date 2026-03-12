@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 // RoomAuthClient verifies that a given user is permitted to join a WebSocket room.
@@ -35,16 +37,18 @@ type InternalAPIAuthClient struct {
 	baseURL    string
 	httpClient *http.Client
 
-	cacheMu sync.RWMutex
-	cache   map[string]cacheEntry
+	cache *lru.Cache[string, cacheEntry]
+	redis *redis.Client
 
 	callMu sync.Mutex
 	calls  map[string]*call
 }
 
-func NewInternalAPIAuthClient(baseURL string) *InternalAPIAuthClient {
+func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
+	cache, _ := lru.New[string, cacheEntry](100000)
 	return &InternalAPIAuthClient{
 		baseURL: baseURL,
+		redis:   redisClient,
 		// WSH-04 (audit 2026-03-08 Wave 5): Explicit transport configuration.
 		// Go's default transport has MaxIdleConnsPerHost=0 (unlimited), which
 		// can accumulate idle sockets to the backend under reconnect storms.
@@ -59,54 +63,24 @@ func NewInternalAPIAuthClient(baseURL string) *InternalAPIAuthClient {
 				DisableCompression:  true, // internal API — no benefit from gzip
 			},
 		},
-		cache: make(map[string]cacheEntry),
+		cache: cache,
 		calls: make(map[string]*call),
 	}
 }
 
-// StartEviction launches a background goroutine that periodically removes
-// expired cache entries. Without eviction, the map grows unboundedly when
-// users join many unique rooms (WSH-07, audit 2026-03-08 Wave 5).
-//
-// Call this once after NewInternalAPIAuthClient; pass the application-level
-// context so the goroutine exits cleanly on shutdown.
+// StartEviction is no longer needed since lru.Cache manages its own memory bound.
+// We keep it as a no-op to satisfy existing interfaces if any.
 func (c *InternalAPIAuthClient) StartEviction(ctx context.Context) {
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				now := time.Now()
-				c.cacheMu.Lock()
-				for k, v := range c.cache {
-					if now.After(v.expiresAt) {
-						delete(c.cache, k)
-					}
-				}
-				c.cacheMu.Unlock()
-			}
-		}
-	}()
+	// The lru.Cache will naturally bound its size to 100k items.
+	// Expired entries are ignored on read and eventually evicted when space is needed.
 }
 
-// Invalidate removes a (userID, roomID) entry from the auth cache so that the
-// next CanJoinRoom call issues a fresh request to the backend.
-//
-// TD-NEW-07 (audit 2026-03): Without invalidation, a removed participant
-// retained a cached "allowed" result for up to 60 seconds after being kicked.
-// The Python backend calls the /internal/cache/invalidate endpoint after every
-// participant-removal operation to flush the stale entry immediately.
 func (c *InternalAPIAuthClient) Invalidate(userID, roomID string) {
 	if !isValidUUID(userID) || !isValidUUID(roomID) {
 		return
 	}
 	key := userID + ":" + roomID
-	c.cacheMu.Lock()
-	delete(c.cache, key)
-	c.cacheMu.Unlock()
+	c.cache.Remove(key)
 }
 
 // isValidUUID returns true when s is a canonical RFC-4122 UUID string.
@@ -160,15 +134,27 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	key := userID + ":" + roomID
 
 	// 1. Fast path: check local TTL cache
-	c.cacheMu.RLock()
-	entry, ok := c.cache[key]
-	c.cacheMu.RUnlock()
-
+	entry, ok := c.cache.Get(key)
 	if ok && time.Now().Before(entry.expiresAt) {
 		return entry.allowed
 	}
 
-	// 2. Slow path: single-flight request
+	// 2. Redis L2 path: check shared cache (PERF-006)
+	if c.redis != nil {
+		redisKey := "auth:perms:" + key
+		val, err := c.redis.Get(ctx, redisKey).Result()
+		if err == nil {
+			allowed := val == "1"
+			// Populate L1 from L2
+			c.cache.Add(key, cacheEntry{
+				allowed:   allowed,
+				expiresAt: time.Now().Add(1 * time.Minute),
+			})
+			return allowed
+		}
+	}
+
+	// 3. Slow path: single-flight request
 	c.callMu.Lock()
 	if c.calls[key] != nil {
 		activeCall := c.calls[key]
@@ -185,13 +171,22 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	allowed := c.doRequest(ctx, userID, roomID)
 
 	// Update cache
-	c.cacheMu.Lock()
-	c.cache[key] = cacheEntry{
+	c.cache.Add(key, cacheEntry{
 		allowed: allowed,
 		// Cache for 1 minute to survive reconnect storms without long stale periods
 		expiresAt: time.Now().Add(1 * time.Minute),
+	})
+
+	// Update Redis L2
+	if c.redis != nil {
+		redisKey := "auth:perms:" + key
+		val := "0"
+		if allowed {
+			val = "1"
+		}
+		// TTL of 5 minutes for L2 as per PERF-006 brief
+		c.redis.Set(ctx, redisKey, val, 5*time.Minute)
 	}
-	c.cacheMu.Unlock()
 
 	// Resolve in-flight call
 	newCall.res = allowed

@@ -48,7 +48,7 @@ def cached_endpoint(
     version_resolver: Any,
     cache_prefix: str,
     cache_control: str = "private, max-age=180",
-) -> Callable:
+) -> Callable[..., Any]:
     """
     A unified decorator for FastAPI endpoints to handle ETag-based HTTP caching
     and automatically respond with 304 Not Modified when appropriate, adhering
@@ -59,7 +59,7 @@ def cached_endpoint(
     and cache setting.
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             request: Request | None = kwargs.get("request")

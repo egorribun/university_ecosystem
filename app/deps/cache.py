@@ -467,7 +467,11 @@ class RedisClusterCache(BaseCache):
                 "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
             )
 
-        return max(int(ttl or 0), 0)
+    def _resolve_ttl(self, ttl: int | None) -> int:
+        if ttl is None:
+            ttl = self._default_ttl
+        ttl = int(ttl or 0)
+        return ttl if ttl > 0 else 0
 
 
 class NatsKVCache(BaseCache):
