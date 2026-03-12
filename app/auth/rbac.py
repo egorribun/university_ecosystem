@@ -36,10 +36,10 @@ class PermissionChecker:
     """
 
     def __init__(self, channel: object) -> None:
-        """Receive the async grpclib.Channel from Dishka DI.
+        """Receive the async grpc.aio.Channel from Dishka DI.
 
         Args:
-            channel: An open grpclib.Channel connected to SpiceDB.
+            channel: An open grpc.aio.Channel connected to SpiceDB.
                      Must be closed by the DI container after the request.
         """
         self._channel = channel
@@ -80,21 +80,19 @@ class PermissionChecker:
         """
         try:
             # Lazy import keeps the module loadable when grpclib is absent
-            # (e.g. CLI commands that don't touch RBAC).
+            import grpc.aio  # noqa: F401
             from authzed.api.v1 import (
+                AsyncClient,
                 CheckPermissionRequest,
                 CheckPermissionResponse,
                 ObjectReference,
                 SubjectReference,
             )
 
-            # Build the async stub from the injected channel.
-            # The stub is created per-call — it is a thin wrapper with no state.
-            from authzed.api.v1.permission_service_grpc import PermissionsServiceStub
-            from grpclib.client import Channel  # noqa: F401 — validate availability
+            # Build the async client from the injected channel.
+            client = AsyncClient(self._channel)
 
-            stub = PermissionsServiceStub(self._channel)
-            resp: CheckPermissionResponse = await stub.CheckPermission(
+            resp: CheckPermissionResponse = await client.CheckPermission(
                 CheckPermissionRequest(
                     resource=ObjectReference(
                         object_type=resource_type,
@@ -114,9 +112,9 @@ class PermissionChecker:
                 == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
             )
         except ImportError as exc:
-            # grpclib not installed — treat as unavailable rather than silently
-            # denying. Callers with SpiceDB enabled should always have grpclib.
-            raise SpiceDBUnavailableError("grpclib is not installed") from exc
+            # grpc/authzed not installed — treat as unavailable rather than silently
+            # denying. Callers with SpiceDB enabled should always have grpc.
+            raise SpiceDBUnavailableError("grpc is not installed") from exc
         except Exception as exc:
             logger.error(
                 "SpiceDB async permission check failed (%s:%s#%s for %s): %s",
