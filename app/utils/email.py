@@ -23,7 +23,7 @@ def _log_event(
 
     target = (
         logger
-        if logger.is_enabled_for(level) and not logger.disabled
+        if logger.isEnabledFor(level) and not logger.disabled
         else logging.getLogger()
     )
     target.log(level, message, extra=extra, exc_info=exc_info, stacklevel=3)
