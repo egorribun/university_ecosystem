@@ -255,7 +255,7 @@ def capture_domain_events(
             raw_id = getattr(obj, "id", "unknown")
             if not isinstance(raw_id, (str, UUID, int)):
                 # If ID is complex or None, we log and fall back to "unknown" rather than str([])
-                logger.warning(  # type: ignore[unreachable]
+                logger.warning(
                     "Unsafe aggregate ID detected",
                     extra={"aggregate_type": obj.__class__.__name__},
                 )

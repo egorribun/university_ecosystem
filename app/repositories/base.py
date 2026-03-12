@@ -38,7 +38,7 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
     async def _get_orm(self, id: Any, *, with_for_update: bool = False) -> T | None:
         """Internal helper to get the ORM object."""
         target_id = self._cast_id(id)
-        stmt = select(self.model).where(self.model.id == target_id)
+        stmt = select(self.model).where(self.model.id == target_id)  # type: ignore[attr-defined]
         if with_for_update:
             stmt = stmt.with_for_update()
         result = await self.db.execute(stmt)
@@ -60,7 +60,7 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         if not ids:
             return []
         target_ids = [self._cast_id(idx) for idx in ids]
-        stmt = select(self.model).where(self.model.id.in_(target_ids))
+        stmt = select(self.model).where(self.model.id.in_(target_ids))  # type: ignore[attr-defined]
         if with_for_update:
             stmt = stmt.with_for_update()
         result = await self.db.execute(stmt)
@@ -85,9 +85,7 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
     async def exists(self, id: Any) -> bool:
         target_id = self._cast_id(id)
         stmt = (
-            select(func.count())
-            .select_from(self.model)
-            .where(self.model.id == target_id)
+            select(func.count()).where(self.model.id == target_id)  # type: ignore[attr-defined]
         )
         result = await self.db.execute(stmt)
         return (result.scalar() or 0) > 0
@@ -166,7 +164,7 @@ class BaseRepository[T: Base, DTOT: BaseModel, CreateT, UpdateT](
 
     async def delete(self, id: Any) -> bool:
         target_id = self._cast_id(id)
-        stmt = delete(self.model).where(self.model.id == target_id)
+        stmt = delete(self.model).where(self.model.id == target_id)  # type: ignore[attr-defined]
         result = await self.db.execute(stmt)
         return (result.rowcount or 0) > 0  # type: ignore[attr-defined]
 

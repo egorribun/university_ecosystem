@@ -66,4 +66,4 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:latest
         ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ github.sha }}
-    secrets: inherit
+    secrets: inherit # pragma: allowlist secret

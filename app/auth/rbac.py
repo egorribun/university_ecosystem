@@ -11,6 +11,7 @@ transport layer and makes it trivially testable without FastAPI machinery.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class PermissionChecker:
     each request, ensuring no connection leaks across requests.
     """
 
-    def __init__(self, channel: object) -> None:
+    def __init__(self, channel: Any) -> None:
         """Receive the async grpc.aio.Channel from Dishka DI.
 
         Args:
@@ -76,17 +77,17 @@ class PermissionChecker:
         """
         try:
             # Lazy import keeps the module loadable when grpclib is absent
-            import grpc.aio  # type: ignore[import-not-found]  # noqa: F401
+            import grpc.aio  # noqa: F401
             from authzed.api.v1 import (
-                AsyncClient,
                 CheckPermissionRequest,
                 CheckPermissionResponse,
                 ObjectReference,
+                PermissionsServiceStub,
                 SubjectReference,
             )
 
-            # Build the async client from the injected channel.
-            client = AsyncClient(self._channel)
+            # Build the async stub from the injected channel.
+            client = PermissionsServiceStub(self._channel)
 
             resp: CheckPermissionResponse = await client.CheckPermission(
                 CheckPermissionRequest(

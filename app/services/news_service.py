@@ -48,7 +48,7 @@ class NewsService:
         results = await self.repo.list_news(
             limit=limit + 1,
             cursor=decoded_cursor,
-            current_user_id=current_user_id,  # type: ignore[arg-type]
+            current_user_id=current_user_id,
             search_query=search,
             query_embedding=query_embedding,
         )
@@ -97,7 +97,7 @@ class NewsService:
         return news
 
     async def toggle_like(self, news_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-        liked = await self.repo.toggle_like(news_id, user_id)  # type: ignore[arg-type]
+        liked = await self.repo.toggle_like(news_id, user_id)
         async with self.uow:
             await self.uow.commit()
         return liked
@@ -105,7 +105,7 @@ class NewsService:
     async def get_news(
         self, news_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> NewsDTO | None:
-        likes_count, is_liked = await self.repo.get_with_interactions(news_id, user_id)  # type: ignore[arg-type]
+        likes_count, is_liked = await self.repo.get_with_interactions(news_id, user_id)
         news = await self.repo.get(news_id)
         if news:
             news.likes_count = likes_count  # type: ignore[attr-defined]
@@ -184,13 +184,13 @@ class NewsService:
     async def create_comment(
         self, news_id: uuid.UUID, user_id: uuid.UUID, content: str
     ) -> NewsCommentDTO:
-        comment = await self.repo.create_comment(news_id, user_id, content)  # type: ignore[arg-type]
+        comment = await self.repo.create_comment(news_id, user_id, content)
         return NewsCommentDTO.model_validate(comment)
 
     async def update_comment(
         self, comment_id: uuid.UUID, user_id: uuid.UUID, content: str
     ) -> NewsCommentDTO:
-        comment_obj = await self.repo.get_comment(comment_id)  # type: ignore[arg-type]
+        comment_obj = await self.repo.get_comment(comment_id)
         if not comment_obj:
             raise LookupError("comment_not_found")
         if comment_obj.user_id != user_id:
@@ -201,7 +201,7 @@ class NewsService:
     async def delete_comment(
         self, comment_id: uuid.UUID, user_id: uuid.UUID, is_admin: bool = False
     ) -> None:
-        comment = await self.repo.get_comment(comment_id)  # type: ignore[arg-type]
+        comment = await self.repo.get_comment(comment_id)
         if not comment:
             raise LookupError("comment_not_found")
         if comment.user_id != user_id and not is_admin:
@@ -218,8 +218,8 @@ class NewsService:
         offset: int = 0,
     ) -> NewsInteractionsDTO:
         return await self.repo.get_interactions(
-            news_id,  # type: ignore[arg-type]
-            user_id,  # type: ignore[arg-type]
+            news_id,
+            user_id,
             limit=limit,
             offset=offset,
         )

@@ -215,6 +215,8 @@ module = [
     "zxcvbn",
     "nats.*",
     "redis.*",
+    "grpc.*",
+    "grpc",
     "clamd",
 ]
 ignore_missing_imports = true

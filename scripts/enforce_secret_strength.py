@@ -14,7 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET_FILES = [
-    ROOT / "root/.env.example",
+    ROOT / ".env.example",
+    ROOT / ".env",
     ROOT / "docker-compose.yml",
 ]
 
@@ -34,7 +35,12 @@ MIN_LENGTH = 24
 
 
 def _is_placeholder(value: str) -> bool:
-    return value.startswith("your_") or value.startswith("replace_with_")
+    v = value.lower()
+    return (
+        v.startswith("your_")
+        or v.startswith("replace_with_")
+        or v.startswith("change_me")
+    )
 
 
 def _is_weak(value: str) -> bool:

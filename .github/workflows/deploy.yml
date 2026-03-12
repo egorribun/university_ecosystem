@@ -85,7 +85,7 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/backend:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/backend:${{ inputs.environment }}
-    secrets: inherit
+    secrets: inherit # pragma: allowlist secret
 
   build-frontend:
     name: Build Frontend
@@ -97,7 +97,7 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/frontend:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/frontend:${{ inputs.environment }}
-    secrets: inherit
+    secrets: inherit # pragma: allowlist secret
 
   build-ws-hub:
     name: Build WS Hub
@@ -110,7 +110,7 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/ws-hub:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/ws-hub:${{ inputs.environment }}
-    secrets: inherit
+    secrets: inherit # pragma: allowlist secret
 
   build-gateway:
     name: Build Gateway
@@ -123,7 +123,7 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/gateway:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/gateway:${{ inputs.environment }}
-    secrets: inherit
+    secrets: inherit # pragma: allowlist secret
 
   build-file-processor:
     name: Build File Processor
@@ -136,12 +136,20 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/file-processor:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/file-processor:${{ inputs.environment }}
-    secrets: inherit
+    secrets: inherit # pragma: allowlist secret
 
   deploy:
     name: Deploy to ${{ inputs.environment }}
     runs-on: ubuntu-latest
-    needs: [prepare, build-backend, build-frontend, build-ws-hub, build-gateway, build-file-processor]
+    needs:
+      [
+        prepare,
+        build-backend,
+        build-frontend,
+        build-ws-hub,
+        build-gateway,
+        build-file-processor,
+      ]
     permissions:
       contents: read
       deployments: write

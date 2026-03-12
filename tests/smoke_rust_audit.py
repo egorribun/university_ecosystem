@@ -17,17 +17,17 @@ def test_rust_audit_verification():
     # Test match
     match = rust_ext.verify_audit_signature([key], log_data, signature)
     print(f"  Valid key match: {match}")
-    assert match == True
+    assert match
 
     # Test multi-key match
     match_multi = rust_ext.verify_audit_signature([wrong_key, key], log_data, signature)
     print(f"  Multi-key match: {match_multi}")
-    assert match_multi == True
+    assert match_multi
 
     # Test failure
     no_match = rust_ext.verify_audit_signature([wrong_key], log_data, signature)
     print(f"  Wrong key match: {no_match}")
-    assert no_match == False
+    assert not no_match
 
     print("\nRust audit verification passed!")
 
