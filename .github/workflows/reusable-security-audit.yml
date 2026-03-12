@@ -108,7 +108,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@7aefa1c9aed02ae41531ec219164e64a0f087410 # v0.33.1
+        uses: aquasecurity/trivy-action@0.30.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -118,7 +118,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@7aefa1c9aed02ae41531ec219164e64a0f087410 # v4
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         continue-on-error: true
         with:
@@ -131,7 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@v5
         with:
           go-version: "stable"
           cache: true
@@ -152,7 +152,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@17ae1740179002c89186b61233e0f892c3118b11 # v0
+        uses: anchore/sbom-action/download-syft@v0
 
       - name: Generate SPDX-JSON SBOM
         # Scans the full repository (all languages/ecosystems Syft detects).
@@ -186,7 +186,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@v4
 
       - name: Run Semgrep SAST
         # --sarif-output writes to a file instead of stdout so the exit
@@ -196,7 +196,7 @@ jobs:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: Upload SARIF to GitHub Advanced Security
-        uses: github/codeql-action/upload-sarif@7aefa1c9aed02ae41531ec219164e64a0f087410 # v4
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         continue-on-error: true
         with:
