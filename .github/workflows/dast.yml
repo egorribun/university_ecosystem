@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.3.0
+        uses: actions/checkout@v4
         with:
           # Only need templates directory, not full history
           sparse-checkout: |
@@ -74,8 +74,8 @@ jobs:
             -stats \
             || true  # Don't fail the workflow — findings are uploaded as SARIF
 
-      - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@afb54ba388a7dca6ecae48f608c4ff05bf009137 # v3
+      - name: Upload results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3 # v3
         if: always()
         with:
           sarif_file: nuclei-results.sarif

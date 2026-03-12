@@ -36,10 +36,10 @@ jobs:
             run:
                 working-directory: ${{ inputs.working-directory }}
         steps:
-            - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.3.0
+            - uses: actions/checkout@v4
 
             - name: Setup Node.js ${{ inputs.node-version }}
-              uses: actions/setup-node@1d429da277493fa83764835017297e682ca7fa3c # v4.2.0
+              uses: actions/setup-node@v4
               with:
                   node-version: ${{ inputs.node-version }}
                   cache: npm
