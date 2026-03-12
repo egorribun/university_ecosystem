@@ -87,6 +87,8 @@ jobs:
           format: sarif
           output: trivy.sarif
           severity: CRITICAL,HIGH
+          # Pin binary to avoid auto-resolving v0.60.0 which fails to download in runners
+          version: "v0.58.1"
           exit-code: "1"
 
       - name: Upload Trivy SARIF
@@ -110,7 +112,8 @@ jobs:
         with:
           subject-name: ghcr.io/${{ github.repository }}/${{ inputs.image_name }}
           subject-digest: ${{ steps.build.outputs.digest }}
-          sbom-path: sbom.json
+          predicate-type: "https://spdx.dev/Document"
+          predicate-path: sbom.json
           push-to-registry: true
 
       - name: Sign image (Keyless)
