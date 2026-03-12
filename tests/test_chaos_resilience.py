@@ -55,7 +55,9 @@ class TestSpiceDBChaos:
         from unittest.mock import AsyncMock, MagicMock, patch
 
         mock_stub = MagicMock()
-        mock_stub.CheckPermission = AsyncMock(side_effect=Exception("gRPC connection failed"))
+        mock_stub.CheckPermission = AsyncMock(
+            side_effect=Exception("gRPC connection failed")
+        )
 
         # Define mock classes for the imports in rbac.py
         MockRequest = MagicMock()
