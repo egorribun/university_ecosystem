@@ -115,8 +115,12 @@ async def create_notifications_for_users(
     notification_ids_by_user = {}
 
     for i in range(0, len(notifications_data), batch_size):
-        batch = notifications_data[i:i + batch_size]
-        stmt = insert(Notification).values(batch).returning(Notification.id, Notification.user_id)
+        batch = notifications_data[i : i + batch_size]
+        stmt = (
+            insert(Notification)
+            .values(batch)
+            .returning(Notification.id, Notification.user_id)
+        )
         db_result = await db.execute(stmt)
         for row in db_result.mappings():
             notification_ids_by_user[uuid.UUID(str(row["user_id"]))] = row["id"]
