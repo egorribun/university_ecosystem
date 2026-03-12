@@ -187,27 +187,27 @@ class CSRFMiddleware:
     Each CSRF token is now HMAC-SHA256 signed and bound to the current
     session_id, closing the subdomain fixation attack vector.
 
-    When ``csrf_hmac_secret`` is not configured (empty), the middleware
+    When `csrf_hmac_secret` is not configured (empty), the middleware
     falls back gracefully to the unsigned Double-Submit pattern to keep
     local development working without extra environment variables.
 
-    Implemented as a raw ASGI callable (no ``BaseHTTPMiddleware``) so that
+    Implemented as a raw ASGI callable (no `BaseHTTPMiddleware`) so that
     streaming responses (SSE, NDJSON, chunked file downloads) are never
     buffered into memory.  The CSRF cookie is injected into the
-    ``http.response.start`` message without touching the response body.
+    `http.response.start` message without touching the response body.
     (TD-2: audit 2026-02-26)
 
     Parameters
     ----------
     exempt_prefixes:
         URL path prefixes that bypass CSRF validation entirely (e.g.
-        ``["/internal", "/api/v2/auth/token"]``).
+        `["/internal", "/api/v2/auth/token"]`).
     cookie_secure:
-        Whether to set the ``Secure`` flag on the CSRF cookie.  Should
-        be ``True`` in production (HTTPS-only).
+        Whether to set the `Secure` flag on the CSRF cookie.  Should
+        be `True` in production (HTTPS-only).
     cookie_samesite:
-        ``SameSite`` policy for the CSRF cookie.  ``"strict"`` is
-        preferred in production; ``"lax"`` may be needed in development
+        `SameSite` policy for the CSRF cookie.  `"strict"` is
+        preferred in production; `"lax"` may be needed in development
         when the frontend and API run on different ports.
     csrf_hmac_secret:
         HMAC key used to sign tokens.  If empty, falls back to unsigned
@@ -282,12 +282,14 @@ class CSRFMiddleware:
         # with the Authorization header, not cookies. Cross-site requests cannot forge
         # an Authorization header via HTML forms or img/script tags — only explicit
         # XHR/fetch with cors credentials can, which is already blocked by CORS policy.
-        # RZ-6: Previous code checked `if not request.cookies.get(CSRF_COOKIE_NAME)`,
-        # which had inverted logic: it exempted Bearer requests WITHOUT a cookie and
-        # blocked Bearer requests WITH a cookie. Presence or absence of a cookie is
-        # irrelevant for Bearer auth — the Authorization header is proof of intent.
         auth_header = request.headers.get("authorization", "")
-        if auth_header.lower().startswith("bearer "):
+        # RZ-NEW-003: Bypass CSRF ONLY if no authentication cookie is present.
+        # If a user is logged in via cookie, we MUST verify CSRF regardless of Bearer presence,
+        # because browsers will auto-attach the cookie on cross-origin requests.
+        has_auth_cookie = bool(
+            request.cookies.get("access_token") or request.cookies.get("session_id")
+        )
+        if auth_header.lower().startswith("bearer ") and not has_auth_cookie:
             await self._app(scope, receive, send)
             return
 

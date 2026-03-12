@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache, partial
@@ -86,19 +87,25 @@ _ARGON2_CONCURRENCY_LIMIT: int = max(1, _AUTH_EXECUTOR_WORKERS - 1)
 # Using a module-level None sentinel means each forked process initializes
 # its own Semaphore on first use (safe — Python's GIL makes the None check
 # and assignment atomic for CPython).
+
 _argon2_semaphore: asyncio.Semaphore | None = None
+_argon2_semaphore_python_lock = threading.Lock()
 
 
 def _get_argon2_semaphore() -> asyncio.Semaphore:
     """Return (or lazily create) a per-worker asyncio.Semaphore.
 
-    Must be called from within a running event loop. Each forked Gunicorn
-    worker creates its own Semaphore on first request — fork-safe by design.
-    The CPython GIL makes the None-check + assignment effectively atomic.
+    Uses double-checked locking with threading.Lock to eliminate race condition
+    between coroutines during burst logins on worker startup.
     """
     global _argon2_semaphore
-    if _argon2_semaphore is None:
-        _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+    if _argon2_semaphore is not None:
+        return _argon2_semaphore
+
+    with _argon2_semaphore_python_lock:
+        if _argon2_semaphore is None:
+            _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+
     return _argon2_semaphore
 
 
@@ -585,7 +592,13 @@ def decode_token(token: str) -> dict[str, Any] | None:
                     verification_key = secret
 
             payload = jwt.decode(
-                token, verification_key, algorithms=[settings.algorithm]
+                token,
+                verification_key,
+                algorithms=[settings.algorithm],
+                options={
+                    "require": ["exp", "iat", "sub", "jti"],
+                },
+                audience=getattr(settings, "jwt_audience", "university-ecosystem-api"),
             )
             return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:

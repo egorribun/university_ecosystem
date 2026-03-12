@@ -253,12 +253,12 @@ func main() {
 	api := router.Group("/api")
 	api.Use(jwtMiddleware.Validate())
 	{
-		// Proxies to backend for all v1 and admin routes
+		// New gRPC Endpoint for Synchronous File Processing MUST be registered BEFORE the catch-all
+		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
+
+		// Proxies to backend for all v1 and admin routes (Catch-all fallbacks)
 		api.Any("/v1/*path", handlers.ProxyHandler(proxy))
 		api.Any("/admin/*path", handlers.ProxyHandler(proxy))
-
-		// New gRPC Endpoint for Synchronous File Processing - register BEFORE catch-all
-		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
 	}
 
 	// 2. Public API (No Auth or Optional)
