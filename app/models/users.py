@@ -91,7 +91,8 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        # PERF-NEW-002: Replaced selectin with noload to fix N+1 during bulk loads
+        lazy="noload",
     )
 
     # Integrations & other relationships

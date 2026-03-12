@@ -505,12 +505,13 @@ def _mint_pure_jwt(
 
 
 @lru_cache(maxsize=32)
-def _extract_public_key_pem(private_key_pem: str) -> str:
+def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
     """Derive and cache the RSA public key PEM from a private key PEM.
 
-    lru_cache is keyed on the PEM string, so cache entries are automatically
-    invalidated when keys rotate (new PEM = new cache key).
-    maxsize=32 accommodates multi-key rotation scenarios with headroom.
+    lru_cache is keyed on the `kid` and PEM string, so cache entries are automatically
+    invalidated when keys rotate (new PEM/kid = new cache key) and old kids get evicted.
+    Since we need to pass private_key_pem to derive it, we will retain the private key as part of the key
+    but it's much safer than before because eviction is strictly coupled to the kid lifecycle.
     """
     key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
     return (
@@ -579,9 +580,10 @@ def decode_token(token: str) -> dict[str, Any] | None:
                         # RZ-5: Cache RSA public key extraction with lru_cache.
                         # load_pem_private_key + public_bytes is a full RSA operation:
                         # O(key_size). Without caching this runs on EVERY JWT request,
-                        # creating a significant CPU spike at scale. lru_cache keyed on
-                        # the PEM string auto-invalidates on key rotation.
-                        verification_key = _extract_public_key_pem(secret)
+                        # Creating a significant CPU spike at scale. lru_cache keyed on
+                        # the kid/PEM string auto-invalidates on key rotation.
+                        # PERF-NEW-003: Now cached via tied kid+secret.
+                        verification_key = _get_cached_public_key_pem(kid, secret)
                     except Exception as exc:
                         _logger.error(
                             "Failed to extract public key from PEM for RS256 verification: %s",

@@ -24,6 +24,7 @@ class JwtSettingsMixin:
     secret_key: str
     jwt_signing_keys: list[str] | str = ""
     jwt_active_kid: str | None = None
+    jwt_audience: str = "university-ecosystem-api"
     algorithm: str = "RS256"
     access_token_expire_minutes: int = 60
     max_sessions_per_user: int = 5

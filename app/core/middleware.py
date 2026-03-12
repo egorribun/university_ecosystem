@@ -219,6 +219,19 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         # temp file on disk when data exceeds max_size — a blocking open() syscall.
         # Run construction in a thread pool to keep the event loop responsive.
         _threshold = self._MEM_BUFFER_THRESHOLD
+        # Fast-path for data knowing length is small (RAM only without spooled threads)
+        cl_header = request.headers.get("content-length")
+        if cl_header is not None and int(cl_header) <= _threshold:
+            chunks: list[bytes] = []
+            async for chunk in request.stream():
+                chunks.append(chunk)
+            body_bytes = b"".join(chunks)
+            if len(body_bytes) > self._max_bytes:
+                # Should not happen if cl_header exists, but keep safety parity
+                return None, await self._generate_payload_error(request)
+            return self._build_replay(request, body_bytes), None
+
+        # Slow-path for chunked data or huge files
         tmpfile = await anyio.to_thread.run_sync(
             lambda: tempfile.SpooledTemporaryFile(max_size=_threshold, mode="w+b")
         )
@@ -228,19 +241,7 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
                 accumulated += len(chunk)
                 if accumulated > self._max_bytes:
                     await anyio.to_thread.run_sync(tmpfile.close)
-                    locale = resolve_locale(request=request)
-                    await asgi_json_problem(
-                        request.scope["asgi"]["send"],
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        title_key="titles.bad_request",
-                        detail_key="errors.config.payload_too_large",
-                        locale=locale,
-                        instance=str(request.url),
-                        limit=self._max_bytes // (1024 * 1024),
-                    )
-                    return None, Response(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
-                    )
+                    return None, await self._generate_payload_error(request)
                 await anyio.to_thread.run_sync(tmpfile.write, chunk)
 
             await anyio.to_thread.run_sync(tmpfile.seek, 0)
@@ -260,6 +261,20 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
     #         status_code=413,
     #         content={"detail": f"Payload Too Large (max {limit // (1024 * 1024)} MB)"},
     #     )
+
+    async def _generate_payload_error(self, request: Request) -> Response:
+        """Helper to generate generic 413 error"""
+        locale = resolve_locale(request=request)
+        await asgi_json_problem(
+            request.scope["asgi"]["send"],
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            title_key="titles.bad_request",
+            detail_key="errors.config.payload_too_large",
+            locale=locale,
+            instance=str(request.url),
+            limit=self._max_bytes // (1024 * 1024),
+        )
+        return Response(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
 
 
 def _ensure_vary_header(response: Response, header_name: str) -> None:
