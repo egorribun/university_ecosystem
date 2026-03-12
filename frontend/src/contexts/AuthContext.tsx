@@ -6,7 +6,12 @@ import { useAuthApi } from "@/hooks/auth/useAuthApi"
 import type { AuthContextType } from "@/types/Auth"
 import { ChallengeLockedError } from "@/types/Auth"
 import { logWarning } from "@/app/logger"
-import { useAuthUser, useAuthLoading, useAuthPendingMfa, useAuthActions } from "@/stores/useAuthStore"
+import {
+  useAuthUser,
+  useAuthLoading,
+  useAuthPendingMfa,
+  useAuthActions,
+} from "@/stores/useAuthStore"
 
 const noopSetUser = () => {
   logWarning("AuthContext setUser called outside provider")
@@ -27,7 +32,6 @@ export const AuthContext = createContext<
   AuthContextType,
   "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation"
 >)
-
 
 export const useAuth = (): AuthContextType => {
   const user = useAuthUser()
@@ -111,7 +115,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // absent from deps. It is a stable module-level function reference (no extra
     // re-renders), but must be listed for react-hooks/exhaustive-deps compliance
     // and correctness if it ever becomes a hook-based function in the future.
-    [login, logout, setUser, refresh, submitMfaChallenge, requireMfa, loginWithPasskey, resetEtagCache]
+    [
+      login,
+      logout,
+      setUser,
+      refresh,
+      submitMfaChallenge,
+      requireMfa,
+      loginWithPasskey,
+      resetEtagCache,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
