@@ -78,7 +78,7 @@ class PermissionChecker:
         try:
             # Lazy import keeps the module loadable when grpclib is absent
             import grpc.aio  # noqa: F401
-            from authzed.api.v1 import (
+            from authzed.api.v1 import (  # type: ignore[attr-defined]
                 CheckPermissionRequest,
                 CheckPermissionResponse,
                 ObjectReference,

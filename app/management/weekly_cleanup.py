@@ -77,12 +77,6 @@ async def _delete_stale_subscriptions(session: AsyncSession) -> int:
             "weekly_cleanup.deleted_stale_subscriptions", extra={"count": total_stale}
         )
     return total_stale
-    if stale:
-        await session.commit()
-        logger.info(
-            "weekly_cleanup.deleted_stale_subscriptions", extra={"count": len(stale)}
-        )
-    return len(stale)
 
 
 async def _reindex_database() -> None:

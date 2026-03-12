@@ -30,7 +30,7 @@ from __future__ import annotations
 import base64
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from fastapi import Query
 from pydantic import BaseModel, Field
@@ -122,10 +122,10 @@ class CursorParams:
 
 
 def apply_cursor(
-    stmt: Select,
-    column: Column,
+    stmt: Select[Any],
+    column: Column[Any],
     params: CursorParams,
-) -> Select:
+) -> Select[Any]:
     """Apply keyset pagination clauses to *stmt*.
 
     Assumes *stmt* already has an ``ORDER BY column`` clause (ascending).
