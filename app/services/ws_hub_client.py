@@ -56,7 +56,9 @@ class WsHubClient:
 
         # TD-NEW-07: Sign the payload to prevent unauthorized cache flushes.
         # Use deterministic JSON serialization for consistent signing.
-        json_payload = json.dumps(payload_content, sort_keys=True, separators=(",", ":"))
+        json_payload = json.dumps(
+            payload_content, sort_keys=True, separators=(",", ":")
+        )
         signature = hmac.new(
             self._secret.encode(),
             json_payload.encode(),
