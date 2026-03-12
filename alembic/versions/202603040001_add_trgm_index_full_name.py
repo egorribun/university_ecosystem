@@ -26,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = "202603040001"
@@ -48,20 +49,20 @@ def upgrade() -> None:
         # SQLite (used in tests) does not support pg_trgm; skip silently.
         return
 
-    # Enable the extension if it is not already installed.
-    # IF NOT EXISTS prevents failure when multiple replicas run the migration.
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-
-    # CONCURRENTLY means the build does not hold an exclusive lock on the table —
-    # existing read/write queries continue while the index is populated.
-    # Must be run outside an explicit transaction block; Alembic handles this.
-    op.execute(
-        f"""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS {_GIN_INDEX_NAME}
-        ON {_TABLE_NAME}
-        USING gin (full_name gin_trgm_ops)
-        WHERE full_name IS NOT NULL
-        """
+    conn = op.get_bind()
+    # Enable the extension inside the transaction (allowed).
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+    # CONCURRENTLY requires running outside an explicit transaction block.
+    conn.execute(text("COMMIT"))
+    conn.execute(
+        text(
+            f"""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_GIN_INDEX_NAME}
+            ON {_TABLE_NAME}
+            USING gin (full_name gin_trgm_ops)
+            WHERE full_name IS NOT NULL
+            """
+        )
     )
 
 
@@ -70,4 +71,6 @@ def downgrade() -> None:
     if not _is_postgresql():
         return
 
-    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_GIN_INDEX_NAME}")
+    conn = op.get_bind()
+    conn.execute(text("COMMIT"))
+    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_GIN_INDEX_NAME}"))

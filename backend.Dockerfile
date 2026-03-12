@@ -13,7 +13,8 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /build
 
-# Update OS packages and install build dependencies.
+# Update OS packages and install build dependencies including Rust toolchain
+# needed for pyo3-sanitizer and rust_ext workspace members.
 RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-builder,target=/var/cache/apt \
     apt-get update \
@@ -21,14 +22,23 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     && apt-get install -y --no-install-recommends \
        build-essential \
        curl \
+       rustc \
+       cargo \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/uv/bin:$PATH" \
     UV_PROJECT_ENVIRONMENT="/opt/venv"
 
+# Copy workspace member sources so uv can resolve the lockfile.
+# pyo3-sanitizer and rust_ext are local Rust/PyO3 extensions declared as
+# workspace members in pyproject.toml — uv requires them at sync time.
+COPY crates ./crates
+COPY native ./native
+
 # Create virtual environment and install dependencies
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cargo/registry \
     uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime
