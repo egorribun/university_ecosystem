@@ -4,7 +4,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache, partial
-from typing import Any, Union
+from typing import Any
 from uuid import UUID, uuid4
 
 import bcrypt
@@ -464,7 +464,7 @@ async def get_password_hash(
 
 
 def _mint_pure_jwt(
-    subject: Union[str, UUID],
+    subject: str | UUID,
     *,
     expires_minutes: int | None = None,
     extra_claims: dict[str, Any] | None = None,

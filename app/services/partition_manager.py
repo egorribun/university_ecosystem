@@ -52,8 +52,9 @@ async def ensure_partitions_exist() -> None:
 
                     # Strict validation to prevent State Date Injection
                     from datetime import datetime
-                    datetime.fromisoformat(str(start_date_iso).replace('Z', '+00:00'))
-                    datetime.fromisoformat(str(end_date_iso).replace('Z', '+00:00'))
+
+                    datetime.fromisoformat(str(start_date_iso).replace("Z", "+00:00"))
+                    datetime.fromisoformat(str(end_date_iso).replace("Z", "+00:00"))
 
                     safe_start = str(start_date_iso).replace("'", "''")
                     safe_end = str(end_date_iso).replace("'", "''")

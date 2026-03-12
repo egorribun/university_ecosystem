@@ -351,7 +351,9 @@ def _configure_rate_limiting(app: FastAPI, settings: Settings) -> None:
         if limit_str:
             limit_val, window_val = parse_rate_limit(limit_str, fallback=(60, 60))
             if limit_val is not None:
-                endpoint_limits.append(EndpointRateLimit(pattern, limit_val, window_val))
+                endpoint_limits.append(
+                    EndpointRateLimit(pattern, limit_val, window_val)
+                )
 
     storage_backend = "redis" if rate_limit_backend == "redis" else "memory"
     redis_url = rate_limit_url if storage_backend == "redis" else None
@@ -386,7 +388,9 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
 
     # 2. Performance (Brotli)
     if settings.response_compression_enabled:
-        app.add_middleware(BrotliMiddleware, minimum_size=512, gzip_fallback=True, quality=5)
+        app.add_middleware(
+            BrotliMiddleware, minimum_size=512, gzip_fallback=True, quality=5
+        )
 
     # 3. Cross-Site Protection
     _configure_csrf_middleware(app, settings)
@@ -398,7 +402,9 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
     _configure_rate_limiting(app, settings)
 
     # 6. Proxy & Host Validation
-    if ProxyHeadersMiddleware is not None and (trusted_proxies := settings.trusted_proxies_list):
+    if ProxyHeadersMiddleware is not None and (
+        trusted_proxies := settings.trusted_proxies_list
+    ):
         app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxies)
 
     if allowed_hosts := getattr(settings, "allowed_hosts_list", None):

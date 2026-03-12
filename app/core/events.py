@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -234,8 +234,7 @@ def capture_domain_events(
     # Pre-filter using generator/comprehension for C-level speed, checking only for the attribute
     changed_objects = session.new | session.dirty | session.deleted
     emitters = (
-        obj for obj in changed_objects
-        if getattr(obj, "_pending_domain_events", None)
+        obj for obj in changed_objects if getattr(obj, "_pending_domain_events", None)
     )
 
     for obj in emitters:
@@ -254,7 +253,10 @@ def capture_domain_events(
             raw_id = getattr(obj, "id", "unknown")
             if not isinstance(raw_id, (str, uuid.UUID, int)):
                 # If ID is complex or None, we log and fall back to "unknown" rather than str([])
-                logger.warning("Unsafe aggregate ID detected", aggregate_type=obj.__class__.__name__)
+                logger.warning(
+                    "Unsafe aggregate ID detected",
+                    aggregate_type=obj.__class__.__name__,
+                )
                 raw_id = "unknown"
 
             stored_event = StoredEvent(
@@ -393,7 +395,7 @@ class EventBus:
         # Ensures a slow or stuck middleware/handler doesn't hang the request thread.
         try:
             await asyncio.wait_for(handler_chain(event), timeout=10.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "Event production timed out (10s)",
                 event_type=event_type,
