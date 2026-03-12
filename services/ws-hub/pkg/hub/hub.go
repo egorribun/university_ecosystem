@@ -2,6 +2,9 @@ package hub
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -52,6 +55,8 @@ type Hub struct {
 	// maxClients caps the number of concurrently connected WebSocket clients.
 	// 0 means unlimited.  RZ-F-07 (audit 2026-03-07).
 	maxClients int
+	// internalSecret is the shared secret for local HMAC validation. (TD-NEW-07)
+	internalSecret string
 }
 
 func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
@@ -70,6 +75,7 @@ func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *c
 		UpgradeLimiter: NewWSUpgradeRateLimiter(10, 60),
 		jwksCache:      nil, // Initialised via SetupJWKS()
 		maxClients:     cfg.MaxClients,
+		internalSecret: cfg.InternalSecret,
 	}
 }
 
@@ -306,19 +312,39 @@ func (h *Hub) SubscribeToNATS() {
 		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.CacheInvalidate")
 		defer span.End()
 
-		var inv struct {
-			UserID string `json:"user_id"`
-			RoomID string `json:"room_id"`
+		var payload struct {
+			Data struct {
+				RoomID    string `json:"room_id"`
+				Timestamp uint64 `json:"timestamp"`
+				UserID    string `json:"user_id"`
+			} `json:"data"`
+			Signature string `json:"signature"`
 		}
-		if err := json.Unmarshal(msg.Data, &inv); err == nil {
-			if h.authClient != nil {
-				h.authClient.Invalidate(inv.UserID, inv.RoomID)
-				h.Logger.Debug("Invalidated auth cache via NATS",
-					zap.String("user_id", inv.UserID),
-					zap.String("room_id", inv.RoomID))
+
+		if err := json.Unmarshal(msg.Data, &payload); err == nil {
+			// TD-NEW-07: Validate HMAC signature before performing invalidation.
+			// Python side uses json.dumps(sort_keys=True, separators=(',', ':')).
+			// In Go, struct field order determines JSON key order in Marshal.
+			// We define the struct with RoomID, Timestamp, UserID (alphabetical)
+			// to match Python's sort_keys=True.
+			dataBytes, _ := json.Marshal(payload.Data)
+
+			hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
+			hFunc.Write(dataBytes)
+			expectedSig := hex.EncodeToString(hFunc.Sum(nil))
+
+			if payload.Signature != expectedSig {
+				h.Logger.Warn("Invalid internal NATS signature — dropping event",
+					zap.String("room_id", payload.Data.RoomID),
+					zap.String("user_id", payload.Data.UserID))
+				otel.Tracer("hub").Start(ctx, "InvalidInternalSignature")
+				return
 			}
-		} else {
-			h.Logger.Warn("Failed to unmarshal cache invalidation message", zap.Error(err))
+
+			if h.authClient != nil {
+				h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
+				otel.Tracer("hub").Start(ctx, "CacheInvalidated")
+			}
 		}
 	})
 	if err != nil {

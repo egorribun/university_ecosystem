@@ -45,6 +45,10 @@ type Config struct {
 	// RZ-F-07 (audit 2026-03-07): without a cap, Hub.Clients grows without bound
 	// allowing a single source to exhaust file descriptors and goroutine stacks.
 	MaxClients int
+	// Redis connection parameters for L2 caching (PERF-006).
+	RedisURL      string
+	RedisPassword string
+	RedisDB       int
 }
 
 func LoadConfig() *Config {
@@ -69,6 +73,9 @@ func LoadConfig() *Config {
 		BroadcastBufferSize: getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
 		InternalSecret:    getEnv("WS_HUB_INTERNAL_SECRET", ""),
 		MaxClients:        getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		RedisURL:          getEnv("REDIS_URL", "redis:6379"),
+		RedisPassword:     getEnv("REDIS_PASSWORD", ""),
+		RedisDB:           getEnvInt("REDIS_DB", 0),
 	}
 }
 

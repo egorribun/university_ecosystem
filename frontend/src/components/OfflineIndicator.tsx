@@ -25,8 +25,6 @@ export function OfflineIndicator() {
     const handleOnline = () => {
       setIsOffline(false)
       setShow(true) // Briefly show "back online" message
-      const timer = setTimeout(() => setShow(false), TIMEOUTS.OFFLINE_INDICATOR)
-      return () => clearTimeout(timer)
     }
 
     const handleOffline = () => {

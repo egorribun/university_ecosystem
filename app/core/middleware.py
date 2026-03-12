@@ -290,56 +290,13 @@ async def _http_response_hardening(
     return response
 
 
-def configure_middleware(app: FastAPI, settings: Settings) -> None:
-    """Configure all application middlewares."""
-
-    _RESPONSE_COMPRESSION_MINIMUM_SIZE = 512
-
+def _configure_security_core(app: FastAPI, settings: Settings) -> None:
     # D-04 (audit 2026-03-08): Registered first so the correlation ID is
     # available to every downstream middleware and route handler.
-    # Starlette applies add_middleware() in LIFO order, so this executes last
-    # in the wrapping chain — which means it runs FIRST on incoming requests.
     app.add_middleware(RequestIDMiddleware)
-
-    if settings.response_compression_enabled:
-        app.add_middleware(
-            BrotliMiddleware,
-            minimum_size=_RESPONSE_COMPRESSION_MINIMUM_SIZE,
-            gzip_fallback=True,
-            quality=5,
-        )
-
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
-    # CSRF double-submit cookie protection for browser-based clients.
-    # Exempt: /ws (WebSocket), /internal (token-guarded), OAuth token endpoint.
-    # Bearer-token callers are auto-exempted inside CSRFMiddleware.dispatch()
-    # by detecting an Authorization: Bearer … header — no path exemption needed.
-    # RZ-10 (audit 2026-03-04): /api/v1/auth/login was previously exempt.
-    # RZ-01 (audit 2026-03-04): /api/v1/auth/logout was exempt — removed.
-    #   Attackers could cross-site POST to /logout and force-logout any visiting
-    #   authenticated user. The SPA sends X-CSRF-Token; Bearer clients are
-    #   auto-exempted by the Authorization header check in CSRFMiddleware.
-    app.add_middleware(
-        CSRFMiddleware,
-        exempt_prefixes=(
-            "/internal",
-            "/api/v1/csp-report",
-            "/api/v2/auth/token",  # OAuth2 password/refresh grant
-            "/api/v2/auth/webauthn",  # WebAuthn challenge/response flow
-        ),
-        cookie_secure=settings.cookie_secure,
-        cookie_samesite=settings.cookie_samesite,
-        # AUTH-01 (audit 2026-03-08): CSRF token must be short-lived to match the
-        # access token lifetime.  Without this, the cookie persists 24h after
-        # logout/session expiry, creating a CSRF replay window.
-        cookie_max_age=settings.access_token_expire_minutes * 60,
-        # RZ-003 (audit 2026-03-10): Pass the HMAC signing key so tokens are
-        # bound to the session_id (Signed Double-Submit Cookie pattern).
-        # When empty, CSRFMiddleware falls back to unsigned Double-Submit with a warning.
-        csrf_hmac_secret=settings.csrf_hmac_secret,
-    )
-
+    # Internal Access — only allowed IPs & tokens.
     app.add_middleware(
         InternalAccessMiddleware,
         allowed_ips=settings.internal_allowed_ips_list,
@@ -348,7 +305,26 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         internal_prefixes=INTERNAL_ROUTE_PREFIXES,
     )
 
-    app.middleware("http")(_http_response_hardening)
+
+def _configure_csrf_middleware(app: FastAPI, settings: Settings) -> None:
+    app.add_middleware(
+        CSRFMiddleware,
+        exempt_prefixes=(
+            "/internal",
+            "/api/v1/csp-report",
+            "/api/v2/auth/token",
+            "/api/v2/auth/webauthn",
+        ),
+        cookie_secure=settings.cookie_secure,
+        cookie_samesite=settings.cookie_samesite,
+        cookie_max_age=settings.access_token_expire_minutes * 60,
+        csrf_hmac_secret=settings.csrf_hmac_secret,
+    )
+
+
+def _configure_rate_limiting(app: FastAPI, settings: Settings) -> None:
+    if not settings.rate_limit_enabled:
+        return
 
     rate_limit_url = settings.rate_limit_storage_uri.strip()
     rate_limit_backend = settings.rate_limit_storage_backend.strip().lower()
@@ -358,10 +334,6 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         fallback=(60, 60),
     )
 
-    # Build endpoint-specific limits from settings
-    endpoint_limits = []
-
-    # Mapping of common prefixes to their respective settings
     limit_map = {
         "/api/v1/news": settings.rate_limit_news,
         "/api/v1/events": settings.rate_limit_events,
@@ -371,70 +343,31 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         "/api/v1/password/forgot": settings.rate_limit_auth_password_reset,
         "/api/v1/users/me": settings.rate_limit_users_me,
         "/graphql": settings.rate_limit_graphql,
-        # WebSocket upgrade rate limit (MED-05): throttle connection creation,
-        # not in-flight frames. Mirrors the Caddy-level zone as defense-in-depth.
         "/ws": settings.rate_limit_websocket,
     }
 
+    endpoint_limits = []
     for pattern, limit_str in limit_map.items():
         if limit_str:
             limit_val, window_val = parse_rate_limit(limit_str, fallback=(60, 60))
             if limit_val is not None:
-                endpoint_limits.append(
-                    EndpointRateLimit(pattern, limit_val, window_val)
-                )
+                endpoint_limits.append(EndpointRateLimit(pattern, limit_val, window_val))
 
-    if settings.rate_limit_enabled:
-        normalized_url = rate_limit_url.lower()
-        if rate_limit_backend == "redis" and normalized_url.startswith(
-            ("redis://", "rediss://")
-        ):
-            app.add_middleware(
-                RateLimitMiddleware,
-                redis_url=rate_limit_url,
-                limit=default_limit,
-                window_seconds=default_window,
-                headers_enabled=settings.rate_limit_headers_enabled,
-                storage_backend="redis",
-                endpoint_limits=tuple(endpoint_limits),
-            )
-        elif rate_limit_backend == "memory" or normalized_url.startswith("memory://"):
-            app.add_middleware(
-                RateLimitMiddleware,
-                redis_url=None,
-                limit=default_limit,
-                window_seconds=default_window,
-                headers_enabled=settings.rate_limit_headers_enabled,
-                storage_backend="memory",
-                endpoint_limits=tuple(endpoint_limits),
-            )
+    storage_backend = "redis" if rate_limit_backend == "redis" else "memory"
+    redis_url = rate_limit_url if storage_backend == "redis" else None
 
-    if ProxyHeadersMiddleware is not None:
-        # trusted_proxies_list = actual IP/CIDR of the load-balancer / ingress.
-        # These are the ONLY IPs whose X-Forwarded-For headers we should trust.
-        # (trusted_hosts_list is for TrustedHostMiddleware's Host-header check —
-        #  it holds hostnames, not proxy IPs, and must NOT be used here.)
-        trusted_proxy_ips = settings.trusted_proxies_list
-        if trusted_proxy_ips:
-            app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy_ips)
-        elif settings.environment not in {"development", "local", "testing"}:
-            _logger.warning(
-                "TRUSTED_PROXIES not configured. X-Forwarded-For will NOT be "
-                "trusted. Set TRUSTED_PROXIES to your reverse-proxy CIDR/IP in .env."
-            )
+    app.add_middleware(
+        RateLimitMiddleware,
+        redis_url=redis_url,
+        limit=default_limit,
+        window_seconds=default_window,
+        headers_enabled=settings.rate_limit_headers_enabled,
+        storage_backend=storage_backend,
+        endpoint_limits=tuple(endpoint_limits),
+    )
 
-    # TrustedHostMiddleware protects against Host Header injection attacks
-    # by validating that incoming requests have an allowed Host header.
-    allowed_hosts = getattr(settings, "allowed_hosts_list", None)
-    if allowed_hosts:
-        app.add_middleware(
-            TrustedHostMiddleware,
-            allowed_hosts=allowed_hosts,
-        )
-        _logger.debug("TrustedHostMiddleware configured with hosts: %s", allowed_hosts)
 
-    _logger.debug("CORS Origins configured: %s", settings.cors_allow_origins_list)
-
+def _configure_cors_middleware(app: FastAPI, settings: Settings) -> None:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins_list,
@@ -444,8 +377,37 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         expose_headers=settings.cors_expose_headers_list,
     )
 
-    # Body-size guard: reject oversized payloads before they reach route handlers.
-    # Added last so it wraps all other middleware (Starlette applies in reverse).
+
+def configure_middleware(app: FastAPI, settings: Settings) -> None:
+    """Configure all application middlewares. (TD-004 decomposed)"""
+
+    # 1. Base Security & ID
+    _configure_security_core(app, settings)
+
+    # 2. Performance (Brotli)
+    if settings.response_compression_enabled:
+        app.add_middleware(BrotliMiddleware, minimum_size=512, gzip_fallback=True, quality=5)
+
+    # 3. Cross-Site Protection
+    _configure_csrf_middleware(app, settings)
+
+    # 4. Custom response hardening
+    app.middleware("http")(_http_response_hardening)
+
+    # 5. Rate Limiting
+    _configure_rate_limiting(app, settings)
+
+    # 6. Proxy & Host Validation
+    if ProxyHeadersMiddleware is not None and (trusted_proxies := settings.trusted_proxies_list):
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxies)
+
+    if allowed_hosts := getattr(settings, "allowed_hosts_list", None):
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
+    # 7. CORS
+    _configure_cors_middleware(app, settings)
+
+    # 8. Request Guards (Size limit wraps EVERYTHING)
     app.add_middleware(
         ContentSizeLimitMiddleware,
         max_bytes=getattr(settings, "max_upload_body_bytes", 50 * 1024 * 1024),

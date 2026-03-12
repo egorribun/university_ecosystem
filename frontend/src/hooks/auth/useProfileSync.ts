@@ -494,7 +494,7 @@ export const useProfileSync = (
   const queryClient = useQueryClient()
   const [userState, setUserState] = useState<UserState>(() => {
     if (typeof window === "undefined") return null
-    const signingKey = sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`)
+    const signingKey = sessionSigningKeyRef.current
     if (!signingKey) return null
     const candidate = readCachedEnvelope()
     if (!candidate) return null
@@ -548,7 +548,7 @@ export const useProfileSync = (
   const [initializing, setInitializing] = useState<boolean>(() => {
     if (typeof window === "undefined") return true
     if (userState !== null) return false
-    const hasKey = !!sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`)
+    const hasKey = !!sessionSigningKeyRef.current
     const hasCache = !!readCachedEnvelope()
     // If we have a potential session or cache, we must wait for verification
     return hasKey || hasCache
@@ -566,10 +566,8 @@ export const useProfileSync = (
         // ignore
       }
 
-      // Read from sessionStorage or the ref for initialization
-      const signingKey =
-        sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) ||
-        sessionSigningKeyRef.current
+      // Read from the ref for initialization
+      const signingKey = sessionSigningKeyRef.current
       if (signingKey) {
         const cached = await readCachedUserAsync(signingKey)
         if (mounted && cached) {
@@ -692,9 +690,7 @@ export const useProfileSync = (
     if (typeof window === "undefined") return
 
     const syncFromCache = async () => {
-      const key =
-        sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`) ||
-        sessionSigningKeyRef.current
+      const key = sessionSigningKeyRef.current
       const cached = await readCachedUserAsync(key)
       if (!cached) {
         // Cache was deleted or is invalid - clear user state

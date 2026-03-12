@@ -87,6 +87,11 @@ class PoolHealthMetrics:
             self.total_invalidations += 1
             self.active_connections = max(0, self.active_connections - 1)
 
+    def reset_peak_active_connections(self) -> None:
+        """Reset the peak active connections counter to current active count. (TD-008)"""
+        with self._lock:
+            self.peak_active_connections = self.active_connections
+
     def record_failed_checkout(self) -> None:
         with self._lock:
             self.failed_checkouts += 1
@@ -162,6 +167,24 @@ def _before_cursor_execute(
     _query_start_time.set(time.perf_counter())
 
 
+def _log_slow_query(
+    statement: str, elapsed_ms: float, threshold_ms: float, executemany: bool
+) -> None:
+    """Consolidated slow query warning logger. (TD-001)"""
+    truncated_statement = statement[:500] + "..." if len(statement) > 500 else statement
+    slow_query_logger.warning(
+        "Slow query detected: %.2fms",
+        elapsed_ms,
+        extra={
+            "elapsed_ms": elapsed_ms,
+            "statement": truncated_statement.replace("\n", " ").strip(),
+            "statement_length": len(statement),
+            "executemany": executemany,
+            "threshold_ms": threshold_ms,
+        },
+    )
+
+
 def _after_cursor_execute(
     conn: Any,
     cursor: Any,
@@ -170,7 +193,7 @@ def _after_cursor_execute(
     context: Any,
     executemany: bool,
 ) -> None:
-    """Log if query execution time exceeded threshold."""
+    """Middleware-level slow query detection (uses global settings)."""
     start_time = _query_start_time.get()
     if start_time is None:
         return
@@ -180,23 +203,7 @@ def _after_cursor_execute(
 
     threshold = getattr(settings, "slow_query_threshold_ms", 500.0)
     if elapsed_ms >= threshold:
-        # Truncate statement for logging (avoid huge log entries)
-        truncated_statement = (
-            statement[:500] + "..." if len(statement) > 500 else statement
-        )
-
-        # Removed: Capture query plan synchronously. This adds significant overhead.
-        # Instead, log the statement and params for manual investigation
-        # or use specialized APM tools.
-
-        slow_query_logger.warning(
-            "Slow query detected",
-            elapsed_ms=elapsed_ms,
-            statement=truncated_statement.replace("\n", " ").strip(),
-            statement_length=len(statement),
-            executemany=executemany,
-            threshold_ms=threshold,
-        )
+        _log_slow_query(statement, elapsed_ms, threshold, executemany)
 
 
 def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -> None:
@@ -226,27 +233,14 @@ def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -
         context: Any,
         executemany: bool,
     ) -> None:
-        """Log if query execution time exceeded threshold."""
+        """Closure-based slow query detection (uses captured threshold)."""
         start_time = _query_start_time.get()
         if start_time is None:
             return
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
         _query_start_time.set(None)
         if elapsed_ms >= _threshold_ms:
-            truncated_statement = (
-                statement[:500] + "..." if len(statement) > 500 else statement
-            )
-            slow_query_logger.warning(
-                "Slow query detected: %.2fms - %s",
-                elapsed_ms,
-                truncated_statement.replace("\n", " ").strip(),
-                extra={
-                    "elapsed_ms": elapsed_ms,
-                    "statement_length": len(statement),
-                    "executemany": executemany,
-                    "threshold_ms": _threshold_ms,
-                },
-            )
+            _log_slow_query(statement, elapsed_ms, _threshold_ms, executemany)
 
     sync_engine = engine.sync_engine
 
@@ -397,11 +391,13 @@ class _LazyProxy:
         return getattr(self._get_current_object(), name)
 
     def __setattr__(self, name: str, value: object) -> None:
-        # Mutation of the proxy target is prohibited.
-        # All engine/session-factory configuration must occur before
-        # init_database() is called. Allowing post-init mutation would
-        # create race conditions in multi-threaded pool event callbacks.
-        # (RZ-5: audit 2026-02-26)
+        # Mutation of the proxy target is prohibited to prevent race conditions.
+        # However, we must allow Dunder methods (like __class__) to be set
+        # during ORM initialization or proxy setup. (TD-003)
+        if name.startswith("__") and name.endswith("__"):
+            object.__setattr__(self, name, value)
+            return
+
         raise AttributeError(
             f"Direct attribute mutation on '{self._name}' database proxy is prohibited. "
             "Configure the engine through Settings before calling init_database()."
@@ -486,7 +482,7 @@ def get_read_engine() -> AsyncEngine:
 
 
 class Base(DeclarativeBase):
-    id: Any
+    """Declarative Base for all models. (TD-002: id is per-model or mixin)"""
 
 
 async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:

@@ -46,17 +46,25 @@ async def ensure_partitions_exist() -> None:
                         f"Ensuring partition {partition_name} exists for table {table}"
                     )
 
-                    # RZ-2 Fix (audit 2026-03-04): Safely handle identifiers
+                    # RZ-2 Fix (audit 2026-03-12): Safely handle identifiers and literals
                     safe_partition = str(partition_name).replace('"', '""')
                     safe_table = str(table).replace('"', '""')
+
+                    # Strict validation to prevent State Date Injection
+                    from datetime import datetime
+                    datetime.fromisoformat(str(start_date_iso).replace('Z', '+00:00'))
+                    datetime.fromisoformat(str(end_date_iso).replace('Z', '+00:00'))
+
+                    safe_start = str(start_date_iso).replace("'", "''")
+                    safe_end = str(end_date_iso).replace("'", "''")
 
                     await conn.execute(
                         text(
                             f"""
                         CREATE TABLE IF NOT EXISTS "{safe_partition}"
                         PARTITION OF "{safe_table}"
-                        FOR VALUES FROM ('{start_date_iso}')
-                        TO ('{end_date_iso}');
+                        FOR VALUES FROM ('{safe_start}')
+                        TO ('{safe_end}');
                     """
                         )
                     )

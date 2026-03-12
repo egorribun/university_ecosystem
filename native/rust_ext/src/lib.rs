@@ -1,3 +1,4 @@
+#![deny(clippy::unwrap_used)]
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use chrono::{Utc, TimeZone, Datelike, Duration};
@@ -48,9 +49,13 @@ fn detect_conflicts(target: &ScheduleItem, existing: Vec<ScheduleItem>) -> Vec<S
 }
 
 #[pyfunction]
-fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> Vec<(ScheduleItem, ScheduleItem)> {
+fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
+    if items.len() > 2500 {
+        return Err(pyo3::exceptions::PyValueError::new_err("Input exceeds maximum allowed items (2500) for batch detection"));
+    }
+
     // Parallelize conflict detection using rayon
-    items
+    let conflicts = items
         .par_iter()
         .enumerate()
         .flat_map(|(i, a)| {
@@ -60,7 +65,9 @@ fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> Vec<(ScheduleItem, Schedu
                 .map(move |b| (a.clone(), b.clone()))
                 .collect::<Vec<_>>()
         })
-        .collect()
+        .collect();
+
+    Ok(conflicts)
 }
 
 #[pyfunction]
@@ -116,7 +123,7 @@ pub struct PartitionInfo {
 fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<PartitionInfo> {
     let now = Utc::now();
     let total_months = now.month() as i32 + month_offset;
-    
+
     let target_year = now.year() + (total_months - 1) / 12;
     let target_month = ((total_months - 1) % 12 + 1) as u32;
 
@@ -178,20 +185,21 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
 #[pyfunction]
-fn verify_audit_signature(signing_keys: Vec<String>, log_data: String, signature: String) -> bool {
+fn verify_audit_signature(signing_keys: Vec<String>, log_data: String, signature: String) -> PyResult<bool> {
     let sig_bytes = match hex::decode(&signature) {
         Ok(b) => b,
-        Err(_) => return false,
+        Err(_) => return Ok(false),
     };
 
     for key_str in signing_keys {
-        let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes()).unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes())
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid HMAC key length"))?;
         mac.update(log_data.as_bytes());
         if mac.verify_slice(&sig_bytes).is_ok() {
-            return true;
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
 /// A Python module implemented in Rust.

@@ -132,9 +132,19 @@ class NotificationQueueJob(Base, UUID7PrimaryKeyMixin):
 
     def __repr__(self) -> str:
         return (
-            f"<NotificationQueueJob(id={self.id}, kind='{self.kind}', "
             f"record_id={self.record_id})>"
         )
+
+    def __init__(self, **kwargs: Any) -> None:
+        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        # RZ-01: Allow bypass for testing fixtures.
+        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
+        forbidden = {"id", "enqueued_at"}
+        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
+            raise ValueError(
+                f"Cannot manually assign system-controlled fields: {intersections}"
+            )
+        super().__init__(**kwargs)
 
 
 class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
@@ -180,9 +190,19 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
 
     def __repr__(self) -> str:
         return (
-            f"<NotificationDelivery(id={self.id}, nid={self.notification_id}, "
             f"channel='{self.channel}', status='{self.status}')>"
         )
+
+    def __init__(self, **kwargs: Any) -> None:
+        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        # RZ-01: Allow bypass for testing fixtures.
+        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
+        forbidden = {"id", "attempted_at"}
+        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
+            raise ValueError(
+                f"Cannot manually assign system-controlled fields: {intersections}"
+            )
+        super().__init__(**kwargs)
 
 
 class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
@@ -210,6 +230,17 @@ class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
             f"<PushSubscription(id={self.id}, user_id={self.user_id}, "
             f"endpoint='{self.endpoint[:20]}...')>"
         )
+
+    def __init__(self, **kwargs: Any) -> None:
+        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        # RZ-01: Allow bypass for testing fixtures.
+        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
+        forbidden = {"id", "created_at"}
+        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
+            raise ValueError(
+                f"Cannot manually assign system-controlled fields: {intersections}"
+            )
+        super().__init__(**kwargs)
 
 
 class UserPushTopic(Base):

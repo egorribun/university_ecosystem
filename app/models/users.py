@@ -74,7 +74,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="noload",
     )
     # Integrations & other relationships
     profile = relationship(
@@ -83,7 +83,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="noload",
     )
     education_path = relationship(
         "EducationPath",
@@ -376,7 +376,7 @@ class EducationPath(Base):
 class InviteCode(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "invite_codes"
 
-    code: Mapped[str] = mapped_column(String, unique=True, index=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     role: Mapped[str] = mapped_column(String)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
@@ -445,6 +445,17 @@ class UserStats(Base):
     )
 
     user = relationship("User", back_populates="stats")
+
+    def __init__(self, **kwargs: Any) -> None:
+        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
+        # RZ-01: Allow bypass for testing fixtures.
+        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
+        forbidden = {"user_id", "last_computed_at"}
+        if not allow_manual and (intersections := forbidden.intersection(kwargs.keys())):
+            raise ValueError(
+                f"Cannot manually assign system-controlled fields: {intersections}"
+            )
+        super().__init__(**kwargs)
 
     def __repr__(self) -> str:
         return f"<UserStats(user_id={self.user_id})>"

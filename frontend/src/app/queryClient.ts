@@ -29,7 +29,7 @@ const defaultOptions = {
     refetchOnWindowFocus: true, // Refresh when user returns to tab
     refetchOnReconnect: "always",
   },
-  mutations: { retry: 0 },
+  mutations: { retry: 0, gcTime: 0 },
 } as const
 
 export const createQueryClient = () =>
