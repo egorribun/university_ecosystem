@@ -363,12 +363,12 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
     )
 
     # Now search - PostgreSQL has computed search_vector
-    from app.repositories.event_repository import EventRepository
+    from app.repositories.unit_of_work import uow_from_session
     from app.services.event_service import EventService
     from app.services.vector_service import VectorService
 
-    e_repo = EventRepository(db_session)
-    e_service = EventService(e_repo, VectorService(db_session))
+    uow = uow_from_session(db_session)
+    e_service = EventService(uow, VectorService(db_session))
 
     result_items = await e_service.get_events(
         search=shared_phrase, limit=10, is_active=None

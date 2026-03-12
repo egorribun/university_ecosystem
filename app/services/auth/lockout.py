@@ -153,7 +153,7 @@ class LockoutService:
         existing = await self._fetch_recent_attempts(email, limit, for_update=True)
         previous_lock = self._calculate_lock_until(existing, now)
         attempt = await self.repo.create_failed_attempt(
-            email=email, user_id=user_id, attempted_at=now
+            email=email, user_id=user_id
         )
         await self.db.flush()
         updated = ([*existing, attempt])[-limit:]

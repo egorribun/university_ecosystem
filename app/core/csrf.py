@@ -161,8 +161,10 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
         # Binding to "" allowed an attacker on a subdomain to set a broadly valid token.
         # Deterministic string provides better-than-nothing resistance against cross-origin
         # generic token spraying by forcing it to match the client's network origin.
-        client_host = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent", "unknown")
+        _client = getattr(request, "client", None)
+        client_host = _client.host if _client else "unknown"
+        _headers = getattr(request, "headers", {})
+        user_agent = _headers.get("user-agent", "unknown") if _headers else "unknown"
         session_id = f"anon:{client_host}:{user_agent}"
     return session_id
 
