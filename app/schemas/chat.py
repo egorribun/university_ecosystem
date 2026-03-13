@@ -25,7 +25,8 @@ class PresenceStatus(SecureBaseModel):
 
 
 class MessageBase(SecureBaseModel):
-    content: str
+    # TD-W5-02: Enforce maximum length so the DB column and HTTP body are both bounded.
+    content: str = Field(..., min_length=1, max_length=2000)
 
 
 class MessageCreate(MessageBase):

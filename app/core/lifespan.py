@@ -300,7 +300,7 @@ async def _periodic_scheduler_loop() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
     # 1. Bootstrapping
     await _startup_database_and_di(app)

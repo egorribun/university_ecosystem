@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "University Ecosystem Platform"
 # MOD-03 (audit 2026-03-06): CI and mypy already target 3.12; enforce it here.
 # Benefits: @override decorator, tomllib in stdlib, faster TaskGroup, ~5% CPython throughput.
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "aiofiles>=23.0",      # No breaking API changes between 23 and 24; pin removed (TD-3: audit 2026-02-24)
     "aiosqlite>=0.19",
@@ -91,7 +91,7 @@ dependencies = [
 include = ["app*"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 plugins = [
     "pydantic.mypy",
@@ -222,7 +222,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 88
 exclude = ["gen"]
 
@@ -333,7 +333,7 @@ pyo3_sanitizer = { workspace = true }
 [tool.pyright]
 # MOD-05 (audit 2026-03-11): Pyright added as an ADDITIONAL type checker alongside
 # mypy. Not replacing mypy yet — target Q2 2026 to assess findings and migrate.
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 pythonPlatform = "Linux"
 typeCheckingMode = "standard"
 # Paths to check

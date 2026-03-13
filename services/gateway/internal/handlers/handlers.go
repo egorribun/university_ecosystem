@@ -11,8 +11,10 @@ import (
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // ProxyHandler creates a Gin handler that proxies requests
@@ -95,8 +97,20 @@ func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcess
 		})
 
 		if err != nil {
-			logger.Error("gRPC call failed", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Processing failed"})
+			// PERF-W5-03: Map gRPC status codes to semantically correct HTTP codes.
+			// Load balancers and monitoring treat 504 vs 500 very differently — 504
+			// triggers upstream-timeout alerts and retries, 500 triggers error-rate alerts.
+			switch status.Code(err) {
+			case codes.DeadlineExceeded:
+				logger.Warn("gRPC upstream timeout", zap.Error(err))
+				c.JSON(http.StatusGatewayTimeout, gin.H{"error": "upstream_timeout"})
+			case codes.Unavailable:
+				logger.Warn("gRPC upstream unavailable", zap.Error(err))
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream_unavailable"})
+			default:
+				logger.Error("gRPC call failed", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "processing_failed"})
+			}
 			return
 		}
 

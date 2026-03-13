@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,15 +14,29 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RateLimiter provides Redis-backed rate limiting
+// fallbackEntry tracks in-memory request counts during Redis outages.
+type fallbackEntry struct {
+	count       int64
+	windowStart int64 // Unix timestamp in seconds
+}
+
+// RateLimiter provides Redis-backed rate limiting with an in-memory fallback.
 type RateLimiter struct {
 	client  *redis.Client
 	limiter *redis_rate.Limiter
 	rps     int
 	burst   int
+
+	// P0-W5-04: In-memory fallback for Redis outages.
+	// Conservative limits prevent brute-force even when Redis is unavailable.
+	fallbackMu       sync.Mutex
+	fallbackCounters map[string]*fallbackEntry
+	fallbackLimit    int   // max requests per fallbackWindowSecs
+	fallbackWindow   int64 // window length in seconds
 }
 
-// NewRateLimiter creates a new rate limiter with Redis backend
+// NewRateLimiter creates a new rate limiter with Redis backend.
+// Fallback defaults: 10 requests / 60 s per client key.
 func NewRateLimiter(redisURL string, rps, burst int) (*RateLimiter, error) {
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
@@ -41,19 +56,40 @@ func NewRateLimiter(redisURL string, rps, burst int) (*RateLimiter, error) {
 	limiter := redis_rate.NewLimiter(client)
 
 	return &RateLimiter{
-		client:  client,
-		limiter: limiter,
-		rps:     rps,
-		burst:   burst,
+		client:           client,
+		limiter:          limiter,
+		rps:              rps,
+		burst:            burst,
+		fallbackCounters: make(map[string]*fallbackEntry),
+		fallbackLimit:    10,
+		fallbackWindow:   60,
 	}, nil
 }
 
-// GetClient returns the underlying redis client
+// GetClient returns the underlying redis client.
 func (rl *RateLimiter) GetClient() *redis.Client {
 	return rl.client
 }
 
-// Middleware returns a Gin middleware for rate limiting
+// inMemoryAllow checks the in-memory fallback counter.
+// Returns true if the request is allowed, false if the client is over the limit.
+// Stale windows are reset on access — no background goroutine required.
+func (rl *RateLimiter) inMemoryAllow(key string) bool {
+	now := time.Now().Unix()
+	rl.fallbackMu.Lock()
+	defer rl.fallbackMu.Unlock()
+
+	entry, ok := rl.fallbackCounters[key]
+	if !ok || (now-entry.windowStart) >= rl.fallbackWindow {
+		// New or expired window — reset counter
+		rl.fallbackCounters[key] = &fallbackEntry{count: 1, windowStart: now}
+		return true
+	}
+	entry.count++
+	return entry.count <= int64(rl.fallbackLimit)
+}
+
+// Middleware returns a Gin middleware for rate limiting.
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get client identifier (IP or User ID)
@@ -62,15 +98,23 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 		// PERF-06 (audit 2026-03-04): Apply a tight deadline on the Redis call.
 		// Without a timeout a slow/overloaded Redis server blocks the Gin goroutine
 		// indefinitely, cascading into a connection exhaustion outage.
-		// On timeout we fail-open (allow the request) to maintain availability,
-		// consistent with the existing Redis-error behaviour below.
 		rCtx, cancel := context.WithTimeout(c.Request.Context(), 50*time.Millisecond)
 		defer cancel()
 
 		// Apply rate limit
 		res, err := rl.limiter.Allow(rCtx, key, redis_rate.PerSecond(rl.rps))
 		if err != nil {
-			// If Redis fails or times out, allow the request but log it
+			// P0-W5-04: Redis failure — apply in-memory fallback instead of fail-open.
+			// Without this, any Redis outage completely disables rate limiting and
+			// enables unlimited brute-force on auth endpoints.
+			if !rl.inMemoryAllow(key) {
+				c.Header("Retry-After", strconv.FormatInt(rl.fallbackWindow, 10))
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+					"error":       "rate_limit_exceeded",
+					"retry_after": rl.fallbackWindow,
+				})
+				return
+			}
 			c.Next()
 			return
 		}
@@ -97,12 +141,13 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	}
 }
 
-
-// getClientKey returns a unique key for rate limiting based on IP or user
+// getClientKey returns a unique key for rate limiting based on IP or user.
 func (rl *RateLimiter) getClientKey(c *gin.Context) string {
-	// Prefer user ID if authenticated
-	if userID, exists := c.Get("user_id"); exists {
-		return "user:" + userID.(string)
+	// TD-W5-04: Safe type assertion — avoid panic if context value has unexpected type.
+	if userIDRaw, exists := c.Get("user_id"); exists {
+		if userID, ok := userIDRaw.(string); ok && userID != "" {
+			return "user:" + userID
+		}
 	}
 
 	// Fall back to IP address.

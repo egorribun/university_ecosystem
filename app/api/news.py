@@ -460,6 +460,7 @@ async def semantic_search(
     db: AsyncDatabaseSession = Depends(get_read_db),
     vector_service: Any = Depends(get_vector_service),
     service: NewsService = Depends(get_read_news_service),
+    _user: models.User = Depends(get_current_user),  # P0-W5-01: auth gate
 ) -> list[schemas.NewsOut] | Response:
     """
     Semantic search for news articles using embeddings.

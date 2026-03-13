@@ -141,7 +141,18 @@ export default defineConfig(({ mode }) => {
     withGeneratedManifests(),
     react({
       babel: {
-        plugins: [["babel-plugin-react-compiler"]],
+        plugins: [
+          [
+            "babel-plugin-react-compiler",
+            {
+              // MOD-W5-08: Stable mode — compiler validates React rules and
+              // auto-memoizes; build fails on rule violations rather than
+              // silently skipping non-conforming components.
+              compilationMode: "strict",
+              panicThreshold: "CRITICAL_ERRORS",
+            },
+          ],
+        ],
       },
     }),
     VitePWA({

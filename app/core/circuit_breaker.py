@@ -89,6 +89,7 @@ class _CircuitState:
     success_count: int = 0
     last_failure_time: float = 0.0
     last_state_change_time: float = field(default_factory=time.monotonic)
+    active_probe_count: int = 0  # number of concurrent HALF_OPEN probes in flight
 
 
 class CircuitBreaker:
@@ -112,6 +113,7 @@ class CircuitBreaker:
 
     __slots__ = (
         "_config",
+        "_in_half_open_probe",
         "_internal_state",
         "_lock",
         "_metrics",
@@ -141,6 +143,7 @@ class CircuitBreaker:
         self._lock = asyncio.Lock()
         self._metrics = CircuitBreakerMetrics()
         self._on_state_change = on_state_change
+        self._in_half_open_probe = False
 
     @property
     def service_name(self) -> str:
@@ -215,11 +218,14 @@ class CircuitBreaker:
             if elapsed >= self._config.recovery_timeout_seconds:
                 self._transition_to(CircuitBreakerState.HALF_OPEN)
                 state.success_count = 0
+                state.active_probe_count = 0
                 return True
             return False
 
-        # HALF_OPEN: allow request for testing
-        return True
+        # HALF_OPEN: allow exactly one concurrent probe; queue the rest as rejected.
+        # active_probe_count is incremented in __aenter__ (under the same lock) so
+        # the second concurrent caller sees count==1 and is rejected before we release.
+        return state.active_probe_count == 0
 
     def _get_remaining_open_time(self) -> float:
         """Get remaining time until recovery attempt."""
@@ -280,6 +286,11 @@ class CircuitBreaker:
                     remaining_seconds=self._get_remaining_open_time(),
                     failure_count=self._internal_state.failure_count,
                 )
+            # If we are in HALF_OPEN, claim the single probe slot atomically
+            # while the lock is still held — before releasing it.
+            if self._internal_state.state == CircuitBreakerState.HALF_OPEN:
+                self._internal_state.active_probe_count += 1
+                self._in_half_open_probe = True
         return self
 
     async def __aexit__(
@@ -290,6 +301,13 @@ class CircuitBreaker:
     ) -> bool:
         """Exit the circuit breaker context."""
         async with self._lock:
+            # Release the HALF_OPEN probe slot before recording outcome so that
+            # _record_success/_record_failure state transitions see a clean count.
+            if self._in_half_open_probe:
+                self._internal_state.active_probe_count = max(
+                    0, self._internal_state.active_probe_count - 1
+                )
+                self._in_half_open_probe = False
             if exc_val is None:
                 self._record_success()
             elif isinstance(exc_val, Exception):

@@ -14,6 +14,7 @@ from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind
+from pydantic import BaseModel, ValidationError, field_validator
 
 from app.core.config import settings
 
@@ -22,6 +23,31 @@ R = TypeVar("R")
 
 _logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
+
+# P1-W5-08: Maximum seconds a single task handler may run before it is
+# cancelled.  Prevents one stuck handler from blocking the entire worker loop.
+_DEFAULT_TASK_TIMEOUT_S = float(os.environ.get("NATS_TASK_TIMEOUT_SECONDS", "30"))
+
+
+class _NatsTaskPayload(BaseModel):  # type: ignore[no-redef]
+    """P1-W5-09: Validated NATS task message schema.
+
+    Parsing with this model rejects malformed payloads before any handler
+    lookup, preventing KeyError crashes and unknown-task execution.
+    """
+
+    id: str
+    name: str
+    args: list[Any] = []
+    kwargs: dict[str, Any] = {}
+    trace_context: dict[str, str] = {}
+
+    @field_validator("name")
+    @classmethod
+    def _name_nonempty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("task name must not be empty")
+        return v
 
 
 class NatsTaskBroker:
@@ -202,27 +228,45 @@ class NatsTaskBroker:
             try:
                 msgs = await sub.fetch(_batch_size, timeout=5)
                 for msg in msgs:
+                    # P1-W5-09: Validate schema before touching any field.
                     try:
-                        data = json.loads(msg.data.decode())
-                        task_name = data["name"]
-                        args = data.get("args", [])
-                        kwargs = data.get("kwargs", {})
-                        trace_context = data.get("trace_context", {})
+                        payload = _NatsTaskPayload.model_validate(
+                            json.loads(msg.data.decode())
+                        )
+                    except (
+                        ValidationError,
+                        json.JSONDecodeError,
+                        UnicodeDecodeError,
+                    ) as exc:
+                        _logger.error(
+                            "nats_invalid_payload: %s — raw=%s",
+                            exc,
+                            msg.data[:200],
+                        )
+                        # ACK to prevent infinite re-delivery of permanently invalid messages.
+                        await msg.ack()
+                        continue
 
+                    task_name = payload.name
+                    args = payload.args
+                    kwargs = payload.kwargs
+                    trace_context = payload.trace_context
+
+                    try:
                         # Extract trace context
-                        context = propagate.extract(trace_context)
+                        ctx = propagate.extract(trace_context)
 
                         with tracer.start_as_current_span(
                             f"nats.process:{task_name}",
-                            context=context,
+                            context=ctx,
                             kind=SpanKind.CONSUMER,
                         ) as span:
                             span.set_attribute("messaging.system", "nats")
                             span.set_attribute("messaging.operation", "process")
-                            span.set_attribute("messaging.message_id", data["id"])
+                            span.set_attribute("messaging.message_id", payload.id)
 
                             _logger.info(
-                                "Processing task: %s (id: %s)", task_name, data["id"]
+                                "Processing task: %s (id: %s)", task_name, payload.id
                             )
 
                             handler = self._tasks.get(task_name)
@@ -241,42 +285,63 @@ class NatsTaskBroker:
 
                             from dishka.integrations.base import wrap_injection
 
-                            if request_container_param := dishka_container:
-                                async with (
-                                    request_container_param() as request_container
-                                ):
-                                    if asyncio.iscoroutinefunction(handler):
-                                        wrapped = wrap_injection(
-                                            func=handler,
-                                            container_getter=lambda _, kwargs: (
-                                                request_container
-                                            ),
-                                            remove_depends=True,
-                                        )
-                                        await wrapped(*args, **kwargs)
+                            # P1-W5-08: Wrap execution with a per-task timeout so a
+                            # stuck handler cannot block the entire worker loop.
+                            async def _execute() -> None:
+                                if request_container_param := dishka_container:  # noqa: B023
+                                    async with (
+                                        request_container_param() as request_container
+                                    ):
+                                        if asyncio.iscoroutinefunction(handler):  # noqa: B023
+                                            wrapped = wrap_injection(
+                                                func=handler,  # noqa: B023
+                                                container_getter=lambda _, __: (
+                                                    request_container
+                                                ),
+                                                remove_depends=True,
+                                            )
+                                            await wrapped(*args, **kwargs)  # noqa: B023
+                                        else:
+                                            import anyio
+
+                                            wrapped = wrap_injection(
+                                                func=handler,  # type: ignore[arg-type]  # noqa: B023
+                                                container_getter=lambda _, __: (
+                                                    request_container
+                                                ),
+                                                remove_depends=True,
+                                            )
+                                            await anyio.to_thread.run_sync(  # type: ignore[unused-coroutine]
+                                                functools.partial(
+                                                    wrapped,
+                                                    *args,  # noqa: B023
+                                                    **kwargs,  # noqa: B023
+                                                ),
+                                                cancellable=True,
+                                            )
+                                else:
+                                    if asyncio.iscoroutinefunction(handler):  # noqa: B023
+                                        await handler(*args, **kwargs)  # noqa: B023
                                     else:
                                         import anyio
 
-                                        # For sync funcs, dishka needs sync container which is complex
-                                        wrapped = wrap_injection(
-                                            func=handler,
-                                            container_getter=lambda _, kwargs: (
-                                                request_container
-                                            ),
-                                            remove_depends=True,
-                                        )
                                         await anyio.to_thread.run_sync(
-                                            functools.partial(wrapped, *args, **kwargs)
+                                            functools.partial(handler, *args, **kwargs),  # type: ignore[misc, arg-type]  # noqa: B023
+                                            cancellable=True,
                                         )
-                            else:
-                                if asyncio.iscoroutinefunction(handler):
-                                    await handler(*args, **kwargs)
-                                else:
-                                    import anyio
 
-                                    await anyio.to_thread.run_sync(
-                                        functools.partial(handler, *args, **kwargs)
-                                    )
+                            try:
+                                async with asyncio.timeout(_DEFAULT_TASK_TIMEOUT_S):
+                                    await _execute()
+                            except TimeoutError:
+                                _logger.error(
+                                    "nats_task_timeout: task=%s id=%s timeout=%.0fs",
+                                    task_name,
+                                    payload.id,
+                                    _DEFAULT_TASK_TIMEOUT_S,
+                                )
+                                await msg.nak()
+                                continue
 
                         await msg.ack()
                     except Exception as exc:

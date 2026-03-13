@@ -54,7 +54,7 @@ class TestProgressiveDelayTrackerMemory:
     """Tests for ProgressiveDelayTracker with memory backend."""
 
     @pytest.fixture(autouse=True)
-    async def clear_memory(self) -> typing.AsyncGenerator[None, None]:
+    async def clear_memory(self) -> typing.AsyncGenerator[None]:
         """Clear memory storage before each test."""
         async with _delay_memory_lock:
             _delay_memory.clear()

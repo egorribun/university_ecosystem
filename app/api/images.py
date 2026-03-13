@@ -72,11 +72,21 @@ async def proxy_image(
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag})
 
+        # TD-W5-05: User-generated content (avatars, uploads) must use a short
+        # TTL so GDPR deletion requests are honoured within a reasonable window.
+        # Static/system assets (no user PII) can keep the long immutable TTL.
+        _USER_CONTENT_PREFIXES = ("avatars/", "users/", "uploads/", "profile/")
+        is_user_content = normalized_path.startswith(_USER_CONTENT_PREFIXES)
+        if is_user_content:
+            cache_control = "private, max-age=86400"  # 1 day — GDPR-safe
+        else:
+            cache_control = "public, max-age=31536000, immutable"
+
         return Response(
             content=data,
             media_type=mime,
             headers={
-                "Cache-Control": "public, max-age=31536000, immutable",
+                "Cache-Control": cache_control,
                 "ETag": etag,
                 "Vary": "Accept, bucket-width",  # Inform caching layers
                 "x-image-proxy-cache": (

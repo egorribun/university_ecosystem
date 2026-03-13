@@ -473,6 +473,7 @@ async def semantic_search(
     db: AsyncSession = Depends(get_read_db),
     vector_service: Any = Depends(get_vector_service),
     events: EventService = Depends(get_read_event_service),
+    _user: models.User = Depends(get_current_user),  # P0-W5-01: auth gate
 ) -> list[schemas.EventOut] | Response:
     """
     Semantic search for events using embeddings.

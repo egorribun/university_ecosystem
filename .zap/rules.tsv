@@ -1,0 +1,34 @@
+# ZAP scan rule suppressions for university-ecosystem
+# Format: ruleId	IGNORE|WARN|FAIL	description
+# See: https://www.zaproxy.org/docs/docker/full-scan/#configuration-file
+
+# 10015: Incomplete or No Cache-control Header Set
+# Our API responses intentionally omit Cache-Control — controlled per-endpoint
+10015	IGNORE	API responses use per-endpoint cache headers
+
+# 10017: Cross-Domain JavaScript Source File Inclusion
+# CDN assets (fonts, icons) are intentionally loaded from external origins
+10017	IGNORE	CDN assets loaded via SRI-validated links
+
+# 10027: Information Disclosure - Suspicious Comments
+# Development source maps are disabled in production (MOD-P0-05)
+10027	IGNORE	Source maps disabled in production builds
+
+# 10054: Cookie without SameSite Attribute
+# Our HttpOnly session cookies include SameSite=Lax; ZAP false-positive on dev
+10054	IGNORE	Session cookies include SameSite attribute
+
+# 10063: Feature Policy Header Not Set
+# Superseded by Permissions-Policy; ZAP still checks deprecated header name
+10063	IGNORE	Permissions-Policy header is set; Feature-Policy deprecated
+
+# 40012: Cross Site Scripting (Reflected)
+# Trusted Types enforcement (MOD-W4) prevents XSS even without header-level block
+40012	WARN	Review XSS findings manually against Trusted Types policy
+
+# 40014: Cross Site Scripting (Persistent)
+40014	WARN	Review persistent XSS findings manually
+
+# 90022: Application Error Disclosure
+# Health endpoints expose partial service state intentionally
+90022	IGNORE	Health endpoints expose service state by design

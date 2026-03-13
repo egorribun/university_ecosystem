@@ -78,6 +78,9 @@ async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
             return cached[0]
 
     async with _get_presence_cache_lock():
+        # Refresh timestamp after potentially waiting for the lock; the stale
+        # pre-lock `now` could let an expired entry pass the TTL check.
+        now = loop.time()
         cached = _PRESENCE_DB_CACHE.get(user_id)
         if cached is not None:
             _PRESENCE_DB_CACHE.move_to_end(user_id)

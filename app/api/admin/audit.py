@@ -15,6 +15,45 @@ from app.services.audit_service import SecureAuditService
 
 router = APIRouter(prefix="/audit", tags=["admin-audit"])
 
+# TD-W5-03: Whitelist for audit filter params prevents enumeration of
+# arbitrary DB column values and self-documents the data model.
+_ALLOWED_RESOURCE_TYPES: frozenset[str] = frozenset(
+    {"event", "profile", "semester", "file", "chat", "news", "notification", "session"}
+)
+_ALLOWED_ACTIONS: frozenset[str] = frozenset(
+    {
+        "auth.login.success",
+        "auth.login.failure",
+        "auth.logout",
+        "auth.logout.revoked",
+        "auth.register",
+        "auth.token.refresh",
+        "mfa.enroll.start",
+        "mfa.enroll.complete",
+        "mfa.verify.success",
+        "mfa.verify.failure",
+        "mfa.disable",
+        "mfa.recovery_code.used",
+        "password.change",
+        "password.reset.request",
+        "password.reset.complete",
+        "users.profile.update",
+        "users.email.change",
+        "users.avatar.upload",
+        "users.delete",
+        "admin.user.create",
+        "admin.user.modify",
+        "admin.user.delete",
+        "admin.role.change",
+        "access.denied",
+        "access.rate_limit",
+        "data.view",
+        "data.export",
+        "data.modify",
+        "data.delete",
+    }
+)
+
 
 @router.get("", response_model=schemas.AuditLogListOut)
 async def list_audit_logs(
@@ -56,9 +95,15 @@ async def list_audit_logs(
     if subject_id:
         stmt = stmt.where(DataAccessLog.subject_user_id == subject_id)
     if resource_type:
-        stmt = stmt.where(DataAccessLog.resource_type == resource_type)
+        if resource_type not in _ALLOWED_RESOURCE_TYPES:
+            resource_type = None  # silently ignore unknown; prevents value enumeration
+        else:
+            stmt = stmt.where(DataAccessLog.resource_type == resource_type)
     if action:
-        stmt = stmt.where(DataAccessLog.action == action)
+        if action not in _ALLOWED_ACTIONS:
+            action = None
+        else:
+            stmt = stmt.where(DataAccessLog.action == action)
 
     # Count total
     count_stmt = select(func.count(DataAccessLog.id))

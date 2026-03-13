@@ -210,12 +210,10 @@ async def _fetch_notification_rows(
     where = [cols.user_id == user_id]
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
-        try:
-            target_id: uuid.UUID | str | int = (
-                uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
-            )
-        except (ValueError, TypeError):
-            target_id = cursor_id
+        # cursor_id is always UUID-validated at the route level (P2-W5-16).
+        target_id: uuid.UUID | str | int = (
+            uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
+        )
         where.append(
             or_(
                 cols.created_at < cursor_dt,
@@ -274,12 +272,10 @@ async def _fetch_notification_rows_fallback(
     where = [cols.user_id == user_id]
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
-        try:
-            target_id: uuid.UUID | str | int = (
-                uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
-            )
-        except (ValueError, TypeError):
-            target_id = cursor_id
+        # cursor_id is always UUID-validated at the route level (P2-W5-16).
+        target_id: uuid.UUID | str | int = (
+            uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
+        )
 
         if "created_at" in available:
             where.append(
@@ -390,6 +386,13 @@ async def list_notifications(
         if not parsed:
             raise_validation_error("errors.notifications.bad_cursor", locale)
         cursor_dt, cursor_id = parsed
+        # P2-W5-16: Strictly validate cursor_id as a UUID before letting it
+        # reach the SQL query; a non-UUID string compared to a UUID column can
+        # cause type confusion or unexpected DB cast behaviour.
+        try:
+            uuid.UUID(str(cursor_id))
+        except (ValueError, AttributeError):
+            raise_validation_error("errors.notifications.bad_cursor", locale)
         cursor_info = (_ensure_utc(cursor_dt), cursor_id)
 
     rows, available_columns = await _fetch_notification_rows(
