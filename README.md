@@ -32,6 +32,30 @@
 - 🗺️ **Vectorized Campus Navigation** – Context-aware search and routing using **pgvector**.
 - ⏳ **Atomic Workflows** – Complex enrollment and grading processes orchestrated by **Temporal.io**.
 
+## 📂 Project Structure
+
+```text
+university_ecosystem/
+├── app/               # 🐍 Core API (Python/FastAPI) - Business Logic
+├── frontend/          # ⚛️ Modern Web UI (React 19 + Vite)
+├── services/
+│   ├── gateway/       # 🚀 API Gateway (Go) - Auth & Routing
+│   ├── ws-hub/        # 📡 WebSocket Hub (Go/NATS) - Real-time
+│   └── file-processor/# 📁 Media Engine (Go) - Secure Processing
+├── native/            # 🦀 Rust Extensions (PyO3) - Performance Core
+├── k8s/               # ☸️ Kubernetes Manifests
+├── alembic/           # 🗄️ Database Migrations
+└── docs/              # 📖 Exhaustive Documentation
+```
+
+## 🧠 Architectural Philosophy
+
+Why the polyglot approach?
+- **Python (FastAPI)**: Selected for its massive biological/academic ecosystem and development velocity for complex business rules.
+- **Go (Golang)**: Powers our I/O-bound microservices (Gateway, Hub) to handle thousands of concurrent WebSocket connections with minimal footprint.
+- **Rust**: Integrated directly into Python via **PyO3** for hot-path optimizations (e.g., complex scheduling algorithms) where every microsecond counts.
+- **SpiceDB**: Implements **Zanzibar-inspired ReBAC**, allowing us to define permissions as relationships (e.g., *"Student X can view Course Y because they are Enrolled"*).
+
 ## 🏗️ Polyglot Architecture
 
 The platform exploits the strengths of multiple modern runtimes to achieve a superior balance of development speed and execution performance.
@@ -102,6 +126,14 @@ docker compose up --build
 - **API Blueprints**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 - **Real-time Signal**: `ws://localhost:8082`
 - **Observability Hub**: [http://localhost:8000/metrics](http://localhost:8000/metrics)
+
+## 🛡️ Security Pillars
+
+Security is baked into the foundation, not bolted on as an afterthought.
+- **Biometric Ready**: Native support for **WebAuthn/FIDO2** (Passkeys) for passwordless, phishing-resistant logins.
+- **Malware Deflection**: Every incoming file is scanned in-memory by **ClamAV** before hitting storage.
+- **Cryptographic Integrity**: Environment variables are managed via **SOPS**, and audit logs are signed with **HMAC-SHA256** to prevent tampering.
+- **Privacy First**: automated session cleanup and PII sanitization in logs.
 
 ## 🧪 Developer Workflow
 
