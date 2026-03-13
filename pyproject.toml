@@ -33,17 +33,17 @@ dependencies = [
     "minio>=7.2",
     "nats-py>=2.9",
     "nh3>=0.2.17",
-    "opentelemetry-api",
-    "opentelemetry-exporter-otlp",
-    "opentelemetry-instrumentation",
-    "opentelemetry-instrumentation-asgi",
-    "opentelemetry-instrumentation-asyncpg",
-    "opentelemetry-instrumentation-fastapi",
-    "opentelemetry-instrumentation-httpx",
-    "opentelemetry-instrumentation-redis",
-    "opentelemetry-instrumentation-sqlalchemy",
-    "opentelemetry-sdk",
-    "opentelemetry-semantic-conventions",
+    "opentelemetry-api>=1.30.0",
+    "opentelemetry-exporter-otlp>=1.30.0",
+    "opentelemetry-instrumentation>=0.51b0",
+    "opentelemetry-instrumentation-asgi>=0.51b0",
+    "opentelemetry-instrumentation-asyncpg>=0.51b0",
+    "opentelemetry-instrumentation-fastapi>=0.51b0",
+    "opentelemetry-instrumentation-httpx>=0.51b0",
+    "opentelemetry-instrumentation-redis>=0.51b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.51b0",
+    "opentelemetry-sdk>=1.30.0",
+    "opentelemetry-semantic-conventions>=0.51b0",
     "orjson>=3.10",
     "pgvector>=0.4.2",
     "pillow>=10",
@@ -55,7 +55,7 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "pyasn1>=0.6.2",
     "pydantic>=2.12.5,<3",
-    "pydantic-settings>=2.13.0,<3",
+    "pydantic-settings>=2.15.0,<3",
     "pyjwt>=2.10.1",
     "pyotp>=2.9",
     "pyroscope-io>=0.8.0 ; sys_platform != 'win32'",
@@ -235,6 +235,7 @@ select = [
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
     "RUF", # ruff-specific rules
+    "S",   # flake8-bandit (Security audit)
 ]
 ignore = [
     "E501",   # line too long
@@ -243,9 +244,7 @@ ignore = [
     "RUF001", # ambiguous characters
     "RUF002",
     "RUF003",
-    # RUF012 (mutable class default) was previously suppressed globally.
-    # It has been re-enabled (TD-5: audit 2026-02-24).
-    # Run: ruff check --select RUF012 app/ to see and fix remaining violations.
+    # RUF012 (mutable class default) re-enabled (TD-5: audit 2026-02-24).
 ]
 
 [tool.ruff.lint.per-file-ignores]

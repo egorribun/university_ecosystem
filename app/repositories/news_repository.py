@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy.orm import selectinload
 
 from app.core.cache import cached, news_cache
 from app.core.config import settings
@@ -54,7 +55,11 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
         """Get published news ordered by creation date descending with caching."""
         result = await self.db.execute(
-            select(News).order_by(News.created_at.desc()).offset(skip).limit(limit)
+            select(News)
+            .options(selectinload(News.author))
+            .order_by(News.created_at.desc())
+            .offset(skip)
+            .limit(limit)
         )
         news_items = list(result.scalars().all())
         dtos = [self._to_dto(obj) for obj in news_items]
@@ -73,6 +78,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         pattern = f"%{safe_query}%"
         result = await self.db.execute(
             select(News)
+            .options(selectinload(News.author))
             .where(func.lower(News.title).like(pattern, escape="\\"))
             .order_by(News.created_at.desc())
             .offset(skip)
@@ -104,7 +110,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
                 current_user_id = uuid.UUID(current_user_id)
 
         # 1. Fetch news objects with pagination/cursor/search
-        stmt = select(News)
+        stmt = select(News).options(selectinload(News.author))
 
         if cursor:
             last_created_at, last_id = cursor

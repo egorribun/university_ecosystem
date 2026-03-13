@@ -29,7 +29,7 @@ export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCard
       <div className="space-y-3">
         {Array.from({ length: items }).map((_, index) => (
           <div
-            key={index}
+            key={`skeleton-${index}`}
             className="flex items-start gap-3 rounded-lg border border-glass-border-subtle/(--opacity-medium) bg-black/(--opacity-faint) dark:bg-black/(--opacity-dim) p-3"
           >
             {/* Time column */}

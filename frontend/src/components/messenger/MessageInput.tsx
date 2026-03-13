@@ -86,7 +86,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) => (
-            <div key={index} className="relative shrink-0 group">
+            <div key={`${file.name}-${file.size}-${index}`} className="relative shrink-0 group">
               {file.type.startsWith("image/") ? (
                 <SmartImage
                   srcRaw={URL.createObjectURL(file)}

@@ -253,10 +253,9 @@ async def _periodic_scheduler_loop() -> None:
         return
 
     _last_hour_ran: int = -1
+    import datetime
 
     while not _SCHEDULER_STOP.is_set():
-        import datetime
-
         now_utc = datetime.datetime.now(datetime.UTC)
         cur_hour = now_utc.hour
 

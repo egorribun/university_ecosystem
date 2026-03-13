@@ -14,6 +14,14 @@ spec:
     - Ingress
     - Egress
   ingress:
+    # Allow traffic from university-gateway (consolidated from k8s/network-policy-backend.yaml)
+    - from:
+        - podSelector:
+            matchLabels:
+              app: university-gateway
+      ports:
+        - protocol: TCP
+          port: 8000
     # Allow traffic from ingress controller
     - from:
         - namespaceSelector:
@@ -42,9 +50,11 @@ spec:
         - protocol: TCP
           port: 8000
   egress:
-    # Allow DNS resolution
+    # Allow DNS resolution (Restricted to kube-system/kube-dns for RZ-09)
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -69,6 +79,38 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    # Allow MinIO connection (consolidated)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Allow Elasticsearch connection (consolidated)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch
+      ports:
+        - protocol: TCP
+          port: 9200
+    # Allow Spicedb connection (consolidated)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: spicedb
+      ports:
+        - protocol: TCP
+          port: 50051
+    # Allow Temporal connection (consolidated)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: temporal
+      ports:
+        - protocol: TCP
+          port: 7233
     # Allow external HTTPS (for OAuth, external APIs)
     - to:
         - ipBlock:

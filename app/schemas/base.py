@@ -14,4 +14,5 @@ class SecureBaseModel(_PydanticBaseModel):
         extra="forbid",
         str_strip_whitespace=True,
         validate_assignment=True,
+        strict=True,
     )

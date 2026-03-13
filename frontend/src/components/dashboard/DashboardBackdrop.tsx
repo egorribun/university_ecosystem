@@ -43,7 +43,7 @@ function DashboardBackdropComponent({ isNarrow, prefersReducedMotion }: Dashboar
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0">
       {layers.map((layer, index) => (
-        <div key={index} className={layer} />
+        <div key={`backdrop-layer-${index}`} className={layer} />
       ))}
     </div>
   )

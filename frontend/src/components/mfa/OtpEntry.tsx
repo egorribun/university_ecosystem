@@ -151,7 +151,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
         >
           {digits.map((digit, index) => (
             <input
-              key={index}
+              key={`otp-digit-${index}`}
               ref={(el) => {
                 inputRefs.current[index] = el
               }}

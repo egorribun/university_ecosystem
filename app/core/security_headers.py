@@ -41,144 +41,140 @@ class SecurityHeadersMiddleware:
         csp_header = self._build_csp_header(nonce=nonce)
         extra_headers = [csp_header, *self._static_headers]
 
-        is_html = False
-        html_body: list[bytes] = []
-        html_status = 200
-        html_headers: list[tuple[bytes, bytes]] = []
-        # PERF-01 (audit 2026-03-04): Track accumulated buffer size with an O(1)
-        # running counter instead of recomputing sum(len(c)) on every chunk.
         _accumulated_html_bytes = 0
+        html_body: list[bytes] = []
         _HTML_BUFFER_LIMIT = 2 * 1024 * 1024  # 2 MB
 
+        from dataclasses import dataclass
+
+        @dataclass
+        class StreamState:
+            is_html: bool = False
+            headers_sent: bool = False
+            html_headers: list[tuple[bytes, bytes]] | None = None
+            status_code: int = 200
+
+        state = StreamState()
+
         async def send_with_security_headers(message: Message) -> None:
-            nonlocal is_html, html_body, html_status, html_headers
-
             if message["type"] == "http.response.start":
-                headers = list(message.get("headers", []))
-
-                # Strip conflicting headers and pre-calculate extra headers
+                original_headers = list(message.get("headers", []))
+                # Strip conflicting headers
                 added_header_names = {
                     name.encode("latin-1").lower() for name, _ in extra_headers
                 }
-                # Prevent both CSP and CSP-Report-Only from upstream
-                # being emitted simultaneously — only our version is sent.
                 added_header_names.add(b"content-security-policy")
                 added_header_names.add(b"content-security-policy-report-only")
 
                 headers_out = [
-                    (k, v) for k, v in headers if k.lower() not in added_header_names
+                    (k, v)
+                    for k, v in original_headers
+                    if k.lower() not in added_header_names
                 ]
-
                 for name, value in extra_headers:
                     headers_out.append(
                         (name.encode("latin-1"), value.encode("latin-1"))
                     )
 
-                # Determine if HTML needs nonce injection
                 if nonce and self._settings.should_inject_csp_nonce:
-                    # PERF-3: Do not attempt to buffer SSE streams or non-HTML responses
-                    # for nonce injection. Buffering SSE causes latency and memory leaks.
                     request_path = scope.get("path", "")
                     if "/api/events/stream" not in request_path:
                         for name_b, value_b in headers_out:
                             if name_b.lower() == b"content-type":
                                 content_type = value_b.lower()
-                                # Only match explicit text/html, ignore event-stream
                                 if (
                                     b"text/html" in content_type
                                     and b"event-stream" not in content_type
                                 ):
-                                    is_html = True
-                                    html_status = message["status"]
-                                    html_headers = headers_out
+                                    state.is_html = True
                                     break
 
-                if not is_html:
-                    message = {**message, "headers": headers_out}
-                    await send(message)
+                if not state.is_html:
+                    message_out = {**message, "headers": headers_out}
+                    await send(message_out)
+                else:
+                    state.status_code = message["status"]
+                    state.html_headers = headers_out
                 return
 
             if message["type"] == "http.response.body":
-                if not is_html:
+                if not state.is_html:
                     await send(message)
                     return
 
-                # P2-W5-19: Accumulate ALL chunks before the limit check.
-                # Checking the limit mid-stream with chunked encoding allows a
-                # single oversized chunk to trigger the "skip nonce" fallback
-                # inconsistently (depending on chunk boundaries).  By deferring
-                # the check to `more_body=False` we get deterministic behavior:
-                # responses ≤ 2 MB always receive nonce injection; larger ones
-                # consistently skip it without partial buffering side-effects.
+                # P2-W5-19: Response buffering remains for nonce injection but is capped
+                # to prevent OOM. If response exceeds _HTML_BUFFER_LIMIT, we fallback
+                # to streaming without nonce injection.
                 body_chunk = message.get("body", b"")
-                if body_chunk:
-                    nonlocal _accumulated_html_bytes
-                    _accumulated_html_bytes += len(body_chunk)
-                    html_body.append(body_chunk)
+                nonlocal _accumulated_html_bytes, html_body
 
-                if not message.get("more_body", False):
-                    # End of stream — now apply the buffer limit on the TOTAL.
-                    if _accumulated_html_bytes > _HTML_BUFFER_LIMIT:
-                        # Response is too large for nonce injection; forward as-is.
+                _accumulated_html_bytes += len(body_chunk)
+                if _accumulated_html_bytes <= _HTML_BUFFER_LIMIT:
+                    html_body.append(body_chunk)
+                    if not message.get("more_body", False):
+                        # End of stream — perform replacement
+                        full_body = b"".join(html_body)
+                        try:
+                            html_text = full_body.decode("utf-8")
+                            if "__CSP_NONCE__" in html_text and nonce is not None:
+                                html_text = html_text.replace("__CSP_NONCE__", nonce)
+                                full_body = html_text.encode("utf-8")
+                        except (LookupError, UnicodeDecodeError):
+                            pass
+
+                        # Adjust content-length
+                        final_headers = []
+                        for n, v in state.html_headers or []:
+                            if n.lower() == b"content-length":
+                                final_headers.append(
+                                    (
+                                        b"content-length",
+                                        str(len(full_body)).encode("latin-1"),
+                                    )
+                                )
+                            else:
+                                final_headers.append((n, v))
+
                         await send(
                             {
                                 "type": "http.response.start",
-                                "status": html_status,
-                                "headers": html_headers,
+                                "status": state.status_code,
+                                "headers": final_headers,
                             }
                         )
-                        for buffered_chunk in html_body[:-1]:
+                        await send(
+                            {
+                                "type": "http.response.body",
+                                "body": full_body,
+                                "more_body": False,
+                            }
+                        )
+                else:
+                    # Limit exceeded: Flush fallback immediately
+                    if not state.headers_sent:
+                        await send(
+                            {
+                                "type": "http.response.start",
+                                "status": state.status_code,
+                                "headers": state.html_headers,
+                            }
+                        )
+                        state.headers_sent = True
+                        # Send buffered chunks
+                        for chunk in html_body:
                             await send(
                                 {
                                     "type": "http.response.body",
-                                    "body": buffered_chunk,
+                                    "body": chunk,
                                     "more_body": True,
                                 }
                             )
-                        await send(message)
-                        return
+                        html_body = []  # Clear memory
 
-                    full_body = b"".join(html_body)
-
-                    try:
-                        # Attempt to replace nonce placeholder
-                        # Will simply fallback to no-op on err/failure to decode
-                        html_text = full_body.decode("utf-8")
-                        if "__CSP_NONCE__" in html_text and nonce is not None:
-                            html_text = html_text.replace("__CSP_NONCE__", nonce)
-                            full_body = html_text.encode("utf-8")
-                    except (LookupError, UnicodeDecodeError):
-                        pass
-
-                    # Compute new bounds
-                    new_headers = []
-                    for n, v in html_headers:
-                        if n.lower() == b"content-length":
-                            new_headers.append(
-                                (
-                                    b"content-length",
-                                    str(len(full_body)).encode("latin-1"),
-                                )
-                            )
-                        else:
-                            new_headers.append((n, v))
-
-                    # Transmit buffered output
-                    await send(
-                        {
-                            "type": "http.response.start",
-                            "status": html_status,
-                            "headers": new_headers,
-                        }
-                    )
-                    await send(
-                        {
-                            "type": "http.response.body",
-                            "body": full_body,
-                            "more_body": False,
-                        }
-                    )
+                    await send(message)
                 return
+
+            await send(message)
 
             # Passthrough for other events
             await send(message)

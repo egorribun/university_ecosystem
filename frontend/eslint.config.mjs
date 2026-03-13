@@ -76,6 +76,7 @@ export default tseslint.config({
     "jsx-a11y/no-redundant-roles": "warn",
     "jsx-a11y/no-autofocus": "warn",
     "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "error",
 
     "react/prop-types": "off",
     "react/react-in-jsx-scope": "off",
@@ -105,7 +106,14 @@ export default tseslint.config({
         ]
       }
     ],
-    "react-compiler/react-compiler": "error"
+    "react-compiler/react-compiler": "error",
+    "no-restricted-imports": ["error", {
+      "paths": [{
+        "name": "@/api/client",
+        "importNames": ["apiClient"],
+        "message": "Legacy apiClient is deprecated. Please use the auto-generated SDK from src/api/generated/sdk.ts."
+      }]
+    }]
   }
 }, {
   files: [

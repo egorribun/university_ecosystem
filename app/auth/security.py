@@ -284,6 +284,13 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
 
 
 def _validate_password_policy(password: str, *, locale: str | None = None) -> None:
+    """Synchronous password policy checker (CPU-bound).
+
+    PERF-W5-02 (audit 2026-03-14): This function uses zxcvbn (O(n²) complexity).
+    It MUST remain synchronous. In async contexts, call it via get_password_hash()
+    which offloads execution to a thread pool executor. Calling it directly
+    from the main event loop will block processing.
+    """
     length = len(password)
     min_length = settings.password_min_length
     max_length = settings.password_max_length
@@ -506,6 +513,7 @@ def _mint_pure_jwt(
 
 
 _public_key_cache: dict[str, str] = {}
+_public_key_cache_lock = threading.Lock()
 
 
 def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
@@ -518,23 +526,24 @@ def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
     """
     cache_key = kid or hashlib.sha256(private_key_pem.encode()).hexdigest()
 
-    if cache_key not in _public_key_cache:
-        # Prevent unbound memory growth by arbitrarily clearing if it grows beyond bounds
-        if len(_public_key_cache) >= 32:
-            _public_key_cache.clear()
+    with _public_key_cache_lock:
+        if cache_key not in _public_key_cache:
+            # Prevent unbound memory growth by arbitrarily clearing if it grows beyond bounds
+            if len(_public_key_cache) >= 32:
+                _public_key_cache.clear()
 
-        key = serialization.load_pem_private_key(
-            private_key_pem.encode(), password=None
-        )
-        _public_key_cache[cache_key] = (
-            key.public_key()
-            .public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            key = serialization.load_pem_private_key(
+                private_key_pem.encode(), password=None
             )
-            .decode()
-        )
-    return _public_key_cache[cache_key]
+            _public_key_cache[cache_key] = (
+                key.public_key()
+                .public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+                .decode()
+            )
+        return _public_key_cache[cache_key]
 
 
 def decode_token(token: str) -> dict[str, Any] | None:

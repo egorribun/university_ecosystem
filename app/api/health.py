@@ -123,7 +123,8 @@ async def _probe_storage() -> tuple[str, float]:
     return _status or "unknown", latency_seconds
 
 
-@router.get("/healthz")
+@router.get("/healthz", summary="Legacy Health Check")
+@router.get("/health/live", summary="Liveness Probe")
 async def healthz() -> JSONResponse:
     now = time.monotonic()
     if _health_cache["expires_at"] > now:
@@ -261,7 +262,8 @@ async def healthz() -> JSONResponse:
     return JSONResponse(status_code=http_status, content=payload)
 
 
-@router.get("/ready")
+@router.get("/ready", summary="Legacy Readiness Check")
+@router.get("/health/ready", summary="Readiness Probe")
 async def ready() -> dict[str, str]:
     await wait_db(max_attempts=1, delay=0.1)
     return {"status": "ready"}

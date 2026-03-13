@@ -62,9 +62,20 @@ async def get_current_user(
 
     locale = resolve_locale(request=request)
 
-    # 1. Decode and Validate Token
-    payload = AuthTokenService.extract_and_decode_token(request, token, locale)
-    user_id, jti = AuthTokenService.validate_payload(payload, locale)
+    # 1. Extract Validated IDs from Gateway OR Decode Local Token
+    x_user_id = request.headers.get("X-User-ID")
+    x_session_id = request.headers.get("X-Session-ID")
+
+    if x_user_id and x_session_id:
+        try:
+            user_id = _uuid_mod.UUID(x_user_id)
+            jti = x_session_id
+        except ValueError:
+            raise_unauthorized(locale, "errors.auth.credentials_invalid")
+    else:
+        # Fallback tracking for direct backend access
+        payload = AuthTokenService.extract_and_decode_token(request, token, locale)
+        user_id, jti = AuthTokenService.validate_payload(payload, locale)
 
     # 2. JTI Revocation Fast-Path — optional O(1) pre-check before session lookup.
     # NOTE (RZ-3): The "revoked:jti:<jti>" key is reserved for future use as an

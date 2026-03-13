@@ -27,9 +27,17 @@ func ProxyHandler(proxy *httputil.ReverseProxy) gin.HandlerFunc {
 			c.Request.Header.Set("X-Request-ID", uuid.New().String())
 		}
 
+		// RZ: Prevent Header Spoofing Vulnerability. We must drop any internal auth headers
+		// sent by the client before proxying, to ensure zero-trust between gateway and backend.
+		c.Request.Header.Del("X-User-ID")
+		c.Request.Header.Del("X-Session-ID")
+
 		// Add user info from JWT to headers
 		if userID, exists := c.Get("user_id"); exists {
 			c.Request.Header.Set("X-User-ID", userID.(string))
+		}
+		if sessionID, exists := c.Get("session_id"); exists {
+			c.Request.Header.Set("X-Session-ID", sessionID.(string))
 		}
 
 		proxy.ServeHTTP(c.Writer, c.Request)
@@ -107,6 +115,12 @@ func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcess
 			case codes.Unavailable:
 				logger.Warn("gRPC upstream unavailable", zap.Error(err))
 				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream_unavailable"})
+			case codes.PermissionDenied, codes.Unauthenticated:
+				logger.Warn("gRPC permission denied", zap.Error(err))
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			case codes.ResourceExhausted:
+				logger.Warn("gRPC resource exhausted", zap.Error(err))
+				c.JSON(http.StatusTooManyRequests, gin.H{"error": "too_many_requests"})
 			default:
 				logger.Error("gRPC call failed", zap.Error(err))
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "processing_failed"})
