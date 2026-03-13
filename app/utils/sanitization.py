@@ -116,8 +116,13 @@ def sanitize_rich_text(html_content: str) -> str:
             # nh3 automatically adds rel="noopener noreferrer" to every <a> tag.
             link_rel="noopener noreferrer",
         )
-    except Exception:
-        return ""
+    except Exception as e:
+        import structlog
+        from fastapi import HTTPException
+
+        logger = structlog.get_logger(__name__)
+        logger.error("sanitization_failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=400, detail="Invalid payload signature") from e
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:
@@ -268,7 +273,7 @@ def sanitize_url(
             pass
 
         # Block localhost variants
-        if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):  # nosec B104
+        if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):  # noqa: S104
             return None
 
         return url

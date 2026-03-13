@@ -289,7 +289,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             .where(User.is_active.is_(True))
             .offset(skip)
             .limit(limit)
-            .options(*USER_MFA_LOAD_OPTIONS)
+            .options(contains_eager(User.profile), *USER_MFA_LOAD_OPTIONS)
         )
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]

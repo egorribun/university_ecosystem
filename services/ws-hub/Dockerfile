@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage
-# MOD-02 (audit 2026-03-06): 1.25.5 → 1.26.3 (Go 1.26 LTS; alpine3.22 for CVE coverage)
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.3-alpine3.21 AS builder
 
 WORKDIR /app
 
@@ -26,20 +25,18 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
   -o ws-hub .
 
 # Runtime stage
-FROM alpine:latest
-
-RUN apk add --no-cache ca-certificates tzdata \
-  && addgroup -S app && adduser -S app -G app
+# SEC-04 (audit 2026-03-14): Using Distroless to minimize attack surface
+FROM gcr.io/distroless/static-debian12:latest
 
 WORKDIR /app
 
-COPY --from=builder --chown=app:app /app/services/ws-hub/ws-hub .
+# Copy binary from builder
+COPY --from=builder /app/services/ws-hub/ws-hub .
 
-USER app
-
+# WS-Hub runs on 8081
 EXPOSE 8081
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:8081/health >/dev/null || exit 1
+# Note: Docker HEALTHCHECK removed in favor of Kubernetes liveness/readiness probes (TD-EXP-02)
+USER nonroot:nonroot
 
-CMD ["./ws-hub"]
+CMD ["/app/ws-hub"]

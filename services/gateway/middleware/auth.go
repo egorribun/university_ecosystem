@@ -300,6 +300,7 @@ func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 		// Set user info in context
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", claims.Role)
+		c.Set("session_id", claims.ID)
 		c.Set("claims", claims)
 
 		c.Next()
@@ -357,6 +358,7 @@ func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 		// Set user info in context only if session is valid
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", claims.Role)
+		c.Set("session_id", claims.ID)
 		c.Set("claims", claims)
 
 		c.Next()

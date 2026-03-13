@@ -1,36 +1,40 @@
 <div align="center">
 
-![University Ecosystem Hero](file:///C:/Users/egorribun/.gemini/antigravity/brain/d2119911-ae71-4b26-b7d7-89b3b0c71c38/university_ecosystem_hero_1772751378288.png)
-
 # 🎓 University Ecosystem Platform
 ### *The Ultimate Digital Hub for Modern Campus Life*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.13](https://img.shields.io/badge/Python-3.13-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.135+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Go 1.26](https://img.shields.io/badge/Go-1.24-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
-[![Rust](https://img.shields.io/badge/Rust-LATEST-black.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-LATEST-000000.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
 ---
 
-**University Ecosystem** is a high-performance, microservices-oriented platform designed to centralize and enhance university experiences. From real-time scheduling and interactive campus maps to secure file processing and instant notifications, we provide the digital infrastructure for the modern student.
+**University Ecosystem** is a high-performance, polyglot microservices platform engineered to centralize and revolutionize student interactions. From real-time scheduling and interactive campus navigation to enterprise-grade security and automated workflows, we provide the digital foundation for the next generation of academic excellence.
+
+[Explore Docs](docs/README.md) • [Deployment Guide](docs/DEPLOY.md) • [Security Policy](SECURITY.md) • [Contributing](docs/CONTRIBUTING.md)
 
 </div>
 
-## ✨ Key Features
+## 🌟 Visionary Features
 
-- 📅 **Dynamic Scheduling** – Real-time academic calendars and event tracking.
-- 💬 **Real-time Hub** – High-speed WebSockets for chat and instant updates.
-- 🔒 **Enterprise-Grade Auth** – Relationship-based access control (ReBAC) via SpiceDB.
-- 🖼️ **Media Mastery** – On-the-fly image optimization and secure file processing.
-- ⚡ **Rust-Powered** – Computationally intensive tasks optimized with Rust.
-- 🔔 **Push Notifications** – Cross-platform alerts for critical university updates.
-- 🗺️ **Campus Navigation** – Integrated links and maps for seamless movement.
+> [!IMPORTANT]
+> This platform is not just an app; it's a living ecosystem designed for extreme scalability and fault tolerance.
 
-## 🏗️ Architecture Overview
+- 📅 **Dynamic Academic Engine** – Real-time scheduling with atomic academic calendar synchronization.
+- 💬 **Quantum-Speed Hub** – High-concurrency WebSockets via Go + NATS for instant updates and collaborative chat.
+- 🔒 **Relationship-Based Auth (ReBAC)** – Granular, logic-based permissions powered by **SpiceDB**.
+- 🖼️ **Media Intelligence** – Automated image optimization and malware scanning via **imgproxy** and **ClamAV**.
+- ⚡ **Rust-Optimized Core** – Near-zero latency execution for computationally intensive university logic.
+- 🗺️ **Vectorized Campus Navigation** – Context-aware search and routing using **pgvector**.
+- ⏳ **Atomic Workflows** – Complex enrollment and grading processes orchestrated by **Temporal.io**.
 
-The platform is built on a decentralized, polyglot microservices architecture designed for extreme scalability and resilience.
+## 🏗️ Polyglot Architecture
+
+The platform exploits the strengths of multiple modern runtimes to achieve a superior balance of development speed and execution performance.
 
 ```mermaid
 graph TD
@@ -44,7 +48,7 @@ graph TD
         Optimizer["🦀 Rust Optimizer"]
     end
 
-    subgraph "Infrastructure Layer"
+    subgraph "Data & State"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
         Redis[("⚡ Redis 7 (Cache/Queue)")]
         MinIO[("📦 MinIO (S3 Storage)")]
@@ -67,70 +71,78 @@ graph TD
     Optimizer --- Backend
 ```
 
-## 🛠️ Technology Stack
+## 🛠️ Technological Dominance
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend** | React 19, Vite, Framer Motion, Tailwind CSS, TanStack Query |
-| **Backend** | FastAPI, Go 1.26, Rust, Dishka (DI), SQLAlchemy |
-| **Real-time** | Go, NATS, WebSockets |
-| **Security** | SpiceDB (AuthZ), JWT, WebAuthn, Argon2 |
-| **Data** | PostgreSQL 17, pgvector, Redis, Elasticsearch |
-| **Infrastructure** | Docker, Temporal, MinIO, imgproxy, OpenTelemetry |
+| Layer | Technologies | Primary Role |
+| :--- | :--- | :--- |
+| **Frontend** | React 19, Vite, Framer Motion, Tailwind CSS, TanStack Query | Slick, responsive UX & PWA support |
+| **Backend API** | FastAPI, Python 3.13, Dishka (DI), SQLAlchemy 2.0 | High-level business logic & REST/GraphQL |
+| **Microservices** | Go 1.26, NATS JetStream, gRPC | Blazing fast concurrency & service-to-service |
+| **Performance** | Rust, PyO3, Maturin | Native-speed optimizations for Python tasks |
+| **Security** | SpiceDB, AuthZed, WebAuthn, JWT | Enterprise ReBAC & Hardware/MFA Auth |
+| **Infrastructure** | Docker Compose, Temporal, MinIO, OpenTelemetry | Reliability, Workflows, & Global Observability |
 
-## 🚀 Getting Started
+## 🚀 Rapid Onboarding
 
-### 1. Environment Configuration
-We use [Mozilla SOPS](https://github.com/getsops/sops) for secure, transparent `.env` encryption.
-First, ensure you have your `age` identity loaded, then decrypt the environment template:
-```bash
+### 1. Secure Environment Setup
+We utilize [Mozilla SOPS](https://github.com/getsops/sops) to ensure that secrets are never exposed in plain text.
+```powershell
+# Decrypt the environment template (requires age/PGP setup)
 sops -d .env.enc > .env
 ```
 
-### 2. Launch the Ecosystem
-We use Docker Compose for a seamless full-stack experience:
+### 2. Ignition
+Launch the entire ecosystem with a single command:
 ```bash
 docker compose up --build
 ```
 
-### 🌐 Service Endpoints
-- **Frontend UI**: [http://localhost:8081](http://localhost:8081)
-- **API Documentation**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
-- **Metrics Dashboard**: [http://localhost:8000/metrics](http://localhost:8000/metrics)
-- **WS Hub**: [ws://localhost:8082](ws://localhost:8082)
+### 🌐 Access Points
+- **Digital Hub**: [http://localhost:8081](http://localhost:8081)
+- **API Blueprints**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
+- **Real-time Signal**: `ws://localhost:8082`
+- **Observability Hub**: [http://localhost:8000/metrics](http://localhost:8000/metrics)
 
-## 🧪 Development Workflow
+## 🧪 Developer Workflow
 
-### **Backend (Python)**
+> [!TIP]
+> We value clean code and strict typing. Always run linters before pushing.
+
+### **Python (Core API)**
 ```bash
-uv sync            # Fast dependency management
-uv run pytest      # Run the test pyramid
-make lint          # Maintain code quality
+uv sync            # Dynamic dependency sync
+uv run pytest      # Execute the test pyramid
+make lint-backend  # Enforce Ruff & Mypy standards
 ```
 
-### **Frontend**
+### **React (Frontend)**
 ```bash
 cd frontend
-npm install
-npm run dev
+npm install        # Rehydrate dependencies
+npm run dev        # Launch Vite dev server
+npm run test       # Run Vitest suite
 ```
 
-### **Go Microservices**
+### **Go (Microservices)**
 ```bash
-cd services/ws-hub
-go test ./...
-go build
+cd services/gateway
+go test ./...      # Verify Go logic
+go build -o uni-gw # Compile production binary
 ```
+
+## 🔭 Observability & Excellence
+
+We don't just ship; we monitor. The ecosystem is fully instrumented with:
+- **OpenTelemetry**: Distributed tracing across all microservices.
+- **Sentry**: High-fidelity error tracking and performance profiling.
+- **Prometheus**: Real-time metrics for every system component.
+- **SonarCloud**: Continuous code quality and security analysis.
 
 ---
 
-## 📖 Deep Dives
-- [📘 Deployment Guide](docs/DEPLOY.md)
-- [🌍 Localization Guidelines](docs/LOCALIZATION.md)
-- [🔭 Observability Setup](docs/observability/)
-- [🤝 Contributing](docs/CONTRIBUTING.md)
-
 <div align="center">
   <br />
-  © 2026 University Ecosystem Team • Generated with ❤️ for the future of education.
+  <h3>Built with ❤️ by University Ecosystem Architects</h3>
+  © 2026 University Ecosystem Platform • All Rights Reserved.
 </div>
+

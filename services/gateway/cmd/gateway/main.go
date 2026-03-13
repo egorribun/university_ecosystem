@@ -223,15 +223,10 @@ func main() {
 	p := ginprometheus.NewPrometheus("gin")
 	p.Use(router)
 
-	// Health check (no auth required)
-	router.GET("/health", handlers.HealthHandler)
-
-	// Public routes (no auth)
+	// Public routes (initially empty group, will add middleware below)
 	public := router.Group("/")
 	{
-		public.Any("/api/public/*path", handlers.ProxyHandler(proxy))
-		public.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy))
-		public.Any("/graphql", handlers.ProxyHandler(proxy))
+		public.GET("/health", handlers.HealthHandler)
 	}
 
 	// Initialize JWT Middleware
@@ -249,6 +244,7 @@ func main() {
 	jwtMiddleware.ListenForRevocations(ctx)
 
 	// --- API Grouping & JWT Architecture (CRIT-04) ---
+
 	// 1. Core API (Always Validated)
 	api := router.Group("/api")
 	api.Use(jwtMiddleware.Validate())
@@ -261,15 +257,20 @@ func main() {
 		api.Any("/admin/*path", handlers.ProxyHandler(proxy))
 	}
 
+	// 2. Public API (Optional Auth - passes headers if logged in)
+	optional := router.Group("/")
+	optional.Use(jwtMiddleware.Optional())
+	{
+		optional.Any("/api/public/*path", handlers.ProxyHandler(proxy))
+		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy))
+		optional.Any("/graphql", handlers.ProxyHandler(proxy))
+	}
+
 	// 2. Public API (No Auth or Optional)
 	publicAPI := router.Group("/api/public")
 	{
 		publicAPI.Any("/*path", handlers.ProxyHandler(proxy))
 	}
-
-	// 3. Other Core Endpoints
-	router.Any("/graphql", handlers.ProxyHandler(proxy))
-	router.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy))
 
 	// NoRoute fallback: return 404 for unmatched /api/ paths; proxy everything else (static assets, etc.)
 	router.NoRoute(func(c *gin.Context) {

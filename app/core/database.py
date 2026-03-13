@@ -54,71 +54,73 @@ class PoolHealthMetrics:
     """
     Connection pool health metrics.
 
-    A threading.Lock guards all counter mutations because SQLAlchemy pool
-    events can fire from synchronous contexts (e.g. ``run_sync`` calls),
-    making pure asyncio coordination insufficient.
+    PERF-W5-03 (audit 2026-03-14): Optimized locking strategy.
+    Monotonic counters (checkouts, checkins, etc.) are mutated directly.
+    A threading.Lock is used ONLY for the active_connections and
+    peak_active_connections pair to ensure consistency between them.
     """
 
     total_checkouts: int = 0
     total_checkins: int = 0
     total_invalidations: int = 0
-    active_connections: int = 0
-    peak_active_connections: int = 0
     failed_checkouts: int = 0
+
+    # Protected pair: active ↔ peak must stay consistent.
+    _active_connections: int = field(default=0, init=False)
+    _peak_active_connections: int = field(default=0, init=False)
+
     # Lock is excluded from __init__ and __repr__ via field metadata
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False, compare=False
     )
 
-    def record_checkout(self) -> None:
+    @property
+    def active_connections(self) -> int:
         with self._lock:
-            self.total_checkouts += 1
-            self.active_connections += 1
-            if self.active_connections > self.peak_active_connections:
-                self.peak_active_connections = self.active_connections
+            return self._active_connections
+
+    @property
+    def peak_active_connections(self) -> int:
+        with self._lock:
+            return self._peak_active_connections
+
+    def record_checkout(self) -> None:
+        self.total_checkouts += 1  # GIL-safe increment
+        with self._lock:
+            self._active_connections += 1
+            if self._active_connections > self._peak_active_connections:
+                self._peak_active_connections = self._active_connections
 
     def record_checkin(self) -> None:
+        self.total_checkins += 1
         with self._lock:
-            self.total_checkins += 1
-            self.active_connections = max(0, self.active_connections - 1)
+            self._active_connections = max(0, self._active_connections - 1)
 
     def record_invalidation(self) -> None:
+        self.total_invalidations += 1
         with self._lock:
-            self.total_invalidations += 1
-            self.active_connections = max(0, self.active_connections - 1)
+            self._active_connections = max(0, self._active_connections - 1)
 
     def reset_peak_active_connections(self) -> None:
         """Reset the peak active connections counter to current active count. (TD-008)"""
         with self._lock:
-            self.peak_active_connections = self.active_connections
+            self._peak_active_connections = self._active_connections
 
     def record_failed_checkout(self) -> None:
-        with self._lock:
-            self.failed_checkouts += 1
+        self.failed_checkouts += 1
 
     def get_snapshot(self) -> dict[str, int]:
-        """Return a consistent point-in-time copy of all counters.
-
-        Lock scope is deliberately narrowed to the six integer reads only.
-        Dict construction (allocation + hashing) happens outside the lock to
-        reduce contention with pool event callbacks that call record_checkout/
-        record_checkin under the same lock at high QPS. (PERF-4: audit 2026-02-24)
-        """
+        """Return a consistent point-in-time copy of all counters."""
         with self._lock:
-            checkouts = self.total_checkouts
-            checkins = self.total_checkins
-            invalidations = self.total_invalidations
-            active = self.active_connections
-            peak = self.peak_active_connections
-            failed = self.failed_checkouts
-        # Build the dict outside the critical section.
+            active = self._active_connections
+            peak = self._peak_active_connections
         return {
-            "total_checkouts": checkouts,
-            "total_checkins": checkins,
-            "total_invalidations": invalidations,
+            "total_checkouts": self.total_checkouts,
+            "total_checkins": self.total_checkins,
+            "total_invalidations": self.total_invalidations,
             "active_connections": active,
             "peak_active_connections": peak,
-            "failed_checkouts": failed,
+            "failed_checkouts": self.failed_checkouts,
         }
 
 

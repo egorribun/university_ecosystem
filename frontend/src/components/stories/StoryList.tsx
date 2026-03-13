@@ -47,7 +47,7 @@ export const StoryList = ({
         <div className="flex flex-wrap gap-(--fluid-gap) py-(--space-3)">
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
             <div
-              key={index}
+              key={`skeleton-${index}`}
               className="shrink-0 flex items-center gap-(--space-2)"
               style={{
                 width: STORY_CIRCLE_DIAMETER,
@@ -104,7 +104,7 @@ export const StoryList = ({
                       : undefined
                   }
                 >
-                  <div className="relative z-base aspect-[9/16] w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
+                  <div className="relative z-base aspect-9/16 w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
                     {story.cover_url ? (
                       <SmartImage
                         srcRaw={story.cover_url}

@@ -21,7 +21,6 @@ from strawberry.fastapi import GraphQLRouter
 from app.core.config import settings
 from app.graphql.context import GraphQLContext
 from app.graphql.dataloaders import DataLoaderRegistry
-from app.graphql.extensions import QueryCostExtension
 from app.graphql.queries import Query
 
 logger = logging.getLogger(__name__)
@@ -45,23 +44,30 @@ async def get_context(
         # (Redis revocation → DB session → expiry → fingerprint → user active).
         current_user = None
         try:
-            auth_header = request.headers.get("Authorization", "")
-            if auth_header.startswith("Bearer "):
-                token = auth_header[7:]
-                from app.auth.security import decode_token
+            from app.services.auth.graphql_token_validator import GraphQLTokenValidator
 
-                payload = decode_token(token)
-                if payload:
-                    user_id = payload.get("sub")
-                    jti = payload.get("jti")
+            validator = GraphQLTokenValidator(request, session)
 
-                    if user_id and jti:
-                        from app.services.auth.graphql_token_validator import (
-                            GraphQLTokenValidator,
-                        )
+            x_user_id = request.headers.get("X-User-ID")
+            x_session_id = request.headers.get("X-Session-ID")
 
-                        validator = GraphQLTokenValidator(request, session)
-                        current_user = await validator.validate(str(user_id), str(jti))
+            if x_user_id and x_session_id:
+                current_user = await validator.validate(x_user_id, x_session_id)
+            else:
+                auth_header = request.headers.get("Authorization", "")
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[7:]
+                    from app.auth.security import decode_token
+
+                    payload = decode_token(token)
+                    if payload:
+                        user_id = payload.get("sub")
+                        jti = payload.get("jti")
+
+                        if user_id and jti:
+                            current_user = await validator.validate(
+                                str(user_id), str(jti)
+                            )
         except Exception as exc:
             # Auth failures are acceptable for public queries; log for debugging.
             from app.auth.security import SecurityError
@@ -86,6 +92,8 @@ def _build_schema_extensions() -> list[Any]:
     In production, schema introspection is also disabled to prevent automated
     schema enumeration and PoC generation by attackers.
     """
+    from strawberry.extensions import QueryComplexityLimiter
+
     extensions: list[Any] = [
         # P-02 (audit 2026-03-08): Automatic OTel spans for every GraphQL operation
         # and resolver.  Integrates with the global TracerProvider configured in
@@ -97,10 +105,9 @@ def _build_schema_extensions() -> list[Any]:
         # Prevent query amplification via extremely wide selections.
         # 1000 tokens ≈ ~50 medium-complexity fields with aliases.
         MaxTokensLimiter(max_token_count=1000),
-        # D-06 (audit 2026-03-08): Semantic cost analysis — weights list-returning
-        # fields (O(N) resolvers) more than scalars.  Max cost: 200.
-        # Runs AFTER depth/token limiters so their errors take precedence.
-        QueryCostExtension,
+        # MOD-W5-05: Standard complexity analysis (weighted fields).
+        # Max complexity 100 ensures expensive list resolvers are bound.
+        QueryComplexityLimiter(max_complexity=100),
     ]
 
     # Disable introspection in production — schema enumeration lets attackers
