@@ -84,7 +84,7 @@
     "react-i18next": "^16.0.1",
     "react-router-dom": "^7.12.0",
     "tailwind-merge": "^3.4.0",
-    "valibot": "^1.2.0",
+    "zod": "^4.0.0",
     "wasm-sanitizer": "file:./wasm-sanitizer/pkg",
     "web-vitals": "^4.2.4",
     "zustand": "^5.0.8"

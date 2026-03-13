@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
+import time
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -93,6 +95,27 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     return bool(result)
 
 
+def _ct_verify_totp(secret: str, code: str) -> bool:
+    """P0-W5-02: Constant-time TOTP verification.
+
+    Checks the current window plus ±1 window (90-second tolerance) without
+    short-circuiting on a match, eliminating the timing oracle that lets
+    attackers distinguish which enrollment slot or window matched.
+    """
+    normalized = "".join(ch for ch in code if ch.isdigit())
+    if len(normalized) != _TOTP_DIGITS:
+        return False
+    totp_obj = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
+    now = time.time()
+    matched = False
+    # Always evaluate all three windows — no short-circuit via `or`
+    for offset in (-30, 0, 30):
+        candidate = totp_obj.at(now + offset)
+        if hmac.compare_digest(normalized, candidate):
+            matched = True
+    return matched
+
+
 async def start_totp_enrollment(
     db: AsyncSession,
     *,
@@ -100,13 +123,18 @@ async def start_totp_enrollment(
     label: str | None = None,
     reuse_existing: bool = False,
 ) -> tuple[MfaTotpEnrollment, str, str]:
+    # P1-W5-06: Lock the User row to serialize all enrollment operations for this
+    # user. SELECT FOR UPDATE on pending enrollments doesn't help when no pending
+    # enrollment exists (no rows → no lock), allowing concurrent requests to both
+    # find count=0 and both create new enrollments, bypassing MAX_ACTIVE limit.
+    await db.execute(select(User).where(User.id == user.id).with_for_update())
+
     pending_stmt = (
         select(MfaTotpEnrollment)
         .where(MfaTotpEnrollment.user_id == user.id)
         .where(MfaTotpEnrollment.confirmed_at.is_(None))
         .where(MfaTotpEnrollment.revoked_at.is_(None))
         .order_by(MfaTotpEnrollment.created_at.desc())
-        .with_for_update()
     )
     result = await db.execute(pending_stmt)
     pending = result.scalars().first()
@@ -163,10 +191,8 @@ async def complete_totp_enrollment(
             enrollment.id,
         )
         raise_validation_error("errors.mfa.invalid_code", "en")
-        raise ValueError("Invalid code")
     if not verify_totp(str(enrollment.secret), code):
         raise_validation_error("errors.mfa.invalid_code", "en")
-        raise ValueError("Invalid code")
     now = _utcnow()
     enrollment.confirmed_at = now
     enrollment.revoked_at = None
@@ -253,7 +279,6 @@ async def verify_totp_for_user(
         enrollments = list(legacy_result.scalars())
     if not enrollments:
         raise_validation_error("errors.mfa.no_enrollment", locale or "en")
-        raise ValueError("No enrollment")
     loaded_challenge = challenge
     if challenge_token and loaded_challenge is None:
         loaded_challenge = await get_challenge(
@@ -267,13 +292,10 @@ async def verify_totp_for_user(
     if loaded_challenge is not None:
         if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
             raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
-            raise ValueError("Invalid challenge")
         if loaded_challenge.user_id != user.id:
             raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
-            raise ValueError("Invalid challenge")
         if session_id is not None and loaded_challenge.session_id != session_id:
             raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
-            raise ValueError("Invalid challenge")
     limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
     await _ensure_challenge_not_locked(
         db,
@@ -283,6 +305,10 @@ async def verify_totp_for_user(
         locale=locale,
     )
 
+    # P0-W5-02: Iterate ALL enrollments unconditionally — no early return on match.
+    # This eliminates the timing oracle where returning on the first match leaks
+    # which enrollment position held a valid code.
+    matched_enrollment: MfaTotpEnrollment | None = None
     for enrollment in enrollments:
         if getattr(enrollment, "secret", None) is None:
             logger.warning(
@@ -291,17 +317,22 @@ async def verify_totp_for_user(
                 user.id,
             )
             continue
-        if verify_totp(str(enrollment.secret), code):
-            if loaded_challenge is not None:
-                await consume_challenge(
-                    db,
-                    challenge_token=str(loaded_challenge.token),
-                    challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
-                    provided_code=code,
-                    provided_method=MFA_METHOD_TOTP,
-                    locale=locale or "en",
-                )
-            return enrollment, loaded_challenge
+        # Use constant-time comparison — record match but keep iterating
+        if _ct_verify_totp(str(enrollment.secret), code) and matched_enrollment is None:
+            matched_enrollment = enrollment
+
+    if matched_enrollment is not None:
+        if loaded_challenge is not None:
+            await consume_challenge(
+                db,
+                challenge_token=str(loaded_challenge.token),
+                challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
+                provided_code=code,
+                provided_method=MFA_METHOD_TOTP,
+                locale=locale or "en",
+            )
+        return matched_enrollment, loaded_challenge
+
     await _register_failed_attempt(
         db,
         loaded_challenge,
@@ -310,4 +341,3 @@ async def verify_totp_for_user(
         locale=locale,
     )
     raise_validation_error("errors.mfa.invalid_code", locale or "en")
-    raise ValueError("Invalid code")

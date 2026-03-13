@@ -66,7 +66,7 @@ def _count_queries(session):
 @pytest.fixture
 def configured_push_settings(
     monkeypatch: pytest.MonkeyPatch,
-) -> typing.Generator[None, None, None]:
+) -> typing.Generator[None]:
     _reset_vapid_cache()
     monkeypatch.setattr(settings, "vapid_public_key", "test-public-key")
     monkeypatch.setattr(settings, "vapid_private_key", "test-private-key")
@@ -76,7 +76,7 @@ def configured_push_settings(
 
 
 @pytest.fixture(autouse=True)
-async def reset_notification_queue_state() -> typing.AsyncGenerator[None, None]:
+async def reset_notification_queue_state() -> typing.AsyncGenerator[None]:
     await notification_queue.shutdown_notification_queue()
     await notification_queue.reset_testing_state()
     yield

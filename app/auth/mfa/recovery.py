@@ -11,9 +11,13 @@ from sqlalchemy import delete, func, select
 
 from app.auth.security import get_password_hash, verify_password
 from app.models.models import RecoveryCode, User
+from app.services.audit_service import AuditService, SecurityEvent
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+_audit = AuditService()
+_MAX_RECOVERY_CODES = 10  # total codes issued per generate_recovery_codes() call
 
 
 def _utcnow() -> datetime:
@@ -53,7 +57,15 @@ async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
 
 
 async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bool:
-    """Verify a recovery code.  If valid, mark it as used."""
+    """Verify a recovery code.  If valid, mark it as used.
+
+    P2-W5-13: Iterate all available codes without early exit to avoid a timing
+    oracle that would reveal which slot matched.  Argon2id is constant-time per
+    call; iterating all N slots makes the total wall time independent of position.
+
+    P2-W5-14: Emit a structured audit event on success so that recovery-code
+    usage appears in the security audit trail.
+    """
     stmt = (
         select(RecoveryCode)
         .where(RecoveryCode.user_id == user.id)
@@ -64,12 +76,25 @@ async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bo
 
     normalized_code = code.strip().upper()
 
+    matched_record: RecoveryCode | None = None
     for record in available_codes:
+        # Always call verify_password for every slot — never break early.
         if await verify_password(normalized_code, str(record.code_hash)):
-            record.is_used = True
-            record.used_at = _utcnow()
-            await db.flush()
-            return True
+            # Record the first match; subsequent matches are cryptographically
+            # impossible (unique tokens) but we still complete the loop.
+            if matched_record is None:
+                matched_record = record
+
+    if matched_record is not None:
+        matched_record.is_used = True
+        matched_record.used_at = _utcnow()
+        await db.flush()
+        _audit.log(
+            SecurityEvent.MFA_RECOVERY_CODE_USED,
+            user_id=user.id,
+            remaining=len(available_codes) - 1,
+        )
+        return True
 
     return False
 

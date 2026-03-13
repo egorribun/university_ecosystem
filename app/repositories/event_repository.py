@@ -39,6 +39,23 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
     def dto_class(self) -> type[EventDTO]:
         return EventDTO
 
+    async def get_for_registration(
+        self, event_id: uuid.UUID | str | int
+    ) -> Event | None:
+        """Fetch an Event row with SELECT FOR UPDATE.
+
+        P2-W5-15: Serializes concurrent attendance registrations so that
+        is_active / ends_at checks and the INSERT are in the same DB-level
+        critical section.  Returns the ORM object (not a DTO) so callers can
+        revalidate fields and the row stays locked for the transaction duration.
+        """
+        if isinstance(event_id, str):
+            with contextlib.suppress(ValueError):
+                event_id = uuid.UUID(event_id)
+        stmt = select(Event).where(Event.id == event_id).with_for_update()
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_with_details(
         self, event_id: uuid.UUID | str | int
     ) -> EventDTO | None:

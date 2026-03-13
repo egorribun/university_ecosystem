@@ -84,7 +84,9 @@ async def receive_csp_report(request: Request) -> Response:
                 "Invalid CSP report format",
                 extra={"event": "csp_report", "status": "invalid_json"},
             )
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
+            # TD-W5-07: Return 400 so the browser knows the report was malformed
+            # (204 would silently succeed, hiding client-side formatting bugs).
+            return Response(status_code=status.HTTP_400_BAD_REQUEST)
 
         # Extract the actual report (browsers wrap it in "csp-report" key)
         csp_report = report_data.get("csp-report", report_data)

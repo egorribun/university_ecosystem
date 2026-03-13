@@ -103,17 +103,23 @@ class SecurityHeadersMiddleware:
                     await send(message)
                     return
 
-                # Accumulate HTML chunks for nonce injection.
-                # PERF-5 (audit 2026-02-26): Guard against unbounded heap growth
-                # from large HTML responses (SSR pages, error dumps).  At >2 MB
-                # skip nonce injection and flush buffered chunks directly.
+                # P2-W5-19: Accumulate ALL chunks before the limit check.
+                # Checking the limit mid-stream with chunked encoding allows a
+                # single oversized chunk to trigger the "skip nonce" fallback
+                # inconsistently (depending on chunk boundaries).  By deferring
+                # the check to `more_body=False` we get deterministic behavior:
+                # responses ≤ 2 MB always receive nonce injection; larger ones
+                # consistently skip it without partial buffering side-effects.
                 body_chunk = message.get("body", b"")
                 if body_chunk:
                     nonlocal _accumulated_html_bytes
                     _accumulated_html_bytes += len(body_chunk)
+                    html_body.append(body_chunk)
+
+                if not message.get("more_body", False):
+                    # End of stream — now apply the buffer limit on the TOTAL.
                     if _accumulated_html_bytes > _HTML_BUFFER_LIMIT:
-                        # Exceed limit — disable buffering for this response.
-                        is_html = False
+                        # Response is too large for nonce injection; forward as-is.
                         await send(
                             {
                                 "type": "http.response.start",
@@ -121,7 +127,7 @@ class SecurityHeadersMiddleware:
                                 "headers": html_headers,
                             }
                         )
-                        for buffered_chunk in html_body:
+                        for buffered_chunk in html_body[:-1]:
                             await send(
                                 {
                                     "type": "http.response.body",
@@ -131,10 +137,7 @@ class SecurityHeadersMiddleware:
                             )
                         await send(message)
                         return
-                    html_body.append(body_chunk)
 
-                if not message.get("more_body", False):
-                    # End of stream, process HTML
                     full_body = b"".join(html_body)
 
                     try:

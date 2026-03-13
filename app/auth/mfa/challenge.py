@@ -11,7 +11,7 @@ from uuid import UUID
 
 import pyotp
 from fastapi import status
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, case, delete, func, literal, or_, select, update
 
 from app.api.validation import raise_http_error
 from app.auth.constants import (
@@ -29,6 +29,7 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
+from app.models.auth import ChallengeState
 from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 
 if TYPE_CHECKING:
@@ -165,23 +166,64 @@ async def _register_failed_attempt(
     locale: str | None,
     status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
 ) -> None:
+    """P1-W5-05: Atomic attempt increment + conditional lock via UPDATE…RETURNING.
+
+    Replaces the non-atomic read-then-write pattern that allowed concurrent
+    requests to see the same attempt_count, each incrementing independently,
+    resulting in the lock threshold being exceeded without actually locking.
+    PostgreSQL serializes concurrent UPDATEs to the same row — no race window.
+    """
     if challenge is None:
         return
-    current = int(getattr(challenge, "attempt_count", 0) or 0)
-    challenge.attempt_count = current + 1
+
+    # Single atomic statement: increment + conditionally set locked_at
+    stmt = (
+        update(MfaChallenge)
+        .where(
+            MfaChallenge.id == challenge.id,
+            MfaChallenge.consumed_at.is_(None),
+            MfaChallenge.locked_at.is_(None),
+        )
+        .values(
+            attempt_count=MfaChallenge.attempt_count + 1,
+            locked_at=case(
+                (
+                    and_(
+                        literal(limit).isnot(None),
+                        MfaChallenge.attempt_count + 1 >= limit,
+                    ),
+                    func.now(),
+                ),
+                else_=None,
+            ),
+            # TD-W5-01: Keep explicit state in sync with locked_at
+            state=case(
+                (
+                    and_(
+                        literal(limit).isnot(None),
+                        MfaChallenge.attempt_count + 1 >= limit,
+                    ),
+                    ChallengeState.LOCKED,
+                ),
+                else_=ChallengeState.PENDING,
+            ),
+        )
+        .returning(MfaChallenge.attempt_count, MfaChallenge.locked_at)
+    )
+    row = (await db.execute(stmt)).one_or_none()
     await db.commit()
-    stmt = select(MfaChallenge).where(MfaChallenge.id == challenge.id)
-    challenge = (await db.execute(stmt)).scalars().first()
-    if challenge is None:
+
+    if row is None:
+        # Challenge was already consumed or locked by a concurrent request — no-op
         return
-    if limit is not None and challenge.attempt_count >= limit:
-        await _lock_challenge(
-            db,
-            challenge,
-            method=method,
-            limit=limit,
-            locale=locale,
-            status_code=status_code,
+
+    _new_count, locked_at = row
+    if locked_at is not None:
+        # Just locked by this very update — raise the appropriate error
+        raise_http_error(
+            status_code,
+            "errors.mfa.too_many_attempts",
+            locale or "en",
         )
 
 
@@ -264,6 +306,7 @@ async def get_challenge(
         )
     if consume:
         challenge.consumed_at = now
+        challenge.state = ChallengeState.CONSUMED
         await db.flush()
     return challenge
 
@@ -406,10 +449,21 @@ async def consume_challenge(
             )
             raise ValueError("Unreachable")
         try:
-            payload = challenge.payload or {}
+            # P2-W5-20: Strict type checks on the DB-stored payload to prevent
+            # type confusion. A non-dict payload (or non-dict "options") would
+            # silently produce an empty challenge string, bypassing verification.
+            raw_payload = challenge.payload
+            if not isinstance(raw_payload, dict):
+                raise TypeError("WebAuthn challenge payload must be a dict")
+            options = raw_payload.get("options")
+            if not isinstance(options, dict):
+                raise TypeError("WebAuthn challenge options must be a dict")
+            challenge_str = options.get("challenge")
+            if not isinstance(challenge_str, str) or not challenge_str:
+                raise TypeError("WebAuthn challenge value must be a non-empty string")
             await service.verify_authentication(
                 user,
-                str(payload.get("options", {}).get("challenge", "")),
+                challenge_str,
                 provided_webauthn_response,
             )
         except Exception:
@@ -425,6 +479,7 @@ async def consume_challenge(
             )
 
     challenge.consumed_at = _utcnow()
+    challenge.state = ChallengeState.CONSUMED
     await db.commit()
 
     return challenge, mfa_session

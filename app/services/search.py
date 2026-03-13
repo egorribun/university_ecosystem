@@ -102,7 +102,7 @@ class SearchService:
 
         from collections.abc import Generator
 
-        def generate_actions() -> Generator[dict[str, Any], None, None]:
+        def generate_actions() -> Generator[dict[str, Any]]:
             for doc in documents:
                 yield {
                     "_index": index,

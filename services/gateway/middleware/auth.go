@@ -253,8 +253,14 @@ func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 			return
 		}
 
-		// Parse and validate token — key selection is centralised in keyFunc.
-		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
+		// P1-W5-11: Parse with explicit algorithm allowlist — rejects alg=none and
+		// any other algorithm not in the list before signature verification occurs.
+		parser := jwt.NewParser(
+			jwt.WithValidMethods([]string{"RS256", "HS256"}),
+			jwt.WithIssuedAt(),
+			jwt.WithExpirationRequired(),
+		)
+		token, err := parser.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
 
 		if err != nil {
 			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token", "https://api.university.edu/probs/invalid-token")
@@ -321,7 +327,12 @@ func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 			return
 		}
 
-		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
+		parser := jwt.NewParser(
+			jwt.WithValidMethods([]string{"RS256", "HS256"}),
+			jwt.WithIssuedAt(),
+			jwt.WithExpirationRequired(),
+		)
+		token, err := parser.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
 
 		if err != nil {
 			// Invalid token for optional auth: continue as unauthenticated

@@ -49,6 +49,7 @@ class SecurityEvent(StrEnum):
     MFA_VERIFY_SUCCESS = "mfa.verify.success"
     MFA_VERIFY_FAILURE = "mfa.verify.failure"
     MFA_DISABLE = "mfa.disable"
+    MFA_RECOVERY_CODE_USED = "mfa.recovery_code.used"
 
     # Password events
     PASSWORD_CHANGE = "password.change"  # nosec B105

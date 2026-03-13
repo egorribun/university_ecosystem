@@ -1,6 +1,7 @@
 import secrets
 import uuid
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
@@ -15,6 +16,9 @@ from sqlalchemy import (
     String,
     func,
 )
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 
 # Removed postgresql UUID import
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,6 +26,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 from app.utils.encryption import EncryptedString
+
+
+class ChallengeState(StrEnum):
+    """TD-W5-01: Explicit state machine for MFA challenges.
+
+    Replaces the implicit dual-null convention (consumed_at=None, locked_at=None →
+    active; consumed_at set → done; locked_at set → locked) with a single
+    auditable column that is impossible to misread.
+    """
+
+    PENDING = "pending"
+    CONSUMED = "consumed"
+    LOCKED = "locked"
+    EXPIRED = "expired"
 
 
 def _generate_session_signing_key() -> str:
@@ -113,12 +131,23 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
     consumed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0", default=0
+    )
+    # TD-W5-01: Explicit state machine column — single source of truth.
+    state: Mapped[ChallengeState] = mapped_column(
+        SAEnum(ChallengeState, name="challenge_state_enum"),
+        nullable=False,
+        server_default=ChallengeState.PENDING,
+        default=ChallengeState.PENDING,
+        index=True,
     )
 
     user = relationship("User", back_populates="mfa_challenges")
@@ -127,6 +156,7 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
     __table_args__ = (
         Index("ix_mfa_challenges_user_expires", "user_id", "expires_at"),
         Index("ix_mfa_challenges_consumed_expires", "consumed_at", "expires_at"),
+        Index("ix_mfa_challenges_state", "state"),
     )
 
 
@@ -240,6 +270,10 @@ class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
     )
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    # P1-W5-07: SHA-256 hex digests used for constant-time binding check.
+    # Raw ip_address/user_agent kept for audit/display; hashes used for comparison.
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ua_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

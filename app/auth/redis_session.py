@@ -66,7 +66,14 @@ class RedisSessionBackend(SessionBackend):
 
     async def revoke_session(self, jti: str) -> None:
         key = f"{self._prefix}{jti}"
+        # P0-W5-03: Write the gateway's revocation blocklist key BEFORE deleting the
+        # session, using the session's remaining TTL so the blocklist entry expires
+        # at the same time the JWT would have expired naturally.
+        remaining_ttl = await self._redis.ttl(key)  # -2 = not found, -1 = no TTL
         await self._redis.delete(key)
+        if remaining_ttl > 0:
+            revoked_key = f"revoked:jti:{jti}"
+            await self._redis.set(revoked_key, "1", ex=remaining_ttl)
         # Notify Gateway to invalidate its L1 cache
         await self._redis.publish("session:revocations", jti)
 

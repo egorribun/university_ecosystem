@@ -11,9 +11,31 @@ transport layer and makes it trivially testable without FastAPI machinery.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# TD-W5-08: Grace-period permission cache.
+#
+# When SpiceDB becomes temporarily unreachable, returning HTTP 503 for every
+# permission-guarded request causes cascading failures across the application.
+# The cache stores the last-known result for each (user, resource, permission)
+# tuple and serves it for up to _GRACE_TTL_SECONDS when SpiceDB is down.
+#
+# Security trade-off: a role revocation will remain effective in SpiceDB, but
+# an in-progress outage means the stale "allow" result may be served for up to
+# 60 seconds. This is acceptable because:
+#   1. Role changes are rare and deliberate.
+#   2. A 60-second window is far narrower than a typical SpiceDB rollout gap.
+#   3. The alternative (fail-closed) causes full service degradation on ANY
+#      transient network hiccup between the Python backend and SpiceDB.
+# ---------------------------------------------------------------------------
+_GRACE_TTL_SECONDS: float = 60.0
+
+# {(user_id, resource_type, resource_id, permission): (result: bool, cached_at: float)}
+_permission_cache: dict[tuple[str, str, str, str], tuple[bool, float]] = {}
 
 
 class SpiceDBUnavailableError(RuntimeError):
@@ -104,10 +126,16 @@ class PermissionChecker:
                     ),
                 )
             )
-            return bool(
+            result = bool(
                 resp.permissionship
                 == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
             )
+            # Populate grace-period cache on every successful check.
+            _permission_cache[(user_id, resource_type, resource_id, permission)] = (
+                result,
+                time.monotonic(),
+            )
+            return result
         except ImportError as exc:
             # grpc/authzed not installed — treat as unavailable rather than silently
             # denying. Callers with SpiceDB enabled should always have grpc.
@@ -121,6 +149,23 @@ class PermissionChecker:
                 user_id,
                 exc,
             )
+            # TD-W5-08: Grace-period fallback — serve stale cached result when
+            # SpiceDB is temporarily unreachable instead of failing the request.
+            cache_key = (user_id, resource_type, resource_id, permission)
+            cached = _permission_cache.get(cache_key)
+            if cached is not None:
+                cached_result, cached_at = cached
+                if (time.monotonic() - cached_at) <= _GRACE_TTL_SECONDS:
+                    logger.warning(
+                        "SpiceDB unavailable — serving cached permission result "
+                        "(%s:%s#%s for %s, age=%.1fs)",
+                        resource_type,
+                        resource_id,
+                        permission,
+                        user_id,
+                        time.monotonic() - cached_at,
+                    )
+                    return cached_result
             raise SpiceDBUnavailableError(
                 f"SpiceDB unreachable: {resource_type}:{resource_id}#{permission}"
             ) from exc

@@ -73,9 +73,15 @@ def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
         "exp": now + timedelta(minutes=expires_minutes),
         "jti": str(uuid4()),
     }
-    # Prefer the dedicated state secret; fall back to spotify_token_secret during
-    # rollout when SPOTIFY_OAUTH_STATE_SECRET has not yet been set in .env.
-    state_secret = settings.spotify_oauth_state_secret or settings.spotify_token_secret
+    # P2-W5-18: No fallback to spotify_token_secret — using the wrong key would
+    # allow a confused-deputy attack.  The model_validator in integrations.py
+    # already rejects empty SPOTIFY_OAUTH_STATE_SECRET in production; here we
+    # guard the dev/test path with an explicit early failure.
+    state_secret = settings.spotify_oauth_state_secret
+    if not state_secret:
+        raise ValueError(
+            "SPOTIFY_OAUTH_STATE_SECRET must be set before Spotify OAuth flows can be used."
+        )
     return jwt.encode(payload, state_secret, algorithm="HS256")
 
 
@@ -242,12 +248,37 @@ async def _ensure_access_token(
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
         raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
+
+    # TD-W5-06: Detect scope downgrade — Spotify may return a reduced scope when
+    # the user revoked individual permissions in their Spotify account settings.
+    # If any previously-granted scope is missing, disconnect to force re-auth so
+    # the user knows their integration lost capabilities (vs silent 403 on next call).
+    new_scope_str: str = data.get("scope") or ""
+    old_scope_str: str = user.spotify.scope or ""
+    if old_scope_str:
+        old_scope_set = set(old_scope_str.split())
+        new_scope_set = set(new_scope_str.split())
+        missing_scopes = old_scope_set - new_scope_set
+        if missing_scopes:
+            logger.warning(
+                "Spotify token refresh returned downgraded scope — disconnecting integration",
+                extra={
+                    "user_id": str(user.id),
+                    "missing_scopes": sorted(missing_scopes),
+                    "old_scope": old_scope_str,
+                    "new_scope": new_scope_str,
+                },
+            )
+            _disconnect_user(user, clear_refresh=True)
+            await db.commit()
+            raise_unauthorized(locale or "en", "errors.spotify.scope_downgraded")
+
     await _save_tokens(
         db,
         user,
         access_token,
         data.get("refresh_token"),
-        data.get("scope"),
+        new_scope_str,
         data.get("expires_in"),
     )
     return str(user.spotify.access_token) if user.spotify.access_token else None

@@ -273,6 +273,20 @@ class EventService:
     ) -> EventAttendanceDTO:
         cache_kinds = ("attendance", "participation")
 
+        # P2-W5-15: Lock the Event row before reading is_active/ends_at so that
+        # the check-then-act sequence is serialized at the DB level.  Without
+        # FOR UPDATE two concurrent requests can both pass the validity check,
+        # then both insert attendance, exceeding intended capacity limits.
+        event_locked = await self.repo.get_for_registration(data.event_id)
+        if event_locked is None:
+            raise EntityNotFound("Event", data.event_id)
+        now_utc = datetime.now(UTC)
+        ends_at = event_locked.ends_at
+        if ends_at is not None and ends_at.tzinfo is None:
+            ends_at = ends_at.replace(tzinfo=UTC)
+        if not event_locked.is_active or (ends_at is not None and ends_at <= now_utc):
+            raise ValueError("registration_closed")
+
         # Use repository to find existing attendance
         exist = await self.repo.get_attendance(data.event_id, user_id)
 

@@ -157,6 +157,14 @@ class RedisSessionService:
             client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
             # Step 1: Mark inactive immediately — checked in get_session().
             await cast("Awaitable[Any]", client.hset(key, "is_active", "0"))
+            # P0-W5-03: Write gateway blocklist key before deletion so gateway's
+            # `EXISTS revoked:jti:{jti}` check correctly detects revocation.
+            remaining_ttl = await cast("Awaitable[Any]", client.ttl(key))
+            if remaining_ttl > 0:
+                revoked_key = f"revoked:jti:{jti}"
+                await cast(
+                    "Awaitable[Any]", client.set(revoked_key, "1", ex=remaining_ttl)
+                )
             # Step 2: Delete for cleanup (TTL would handle this anyway).
             await cast("Awaitable[Any]", client.delete(key))
         except (RedisError, OSError) as e:

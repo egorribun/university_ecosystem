@@ -40,14 +40,17 @@ type ProcessResult struct {
 
 // FileProcessingWorkflow orchestrates the file processing
 func FileProcessingWorkflow(ctx workflow.Context, job ProcessJob) (*ProcessResult, error) {
-	// Retry policy
+	// MOD-W5-05: Explicit exponential back-off retry policy.
+	// NonRetryableErrorTypes prevents wasting attempts on deterministic errors
+	// (bad dimensions, oversized images) that will never succeed.
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Minute * 5,
 		RetryPolicy: &temporal.RetryPolicy{
-			InitialInterval:    time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    time.Minute,
-			MaximumAttempts:    5,
+			InitialInterval:        time.Second,
+			BackoffCoefficient:     2.0,
+			MaximumInterval:        time.Minute,
+			MaximumAttempts:        5,
+			NonRetryableErrorTypes: []string{"InvalidInputError", "FileTooLargeError"},
 		},
 	}
 
@@ -90,9 +93,12 @@ func NewFileActivities(cfg *config.Config) *FileActivities {
 }
 
 const (
-	// maxImageDimension prevents OOM by limiting the target size of processed images.
-	// 4096 * 4096 * 4 bytes (RGBA) is ~64MB, which is safe for typical worker memory.
+	// maxImageDimension prevents OOM by limiting any single dimension of processed images.
 	maxImageDimension = 4096
+	// maxImagePixels caps total pixel count to bound RGBA memory allocation.
+	// PERF-W5-01: A 4096×4096 RGBA image = 64 MB. Under 20 concurrent workflows that
+	// becomes 1.28 GB. 8 MP (≈ 3264×2448) keeps peak per-workflow at ~32 MB RGBA.
+	maxImagePixels = 8_000_000
 )
 
 // ResizeImageActivity performs the image resizing
@@ -124,6 +130,14 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 
 	if errW != nil || errH != nil {
 		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInput", errW, errH)
+	}
+	// PERF-W5-01: Reject images whose total pixel count would exceed the memory budget.
+	// Enforced after per-dimension validation so the error message is specific.
+	if width*height > maxImagePixels {
+		return nil, temporal.NewApplicationError(
+			fmt.Sprintf("total pixels %d exceed limit %d", width*height, maxImagePixels),
+			"FileTooLargeError",
+		)
 	}
 
 	// Resize

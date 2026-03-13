@@ -1,4 +1,4 @@
-name: DAST — Nuclei Scan
+name: DAST — Nuclei + ZAP Scan
 
 # MOD-NEW-02 (audit 2026-03-07): Dynamic Application Security Testing workflow.
 # Nuclei scans the deployed staging environment using a curated set of templates.
@@ -88,3 +88,44 @@ jobs:
           name: nuclei-results-${{ github.run_id }}
           path: nuclei-results.json
           retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # MOD-W5-07: OWASP ZAP Full Scan — active scan for dynamic discovery
+  # Complements Nuclei (CVE/template-based) with active probing for injection,
+  # auth bypass, misconfiguration, and other dynamic vulnerabilities.
+  #
+  # SHA pinned to zaproxy/action-full-scan@v0.10.0 — verify with:
+  #   gh api repos/zaproxy/action-full-scan/git/refs/tags/v0.10.0
+  # ---------------------------------------------------------------------------
+  zap:
+    name: OWASP ZAP Full Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository (ZAP rules config)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .zap
+          sparse-checkout-cone-mode: false
+
+      - name: ZAP Full Scan
+        uses: zaproxy/action-full-scan@a4db890b35ae30e0fc9af1416ec02b9f4aff13c1 # v0.10.0
+        env:
+          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
+        with:
+          target: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
+          # rules_file_name: suppresses known false positives for safe patterns
+          rules_file_name: ".zap/rules.tsv"
+          # -a: active scan, -j: Ajax spider, -T 60: max active scan duration 60 min
+          cmd_options: "-a -j -T 60"
+          # Upload SARIF to Code Scanning
+          artifact_name: zap-results-${{ github.run_id }}
+
+      - name: Upload ZAP SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: zap-results.sarif
+          category: zap-dast
