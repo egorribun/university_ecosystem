@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
@@ -56,7 +57,6 @@ def _make_idempotency_key(
     key recognisable in Redis MONITOR / keyspace notifications without leaking
     chat_id or user_id.
     """
-    import hashlib
 
     raw = f"{chat_id}:{user_id}:{client_key}"
     digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
