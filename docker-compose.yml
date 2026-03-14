@@ -216,6 +216,45 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  outbox-worker:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      target: runtime
+    command: python -m app.workers.outbox
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
+      CACHE_ENABLED: "true"
+      CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/0
+      NATS_URL: nats://${NATS_AUTH_TOKEN:-dev-nats-token}@nats:4222
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
+      OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-50}
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL:-1.0}
+      OUTBOX_MAX_RETRIES: ${OUTBOX_MAX_RETRIES:-5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - db_net
+      - cache_net
+      - event_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   postgres:
     image: pgvector/pgvector:pg17
     environment:
@@ -251,13 +290,21 @@ services:
       - --maxmemory-policy
       - allkeys-lru
       - --save
-      - ""
+      - "60 1000"
       - --appendonly
-      - "no"
+      - "yes"
+      - --appendfsync
+      - "everysec"
+      - --auto-aof-rewrite-percentage
+      - "100"
+      - --auto-aof-rewrite-min-size
+      - "64mb"
       - --loglevel
       - warning
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - valkey_data:/data
     healthcheck:
       test: ["CMD-SHELL", "valkey-cli -a $REDIS_PASSWORD ping"]
       interval: 5s
@@ -505,3 +552,4 @@ volumes:
   # Caddy auto-save config (optional, enables zero-downtime reloads on restart).
   caddy_config:
   tempo_data:
+  valkey_data:

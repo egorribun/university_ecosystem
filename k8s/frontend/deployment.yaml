@@ -17,6 +17,7 @@ spec:
         app.kubernetes.io/name: frontend
         app.kubernetes.io/component: web
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: frontend
           image: university-ecosystem/frontend:latest

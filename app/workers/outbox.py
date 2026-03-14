@@ -1,14 +1,19 @@
 import asyncio
 import contextlib
 import logging
+import time
 import traceback
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 import asyncpg
 from opentelemetry import trace
-from sqlalchemy import select
+from prometheus_client import Counter, Gauge, Histogram
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -17,6 +22,30 @@ from app.models.domain_events import StoredEvent
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
+
+# ── MOD-04 (audit 2026-03-14): Prometheus metrics for outbox observability ─────
+# Module-level singletons; Prometheus scrapes /metrics on each poll cycle.
+
+OUTBOX_EVENTS_PROCESSED = Counter(
+    "outbox_events_processed_total",
+    "Total outbox events processed",
+    labelnames=["event_type", "status"],  # status: success | failed | dead_lettered
+)
+OUTBOX_PROCESSING_DURATION = Histogram(
+    "outbox_event_processing_duration_seconds",
+    "Wall-clock time to dispatch a single outbox event",
+    labelnames=["event_type"],
+    buckets=(0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0),
+)
+OUTBOX_PENDING_EVENTS = Gauge(
+    "outbox_pending_events_total",
+    "Current number of pending (unprocessed) outbox events — updated each poll cycle",
+)
+OUTBOX_DLQ_TOTAL = Counter(
+    "outbox_dlq_events_total",
+    "Total events permanently moved to the Dead Letter Queue",
+    labelnames=["event_type"],
+)
 
 
 class OutboxWorker:
@@ -113,17 +142,47 @@ class OutboxWorker:
     async def process_batch(self) -> int:
         with tracer.start_as_current_span("outbox.process_batch") as span:
             async with async_session() as db:
-                # Find unprocessed events or those that failed but haven't exceeded retries
-                stmt = (
-                    select(StoredEvent)
-                    .where(StoredEvent.processed_at.is_(None))
-                    .where(StoredEvent.error_count < self.max_retries)
-                    .order_by(StoredEvent.created_at)
-                    .limit(self.batch_size)
-                    .with_for_update(skip_locked=True)
-                )
+                # DEBT-01: Use DISTINCT ON (aggregate_id_uuid) on PostgreSQL to
+                # guarantee per-aggregate causal ordering when running multiple
+                # workers with skip_locked=True.  Each worker picks at most one
+                # pending event per aggregate (the one with the lowest
+                # sequence_number / created_at), so events for the same aggregate
+                # are never processed out of order by parallel workers.
+                # Falls back to the simple created_at ordering for SQLite (CI).
+                _is_pg = not str(settings.database_url).startswith("sqlite")
+                if _is_pg:
+                    stmt = (
+                        select(StoredEvent)
+                        .where(StoredEvent.processed_at.is_(None))
+                        .where(StoredEvent.error_count < self.max_retries)
+                        .distinct(StoredEvent.aggregate_id_uuid)
+                        .order_by(
+                            StoredEvent.aggregate_id_uuid,
+                            StoredEvent.sequence_number,
+                            StoredEvent.created_at,
+                        )
+                        .limit(self.batch_size)
+                        .with_for_update(skip_locked=True)
+                    )
+                else:
+                    stmt = (
+                        select(StoredEvent)
+                        .where(StoredEvent.processed_at.is_(None))
+                        .where(StoredEvent.error_count < self.max_retries)
+                        .order_by(StoredEvent.created_at)
+                        .limit(self.batch_size)
+                        .with_for_update(skip_locked=True)
+                    )
                 result = await db.execute(stmt)
                 events = result.scalars().all()
+
+                # MOD-04: Update pending gauge once per batch cycle (cheap COUNT).
+                pending_count_result = await db.execute(
+                    select(func.count())
+                    .select_from(StoredEvent)
+                    .where(StoredEvent.processed_at.is_(None))
+                )
+                OUTBOX_PENDING_EVENTS.set(pending_count_result.scalar_one() or 0)
 
                 if not events:
                     span.set_attribute("outbox.events_count", 0)
@@ -131,29 +190,79 @@ class OutboxWorker:
 
                 span.set_attribute("outbox.events_count", len(events))
                 for se in events:
+                    _t0 = time.perf_counter()
                     try:
-                        # Construct DomainEvent from StoredEvent
-                        # This is a bit tricky as we need the original event class.
-                        # For now, we'll use a generic approach or look up by event_type.
-                        # In a real system, we'd have a factory to reconstruct the event.
                         await self._dispatch_event(se)
                         se.processed_at = datetime.now(UTC)
+                        # MOD-04: record success latency + count
+                        OUTBOX_PROCESSING_DURATION.labels(
+                            event_type=se.event_type
+                        ).observe(time.perf_counter() - _t0)
+                        OUTBOX_EVENTS_PROCESSED.labels(
+                            event_type=se.event_type, status="success"
+                        ).inc()
                     except Exception:
-                        logger.error(
-                            "Failed to process outbox event",
-                            exc_info=True,
-                            extra={
-                                "event_id": str(se.id),
-                                "event_type": se.event_type,
-                                "error_count": se.error_count + 1,
-                            },
-                        )
                         se.error_count += 1
+                        last_error = traceback.format_exc()
                         # Store first 500 chars of error for audit trail
-                        se.last_error = traceback.format_exc()[:500]
+                        se.last_error = last_error[:500]
+                        # MOD-08: Move to DLQ after max_retries instead of
+                        # silently abandoning the event.
+                        if se.error_count >= self.max_retries:
+                            await self._move_to_dlq(db, se, last_error)
+                            # MOD-04: DLQ counter (also tracked in _move_to_dlq log)
+                            OUTBOX_DLQ_TOTAL.labels(event_type=se.event_type).inc()
+                            OUTBOX_EVENTS_PROCESSED.labels(
+                                event_type=se.event_type, status="dead_lettered"
+                            ).inc()
+                        else:
+                            logger.error(
+                                "Failed to process outbox event",
+                                exc_info=True,
+                                extra={
+                                    "event_id": str(se.id),
+                                    "event_type": se.event_type,
+                                    "error_count": se.error_count,
+                                },
+                            )
+                            OUTBOX_EVENTS_PROCESSED.labels(
+                                event_type=se.event_type, status="failed"
+                            ).inc()
 
                 await db.commit()
                 return len(events)
+
+    async def _move_to_dlq(
+        self, db: "AsyncSession", se: StoredEvent, last_error: str
+    ) -> None:
+        """Move an event that exceeded max_retries to the Dead Letter Queue.
+
+        MOD-08 (audit 2026-03-14): Provides visibility into undeliverable events
+        instead of silently abandoning them after max retries.
+        """
+        from app.models.failed_outbox_events import FailedOutboxEvent
+
+        dlq_entry = FailedOutboxEvent(
+            original_event_id=se.id,
+            event_type=se.event_type,
+            aggregate_type=se.aggregate_type,
+            aggregate_id=se.aggregate_id,
+            payload=se.payload or {},
+            error_message=last_error[:2000],  # Truncate to prevent huge rows
+            retry_count=se.error_count,
+            failed_at=datetime.now(UTC),
+        )
+        db.add(dlq_entry)
+        se.processed_at = datetime.now(UTC)  # Mark as processed (dead-lettered)
+        logger.error(
+            "OutboxWorker: event moved to DLQ after %d retries",
+            se.error_count,
+            extra={
+                "event_id": str(se.id),
+                "event_type": se.event_type,
+                "dlq_entry_id": str(dlq_entry.id),
+            },
+        )
 
     async def _dispatch_event(self, se: StoredEvent) -> None:
         """
@@ -195,6 +304,14 @@ class OutboxWorker:
             with tracer.start_as_current_span("outbox.dispatch_event") as span:
                 span.set_attribute("outbox.event_type", se.event_type)
                 span.set_attribute("outbox.stored_event_id", str(se.id))
+                # MOD-01 (audit 2026-03-14): aggregate attributes enable trace
+                # filtering by aggregate ID (e.g. "show all events for Chat X")
+                # without scanning the trace body.
+                if se.aggregate_id_uuid is not None:
+                    span.set_attribute("outbox.aggregate_id", str(se.aggregate_id_uuid))
+                if se.sequence_number is not None:
+                    span.set_attribute("outbox.sequence_number", se.sequence_number)
+                span.set_attribute("outbox.aggregate_type", se.aggregate_type or "")
                 await event_bus.publish(event)
 
         except Exception as e:

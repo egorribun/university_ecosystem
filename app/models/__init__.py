@@ -87,4 +87,5 @@ from app.models.users import (
 from app.models.users import (
     UserProfile as UserProfile,
 )
+from app.models.failed_outbox_events import FailedOutboxEvent as FailedOutboxEvent
 from app.workers.dead_letter_queue import DeadLetterJob as DeadLetterJob

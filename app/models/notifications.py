@@ -160,6 +160,13 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
     channel: Mapped[str] = mapped_column(
         String, nullable=False, default="inapp", index=True
     )
+    # DEBT-03: subscription_id records which push subscription received this delivery.
+    # NULL = in-app notification or skipped-no-subscription rows.
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="delivered", index=True
     )
@@ -185,6 +192,22 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
             ondelete="CASCADE",
         ),
         Index("ix_notification_deliveries_notif_channel", "notification_id", "channel"),
+        # DEBT-03: Dedup index for fast duplicate detection.
+        # On PostgreSQL (partitioned table) this is non-unique; deduplication
+        # is enforced at the application layer via INSERT ... ON CONFLICT DO NOTHING.
+        # On SQLite (CI) the UniqueConstraint below enforces the invariant in tests.
+        Index(
+            "ix_notification_deliveries_dedup",
+            "notification_id",
+            "channel",
+            "subscription_id",
+        ),
+        UniqueConstraint(
+            "notification_id",
+            "channel",
+            "subscription_id",
+            name="uq_notification_delivery_once",
+        ),
         {"postgresql_partition_by": "RANGE (attempted_at)"},
     )
 

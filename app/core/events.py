@@ -7,6 +7,7 @@ Provides an event bus for publishing and subscribing to domain events.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from abc import ABC
 from collections import defaultdict
@@ -86,10 +87,24 @@ def register_domain_event(cls: type[DomainEvent]) -> type[DomainEvent]:
 class UserCreated(DomainEvent):
     """Fired when a new user is created."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     user_id: UUID | None = None
     email: str = ""
 
     EVENT_TYPE: ClassVar[str] = "user.created"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreated:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @register_domain_event
@@ -97,10 +112,24 @@ class UserCreated(DomainEvent):
 class UserUpdated(DomainEvent):
     """Fired when a user profile is updated."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     user_id: UUID | None = None
     updated_fields: list[str] = field(default_factory=list)
 
     EVENT_TYPE: ClassVar[str] = "user.updated"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserUpdated:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @register_domain_event
@@ -108,9 +137,23 @@ class UserUpdated(DomainEvent):
 class UserDeleted(DomainEvent):
     """Fired when a user is deleted."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     user_id: UUID | None = None
 
     EVENT_TYPE: ClassVar[str] = "user.deleted"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserDeleted:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 # Auth Events
@@ -119,10 +162,24 @@ class UserDeleted(DomainEvent):
 class UserLoggedIn(DomainEvent):
     """Fired when a user logs in successfully."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     user_id: UUID | None = None
     ip_address: str | None = None
 
     EVENT_TYPE: ClassVar[str] = "auth.login"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserLoggedIn:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @register_domain_event
@@ -130,10 +187,24 @@ class UserLoggedIn(DomainEvent):
 class MfaEnabled(DomainEvent):
     """Fired when MFA is enabled for a user."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     user_id: UUID | None = None
     method: str = "totp"
 
     EVENT_TYPE: ClassVar[str] = "auth.mfa_enabled"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MfaEnabled:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 # Event Events
@@ -142,11 +213,25 @@ class MfaEnabled(DomainEvent):
 class EventCreated(DomainEvent):
     """Fired when a new event is created."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     event_id_entity: UUID | None = None
     organizer_id: UUID | None = None
     title: str = ""
 
     EVENT_TYPE: ClassVar[str] = "event.created"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EventCreated:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @register_domain_event
@@ -154,10 +239,24 @@ class EventCreated(DomainEvent):
 class EventUpdated(DomainEvent):
     """Fired when an existing event is updated."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     event_id_entity: UUID | None = None
     title: str = ""
 
     EVENT_TYPE: ClassVar[str] = "event.updated"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EventUpdated:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @register_domain_event
@@ -165,10 +264,24 @@ class EventUpdated(DomainEvent):
 class EventRegistration(DomainEvent):
     """Fired when a user registers for an event."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     event_id_entity: UUID | None = None
     user_id: UUID | None = None
 
     EVENT_TYPE: ClassVar[str] = "event.registration"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EventRegistration:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @register_domain_event
@@ -176,10 +289,24 @@ class EventRegistration(DomainEvent):
 class NewsCreated(DomainEvent):
     """Fired when a new news article is created."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     news_id: UUID | None = None
     title: str = ""
 
     EVENT_TYPE: ClassVar[str] = "news.created"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NewsCreated:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @register_domain_event
@@ -187,23 +314,138 @@ class NewsCreated(DomainEvent):
 class NewsUpdated(DomainEvent):
     """Fired when an existing news article is updated."""
 
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
     news_id: UUID | None = None
     title: str = ""
 
     EVENT_TYPE: ClassVar[str] = "news.updated"
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NewsUpdated:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
 
 # Notification Events
 @register_domain_event
 @dataclass
+class MessageSent(DomainEvent):
+    """Fired when a new message is sent."""
+
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
+    message_id: UUID | None = None
+    chat_id: UUID | None = None
+    sender_id: UUID | None = None
+    content_preview: str = ""
+
+    EVENT_TYPE: ClassVar[str] = "chat.message_sent"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MessageSent:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class ChatDeleted(DomainEvent):
+    """Fired when a chat is permanently deleted.
+
+    RED-04 (audit 2026-03-14): Recorded atomically with the DELETE in the same
+    DB transaction.  OutboxWorker picks it up and calls ws-hub cache invalidation
+    with at-least-once delivery guarantees — closing the 60 s BOLA window that
+    existed when invalidation was best-effort post-commit.
+    """
+
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
+
+    chat_id: UUID | None = None
+    participant_id: UUID | None = None
+
+    EVENT_TYPE: ClassVar[str] = "chat.deleted"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ChatDeleted:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
 class NotificationSent(DomainEvent):
     """Fired when a notification is sent."""
+
+    EVENT_VERSION: ClassVar[int] = 1  # Increment on breaking schema changes
 
     notification_id: str = ""
     user_id: UUID | None = None
     notification_type: str = ""
 
     EVENT_TYPE: ClassVar[str] = "notification.sent"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NotificationSent:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        # Add migration logic here when EVENT_VERSION is incremented
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class NotificationsRequested(DomainEvent):
+    """Fired when notifications need to be delivered to users.
+
+    RED-02 (audit 2026-03-14): Replaces direct push dispatch in
+    create_notifications_for_users(). The OutboxWorker picks this up and
+    triggers push delivery with at-least-once semantics.
+    """
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    notification_ids: list[str] = field(default_factory=list)
+    channel: str = "push"
+
+    EVENT_TYPE: ClassVar[str] = "notification.delivery_requested"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "NotificationsRequested":
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 class EventEmitterMixin:
@@ -245,9 +487,14 @@ def capture_domain_events(
             # or just use its __dict__ without the base DomainEvent fields.
 
             payload = {
-                k: v
-                for k, v in event_data.__dict__.items()
-                if k not in ("event_id", "occurred_at", "metadata")
+                "_schema_version": getattr(
+                    event_data, "EVENT_VERSION", 1
+                ),  # DEBT-02: schema version
+                **{
+                    k: v
+                    for k, v in event_data.__dict__.items()
+                    if k not in ("event_id", "occurred_at", "metadata")
+                },
             }
 
             # SEC-007 (Wave 6 audit): Safe ID extraction with typed validation.
@@ -265,6 +512,10 @@ def capture_domain_events(
                 event_type=event_data.event_type,
                 aggregate_type=obj.__class__.__name__,
                 aggregate_id=str(raw_id),
+                # DEBT-01: Populate aggregate_id_uuid when the ID is a UUID so the
+                # outbox worker can use DISTINCT ON (aggregate_id_uuid) for
+                # per-aggregate causal ordering across multiple workers.
+                aggregate_id_uuid=raw_id if isinstance(raw_id, UUID) else None,
                 payload=payload,
                 metadata_={
                     "event_id": event_data.event_id,
@@ -440,31 +691,28 @@ event_bus = EventBus()
 
 
 __all__ = [
-    # Core
+    "ChatDeleted",
     "DomainEvent",
     "EventBus",
-    # Event events
     "EventCreated",
-    # Persistence
     "EventEmitterMixin",
-    # Types
     "EventHandler",
     "EventMetadata",
     "EventMiddleware",
     "EventRegistration",
     "EventUpdated",
+    "MessageSent",
     "MfaEnabled",
-    # News events
     "NewsCreated",
     "NewsUpdated",
-    # Notification events
     "NotificationSent",
-    # User events
+    "NotificationsRequested",
     "UserCreated",
     "UserDeleted",
-    # Auth events
     "UserLoggedIn",
     "UserUpdated",
+    "capture_domain_events",
     "event_bus",
+    "register_domain_event",
     "register_event_listeners",
 ]

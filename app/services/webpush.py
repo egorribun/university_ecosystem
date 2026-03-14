@@ -94,14 +94,7 @@ def cleanup() -> None:
         _Session = None
 
     if session_factory is not None:
-        try:
-            # Use the class method instead of deprecated instance method
-            from sqlalchemy.orm import Session
-
-            # close_all_sessions is removed in SQLAlchemy 2.0
-            Session.close_all_sessions()  # type: ignore[attr-defined]
-        except Exception:  # pragma: no cover - defensive logging
-            logger.exception("Failed to close webpush session factory")
+        pass
 
     if engine is not None:
         try:
@@ -138,6 +131,21 @@ _TTL_BY_URGENCY: dict[str, int] = {
 _USER_RATE_LIMIT = 60
 _TOPIC_RATE_LIMIT = 300
 _RATE_LIMIT_WINDOW_SECONDS = 60
+
+# RED-07 (audit 2026-03-14): Cap concurrent push threads to prevent thread-pool
+# exhaustion under high notification load.  Python's default ThreadPoolExecutor
+# has min(32, os.cpu_count()+4) workers; saturating it with slow push vendors
+# blocks all asyncio.to_thread calls across the application.
+_PUSH_CONCURRENT_LIMIT = 30
+_push_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_push_semaphore() -> asyncio.Semaphore:
+    """Return the shared push semaphore, creating it lazily inside the event loop."""
+    global _push_semaphore
+    if _push_semaphore is None:
+        _push_semaphore = asyncio.Semaphore(_PUSH_CONCURRENT_LIMIT)
+    return _push_semaphore
 
 
 def json_dumps(obj: Any) -> str:
@@ -669,6 +677,43 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     )
 
 
+_PUSH_CALL_TIMEOUT_SECONDS = 15.0
+
+
+async def _send_push_async(
+    sub: PushSubscription, prepared: dict[str, Any]
+) -> WebPushResult:
+    """Async wrapper for send_web_push with concurrency limit and per-call timeout.
+
+    RED-07 (audit 2026-03-14): Semaphore prevents thread-pool exhaustion;
+    asyncio.timeout ensures stuck vendors do not hold threads indefinitely.
+    """
+    semaphore = _get_push_semaphore()
+    async with semaphore:
+        try:
+            async with asyncio.timeout(_PUSH_CALL_TIMEOUT_SECONDS):
+                return await asyncio.to_thread(send_web_push, sub, prepared)
+        except TimeoutError:
+            import uuid as _uuid
+
+            user_id = getattr(sub, "user_id", None)
+            _log_event(
+                "send",
+                level=logging.WARNING,
+                user_id=user_id,
+                endpoint=sub.endpoint,
+                status="error",
+                error="push_timeout",
+            )
+            return WebPushResult(
+                subscription_id=sub.id,
+                endpoint=str(sub.endpoint),
+                user_id=_uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+                status="error",
+                error="push delivery timed out",
+            )
+
+
 async def process_push_results(results: list[WebPushResult]) -> None:
     gone_ids = [r.subscription_id for r in results if r.status == "gone"]
     sent_ids = [r.subscription_id for r in results if r.status == "sent"]
@@ -750,7 +795,7 @@ async def send_to_user(
             topic=normalized_topic or payload_topic,
             user=getattr(sub, "user", None),
         )
-        tasks.append(asyncio.to_thread(send_web_push, sub, prepared))
+        tasks.append(_send_push_async(sub, prepared))
     if not tasks:
         _log_event(
             "dispatch",
@@ -821,7 +866,7 @@ async def broadcast_to_topic(
             topic=normalized_topic,
             user=getattr(sub, "user", None),
         )
-        tasks.append(asyncio.to_thread(send_web_push, sub, prepared))
+        tasks.append(_send_push_async(sub, prepared))
     results = await asyncio.gather(*tasks)
     await process_push_results(list(results))
 

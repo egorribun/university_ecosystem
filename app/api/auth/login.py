@@ -19,7 +19,6 @@ from fastapi import (
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import (
-    get_audit_service,
     get_current_user,
 )
 from app.auth import constants, mfa
@@ -32,6 +31,10 @@ from app.auth.schemas import (
     PendingMfaResponse,
 )
 from app.core.config import settings
+from app.core.fingerprint import (
+    store_mfa_challenge_fingerprints,
+    verify_mfa_fingerprint,
+)
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
@@ -67,7 +70,7 @@ async def login_passkey_start(
     request: Request,
     profile_service: FromDishka[UserProfileService],
     db: FromDishka[AsyncDatabaseSession],
-    audit: AuditService = Depends(get_audit_service),
+    audit: FromDishka[AuditService],
 ) -> WebAuthnAuthenticationOptionsOut:
     normalized_email = payload.email.strip().lower()
 
@@ -179,7 +182,7 @@ async def login(
     trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
 ) -> TokenWithProfile | PendingMfaResponse:
-    return await login_service.perform_login(
+    result = await login_service.perform_login(
         email=form_data.username,
         password=form_data.password,
         request=request,
@@ -187,6 +190,9 @@ async def login(
         bg_tasks=bg_tasks,
         trust_device=trust_device,
     )
+    if isinstance(result, PendingMfaResponse):
+        await store_mfa_challenge_fingerprints(request, result.methods)
+    return result
 
 
 @router.post(
@@ -203,7 +209,7 @@ async def login_json(
     bg_tasks: BackgroundTasks,
     login_service: FromDishka[LoginService],
 ) -> TokenWithProfile | PendingMfaResponse:
-    return await login_service.perform_login(
+    result = await login_service.perform_login(
         email=payload.email,
         password=payload.password,
         request=request,
@@ -211,6 +217,9 @@ async def login_json(
         bg_tasks=bg_tasks,
         trust_device=payload.trust_device,
     )
+    if isinstance(result, PendingMfaResponse):
+        await store_mfa_challenge_fingerprints(request, result.methods)
+    return result
 
 
 @router.post(
@@ -245,6 +254,14 @@ async def verify_mfa_challenge(
         # Invalid method
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA method"
+        )
+
+    # RED-03: Fingerprint check — reject if challenge was issued to a different client.
+    # verify_mfa_fingerprint handles Redis unavailability gracefully (returns True).
+    if not await verify_mfa_fingerprint(request, payload.challenge_token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="mfa_fingerprint_mismatch",
         )
 
     challenge, _ = await mfa.consume_challenge(

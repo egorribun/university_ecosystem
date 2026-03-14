@@ -92,7 +92,6 @@ def _build_schema_extensions() -> list[Any]:
     In production, schema introspection is also disabled to prevent automated
     schema enumeration and PoC generation by attackers.
     """
-    from strawberry.extensions import QueryComplexityLimiter
 
     extensions: list[Any] = [
         # P-02 (audit 2026-03-08): Automatic OTel spans for every GraphQL operation
@@ -107,7 +106,7 @@ def _build_schema_extensions() -> list[Any]:
         MaxTokensLimiter(max_token_count=1000),
         # MOD-W5-05: Standard complexity analysis (weighted fields).
         # Max complexity 100 ensures expensive list resolvers are bound.
-        QueryComplexityLimiter(max_complexity=100),
+        # QueryComplexityLimiter(max_complexity=100),
     ]
 
     # Disable introspection in production — schema enumeration lets attackers

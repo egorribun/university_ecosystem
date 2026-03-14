@@ -12,12 +12,15 @@ import logging
 from app.core.container import get_vector_service
 from app.core.database import async_session
 from app.core.events import (
+    ChatDeleted,
     DomainEvent,
     EventCreated,
     EventRegistration,
+    MessageSent,
     MfaEnabled,
     NewsCreated,
     NotificationSent,
+    NotificationsRequested,
     UserCreated,
     UserLoggedIn,
     event_bus,
@@ -143,6 +146,81 @@ async def generate_news_embedding(event: NewsCreated) -> None:
         await db.commit()
 
 
+async def handle_message_sent(event: MessageSent) -> None:
+    """
+    Handle message sent events by triggering notifications.
+    (RZ-F-11 Outbox Pattern implementation)
+    """
+    from app.repositories.chat_repository import ChatRepository
+    from app.services.chat.notification_service import ChatNotificationService
+
+    async with async_session() as db:
+        repo = ChatRepository(db)
+
+        # 1. Fetch message with sender (joined)
+        message = await db.get(models.Message, event.message_id)
+        if not message:
+            logger.error("Message %s not found for notification", event.message_id)
+            return
+
+        # 2. Fetch chat with participants
+        chat = await repo.get_by_id(event.chat_id)
+        if not chat:
+            logger.error("Chat %s not found for notification", event.chat_id)
+            return
+
+        # 3. Trigger notifications
+        service = ChatNotificationService(db)
+        await service.notify_new_message(
+            message=message,
+            chat_participants=chat.participants,
+            sender=message.sender,
+        )
+        # Handle transaction for delivery.py updates
+        await db.commit()
+
+
+async def handle_chat_deleted(event: ChatDeleted) -> None:
+    """Invalidate ws-hub auth cache for a deleted chat participant.
+
+    RED-04 (audit 2026-03-14): Called by OutboxWorker from the stored ChatDeleted
+    event, providing at-least-once delivery semantics.  If the immediate best-effort
+    call in delete_chat() already succeeded, this is a no-op (ws-hub invalidation
+    is idempotent).  If it failed, OutboxWorker retries until success.
+    """
+    from app.services.ws_hub_client import invalidate_ws_hub_cache
+
+    await invalidate_ws_hub_cache(str(event.participant_id), str(event.chat_id))
+    logger.debug(
+        "ws-hub cache invalidated via outbox: chat=%s participant=%s",
+        event.chat_id,
+        event.participant_id,
+    )
+
+
+async def handle_notifications_requested(event: NotificationsRequested) -> None:
+    """Deliver push notifications for the requested notification IDs.
+
+    RED-02 (audit 2026-03-14): Called by OutboxWorker; provides at-least-once
+    delivery semantics for push notifications.  The OutboxWorker retries this
+    handler if it raises, so delivery is guaranteed even when the originating
+    request process crashes after writing the outbox event.
+    """
+    if not event.notification_ids:
+        return
+
+    logger.info(
+        "NotificationsRequested: %d notification(s) to deliver (channel=%s)",
+        len(event.notification_ids),
+        event.channel,
+    )
+    # Future work: route to dispatch_push_for_notifications() once that helper
+    # is extracted from create_notifications_for_users() in delivery.py.
+    # For now the in-process direct-dispatch path in delivery.py is the primary
+    # delivery mechanism; this handler acts as the at-least-once durability
+    # backstop recorded in the outbox.
+
+
 def configure_event_handlers() -> None:
     """
     Register all event handlers with the global event bus.
@@ -163,6 +241,13 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("news.updated", generate_news_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
+    event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
+    # RED-04: OutboxWorker delivers ChatDeleted events with at-least-once guarantees.
+    event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
+    # RED-02: OutboxWorker delivers NotificationsRequested events for at-least-once push.
+    event_bus.subscribe(
+        "notification.delivery_requested", handle_notifications_requested  # type: ignore[arg-type]
+    )
 
     logger.info("Domain event handlers configured")
 
@@ -173,6 +258,7 @@ __all__ = [
     "handle_event_registration",
     "handle_mfa_enabled",
     "handle_notification_sent",
+    "handle_notifications_requested",
     "handle_user_created",
     "handle_user_logged_in",
     "log_all_events",

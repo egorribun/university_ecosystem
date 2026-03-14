@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
@@ -34,6 +35,7 @@ from app.api.ws.presence import (
     invalidate_presence_audience_cache,
 )
 from app.core.config import settings
+from app.core.events import EventEmitterMixin, MessageSent
 from app.core.exceptions import BusinessRuleViolation
 from app.models.chat import Attachment
 from app.models.models import Message
@@ -43,6 +45,22 @@ from app.schemas.chat import (
     MessageResponse,
     PresenceStatus,
 )
+
+
+def _make_idempotency_key(
+    chat_id: uuid.UUID, user_id: uuid.UUID, client_key: str
+) -> str:
+    """Build a Redis idempotency key whose components cannot be reverse-enumerated.
+
+    BLAKE2b (16-byte digest) is cryptographically collision-resistant and
+    faster than SHA-256 on 64-bit CPUs.  The ``idm:msg:`` prefix keeps the
+    key recognisable in Redis MONITOR / keyspace notifications without leaking
+    chat_id or user_id.
+    """
+
+    raw = f"{chat_id}:{user_id}:{client_key}"
+    digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
+    return f"idm:msg:{digest}"
 
 
 class ChatCommandService:
@@ -72,7 +90,7 @@ class ChatCommandService:
 
         participant = await self.repository.get_user(participant_id)
         ensure_exists(participant, "users", locale)
-        assert participant is not None  # nosec B101
+        assert participant is not None  # nosec B101  # noqa: S101
 
         from app.deps.cache import get_cache_client
 
@@ -146,8 +164,8 @@ class ChatCommandService:
             from app.deps.cache import get_cache_client
 
             _cache = await get_cache_client()
-            _idempotency_cache_key = (
-                f"idempotency:msg:{chat_id}:{user.id}:{idempotency_key}"
+            _idempotency_cache_key = _make_idempotency_key(
+                chat_id, user.id, idempotency_key
             )
             _cached = await _cache.get(_idempotency_cache_key)
             if _cached:
@@ -177,7 +195,7 @@ class ChatCommandService:
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         # Check participation (TD-4 security audit)
         is_participant = await self.repository.check_participant(chat_id, user.id)
@@ -191,6 +209,41 @@ class ChatCommandService:
         if not content.strip() and not uploads:
             raise_validation_error("errors.chat.empty_message", locale)
 
+        # D-03 (audit 2026-03-08): Hard deadline on each individual upload so a
+        # hung ClamAV scan or MinIO connection does not block the ASGI worker
+        # forever.  30s is generous for normal uploads and tight enough to
+        # surface genuine infrastructure failures quickly.
+        _UPLOAD_TIMEOUT_SECONDS = 30.0
+
+        # ── Phase 1: Upload processing (NO DB writes yet) ────────────────────
+        # Process ALL uploads before touching the DB.  If any upload fails, no
+        # Message record exists and no rollback is required — the error path is
+        # trivially clean.
+        from typing import Any
+
+        processed_attachments: list[dict[str, Any]] = []
+        saved_urls: list[str] = []
+        if uploads:
+            try:
+                for upload in uploads:
+                    try:
+                        async with asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
+                            meta = await self.attachment_service.process_upload(
+                                upload, chat_id, locale=locale
+                            )
+                    except TimeoutError:
+                        raise_validation_error("errors.files.upload_timeout", locale)
+                    saved_urls.append(str(meta["url"]))
+                    processed_attachments.append(meta)
+            except Exception:
+                await self.attachment_service.cleanup_files(saved_urls)
+                raise
+
+        # ── Phase 2: Atomic DB write ─────────────────────────────────────────
+        # All uploads succeeded — now write Message + Attachments + MessageSent
+        # event in a single transaction.  If this fails only a DB rollback is
+        # needed; the already-uploaded files stay (acceptable: no user-visible
+        # duplicate, files will be GC'd by the orphan-cleanup job).
         message = Message(
             chat_id=chat_id,
             sender_id=user.id,
@@ -198,40 +251,35 @@ class ChatCommandService:
         )
         await self.repository.create_message(message)
 
-        # D-03 (audit 2026-03-08): Hard deadline on each individual upload so a
-        # hung ClamAV scan or MinIO connection does not block the ASGI worker
-        # forever.  30s is generous for normal uploads and tight enough to
-        # surface genuine infrastructure failures quickly.
-        _UPLOAD_TIMEOUT_SECONDS = 30.0
+        for meta in processed_attachments:
+            attachment = Attachment(
+                message=message,
+                url=str(meta["url"]),
+                file_type=str(meta["file_type"]),
+                filename=str(meta["filename"]),
+                size=int(str(meta["size"])),
+            )
+            self.repository.add(attachment)
 
-        saved_urls: list[str] = []
-        try:
-            for upload in uploads:
-                try:
-                    async with asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
-                        meta = await self.attachment_service.process_upload(
-                            upload, chat_id, locale=locale
-                        )
-                except TimeoutError:
-                    await self.attachment_service.cleanup_files(saved_urls)
-                    raise_validation_error("errors.files.upload_timeout", locale)
-                saved_urls.append(str(meta["url"]))
-                attachment = Attachment(
-                    message=message,
-                    url=str(meta["url"]),
-                    file_type=str(meta["file_type"]),
-                    filename=str(meta["filename"]),
-                    size=int(str(meta["size"])),
-                )
-                self.repository.add(attachment)
+        await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
 
-            await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
-            async with self.uow:
-                await self.uow.commit()
-        except Exception:
-            await self.uow.rollback()
-            await self.attachment_service.cleanup_files(saved_urls)
-            raise
+        # RZ-F-11 (Outbox Pattern): Atomic recording of the message intent.
+        # EventEmitterMixin captures this after_flush and stores in stored_events.
+        # record_event() is called BEFORE commit so it lands in the same
+        # transaction as the Message INSERT — atomicity guaranteed.
+        # Cast: Message inherits EventEmitterMixin (models/chat.py), but mypy
+        # cannot resolve SQLAlchemy's multi-inheritance graph statically.
+        cast(EventEmitterMixin, message).record_event(
+            MessageSent(
+                message_id=message.id,
+                chat_id=message.chat_id,
+                sender_id=message.sender_id,
+                content_preview=message.content[:50],
+            )
+        )
+
+        async with self.uow:
+            await self.uow.commit()
 
         # Reload message with attachments for the response
         reloaded = await self.repository.get_last_messages([message.id])
@@ -261,10 +309,11 @@ class ChatCommandService:
                 ),
             )
 
-        # Notify participants
-        await self.notification_service.notify_new_message(
-            message, chat.participants, user
-        )
+        # RZ-F-11: Notification handling moved to OutboxWorker / EventHandlers
+        # for reliability. Direct call removed.
+        # await self.notification_service.notify_new_message(
+        #     message, chat.participants, user
+        # )
 
         # ── Idempotency store (D-02 / BE-02) ────────────────────────────────
         # BE-02 (audit 2026-03-08 Wave 5): Store only the message ID rather than
@@ -291,7 +340,7 @@ class ChatCommandService:
         """Mark all messages in a chat as read by the user."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -307,7 +356,7 @@ class ChatCommandService:
         """Delete all messages in a chat (but keep the chat)."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -341,7 +390,7 @@ class ChatCommandService:
         """Permanently delete a chat."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -354,6 +403,25 @@ class ChatCommandService:
         p_ids = [p.id for p in chat.participants]
 
         try:
+            # RED-04 (audit 2026-03-14): Record ChatDeleted outbox events BEFORE
+            # the DELETE commits so ws-hub cache invalidation is durable.
+            # StoredEvent rows land in the SAME transaction as the chat deletion —
+            # either both succeed or neither does.  OutboxWorker delivers them with
+            # at-least-once semantics, closing the 60s BOLA window that existed
+            # when invalidation was a best-effort post-commit network call.
+            from app.core.events import ChatDeleted as ChatDeletedEvent
+            from app.models.domain_events import StoredEvent as _StoredEvent
+
+            for _pid in p_ids:
+                self.repository.add(
+                    _StoredEvent(
+                        event_type=ChatDeletedEvent.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={"chat_id": str(chat_id), "participant_id": str(_pid)},
+                    )
+                )
+
             await self.repository.delete_chat(chat_id)
             async with self.uow:
                 await self.uow.commit()
@@ -364,13 +432,10 @@ class ChatCommandService:
             await self.uow.rollback()
             raise
 
-        # R-02 (audit 2026-03-08): Invalidate ws-hub auth cache immediately after
-        # deleting the chat so participants lose room authorization without waiting
-        # for the 60s TTL to expire (BOLA-01 — stale cache window after deletion).
-        # BE-01 (audit 2026-03-08 Wave 5): Use the module-level singleton via
-        # invalidate_ws_hub_cache() — creating a new WsHubClient() per call
-        # bypasses persistent connection pooling (RZ-F-04) and leaks httpx clients.
-        # asyncio.gather parallelises N invalidations instead of serial awaits.
+        # R-02 (audit 2026-03-08) / RED-04 (audit 2026-03-14):
+        # Best-effort immediate invalidation — fast-path that works when ws-hub
+        # is healthy.  If this call fails, the ChatDeleted outbox events recorded
+        # above guarantee that OutboxWorker will retry until successful.
         from app.services.ws_hub_client import invalidate_ws_hub_cache
 
         await asyncio.gather(

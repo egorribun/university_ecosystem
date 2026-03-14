@@ -20,6 +20,13 @@ Create Date: 2026-03-13
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy import text
+
+_CRON_JOB_NAMES: tuple[str, ...] = (
+    "expire-password-reset-tokens",
+    "expire-mfa-challenges",
+    "clean-trusted-devices",
+)
 
 revision: str = "202603130002"
 down_revision: str | None = "202603130001"
@@ -27,14 +34,22 @@ branch_labels = None
 depends_on = None
 
 
+def _is_postgresql() -> bool:
+    return op.get_bind().dialect.name == "postgresql"
+
+
 def upgrade() -> None:
+    if not _is_postgresql():
+        return
+
     # Enable pg_cron if not already present.  `checkfirst` equivalent: IF NOT EXISTS.
     # The superuser who runs `alembic upgrade head` must have CREATE EXTENSION rights.
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_cron")
+    op.execute(text("CREATE EXTENSION IF NOT EXISTS pg_cron"))
 
     # 1. Expire unused password-reset tokens hourly to keep the table small.
     op.execute(
-        """
+        text(
+            """
         SELECT cron.schedule(
             'expire-password-reset-tokens',
             '0 * * * *',
@@ -42,12 +57,14 @@ def upgrade() -> None:
               WHERE expires_at < NOW() AND used IS FALSE$$
         )
         """
+        )
     )
 
     # 2. Mark pending MFA challenges as 'expired' every 15 minutes.
     #    Uses the ChallengeState enum added in migration 202603130001.
     op.execute(
-        """
+        text(
+            """
         SELECT cron.schedule(
             'expire-mfa-challenges',
             '*/15 * * * *',
@@ -57,28 +74,33 @@ def upgrade() -> None:
                 AND state = 'pending'$$
         )
         """
+        )
     )
 
     # 3. Prune expired trusted-device tokens once a month at 03:00 on the 1st.
     op.execute(
-        """
+        text(
+            """
         SELECT cron.schedule(
             'clean-trusted-devices',
             '0 3 1 * *',
             $$DELETE FROM trusted_devices WHERE expires_at < NOW()$$
         )
         """
+        )
     )
 
 
 def downgrade() -> None:
+    if not _is_postgresql():
+        return
+
     # Remove the three scheduled jobs by name; ignore if they don't exist.
-    for job_name in (
-        "expire-password-reset-tokens",
-        "expire-mfa-challenges",
-        "clean-trusted-devices",
-    ):
+    for job_name in _CRON_JOB_NAMES:
         op.execute(
-            f"SELECT cron.unschedule('{job_name}') "
-            f"WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = '{job_name}')"
+            text(
+                "SELECT cron.unschedule(:job_name) "
+                "WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = :job_name)"
+            ),
+            {"job_name": job_name},
         )

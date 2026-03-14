@@ -187,6 +187,14 @@ jobs:
               shell: pwsh
               run: uv run alembic upgrade head
 
+            - name: Test migration downgrade safety (MOD-03)
+              shell: pwsh
+              run: |
+                  uv run alembic upgrade head
+                  uv run alembic downgrade -1
+                  uv run alembic upgrade head
+                  echo "Migration round-trip succeeded"
+
             - name: Run integration tests
               shell: pwsh
               run: uv run pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance
