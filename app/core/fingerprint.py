@@ -55,10 +55,11 @@ async def store_mfa_challenge_fingerprints(
 ) -> None:
     """Store a request fingerprint in Redis for each pending MFA challenge token.
 
-    RED-03: Fingerprints are compared at verify time (``verify_mfa_challenge``
-    and ``verify_step_up``) to detect token replay from a different client after
-    interception.  A separate key is stored for every method so the client can
-    freely choose which method to use without losing protection.
+    RED-03: Fingerprints are compared at verify time via ``verify_mfa_fingerprint``.
+    Both the login MFA and step-up MFA paths route through ``verify_mfa_challenge``
+    which calls this function's counterpart.  A separate key is stored for every
+    method so the client can freely choose which method to use without losing
+    protection.
 
     Args:
         request:  The current FastAPI ``Request`` (used to extract IP + UA).
@@ -88,3 +89,53 @@ async def store_mfa_challenge_fingerprints(
             "Could not store MFA fingerprints in Redis — replay protection degraded",
             exc_info=True,
         )
+
+
+async def verify_mfa_fingerprint(
+    request: Request,
+    challenge_token: str,
+) -> bool:
+    """Verify that the current request matches the fingerprint stored at challenge issuance.
+
+    RED-03: Called before ``mfa.consume_challenge()`` in any endpoint that consumes
+    a MFA challenge token.  Both login and step-up flows route through
+    ``verify_mfa_challenge`` in ``app.api.auth.login``, so a single call site
+    provides full coverage.
+
+    Returns:
+        ``True``  — fingerprint matches, or Redis is unavailable (graceful degradation),
+                    or no fingerprint was stored (challenge pre-dates RED-03).
+        ``False`` — stored fingerprint exists AND differs from the current request.
+
+    The caller must reject with HTTP 403 ``mfa_fingerprint_mismatch`` on ``False``.
+    Graceful degradation on Redis errors is logged at WARNING (same severity as
+    ``store_mfa_challenge_fingerprints``) so on-call alerts treat them equivalently.
+    """
+    from app.deps.cache import get_cache_client
+
+    try:
+        cache = await get_cache_client()
+        stored_raw = await cache.get(f"mfa:fp:{challenge_token}")
+    except Exception:
+        # Redis unavailable — don't block auth, but log at WARNING so both store
+        # and verify degradations appear at the same alert threshold.
+        logger.warning(
+            "mfa.fingerprint_cache_unavailable — skipping fingerprint check",
+            exc_info=True,
+        )
+        return True  # degrade gracefully
+
+    if stored_raw is None:
+        # No fingerprint stored — challenge pre-dates RED-03 or already expired.
+        return True
+
+    stored: str = stored_raw.decode() if isinstance(stored_raw, bytes) else stored_raw
+    current = extract_request_fingerprint(request)
+    if stored != current:
+        logger.warning(
+            "mfa.fingerprint_mismatch",
+            extra={"challenge_token_prefix": challenge_token[:8]},
+        )
+        return False
+
+    return True

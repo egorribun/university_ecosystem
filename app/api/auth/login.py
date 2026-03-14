@@ -32,8 +32,8 @@ from app.auth.schemas import (
 )
 from app.core.config import settings
 from app.core.fingerprint import (
-    extract_request_fingerprint,
     store_mfa_challenge_fingerprints,
+    verify_mfa_fingerprint,
 )
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
@@ -256,25 +256,13 @@ async def verify_mfa_challenge(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA method"
         )
 
-    # RED-03: Fingerprint check — reject if challenge was issued to a different client
-    _fp_stored: bytes | None = None
-    try:
-        from app.deps.cache import get_cache_client as _get_cache
-
-        _fp_stored = await (await _get_cache()).get(f"mfa:fp:{payload.challenge_token}")
-    except Exception as exc:  # Redis unavailable — degrade gracefully, don't block auth
-        logger.debug("mfa.fingerprint_cache_unavailable", exc_info=exc)
-    if _fp_stored is not None:
-        _fp_current = extract_request_fingerprint(request)
-        if _fp_stored.decode() != _fp_current:
-            logger.warning(
-                "mfa.fingerprint_mismatch",
-                extra={"challenge_token_prefix": payload.challenge_token[:8]},
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="mfa_fingerprint_mismatch",
-            )
+    # RED-03: Fingerprint check — reject if challenge was issued to a different client.
+    # verify_mfa_fingerprint handles Redis unavailability gracefully (returns True).
+    if not await verify_mfa_fingerprint(request, payload.challenge_token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="mfa_fingerprint_mismatch",
+        )
 
     challenge, _ = await mfa.consume_challenge(
         db,

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.schemas.schemas import MfaTotpEnrollmentOut
 
@@ -62,7 +62,14 @@ class TotpEnrollmentConfirmIn(BaseModel):
 
 class MfaVerifyIn(BaseModel):
     method: Literal["totp", "webauthn", "recovery_code"]
-    challenge_token: str
+    # Constrain challenge_token to prevent Redis key amplification attacks:
+    # min 32 chars (all legitimate tokens are UUIDs or longer), max 128 chars,
+    # and restrict to the character set used by the server's token generator.
+    challenge_token: str = Field(
+        min_length=32,
+        max_length=128,
+        pattern=r"^[a-zA-Z0-9_\-]+$",
+    )
     code: str | None = None
     webauthn_response: dict[str, Any] | None = None
     trust_device: bool = False
