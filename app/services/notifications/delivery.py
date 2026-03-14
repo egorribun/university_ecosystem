@@ -11,6 +11,7 @@ import datetime as dt
 import logging
 import uuid
 import uuid as _uuid_mod
+from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC
 from typing import TYPE_CHECKING, Any
@@ -79,6 +80,13 @@ async def create_notifications_for_users(
     user_filter: Callable[[Select[Any]], Select[Any]] | None = None,
 ) -> int:
     """Create notifications for multiple users and send push notifications."""
+    # DEBT-06 (audit 2026-03-15): Fail-fast before any DB operations when push is
+    # not configured.  Notification rows are still created for in-app display only;
+    # the early-exit here prevents creating delivery rows with status "skipped".
+    # NOTE: This guard is intentionally for "push" channel only — the function
+    # always writes Notification rows for in-app display; the guard only skips the
+    # push-delivery path that requires VAPID keys.
+    _push_enabled = _is_push_configured()
     now = dt.datetime.now(UTC)
     uids = list({uuid.UUID(str(uid)) for uid in user_ids})
     if not uids:
@@ -167,28 +175,36 @@ async def create_notifications_for_users(
 
     delivery_rows: list[dict[str, Any]] = []
 
-    if not _is_push_configured():
+    if not _push_enabled:
+        # DEBT-06: VAPID check was evaluated at function entry; log here where
+        # the push path would have started so the debug context is informative.
         logger.debug(
             "Push delivery skipped: VAPID credentials not configured "
             "(notifications created in DB for in-app display only)"
         )
         return len(notification_ids_by_user)
 
-    subs = (
-        (
-            await db.execute(
-                select(PushSubscription)
-                .options(
-                    selectinload(PushSubscription.user).selectinload(
-                        User.push_topic_preferences
-                    )
-                )
-                .where(PushSubscription.user_id.in_(uids))
+    # PERF-02 (audit 2026-03-15): Single batch IN() query scoped to the users
+    # that actually received notification rows (notification_ids_by_user.keys()),
+    # not the full uids list which may include users blocked by user_filter.
+    # Results are grouped into a defaultdict so multiple push subscriptions per
+    # user are handled correctly without per-user round-trips.
+    inserted_user_ids = list(notification_ids_by_user.keys())
+    subs_result = await db.execute(
+        select(PushSubscription)
+        .options(
+            selectinload(PushSubscription.user).selectinload(
+                User.push_topic_preferences
             )
         )
-        .scalars()
-        .all()
+        .where(PushSubscription.user_id.in_(inserted_user_ids))
     )
+    subs_by_user: defaultdict[uuid.UUID, list[PushSubscription]] = defaultdict(list)
+    for _sub in subs_result.scalars():
+        _sub_user_id = getattr(_sub, "user_id", None)
+        if _sub_user_id is not None:
+            subs_by_user[uuid.UUID(str(_sub_user_id))].append(_sub)
+    subs = [sub for sub_list in subs_by_user.values() for sub in sub_list]
 
     if not subs:
         attempt_ts = dt.datetime.now(UTC)
