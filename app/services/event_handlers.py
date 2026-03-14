@@ -15,6 +15,7 @@ from app.core.events import (
     DomainEvent,
     EventCreated,
     EventRegistration,
+    MessageSent,
     MfaEnabled,
     NewsCreated,
     NotificationSent,
@@ -143,6 +144,40 @@ async def generate_news_embedding(event: NewsCreated) -> None:
         await db.commit()
 
 
+async def handle_message_sent(event: MessageSent) -> None:
+    """
+    Handle message sent events by triggering notifications.
+    (RZ-F-11 Outbox Pattern implementation)
+    """
+    from app.repositories.chat_repository import ChatRepository
+    from app.services.chat.notification_service import ChatNotificationService
+
+    async with async_session() as db:
+        repo = ChatRepository(db)
+
+        # 1. Fetch message with sender (joined)
+        message = await db.get(models.Message, event.message_id)
+        if not message:
+            logger.error("Message %s not found for notification", event.message_id)
+            return
+
+        # 2. Fetch chat with participants
+        chat = await repo.get_by_id(event.chat_id)
+        if not chat:
+            logger.error("Chat %s not found for notification", event.chat_id)
+            return
+
+        # 3. Trigger notifications
+        service = ChatNotificationService(db)
+        await service.notify_new_message(
+            message=message,
+            chat_participants=chat.participants,
+            sender=message.sender,
+        )
+        # Handle transaction for delivery.py updates
+        await db.commit()
+
+
 def configure_event_handlers() -> None:
     """
     Register all event handlers with the global event bus.
@@ -163,6 +198,7 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("news.updated", generate_news_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
+    event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
 
     logger.info("Domain event handlers configured")
 

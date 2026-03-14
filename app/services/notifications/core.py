@@ -123,17 +123,25 @@ def _build_delivery_row(
     *,
     status: str,
     channel: str = "webpush",
+    subscription_id: uuid.UUID | None = None,
     attempted_at: dt.datetime | None = None,
     delivered: bool = False,
     status_code: int | None = None,
     detail: str | None = None,
 ) -> dict[str, Any]:
-    """Build a notification delivery row for database insertion."""
+    """Build a notification delivery row for database insertion.
+
+    DEBT-03: ``subscription_id`` is now a first-class column rather than
+    being embedded in the free-text ``detail`` field.  Callers should pass the
+    ``PushSubscription.id`` for webpush rows so the deduplication index
+    ``ix_notification_deliveries_dedup`` can be used for duplicate detection.
+    """
     attempt_ts = attempted_at or dt.datetime.now(UTC)
     row: dict[str, Any] = {
         "notification_id": notification_id,
         "notification_created_at": notification_created_at,
         "channel": channel,
+        "subscription_id": subscription_id,
         "status": status,
         "attempted_at": attempt_ts,
         "delivered_at": attempt_ts if delivered else None,

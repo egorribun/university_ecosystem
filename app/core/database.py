@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from sqlalchemy import event, text
+from sqlalchemy import Engine, event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -37,6 +37,17 @@ def configure_database() -> None:
     Must be called at application startup.
     """
     sqlite3.register_adapter(datetime, adapt_datetime)
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
+    """Enable WAL mode and foreign keys for SQLite."""
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 logger = get_logger(__name__)
@@ -140,6 +151,7 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
     }
     if current_settings.database_url.startswith("sqlite"):
         kwargs["poolclass"] = NullPool
+        kwargs["connect_args"] = {"timeout": 30.0}
     else:
         # PERF-009 (audit 2026-03-04): Optimize Postgres pool efficiency and safety
         kwargs["connect_args"] = {

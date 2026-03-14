@@ -101,7 +101,10 @@
       "Bash(git worktree:*)",
       "Bash(python -m pytest tests/ -x -q --ignore=tests/integration --timeout=30 -p no:warnings)",
       "Bash(python -m pytest tests/test_audit_logs.py tests/test_auth_cookie_flow.py -x -q --timeout=30 -p no:warnings)",
-      "Bash(pre-commit run:*)"
+      "Bash(pre-commit run:*)",
+      "Bash(ls -lh /c/Users/egorribun/Documents/university_ecosystem/AUDIT* /c/Users/egorribun/Documents/university_ecosystem/app/models/*.py)",
+      "WebSearch",
+      "Bash(python -m alembic heads)"
     ]
   }
 }

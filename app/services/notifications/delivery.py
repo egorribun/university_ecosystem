@@ -242,7 +242,7 @@ async def create_notifications_for_users(
                         uuid.UUID(str(notification_id)),
                         now,
                         status="skipped_topic",
-                        detail=f"subscription:{sub.id}",
+                        subscription_id=uuid.UUID(str(sub.id)),
                     )
                 )
                 continue
@@ -261,18 +261,16 @@ async def create_notifications_for_users(
             for (sub, notification_id), result in zip(send_jobs, results, strict=False):
                 attempt_ts = dt.datetime.now(UTC)
                 if isinstance(result, WebPushResult):
-                    detail_parts: list[str] = [f"subscription:{sub.id}"]
-                    if result.error:
-                        detail_parts.append(result.error)
                     delivery_rows.append(
                         _build_delivery_row(
                             uuid.UUID(str(notification_id)),
                             now,
                             status=result.status,
+                            subscription_id=uuid.UUID(str(sub.id)),
                             attempted_at=attempt_ts,
                             delivered=result.status == "sent",
                             status_code=result.status_code,
-                            detail="; ".join(detail_parts),
+                            detail=result.error or None,
                         )
                     )
                     if result.status == "sent":
@@ -290,8 +288,9 @@ async def create_notifications_for_users(
                             uuid.UUID(str(notification_id)),
                             now,
                             status="error",
+                            subscription_id=uuid.UUID(str(sub.id)),
                             attempted_at=attempt_ts,
-                            detail=f"subscription:{sub.id}; exception:{result}",
+                            detail=f"exception:{result}",
                         )
                     )
                     metrics.record_notification_failed(

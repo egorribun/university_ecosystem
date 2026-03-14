@@ -235,6 +235,11 @@ async def test_create_notifications_records_webpush_deliveries(
 
     monkeypatch.setattr(notifications_delivery, "send_web_push", _fake_send)
 
+    async def _fake_process_results(_results):
+        pass
+
+    monkeypatch.setattr(webpush_module, "process_push_results", _fake_process_results)
+
     created = await create_notifications_for_users(
         db_session,
         title="Hello",
@@ -522,7 +527,7 @@ async def test_event_creation_enqueues_notifications(
     monkeypatch: pytest.MonkeyPatch,
 ):
     admin = await user_factory(role="admin")
-    password = "Adm1nPass!"
+    password = "Adm1nPass!"  # noqa: S105
     admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 
@@ -568,7 +573,7 @@ async def test_news_creation_enqueues_notifications(
     monkeypatch: pytest.MonkeyPatch,
 ):
     admin = await user_factory(role="admin")
-    password = "Adm1nPass!"
+    password = "Adm1nPass!"  # noqa: S105
     admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 

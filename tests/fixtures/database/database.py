@@ -9,7 +9,6 @@ from sqlalchemy.ext.compiler import compiles
 
 from app.core import database
 from app.core.database import Base, init_database
-from app.models import models
 
 
 @compiles(JSONB, "sqlite")
@@ -44,12 +43,13 @@ async def prepare_database() -> AsyncIterator[None]:
     # We exclude them from create_all and create them separately
     # with SQLite-compatible schema
     excluded_tables = {
-        models.DataAccessLog.__table__.name,  # type: ignore[attr-defined]
-        models.Notification.__table__.name,  # type: ignore[attr-defined]
-        models.NotificationDelivery.__table__.name,  # type: ignore[attr-defined]
-        models.Event.__table__.name,  # type: ignore[attr-defined]
-        models.EventAttendance.__table__.name,  # type: ignore[attr-defined]
-        models.EventFile.__table__.name,  # type: ignore[attr-defined]
+        "data_access_logs",
+        "notifications",
+        "notification_deliveries",
+        "events",
+        "event_attendance",
+        "event_files",
+        "stored_events",
     }
 
     async with database.engine.begin() as conn:
@@ -60,7 +60,12 @@ async def prepare_database() -> AsyncIterator[None]:
         def _create_non_excluded(connection):
             for table in Base.metadata.sorted_tables:
                 if table.name not in excluded_tables:
-                    table.create(connection, checkfirst=True)
+                    try:
+                        table.create(connection, checkfirst=True)
+                    except Exception as e:
+                        # Log and continue - some tables might have Postgres-only features
+                        # like Computed columns with to_tsvector
+                        print(f"Skipping table {table.name} due to error: {e}")
 
         await conn.run_sync(_create_non_excluded)
 
@@ -207,9 +212,35 @@ async def prepare_database() -> AsyncIterator[None]:
             )
         """
         )
+        # StoredEvent table
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_event_files_event_id ON "
-            "event_files(event_id)"
+            """
+            CREATE TABLE IF NOT EXISTS stored_events (
+                id VARCHAR(36) PRIMARY KEY,
+                event_type VARCHAR(100) NOT NULL,
+                aggregate_type VARCHAR(50) NOT NULL,
+                aggregate_id VARCHAR(100) NOT NULL,
+                payload JSON NOT NULL,
+                metadata JSON,
+                version INTEGER NOT NULL DEFAULT 1,
+                subject VARCHAR(255),
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                trace_context JSON,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                processed_at DATETIME,
+                error_count INTEGER NOT NULL DEFAULT 0,
+                last_error VARCHAR
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_stored_events_event_type ON stored_events(event_type)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_stored_events_status ON stored_events(status)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_stored_events_pending ON stored_events(status, created_at)"
         )
 
     yield

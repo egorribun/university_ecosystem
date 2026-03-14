@@ -23,6 +23,14 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Outbox Pattern fields (RZ-F-11)
+    subject: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )
+    trace_context: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )
