@@ -40,6 +40,11 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
     error_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
     last_error: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # PERF-03: Partial covering indexes (cannot be expressed in SQLAlchemy
+    # mapped_column / Index DSL; created via raw SQL in migration 202603140002):
+    #   ix_stored_events_pending_created          (created_at, id) WHERE processed_at IS NULL
+    #   ix_stored_events_pending_aggregate_created (aggregate_id, created_at, id) WHERE processed_at IS NULL
+
     def __repr__(self) -> str:
         return (
             f"<StoredEvent(type={self.event_type}, "
