@@ -34,6 +34,7 @@ from app.api.ws.presence import (
     invalidate_presence_audience_cache,
 )
 from app.core.config import settings
+from app.core.events import MessageSent
 from app.core.exceptions import BusinessRuleViolation
 from app.models.chat import Attachment
 from app.models.models import Message
@@ -43,6 +44,23 @@ from app.schemas.chat import (
     MessageResponse,
     PresenceStatus,
 )
+
+
+def _make_idempotency_key(
+    chat_id: uuid.UUID, user_id: uuid.UUID, client_key: str
+) -> str:
+    """Build a Redis idempotency key whose components cannot be reverse-enumerated.
+
+    BLAKE2b (16-byte digest) is cryptographically collision-resistant and
+    faster than SHA-256 on 64-bit CPUs.  The ``idm:msg:`` prefix keeps the
+    key recognisable in Redis MONITOR / keyspace notifications without leaking
+    chat_id or user_id.
+    """
+    import hashlib
+
+    raw = f"{chat_id}:{user_id}:{client_key}"
+    digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
+    return f"idm:msg:{digest}"
 
 
 class ChatCommandService:
@@ -72,7 +90,7 @@ class ChatCommandService:
 
         participant = await self.repository.get_user(participant_id)
         ensure_exists(participant, "users", locale)
-        assert participant is not None  # nosec B101
+        assert participant is not None  # nosec B101  # noqa: S101
 
         from app.deps.cache import get_cache_client
 
@@ -146,8 +164,8 @@ class ChatCommandService:
             from app.deps.cache import get_cache_client
 
             _cache = await get_cache_client()
-            _idempotency_cache_key = (
-                f"idempotency:msg:{chat_id}:{user.id}:{idempotency_key}"
+            _idempotency_cache_key = _make_idempotency_key(
+                chat_id, user.id, idempotency_key
             )
             _cached = await _cache.get(_idempotency_cache_key)
             if _cached:
@@ -177,7 +195,7 @@ class ChatCommandService:
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         # Check participation (TD-4 security audit)
         is_participant = await self.repository.check_participant(chat_id, user.id)
@@ -226,6 +244,18 @@ class ChatCommandService:
                 self.repository.add(attachment)
 
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
+
+            # RZ-F-11 (Outbox Pattern): Atomic recording of the message intent.
+            # EventEmitterMixin captures this after_flush and stores in stored_events.
+            message.record_event(
+                MessageSent(
+                    message_id=message.id,
+                    chat_id=message.chat_id,
+                    sender_id=message.sender_id,
+                    content_preview=message.content[:50],
+                )
+            )
+
             async with self.uow:
                 await self.uow.commit()
         except Exception:
@@ -261,10 +291,11 @@ class ChatCommandService:
                 ),
             )
 
-        # Notify participants
-        await self.notification_service.notify_new_message(
-            message, chat.participants, user
-        )
+        # RZ-F-11: Notification handling moved to OutboxWorker / EventHandlers
+        # for reliability. Direct call removed.
+        # await self.notification_service.notify_new_message(
+        #     message, chat.participants, user
+        # )
 
         # ── Idempotency store (D-02 / BE-02) ────────────────────────────────
         # BE-02 (audit 2026-03-08 Wave 5): Store only the message ID rather than
@@ -291,7 +322,7 @@ class ChatCommandService:
         """Mark all messages in a chat as read by the user."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -307,7 +338,7 @@ class ChatCommandService:
         """Delete all messages in a chat (but keep the chat)."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -341,7 +372,7 @@ class ChatCommandService:
         """Permanently delete a chat."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
