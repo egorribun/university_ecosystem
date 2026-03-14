@@ -31,7 +31,10 @@ from app.auth.schemas import (
     PendingMfaResponse,
 )
 from app.core.config import settings
-from app.core.fingerprint import extract_request_fingerprint
+from app.core.fingerprint import (
+    extract_request_fingerprint,
+    store_mfa_challenge_fingerprints,
+)
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
@@ -50,29 +53,6 @@ from app.services.user.profile_service import UserProfileService
 from app.services.webauthn import WebAuthnService
 
 logger = logging.getLogger("app.auth.login")
-
-
-async def _store_mfa_fingerprints(
-    request: Request, pending: PendingMfaResponse
-) -> None:
-    """Store request fingerprint for each pending MFA challenge token.
-
-    RED-03: Fingerprints are compared at verify time to detect token replay
-    from a different client after interception.  We store for all method tokens
-    since the client chooses which method to use at /mfa/verify time.
-    """
-    from datetime import UTC, datetime
-
-    from app.deps.cache import get_cache_client
-
-    fp = extract_request_fingerprint(request)
-    cache = await get_cache_client()
-    for method in pending.methods:
-        # TTL = remaining seconds until challenge expiry (min 30s to handle clock skew)
-        remaining = max(
-            30, int((method.challenge_expires_at - datetime.now(UTC)).total_seconds())
-        )
-        await cache.setex(f"mfa:fp:{method.challenge_token}", remaining, fp)
 
 
 router = APIRouter(tags=["auth"])
@@ -211,7 +191,7 @@ async def login(
         trust_device=trust_device,
     )
     if isinstance(result, PendingMfaResponse):
-        await _store_mfa_fingerprints(request, result)
+        await store_mfa_challenge_fingerprints(request, result.methods)
     return result
 
 
@@ -238,7 +218,7 @@ async def login_json(
         trust_device=payload.trust_device,
     )
     if isinstance(result, PendingMfaResponse):
-        await _store_mfa_fingerprints(request, result)
+        await store_mfa_challenge_fingerprints(request, result.methods)
     return result
 
 

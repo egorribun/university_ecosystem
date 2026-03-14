@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import TYPE_CHECKING
+import logging
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
 
 if TYPE_CHECKING:
     from fastapi import Request
+
+logger = logging.getLogger(__name__)
 
 
 def extract_request_fingerprint(request: Request) -> str:
@@ -43,3 +47,44 @@ def extract_request_fingerprint(request: Request) -> str:
         else settings.SECRET_KEY
     )
     return hmac.new(key, raw.encode(), hashlib.sha256).hexdigest()
+
+
+async def store_mfa_challenge_fingerprints(
+    request: Request,
+    methods: Sequence[Any],
+) -> None:
+    """Store a request fingerprint in Redis for each pending MFA challenge token.
+
+    RED-03: Fingerprints are compared at verify time (``verify_mfa_challenge``
+    and ``verify_step_up``) to detect token replay from a different client after
+    interception.  A separate key is stored for every method so the client can
+    freely choose which method to use without losing protection.
+
+    Args:
+        request:  The current FastAPI ``Request`` (used to extract IP + UA).
+        methods:  A sequence of objects with ``challenge_token: str`` and
+                  ``challenge_expires_at: datetime`` attributes.  Duck-typed so
+                  that ``app.core`` remains independent of ``app.auth.schemas``.
+
+    Graceful degradation: if Redis is unavailable the function logs a warning
+    and returns without raising, so callers do not need to handle errors.
+    """
+    from datetime import UTC, datetime
+
+    from app.deps.cache import get_cache_client
+
+    fp = extract_request_fingerprint(request)
+    try:
+        cache = await get_cache_client()
+        for method in methods:
+            # TTL = remaining seconds until challenge expiry, min 30 s for clock skew.
+            remaining = max(
+                30,
+                int((method.challenge_expires_at - datetime.now(UTC)).total_seconds()),
+            )
+            await cache.setex(f"mfa:fp:{method.challenge_token}", remaining, fp)
+    except Exception:
+        logger.warning(
+            "Could not store MFA fingerprints in Redis — replay protection degraded",
+            exc_info=True,
+        )

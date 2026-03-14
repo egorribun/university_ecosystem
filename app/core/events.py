@@ -196,6 +196,19 @@ class NewsUpdated(DomainEvent):
 # Notification Events
 @register_domain_event
 @dataclass
+class MessageSent(DomainEvent):
+    """Fired when a new message is sent."""
+
+    message_id: UUID | None = None
+    chat_id: UUID | None = None
+    sender_id: UUID | None = None
+    content_preview: str = ""
+
+    EVENT_TYPE: ClassVar[str] = "chat.message_sent"
+
+
+@register_domain_event
+@dataclass
 class NotificationSent(DomainEvent):
     """Fired when a notification is sent."""
 
@@ -440,29 +453,22 @@ event_bus = EventBus()
 
 
 __all__ = [
-    # Core
     "DomainEvent",
     "EventBus",
-    # Event events
     "EventCreated",
-    # Persistence
     "EventEmitterMixin",
-    # Types
     "EventHandler",
     "EventMetadata",
     "EventMiddleware",
     "EventRegistration",
     "EventUpdated",
+    "MessageSent",
     "MfaEnabled",
-    # News events
     "NewsCreated",
     "NewsUpdated",
-    # Notification events
     "NotificationSent",
-    # User events
     "UserCreated",
     "UserDeleted",
-    # Auth events
     "UserLoggedIn",
     "UserUpdated",
     "event_bus",

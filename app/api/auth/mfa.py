@@ -4,21 +4,18 @@ import logging
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
     Request,
-    Response,
     status,
 )
 from sqlalchemy import select
 
 from app.api.deps import (
-    get_audit_service,
     get_current_user,
-    get_db,
-    get_login_service,
     require_fresh_mfa,
 )
 from app.api.validation import raise_http_error
@@ -29,7 +26,10 @@ from app.auth.schemas import (
     TotpEnrollmentStartIn,
     TotpEnrollmentStartOut,
 )
+from app.core.fingerprint import store_mfa_challenge_fingerprints
+from app.core.protocols import AsyncDatabaseSession
 from app.models.auth import MfaTotpEnrollment
+from app.models.models import User
 from app.schemas.schemas import (
     MfaFactorStatusOut,
     MfaTotpEnrollmentOut,
@@ -37,13 +37,11 @@ from app.schemas.schemas import (
     WebAuthnRegistrationOptionsOut,
     WebAuthnRegistrationVerifyIn,
 )
+from app.services.audit_service import AuditService
+from app.services.auth.login_service import LoginService
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from app.models.models import ActiveSession, User
-    from app.services.audit_service import AuditService
-    from app.services.auth.login_service import LoginService
+    from app.models.models import ActiveSession
 
 logger = logging.getLogger("app.auth.mfa")
 
@@ -55,12 +53,13 @@ router = APIRouter(tags=["mfa"])
     response_model=TotpEnrollmentStartOut,
     dependencies=[Depends(require_fresh_mfa)],
 )
+@inject
 async def start_totp_enrollment_endpoint(
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     payload: TotpEnrollmentStartIn | None = None,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
 ) -> TotpEnrollmentStartOut:
     label = payload.label if payload else None
     reuse_existing = bool(payload.reuse_existing) if payload else False
@@ -99,12 +98,13 @@ async def start_totp_enrollment_endpoint(
     response_model=MfaTotpEnrollmentOut,
     dependencies=[Depends(require_fresh_mfa)],
 )
+@inject
 async def confirm_totp_enrollment(
     payload: TotpEnrollmentConfirmIn,
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
 ) -> MfaTotpEnrollmentOut:
     enrollment = await db.get(MfaTotpEnrollment, payload.enrollment_id)
     if not enrollment or enrollment.user_id != user.id:
@@ -147,9 +147,10 @@ async def confirm_totp_enrollment(
 
 
 @router.get("/mfa/totp", response_model=list[MfaTotpEnrollmentOut])
+@inject
 async def list_totp_enrollments(
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: FromDishka[AsyncDatabaseSession] = Depends(),
 ) -> list[MfaTotpEnrollmentOut]:
     stmt = (
         select(MfaTotpEnrollment)
@@ -164,13 +165,14 @@ async def list_totp_enrollments(
 @router.delete(
     "/mfa/totp/pending/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT
 )
+@inject
 async def delete_pending_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
-) -> Response:
+) -> None:
     enrollment = await db.get(MfaTotpEnrollment, enrollment_id)
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
@@ -187,17 +189,17 @@ async def delete_pending_totp_enrollment(
         reason="pending_cancelled",
         extra={"enrollment_id": enrollment_id},
     )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/mfa/totp/{enrollment_id}", response_model=MfaFactorStatusOut)
+@inject
 async def delete_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
 ) -> MfaFactorStatusOut:
     disabled_count = await mfa.disable_totp(db, user=user, enrollment_id=enrollment_id)
     await mfa.refresh_user_mfa_preferences(db, user=user)
@@ -228,11 +230,12 @@ async def delete_totp_enrollment(
     response_model=WebAuthnRegistrationOptionsOut,
     dependencies=[Depends(require_fresh_mfa)],
 )
+@inject
 async def start_webauthn_registration(
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
 ) -> WebAuthnRegistrationOptionsOut:
     from app.services.webauthn import WebAuthnService
 
@@ -266,12 +269,13 @@ async def start_webauthn_registration(
     response_model=MfaFactorStatusOut,
     dependencies=[Depends(require_fresh_mfa)],
 )
+@inject
 async def confirm_webauthn_registration(
     payload: WebAuthnRegistrationVerifyIn,
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
 ) -> MfaFactorStatusOut:
     challenge = await mfa.get_challenge(
         db,
@@ -325,9 +329,10 @@ async def confirm_webauthn_registration(
 
 
 @router.get("/mfa/webauthn", response_model=list[dict[str, Any]])
+@inject
 async def list_webauthn_credentials(
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: FromDishka[AsyncDatabaseSession] = Depends(),
 ) -> list[dict[str, Any]]:
     from app.models.models import WebAuthnCredential
 
@@ -345,13 +350,14 @@ async def list_webauthn_credentials(
 
 
 @router.delete("/mfa/webauthn/{credential_id}", response_model=MfaFactorStatusOut)
+@inject
 async def delete_webauthn_credential(
     credential_id: UUID,
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
 ) -> MfaFactorStatusOut:
     from app.models.models import WebAuthnCredential
 
@@ -379,11 +385,12 @@ async def delete_webauthn_credential(
 
 
 @router.post("/mfa/recovery-codes", response_model=RecoveryCodesGenerateOut)
+@inject
 async def generate_recovery_codes_endpoint(
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
 ) -> RecoveryCodesGenerateOut:
     codes = await mfa.generate_recovery_codes(db, user=user)
     await db.commit()
@@ -408,12 +415,13 @@ async def generate_recovery_codes_endpoint(
     response_model=auth_schemas.PendingMfaResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
+@inject
 async def request_step_up(
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
+    login_service: FromDishka[LoginService],
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
-    login_service: LoginService = Depends(get_login_service),
 ) -> auth_schemas.PendingMfaResponse:
     from app.core.localization import resolve_locale
 
@@ -444,7 +452,7 @@ async def request_step_up(
         user_id=user.id,
     )
 
-    return auth_schemas.PendingMfaResponse(
+    pending = auth_schemas.PendingMfaResponse(
         user_id=user.id,
         session_id=session.id if session else None,
         default_method=cast(
@@ -453,3 +461,7 @@ async def request_step_up(
         ),
         methods=methods,
     )
+    # RED-03: bind every challenge token to the originating request context so
+    # that a captured step-up token cannot be replayed from a different client.
+    await store_mfa_challenge_fingerprints(request, pending.methods)
+    return pending

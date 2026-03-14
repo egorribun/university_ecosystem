@@ -35,7 +35,7 @@ from app.api.ws.presence import (
     invalidate_presence_audience_cache,
 )
 from app.core.config import settings
-from app.core.events import MessageSent
+from app.core.events import EventEmitterMixin, MessageSent
 from app.core.exceptions import BusinessRuleViolation
 from app.models.chat import Attachment
 from app.models.models import Message
@@ -267,7 +267,9 @@ class ChatCommandService:
         # EventEmitterMixin captures this after_flush and stores in stored_events.
         # record_event() is called BEFORE commit so it lands in the same
         # transaction as the Message INSERT — atomicity guaranteed.
-        message.record_event(
+        # Cast: Message inherits EventEmitterMixin (models/chat.py), but mypy
+        # cannot resolve SQLAlchemy's multi-inheritance graph statically.
+        cast(EventEmitterMixin, message).record_event(
             MessageSent(
                 message_id=message.id,
                 chat_id=message.chat_id,
