@@ -12,6 +12,7 @@ import logging
 from app.core.container import get_vector_service
 from app.core.database import async_session
 from app.core.events import (
+    ChatDeleted,
     DomainEvent,
     EventCreated,
     EventRegistration,
@@ -178,6 +179,24 @@ async def handle_message_sent(event: MessageSent) -> None:
         await db.commit()
 
 
+async def handle_chat_deleted(event: ChatDeleted) -> None:
+    """Invalidate ws-hub auth cache for a deleted chat participant.
+
+    RED-04 (audit 2026-03-14): Called by OutboxWorker from the stored ChatDeleted
+    event, providing at-least-once delivery semantics.  If the immediate best-effort
+    call in delete_chat() already succeeded, this is a no-op (ws-hub invalidation
+    is idempotent).  If it failed, OutboxWorker retries until success.
+    """
+    from app.services.ws_hub_client import invalidate_ws_hub_cache
+
+    await invalidate_ws_hub_cache(str(event.participant_id), str(event.chat_id))
+    logger.debug(
+        "ws-hub cache invalidated via outbox: chat=%s participant=%s",
+        event.chat_id,
+        event.participant_id,
+    )
+
+
 def configure_event_handlers() -> None:
     """
     Register all event handlers with the global event bus.
@@ -199,6 +218,8 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
+    # RED-04: OutboxWorker delivers ChatDeleted events with at-least-once guarantees.
+    event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
 
     logger.info("Domain event handlers configured")
 

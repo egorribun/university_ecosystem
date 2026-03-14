@@ -403,6 +403,25 @@ class ChatCommandService:
         p_ids = [p.id for p in chat.participants]
 
         try:
+            # RED-04 (audit 2026-03-14): Record ChatDeleted outbox events BEFORE
+            # the DELETE commits so ws-hub cache invalidation is durable.
+            # StoredEvent rows land in the SAME transaction as the chat deletion —
+            # either both succeed or neither does.  OutboxWorker delivers them with
+            # at-least-once semantics, closing the 60s BOLA window that existed
+            # when invalidation was a best-effort post-commit network call.
+            from app.core.events import ChatDeleted as ChatDeletedEvent
+            from app.models.domain_events import StoredEvent as _StoredEvent
+
+            for _pid in p_ids:
+                self.repository.add(
+                    _StoredEvent(
+                        event_type=ChatDeletedEvent.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={"chat_id": str(chat_id), "participant_id": str(_pid)},
+                    )
+                )
+
             await self.repository.delete_chat(chat_id)
             async with self.uow:
                 await self.uow.commit()
@@ -413,13 +432,10 @@ class ChatCommandService:
             await self.uow.rollback()
             raise
 
-        # R-02 (audit 2026-03-08): Invalidate ws-hub auth cache immediately after
-        # deleting the chat so participants lose room authorization without waiting
-        # for the 60s TTL to expire (BOLA-01 — stale cache window after deletion).
-        # BE-01 (audit 2026-03-08 Wave 5): Use the module-level singleton via
-        # invalidate_ws_hub_cache() — creating a new WsHubClient() per call
-        # bypasses persistent connection pooling (RZ-F-04) and leaks httpx clients.
-        # asyncio.gather parallelises N invalidations instead of serial awaits.
+        # R-02 (audit 2026-03-08) / RED-04 (audit 2026-03-14):
+        # Best-effort immediate invalidation — fast-path that works when ws-hub
+        # is healthy.  If this call fails, the ChatDeleted outbox events recorded
+        # above guarantee that OutboxWorker will retry until successful.
         from app.services.ws_hub_client import invalidate_ws_hub_cache
 
         await asyncio.gather(

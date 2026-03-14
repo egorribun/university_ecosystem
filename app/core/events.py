@@ -209,6 +209,23 @@ class MessageSent(DomainEvent):
 
 @register_domain_event
 @dataclass
+class ChatDeleted(DomainEvent):
+    """Fired when a chat is permanently deleted.
+
+    RED-04 (audit 2026-03-14): Recorded atomically with the DELETE in the same
+    DB transaction.  OutboxWorker picks it up and calls ws-hub cache invalidation
+    with at-least-once delivery guarantees — closing the 60 s BOLA window that
+    existed when invalidation was best-effort post-commit.
+    """
+
+    chat_id: UUID | None = None
+    participant_id: UUID | None = None
+
+    EVENT_TYPE: ClassVar[str] = "chat.deleted"
+
+
+@register_domain_event
+@dataclass
 class NotificationSent(DomainEvent):
     """Fired when a notification is sent."""
 
@@ -453,6 +470,7 @@ event_bus = EventBus()
 
 
 __all__ = [
+    "ChatDeleted",
     "DomainEvent",
     "EventBus",
     "EventCreated",
