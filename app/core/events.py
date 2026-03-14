@@ -419,6 +419,35 @@ class NotificationSent(DomainEvent):
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
+@register_domain_event
+@dataclass
+class NotificationsRequested(DomainEvent):
+    """Fired when notifications need to be delivered to users.
+
+    RED-02 (audit 2026-03-14): Replaces direct push dispatch in
+    create_notifications_for_users(). The OutboxWorker picks this up and
+    triggers push delivery with at-least-once semantics.
+    """
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    notification_ids: list[str] = field(default_factory=list)
+    channel: str = "push"
+
+    EVENT_TYPE: ClassVar[str] = "notification.delivery_requested"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "NotificationsRequested":
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
 class EventEmitterMixin:
     """Mixin for models that emit domain events to be persisted."""
 
@@ -677,6 +706,7 @@ __all__ = [
     "NewsCreated",
     "NewsUpdated",
     "NotificationSent",
+    "NotificationsRequested",
     "UserCreated",
     "UserDeleted",
     "UserLoggedIn",

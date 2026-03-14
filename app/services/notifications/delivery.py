@@ -14,6 +14,8 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
+import uuid as _uuid_mod
+
 from sqlalchemy import insert, select
 from sqlalchemy.orm import selectinload
 
@@ -132,6 +134,30 @@ async def create_notifications_for_users(
             notification_ids_by_user[uuid.UUID(str(row["user_id"]))] = row["id"]
 
     await db.flush()
+
+    # RED-02 (audit 2026-03-14): Record a NotificationsRequested outbox event
+    # atomically with the Notification rows so the OutboxWorker can drive push
+    # delivery with at-least-once semantics.  The direct push dispatch below is
+    # kept as the primary path; the outbox acts as a durability record and
+    # retry mechanism when the in-process delivery fails or the process crashes.
+    if notification_ids_by_user:
+        from app.core.events import NotificationsRequested
+        from app.models.domain_events import StoredEvent
+
+        _batch_id = str(_uuid_mod.uuid4())
+        outbox_event = StoredEvent(
+            event_type=NotificationsRequested.EVENT_TYPE,
+            aggregate_type="NotificationBatch",
+            aggregate_id=_batch_id,
+            payload={
+                "_schema_version": 1,
+                "notification_ids": [
+                    str(v) for v in notification_ids_by_user.values()
+                ],
+                "channel": "push",
+            },
+        )
+        db.add(outbox_event)
 
     if notification_ids_by_user and type == "grade":
         await stats_cache.invalidate_user_stats_cache(

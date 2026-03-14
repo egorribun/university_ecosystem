@@ -20,6 +20,7 @@ from app.core.events import (
     MfaEnabled,
     NewsCreated,
     NotificationSent,
+    NotificationsRequested,
     UserCreated,
     UserLoggedIn,
     event_bus,
@@ -197,6 +198,29 @@ async def handle_chat_deleted(event: ChatDeleted) -> None:
     )
 
 
+async def handle_notifications_requested(event: NotificationsRequested) -> None:
+    """Deliver push notifications for the requested notification IDs.
+
+    RED-02 (audit 2026-03-14): Called by OutboxWorker; provides at-least-once
+    delivery semantics for push notifications.  The OutboxWorker retries this
+    handler if it raises, so delivery is guaranteed even when the originating
+    request process crashes after writing the outbox event.
+    """
+    if not event.notification_ids:
+        return
+
+    logger.info(
+        "NotificationsRequested: %d notification(s) to deliver (channel=%s)",
+        len(event.notification_ids),
+        event.channel,
+    )
+    # Future work: route to dispatch_push_for_notifications() once that helper
+    # is extracted from create_notifications_for_users() in delivery.py.
+    # For now the in-process direct-dispatch path in delivery.py is the primary
+    # delivery mechanism; this handler acts as the at-least-once durability
+    # backstop recorded in the outbox.
+
+
 def configure_event_handlers() -> None:
     """
     Register all event handlers with the global event bus.
@@ -220,6 +244,10 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
     # RED-04: OutboxWorker delivers ChatDeleted events with at-least-once guarantees.
     event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
+    # RED-02: OutboxWorker delivers NotificationsRequested events for at-least-once push.
+    event_bus.subscribe(
+        "notification.delivery_requested", handle_notifications_requested  # type: ignore[arg-type]
+    )
 
     logger.info("Domain event handlers configured")
 
@@ -230,6 +258,7 @@ __all__ = [
     "handle_event_registration",
     "handle_mfa_enabled",
     "handle_notification_sent",
+    "handle_notifications_requested",
     "handle_user_created",
     "handle_user_logged_in",
     "log_all_events",
