@@ -232,7 +232,6 @@ class ChatCommandService:
                                 upload, chat_id, locale=locale
                             )
                     except TimeoutError:
-                        await self.attachment_service.cleanup_files(saved_urls)
                         raise_validation_error("errors.files.upload_timeout", locale)
                     saved_urls.append(str(meta["url"]))
                     processed_attachments.append(meta)
