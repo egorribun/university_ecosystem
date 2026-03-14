@@ -3,8 +3,11 @@ import contextlib
 import logging
 import traceback
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 import asyncpg
 from opentelemetry import trace
@@ -161,21 +164,59 @@ class OutboxWorker:
                         await self._dispatch_event(se)
                         se.processed_at = datetime.now(UTC)
                     except Exception:
-                        logger.error(
-                            "Failed to process outbox event",
-                            exc_info=True,
-                            extra={
-                                "event_id": str(se.id),
-                                "event_type": se.event_type,
-                                "error_count": se.error_count + 1,
-                            },
-                        )
                         se.error_count += 1
+                        last_error = traceback.format_exc()
                         # Store first 500 chars of error for audit trail
-                        se.last_error = traceback.format_exc()[:500]
+                        se.last_error = last_error[:500]
+                        # MOD-08: Move to DLQ after max_retries instead of
+                        # silently abandoning the event.
+                        if se.error_count >= self.max_retries:
+                            await self._move_to_dlq(db, se, last_error)
+                        else:
+                            logger.error(
+                                "Failed to process outbox event",
+                                exc_info=True,
+                                extra={
+                                    "event_id": str(se.id),
+                                    "event_type": se.event_type,
+                                    "error_count": se.error_count,
+                                },
+                            )
 
                 await db.commit()
                 return len(events)
+
+    async def _move_to_dlq(
+        self, db: "AsyncSession", se: StoredEvent, last_error: str
+    ) -> None:
+        """Move an event that exceeded max_retries to the Dead Letter Queue.
+
+        MOD-08 (audit 2026-03-14): Provides visibility into undeliverable events
+        instead of silently abandoning them after max retries.
+        """
+        from app.models.failed_outbox_events import FailedOutboxEvent
+
+        dlq_entry = FailedOutboxEvent(
+            original_event_id=se.id,
+            event_type=se.event_type,
+            aggregate_type=se.aggregate_type,
+            aggregate_id=se.aggregate_id,
+            payload=se.payload or {},
+            error_message=last_error[:2000],  # Truncate to prevent huge rows
+            retry_count=se.error_count,
+            failed_at=datetime.now(UTC),
+        )
+        db.add(dlq_entry)
+        se.processed_at = datetime.now(UTC)  # Mark as processed (dead-lettered)
+        logger.error(
+            "OutboxWorker: event moved to DLQ after %d retries",
+            se.error_count,
+            extra={
+                "event_id": str(se.id),
+                "event_type": se.event_type,
+                "dlq_entry_id": str(dlq_entry.id),
+            },
+        )
 
     async def _dispatch_event(self, se: StoredEvent) -> None:
         """
