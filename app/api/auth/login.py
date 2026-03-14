@@ -19,7 +19,6 @@ from fastapi import (
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import (
-    get_audit_service,
     get_current_user,
 )
 from app.auth import constants, mfa
@@ -32,6 +31,7 @@ from app.auth.schemas import (
     PendingMfaResponse,
 )
 from app.core.config import settings
+from app.core.fingerprint import extract_request_fingerprint
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
@@ -52,6 +52,29 @@ from app.services.webauthn import WebAuthnService
 logger = logging.getLogger("app.auth.login")
 
 
+async def _store_mfa_fingerprints(
+    request: Request, pending: PendingMfaResponse
+) -> None:
+    """Store request fingerprint for each pending MFA challenge token.
+
+    RED-03: Fingerprints are compared at verify time to detect token replay
+    from a different client after interception.  We store for all method tokens
+    since the client chooses which method to use at /mfa/verify time.
+    """
+    from datetime import UTC, datetime
+
+    from app.deps.cache import get_cache_client
+
+    fp = extract_request_fingerprint(request)
+    cache = await get_cache_client()
+    for method in pending.methods:
+        # TTL = remaining seconds until challenge expiry (min 30s to handle clock skew)
+        remaining = max(
+            30, int((method.challenge_expires_at - datetime.now(UTC)).total_seconds())
+        )
+        await cache.setex(f"mfa:fp:{method.challenge_token}", remaining, fp)
+
+
 router = APIRouter(tags=["auth"])
 router.include_router(logout_router)
 
@@ -67,7 +90,7 @@ async def login_passkey_start(
     request: Request,
     profile_service: FromDishka[UserProfileService],
     db: FromDishka[AsyncDatabaseSession],
-    audit: AuditService = Depends(get_audit_service),
+    audit: FromDishka[AuditService],
 ) -> WebAuthnAuthenticationOptionsOut:
     normalized_email = payload.email.strip().lower()
 
@@ -179,7 +202,7 @@ async def login(
     trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
 ) -> TokenWithProfile | PendingMfaResponse:
-    return await login_service.perform_login(
+    result = await login_service.perform_login(
         email=form_data.username,
         password=form_data.password,
         request=request,
@@ -187,6 +210,9 @@ async def login(
         bg_tasks=bg_tasks,
         trust_device=trust_device,
     )
+    if isinstance(result, PendingMfaResponse):
+        await _store_mfa_fingerprints(request, result)
+    return result
 
 
 @router.post(
@@ -203,7 +229,7 @@ async def login_json(
     bg_tasks: BackgroundTasks,
     login_service: FromDishka[LoginService],
 ) -> TokenWithProfile | PendingMfaResponse:
-    return await login_service.perform_login(
+    result = await login_service.perform_login(
         email=payload.email,
         password=payload.password,
         request=request,
@@ -211,6 +237,9 @@ async def login_json(
         bg_tasks=bg_tasks,
         trust_device=payload.trust_device,
     )
+    if isinstance(result, PendingMfaResponse):
+        await _store_mfa_fingerprints(request, result)
+    return result
 
 
 @router.post(
@@ -246,6 +275,26 @@ async def verify_mfa_challenge(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA method"
         )
+
+    # RED-03: Fingerprint check — reject if challenge was issued to a different client
+    _fp_stored: bytes | None = None
+    try:
+        from app.deps.cache import get_cache_client as _get_cache
+
+        _fp_stored = await (await _get_cache()).get(f"mfa:fp:{payload.challenge_token}")
+    except Exception as exc:  # Redis unavailable — degrade gracefully, don't block auth
+        logger.debug("mfa.fingerprint_cache_unavailable", exc_info=exc)
+    if _fp_stored is not None:
+        _fp_current = extract_request_fingerprint(request)
+        if _fp_stored.decode() != _fp_current:
+            logger.warning(
+                "mfa.fingerprint_mismatch",
+                extra={"challenge_token_prefix": payload.challenge_token[:8]},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="mfa_fingerprint_mismatch",
+            )
 
     challenge, _ = await mfa.consume_challenge(
         db,
