@@ -1,0 +1,52 @@
+# MOD-05 (audit 2026-03-14): Horizontal Pod Autoscaler for the outbox-worker.
+#
+# Scales based on the outbox_pending_events_total Prometheus gauge published by
+# each worker pod.  The Prometheus Adapter must be configured to expose this
+# metric to the Kubernetes custom-metrics API.  See:
+#   k8s/outbox-worker/prometheus-adapter-rule.yaml (companion config)
+#
+# Tuning:
+#   averageValue: "100" — each replica should handle ≤100 pending events.
+#   With default batch_size=50, each pod drains ~50 events/cycle, giving
+#   ~2× headroom before scaling triggers.
+#   maxReplicas: 10 — hard cap to prevent DB connection exhaustion.
+#                     pool_size=10 → 10 replicas × 1 connection = safe.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: outbox-worker-hpa
+  namespace: university
+  labels:
+    app: outbox-worker
+    component: event-processing
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: outbox-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: outbox_pending_events_total
+          selector:
+            matchLabels:
+              app: outbox-worker
+        target:
+          type: AverageValue
+          averageValue: "100"  # scale when > 100 pending events per pod
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30  # react quickly to backlogs
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60  # add at most 2 pods per minute
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 min cooldown before scaling down
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120  # remove at most 1 pod every 2 minutes

@@ -304,6 +304,14 @@ class OutboxWorker:
             with tracer.start_as_current_span("outbox.dispatch_event") as span:
                 span.set_attribute("outbox.event_type", se.event_type)
                 span.set_attribute("outbox.stored_event_id", str(se.id))
+                # MOD-01 (audit 2026-03-14): aggregate attributes enable trace
+                # filtering by aggregate ID (e.g. "show all events for Chat X")
+                # without scanning the trace body.
+                if se.aggregate_id_uuid is not None:
+                    span.set_attribute("outbox.aggregate_id", str(se.aggregate_id_uuid))
+                if se.sequence_number is not None:
+                    span.set_attribute("outbox.sequence_number", se.sequence_number)
+                span.set_attribute("outbox.aggregate_type", se.aggregate_type or "")
                 await event_bus.publish(event)
 
         except Exception as e:
