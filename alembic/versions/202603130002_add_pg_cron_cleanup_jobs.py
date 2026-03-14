@@ -20,6 +20,15 @@ Create Date: 2026-03-13
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy import text
+
+_ALLOWED_CRON_JOBS: frozenset[str] = frozenset(
+    {
+        "expire-password-reset-tokens",
+        "expire-mfa-challenges",
+        "clean-trusted-devices",
+    }
+)
 
 revision: str = "202603130002"
 down_revision: str | None = "202603130001"
@@ -73,12 +82,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Remove the three scheduled jobs by name; ignore if they don't exist.
-    for job_name in (
-        "expire-password-reset-tokens",
-        "expire-mfa-challenges",
-        "clean-trusted-devices",
-    ):
+    for job_name in _ALLOWED_CRON_JOBS:
         op.execute(
-            f"SELECT cron.unschedule('{job_name}') "
-            f"WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = '{job_name}')"
+            text(
+                "SELECT cron.unschedule(:job_name) "
+                "WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = :job_name)"
+            ),
+            {"job_name": job_name},
         )
