@@ -209,6 +209,42 @@ class ChatCommandService:
         if not content.strip() and not uploads:
             raise_validation_error("errors.chat.empty_message", locale)
 
+        # D-03 (audit 2026-03-08): Hard deadline on each individual upload so a
+        # hung ClamAV scan or MinIO connection does not block the ASGI worker
+        # forever.  30s is generous for normal uploads and tight enough to
+        # surface genuine infrastructure failures quickly.
+        _UPLOAD_TIMEOUT_SECONDS = 30.0
+
+        # ── Phase 1: Upload processing (NO DB writes yet) ────────────────────
+        # Process ALL uploads before touching the DB.  If any upload fails, no
+        # Message record exists and no rollback is required — the error path is
+        # trivially clean.
+        from typing import Any
+
+        processed_attachments: list[dict[str, Any]] = []
+        saved_urls: list[str] = []
+        if uploads:
+            try:
+                for upload in uploads:
+                    try:
+                        async with asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
+                            meta = await self.attachment_service.process_upload(
+                                upload, chat_id, locale=locale
+                            )
+                    except TimeoutError:
+                        await self.attachment_service.cleanup_files(saved_urls)
+                        raise_validation_error("errors.files.upload_timeout", locale)
+                    saved_urls.append(str(meta["url"]))
+                    processed_attachments.append(meta)
+            except Exception:
+                await self.attachment_service.cleanup_files(saved_urls)
+                raise
+
+        # ── Phase 2: Atomic DB write ─────────────────────────────────────────
+        # All uploads succeeded — now write Message + Attachments + MessageSent
+        # event in a single transaction.  If this fails only a DB rollback is
+        # needed; the already-uploaded files stay (acceptable: no user-visible
+        # duplicate, files will be GC'd by the orphan-cleanup job).
         message = Message(
             chat_id=chat_id,
             sender_id=user.id,
@@ -216,52 +252,33 @@ class ChatCommandService:
         )
         await self.repository.create_message(message)
 
-        # D-03 (audit 2026-03-08): Hard deadline on each individual upload so a
-        # hung ClamAV scan or MinIO connection does not block the ASGI worker
-        # forever.  30s is generous for normal uploads and tight enough to
-        # surface genuine infrastructure failures quickly.
-        _UPLOAD_TIMEOUT_SECONDS = 30.0
-
-        saved_urls: list[str] = []
-        try:
-            for upload in uploads:
-                try:
-                    async with asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
-                        meta = await self.attachment_service.process_upload(
-                            upload, chat_id, locale=locale
-                        )
-                except TimeoutError:
-                    await self.attachment_service.cleanup_files(saved_urls)
-                    raise_validation_error("errors.files.upload_timeout", locale)
-                saved_urls.append(str(meta["url"]))
-                attachment = Attachment(
-                    message=message,
-                    url=str(meta["url"]),
-                    file_type=str(meta["file_type"]),
-                    filename=str(meta["filename"]),
-                    size=int(str(meta["size"])),
-                )
-                self.repository.add(attachment)
-
-            await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
-
-            # RZ-F-11 (Outbox Pattern): Atomic recording of the message intent.
-            # EventEmitterMixin captures this after_flush and stores in stored_events.
-            message.record_event(
-                MessageSent(
-                    message_id=message.id,
-                    chat_id=message.chat_id,
-                    sender_id=message.sender_id,
-                    content_preview=message.content[:50],
-                )
+        for meta in processed_attachments:
+            attachment = Attachment(
+                message=message,
+                url=str(meta["url"]),
+                file_type=str(meta["file_type"]),
+                filename=str(meta["filename"]),
+                size=int(str(meta["size"])),
             )
+            self.repository.add(attachment)
 
-            async with self.uow:
-                await self.uow.commit()
-        except Exception:
-            await self.uow.rollback()
-            await self.attachment_service.cleanup_files(saved_urls)
-            raise
+        await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
+
+        # RZ-F-11 (Outbox Pattern): Atomic recording of the message intent.
+        # EventEmitterMixin captures this after_flush and stores in stored_events.
+        # record_event() is called BEFORE commit so it lands in the same
+        # transaction as the Message INSERT — atomicity guaranteed.
+        message.record_event(
+            MessageSent(
+                message_id=message.id,
+                chat_id=message.chat_id,
+                sender_id=message.sender_id,
+                content_preview=message.content[:50],
+            )
+        )
+
+        async with self.uow:
+            await self.uow.commit()
 
         # Reload message with attachments for the response
         reloaded = await self.repository.get_last_messages([message.id])
