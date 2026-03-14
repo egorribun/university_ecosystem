@@ -154,18 +154,39 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
         kwargs["connect_args"] = {"timeout": 30.0}
     else:
         # PERF-009 (audit 2026-03-04): Optimize Postgres pool efficiency and safety
+        # PERF-01 (audit 2026-03-14): Fast-fail pool defaults — see comment below.
         kwargs["connect_args"] = {
             "statement_cache_size": 100,
-            "command_timeout": 30.0,
+            # PERF-01: reduced from 30 s → 15 s. Hard per-statement PG timeout so a
+            # runaway query does not block the asyncpg connection for half a minute.
+            "command_timeout": 15.0,
+            # Visible in pg_stat_activity — makes it easy to attribute load.
+            "server_settings": {"application_name": "university-backend"},
         }
         if current_settings.database_pool_size is not None:
             kwargs["pool_size"] = current_settings.database_pool_size
         if current_settings.database_max_overflow is not None:
             kwargs["max_overflow"] = current_settings.database_max_overflow
-        if current_settings.database_pool_timeout is not None:
-            kwargs["pool_timeout"] = current_settings.database_pool_timeout
-        if current_settings.database_pool_recycle is not None:
-            kwargs["pool_recycle"] = current_settings.database_pool_recycle
+        # PERF-01: default to 5 s (fast-fail) instead of SQLAlchemy's 30 s default.
+        # Rationale: pool_size=10 + max_overflow=20 → 30 connections max.  At 30 s
+        # timeout, 30 concurrent blocked requests spend 30×30 = 900 s waiting.
+        # At 5 s they fail quickly, the load-balancer retries, and upstream capacity
+        # is freed instead of held by sleeping Uvicorn workers.
+        # Operators can override via DATABASE_POOL_TIMEOUT env var.
+        kwargs["pool_timeout"] = (
+            current_settings.database_pool_timeout
+            if current_settings.database_pool_timeout is not None
+            else 5.0
+        )
+        # PERF-01: default to 300 s (5 min) to discard connections before TCP
+        # firewalls or PgBouncer silently kill idle ones.  pool_pre_ping=True
+        # still catches dead connections at checkout; pool_recycle prevents the
+        # cost of discovering them.  Operators can override via DATABASE_POOL_RECYCLE.
+        kwargs["pool_recycle"] = (
+            current_settings.database_pool_recycle
+            if current_settings.database_pool_recycle is not None
+            else 300
+        )
     return kwargs
 
 
