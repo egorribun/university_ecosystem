@@ -43,6 +43,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _is_push_configured() -> bool:
+    """Return True when VAPID credentials are available for push delivery."""
+    return bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
+
+
 # Re-export for backward compatibility (used in _send_push)
 send_web_push = webpush_module.send_web_push
 
@@ -125,7 +131,7 @@ async def create_notifications_for_users(
         for row in db_result.mappings():
             notification_ids_by_user[uuid.UUID(str(row["user_id"]))] = row["id"]
 
-    await db.commit()
+    await db.flush()
 
     if notification_ids_by_user and type == "grade":
         await stats_cache.invalidate_user_stats_cache(
@@ -136,174 +142,164 @@ async def create_notifications_for_users(
     if not notification_ids_by_user:
         return 0
 
-    vapid_ready = bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
     delivery_rows: list[dict[str, Any]] = []
 
-    if not vapid_ready:
+    if not _is_push_configured():
+        logger.debug(
+            "Push delivery skipped: VAPID credentials not configured "
+            "(notifications created in DB for in-app display only)"
+        )
+        return len(notification_ids_by_user)
+
+    subs = (
+        (
+            await db.execute(
+                select(PushSubscription)
+                .options(
+                    selectinload(PushSubscription.user).selectinload(
+                        User.push_topic_preferences
+                    )
+                )
+                .where(PushSubscription.user_id.in_(uids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not subs:
         attempt_ts = dt.datetime.now(UTC)
         for notification_id in notification_ids_by_user.values():
             delivery_rows.append(
                 _build_delivery_row(
                     notification_id,
                     now,
-                    status="skipped_no_credentials",
+                    status="skipped_no_subscription",
                     attempted_at=attempt_ts,
                 )
             )
     else:
-        subs = (
-            (
-                await db.execute(
-                    select(PushSubscription)
-                    .options(
-                        selectinload(PushSubscription.user).selectinload(
-                            User.push_topic_preferences
-                        )
-                    )
-                    .where(PushSubscription.user_id.in_(uids))
-                )
-            )
-            .scalars()
-            .all()
-        )
+        base_payload: dict[str, Any] = {
+            "title": title,
+            "body": body or "",
+            "url": url or "/",
+            "type": type or None,
+        }
+        normalized_topic = normalize_topic(topic)
+        if normalized_topic:
+            base_payload["topic"] = normalized_topic
+        if badge:
+            base_payload["badge"] = badge
+        if tag:
+            base_payload["tag"] = tag
+        if payload_data:
+            base_payload["data"] = dict(payload_data)
+        if actions:
+            normalized_actions: list[dict[str, Any]] = []
+            for action in actions:
+                normalized = {
+                    key: value
+                    for key, value in action.items()
+                    if key in {"action", "title", "icon", "url"}
+                }
+                if not normalized.get("action") or not normalized.get("title"):
+                    continue
+                normalized_actions.append(normalized)
+            if normalized_actions:
+                base_payload["actions"] = normalized_actions
 
-        if not subs:
-            attempt_ts = dt.datetime.now(UTC)
-            for notification_id in notification_ids_by_user.values():
+        send_jobs: list[tuple[PushSubscription, int]] = []
+        tasks: list[Awaitable[WebPushResult]] = []
+
+        limit = int(
+            getattr(settings, "notifications_webpush_concurrency_limit", 0) or 0
+        )
+        semaphore: asyncio.Semaphore | None = None
+        if limit > 0:
+            semaphore = asyncio.Semaphore(limit)
+
+        async def _send_push(
+            subscription: PushSubscription, payload: Mapping[str, Any]
+        ) -> WebPushResult:
+            # Use globals() to allow monkeypatching send_web_push for tests
+            _send_func = globals().get("send_web_push", webpush_module.send_web_push)
+            if semaphore is None:
+                return await asyncio.to_thread(_send_func, subscription, payload)
+            async with semaphore:
+                return await asyncio.to_thread(_send_func, subscription, payload)
+
+        for sub in subs:
+            user_id_raw = getattr(sub, "user_id", None)
+            if not user_id_raw:
+                continue
+            user_id = uuid.UUID(str(user_id_raw))
+            notification_id = notification_ids_by_user.get(user_id)
+            if not notification_id:
+                continue
+            if not subscription_supports_topic(sub, normalized_topic):
                 delivery_rows.append(
                     _build_delivery_row(
-                        notification_id,
+                        uuid.UUID(str(notification_id)),
                         now,
-                        status="skipped_no_subscription",
-                        attempted_at=attempt_ts,
+                        status="skipped_topic",
+                        detail=f"subscription:{sub.id}",
                     )
                 )
-        else:
-            base_payload: dict[str, Any] = {
-                "title": title,
-                "body": body or "",
-                "url": url or "/",
-                "type": type or None,
-            }
-            normalized_topic = normalize_topic(topic)
-            if normalized_topic:
-                base_payload["topic"] = normalized_topic
-            if badge:
-                base_payload["badge"] = badge
-            if tag:
-                base_payload["tag"] = tag
-            if payload_data:
-                base_payload["data"] = dict(payload_data)
-            if actions:
-                normalized_actions: list[dict[str, Any]] = []
-                for action in actions:
-                    normalized = {
-                        key: value
-                        for key, value in action.items()
-                        if key in {"action", "title", "icon", "url"}
-                    }
-                    if not normalized.get("action") or not normalized.get("title"):
-                        continue
-                    normalized_actions.append(normalized)
-                if normalized_actions:
-                    base_payload["actions"] = normalized_actions
-
-            send_jobs: list[tuple[PushSubscription, int]] = []
-            tasks: list[Awaitable[WebPushResult]] = []
-
-            limit = int(
-                getattr(settings, "notifications_webpush_concurrency_limit", 0) or 0
+                continue
+            prepared_payload = prepare_push_payload_for_user(
+                base_payload, getattr(sub, "user", None)
             )
-            semaphore: asyncio.Semaphore | None = None
-            if limit > 0:
-                semaphore = asyncio.Semaphore(limit)
+            send_jobs.append((sub, notification_id))
+            tasks.append(_send_push(sub, prepared_payload))
 
-            async def _send_push(
-                subscription: PushSubscription, payload: Mapping[str, Any]
-            ) -> WebPushResult:
-                # Use globals() to allow monkeypatching send_web_push for tests
-                _send_func = globals().get(
-                    "send_web_push", webpush_module.send_web_push
-                )
-                if semaphore is None:
-                    return await asyncio.to_thread(_send_func, subscription, payload)
-                async with semaphore:
-                    return await asyncio.to_thread(_send_func, subscription, payload)
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            for sub in subs:
-                user_id_raw = getattr(sub, "user_id", None)
-                if not user_id_raw:
-                    continue
-                user_id = uuid.UUID(str(user_id_raw))
-                notification_id = notification_ids_by_user.get(user_id)
-                if not notification_id:
-                    continue
-                if not subscription_supports_topic(sub, normalized_topic):
+            valid_results = [r for r in results if isinstance(r, WebPushResult)]
+            await webpush_module.process_push_results(valid_results)
+
+            for (sub, notification_id), result in zip(send_jobs, results, strict=False):
+                attempt_ts = dt.datetime.now(UTC)
+                if isinstance(result, WebPushResult):
+                    detail_parts: list[str] = [f"subscription:{sub.id}"]
+                    if result.error:
+                        detail_parts.append(result.error)
                     delivery_rows.append(
                         _build_delivery_row(
                             uuid.UUID(str(notification_id)),
                             now,
-                            status="skipped_topic",
-                            detail=f"subscription:{sub.id}",
+                            status=result.status,
+                            attempted_at=attempt_ts,
+                            delivered=result.status == "sent",
+                            status_code=result.status_code,
+                            detail="; ".join(detail_parts),
                         )
                     )
-                    continue
-                prepared_payload = prepare_push_payload_for_user(
-                    base_payload, getattr(sub, "user", None)
-                )
-                send_jobs.append((sub, notification_id))
-                tasks.append(_send_push(sub, prepared_payload))
-
-            if tasks:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                valid_results = [r for r in results if isinstance(r, WebPushResult)]
-                await webpush_module.process_push_results(valid_results)
-
-                for (sub, notification_id), result in zip(
-                    send_jobs, results, strict=False
-                ):
-                    attempt_ts = dt.datetime.now(UTC)
-                    if isinstance(result, WebPushResult):
-                        detail_parts: list[str] = [f"subscription:{sub.id}"]
-                        if result.error:
-                            detail_parts.append(result.error)
-                        delivery_rows.append(
-                            _build_delivery_row(
-                                uuid.UUID(str(notification_id)),
-                                now,
-                                status=result.status,
-                                attempted_at=attempt_ts,
-                                delivered=result.status == "sent",
-                                status_code=result.status_code,
-                                detail="; ".join(detail_parts),
-                            )
+                    if result.status == "sent":
+                        metrics.record_notification_delivered(
+                            notification_type=str(type or "unknown")
                         )
-                        if result.status == "sent":
-                            metrics.record_notification_delivered(
-                                notification_type=str(type or "unknown")
-                            )
-                        else:
-                            metrics.record_notification_failed(
-                                notification_type=str(type or "unknown"),
-                                reason=str(result.status),
-                            )
                     else:
-                        delivery_rows.append(
-                            _build_delivery_row(
-                                uuid.UUID(str(notification_id)),
-                                now,
-                                status="error",
-                                attempted_at=attempt_ts,
-                                detail=f"subscription:{sub.id}; exception:{result}",
-                            )
-                        )
                         metrics.record_notification_failed(
-                            notification_type=str(type or "unknown"), reason="exception"
+                            notification_type=str(type or "unknown"),
+                            reason=str(result.status),
                         )
+                else:
+                    delivery_rows.append(
+                        _build_delivery_row(
+                            uuid.UUID(str(notification_id)),
+                            now,
+                            status="error",
+                            attempted_at=attempt_ts,
+                            detail=f"subscription:{sub.id}; exception:{result}",
+                        )
+                    )
+                    metrics.record_notification_failed(
+                        notification_type=str(type or "unknown"), reason="exception"
+                    )
 
     if delivery_rows:
         await db.execute(insert(NotificationDelivery).values(delivery_rows))
-        await db.commit()
+        await db.flush()
 
     return len(notifications_data)
