@@ -95,11 +95,15 @@ class UserCreated(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "user.created"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "UserCreated":
+    def from_dict(cls, data: dict[str, Any]) -> UserCreated:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -116,11 +120,15 @@ class UserUpdated(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "user.updated"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "UserUpdated":
+    def from_dict(cls, data: dict[str, Any]) -> UserUpdated:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -136,11 +144,15 @@ class UserDeleted(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "user.deleted"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "UserDeleted":
+    def from_dict(cls, data: dict[str, Any]) -> UserDeleted:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -158,11 +170,15 @@ class UserLoggedIn(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "auth.login"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "UserLoggedIn":
+    def from_dict(cls, data: dict[str, Any]) -> UserLoggedIn:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -179,11 +195,15 @@ class MfaEnabled(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "auth.mfa_enabled"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "MfaEnabled":
+    def from_dict(cls, data: dict[str, Any]) -> MfaEnabled:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -202,11 +222,15 @@ class EventCreated(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "event.created"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "EventCreated":
+    def from_dict(cls, data: dict[str, Any]) -> EventCreated:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -223,11 +247,15 @@ class EventUpdated(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "event.updated"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "EventUpdated":
+    def from_dict(cls, data: dict[str, Any]) -> EventUpdated:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -244,11 +272,15 @@ class EventRegistration(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "event.registration"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "EventRegistration":
+    def from_dict(cls, data: dict[str, Any]) -> EventRegistration:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -265,11 +297,15 @@ class NewsCreated(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "news.created"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "NewsCreated":
+    def from_dict(cls, data: dict[str, Any]) -> NewsCreated:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -286,11 +322,15 @@ class NewsUpdated(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "news.updated"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "NewsUpdated":
+    def from_dict(cls, data: dict[str, Any]) -> NewsUpdated:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -310,11 +350,15 @@ class MessageSent(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "chat.message_sent"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "MessageSent":
+    def from_dict(cls, data: dict[str, Any]) -> MessageSent:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -337,11 +381,15 @@ class ChatDeleted(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "chat.deleted"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ChatDeleted":
+    def from_dict(cls, data: dict[str, Any]) -> ChatDeleted:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -359,11 +407,15 @@ class NotificationSent(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "notification.sent"
 
     @classmethod
-    def from_dict(cls, data: dict) -> "NotificationSent":
+    def from_dict(cls, data: dict[str, Any]) -> NotificationSent:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         # Add migration logic here when EVENT_VERSION is incremented
-        known = {f.name for f in dataclasses.fields(cls) if f.name not in ("event_id", "occurred_at", "metadata")}
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -406,7 +458,9 @@ def capture_domain_events(
             # or just use its __dict__ without the base DomainEvent fields.
 
             payload = {
-                "_schema_version": getattr(event_data, "EVENT_VERSION", 1),  # DEBT-02: schema version
+                "_schema_version": getattr(
+                    event_data, "EVENT_VERSION", 1
+                ),  # DEBT-02: schema version
                 **{
                     k: v
                     for k, v in event_data.__dict__.items()
@@ -627,6 +681,8 @@ __all__ = [
     "UserDeleted",
     "UserLoggedIn",
     "UserUpdated",
+    "capture_domain_events",
     "event_bus",
+    "register_domain_event",
     "register_event_listeners",
 ]
