@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import time
 import traceback
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -11,7 +12,8 @@ if TYPE_CHECKING:
 
 import asyncpg
 from opentelemetry import trace
-from sqlalchemy import select
+from prometheus_client import Counter, Gauge, Histogram
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -20,6 +22,30 @@ from app.models.domain_events import StoredEvent
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
+
+# ── MOD-04 (audit 2026-03-14): Prometheus metrics for outbox observability ─────
+# Module-level singletons; Prometheus scrapes /metrics on each poll cycle.
+
+OUTBOX_EVENTS_PROCESSED = Counter(
+    "outbox_events_processed_total",
+    "Total outbox events processed",
+    labelnames=["event_type", "status"],  # status: success | failed | dead_lettered
+)
+OUTBOX_PROCESSING_DURATION = Histogram(
+    "outbox_event_processing_duration_seconds",
+    "Wall-clock time to dispatch a single outbox event",
+    labelnames=["event_type"],
+    buckets=(0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0),
+)
+OUTBOX_PENDING_EVENTS = Gauge(
+    "outbox_pending_events_total",
+    "Current number of pending (unprocessed) outbox events — updated each poll cycle",
+)
+OUTBOX_DLQ_TOTAL = Counter(
+    "outbox_dlq_events_total",
+    "Total events permanently moved to the Dead Letter Queue",
+    labelnames=["event_type"],
+)
 
 
 class OutboxWorker:
@@ -150,19 +176,31 @@ class OutboxWorker:
                 result = await db.execute(stmt)
                 events = result.scalars().all()
 
+                # MOD-04: Update pending gauge once per batch cycle (cheap COUNT).
+                pending_count_result = await db.execute(
+                    select(func.count())
+                    .select_from(StoredEvent)
+                    .where(StoredEvent.processed_at.is_(None))
+                )
+                OUTBOX_PENDING_EVENTS.set(pending_count_result.scalar_one() or 0)
+
                 if not events:
                     span.set_attribute("outbox.events_count", 0)
                     return 0
 
                 span.set_attribute("outbox.events_count", len(events))
                 for se in events:
+                    _t0 = time.perf_counter()
                     try:
-                        # Construct DomainEvent from StoredEvent
-                        # This is a bit tricky as we need the original event class.
-                        # For now, we'll use a generic approach or look up by event_type.
-                        # In a real system, we'd have a factory to reconstruct the event.
                         await self._dispatch_event(se)
                         se.processed_at = datetime.now(UTC)
+                        # MOD-04: record success latency + count
+                        OUTBOX_PROCESSING_DURATION.labels(
+                            event_type=se.event_type
+                        ).observe(time.perf_counter() - _t0)
+                        OUTBOX_EVENTS_PROCESSED.labels(
+                            event_type=se.event_type, status="success"
+                        ).inc()
                     except Exception:
                         se.error_count += 1
                         last_error = traceback.format_exc()
@@ -172,6 +210,11 @@ class OutboxWorker:
                         # silently abandoning the event.
                         if se.error_count >= self.max_retries:
                             await self._move_to_dlq(db, se, last_error)
+                            # MOD-04: DLQ counter (also tracked in _move_to_dlq log)
+                            OUTBOX_DLQ_TOTAL.labels(event_type=se.event_type).inc()
+                            OUTBOX_EVENTS_PROCESSED.labels(
+                                event_type=se.event_type, status="dead_lettered"
+                            ).inc()
                         else:
                             logger.error(
                                 "Failed to process outbox event",
@@ -182,6 +225,9 @@ class OutboxWorker:
                                     "error_count": se.error_count,
                                 },
                             )
+                            OUTBOX_EVENTS_PROCESSED.labels(
+                                event_type=se.event_type, status="failed"
+                            ).inc()
 
                 await db.commit()
                 return len(events)
