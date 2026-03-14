@@ -113,15 +113,37 @@ class OutboxWorker:
     async def process_batch(self) -> int:
         with tracer.start_as_current_span("outbox.process_batch") as span:
             async with async_session() as db:
-                # Find unprocessed events or those that failed but haven't exceeded retries
-                stmt = (
-                    select(StoredEvent)
-                    .where(StoredEvent.processed_at.is_(None))
-                    .where(StoredEvent.error_count < self.max_retries)
-                    .order_by(StoredEvent.created_at)
-                    .limit(self.batch_size)
-                    .with_for_update(skip_locked=True)
-                )
+                # DEBT-01: Use DISTINCT ON (aggregate_id_uuid) on PostgreSQL to
+                # guarantee per-aggregate causal ordering when running multiple
+                # workers with skip_locked=True.  Each worker picks at most one
+                # pending event per aggregate (the one with the lowest
+                # sequence_number / created_at), so events for the same aggregate
+                # are never processed out of order by parallel workers.
+                # Falls back to the simple created_at ordering for SQLite (CI).
+                _is_pg = not str(settings.database_url).startswith("sqlite")
+                if _is_pg:
+                    stmt = (
+                        select(StoredEvent)
+                        .where(StoredEvent.processed_at.is_(None))
+                        .where(StoredEvent.error_count < self.max_retries)
+                        .distinct(StoredEvent.aggregate_id_uuid)
+                        .order_by(
+                            StoredEvent.aggregate_id_uuid,
+                            StoredEvent.sequence_number,
+                            StoredEvent.created_at,
+                        )
+                        .limit(self.batch_size)
+                        .with_for_update(skip_locked=True)
+                    )
+                else:
+                    stmt = (
+                        select(StoredEvent)
+                        .where(StoredEvent.processed_at.is_(None))
+                        .where(StoredEvent.error_count < self.max_retries)
+                        .order_by(StoredEvent.created_at)
+                        .limit(self.batch_size)
+                        .with_for_update(skip_locked=True)
+                    )
                 result = await db.execute(stmt)
                 events = result.scalars().all()
 
