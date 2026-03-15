@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -24,6 +25,23 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
 
 router = APIRouter(tags=["health"])
+
+# MOD-06 (audit 2026-03-15 Wave 7): Shutdown flag for K8s graceful drain.
+# Set during lifespan shutdown so /health/ready returns 503 while K8s
+# removes the pod from service endpoints before SIGKILL.
+#
+# K8s graceful shutdown timeline:
+#   1. SIGTERM received → lifespan shutdown calls set_shutdown_flag()
+#   2. K8s readiness probe hits /health/ready → 503 → removes pod from LB
+#   3. preStop hook: sleep 5s (in-flight requests from LB drain)
+#   4. Remaining requests complete within terminationGracePeriodSeconds
+#   5. SIGKILL if process still alive after grace period
+_shutdown_flag: asyncio.Event = asyncio.Event()
+
+
+def set_shutdown_flag() -> None:
+    """Signal that this pod is shutting down. Called from lifespan shutdown."""
+    _shutdown_flag.set()
 
 _storage_probe_cache: dict[str, Any] = {
     "expires_at": 0.0,
@@ -123,8 +141,16 @@ async def _probe_storage() -> tuple[str, float]:
     return _status or "unknown", latency_seconds
 
 
-@router.get("/healthz", summary="Legacy Health Check")
 @router.get("/health/live", summary="Liveness Probe")
+async def liveness() -> dict[str, str]:
+    # MOD-06 (audit 2026-03-15 Wave 7): Liveness probe MUST NOT check
+    # external dependencies.  If the DB is down and K8s restarts all pods,
+    # the restart cascade worsens the outage.  Liveness = "is the process
+    # alive and not deadlocked?" — the answer is always 200 if we reach here.
+    return {"status": "alive"}
+
+
+@router.get("/healthz", summary="Full Health Check")
 async def healthz() -> JSONResponse:
     now = time.monotonic()
     if _health_cache["expires_at"] > now:
@@ -265,5 +291,13 @@ async def healthz() -> JSONResponse:
 @router.get("/ready", summary="Legacy Readiness Check")
 @router.get("/health/ready", summary="Readiness Probe")
 async def ready() -> dict[str, str]:
+    # MOD-06 (audit 2026-03-15 Wave 7): Return 503 immediately during shutdown
+    # so K8s removes this pod from the service endpoints before killing it.
+    # This prevents new requests from arriving on a terminating pod.
+    if _shutdown_flag.is_set():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Shutting down",
+        )
     await wait_db(max_attempts=1, delay=0.1)
     return {"status": "ready"}

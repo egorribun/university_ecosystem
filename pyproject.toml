@@ -6,7 +6,7 @@ description = "University Ecosystem Platform"
 # Benefits: @override decorator, tomllib in stdlib, faster TaskGroup, ~5% CPython throughput.
 requires-python = ">=3.13"
 dependencies = [
-    "aiofiles>=23.0",      # No breaking API changes between 23 and 24; pin removed (TD-3: audit 2026-02-24)
+    "aiofiles>=23.0,<25",  # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
     "aiosqlite>=0.19",
     "alembic>=1.13,<2.0",
     "anyio>=4.0.0,<5.0",
@@ -19,7 +19,7 @@ dependencies = [
     "aioboto3>=15,<16",
     "brotli-asgi>=1.4",
     "clamd>=1.0.2",
-    "cryptography>=41",
+    "cryptography>=41,<45",  # TD-06 (audit 2026-03-15): cap major to prevent silent API breakage
     "defusedxml>=0.7.1",
     "diskcache>=5.6.0",
     "elasticsearch[async]>=8.0,<9.0.0",
@@ -55,9 +55,9 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "pyasn1>=0.6.2",
     "pydantic>=2.12.5,<3",
-    "pydantic-settings>=2.15.0,<3",
+    "pydantic-settings>=2.13.0,<3",
     "pyjwt>=2.10.1",
-    "pyotp>=2.9",
+    "pyotp>=2.9,<3",  # TD-06 (audit 2026-03-15): upper bound; Renovate will open PR for v3
     "pyroscope-io>=0.8.0 ; sys_platform != 'win32'",
     "python-dotenv>=1.0",
     "python-magic>=0.4.27",
@@ -71,7 +71,7 @@ dependencies = [
     "strawberry-graphql[fastapi]>=0.250",
     "structlog>=24.0",
     "typer>=0.12.0",
-    "urllib3>=2.6.3",
+    "urllib3>=2.6.3,<3",  # TD-06 (audit 2026-03-15): upper bound; urllib3 v3 has breaking API changes
     "uvicorn[standard]>=0.23",
     "uvloop>=0.21 ; sys_platform != 'win32'",
     "webauthn>=2.0.0",

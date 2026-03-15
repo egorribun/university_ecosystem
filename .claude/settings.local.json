@@ -104,7 +104,18 @@
       "Bash(pre-commit run:*)",
       "Bash(ls -lh /c/Users/egorribun/Documents/university_ecosystem/AUDIT* /c/Users/egorribun/Documents/university_ecosystem/app/models/*.py)",
       "WebSearch",
-      "Bash(python -m alembic heads)"
+      "Bash(python -m alembic heads)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(go get:*)",
+      "Bash(go vet:*)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(uv lock:*)",
+      "Bash(uv pip:*)",
+      "Bash(pip index:*)",
+      "Bash(npx tsc:*)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(go mod:*)"
     ]
   }
 }

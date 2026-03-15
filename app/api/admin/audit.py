@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -96,16 +96,26 @@ async def list_audit_logs(
         stmt = stmt.where(DataAccessLog.subject_user_id == subject_id)
     if resource_type:
         if resource_type not in _ALLOWED_RESOURCE_TYPES:
-            resource_type = None  # silently ignore unknown; prevents value enumeration
-        else:
-            stmt = stmt.where(DataAccessLog.resource_type == resource_type)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "invalid_resource_type",
+                    "allowed": sorted(_ALLOWED_RESOURCE_TYPES),
+                },
+            )
+        stmt = stmt.where(DataAccessLog.resource_type == resource_type)
     if action:
         if action not in _ALLOWED_ACTIONS:
-            action = None
-        else:
-            stmt = stmt.where(DataAccessLog.action == action)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "invalid_action",
+                    "allowed": sorted(_ALLOWED_ACTIONS),
+                },
+            )
+        stmt = stmt.where(DataAccessLog.action == action)
 
-    # Count total
+    # Count total — filters mirror stmt exactly (no silent coercion above)
     count_stmt = select(func.count(DataAccessLog.id))
     if actor_id:
         count_stmt = count_stmt.where(DataAccessLog.actor_user_id == actor_id)

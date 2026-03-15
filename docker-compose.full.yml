@@ -287,6 +287,8 @@ services:
       BACKEND_URL: http://backend:8000
       REDIS_URL: redis://redis:6379/3
       JWT_SECRET: ${SECRET_KEY}
+      # AUDIT-INFRA-05: explicit opt-out for local dev — production K8s must NOT set this
+      GRPC_USE_TLS: "false"
     depends_on:
       backend:
         condition: service_healthy
@@ -312,6 +314,15 @@ services:
       WS_HUB_PORT: "8081"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
       JWT_SECRET: ${SECRET_KEY}
+      # AUDIT-INFRA-02: required — ws-hub fails to start if empty
+      WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET}
+      # MOD-01 (audit 2026-03-15 Wave 7): Standard OTel env vars — SDK reads
+      # these automatically so no hardcoded endpoint in telemetry.go code.
+      # OTEL_EXPORTER_OTLP_INSECURE=true is correct for local dev (tempo has
+      # no TLS); production pods omit this so TLS is enforced by default.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4317"
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: "ws-hub"
     depends_on:
       - nats
     networks:

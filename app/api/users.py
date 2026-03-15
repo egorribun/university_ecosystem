@@ -88,8 +88,17 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     if not signing_key:
         raise_validation_error("errors.sessions.signing_key_missing", locale)
 
+    # AUDIT-BE-04: bound header size before parsing to prevent memory amplification.
+    # json.loads on a 10 MB header allocates ~30 MB (Python JSON ~3x overhead) and
+    # then runs HMAC over the whole payload — DoS at 50 concurrent requests.
+    # 8 KiB is more than enough for any valid profile cache envelope.
+    _MAX_ENVELOPE_BYTES = 8_192
+    raw_bytes = raw_envelope.encode("utf-8")
+    if len(raw_bytes) > _MAX_ENVELOPE_BYTES:
+        raise_validation_error("errors.profile_cache.invalid_envelope", locale)
+
     try:
-        candidate = json.loads(raw_envelope)
+        candidate = json.loads(raw_bytes)
     except json.JSONDecodeError:
         raise_validation_error("errors.profile_cache.invalid_envelope", locale)
 

@@ -71,7 +71,7 @@ func LoadConfig() *Config {
 		JWKSURL:           getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
 		SendBufferSize:    getEnvInt("WS_SEND_BUFFER_SIZE", 256),
 		BroadcastBufferSize: getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
-		InternalSecret:    getEnv("WS_HUB_INTERNAL_SECRET", ""),
+		InternalSecret:    os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
 		MaxClients:        getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
 		RedisURL:          getEnv("REDIS_URL", "redis:6379"),
 		RedisPassword:     getEnv("REDIS_PASSWORD", ""),

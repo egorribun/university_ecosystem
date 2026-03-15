@@ -10,7 +10,14 @@
       "groupName": "GitHub Actions"
     },
     {
-      "description": "Keep Docker base images up-to-date; require manual review for security-sensitive images",
+      "description": "MOD-2026-01 (audit 2026-03-15): Pin all Docker images to SHA-256 digest. Mutable tags allow upstream registry to replace an image without changing the tag string (supply-chain attack). SLSA Level 2 requires immutable references. Renovate will open PRs to update both tag and digest together.",
+      "matchManagers": ["docker-compose", "dockerfile"],
+      "pinDigests": true,
+      "automerge": false,
+      "labels": ["security", "dependencies", "docker"]
+    },
+    {
+      "description": "Keep security-sensitive Docker images on manual review schedule",
       "matchManagers": ["docker-compose", "dockerfile"],
       "matchPackageNames": [
         "minio/minio",

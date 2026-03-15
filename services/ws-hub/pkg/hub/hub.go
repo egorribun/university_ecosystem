@@ -50,6 +50,10 @@ type Hub struct {
 	UpgradeLimiter *WSUpgradeRateLimiter
 	// jwksCache stores public keys fetched via MOD-1 / JWKS URL.
 	jwksCache *jwk.Cache
+	// jwksCacheCancel cancels the context passed to jwk.NewCache so the
+	// internal refresh goroutine is stopped when Stop() is called.
+	// TD-02 (audit 2026-03-15 Wave 7).
+	jwksCacheCancel context.CancelFunc
 	// jwksURL is the URL registered with jwksCache; used to retrieve the key set.
 	jwksURL string
 	// maxClients caps the number of concurrently connected WebSocket clients.
@@ -57,6 +61,10 @@ type Hub struct {
 	maxClients int
 	// internalSecret is the shared secret for local HMAC validation. (TD-NEW-07)
 	internalSecret string
+	// msgLimiters is a per-client token-bucket map that limits NATS publish rate.
+	// TD-01 (audit 2026-03-15 Wave 7): prevents a single WS client from
+	// flooding JetStream and causing backpressure for all other clients.
+	msgLimiters sync.Map // map[clientID string]*rate.Limiter
 }
 
 func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
@@ -81,22 +89,33 @@ func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *c
 
 // SetupJWKS initialises the JWKS cache for RS256 token verification.
 // It fetches public keys from jwksURL and refreshes them periodically. (MOD-1)
+//
+// TD-02 (audit 2026-03-15 Wave 7): a dedicated child context is created so
+// that Stop() can cancel the jwk.Cache's internal refresh goroutine
+// independently of the application-level context.  Without this, the goroutine
+// would keep running after Stop() if the parent context is not cancelled yet
+// (e.g. in tests or staged shutdowns).
 func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	if jwksURL == "" {
 		return nil
 	}
 
-	h.jwksCache = jwk.NewCache(ctx)
+	// Derive a child context whose cancel is stored for Stop().
+	jwksCtx, cancel := context.WithCancel(ctx)
+	h.jwksCacheCancel = cancel
+
+	h.jwksCache = jwk.NewCache(jwksCtx)
 	// Refresh the cache every hour.
 	err := h.jwksCache.Register(jwksURL, jwk.WithMinRefreshInterval(time.Hour))
 	if err != nil {
+		cancel() // release context on error
 		return fmt.Errorf("failed to register JWKS URL %s: %w", jwksURL, err)
 	}
 	// Store the URL so ValidateToken can retrieve the correct key set.
 	h.jwksURL = jwksURL
 
 	// Initial fetch to ensure we have keys at startup.
-	_, err = h.jwksCache.Refresh(ctx, jwksURL)
+	_, err = h.jwksCache.Refresh(jwksCtx, jwksURL)
 	if err != nil {
 		h.Logger.Warn("Initial JWKS fetch failed; will retry in background", zap.Error(err))
 	}
@@ -208,12 +227,17 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 		client      *Client
 		evictOnFull bool // true only for global broadcast where we auto-evict
 	}
-	var recipients []recipient
 
+	// PERF-01 (audit 2026-03-15 Wave 7): pre-allocate the slice inside the
+	// RLock using the current map length so append() never reallocates.
+	// For 500 clients this saves ~9 copy operations, reducing critical-section
+	// hold time from O(N log N) allocations to a single O(N) slice write.
 	h.mu.RLock()
+	var recipients []recipient
 	if msg.Room != "" {
 		if clients, ok := h.Rooms[msg.Room]; ok {
 			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
+			recipients = make([]recipient, 0, len(clients))
 			for c := range clients {
 				recipients = append(recipients, recipient{client: c})
 			}
@@ -221,11 +245,13 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 	} else if msg.To != "" {
 		if c, ok := h.Clients[msg.To]; ok {
 			span.SetAttributes(attribute.Int("recipient.count", 1))
+			recipients = make([]recipient, 0, 1)
 			recipients = append(recipients, recipient{client: c})
 		}
 	} else {
 		// Global broadcast — evict slow consumers.
 		span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
+		recipients = make([]recipient, 0, len(h.Clients))
 		for _, c := range h.Clients {
 			recipients = append(recipients, recipient{client: c, evictOnFull: true})
 		}
@@ -260,6 +286,18 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 // at startup than silently serve a broken system.
 func (h *Hub) SubscribeToNATS() {
 	chatSub, err := h.Nats.Subscribe("chat.>", func(msg *nats.Msg) {
+		// RZ-03 (audit 2026-03-15 Wave 7): recover() first so that any panic
+		// (e.g. nil pointer dereference on malformed NATS payload) is logged
+		// rather than crashing the subscriber goroutine.  A crashed goroutine
+		// silently stops the subscription — the hub would deliver no messages
+		// until restarted.
+		defer func() {
+			if r := recover(); r != nil {
+				h.Logger.Error("NATS chat callback panic recovered",
+					zap.Any("panic", r),
+					zap.String("subject", msg.Subject))
+			}
+		}()
 		// Attempt to extract trace context from NATS message headers if present.
 		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
 		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.Chat")
@@ -284,6 +322,14 @@ func (h *Hub) SubscribeToNATS() {
 	h.subs = append(h.subs, chatSub)
 
 	notifSub, err := h.Nats.Subscribe("notifications.>", func(msg *nats.Msg) {
+		// RZ-03 (audit 2026-03-15 Wave 7): panic recovery — same rationale as chat callback.
+		defer func() {
+			if r := recover(); r != nil {
+				h.Logger.Error("NATS notifications callback panic recovered",
+					zap.Any("panic", r),
+					zap.String("subject", msg.Subject))
+			}
+		}()
 		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
 		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.Notifications")
 		defer span.End()
@@ -308,6 +354,14 @@ func (h *Hub) SubscribeToNATS() {
 	// M-007 (audit 2026-03-10): Distributed cache invalidation subscription.
 	// Receives events from the Python backend when a participant is removed.
 	invSub, err := h.Nats.Subscribe("cache.invalidate", func(msg *nats.Msg) {
+		// RZ-03 (audit 2026-03-15 Wave 7): panic recovery — same rationale as chat callback.
+		defer func() {
+			if r := recover(); r != nil {
+				h.Logger.Error("NATS cache.invalidate callback panic recovered",
+					zap.Any("panic", r),
+					zap.String("subject", msg.Subject))
+			}
+		}()
 		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
 		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.CacheInvalidate")
 		defer span.End()
@@ -355,9 +409,13 @@ func (h *Hub) SubscribeToNATS() {
 	h.Logger.Info("Subscribed to NATS topics")
 }
 
-// Stop drains all NATS subscriptions (flushing in-flight messages) and
-// stops the per-IP upgrade rate limiter GC goroutine.  Call this from
-// the application shutdown path before closing the NATS connection.
+// Stop drains all NATS subscriptions (flushing in-flight messages), stops
+// the per-IP upgrade rate limiter GC goroutine, and cancels the JWKS
+// cache refresh goroutine.  Call this from the application shutdown path
+// before closing the NATS connection.
+//
+// TD-02 (audit 2026-03-15 Wave 7): cancel jwksCacheCancel so the
+// jwk.Cache internal goroutine exits promptly on shutdown.
 func (h *Hub) Stop() {
 	for _, sub := range h.subs {
 		if err := sub.Drain(); err != nil {
@@ -366,6 +424,9 @@ func (h *Hub) Stop() {
 	}
 	if h.UpgradeLimiter != nil {
 		h.UpgradeLimiter.Stop()
+	}
+	if h.jwksCacheCancel != nil {
+		h.jwksCacheCancel()
 	}
 }
 

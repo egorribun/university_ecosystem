@@ -18,24 +18,36 @@ spec:
         app.kubernetes.io/component: web
     spec:
       automountServiceAccountToken: false
+      # MOD-06 (audit 2026-03-15 Wave 7): Graceful shutdown for nginx.
+      # nginx stops accepting new connections on SIGTERM; preStop sleep
+      # allows in-flight connections to drain from the load balancer.
+      terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
           image: university-ecosystem/frontend:latest
           ports:
             - containerPort: 80
               name: http
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
           livenessProbe:
             httpGet:
               path: /
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /
               port: http
             initialDelaySeconds: 5
             periodSeconds: 5
+            failureThreshold: 3
+            timeoutSeconds: 3
           resources:
             requests:
               cpu: 50m

@@ -39,6 +39,12 @@ func main() {
 
 	cfg := config.LoadConfig()
 
+	// AUDIT-INFRA-02: fail-fast — empty InternalSecret allows HMAC forgery on
+	// the /internal/cache/invalidate endpoint from any container on service_net.
+	if cfg.InternalSecret == "" {
+		logger.Fatal("WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
+	}
+
 	if err := telemetry.InitSentry(cfg); err != nil {
 		logger.Error("Sentry initialization failed", zap.Error(err))
 	}

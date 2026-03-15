@@ -398,16 +398,20 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
     ) -> models.InviteCode | None:
         """Get invite code by value.
 
-        CRIT-06 (audit 2026-03-11): Acquires a row-level lock by default
-        (skip_locked=True so concurrent registrations don't block each other;
-        they simply fail to acquire the code and must retry). Without this lock,
-        two concurrent registrations with the same invite code both read
-        uses_remaining > 0, decrement it, and both succeed — effectively
-        doubling the allowed registrations.
+        AUDIT-BE-03 (audit 2026-03-15): Uses SELECT FOR UPDATE without skip_locked.
+        SKIP LOCKED is correct for job-queue patterns where any worker can claim
+        any item. For invite codes — a single-owner resource — it causes a TOCTOU
+        race: a second concurrent transaction *skips* the locked row, receives None,
+        and proceeds as if the code is absent, allowing duplicate registration.
+
+        FOR UPDATE (without skip_locked) serialises concurrent registrations at the
+        row level. The second caller blocks, then reads is_used=True and correctly
+        fails. This mirrors the pattern in auth_repository.create_email_change_token.
+        See PostgreSQL 17 §13.3.4 "Table-Level Locks".
         """
         stmt = select(models.InviteCode).where(models.InviteCode.code == code)
         if with_for_update:
-            stmt = stmt.with_for_update(skip_locked=True)
+            stmt = stmt.with_for_update()  # no skip_locked — serialize, not skip
         result = await self.db.execute(stmt)
         return result.scalars().first()
 

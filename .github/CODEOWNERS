@@ -1,0 +1,19 @@
+# CODEOWNERS — required reviewers for sensitive files
+# Syntax: <pattern> <owner> [<owner>...]
+# Owners are notified when matching files are changed in a PR.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# AUDIT-INFRA-06 (audit 2026-03-15): .secrets.baseline is a detect-secrets
+# suppression list. Any change must be reviewed by the security team to prevent
+# contributors from hiding newly-committed secrets in the baseline.
+.secrets.baseline @security-team
+
+# CI/CD workflow changes affect the entire security posture of the project.
+.github/workflows/ @security-team @devops-team
+
+# Infrastructure secrets and compose files contain credentials and network config.
+docker-compose*.yml @security-team @devops-team
+.env.docker.example @security-team
+
+# Kubernetes manifests control cluster security: RBAC, NetworkPolicy, pod security.
+k8s/ @security-team @devops-team

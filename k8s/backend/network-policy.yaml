@@ -111,7 +111,13 @@ spec:
       ports:
         - protocol: TCP
           port: 7233
-    # Allow external HTTPS (for OAuth, external APIs)
+    # Allow external HTTPS (for OAuth providers, HIBP API, external services).
+    # MOD-2026-04 (audit 2026-03-15): Added 169.254.0.0/16 to blocked ranges.
+    # AWS Instance Metadata Service (IMDS) at 169.254.169.254 is reachable via
+    # link-local and is a well-known SSRF pivot — an attacker with RCE in the
+    # backend pod can call it to retrieve IAM credentials and pivot to AWS.
+    # GCP metadata server (169.254.169.254), Azure IMDS (169.254.169.254),
+    # and link-local autoconfiguration addresses (169.254.0.0/16) are blocked.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -119,6 +125,8 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16      # AWS/GCP/Azure IMDS + link-local (SSRF protection)
+              - fd00::/8            # IPv6 ULA (private)
       ports:
         - protocol: TCP
           port: 443

@@ -189,6 +189,33 @@ jobs:
           path: sbom.spdx.json
           retention-days: 90
 
+  # ── detect-secrets baseline integrity ─────────────────────────────────────
+  # AUDIT-INFRA-06: A contributor with push access can suppress new secrets by
+  # updating .secrets.baseline. This job re-scans the repo and fails if the
+  # committed baseline suppresses patterns not present in the current scan,
+  # catching newly added suppressions. Combined with CODEOWNERS this ensures
+  # that any baseline change requires security-team approval.
+  detect-secrets-baseline:
+    name: detect-secrets Baseline Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets==1.5.0
+
+      - name: Scan repo (no baseline)
+        run: detect-secrets scan > /tmp/current_scan.json
+
+      - name: Verify baseline has not regressed
+        run: python scripts/verify_secrets_baseline.py .secrets.baseline /tmp/current_scan.json
+
   # ── Semgrep SAST ───────────────────────────────────────────────────────────
   # Uses the official semgrep/semgrep Docker image so no binary installation
   # is required.  Runs diff-aware analysis on PRs and full-scan on main.

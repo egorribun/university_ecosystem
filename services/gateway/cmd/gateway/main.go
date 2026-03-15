@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -100,7 +102,22 @@ func main() {
 	}
 
 	// Create reverse proxy
+	// PERF-02 (audit 2026-03-15 Wave 7): set explicit transport timeouts so
+	// a slow or hung Python backend cannot accumulate gateway goroutines
+	// indefinitely.  ResponseHeaderTimeout is the critical setting: it bounds
+	// the wait for the first response byte after the request is sent.
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
+	proxy.Transport = &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ResponseHeaderTimeout: 30 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   50,
+		TLSHandshakeTimeout:   10 * time.Second,
+	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		logger.Error("Proxy error", zap.Error(err), zap.String("path", r.URL.Path))
 		w.WriteHeader(http.StatusBadGateway)
@@ -220,7 +237,11 @@ func main() {
 	}
 
 	// Initialize Prometheus
+	// RZ-09 (audit 2026-03-15 Wave 7): expose /metrics on an internal-only port
+	// so it is NOT reachable via the public API router.  K8s NetworkPolicy already
+	// allows Prometheus scraper access to :9102 — see k8s/backend/network-policy.yaml.
 	p := ginprometheus.NewPrometheus("gin")
+	p.SetListenAddress(":9102")
 	p.Use(router)
 
 	// Public routes (initially empty group, will add middleware below)
@@ -314,10 +335,21 @@ func main() {
 }
 
 func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
-	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithInsecure(),
+	// RZ-02 (audit 2026-03-15 Wave 7): reuse cfg.GrpcUseTLS (already used for
+	// file-processor gRPC) so the same env variable (GRPC_USE_TLS=false) switches
+	// both connections to insecure mode for local dev.  Production default is TLS
+	// because config.go:52 makes GrpcUseTLS=true when GRPC_USE_TLS is absent.
+	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(cfg.OtelEndpoint),
-	)
+	}
+	if cfg.GrpcUseTLS {
+		opts = append(opts, otlptracegrpc.WithTLSCredentials(
+			credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}),
+		))
+	} else {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+	exporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,10 @@ spec:
       # Prevents SSRF to kubernetes.default.svc via mounted JWT token.
       serviceAccountName: backend
       automountServiceAccountToken: false
+      # MOD-06 (audit 2026-03-15 Wave 7): Allow in-flight requests to complete
+      # within the grace period before SIGKILL.  preStop sleep gives kube-proxy
+      # time to propagate the endpoint removal to all nodes (~2-5 s lag).
+      terminationGracePeriodSeconds: 30
       containers:
         - name: backend
           image: university-ecosystem/backend:${IMAGE_TAG:-latest}
@@ -32,18 +36,33 @@ spec:
                 name: backend-secrets
             - configMapRef:
                 name: backend-config
+          # MOD-06: preStop sleep ensures load balancer drains before pod dies.
+          # K8s sends SIGTERM + starts preStop concurrently; the sleep lets the
+          # readiness probe flip to 503 and LB endpoint lists propagate first.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
           livenessProbe:
             httpGet:
               path: /health/live
               port: http
-            initialDelaySeconds: 15
-            periodSeconds: 20
+            # MOD-06: Liveness checks process health only (no DB/Redis).
+            # High initialDelay avoids false restarts during slow DB startup.
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /health/ready
               port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            # Readiness checks DB connectivity + shutdown flag.
+            # Short period ensures fast endpoint removal on shutdown.
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+            timeoutSeconds: 3
           resources:
             requests:
               cpu: 100m

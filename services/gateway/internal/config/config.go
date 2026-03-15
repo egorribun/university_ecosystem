@@ -47,8 +47,9 @@ func Load() (*Config, error) {
 		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
 		OtelEndpoint:      getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "jaeger:4317"),
 		AppVersion:        getEnv("APP_VERSION", "unknown"),
-		// CRIT-02: Fail-closed (true if explicitly requested, default false to avoid break)
-		GrpcUseTLS:        os.Getenv("GRPC_USE_TLS") == "true",
+		// AUDIT-INFRA-05: Fail-closed — TLS on by default. Set GRPC_USE_TLS=false
+		// ONLY for local dev (docker-compose.yml). Production/K8s inherit TLS=true.
+		GrpcUseTLS: os.Getenv("GRPC_USE_TLS") != "false",
 	}
 
 	if cfg.JWTSecret == "" {

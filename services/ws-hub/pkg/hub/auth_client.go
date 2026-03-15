@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 )
 
 // RoomAuthClient verifies that a given user is permitted to join a WebSocket room.
@@ -42,10 +43,33 @@ type InternalAPIAuthClient struct {
 
 	callMu sync.Mutex
 	calls  map[string]*call
+
+	// MOD-03 (audit 2026-03-15 Wave 7): Circuit breaker prevents goroutine
+	// accumulation when the backend is consistently unavailable.  Each
+	// timed-out HTTP call occupies a goroutine for up to 3 s (httpClient
+	// timeout); at 10k clients reconnecting simultaneously this saturates
+	// the thread pool.  gobreaker trips after 10 consecutive failures and
+	// stays open for 10 s before probing with up to 5 half-open requests.
+	cb *gobreaker.CircuitBreaker
 }
 
 func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
 	cache, _ := lru.New[string, cacheEntry](100000)
+
+	// MOD-03 (audit 2026-03-15 Wave 7): Circuit breaker configuration.
+	// ReadyToTrip: open after 10 consecutive HTTP failures (not cache hits).
+	// Timeout: stay open for 10 s before allowing a probe (half-open).
+	// MaxRequests: allow 5 probes in half-open state before deciding.
+	cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "backend-auth",
+		MaxRequests: 5,
+		Interval:    30 * time.Second,
+		Timeout:     10 * time.Second,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures > 10
+		},
+	})
+
 	return &InternalAPIAuthClient{
 		baseURL: baseURL,
 		redis:   redisClient,
@@ -65,6 +89,7 @@ func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *Intern
 		},
 		cache: cache,
 		calls: make(map[string]*call),
+		cb:    cb,
 	}
 }
 
@@ -94,6 +119,8 @@ func isValidUUID(s string) bool {
 // doRequest performs the actual HTTP check against the backend.
 // WSH-05 (audit 2026-03-08 Wave 5): accepts ctx so that the request is
 // cancelled when the calling goroutine's context is done (e.g. shutdown).
+//
+// MOD-03 (audit 2026-03-15 Wave 7): wrapped by circuit breaker in CanJoinRoom.
 func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID string) bool {
 	params := url.Values{}
 	params.Set("user_id", userID)
@@ -117,6 +144,27 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return resp.StatusCode == http.StatusOK
+}
+
+// doRequestWithBreaker wraps doRequest with the circuit breaker.
+// Returns false when the circuit is open (fail-closed for auth).
+func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID, roomID string) bool {
+	result, err := c.cb.Execute(func() (interface{}, error) {
+		allowed := c.doRequest(ctx, userID, roomID)
+		if !allowed {
+			// Treat a 403/non-200 as a success from the circuit breaker's
+			// perspective — the backend responded correctly.  Only network
+			// errors / timeouts should count as failures that trip the breaker.
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		// gobreaker.ErrOpenState or gobreaker.ErrTooManyRequests (half-open limit)
+		// → fail-closed: deny room join when backend is unreachable.
+		return false
+	}
+	return result.(bool)
 }
 
 // CanJoinRoom checks local cache, uses single-flight to prevent thundering herd,
@@ -167,8 +215,8 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	c.calls[key] = newCall
 	c.callMu.Unlock()
 
-	// Perform actual request with caller's context.
-	allowed := c.doRequest(ctx, userID, roomID)
+	// Perform actual request with caller's context, guarded by circuit breaker.
+	allowed := c.doRequestWithBreaker(ctx, userID, roomID)
 
 	// Update cache
 	c.cache.Add(key, cacheEntry{

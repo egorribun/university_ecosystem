@@ -3,10 +3,13 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -75,21 +78,23 @@ type FileActivities struct {
 	Bucket      string
 }
 
-// NewFileActivities creates a new activity struct with dependencies
-func NewFileActivities(cfg *config.Config) *FileActivities {
+// NewFileActivities creates a new activity struct with dependencies.
+// Returns an error instead of panicking so main.go can call logger.Fatal
+// and let K8s restart the pod cleanly (RZ-04, audit 2026-03-15 Wave 7).
+func NewFileActivities(cfg *config.Config) (*FileActivities, error) {
 	// Initialize MinIO client
 	client, err := minio.New(cfg.MinioEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
 		Secure: cfg.MinioSecure,
 	})
 	if err != nil {
-		panic(err) // Worker will retry initialization if panic occurs on startup
+		return nil, fmt.Errorf("minio client init failed for endpoint %s: %w", cfg.MinioEndpoint, err)
 	}
 
 	return &FileActivities{
 		MinioClient: client,
 		Bucket:      cfg.MinioBucket,
-	}
+	}, nil
 }
 
 const (
@@ -101,14 +106,52 @@ const (
 	maxImagePixels = 8_000_000
 )
 
+// imageMIMETypes is an explicit allowlist for Content-Type headers written to MinIO.
+// RZ-05 (audit 2026-03-15 Wave 7): using "image/"+format without a whitelist
+// allows future codec registrations to inject arbitrary MIME types into MinIO
+// object metadata.  Unknown formats fall back to application/octet-stream.
+var imageMIMETypes = map[string]string{
+	"jpeg": "image/jpeg",
+	"jpg":  "image/jpeg",
+	"png":  "image/png",
+	"gif":  "image/gif",
+	"webp": "image/webp",
+}
+
+// sanitizeMinIOKey validates and normalises a MinIO object key.
+// MinIO keys are URI path segments; path.Clean normalises ".." sequences.
+// AUDIT-INFRA-04: path traversal in object keys can reach outside the intended
+// prefix when MinIO uses path-style access. Classify as InvalidInputError so
+// Temporal marks the workflow non-retryable (see NonRetryableErrorTypes policy).
+func sanitizeMinIOKey(key string) (string, error) {
+	if key == "" {
+		return "", errors.New("object key must not be empty")
+	}
+	clean := path.Clean(key)
+	if strings.HasPrefix(clean, "..") || strings.Contains(clean, "/../") {
+		return "", fmt.Errorf("path traversal detected in object key: %q", key)
+	}
+	return clean, nil
+}
+
 // ResizeImageActivity performs the image resizing
 func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob) (*ProcessResult, error) {
 	result := &ProcessResult{
 		JobID: job.ID,
 	}
 
+	// AUDIT-INFRA-04: validate keys before use to prevent path traversal.
+	sourceKey, err := sanitizeMinIOKey(job.SourceKey)
+	if err != nil {
+		return nil, temporal.NewApplicationError(err.Error(), "InvalidInputError")
+	}
+	destKey, err := sanitizeMinIOKey(job.DestKey)
+	if err != nil {
+		return nil, temporal.NewApplicationError(err.Error(), "InvalidInputError")
+	}
+
 	// Download from MinIO
-	obj, err := a.MinioClient.GetObject(ctx, a.Bucket, job.SourceKey, minio.GetObjectOptions{})
+	obj, err := a.MinioClient.GetObject(ctx, a.Bucket, sourceKey, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -119,9 +162,34 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	}()
 
 	// Decode image
-	img, format, err := image.Decode(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode image: %w", err)
+	// RZ-08 (audit 2026-03-15 Wave 7): image.Decode reads from an io.Reader and
+	// has no context.Context parameter — it can block indefinitely if the MinIO
+	// stream stalls.  Run it in a goroutine and select on ctx.Done() so the
+	// Temporal activity respects cancellation / deadline.
+	type decodeResult struct {
+		img    image.Image
+		format string
+		err    error
+	}
+	doneCh := make(chan decodeResult, 1)
+	go func() {
+		img, format, err := image.Decode(obj)
+		doneCh <- decodeResult{img, format, err}
+	}()
+
+	var img image.Image
+	var format string
+	select {
+	case <-ctx.Done():
+		// Close the MinIO reader to unblock the goroutine and let it exit.
+		_ = obj.Close()
+		return nil, temporal.NewApplicationError("context cancelled during image decode",
+			"ContextCancelled")
+	case res := <-doneCh:
+		if res.err != nil {
+			return nil, fmt.Errorf("failed to decode image: %w", res.err)
+		}
+		img, format = res.img, res.format
 	}
 
 	// Get target dimensions
@@ -163,15 +231,19 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	}
 
 	// Upload result
-	_, err = a.MinioClient.PutObject(ctx, a.Bucket, job.DestKey, &buf, int64(buf.Len()),
-		minio.PutObjectOptions{ContentType: "image/" + format})
+	contentType, ok := imageMIMETypes[format]
+	if !ok {
+		contentType = "application/octet-stream"
+	}
+	_, err = a.MinioClient.PutObject(ctx, a.Bucket, destKey, &buf, int64(buf.Len()),
+		minio.PutObjectOptions{ContentType: contentType})
 
 	if err != nil {
 		return nil, err
 	}
 
 	result.Success = true
-	result.DestKey = job.DestKey
+	result.DestKey = destKey
 	return result, nil
 }
 

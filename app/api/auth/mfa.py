@@ -143,6 +143,13 @@ async def confirm_totp_enrollment(
         extra={"enrollment_id": updated.id},
     )
 
+    # RZ-07 (audit 2026-03-15 Wave 7): CSRF rotation on MFA enrollment completion.
+    # Adding a second factor is a privilege escalation — rotate the CSRF token so
+    # any pre-enrollment CSRF cookies captured by an attacker become invalid.
+    from app.core.csrf import signal_csrf_rotation
+
+    signal_csrf_rotation(request)
+
     return MfaTotpEnrollmentOut.model_validate(updated)
 
 

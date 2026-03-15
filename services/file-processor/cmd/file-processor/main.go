@@ -122,7 +122,12 @@ func main() {
 	w.RegisterWorkflow(workflow.FileProcessingWorkflow)
 
 	// Activities require config-based init (MinIO)
-	activities := workflow.NewFileActivities(cfg)
+	// RZ-04 (audit 2026-03-15 Wave 7): NewFileActivities now returns an error
+	// instead of panicking, so K8s can restart the pod cleanly on init failure.
+	activities, err := workflow.NewFileActivities(cfg)
+	if err != nil {
+		logger.Fatal("Failed to initialize file activities", zap.Error(err))
+	}
 	w.RegisterActivity(activities.ResizeImageActivity)
 
 	// Start Temporal Worker (Non-blocking)
