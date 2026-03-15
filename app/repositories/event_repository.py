@@ -29,7 +29,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
     """Repository for Event model operations."""
 
     def __init__(self, db: AsyncDatabaseSession):
-        self.db = db
+        super().__init__(db)
 
     @property
     def model(self) -> type[Event]:
@@ -69,34 +69,63 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         obj = result.scalar_one_or_none()
         return self._to_dto(obj) if obj else None
 
-    async def get_upcoming(self, *, skip: int = 0, limit: int = 20) -> list[EventDTO]:
-        """Get upcoming events ordered by start date."""
+    async def get_upcoming(
+        self,
+        *,
+        limit: int = 20,
+        after_starts_at: datetime | None = None,
+        after_id: uuid.UUID | None = None,
+    ) -> list[EventDTO]:
+        """Get upcoming events with keyset cursor pagination.
+
+        AUDIT-BE-01 (audit 2026-03-15): Replaced OFFSET-based pagination.
+        OFFSET forces PostgreSQL to scan and discard all preceding rows — O(N).
+        Keyset pagination uses a composite (starts_at, id) cursor to jump
+        directly to the next page via the existing B-tree index — O(log N).
+
+        Callers that previously used skip=N should compute an (after_starts_at,
+        after_id) cursor from the last item of the previous page.
+        """
         now = datetime.now(UTC)
-        result = await self.db.execute(
-            select(Event)
-            .where(Event.starts_at >= now)
-            .order_by(Event.starts_at.asc())
-            .offset(skip)
-            .limit(limit)
-        )
-        objs = result.scalars().all()
+        stmt = select(Event).where(Event.starts_at >= now)
+        if after_starts_at is not None and after_id is not None:
+            stmt = stmt.where(
+                or_(
+                    Event.starts_at > after_starts_at,
+                    and_(Event.starts_at == after_starts_at, Event.id > after_id),
+                )
+            )
+        stmt = stmt.order_by(Event.starts_at.asc(), Event.id.asc()).limit(limit)
+        objs = (await self.db.execute(stmt)).scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
     async def get_by_organizer(
-        self, organizer_id: uuid.UUID | str | int, *, skip: int = 0, limit: int = 20
+        self,
+        organizer_id: uuid.UUID | str | int,
+        *,
+        limit: int = 20,
+        after_created_at: datetime | None = None,
+        after_id: uuid.UUID | None = None,
     ) -> list[EventDTO]:
-        """Get events by organizer."""
+        """Get events by organizer with keyset cursor pagination.
+
+        AUDIT-BE-01 (audit 2026-03-15): Replaced OFFSET with keyset cursor.
+        Cursor is composite (created_at DESC, id DESC) matching the ORDER BY clause
+        so the B-tree index on created_at can be used directly without a sort step.
+        """
         if isinstance(organizer_id, str):
             with contextlib.suppress(ValueError):
                 organizer_id = uuid.UUID(organizer_id)
-        result = await self.db.execute(
-            select(Event)
-            .where(Event.created_by == organizer_id)
-            .order_by(Event.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        objs = result.scalars().all()
+        stmt = select(Event).where(Event.created_by == organizer_id)
+        if after_created_at is not None and after_id is not None:
+            stmt = stmt.where(
+                or_(
+                    Event.created_at < after_created_at,
+                    and_(Event.created_at == after_created_at, Event.id < after_id),
+                )
+            )
+        stmt = stmt.order_by(Event.created_at.desc(), Event.id.desc()).limit(limit)
+        objs = (await self.db.execute(stmt)).scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
     async def count_upcoming(self) -> int:

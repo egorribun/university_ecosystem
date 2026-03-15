@@ -361,7 +361,10 @@ async def get_news_interact(
     id: uuid.UUID,
     request: Request,
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    # AUDIT-BE-01: cap offset to prevent DoS via O(N) sequential Postgres scan.
+    # An unbounded offset=999999 forces the DB to skip ~1M rows before returning 1.
+    # Hard cap at 10_000 while a full keyset-cursor migration is planned (Sprint 2).
+    offset: int = Query(0, ge=0, le=10_000),
     service: NewsService = Depends(get_read_news_service),
     user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.NewsInteractionsOut:

@@ -126,6 +126,12 @@ export const useSessionCrypto = () => {
    * FE-03 (audit 2026-03-08 Wave 5): exponential backoff prevents retry storms.
    */
   const signingKeyBackoffMsRef = useRef(SIGNING_KEY_BACKOFF_BASE_MS)
+  /**
+   * DEBT-FE-01 (audit 2026-03-15): Store backoff timer ID for cleanup on unmount.
+   * Without this, the setTimeout callback fires after the component unmounts in
+   * React 18 Strict Mode (effects run twice), writing to a stale ref.
+   */
+  const signingKeyBackoffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sessionCacheHashRef = useRef<string | null>(null)
 
   const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
@@ -234,8 +240,13 @@ export const useSessionCrypto = () => {
           // degradation. Backoff: 5 s → 10 s → 20 s → … capped at 60 s.
           const backoffDelay = signingKeyBackoffMsRef.current
           signingKeyBackoffMsRef.current = Math.min(signingKeyBackoffMsRef.current * 2, 60_000)
-          setTimeout(() => {
+          // DEBT-FE-01: store timer ID so useEffect cleanup can cancel it on unmount.
+          if (signingKeyBackoffTimerRef.current !== null) {
+            clearTimeout(signingKeyBackoffTimerRef.current)
+          }
+          signingKeyBackoffTimerRef.current = setTimeout(() => {
             signingKeyRetryCountRef.current = 0
+            signingKeyBackoffTimerRef.current = null
           }, backoffDelay)
 
           // P-05 (audit 2026-03-08): Signal the UI layer so it can prompt the
@@ -258,16 +269,27 @@ export const useSessionCrypto = () => {
     return promise
   }, [updateSessionSigningKey])
 
-  useEffect(() => {
-    if (sessionSigningKeyRef.current !== sessionSigningKey) {
-      sessionSigningKeyRef.current = sessionSigningKey
-    }
-  }, [sessionSigningKey])
+  // PERF-03 (audit 2026-03-15 Wave 7): redundant useEffect removed.
+  // sessionSigningKeyRef is updated imperatively inside updateSessionSigningKey
+  // (line ~202) — a separate effect syncing it from state was a double-write
+  // that also ran twice per mount in React 18 StrictMode.
 
   useEffect(() => {
     if (typeof window === "undefined") return
     void sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
   }, [sendSessionCacheUpdate])
+
+  // DEBT-FE-01 (audit 2026-03-15): cancel pending backoff timer on unmount.
+  // React 18 Strict Mode mounts/unmounts twice in dev; without cleanup the
+  // setTimeout callback fires on a stale ref after the first unmount.
+  useEffect(() => {
+    return () => {
+      if (signingKeyBackoffTimerRef.current !== null) {
+        clearTimeout(signingKeyBackoffTimerRef.current)
+        signingKeyBackoffTimerRef.current = null
+      }
+    }
+  }, [])
 
   return {
     sessionSigningKey,

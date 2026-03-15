@@ -336,11 +336,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 async def _shutdown_subsystems(app: FastAPI) -> None:
     """Graceful termination of all fanned-out components and pools."""
+    from app.api.health import set_shutdown_flag
     from app.api.ws.presence import stop_presence_pubsub
     from app.auth.security import close_hibp_client
     from app.core.feature_flags import feature_flags
     from app.core.ratelimit import stop_memory_cleanup_task
     from app.services.geolocation import shutdown_geolocation_service
+
+    # MOD-06 (audit 2026-03-15 Wave 7): Signal K8s readiness probe to return
+    # 503 so the LB drains in-flight connections before we start tearing down.
+    # Must be first so the probe flips before any pool is closed.
+    set_shutdown_flag()
 
     # TD-3: Signal the periodic scheduler to stop before cancelling tasks,
     # so it exits its current sleep immediately via asyncio.Event.

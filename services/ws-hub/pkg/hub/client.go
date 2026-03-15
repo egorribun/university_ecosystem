@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 type Client struct {
@@ -54,6 +55,9 @@ func (c *Client) ReadPump() {
 		// Cancel the client context so that any pending AuthorizeRoomJoin
 		// HTTP checks (CanJoinRoom) are aborted immediately on disconnect.
 		c.cancel()
+		// TD-01 (audit 2026-03-15 Wave 7): remove per-client rate limiter
+		// entry to prevent unbounded growth of msgLimiters sync.Map.
+		c.Hub.msgLimiters.Delete(c.ID)
 		c.Hub.Unregister <- c
 		_ = c.Conn.Close()
 	}()
@@ -68,6 +72,18 @@ func (c *Client) ReadPump() {
 	for {
 		_, data, err := c.Conn.ReadMessage()
 		if err != nil {
+			// TD-07 (audit 2026-03-15 Wave 7): distinguish normal closes from
+			// unexpected errors so operators can spot protocol violations or attacks.
+			if websocket.IsCloseError(err,
+				websocket.CloseNormalClosure,
+				websocket.CloseGoingAway,
+				websocket.CloseNoStatusReceived) {
+				c.Hub.Logger.Debug("WebSocket closed normally", zap.String("client_id", c.ID))
+			} else {
+				c.Hub.Logger.Warn("WebSocket read error",
+					zap.String("client_id", c.ID),
+					zap.Error(err))
+			}
 			break
 		}
 
@@ -97,6 +113,19 @@ func (c *Client) ReadPump() {
 		case "leave":
 			c.LeaveRoom(msg.Room)
 		case "message":
+			// TD-01 (audit 2026-03-15 Wave 7): per-client token bucket prevents
+			// a single WS connection from flooding NATS JetStream and causing
+			// backpressure / delivery failures for all other clients.
+			// Limit: 10 msg/sec, burst 20 — generous for human typing (~0.5 words/sec).
+			// Silent drop: do NOT notify the client — avoids fingerprinting the limit.
+			raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
+				rate.NewLimiter(rate.Limit(10), 20))
+			if !raw.(*rate.Limiter).Allow() {
+				c.Hub.Logger.Warn("Client message rate limit exceeded — dropping",
+					zap.String("client_id", c.ID),
+					zap.String("room", msg.Room))
+				break
+			}
 			// Publish to NATS only. The hub's NATS subscriber will fan the
 			// message out to all connected clients via the Broadcast channel.
 			// Direct Broadcast <- &msg is intentionally removed to prevent

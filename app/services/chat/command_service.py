@@ -102,23 +102,31 @@ class ChatCommandService:
         min_id, max_id = sorted([user.id, participant_id])
         lock_name = f"chat_init:{min_id}:{max_id}"
 
-        async with cache_client.lock(lock_name, timeout=5, blocking_timeout=4):
-            existing_chat = await self.repository.find_existing_dm(
-                user.id, participant_id
-            )
-            if existing_chat:
-                return ChatResponse(
-                    id=existing_chat.id,
-                    participants=cast(
-                        "list[ChatParticipant]", existing_chat.participants
-                    ),
-                    created_at=existing_chat.created_at,
-                    updated_at=existing_chat.updated_at,
-                )
+        # TD-05 (audit 2026-03-15 Wave 7): wrap Redis lock acquisition in an outer
+        # asyncio.timeout so Uvicorn workers are never blocked longer than 5.5s
+        # even if Redis is slow.  blocking_timeout=4 is the inner Redis-level wait;
+        # 5.5s gives it room to raise LockNotAcquiredError before we cut the cord.
+        try:
+            async with asyncio.timeout(5.5):
+                async with cache_client.lock(lock_name, timeout=5, blocking_timeout=4):
+                    existing_chat = await self.repository.find_existing_dm(
+                        user.id, participant_id
+                    )
+                    if existing_chat:
+                        return ChatResponse(
+                            id=existing_chat.id,
+                            participants=cast(
+                                "list[ChatParticipant]", existing_chat.participants
+                            ),
+                            created_at=existing_chat.created_at,
+                            updated_at=existing_chat.updated_at,
+                        )
 
-            new_chat = await self.repository.create_chat([user, participant])
-            async with self.uow:
-                await self.uow.commit()
+                    new_chat = await self.repository.create_chat([user, participant])
+                    async with self.uow:
+                        await self.uow.commit()
+        except TimeoutError:
+            raise_validation_error("errors.chat.lock_timeout", locale)
 
         participant_ids = [p.id for p in new_chat.participants]
         await invalidate_chat_participants_cache(new_chat.id)

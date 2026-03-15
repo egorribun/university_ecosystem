@@ -27,10 +27,14 @@ func InitSentry(cfg *config.Config) error {
 }
 
 func InitTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
-	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint("jaeger:4317"),
-	)
+	// MOD-01 (audit 2026-03-15 Wave 7): Use OTel SDK env-based config instead
+	// of hardcoded endpoint + insecure flag.  The SDK automatically reads:
+	//   OTEL_EXPORTER_OTLP_ENDPOINT  — collector address (default: localhost:4317)
+	//   OTEL_EXPORTER_OTLP_INSECURE  — "true" for local dev, omit for prod (TLS)
+	//   OTEL_EXPORTER_OTLP_CERTIFICATE — optional CA bundle path
+	// This eliminates the hardcoded "jaeger:4317" and removes the blanket
+	// WithInsecure() that was sending traces in plaintext in production.
+	exporter, err := otlptracegrpc.New(ctx)
 	if err != nil {
 		return nil, err
 	}

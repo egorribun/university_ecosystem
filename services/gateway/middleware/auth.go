@@ -172,7 +172,13 @@ func (m *JWTMiddleware) checkSessionInRedis(ctx context.Context, key string) (bo
 	exists, err := m.redis.Exists(reqCtx, key).Result()
 	if err != nil {
 		redisErrors.Inc()
-		return false, err
+		// RZ-06 (audit 2026-03-15 Wave 7): Fail-OPEN on Redis error.
+		// Primary protection is the JWT signature (already verified above).
+		// Redis is the secondary revocation layer — a brief outage should not
+		// cause 100% 503 for all authenticated users.  The Prometheus
+		// redisErrors counter will trigger an alert for sustained failures.
+		// Return false (= "not revoked") so callers treat the token as valid.
+		return false, nil
 	}
 
 	// Update L1 cache with the result

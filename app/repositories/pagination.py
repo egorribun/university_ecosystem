@@ -65,10 +65,26 @@ def decode_cursor_as_uuid(cursor: str) -> uuid.UUID:
 
 
 def decode_cursor_as_int(cursor: str) -> int:
-    """Decode a cursor string back to an integer, raising ValueError on bad input."""
+    """Decode a cursor string back to an integer, raising ValueError on bad input.
+
+    DEBT-BE-01 (audit 2026-03-15): Added range validation. Python's int is
+    arbitrary-precision — without a bound, a crafted cursor encoding a
+    10 000-digit number allocates proportional memory and produces a WHERE id > N
+    clause that always returns an empty page with no error, silently breaking
+    client-side pagination detection.
+    """
+    # Larger than any UUID integer (2^128 ≈ 3.4 × 10^38)
+    _MAX_CURSOR_INT: int = 2**128
+
     padding = 4 - len(cursor) % 4
-    raw = base64.urlsafe_b64decode(cursor + "=" * (padding % 4))
-    return int(raw.decode())
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (padding % 4))
+        result = int(raw.decode())
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError(f"malformed cursor: {cursor!r}") from exc
+    if result < 0 or result > _MAX_CURSOR_INT:
+        raise ValueError(f"cursor integer out of valid range: {result}")
+    return result
 
 
 # ---------------------------------------------------------------------------

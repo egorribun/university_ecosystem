@@ -173,6 +173,17 @@ export function useChatWebSocket({
                     return { ...old, items: [...old.items, data.message!] }
                   }
                 )
+                // MOD-04 (audit 2026-03-15 Wave 7): Reset staleness timestamp
+                // without triggering a background refetch.  setQueryData alone
+                // updates the cache but leaves the staleTime clock unchanged —
+                // TanStack Query may fire a background fetch immediately if
+                // staleTime=0 (the default), duplicating the WS-delivered data.
+                // refetchType: "none" = mark stale so the next mount fetches,
+                // but do NOT start a background refetch right now.
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", data.chat_id],
+                  refetchType: "none",
+                })
                 // DEBT-04 (audit 2026-03-06): Update chats cache surgically instead of
                 // invalidating the full list (which triggers a network round-trip per message).
                 // unread_count is incremented unconditionally; it resets via the read-receipt
@@ -191,6 +202,10 @@ export function useChatWebSocket({
                         : chat
                     ),
                   }
+                })
+                queryClient.invalidateQueries({
+                  queryKey: ["chats"],
+                  refetchType: "none",
                 })
                 onNewMessageRef.current?.(data.message, data.chat_id)
               }
@@ -244,6 +259,11 @@ export function useChatWebSocket({
                     }
                   }
                 )
+                // MOD-04: prevent background refetch after WS-driven cache update.
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", data.chat_id],
+                  refetchType: "none",
+                })
                 onReadRef.current?.(data.chat_id, data.message_id, data.user_id)
               }
               break

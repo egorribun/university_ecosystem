@@ -35,9 +35,13 @@ export class StorageItem<T> {
 
   /**
    * Writes the value to localStorage.
+   * Returns true on success, false if the write failed (e.g. QuotaExceededError).
+   * PERF-04 (audit 2026-03-15 Wave 7): dispatches StorageEvent with newValue=null
+   * on QuotaExceededError so listeners (ThemeContext, LanguageContext) know the
+   * write did not succeed rather than silently treating it as successful.
    */
-  set(value: T): void {
-    if (!IS_BROWSER) return
+  set(value: T): boolean {
+    if (!IS_BROWSER) return false
     try {
       const serialized = JSON.stringify(value)
       window.localStorage.setItem(this.key, serialized)
@@ -49,8 +53,20 @@ export class StorageItem<T> {
           url: window.location.href,
         })
       )
+      return true
     } catch (error) {
       logWarning(`[Storage] Failed to set key "${this.key}":`, { error })
+      if (error instanceof DOMException && error.name === "QuotaExceededError") {
+        // Notify listeners that the write failed — null newValue signals failure.
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: this.key,
+            newValue: null,
+            url: window.location.href,
+          })
+        )
+      }
+      return false
     }
   }
 
