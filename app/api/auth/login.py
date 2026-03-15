@@ -154,7 +154,9 @@ async def login_passkey_verify(
     except Exception as e:
         # TD-03 (audit 2026-03-15 Wave 7): log only the exception type, not str(e),
         # because WebAuthn error strings may contain challenge bytes or credential IDs.
-        logger.warning("Passkey verification failed for user %s: %s", user.id, type(e).__name__)
+        logger.warning(
+            "Passkey verification failed for user %s: %s", user.id, type(e).__name__
+        )
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Passkey verification failed"
         ) from e

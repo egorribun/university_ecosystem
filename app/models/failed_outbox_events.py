@@ -3,14 +3,14 @@
 MOD-08 (audit 2026-03-14): Events that exceed max_retries are moved here for
 manual inspection and replay rather than being silently abandoned.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import UUID, DateTime, Integer, String, Text
-from sqlalchemy import JSON
+from sqlalchemy import JSON, UUID, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
