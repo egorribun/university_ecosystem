@@ -2,8 +2,8 @@ import uuid as _uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import JSON, BigInteger, DateTime, Integer, String
 from sqlalchemy import UUID as SAUUID
-from sqlalchemy import BigInteger, JSON, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base

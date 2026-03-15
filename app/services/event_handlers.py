@@ -246,7 +246,8 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
     # RED-02: OutboxWorker delivers NotificationsRequested events for at-least-once push.
     event_bus.subscribe(
-        "notification.delivery_requested", handle_notifications_requested  # type: ignore[arg-type]
+        "notification.delivery_requested",
+        handle_notifications_requested,  # type: ignore[arg-type]
     )
 
     logger.info("Domain event handlers configured")
