@@ -34,7 +34,7 @@ jobs:
         image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWORD: test  # pragma: allowlist secret
           POSTGRES_DB: test_deploy
         ports:
           - 5432:5432
@@ -71,7 +71,7 @@ jobs:
         # and FOR UPDATE locking don't exist in SQLite; a passing SQLite migration
         # can silently fail in production.
         env:
-          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_deploy
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_deploy  # pragma: allowlist secret
         run: |
           uv run alembic upgrade head
           uv run alembic downgrade -1
@@ -266,7 +266,7 @@ jobs:
         image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWORD: test  # pragma: allowlist secret
           POSTGRES_DB: test_rollback
         ports:
           - 5432:5432
@@ -296,7 +296,7 @@ jobs:
       - name: Test database rollback
         # RZ-W8-07: Use PostgreSQL for rollback test — same dialect as production.
         env:
-          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_rollback
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_rollback  # pragma: allowlist secret
         run: |
           echo "Testing migration rollback capability..."
           uv run alembic upgrade head

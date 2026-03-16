@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Only need templates directory, not full history
           sparse-checkout: |
@@ -75,14 +75,14 @@ jobs:
             || true  # Don't fail the workflow — findings are uploaded as SARIF
 
       - name: Upload results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3 # v3
+        uses: github/codeql-action/upload-sarif@v4.32.6 # v3
         if: always()
         with:
           sarif_file: nuclei-results.sarif
           category: nuclei-dast
 
       - name: Upload raw JSON findings
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: nuclei-results-${{ github.run_id }}
@@ -104,7 +104,7 @@ jobs:
 
     steps:
       - name: Checkout repository (ZAP rules config)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: |
             .zap
@@ -124,7 +124,7 @@ jobs:
           artifact_name: zap-results-${{ github.run_id }}
 
       - name: Upload ZAP SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4.32.6
         if: always()
         with:
           sarif_file: zap-results.sarif
