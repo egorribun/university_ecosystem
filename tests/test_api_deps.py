@@ -342,12 +342,12 @@ async def test_require_fresh_mfa_not_confirmed(mock_request, db_session):
 
 @pytest.mark.asyncio
 async def test_get_chat_service(db_session):
+    """TD-W9-05: ChatService wrapper removed — get_chat_service returns ChatCommandService."""
     from app.api import deps
+    from app.services.chat.command_service import ChatCommandService
 
-    service = deps.get_chat_service(db_session)
-    from app.services.chat_service import ChatService
-
-    assert isinstance(service, ChatService)
+    service = deps.get_chat_command_service(db_session)
+    assert isinstance(service, ChatCommandService)
     # The service delegates session management to the repository (architectural boundary).
     assert service.repository.db == db_session
 

@@ -101,6 +101,9 @@ func main() {
 		}
 	}
 
+	// PERF-W9-06: Periodically evict orphaned rate.Limiter entries from
+	// msgLimiters that were not cleaned up due to goroutine panics in ReadPump.
+	h.StartLimiterCleanup(ctx)
 	go h.Run(ctx)
 	h.SubscribeToNATS()
 

@@ -109,6 +109,14 @@ class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # MOD-W8-06: Belt-and-suspenders replay prevention.
+    # SHA-256 hex digest (64 chars) of the last successfully verified TOTP code;
+    # combined with last_used_at it lets verify_totp_for_user reject a replayed
+    # code even in edge cases where the challenge was already consumed.
+    last_used_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user = relationship("User", back_populates="totp_enrollments")
 

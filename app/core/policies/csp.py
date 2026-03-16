@@ -15,8 +15,12 @@ class ContentSecurityPolicy:
     # Base policies for development and production
     _DEV_POLICY_TEMPLATE: ClassVar[str] = (
         "default-src 'self' http://localhost:5173; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
-        "http://localhost:5173 https://accounts.google.com 'report-sample'; "
+        # RZ-W10-08: 'unsafe-eval' removed — Vite HMR uses ES modules natively
+        # and does not require eval(). A malicious npm dep could abuse eval()
+        # to exfiltrate env vars or inject backdoors during local development.
+        "script-src 'self' 'unsafe-inline' "
+        "http://localhost:5173 ws://localhost:5173 "
+        "https://accounts.google.com 'report-sample'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "img-src 'self' data: https: blob:; "
         "connect-src {connect_src}; "

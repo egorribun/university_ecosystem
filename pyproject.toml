@@ -7,11 +7,11 @@ description = "University Ecosystem Platform"
 requires-python = ">=3.13"
 dependencies = [
     "aiofiles>=23.0,<25",  # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
-    "aiosqlite>=0.19",
+    "aiosqlite>=0.19,<1.0",  # TD-W9-06: upper bound — aiosqlite 1.0 may break API
     "alembic>=1.13,<2.0",
     "anyio>=4.0.0,<5.0",
     "argon2-cffi>=23.1.0",
-    "asyncpg>=0.30.0",
+    "asyncpg>=0.30.0,<1.0",  # TD-W9-06: upper bound — asyncpg 1.0 is a breaking API overhaul
     "bcrypt==5.0.0",
     # PERF-7 (audit 2026-03-05): Switched from synchronous boto3 to aioboto3 (async
     # native wrapper). boto3 is a transitive dependency of aioboto3 so no separate
@@ -29,9 +29,9 @@ dependencies = [
     "geoip2>=4.0",
     "gputil>=1.4.0",
     "grpcio>=1.60.0",
-    "httpx[http2]>=0.27",
+    "httpx[http2]>=0.27,<1.0",  # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
     "minio>=7.2",
-    "nats-py>=2.9",
+    "nats-py>=2.9,<3",  # MOD-W10-01: upper bound; nats-py 3.0 has breaking JetStream API changes
     "nh3>=0.2.17",
     "opentelemetry-api>=1.30.0",
     "opentelemetry-exporter-otlp>=1.30.0",
@@ -67,8 +67,8 @@ dependencies = [
     "redis>=5,<6",
     "sentry-sdk[opentelemetry]>=2,<3",
     "sqlalchemy[asyncio]>=2.0.48,<3",
-    "starlette>=0.40",
-    "strawberry-graphql[fastapi]>=0.250",
+    "starlette>=0.40,<1.0",  # MOD-W10-01: upper bound; starlette 1.0 will be a breaking release
+    "strawberry-graphql[fastapi]>=0.250,<1.0",  # MOD-W10-01: upper bound; Renovate opens PR for v1
     "structlog>=24.0",
     "typer>=0.12.0",
     "urllib3>=2.6.3,<3",  # TD-06 (audit 2026-03-15): upper bound; urllib3 v3 has breaking API changes
@@ -78,7 +78,7 @@ dependencies = [
     "zxcvbn>=4.5.0",
     "authzed>=1.15.0",
     "grpcio-health-checking>=1.60.0",
-    "dishka>=0.14",
+    "dishka>=0.14,<2",  # MOD-W10-01: upper bound; dishka 2.0 may restructure DI container API
     "openfeature-sdk>=0.8.4",
     "rust_ext",
     "pyo3_sanitizer",

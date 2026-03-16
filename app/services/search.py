@@ -15,6 +15,17 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+# RZ-W8-02: Hard caps to prevent deep-pagination DoS (O(from+size) in Elasticsearch).
+_MAX_SEARCH_SIZE = 100
+_MAX_SEARCH_OFFSET = 10_000
+
+# RZ-W8-03: Non-HTML sentinel delimiters for search highlights.
+# The frontend MUST escape the surrounding text before replacing these sentinels
+# with <mark> tags.  Using raw HTML tags ("pre_tags": ["<mark>"]) lets stored XSS
+# pass through if Elasticsearch doesn't escape document content.
+_HIGHLIGHT_OPEN = "\x00MARK_OPEN\x00"
+_HIGHLIGHT_CLOSE = "\x00MARK_CLOSE\x00"
+
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
 
@@ -123,7 +134,7 @@ class SearchService:
         self,
         index: str,
         query: str,
-        fields: list[str] | None = None,
+        fields: list[str],
         size: int = 20,
         offset: int = 0,
         highlight: bool = True,
@@ -133,19 +144,35 @@ class SearchService:
         Args:
             index: Index name
             query: Search query string
-            fields: Fields to search (default: all text fields)
-            size: Maximum results to return
-            offset: Result offset for pagination
+            fields: Fields to search — REQUIRED; passing ["*"] exposes internal
+                    metadata fields to user-controlled queries.
+            size: Maximum results to return (capped at _MAX_SEARCH_SIZE)
+            offset: Result offset for pagination (capped at _MAX_SEARCH_OFFSET)
             highlight: Whether to include highlights
 
         Returns:
             Search results with hits and metadata
         """
+        # RZ-W8-02: Clamp size/offset to prevent deep-pagination DoS.
+        # Also truncate query string to prevent excessively long fuzzy expansions.
+        size = min(max(1, size), _MAX_SEARCH_SIZE)
+        offset = min(max(0, offset), _MAX_SEARCH_OFFSET)
+        query = query[:256]
+
+        # TD-W8-05: Require explicit field list — wildcard ["*"] accidentally
+        # exposes all indexed fields including internal metadata to user queries.
+        if not fields:
+            raise ValueError(
+                "search() requires an explicit 'fields' list. "
+                "An empty list is not allowed; pass the fields relevant to the index "
+                "(e.g. ['title', 'content'] for news, ['title', 'description'] for events)."
+            )
+
         search_body: dict[str, Any] = {
             "query": {
                 "multi_match": {
                     "query": query,
-                    "fields": fields or ["*"],
+                    "fields": fields,
                     "type": "best_fields",
                     "fuzziness": "AUTO",
                 }
@@ -155,10 +182,16 @@ class SearchService:
         }
 
         if highlight:
+            # RZ-W8-03: Use non-HTML sentinel delimiters — Elasticsearch does not
+            # HTML-escape surrounding content, so raw <mark> tags create a stored
+            # XSS vector if the frontend renders highlights via innerHTML.
+            # The frontend must HTML-escape text first, then replace sentinels.
             search_body["highlight"] = {
-                "fields": {"*": {}},
-                "pre_tags": ["<mark>"],
-                "post_tags": ["</mark>"],
+                "fields": {field: {} for field in fields},
+                "pre_tags": [_HIGHLIGHT_OPEN],
+                "post_tags": [_HIGHLIGHT_CLOSE],
+                "number_of_fragments": 3,
+                "fragment_size": 150,
             }
 
         result = await self.client.search(index=index, body=search_body)
@@ -268,22 +301,32 @@ EVENTS_MAPPINGS = {
 }
 
 
-# Singleton instance
-_search_service: SearchService | None = None
-
-
 def get_search_service() -> SearchService:
-    """Get the configured search service instance."""
-    global _search_service
-    if _search_service is None:
-        from app.core.config import settings
+    """Get the configured search service instance.
 
-        hosts = getattr(settings, "elasticsearch_url", "http://localhost:9200")
-        user = getattr(settings, "elasticsearch_user", "elastic")
-        password = getattr(settings, "elasticsearch_password", "")
-        http_auth: tuple[str, str] | None = (user, password) if password else None
-        _search_service = SearchService(hosts=hosts, http_auth=http_auth)
-    return _search_service
+    .. deprecated::
+        This function creates a module-level singleton that is never closed on
+        application shutdown.  New code should inject ``SearchService`` via the
+        Dishka DI container (``app.core.di.search.SearchProvider``), which
+        properly calls ``SearchService.close()`` during the APP scope teardown.
+        This shim is kept only for backwards-compatibility with existing callers
+        that have not yet been migrated.
+    """
+    import warnings
+
+    warnings.warn(
+        "get_search_service() is deprecated. "
+        "Inject SearchService via Dishka (SearchProvider) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from app.core.config import settings
+
+    hosts = getattr(settings, "elasticsearch_url", "http://localhost:9200")
+    user = getattr(settings, "elasticsearch_user", "elastic")
+    password = getattr(settings, "elasticsearch_password", "")
+    http_auth: tuple[str, str] | None = (user, password) if password else None
+    return SearchService(hosts=hosts, http_auth=http_auth)
 
 
 __all__ = [

@@ -71,6 +71,10 @@ class StorageSettings(BaseAppSettings):
     )
     chat_attachment_max_size_bytes: int = 15 * 1024 * 1024
     chat_attachment_max_files: int = 5
+    # RZ-W10-10: Guard against storage DoS — huge message bodies bloat the DB,
+    # slow down pagination queries, and can OOM during response serialisation.
+    # 10 000 chars ≈ ~6 A4 pages; adjust via CHAT_MAX_MESSAGE_LENGTH env var.
+    chat_max_message_length: int = 10_000
 
     @cached_property
     def chat_attachment_allowed_mime_types_set(self) -> set[str]:

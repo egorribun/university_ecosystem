@@ -1,17 +1,25 @@
+"""Dishka DI providers for the chat domain.
+
+TD-W9-01/05 (audit 2026-03-16):
+- ChatCreationService registered as its own provider (extracted from ChatCommandService).
+- ChatService wrapper removed — endpoints inject narrow services directly.
+"""
+
 from __future__ import annotations
 
 from dishka import Provider, Scope, provide
 
 from app.core.protocols import AsyncDatabaseSession
+from app.deps.cache import BaseCache
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.unit_of_work import UnitOfWork
 from app.services.chat.attachment_service import ChatAttachmentService
 from app.services.chat.command_service import ChatCommandService
+from app.services.chat.creation_service import ChatCreationService
 from app.services.chat.notification_service import (
     ChatNotificationService as ChatWSNotificationService,
 )
 from app.services.chat.query_service import ChatQueryService
-from app.services.chat_service import ChatService
 
 
 class ChatProvider(Provider):
@@ -47,18 +55,12 @@ class ChatProvider(Provider):
         )
 
     @provide(scope=Scope.REQUEST)
-    def chat_service(
+    def chat_creation_service(
         self,
+        uow: UnitOfWork,
         db: AsyncDatabaseSession,
-        attachments: ChatAttachmentService,
-        notifications: ChatWSNotificationService,
-        queries: ChatQueryService,
-        commands: ChatCommandService,
-    ) -> ChatService:
-        return ChatService(
-            session=db,
-            attachments=attachments,
-            notifications=notifications,
-            queries=queries,
-            commands=commands,
-        )
+        cache: BaseCache,
+    ) -> ChatCreationService:
+        # TD-W9-01: ChatCreationService owns DM dedup + Redis lock + presence.
+        # TD-W10-01: cache injected via DI (DIP compliance).
+        return ChatCreationService(uow=uow, session=db, cache=cache)

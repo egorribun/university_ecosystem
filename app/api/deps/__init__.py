@@ -15,12 +15,16 @@ from app.api.deps.services import (
     get_analytics_service,
     get_audit_service,
     get_auth_service,
-    get_chat_service,
+    get_chat_command_service,
+    get_chat_creation_service,
+    get_chat_query_service,
+    get_chat_service,  # legacy alias
     get_event_service,
     get_geolocation_service,
     get_login_service,
     get_news_service,
-    get_read_chat_service,
+    get_read_chat_query_service,
+    get_read_chat_service,  # legacy alias
     get_read_event_service,
     get_read_news_service,
     get_read_schedule_service,

@@ -15,6 +15,7 @@ from app.core.protocols import AsyncDatabaseSession
 from app.models import models
 from app.models.models import User, UserProfile
 from app.models.user_loaders import (
+    USER_AUTH_WITH_MFA_OPTIONS,
     USER_MFA_LOAD_OPTIONS,
     USER_MFA_RELATIONSHIP_NAMES,
 )
@@ -42,88 +43,70 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
     async def get(
         self, id: uuid.UUID | str, *, with_for_update: bool = False
     ) -> UserDTO | None:
-        """Get user by ID with lightweight options + conditional MFA."""
+        """Get user by ID, eagerly loading MFA collections in a single round-trip.
+
+        PERF-W9-01: Replaced the 2-query pattern (base user + conditional
+        db.refresh for MFA users) with USER_AUTH_WITH_MFA_OPTIONS which issues
+        one selectinload query per MFA collection type.  For non-MFA users these
+        queries return 0 rows immediately; for MFA users the collections arrive
+        in the same database round-trip as the base user.
+        """
         if isinstance(id, str):
             try:
                 id = uuid.UUID(id)
             except ValueError:
                 return None
-        from app.models.user_loaders import (
-            USER_AUTH_LOAD_OPTIONS,
-            ensure_mfa_relationships_loaded,
-        )
 
-        stmt = select(User).where(User.id == id).options(*USER_AUTH_LOAD_OPTIONS)
+        stmt = select(User).where(User.id == id).options(*USER_AUTH_WITH_MFA_OPTIONS)
         if with_for_update:
             stmt = stmt.with_for_update()
 
         result = await self.db.execute(stmt)
         obj = result.scalars().first()
-
-        if obj and obj.mfa_required:
-            await ensure_mfa_relationships_loaded(self.db, obj)
-
         return self._to_dto(obj) if obj else None
 
     async def get_by_email(self, email: str) -> UserDTO | None:
-        """Get user by email (case-insensitive) with conditional MFA."""
-        normalized = email.strip().lower()
-        from app.models.user_loaders import (
-            USER_AUTH_LOAD_OPTIONS,
-            ensure_mfa_relationships_loaded,
-        )
+        """Get user by email (case-insensitive), eagerly loading MFA collections.
 
+        PERF-W9-01: See get() for rationale.
+        """
+        normalized = email.strip().lower()
         result = await self.db.execute(
             select(User)
             .where(func.lower(User.email) == normalized)
-            .options(*USER_AUTH_LOAD_OPTIONS)
+            .options(*USER_AUTH_WITH_MFA_OPTIONS)
         )
         obj = result.scalars().first()
-
-        if obj and obj.mfa_required:
-            await ensure_mfa_relationships_loaded(self.db, obj)
-
         return self._to_dto(obj) if obj else None
 
     async def get_auth_by_email(self, email: str) -> UserAuthDTO | None:
-        """Get user authentication data by email with conditional MFA."""
-        normalized = email.strip().lower()
-        from app.models.user_loaders import (
-            USER_AUTH_LOAD_OPTIONS,
-            ensure_mfa_relationships_loaded,
-        )
+        """Get user authentication data by email, eagerly loading MFA collections.
 
+        PERF-W9-01: See get() for rationale.
+        """
+        normalized = email.strip().lower()
         result = await self.db.execute(
             select(User)
             .where(func.lower(User.email) == normalized)
-            .options(*USER_AUTH_LOAD_OPTIONS)
+            .options(*USER_AUTH_WITH_MFA_OPTIONS)
         )
         obj = result.scalars().first()
-
-        if obj and obj.mfa_required:
-            await ensure_mfa_relationships_loaded(self.db, obj)
-
         return UserAuthDTO.model_validate(obj) if obj else None
 
     async def get_auth_by_id(self, id: uuid.UUID | str) -> UserAuthDTO | None:
-        """Get user authentication data by ID with conditional MFA."""
+        """Get user authentication data by ID, eagerly loading MFA collections.
+
+        PERF-W9-01: See get() for rationale.
+        """
         if isinstance(id, str):
             try:
                 id = uuid.UUID(id)
             except ValueError:
                 return None
-        from app.models.user_loaders import (
-            USER_AUTH_LOAD_OPTIONS,
-            ensure_mfa_relationships_loaded,
-        )
 
-        stmt = select(User).where(User.id == id).options(*USER_AUTH_LOAD_OPTIONS)
+        stmt = select(User).where(User.id == id).options(*USER_AUTH_WITH_MFA_OPTIONS)
         result = await self.db.execute(stmt)
         obj = result.scalars().first()
-
-        if obj and obj.mfa_required:
-            await ensure_mfa_relationships_loaded(self.db, obj)
-
         return UserAuthDTO.model_validate(obj) if obj else None
 
     async def get_by_email_only(self, login: str) -> UserDTO | None:

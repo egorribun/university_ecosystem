@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from httpx import AsyncClient
 
-from app.api.deps import get_read_chat_service
+from app.api.deps import get_read_chat_query_service
 from app.auth.security import get_password_hash
 from app.core.database import get_db, get_read_db
 from app.main import app
@@ -13,7 +13,6 @@ from app.services.chat.attachment_service import ChatAttachmentService
 from app.services.chat.command_service import ChatCommandService
 from app.services.chat.notification_service import ChatNotificationService
 from app.services.chat.query_service import ChatQueryService
-from app.services.chat_service import ChatService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 
@@ -251,19 +250,15 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
 
-    # Override read dependencies to use same session
-    def _get_mock_chat_service():
+    # Override read dependencies to use same session (TD-W9-05: ChatService removed)
+    def _get_mock_query_service():
         from app.repositories.unit_of_work import uow_from_session
 
         uow = uow_from_session(db_session)
-        attachments = ChatAttachmentService()
-        notifications = ChatNotificationService(db_session)
-        queries = ChatQueryService(db_session, uow.chats)
-        commands = ChatCommandService(uow, attachments, notifications)
-        return ChatService(db_session, attachments, notifications, queries, commands)
+        return ChatQueryService(db_session, uow.chats)
 
     app.dependency_overrides[get_read_db] = lambda: db_session
-    app.dependency_overrides[get_read_chat_service] = _get_mock_chat_service
+    app.dependency_overrides[get_read_chat_query_service] = _get_mock_query_service
     app.dependency_overrides[get_db] = lambda: db_session
 
     try:
@@ -295,5 +290,5 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
 
     finally:
         app.dependency_overrides.pop(get_read_db, None)
-        app.dependency_overrides.pop(get_read_chat_service, None)
+        app.dependency_overrides.pop(get_read_chat_query_service, None)
         app.dependency_overrides.pop(get_db, None)

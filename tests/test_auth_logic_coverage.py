@@ -365,15 +365,29 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     )
     await db_session.commit()
 
-    # Success
+    # Success — RZ-W8-05: always provide a challenge to exercise replay protection
+    challenge_for_success = await mfa.issue_challenge(
+        db_session, user_id=user.id, challenge_type=CHALLENGE_TYPE_TOTP_VERIFY
+    )
+    await db_session.commit()
     res_enr, res_chal = await mfa.verify_totp_for_user(
-        db_session, user=user, code=totp.now()
+        db_session, user=user, code=totp.now(), challenge_token=challenge_for_success.token
     )
     assert res_enr.id == enrollment.id
 
-    # Invalid code
+    # No challenge provided — should raise ValueError (RZ-W8-05 enforcement)
+    with pytest.raises(ValueError, match="challenge_token is required"):
+        await mfa.verify_totp_for_user(db_session, user=user, code=totp.now())
+
+    # Invalid code — must also provide a challenge
+    challenge_for_invalid = await mfa.issue_challenge(
+        db_session, user_id=user.id, challenge_type=CHALLENGE_TYPE_TOTP_VERIFY
+    )
+    await db_session.commit()
     with pytest.raises(HTTPException):  # raise_validation_error raises HTTPException
-        await mfa.verify_totp_for_user(db_session, user=user, code="000000")
+        await mfa.verify_totp_for_user(
+            db_session, user=user, code="000000", challenge_token=challenge_for_invalid.token
+        )
 
     # With challenge token
     challenge = await mfa.issue_challenge(
@@ -474,8 +488,8 @@ async def test_enrollment_secret_none(db_session, user_factory):
                     db_session, enrollment=enrollment, code="123456"
                 )
 
-            # verify_totp_for_user skipping
-            with pytest.raises(HTTPException):  # No enrollment available if skipped
+            # verify_totp_for_user skipping — also enforce challenge requirement (RZ-W8-05)
+            with pytest.raises(ValueError, match="challenge_token is required"):
                 await mfa.verify_totp_for_user(db_session, user=user, code="123456")
 
 
@@ -519,7 +533,14 @@ async def test_legacy_enrollment_check(db_session, user_factory):
     import pyotp
 
     totp = pyotp.TOTP("JBSWY3DPEHPK3PXP")
-    res_enr, _ = await mfa.verify_totp_for_user(db_session, user=user, code=totp.now())
+    # RZ-W8-05: always provide a challenge token
+    legacy_challenge = await mfa.issue_challenge(
+        db_session, user_id=user.id, challenge_type=CHALLENGE_TYPE_TOTP_VERIFY
+    )
+    await db_session.commit()
+    res_enr, _ = await mfa.verify_totp_for_user(
+        db_session, user=user, code=totp.now(), challenge_token=legacy_challenge.token
+    )
     assert res_enr.id == enrollment.id
 
 

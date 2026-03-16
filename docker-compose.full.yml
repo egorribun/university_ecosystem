@@ -20,7 +20,7 @@ services:
       CACHE_REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
-      MINIO_ENDPOINT: minio:9000
+      MINIO_ENDPOINT: garage:3900
       MINIO_BUCKET: uploads
       MINIO_SECURE: "false"
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
@@ -130,7 +130,10 @@ services:
   # Infrastructure Services
   # ============================================================================
   postgres:
-    image: pgvector/pgvector:pg17
+    # TD-W10-07: Pinned to a specific minor version to prevent surprise upgrades.
+    # Major version (pg17) floats within the same PostgreSQL release; to pin to a
+    # patch update check https://hub.docker.com/r/pgvector/pgvector/tags
+    image: pgvector/pgvector:pg17.4
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -179,33 +182,69 @@ services:
           memory: 256M
     restart: unless-stopped
 
-  minio:
-    # P1-08 (audit 2026-03-06): MinIO GitHub repo archived 2026-02-13.
-    # Docker Hub images stopped updating in Oct 2025. Last official release:
-    # RELEASE.2025-07-23T15-54-02Z (quay.io registry — Docker Hub no longer maintained).
-    # CRITICAL: Evaluate migration to Garage/SeaweedFS/Rook-Ceph for long-term support.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
+  # ── Garage S3-compatible object storage ─────────────────────────────────────
+  # MOD-W8-01 (audit 2026-03-15): MinIO was archived on 2026-02-13 and no longer
+  # receives security patches.  Garage (https://garagehq.deuxfleurs.fr) is a
+  # Rust-based, S3-compatible replacement with active development.
+  #
+  # S3 API:   garage:3900  (internal; same interface, just a different port)
+  # Admin API: garage:3903  (internal; used only by the garage-init container)
+  # RPC:      garage:3901  (internal; cluster coordination)
+  #
+  # Backward-compat: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD continue to serve as
+  # the S3 access-key ID / secret — no changes needed in backend or file-processor.
+  garage:
+    image: ghcr.io/deuxfleurs/garage:v1.0.1
+    command: server
     volumes:
-      - minio-data:/data
-    # Ports intentionally not published: MinIO is internal-only.
-    # Console access (9001) via SSH tunnel only: ssh -L 9001:localhost:9001 server
+      - ./config/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    environment:
+      # 32-byte hex RPC secret — generate with: openssl rand -hex 32
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?GARAGE_RPC_SECRET is required (openssl rand -hex 32)}
+      # Admin API bearer token — generate with: openssl rand -base64 32
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?GARAGE_ADMIN_TOKEN is required (openssl rand -base64 32)}
+    # S3 (3900), admin (3903), and RPC (3901) are all internal-only.
     networks:
       - internal
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3903/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
     deploy:
       resources:
         limits:
           cpus: '0.25'
           memory: 512M
     restart: unless-stopped
+
+  # One-shot init container: creates the layout, access key, and bucket.
+  # Runs after garage is healthy; exits 0 on success.  Restarts are safe
+  # because every garage command is idempotent (|| true guards).
+  garage-init:
+    image: ghcr.io/deuxfleurs/garage:v1.0.1
+    entrypoint: ["/bin/sh", "/scripts/garage-init.sh"]
+    volumes:
+      - ./config/garage.toml:/etc/garage.toml:ro
+      - ./scripts/garage-init.sh:/scripts/garage-init.sh:ro
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?GARAGE_RPC_SECRET is required}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
+    depends_on:
+      garage:
+        condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 64M
+    restart: on-failure
 
   migrations:
     build:
@@ -233,11 +272,12 @@ services:
     build:
       context: .
       dockerfile: services/rust-optimizer/Dockerfile
-    ports:
-      - "8090:8080"
+    # RZ-W10-09: Removed public port exposure and public network membership.
+    # rust-optimizer must only be reachable via the internal network through
+    # the API gateway, which enforces authentication. Exposing it publicly
+    # allowed unauthenticated access to image processing and file write APIs.
     networks:
       - internal
-      - public
     deploy:
       resources:
         limits:
@@ -341,15 +381,15 @@ services:
       dockerfile: services/file-processor/Dockerfile
     environment:
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
-      MINIO_ENDPOINT: minio:9000
+      MINIO_ENDPOINT: garage:3900
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
       MINIO_BUCKET: uploads
     depends_on:
       nats:
         condition: service_started
-      minio:
-        condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
       temporal:
         condition: service_healthy
     networks:
@@ -552,7 +592,8 @@ networks:
 volumes:
   postgres-data:
   static-data:
-  minio-data:
+  garage-meta:   # Garage cluster metadata (layout, keys, bucket registry)
+  garage-data:   # Garage object data
   nats-data:
   elasticsearch-data:
   tempo-data:

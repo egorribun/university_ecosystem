@@ -36,8 +36,10 @@ _logger = get_logger(__name__)
 
 
 # Executor for CPU-bound auth operations (Argon2 hashing).
-# Argon2 at ARGON2_MEMORY_COST_KIB=65536 uses 64 MB per concurrent hash call;
-# bounding pool size to cpu_count prevents memory exhaustion under login bursts.
+# Argon2 at ARGON2_MEMORY_COST_KIB=32768 uses 32 MB per concurrent hash call;
+# peak memory at login burst: _AUTH_EXECUTOR_WORKERS × 32 MB.
+# (TD-W8-03: corrected from 65536/64 MB — reduced in PERF-02, audit 2026-03-04.)
+# Bounding pool size to cpu_count prevents memory exhaustion under login bursts.
 # Python's default (cpu_count + 4) is designed for I/O-bound work — not suitable here.
 # PERF-2: os.cpu_count() returns HOST core count inside containers; use
 # sched_getaffinity (cgroups v2) or cfs_quota (cgroups v1) for correctness.
@@ -347,11 +349,12 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
 
     min_score = settings.password_zxcvbn_min_score
     if min_score > 0:
-        # zxcvbn enforces a 72 character limit
-        if len(password) > 72:
-            score = 4  # Assume maximum strength for very long passwords
-        else:
-            score = zxcvbn(password).get("score", 0)
+        # PERF-W8-02: Truncate to 72 chars before calling zxcvbn (library limit).
+        # Do NOT shortcut to score=4 for long passwords — "a"*73 would be scored as
+        # maximum strength despite being trivially weak. Truncating is safe: zxcvbn
+        # is pattern-sensitive on the prefix, so a 73-char repeated string still
+        # scores as weak after truncation.
+        score = zxcvbn(password[:72]).get("score", 0)
 
         if score < min_score:
             raise ValueError(
@@ -382,14 +385,18 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
         except VerifyMismatchError:
             return False
         except Exception as exc:
-            # Unexpected error from argon2 (e.g. malformed hash format).
-            # Log and fall through to passlib for graceful degradation.
+            # TD-W8-01: Hash format is invalid or argon2 raised an unexpected error.
+            # Do NOT fall back to bcrypt — a malformed $argon2 hash is not a bcrypt
+            # hash, and bcrypt silently ignores unrecognised prefixes, meaning a
+            # crafted argon2-prefixed string could pass bcrypt verification.
+            # Return False: caller gets an authentication failure (safe default).
             _logger.warning(
-                "argon2 native verify raised unexpected error, "
-                "falling back to passlib: %s",
+                "argon2 verify raised unexpected error for $argon2-prefix hash — "
+                "returning False (no bcrypt fallback): %s",
                 type(exc).__name__,
             )
-    # Legacy bcrypt hash: verify with native bcrypt (no passlib)
+            return False
+    # Only reach here for genuine legacy bcrypt hashes (no "$argon2" prefix).
     return _verify_legacy_bcrypt(plain_password, hashed_password)
 
 
@@ -523,27 +530,42 @@ def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
     retains its arguments in memory indefinitely as part of the caching keys, meaning
     the raw Private Key string was leaking into the heap. This custom implementation
     extracts the public key and only stores it mapped against the `kid`.
+
+    TD-W8-02: Fast path (no lock on cache hit) + LRU single-entry eviction instead
+    of full-clear. Full-clear evicts all 32 keys simultaneously — subsequent requests
+    all miss the cache and block on the lock while serialization.load_pem_private_key()
+    runs (1–50 ms), creating a thundering-herd latency spike on JWT decode.
     """
     cache_key = kid or hashlib.sha256(private_key_pem.encode()).hexdigest()
 
-    with _public_key_cache_lock:
-        if cache_key not in _public_key_cache:
-            # Prevent unbound memory growth by arbitrarily clearing if it grows beyond bounds
-            if len(_public_key_cache) >= 32:
-                _public_key_cache.clear()
-
-            key = serialization.load_pem_private_key(
-                private_key_pem.encode(), password=None
-            )
-            _public_key_cache[cache_key] = (
-                key.public_key()
-                .public_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
-                )
-                .decode()
-            )
+    # Fast path — no lock needed; dict read is GIL-atomic in CPython.
+    if cache_key in _public_key_cache:
         return _public_key_cache[cache_key]
+
+    with _public_key_cache_lock:
+        # Double-check under lock to handle concurrent first-miss.
+        if cache_key in _public_key_cache:
+            return _public_key_cache[cache_key]
+
+        if len(_public_key_cache) >= 32:
+            # Evict only the oldest entry (LRU approximation via dict insertion order,
+            # guaranteed in Python 3.7+). Full-clear would evict all warm keys and
+            # cause a thundering herd on the lock for every decode call.
+            oldest_key = next(iter(_public_key_cache))
+            del _public_key_cache[oldest_key]
+
+        key = serialization.load_pem_private_key(
+            private_key_pem.encode(), password=None
+        )
+        _public_key_cache[cache_key] = (
+            key.public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            .decode()
+        )
+    return _public_key_cache[cache_key]
 
 
 def decode_token(token: str) -> dict[str, Any] | None:

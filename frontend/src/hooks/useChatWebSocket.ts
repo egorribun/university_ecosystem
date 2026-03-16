@@ -11,6 +11,14 @@ const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
 const RECONNECT_JITTER_FACTOR = 0.1 // ±10% jitter
 const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
 
+// MOD-W10-05: Per-message-type minimum interval (ms) for outgoing WS messages.
+// Prevents a runaway component from flooding the server with typing events
+// on every keystroke or saturating the read-receipt pipeline.
+const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
+  typing: 500,  // at most one "typing" event per 500 ms
+  read: 200,    // at most one "read" receipt per 200 ms per chat
+} as const
+
 /**
  * Calculate reconnection delay with exponential backoff and jitter.
  * Jitter prevents "thundering herd" when many clients reconnect simultaneously.
@@ -76,6 +84,8 @@ export function useChatWebSocket({
   const [isConnected, setIsConnected] = useState(false)
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()
+  // MOD-W10-05: Track last-sent timestamp per message type for rate limiting.
+  const lastSentRef = useRef<Map<string, number>>(new Map())
 
   // Store callbacks in refs to avoid recreating connect on every render
   const onNewMessageRef = useRef(onNewMessage)
@@ -361,18 +371,24 @@ export function useChatWebSocket({
     }
   }, [])
 
-  // Send typing indicator
+  // Send typing indicator — rate-limited to at most once per 500 ms (MOD-W10-05).
   const sendTyping = useCallback((chatId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
-    }
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    const key = `typing:${chatId}`
+    const now = Date.now()
+    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing) return
+    lastSentRef.current.set(key, now)
+    wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
   }, [])
 
-  // Send read receipt
+  // Send read receipt — rate-limited to at most once per 200 ms (MOD-W10-05).
   const sendRead = useCallback((chatId: string, messageId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
-    }
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    const key = `read:${chatId}`
+    const now = Date.now()
+    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read) return
+    lastSentRef.current.set(key, now)
+    wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
   }, [])
 
   // Get typing users for a specific chat

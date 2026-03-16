@@ -11,7 +11,9 @@ if TYPE_CHECKING:
     from app.services.auth.login_service import LoginService
     from app.services.auth.redis_session import RedisSessionService
     from app.services.auth_service import AuthService
-    from app.services.chat_service import ChatService
+    from app.services.chat.command_service import ChatCommandService
+    from app.services.chat.creation_service import ChatCreationService
+    from app.services.chat.query_service import ChatQueryService
     from app.services.event_service import EventService
     from app.services.geolocation import GeolocationService
     from app.services.news_service import NewsService
@@ -20,33 +22,68 @@ if TYPE_CHECKING:
     from app.services.story_service import StoryService
 
 
-def _build_chat_service(session: AsyncDatabaseSession) -> "ChatService":
+# TD-W9-01/05: ChatService wrapper removed — inject narrow services directly.
+
+def get_chat_command_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> "ChatCommandService":
+    """FastAPI dep: ChatCommandService (write + maintenance) on write DB."""
     from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.attachment_service import ChatAttachmentService
     from app.services.chat.command_service import ChatCommandService
     from app.services.chat.notification_service import ChatNotificationService
-    from app.services.chat.query_service import ChatQueryService
-    from app.services.chat_service import ChatService
 
     uow = uow_from_session(session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(session)
-    queries = ChatQueryService(session, uow.chats)
-    commands = ChatCommandService(uow, attachments, notifications)
-
-    return ChatService(session, attachments, notifications, queries, commands)
+    return ChatCommandService(uow, attachments, notifications)
 
 
+def get_chat_creation_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> "ChatCreationService":
+    """FastAPI dep: ChatCreationService (DM creation with Redis lock)."""
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.chat.creation_service import ChatCreationService
+
+    uow = uow_from_session(session)
+    return ChatCreationService(uow=uow, session=session)
+
+
+def get_chat_query_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> "ChatQueryService":
+    """FastAPI dep: ChatQueryService (read-only) on write DB."""
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.chat.query_service import ChatQueryService
+
+    uow = uow_from_session(session)
+    return ChatQueryService(session=session, repository=uow.chats)
+
+
+def get_read_chat_query_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
+) -> "ChatQueryService":
+    """FastAPI dep: ChatQueryService (read-only) on read replica."""
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.chat.query_service import ChatQueryService
+
+    uow = uow_from_session(session)
+    return ChatQueryService(session=session, repository=uow.chats)
+
+
+# Legacy aliases — kept temporarily so any other callers outside chat.py
+# do not break immediately.  Remove after audit confirms no other usages.
 def get_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatService":
-    return _build_chat_service(session)
+) -> "ChatCommandService":
+    return get_chat_command_service(session)
 
 
 def get_read_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> "ChatService":
-    return _build_chat_service(session)
+) -> "ChatQueryService":
+    return get_read_chat_query_service(session)
 
 
 def _build_event_service(
@@ -241,12 +278,16 @@ __all__ = [
     "get_analytics_service",
     "get_audit_service",
     "get_auth_service",
-    "get_chat_service",
+    "get_chat_command_service",
+    "get_chat_creation_service",
+    "get_chat_query_service",
+    "get_chat_service",  # legacy alias
     "get_event_service",
     "get_geolocation_service",
     "get_login_service",
     "get_news_service",
-    "get_read_chat_service",
+    "get_read_chat_query_service",
+    "get_read_chat_service",  # legacy alias
     "get_read_event_service",
     "get_read_news_service",
     "get_read_schedule_service",

@@ -5,7 +5,6 @@ News repository for news data access operations.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
@@ -105,18 +104,15 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         List news items with aggregate counts (likes, comments) and user's like status.
         Optimized to avoid scalar subqueries by using batch fetching.
         """
-        if current_user_id and isinstance(current_user_id, str):
-            with contextlib.suppress(ValueError):
-                current_user_id = uuid.UUID(current_user_id)
+        if current_user_id:
+            current_user_id = self._cast_id(current_user_id)
 
         # 1. Fetch news objects with pagination/cursor/search
         stmt = select(News).options(selectinload(News.author))
 
         if cursor:
             last_created_at, last_id = cursor
-            if isinstance(last_id, str):
-                with contextlib.suppress(ValueError):
-                    last_id = uuid.UUID(last_id)
+            last_id = self._cast_id(last_id)
             stmt = stmt.where(
                 or_(
                     News.created_at < last_created_at,

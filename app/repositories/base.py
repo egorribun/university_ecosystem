@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import re
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -13,6 +14,15 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 
 from app.core.database import Base
+
+# TD-W9-04: Explicit UUID format validation — replaces the fragile `len >= 32`
+# magic-number check that silently passed invalid strings to SQLAlchemy.
+# Accepts both canonical form (8-4-4-4-12 with dashes) and 32-char hex (no dashes).
+_UUID_WITH_DASHES_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+_UUID_HEX_RE = re.compile(r"^[0-9a-f]{32}$", re.IGNORECASE)
 
 
 class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
@@ -77,6 +87,54 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
+    async def list_after(
+        self,
+        *,
+        after_id: Any = None,
+        limit: int = 50,
+        order_column: Any = None,
+        extra_filters: list[Any] | None = None,
+    ) -> Sequence[DTOT]:
+        """Keyset pagination — O(log N) vs O(N) for OFFSET-based paging.
+
+        PERF-W9-03: Returns up to *limit* rows ordered by *order_column* (defaults
+        to ``model.id``).  When *after_id* is provided the query adds a WHERE clause
+        ``order_column > <value of order_column for after_id>`` so that the result
+        set starts immediately after the given row, skipping no rows in the process.
+
+        Design notes:
+        - The cursor value is resolved with a correlated scalar subquery so the
+          caller only needs to pass the opaque ``after_id`` (typically the last
+          ``id`` from the previous page) rather than decoding a cursor string.
+        - ``extra_filters`` accepts additional SQLAlchemy column expressions so
+          callers can add tenant/user filters without subclassing.
+        - Requires an index on ``order_column`` (or a composite index that starts
+          with ``order_column``) for the O(log N) guarantee.
+        """
+        col = order_column if order_column is not None else self.model.id  # type: ignore[attr-defined]
+        stmt = select(self.model).order_by(col.asc()).limit(limit)
+        if extra_filters:
+            for f in extra_filters:
+                stmt = stmt.where(f)
+        if after_id is not None:
+            # PERF-W10-03: Resolve cursor value in a separate scalar query
+            # so the planner sees a literal parameter in the main WHERE clause
+            # instead of a correlated subquery.  Correlated subqueries can
+            # prevent index-only scans on composite indexes; a literal value
+            # is always sargable and allows the optimizer to use the full range.
+            cursor_val = await self.db.scalar(  # type: ignore[attr-defined]
+                select(col).where(  # type: ignore[attr-defined]
+                    self.model.id == self._cast_id(after_id)  # type: ignore[attr-defined]
+                )
+            )
+            if cursor_val is None:
+                # Cursor row not found: caller passed a deleted/invalid after_id.
+                # Return empty rather than full first page to avoid surprising callers.
+                return []
+            stmt = stmt.where(col > cursor_val)
+        result = await self.db.execute(stmt)
+        return [self._to_dto(obj) for obj in result.scalars()]
+
     async def count(self) -> int:
         stmt = select(func.count()).select_from(self.model)
         result = await self.db.execute(stmt)
@@ -90,13 +148,26 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         result = await self.db.execute(stmt)
         return (result.scalar() or 0) > 0
 
-    def _cast_id(self, id_val: Any) -> Any:
-        """Cast input ID to UUID if applicable, preventing SQLAlchemy errors."""
-        if isinstance(id_val, str) and len(id_val) >= 32:
-            try:
+    def _cast_id(self, id_val: Any) -> uuid.UUID | Any:
+        """Cast a string ID to UUID, raising ValueError on unrecognised formats.
+
+        TD-W9-04: The previous ``len >= 32`` check silently returned invalid
+        strings (e.g. a 33-char opaque token) as-is, deferring the error to
+        deep inside asyncpg with a cryptic DataError.  Explicit regex validation
+        raises a clean ValueError at the repository boundary instead.
+
+        Accepts:
+          - Already a ``uuid.UUID`` — returned unchanged.
+          - Canonical form: ``xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx``
+          - Hex form (no dashes): ``xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx``
+          - Any non-string — returned unchanged (e.g. integer PKs).
+        """
+        if isinstance(id_val, uuid.UUID):
+            return id_val
+        if isinstance(id_val, str):
+            if _UUID_WITH_DASHES_RE.match(id_val) or _UUID_HEX_RE.match(id_val):
                 return uuid.UUID(id_val)
-            except (ValueError, TypeError):
-                return id_val
+            raise ValueError(f"Invalid UUID format: {id_val!r}")
         return id_val
 
     @staticmethod

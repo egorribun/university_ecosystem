@@ -5,6 +5,7 @@ from app.core.di.chat import ChatProvider
 from app.core.di.content import ContentProvider
 from app.core.di.cqrs import CQRSProvider
 from app.core.di.infrastructure import InfrastructureProvider
+from app.core.di.search import SearchProvider
 from app.core.di.users import UserProvider
 
 
@@ -21,4 +22,5 @@ def create_dishka_container() -> AsyncContainer:
         ContentProvider(),
         ChatProvider(),
         CQRSProvider(),
+        SearchProvider(),
     )

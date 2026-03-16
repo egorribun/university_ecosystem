@@ -12,7 +12,7 @@ from app.api.deps.auth import (
 )
 from app.api.deps.localization import get_locale
 from app.api.deps.services import (
-    get_chat_service,
+    get_chat_command_service,
     get_event_service,
     get_news_service,
     get_schedule_service,
@@ -166,7 +166,7 @@ async def test_service_factories():
     vector = MagicMock()
 
     with patch("app.api.deps.services.get_vector_service", return_value=vector):
-        get_chat_service(db)
+        get_chat_command_service(db)
         get_event_service(db, vector)
         get_news_service(db, vector)
         get_story_service(db)

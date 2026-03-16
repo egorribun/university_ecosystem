@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -28,20 +27,29 @@ async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
     """Generate a new set of recovery codes for the user.
 
     Existing codes are invalidated.  All 10 Argon2id hashes are computed
-    concurrently in the thread pool (``asyncio.gather``) to avoid ~3 s of
-    sequential blocking.
+    sequentially to avoid starving the Argon2 semaphore (PERF-W8-01).
+    Each code uses 8 bytes of entropy (64 bits, MOD-W8-02).
     """
     await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
 
     plain_codes: list[str] = []
     for _ in range(10):
-        raw_code = secrets.token_hex(5)
-        formatted = f"{raw_code[:5]}-{raw_code[5:]}".upper()
+        # MOD-W8-02: 8 bytes = 16 hex chars = 64-bit entropy (up from 40-bit / 5 bytes).
+        # NIST SP 800-63B recommends ≥ 64 bits for backup authentication codes.
+        # Format as 4 groups of 4 for readability: "A3F8-B9C2-1E47-D06A".
+        raw_code = secrets.token_hex(8)
+        parts = [raw_code[i : i + 4].upper() for i in range(0, 16, 4)]
+        formatted = "-".join(parts)
         plain_codes.append(formatted)
 
-    hashed_codes: list[str] = await asyncio.gather(
-        *[get_password_hash(code, validate_policy=False) for code in plain_codes]
-    )
+    # PERF-W8-01: Hash sequentially instead of with asyncio.gather.
+    # On a 2-CPU container the Argon2 semaphore has concurrency=1, so all 10
+    # gather tasks would stall on the semaphore anyway — same wall-clock time,
+    # but 9 blocked tasks starve concurrent login requests for ~3 seconds.
+    # Sequential hashing releases the event loop between each hash operation.
+    hashed_codes: list[str] = []
+    for code in plain_codes:
+        hashed_codes.append(await get_password_hash(code, validate_policy=False))
 
     for code, hashed in zip(plain_codes, hashed_codes, strict=False):
         db.add(

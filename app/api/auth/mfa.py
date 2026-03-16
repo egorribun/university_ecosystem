@@ -305,7 +305,9 @@ async def confirm_webauthn_registration(
         )
     except Exception as e:
         logger.warning(
-            f"Passkey registration verification failed for user {user.id}: {e}"
+            "Passkey registration verification failed for user %s: %s",
+            user.id,
+            type(e).__name__,  # RZ-W10-04: log exception type only, not details
         )
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Passkey verification failed"

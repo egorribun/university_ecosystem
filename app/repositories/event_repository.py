@@ -4,7 +4,6 @@ Event repository for event data access operations.
 
 from __future__ import annotations
 
-import contextlib
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -49,9 +48,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         critical section.  Returns the ORM object (not a DTO) so callers can
         revalidate fields and the row stays locked for the transaction duration.
         """
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
+        event_id = self._cast_id(event_id)
         stmt = select(Event).where(Event.id == event_id).with_for_update()
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -59,9 +56,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
     async def get_with_details(
         self, event_id: uuid.UUID | str | int
     ) -> EventDTO | None:
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
+        event_id = self._cast_id(event_id)
         stmt = (
             select(Event).where(Event.id == event_id).options(selectinload(Event.files))
         )
@@ -113,9 +108,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         Cursor is composite (created_at DESC, id DESC) matching the ORDER BY clause
         so the B-tree index on created_at can be used directly without a sort step.
         """
-        if isinstance(organizer_id, str):
-            with contextlib.suppress(ValueError):
-                organizer_id = uuid.UUID(organizer_id)
+        organizer_id = self._cast_id(organizer_id)
         stmt = select(Event).where(Event.created_by == organizer_id)
         if after_created_at is not None and after_id is not None:
             stmt = stmt.where(
@@ -210,9 +203,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
         if cursor:
             last_starts_at, last_id = cursor
-            if isinstance(last_id, str):
-                with contextlib.suppress(ValueError):
-                    last_id = uuid.UUID(last_id)
+            last_id = self._cast_id(last_id)
             conditions.append(
                 or_(
                     Event.starts_at > last_starts_at,
@@ -223,8 +214,14 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
                 )
             )
 
-        # Attendance counts and current user attendance
-        participant_count_sub = (
+        # PERF-W10-02: Replaced the global aggregating CTE with a correlated
+        # scalar subquery.  The CTE scanned the entire event_attendance table
+        # in a single HashAggregate before the main query's LIMIT could apply —
+        # O(total_attendance_rows) memory on the DB server.  With a composite
+        # index on event_attendance(event_id) the correlated COUNT(*) executes
+        # an index scan per result row: O(limit * log(attendance_per_event))
+        # which is far cheaper when limit ≤ 50.
+        participant_count_col = (
             select(func.count())
             .where(models.EventAttendance.event_id == Event.id)
             .correlate(Event)
@@ -235,9 +232,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         user_attendance_alias = aliased(models.EventAttendance)
         join_cond = user_attendance_alias.event_id == Event.id
         if user_id:
-            if isinstance(user_id, str):
-                with contextlib.suppress(ValueError):
-                    user_id = uuid.UUID(user_id)
+            user_id = self._cast_id(user_id)
             join_cond = and_(join_cond, user_attendance_alias.user_id == user_id)
         else:
             # Use a dummy UUID that won't exist
@@ -247,7 +242,11 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             )
 
         stmt = (
-            select(Event, participant_count_sub, user_attendance_alias)
+            select(
+                Event,
+                participant_count_col,
+                user_attendance_alias,
+            )
             .outerjoin(user_attendance_alias, join_cond)
             .options(selectinload(Event.files))
         )
@@ -282,12 +281,9 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str | None
     ) -> EventSearchResultDTO | None:
         """Fetch event with participant count and specific user attendance."""
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
-        if user_id and isinstance(user_id, str):
-            with contextlib.suppress(ValueError):
-                user_id = uuid.UUID(user_id)
+        event_id = self._cast_id(event_id)
+        if user_id:
+            user_id = self._cast_id(user_id)
 
         participant_count_sub = (
             select(func.count())
@@ -330,12 +326,8 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str
     ) -> EventAttendanceDTO | None:
         """Get user attendance for a specific event."""
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
-        if isinstance(user_id, str):
-            with contextlib.suppress(ValueError):
-                user_id = uuid.UUID(user_id)
+        event_id = self._cast_id(event_id)
+        user_id = self._cast_id(user_id)
         stmt = select(models.EventAttendance).where(
             models.EventAttendance.event_id == event_id,
             models.EventAttendance.user_id == user_id,
@@ -356,12 +348,8 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str
     ) -> bool:
         """Delete user attendance for a specific event."""
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
-        if isinstance(user_id, str):
-            with contextlib.suppress(ValueError):
-                user_id = uuid.UUID(user_id)
+        event_id = self._cast_id(event_id)
+        user_id = self._cast_id(user_id)
         stmt = delete(models.EventAttendance).where(
             models.EventAttendance.event_id == event_id,
             models.EventAttendance.user_id == user_id,
@@ -376,12 +364,8 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         updates: dict[str, Any],
     ) -> EventAttendanceDTO | None:
         """Update user attendance for a specific event."""
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
-        if isinstance(user_id, str):
-            with contextlib.suppress(ValueError):
-                user_id = uuid.UUID(user_id)
+        event_id = self._cast_id(event_id)
+        user_id = self._cast_id(user_id)
 
         stmt = (
             update(models.EventAttendance)
@@ -400,9 +384,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         self, user_id: uuid.UUID | int | str
     ) -> list[Event]:
         """List all events a user has registered for."""
-        if isinstance(user_id, str):
-            with contextlib.suppress(ValueError):
-                user_id = uuid.UUID(user_id)
+        user_id = self._cast_id(user_id)
         stmt = (
             select(Event)
             .join(models.EventAttendance)
@@ -414,9 +396,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
     async def get_event_file_urls(self, event_id: uuid.UUID | int | str) -> list[str]:
         """Get all file URLs associated with an event."""
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
+        event_id = self._cast_id(event_id)
         stmt = select(models.EventFile.file_url).where(
             models.EventFile.event_id == event_id
         )
@@ -427,9 +407,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         """Delete all file records associated with an event."""
         from sqlalchemy import delete
 
-        if isinstance(event_id, str):
-            with contextlib.suppress(ValueError):
-                event_id = uuid.UUID(event_id)
+        event_id = self._cast_id(event_id)
         await self.db.execute(
             delete(models.EventFile).where(models.EventFile.event_id == event_id)
         )

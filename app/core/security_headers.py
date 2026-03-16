@@ -38,12 +38,18 @@ class SecurityHeadersMiddleware:
         # PERF-05 (audit 2026-03-11): Combine pre-built static headers with the
         # per-request CSP header (nonce changes every call).  Static headers are
         # computed once in __init__; only _build_csp_header() runs here.
-        csp_header = self._build_csp_header(nonce=nonce)
-        extra_headers = [csp_header, *self._static_headers]
+        # MOD-W8-04: _build_csp_header returns a list — one header in report-only
+        # mode, two headers (enforcing + shadow CSP-RO) in production.
+        csp_headers = self._build_csp_header(nonce=nonce)
+        extra_headers = [*csp_headers, *self._static_headers]
 
         _accumulated_html_bytes = 0
         html_body: list[bytes] = []
-        _HTML_BUFFER_LIMIT = 2 * 1024 * 1024  # 2 MB
+        # RZ-W10-12: Reduced from 2 MB to 64 KB. The frontend SPA index.html is
+        # typically <10 KB; larger values indicate an SSR page or misconfigured
+        # route that should not be served via this middleware anyway. At 2 MB with
+        # concurrent requests, buffering can spike worker RSS by hundreds of MB.
+        _HTML_BUFFER_LIMIT = 64 * 1024  # 64 KB
 
         from dataclasses import dataclass
 
@@ -181,20 +187,29 @@ class SecurityHeadersMiddleware:
 
         await self._app(scope, receive, send_with_security_headers)
 
-    def _build_csp_header(self, *, nonce: str | None) -> tuple[str, str]:
-        """Return the (name, value) pair for the CSP/CSP-Report-Only header.
+    def _build_csp_header(self, *, nonce: str | None) -> list[tuple[str, str]]:
+        """Return the list of (name, value) pairs for CSP headers.
 
         PERF-05: Called on every request because the nonce changes each time.
         All other security headers are pre-built in _build_static_headers().
+
+        MOD-W8-04: In production (report_only=False) returns two headers:
+        - Content-Security-Policy (enforcing)
+        - Content-Security-Policy-Report-Only (shadow, same policy + report-uri)
+        This lets us collect real violation reports without a separate relaxed policy.
+        In dev/staging (report_only=True) returns only the CSP-RO header.
         """
         report_only = self._settings.security_csp_report_only_effective
         policy = self._settings.build_csp_policy(nonce=nonce, report_only=report_only)
-        header_name = (
-            "Content-Security-Policy-Report-Only"
-            if report_only
-            else "Content-Security-Policy"
-        )
-        return (header_name, policy)
+        if report_only:
+            return [("Content-Security-Policy-Report-Only", policy)]
+
+        # Production: enforcing CSP + shadow report-only with report-uri appended
+        shadow_policy = f"{policy}; report-uri /api/v1/csp-report"
+        return [
+            ("Content-Security-Policy", policy),
+            ("Content-Security-Policy-Report-Only", shadow_policy),
+        ]
 
     def _build_static_headers(self) -> list[tuple[str, str]]:
         """Build all non-CSP security headers once at startup.

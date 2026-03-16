@@ -422,6 +422,30 @@ _LEGACY_BCRYPT_VERIFICATIONS = (
     else None
 )
 
+# MOD-W10-08: Counter for background task failures.
+# Alert when rate(background_task_errors_total[5m]) > 0.
+_BACKGROUND_TASK_ERRORS = (
+    Counter(
+        "background_task_errors_total",
+        "Total background task failures by task class name",
+        ("task_name",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+
+def record_background_task_error(task_name: str) -> None:
+    """Increment the background task error counter.
+
+    MOD-W10-08: Call this in every background task's bare-except handler so
+    failures are visible in Grafana / alerting even when the task swallows the
+    exception silently.  Alert rule: rate(background_task_errors_total[5m]) > 0.
+    """
+    if _BACKGROUND_TASK_ERRORS is not None:
+        _BACKGROUND_TASK_ERRORS.labels(task_name=task_name).inc()
+
 
 def record_legacy_bcrypt_verification() -> None:
     """Increment the legacy bcrypt verification counter.

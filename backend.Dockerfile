@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Builder
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.13-slim-bookworm AS builder
 
 # Pin uv to an exact version for reproducible builds.
 # Use 0.10.8 for proven stability in current scan environments.
@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -64,7 +64,7 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash app
+    && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --no-create-home app
 
 # Copy virtual environment from builder
 COPY --from=builder --chown=app:app /opt/venv /opt/venv
