@@ -36,11 +36,11 @@ jobs:
             python-cache-hit: ${{ steps.python-cache.outputs.cache-hit }}
             node-cache-hit: ${{ steps.node-cache.outputs.cache-hit }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             # Python dependencies cache
             - name: Setup Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v6
               with:
                   python-version: ${{ inputs.python-version }}
 
@@ -56,13 +56,13 @@ jobs:
 
             # Node.js dependencies cache
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: ${{ inputs.node-version }}
 
             - name: Cache Node.js dependencies
               id: node-cache
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: |
                       frontend/node_modules
@@ -78,7 +78,7 @@ jobs:
 
             # Go dependencies cache (for services)
             - name: Setup Go
-              uses: actions/setup-go@v5
+              uses: actions/setup-go@v6
               with:
                   go-version: ${{ inputs.go-version }}
                   cache: true
