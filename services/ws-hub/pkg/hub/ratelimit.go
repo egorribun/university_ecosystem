@@ -106,33 +106,70 @@ func (l *WSUpgradeRateLimiter) gcLoop() {
 	}
 }
 
-// RealIP extracts the real client IP from X-Forwarded-For (first hop) or
-// falls back to RemoteAddr.  Only trusts X-Forwarded-For when the immediate
-// RemoteAddr is in trustedProxies.
+// isTrustedProxy returns true if ip matches an exact entry in the set or falls
+// within any of the CIDR ranges.
+func isTrustedProxy(ip net.IP, exact map[string]struct{}, cidrs []*net.IPNet) bool {
+	if _, ok := exact[ip.String()]; ok {
+		return true
+	}
+	for _, cidr := range cidrs {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// RealIP extracts the real client IP from the X-Forwarded-For chain or falls
+// back to RemoteAddr.
 //
-// P-03 (audit 2026-03-08): accepts a pre-built map[string]struct{} instead of
-// a []string so the lookup is O(1) rather than O(N).  Build the map once at
-// startup via config.LoadConfig() to avoid allocation per request.
-func RealIP(r *http.Request, trustedProxies map[string]struct{}) string {
+// P-03 (audit 2026-03-08): O(1) map lookup instead of O(N) slice scan.
+// PERF-04 (audit Wave 11): proper right-to-left XFF chain traversal for
+// CDN → Cloudflare → ingress → pod deployments.  The XFF list is ordered
+// oldest→newest (client first, each proxy appends).  We walk right-to-left,
+// skipping trusted proxies, and return the first untrusted IP — the real client.
+// CIDR-based trust is supported via the cidrs parameter.
+//
+// Call site: pass cfg.TrustedProxiesSet and cfg.TrustedCIDRs.
+func RealIP(r *http.Request, trustedProxies map[string]struct{}, cidrs []*net.IPNet) string {
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		remoteIP = r.RemoteAddr
 	}
 
-	_, isTrusted := trustedProxies[remoteIP]
+	parsedRemote := net.ParseIP(remoteIP)
+	if parsedRemote == nil || !isTrustedProxy(parsedRemote, trustedProxies, cidrs) {
+		// Immediate caller is not a trusted proxy — it IS the client.
+		return remoteIP
+	}
 
-	if isTrusted {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			// X-Forwarded-For may be a comma-separated list; take the leftmost entry.
-			for i := 0; i < len(xff); i++ {
-				if xff[i] == ',' {
-					return strings.TrimSpace(xff[:i])
-				}
-			}
-			return strings.TrimSpace(xff)
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff == "" {
+		return remoteIP
+	}
+
+	// Split all IPs in the chain (oldest→newest left→right).
+	parts := strings.Split(xff, ",")
+	ips := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			ips = append(ips, trimmed)
 		}
 	}
 
+	// Walk right-to-left: skip trusted proxies; return first untrusted entry.
+	for i := len(ips) - 1; i >= 0; i-- {
+		ip := net.ParseIP(ips[i])
+		if ip == nil {
+			// Malformed entry — stop here to avoid spoofing via injection.
+			break
+		}
+		if !isTrustedProxy(ip, trustedProxies, cidrs) {
+			return ip.String()
+		}
+	}
+
+	// All XFF entries were trusted — RemoteAddr is the safe fallback.
 	return remoteIP
 }
 

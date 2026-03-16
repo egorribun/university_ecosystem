@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 )
 
@@ -78,11 +77,11 @@ func (c *Client) ReadPump() {
 				websocket.CloseNormalClosure,
 				websocket.CloseGoingAway,
 				websocket.CloseNoStatusReceived) {
-				c.Hub.Logger.Debug("WebSocket closed normally", zap.String("client_id", c.ID))
+				c.Hub.Logger.Debug("WebSocket closed normally", "client_id", c.ID)
 			} else {
 				c.Hub.Logger.Warn("WebSocket read error",
-					zap.String("client_id", c.ID),
-					zap.Error(err))
+					"client_id", c.ID,
+					"err", err)
 			}
 			break
 		}
@@ -105,8 +104,8 @@ func (c *Client) ReadPump() {
 			}
 			if !c.Hub.AuthorizeRoomJoin(c.ctx, c.UserID, msg.Room) {
 				c.Hub.Logger.Warn("Unauthorized room join rejected",
-					zap.String("user", c.UserID),
-					zap.String("room", msg.Room))
+					"user", c.UserID,
+					"room", msg.Room)
 				break
 			}
 			c.JoinRoom(msg.Room)
@@ -126,8 +125,8 @@ func (c *Client) ReadPump() {
 				rate.NewLimiter(rate.Limit(10), 20))
 			if !raw.(*rate.Limiter).Allow() {
 				c.Hub.Logger.Warn("Client message rate limit exceeded — notifying client",
-					zap.String("client_id", c.ID),
-					zap.String("room", msg.Room))
+					"client_id", c.ID,
+					"room", msg.Room)
 				if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
 					select {
 					case c.Send <- notice:
@@ -144,7 +143,7 @@ func (c *Client) ReadPump() {
 			if js, err := c.Hub.Nats.JetStream(); err == nil {
 				_, _ = js.PublishAsync("chat."+msg.Room, data)
 			} else {
-				c.Hub.Logger.Error("Failed to init JetStream, falling back to core NATS", zap.Error(err))
+				c.Hub.Logger.Error("Failed to init JetStream, falling back to core NATS", "err", err)
 				_ = c.Hub.Nats.Publish("chat."+msg.Room, data)
 			}
 		}
@@ -199,7 +198,7 @@ func (c *Client) JoinRoom(room string) {
 	}
 	c.Hub.Rooms[room][c] = true
 
-	c.Hub.Logger.Debug("Client joined room", zap.String("client", c.ID), zap.String("room", room))
+	c.Hub.Logger.Debug("Client joined room", "client", c.ID, "room", room)
 }
 
 func (c *Client) LeaveRoom(room string) {

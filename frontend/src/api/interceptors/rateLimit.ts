@@ -218,3 +218,24 @@ export const waitForRateLimitWindow = async () => {
 }
 
 export const isRateLimited = () => rateLimitResetAt > Date.now()
+
+// DEBT-03 (audit Wave 11): Reset the server-side 429 rate-limit window when the
+// network recovers.  Without this, a user who goes offline mid-window returns to
+// find the client still blocked — even though the server's window expired while they
+// were offline (e.g., 60s window, 30s offline = 30s of unnecessary client blocking).
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    if (rateLimitResetAt !== 0 && Date.now() >= rateLimitResetAt) {
+      // Window has already expired — unblock queued requests immediately
+      if (rateLimitTimer !== null) {
+        clearTimeout(rateLimitTimer)
+        rateLimitTimer = null
+      }
+      rateLimitResetAt = 0
+      while (rateLimitWaiters.length > 0) {
+        rateLimitWaiters.shift()?.()
+      }
+    }
+    // If the window is still active, leave it — the server-side limit is still valid.
+  })
+}

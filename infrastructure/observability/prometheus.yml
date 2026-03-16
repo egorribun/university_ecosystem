@@ -5,6 +5,10 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# PERF-03 (audit Wave 11, 2026-03-17): alert rule files.
+rule_files:
+  - "alerts/*.yaml"
+
 scrape_configs:
   # Prometheus self-monitoring
   - job_name: 'prometheus'
@@ -58,3 +62,10 @@ scrape_configs:
     static_configs:
       - targets: ['pyroscope:4040']
     metrics_path: /metrics
+
+  # Gateway (Go reverse-proxy) — exposes L1 cache + auth metrics
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:9102']
+    metrics_path: /metrics
+    scrape_interval: 10s

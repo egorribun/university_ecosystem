@@ -331,6 +331,18 @@ dev = [
     "pact-python>=2.3.0,<3",
 ]
 
+# MOD-06 (audit Wave 11): dedicated security scanning group.
+# Install with: uv sync --group security
+# Used in CI/CD security audit job and pre-deployment gate.
+#   bandit   — Python SAST (AST-based, complements ruff's flake8-bandit rules)
+#   semgrep  — multi-language semantic SAST with OWASP/CVE rulesets
+#   pip-audit — dependency vulnerability scanner (OSV/PyPI Advisory DB)
+security = [
+    "bandit[toml]>=1.9.4",
+    "semgrep>=1.105",
+    "pip-audit>=2.8",
+]
+
 [tool.uv.workspace]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 

@@ -10,6 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+	"os"
+
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -20,7 +23,6 @@ import (
 	// MOD-02 (audit Wave 10): semconv v1.27.0 adds messaging.* attributes for
 	// NATS subjects, enabling correlation in Jaeger/Grafana Tempo.
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
-	"go.uber.org/zap"
 )
 
 type Message struct {
@@ -42,7 +44,7 @@ type Hub struct {
 	Unregister chan *Client
 	Broadcast  chan *Message
 	Nats       *nats.Conn
-	Logger     *zap.Logger
+	Logger     *slog.Logger
 	mu         sync.RWMutex
 	// authClient authorizes room-join requests against the Python backend.
 	// If nil, all room-join attempts are denied (fail-closed).
@@ -74,7 +76,7 @@ type Hub struct {
 	stopOnce sync.Once
 }
 
-func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
+func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
 	return &Hub{
 		Clients:    make(map[string]*Client),
 		Rooms:      make(map[string]map[*Client]bool),
@@ -107,6 +109,17 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 		return nil
 	}
 
+	// RED-06 (audit Wave 11): Cancel any existing JWKS cache goroutine before
+	// replacing it.  Without this, repeated calls to SetupJWKS (e.g. in rolling
+	// deploys, integration tests, or staged restarts) overwrite h.jwksCacheCancel
+	// before calling the old cancel — leaking the previous jwk.Cache refresh goroutine.
+	// stopOnce in Stop() only helps for the CURRENT cancel; it does not retroactively
+	// stop goroutines from prior SetupJWKS calls.
+	if h.jwksCacheCancel != nil {
+		h.jwksCacheCancel()
+		h.jwksCacheCancel = nil
+	}
+
 	// Derive a child context whose cancel is stored for Stop().
 	jwksCtx, cancel := context.WithCancel(ctx)
 	h.jwksCacheCancel = cancel
@@ -124,10 +137,10 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	// Initial fetch to ensure we have keys at startup.
 	_, err = h.jwksCache.Refresh(jwksCtx, jwksURL)
 	if err != nil {
-		h.Logger.Warn("Initial JWKS fetch failed; will retry in background", zap.Error(err))
+		h.Logger.Warn("Initial JWKS fetch failed; will retry in background", "err", err)
 	}
 
-	h.Logger.Info("JWKS cache initialised", zap.String("url", jwksURL))
+	h.Logger.Info("JWKS cache initialised", "url", jwksURL)
 	return nil
 }
 
@@ -153,8 +166,8 @@ func (h *Hub) Run(ctx context.Context) {
 			if h.maxClients > 0 && len(h.Clients) >= h.maxClients {
 				h.mu.Unlock()
 				h.Logger.Warn("Max connections reached, rejecting client",
-					zap.String("id", client.ID),
-					zap.Int("max", h.maxClients))
+					"id", client.ID,
+					"max", h.maxClients)
 				client.closeOnce.Do(func() { close(client.Send) })
 				_ = client.Conn.Close()
 				continue
@@ -162,7 +175,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.Clients[client.ID] = client
 			h.mu.Unlock()
 			ActiveConnections.Inc()
-			h.Logger.Info("Client connected", zap.String("id", client.ID))
+			h.Logger.Info("Client connected", "id", client.ID)
 
 		case client := <-h.Unregister:
 			h.mu.Lock()
@@ -189,7 +202,7 @@ func (h *Hub) Run(ctx context.Context) {
 				h.mu.Unlock()
 			})
 			ActiveConnections.Dec()
-			h.Logger.Info("Client disconnected", zap.String("id", client.ID))
+			h.Logger.Info("Client disconnected", "id", client.ID)
 
 		case msg := <-h.Broadcast:
 			// WSH-06 (audit 2026-03-08 Wave 5): pass a background context here;
@@ -279,7 +292,7 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 		} else if r.evictOnFull {
 			// Buffer full or channel closed: schedule eviction.
 			// Unregister handler is the sole owner of close(client.Send).
-			h.Logger.Warn("Client buffer full or closed, evicting", zap.String("id", r.client.ID))
+			h.Logger.Warn("Client buffer full or closed, evicting", "id", r.client.ID)
 			go func(c *Client) { h.Unregister <- c }(r.client)
 		}
 		// For room/direct messages, silently drop — the client has an
@@ -308,8 +321,8 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 		defer func() {
 			if r := recover(); r != nil {
 				h.Logger.Error("NATS chat callback panic recovered",
-					zap.Any("panic", r),
-					zap.String("subject", msg.Subject))
+					"panic", r,
+					"subject", msg.Subject)
 			}
 		}()
 
@@ -343,13 +356,13 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 			case h.Broadcast <- &wsMsg:
 			default:
 				h.Logger.Warn("Broadcast channel full, dropping NATS chat message",
-					zap.String("subject", msg.Subject))
+					"subject", msg.Subject)
 			}
 		}
 	})
 	if err != nil {
-		h.Logger.Fatal("NATS chat subscription failed — hub cannot deliver messages",
-			zap.Error(err))
+		h.Logger.Error("NATS chat subscription failed — hub cannot deliver messages", "err", err)
+		os.Exit(1)
 	}
 	h.subs = append(h.subs, chatSub)
 
@@ -358,8 +371,8 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 		defer func() {
 			if r := recover(); r != nil {
 				h.Logger.Error("NATS notifications callback panic recovered",
-					zap.Any("panic", r),
-					zap.String("subject", msg.Subject))
+					"panic", r,
+					"subject", msg.Subject)
 			}
 		}()
 
@@ -388,13 +401,13 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 			case h.Broadcast <- &wsMsg:
 			default:
 				h.Logger.Warn("Broadcast channel full, dropping NATS notification",
-					zap.String("subject", msg.Subject))
+					"subject", msg.Subject)
 			}
 		}
 	})
 	if err != nil {
-		h.Logger.Fatal("NATS notifications subscription failed — hub cannot deliver messages",
-			zap.Error(err))
+		h.Logger.Error("NATS notifications subscription failed — hub cannot deliver messages", "err", err)
+		os.Exit(1)
 	}
 	h.subs = append(h.subs, notifSub)
 
@@ -405,8 +418,8 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 		defer func() {
 			if r := recover(); r != nil {
 				h.Logger.Error("NATS cache.invalidate callback panic recovered",
-					zap.Any("panic", r),
-					zap.String("subject", msg.Subject))
+					"panic", r,
+					"subject", msg.Subject)
 			}
 		}()
 
@@ -457,8 +470,8 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 			payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
 			if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
 				h.Logger.Warn("Invalid internal NATS signature — dropping event",
-					zap.String("room_id", payload.Data.RoomID),
-					zap.String("user_id", payload.Data.UserID))
+					"room_id", payload.Data.RoomID,
+					"user_id", payload.Data.UserID)
 				// MOD-02 fix: assign and end the span — bare Start() discards the span,
 				// causing an OTel span leak on every invalid-signature drop.
 				_, sigSpan := otel.Tracer("hub").Start(msgCtx, "InvalidInternalSignature")
@@ -475,7 +488,8 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 		}
 	})
 	if err != nil {
-		h.Logger.Fatal("NATS cache invalidation subscription failed", zap.Error(err))
+		h.Logger.Error("NATS cache invalidation subscription failed", "err", err)
+		os.Exit(1)
 	}
 	h.subs = append(h.subs, invSub)
 
@@ -519,7 +533,7 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 				})
 				if removed > 0 {
 					h.Logger.Info("Cleaned up orphaned msgLimiters",
-						zap.Int("removed", removed))
+						"removed", removed)
 				}
 			}
 		}
@@ -543,7 +557,7 @@ func (h *Hub) Stop() {
 	h.stopOnce.Do(func() {
 		for _, sub := range h.subs {
 			if err := sub.Drain(); err != nil {
-				h.Logger.Warn("NATS subscription drain error", zap.Error(err))
+				h.Logger.Warn("NATS subscription drain error", "err", err)
 			}
 		}
 		if h.UpgradeLimiter != nil {
@@ -564,7 +578,7 @@ func (h *Hub) AuthorizeRoomJoin(ctx context.Context, userID, room string) bool {
 	if h.authClient == nil {
 		// No auth client configured — deny by default (fail-closed).
 		h.Logger.Warn("AuthorizeRoomJoin: no auth client configured, denying",
-			zap.String("user", userID), zap.String("room", room))
+			"user", userID, "room", room)
 		return false
 	}
 	return h.authClient.CanJoinRoom(ctx, userID, room)

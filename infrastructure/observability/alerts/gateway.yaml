@@ -1,0 +1,41 @@
+# Gateway Prometheus alert rules
+# PERF-03 (audit Wave 11, 2026-03-17): L1 cache efficiency alerting.
+# Mounted into Prometheus via rule_files in prometheus.yml.
+
+groups:
+  - name: gateway.rules
+    rules:
+      # ------------------------------------------------------------------
+      # GatewayL1CacheEfficiencyLow
+      # Fires when the Gateway L1 auth-token cache eviction rate exceeds 50%
+      # of total lookups (hits + misses) over a 5-minute window.
+      #
+      # High eviction rate means the LRU cache is too small for the current
+      # token churn: nearly every lookup evicts a valid entry, collapsing the
+      # hit rate and pushing every subsequent request to Redis.
+      #
+      # Remediation: increase gateway MaxSize env var (default 1024).
+      # ------------------------------------------------------------------
+      - alert: GatewayL1CacheEfficiencyLow
+        expr: |
+          (
+            rate(gateway_l1_cache_evictions_total[5m])
+            /
+            (
+              rate(gateway_l1_cache_hits_total[5m])
+              + rate(gateway_l1_cache_misses_total[5m])
+            )
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: gateway
+        annotations:
+          summary: "Gateway L1 cache eviction rate above 50%"
+          description: >
+            Gateway L1 auth-token cache evictions are running at
+            {{ printf "%.1f" (mul 100 $value) }}% of total lookups.
+            Hit rate has collapsed — every token validation falls through
+            to Redis. Consider increasing GATEWAY_L1_CACHE_MAX_SIZE
+            (current default: 1024 entries).
+          runbook_url: "https://github.com/university-ecosystem/university_ecosystem/blob/main/CONFIGURATION.md#gateway-l1-cache"

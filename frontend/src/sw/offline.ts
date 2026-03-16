@@ -5,7 +5,7 @@ import { openDB, type IDBPDatabase } from "idb"
 import { log, warn } from "./logger"
 
 const CLICK_DB_NAME = "notification-interactions"
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 export const STORES = {
   NAVIGATION: "pending-navigations",
@@ -19,18 +19,44 @@ export const STORES = {
  */
 async function getDatabase() {
   return openDB(CLICK_DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion, _newVersion, transaction) {
       if (!db.objectStoreNames.contains(STORES.NAVIGATION)) {
         db.createObjectStore(STORES.NAVIGATION, { keyPath: "id", autoIncrement: true })
       }
       if (!db.objectStoreNames.contains(STORES.REPORT)) {
-        db.createObjectStore(STORES.REPORT, { keyPath: "id", autoIncrement: true })
+        const reportStore = db.createObjectStore(STORES.REPORT, {
+          keyPath: "id",
+          autoIncrement: true,
+        })
+        // DEBT-04 (audit Wave 11): deduplication index for idempotent requests.
+        reportStore.createIndex("dedupeKey", "dedupeKey", { unique: false })
+      } else if (oldVersion < 4) {
+        // Upgrade: add dedupeKey index using the active versionchange transaction.
+        // db.transaction() cannot be called during onupgradeneeded — only the
+        // implicit upgrade transaction is valid here.
+        const store = transaction.objectStore(STORES.REPORT)
+        if (!store.indexNames.contains("dedupeKey")) {
+          store.createIndex("dedupeKey", "dedupeKey", { unique: false })
+        }
       }
       if (!db.objectStoreNames.contains(STORES.NEWS_INTERACTION)) {
         db.createObjectStore(STORES.NEWS_INTERACTION, { keyPath: "id", autoIncrement: true })
       }
     },
   })
+}
+
+/**
+ * DEBT-04 (audit Wave 11): Compute a SHA-256 fingerprint of a pending request for
+ * deduplication.  Idempotent methods (PUT, DELETE, HEAD) with the same URL+body
+ * should only appear once in the queue.  POST requests use a random idempotency
+ * key generated at enqueue time instead.
+ */
+async function digestKey(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
 }
 
 /**
@@ -63,8 +89,28 @@ export async function storePendingReport(record: {
   reportUrl: string
   timestamp: number
   payload?: unknown
+  method?: string
 }) {
-  return addRecord(STORES.REPORT, record)
+  const method = (record.method ?? "POST").toUpperCase()
+  const idempotentMethods = ["GET", "PUT", "DELETE", "HEAD"]
+
+  if (idempotentMethods.includes(method)) {
+    // DEBT-04 (audit Wave 11): deduplicate idempotent requests by URL+body hash.
+    // A user going offline then back online while the same resource is pending
+    // should not enqueue duplicate requests that create duplicate side-effects.
+    const dedupeKey = await digestKey(record.reportUrl + JSON.stringify(record.payload ?? null))
+    const db = await getDatabase()
+    const existing = await db.getAllFromIndex(STORES.REPORT, "dedupeKey", dedupeKey)
+    if (existing.length > 0) {
+      return // already queued — skip
+    }
+    return db.add(STORES.REPORT, { ...record, method, dedupeKey })
+  }
+
+  // POST (and other non-idempotent): always enqueue; attach a random idempotency
+  // key so the server can deduplicate retries on its side (via Idempotency-Key header).
+  const idempotencyKey = crypto.randomUUID()
+  return addRecord(STORES.REPORT, { ...record, method, idempotencyKey })
 }
 
 export async function readPendingReports() {
@@ -137,10 +183,15 @@ export async function processPendingReports() {
 
   const results = await Promise.allSettled(
     records.map(async (record) => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      // DEBT-04: forward idempotency key so the server can deduplicate retries
+      if (record.idempotencyKey) {
+        headers["Idempotency-Key"] = record.idempotencyKey
+      }
       const response = await fetch(record.reportUrl, {
-        method: "POST",
+        method: record.method ?? "POST",
         body: JSON.stringify(record.payload),
-        headers: { "Content-Type": "application/json" },
+        headers,
         keepalive: true,
         signal: AbortSignal.timeout(10_000),
       })

@@ -24,6 +24,7 @@ import {
 } from "@/push/subscribe"
 import type { WebAuthnAuthenticationOptionsOut } from "@/types/Auth"
 import { logWarning, logError } from "@/app/logger"
+import { incrementSessionEpoch } from "@/api/interceptors/etagCache"
 
 type TokenWithProfileResponse = {
   user?: User
@@ -160,6 +161,10 @@ export const useAuthApi = (
         const data = response.data as TokenWithProfileResponse
         if (isTokenWithProfileResponse(data)) {
           updateSessionSigningKey(extractSigningKey(data))
+          // RED-02 (audit Wave 11): increment epoch AFTER new signing key is registered.
+          // Any HMAC computations that started under the previous session see the epoch
+          // change and discard their results, preventing cross-session data leakage.
+          incrementSessionEpoch()
           setUser(data.user)
           updatePendingMfa(null)
           if (data.user.spotify_connected) {
@@ -254,6 +259,7 @@ export const useAuthApi = (
 
         if (isTokenWithProfileResponse(data)) {
           updateSessionSigningKey(extractSigningKey(data))
+          incrementSessionEpoch() // RED-02 Wave 11: epoch bump after MFA login
           setUser(data.user)
           updatePendingMfa(null)
           if (data.user.spotify_connected) {
@@ -382,6 +388,7 @@ export const useAuthApi = (
         const data = response.data
         if (isTokenWithProfileResponse(data)) {
           updateSessionSigningKey(extractSigningKey(data))
+          incrementSessionEpoch() // RED-02 Wave 11: epoch bump after passkey login
           setUser(data.user)
           updatePendingMfa(null)
           if (data.user.spotify_connected) {

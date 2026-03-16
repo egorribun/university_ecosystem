@@ -9,11 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"log/slog"
+
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.uber.org/zap"
 
 	"github.com/university-ecosystem/ws-hub/internal/telemetry"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -21,32 +22,31 @@ import (
 )
 
 func main() {
-	// MOD-02 (audit 2026-03-08 Wave 5): Enable log sampling to cap throughput.
-	// At 10,000 concurrent connections each ReadPump can emit DEBUG logs;
-	// without sampling this can reach ~100K log events/sec and overwhelm log
-	// aggregators. Sampling: first 100 events/s at each level pass through,
-	// then every 100th thereafter.
-	zapCfg := zap.NewProductionConfig()
-	zapCfg.Sampling = &zap.SamplingConfig{
-		Initial:    100,
-		Thereafter: 100,
-	}
-	logger, err := zapCfg.Build()
-	if err != nil {
-		panic(err)
-	}
-	defer func() { _ = logger.Sync() }()
+	// MOD-01 (audit Wave 11): stdlib slog replaces go.uber.org/zap.
+	// JSON handler with UTC timestamps matches the structured log format
+	// expected by the Loki/Grafana log aggregation pipeline.
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				a.Value = slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano))
+			}
+			return a
+		},
+	})
+	logger := slog.New(handler)
 
 	cfg := config.LoadConfig()
 
 	// AUDIT-INFRA-02: fail-fast — empty InternalSecret allows HMAC forgery on
 	// the /internal/cache/invalidate endpoint from any container on service_net.
 	if cfg.InternalSecret == "" {
-		logger.Fatal("WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
+		logger.Error("WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
+		os.Exit(1)
 	}
 
 	if err := telemetry.InitSentry(cfg); err != nil {
-		logger.Error("Sentry initialization failed", zap.Error(err))
+		logger.Error("Sentry initialization failed", "err", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,7 +54,7 @@ func main() {
 
 	tp, err := telemetry.InitTracer(ctx, cfg)
 	if err != nil {
-		logger.Error("OpenTelemetry initialization failed", zap.Error(err))
+		logger.Error("OpenTelemetry initialization failed", "err", err)
 	} else {
 		defer func() { _ = tp.Shutdown(ctx) }()
 	}
@@ -72,7 +72,8 @@ func main() {
 	}
 	nc, err := nats.Connect(cfg.NatsURL, natsOpts...)
 	if err != nil {
-		logger.Fatal("Failed to connect to NATS", zap.Error(err))
+		logger.Error("Failed to connect to NATS", "err", err)
+		os.Exit(1)
 	}
 	defer nc.Close()
 
@@ -83,15 +84,15 @@ func main() {
 	})
 	// Check connection
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		logger.Warn("Redis connection failed, continuing without L2 cache", zap.Error(err))
+		logger.Warn("Redis connection failed, continuing without L2 cache", "err", err)
 		rdb = nil
 	} else {
 		defer func() {
 			if err := rdb.Close(); err != nil {
-				logger.Error("Failed to close Redis connection", zap.Error(err))
+				logger.Error("Failed to close Redis connection", "err", err)
 			}
 		}()
-		logger.Info("Redis connected (L2 Cache enabled)", zap.String("addr", cfg.RedisURL))
+		logger.Info("Redis connected (L2 Cache enabled)", "addr", cfg.RedisURL)
 	}
 
 	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL, rdb)
@@ -104,7 +105,8 @@ func main() {
 	// MOD-1: initialize JWKS cache for RS256 support.
 	if cfg.JWKSURL != "" {
 		if err := h.SetupJWKS(ctx, cfg.JWKSURL); err != nil {
-			logger.Fatal("Failed to setup JWKS", zap.Error(err))
+			logger.Error("Failed to setup JWKS", "err", err)
+			os.Exit(1)
 		}
 	}
 
@@ -147,9 +149,10 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("Starting WebSocket Hub", zap.String("port", cfg.Port))
+		logger.Info("Starting WebSocket Hub", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			logger.Fatal("Server error", zap.Error(err))
+			logger.Error("Server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 )
@@ -30,13 +31,18 @@ type Config struct {
 	// JWKSURL points to the Python backend's /.well-known/jwks.json endpoint.
 	// If provided, the hub prefers RS256 token verification via JWKS. (MOD-1)
 	JWKSURL string
-	// TrustedProxies is a list of IP addresses or ranges (CIDR) that are allowed
+	// TrustedProxies is a list of IP addresses or CIDR ranges that are allowed
 	// to provide the real client IP via X-Forwarded-For. (RZ-5)
 	TrustedProxies []string
-	// TrustedProxiesSet is the O(1)-lookup equivalent of TrustedProxies.
+	// TrustedProxiesSet is the O(1)-lookup equivalent for exact IP matches.
 	// P-03 (audit 2026-03-08): built once at load time so RealIP() does a
 	// map lookup per request instead of an O(N) linear scan of the slice.
 	TrustedProxiesSet map[string]struct{}
+	// TrustedCIDRs holds parsed CIDR blocks from TrustedProxies entries that
+	// contain a "/" (i.e. are CIDR notation).
+	// PERF-04 (audit Wave 11): enables proper multi-hop XFF chain traversal
+	// for CDN → Cloudflare → ingress → pod deployments.
+	TrustedCIDRs []*net.IPNet
 	// SendBufferSize is the size of the per-client outgoing message channel.
 	// 256 slots * ~10 KB/msg ≈ 2.5 MB per concurrent connection. (TD-5)
 	SendBufferSize int
@@ -61,9 +67,17 @@ type Config struct {
 func LoadConfig() *Config {
 	trustedProxies := getEnvSlice("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"})
 	// P-03 (audit 2026-03-08): Pre-build map for O(1) lookup in RealIP().
+	// PERF-04 (audit Wave 11): also parse CIDR blocks for multi-hop chain traversal.
 	trustedProxiesSet := make(map[string]struct{}, len(trustedProxies))
-	for _, ip := range trustedProxies {
-		trustedProxiesSet[ip] = struct{}{}
+	var trustedCIDRs []*net.IPNet
+	for _, entry := range trustedProxies {
+		if strings.Contains(entry, "/") {
+			if _, cidr, err := net.ParseCIDR(entry); err == nil {
+				trustedCIDRs = append(trustedCIDRs, cidr)
+			}
+		} else {
+			trustedProxiesSet[entry] = struct{}{}
+		}
 	}
 	return &Config{
 		Port:              getEnv("WS_HUB_PORT", "8081"),
@@ -76,6 +90,7 @@ func LoadConfig() *Config {
 		AllowedOrigins:    getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		TrustedProxies:    trustedProxies,
 		TrustedProxiesSet: trustedProxiesSet,
+		TrustedCIDRs:      trustedCIDRs,
 		BackendURL:        getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
 		JWKSURL:           getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
 		SendBufferSize:    getEnvInt("WS_SEND_BUFFER_SIZE", 256),

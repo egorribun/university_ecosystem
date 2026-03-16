@@ -88,12 +88,15 @@ self.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== "object") return
   if (!event.source || !("url" in event.source)) return
 
-  // Origin check: only accept messages from the same origin as this SW.
-  const senderOrigin = new URL((event.source as WindowClient).url).origin
-  const swOrigin = new URL(self.location.href).origin
-  if (senderOrigin !== swOrigin) {
+  // RED-03 (audit Wave 11): Use event.origin (browser-enforced per HTML §8.7.3)
+  // instead of deriving origin from WindowClient.url.
+  // WindowClient.url is a mutable JS property that a compromised page or extension
+  // could potentially spoof; event.origin is set by the browser from the sender's
+  // Realm and cannot be overridden by JavaScript code.
+  const swOrigin = self.location.origin
+  if (!event.origin || event.origin !== swOrigin) {
     if (import.meta.env.DEV) {
-      console.warn("[SW] Rejected postMessage from foreign origin:", senderOrigin)
+      console.warn("[SW] Rejected postMessage from foreign origin:", event.origin)
     }
     return
   }

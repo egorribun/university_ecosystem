@@ -8,7 +8,6 @@ import { parseWsMessage } from "@/api/schemas/wsMessage"
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
 const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
-const RECONNECT_JITTER_FACTOR = 0.1 // ±10% jitter
 const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
 
 // MOD-W10-05: Per-message-type minimum interval (ms) for outgoing WS messages.
@@ -20,15 +19,20 @@ const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
 } as const
 
 /**
- * Calculate reconnection delay with exponential backoff and jitter.
- * Jitter prevents "thundering herd" when many clients reconnect simultaneously.
+ * Calculate reconnection delay with full-jitter exponential backoff.
+ *
+ * DEBT-01 (audit Wave 11): Replaced ±10% additive jitter with full-jitter (0 to base).
+ * Full-jitter distributes reconnect attempts uniformly across the entire backoff window,
+ * preventing thundering-herd bursts when 1000+ clients reconnect simultaneously after
+ * a network outage. Reference: AWS "Exponential Backoff And Jitter" (2015).
+ *
+ * Old: delay = base * (1 ± 0.1) — clients cluster tightly around base
+ * New: delay = random(0, base)   — clients spread uniformly across [0, base]
  */
 function calculateReconnectDelay(attempt: number): number {
-  // Exponential backoff: baseDelay * 2^attempt, capped at maxDelay
-  const expDelay = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), RECONNECT_MAX_DELAY_MS)
-  // Add jitter: random value in range [1-jitter, 1+jitter]
-  const jitter = 1 + (Math.random() * 2 - 1) * RECONNECT_JITTER_FACTOR
-  return Math.round(expDelay * jitter)
+  const base = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), RECONNECT_MAX_DELAY_MS)
+  // Full-jitter: uniform random in [0, base]
+  return Math.floor(Math.random() * base)
 }
 // WebSocket message types
 export type WebSocketMessageType =
