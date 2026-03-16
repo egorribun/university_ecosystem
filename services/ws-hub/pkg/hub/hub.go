@@ -107,6 +107,17 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 		return nil
 	}
 
+	// RED-06 (audit Wave 11): Cancel any existing JWKS cache goroutine before
+	// replacing it.  Without this, repeated calls to SetupJWKS (e.g. in rolling
+	// deploys, integration tests, or staged restarts) overwrite h.jwksCacheCancel
+	// before calling the old cancel — leaking the previous jwk.Cache refresh goroutine.
+	// stopOnce in Stop() only helps for the CURRENT cancel; it does not retroactively
+	// stop goroutines from prior SetupJWKS calls.
+	if h.jwksCacheCancel != nil {
+		h.jwksCacheCancel()
+		h.jwksCacheCancel = nil
+	}
+
 	// Derive a child context whose cancel is stored for Stop().
 	jwksCtx, cancel := context.WithCancel(ctx)
 	h.jwksCacheCancel = cancel

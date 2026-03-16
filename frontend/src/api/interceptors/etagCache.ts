@@ -4,8 +4,38 @@ import { logWarning } from "@/app/logger"
 
 // ETag strings are persisted to localStorage for cross-reload cache hits.
 // Response payloads stay in memory only (RZ-NEW-04: no sensitive data in localStorage).
-const ETAG_CACHE_KEY = "ue:etag-cache"
+//
+// DEBT-02 (audit Wave 11): versioned key so stale localStorage entries from
+// previous schema versions are ignored automatically after deployment.
+// Increment VITE_API_SCHEMA_VERSION in .env when making breaking API schema changes.
+const _API_SCHEMA_VERSION = (import.meta.env.VITE_API_SCHEMA_VERSION as string | undefined) ?? "1"
+const ETAG_CACHE_KEY = `ue:etag-cache:v${_API_SCHEMA_VERSION}`
 const MAX_CACHE_ENTRIES = 50
+
+// RED-02 (audit Wave 11): session epoch prevents cross-session data leakage.
+// Monotonically incremented on each login; captured before async HMAC computation
+// and re-checked after — if the epoch changed (logout→login during the await),
+// the result is discarded so user A's response is never stored under user B's session.
+let _sessionEpoch = 0
+
+/**
+ * Increment the session epoch on login. Must be called AFTER the new signing key
+ * is registered so any in-flight async HMAC computations from the previous session
+ * detect the epoch change and discard their results.
+ */
+export const incrementSessionEpoch = (): void => {
+  _sessionEpoch++
+}
+
+/**
+ * Clear all cache state on logout. Call this BEFORE clearing the signing key so
+ * that in-flight requests (which captured the old key) cannot store data after clear.
+ */
+export const clearCachesOnLogout = (): void => {
+  _sessionEpoch++     // invalidate any in-flight async computations first
+  responseCache.clear()
+  etagCache.clear()
+}
 
 /**
  * Signed cache entry — all stored responses are HMAC-SHA256 signed.
@@ -94,10 +124,42 @@ function getEtagMap(): Map<string, EtagEntry> {
 function scheduleFlush(): void {
   if (typeof window === "undefined") return
   if (_flushTimer !== null) clearTimeout(_flushTimer)
+  // PERF-01 (audit Wave 11): Increased from 500ms to 30s to reduce GC pressure on
+  // mobile devices — 500ms caused O(entries) JSON serialization every half-second
+  // during active API usage (≈20KB/s write throughput on localStorage).
+  // A guaranteed flush on visibilitychange (tab hide) prevents data loss.
   _flushTimer = setTimeout(() => {
     _flushTimer = null
     flushEtagCache()
-  }, 500)
+  }, 30_000)
+}
+
+// PERF-01: Flush immediately when the page is hidden (tab switch, app background).
+// Registered once at module load — covers browser close and navigation away.
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (document.visibilityState === "hidden") flushEtagCache()
+    },
+    { passive: true }
+  )
+}
+
+// DEBT-02: Evict stale cache entries from previous schema versions on startup.
+// Old keys matching "ue:etag-cache" (without version) or prior versions are orphaned
+// and would grow unboundedly; this cleans them up once per page load.
+if (typeof window !== "undefined") {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith("ue:etag-cache") && k !== ETAG_CACHE_KEY) {
+        localStorage.removeItem(k)
+      }
+    }
+  } catch {
+    // Ignore quota/security errors during cleanup
+  }
 }
 
 function flushEtagCache(): void {
@@ -232,9 +294,17 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
     if (response.status === 200 && response.data && isJson) {
       const signingKey = getSigningKey()
       if (signingKey) {
-        // Sign and store the response — HMAC guards against in-memory poisoning
+        // RED-02 (audit Wave 11): capture epoch BEFORE the async HMAC computation.
+        // If a logout→login occurs during the await, _sessionEpoch changes and we
+        // discard the result — preventing user A's data from being stored under
+        // user B's session (account confusion on shared devices).
+        const epochSnapshot = _sessionEpoch
         const payload = JSON.stringify(response.data)
         const hmac = await computeHmac(payload, signingKey)
+        if (_sessionEpoch !== epochSnapshot) {
+          // Session changed during async computation — discard stale result
+          return
+        }
         responseCache.set(etagKey, { data: response.data, hmac, ts: Date.now() })
       } else {
         // No signing key yet (cold start) — do not cache unsigned data

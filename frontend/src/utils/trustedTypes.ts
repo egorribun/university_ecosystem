@@ -46,7 +46,11 @@ const ensureSanitizePolicy = async (win: TrustedTypesWindow): Promise<TrustedTyp
       createHTML: (input: string) => sanitize_rich_text(input),
     }) as TrustedTypePolicy
     win.__ttSanitizePolicy = policy
-  } catch {
+  } catch (err) {
+    // RED-01 (audit Wave 11): Log security-critical failure — propagates to Sentry
+    // via the global window.onerror / unhandledrejection handler if configured.
+    // Previously silent, making WASM policy failures undetectable in production.
+    console.error("[TrustedTypes] Failed to create sanitize policy — HTML sanitization may be degraded:", err)
     win.__ttSanitizePolicy = false
   }
   return win.__ttSanitizePolicy || null
@@ -91,12 +95,13 @@ export const sanitizeHTML = async (value: string): Promise<string | TrustedHTML>
   const win = window as TrustedTypesWindow
   const policy = await ensureSanitizePolicy(win)
   if (policy) {
-    try {
-      return policy.createHTML(value)
-    } catch {
-      // ignore
-    }
+    // RED-01 (audit Wave 11): Do NOT swallow createHTML errors — a throw here means
+    // the sanitizer actively rejected the input. Propagate so callers can show an
+    // error state rather than silently rendering unsanitized HTML.
+    return policy.createHTML(value)
   }
+  // No TrustedTypes support in this browser / SSR environment: call sanitizer directly.
+  // This path is only reached when win.trustedTypes is falsy (pre-TT browser or Node.js).
   return sanitize_rich_text(value)
 }
 

@@ -252,7 +252,15 @@ func main() {
 			TemporalClient: c,
 			MinioBucket:    cfg.MinioBucket,
 		}
-		schema := graphql.MustParseSchema(string(s), resolver)
+		// RED-04 (audit Wave 11): Disable GraphQL introspection in production.
+		// OWASP API8:2023 — introspection enables schema reconnaissance for attackers
+		// with network access to this internal service (:8003). Keep enabled in dev/staging
+		// for tooling (GraphiQL, codegen, schema stitching).
+		var schemaOpts []graphql.SchemaOpt
+		if cfg.Environment == "production" {
+			schemaOpts = append(schemaOpts, graphql.DisableIntrospection())
+		}
+		schema := graphql.MustParseSchema(string(s), resolver, schemaOpts...)
 		mux := http.NewServeMux()
 		// GO-1 (audit 2026-03): wrap /graphql with JWT auth middleware.
 		// /metrics intentionally has no JWT auth — it is protected at the
