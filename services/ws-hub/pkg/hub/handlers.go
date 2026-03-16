@@ -11,7 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
-	"go.uber.org/zap"
 )
 
 var (
@@ -48,9 +47,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	// This prevents an attacker from exhausting the CPU with rapid upgrade
 	// requests carrying invalid JWTs (each JWT.Parse call runs HMAC-SHA256).
 	// requests carrying invalid JWTs (each JWT.Parse call runs HMAC-SHA256).
-	clientIP := RealIP(r, cfg.TrustedProxiesSet)
+	// PERF-04 (Wave 11): pass TrustedCIDRs for multi-hop XFF chain traversal.
+	clientIP := RealIP(r, cfg.TrustedProxiesSet, cfg.TrustedCIDRs)
 	if !h.UpgradeLimiter.Allow(clientIP) {
-		h.Logger.Warn("WebSocket upgrade rate limit exceeded", zap.String("ip", clientIP))
+		h.Logger.Warn("WebSocket upgrade rate limit exceeded", "ip", clientIP)
 		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 		return
 	}
@@ -90,14 +90,14 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	// accumulation under rapid-reconnect / invalid-token attack patterns.
 	userID, err := h.ValidateToken(r.Context(), tokenStr, cfg.JWTSecrets)
 	if err != nil {
-		h.Logger.Warn("WebSocket invalid authentication token", zap.Error(err))
+		h.Logger.Warn("WebSocket invalid authentication token", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.Logger.Error("WebSocket upgrade failed", zap.Error(err))
+		h.Logger.Error("WebSocket upgrade failed", "err", err)
 		return
 	}
 
@@ -144,8 +144,8 @@ func (h *Hub) ValidateToken(ctx context.Context, tokenStr string, secrets []stri
 			// A silent fall-through to HMAC without logging hides security
 			// degradation (e.g. transient JWKS unreachability under DNS attack).
 			h.Logger.Error("JWKS fetch failed, falling back to HMAC secrets",
-				zap.String("jwks_url", h.jwksURL),
-				zap.Error(err),
+				"jwks_url", h.jwksURL,
+				"err", err,
 			)
 			// If no HMAC secrets are configured, fail immediately rather than
 			// returning an opaque signature error without context.
@@ -183,7 +183,7 @@ func (h *Hub) ValidateToken(ctx context.Context, tokenStr string, secrets []stri
 			// so that token format mismatches are visible in production logs.
 			if parseErr != nil {
 				h.Logger.Warn("RS256 JWT validation failed, falling back to HMAC",
-					zap.Error(parseErr),
+					"err", parseErr,
 				)
 			}
 		}

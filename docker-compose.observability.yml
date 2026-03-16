@@ -89,6 +89,7 @@ services:
       - "9090:9090"
     volumes:
       - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/observability/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     networks:
       - internal

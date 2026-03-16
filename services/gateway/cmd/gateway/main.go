@@ -127,8 +127,10 @@ func main() {
 	// BFF Logic: Intercept login/refresh to set cookies
 	proxy.ModifyResponse = func(r *http.Response) error {
 		if (r.Request.URL.Path == "/api/v1/auth/login" || r.Request.URL.Path == "/api/v1/auth/refresh") && r.StatusCode == http.StatusOK {
-			// Read body
-			body, err := io.ReadAll(r.Body)
+			// DEBT-05 (audit Wave 11): cap body size to 1 MiB — prevents OOM from a
+			// rogue backend or response-smuggling attack inflating the read buffer.
+			const maxBodyBytes = 1 << 20 // 1 MiB
+			body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 			if err != nil {
 				return err
 			}
@@ -138,7 +140,9 @@ func main() {
 			decoder := json.NewDecoder(bytes.NewReader(body))
 			decoder.UseNumber() // RZ-3 Fix (audit 2026-03-05): Prevent precision loss on 64-bit IDs!
 			if err := decoder.Decode(&data); err != nil {
-				// Restore body and return if not JSON
+				// Non-JSON body — pass through unchanged, log for observability.
+				logger.Warn("gateway: non-JSON response from auth endpoint, skipping token strip",
+					zap.String("path", r.Request.URL.Path))
 				r.Body = io.NopCloser(bytes.NewBuffer(body))
 				return nil
 			}
@@ -156,24 +160,31 @@ func main() {
 					MaxAge:   3600, // 1 hour (align with Python token TTL)
 				}
 				r.Header.Add("Set-Cookie", cookie.String())
-
-				// Security Hardening: Strip access_token from JSON to protect against XSS
-				// if the frontend is fully transitioned to cookies.
-				delete(data, "access_token")
-				// GW-P1-01 (audit Wave 10): handle json.Marshal error — restored on failure.
-				newBody, marshalErr := json.Marshal(data)
-				if marshalErr != nil {
-					r.Body = io.NopCloser(bytes.NewBuffer(body))
-					r.Header.Set("X-Proxy-Modify-Error", "json_marshal_failed")
-					return nil
-				}
-				r.Body = io.NopCloser(bytes.NewBuffer(newBody))
-				r.ContentLength = int64(len(newBody))
-				r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
-			} else {
-				// Restore body
-				r.Body = io.NopCloser(bytes.NewBuffer(body))
 			}
+
+			// DEBT-05: strip BOTH token fields — access_token moved to HttpOnly cookie;
+			// refresh_token must not appear in the JS-accessible JSON body either.
+			delete(data, "access_token")
+			delete(data, "refresh_token")
+
+			// DEBT-05: schema validation — warn if the response lacks the expected shape.
+			_, hasUser := data["user"]
+			_, hasSession := data["session"]
+			if !hasUser && !hasSession {
+				logger.Warn("gateway: login response missing user/session field",
+					zap.String("path", r.Request.URL.Path))
+			}
+
+			// GW-P1-01 (audit Wave 10): handle json.Marshal error — restore original on failure.
+			newBody, marshalErr := json.Marshal(data)
+			if marshalErr != nil {
+				r.Body = io.NopCloser(bytes.NewBuffer(body))
+				r.Header.Set("X-Proxy-Modify-Error", "json_marshal_failed")
+				return nil
+			}
+			r.Body = io.NopCloser(bytes.NewBuffer(newBody))
+			r.ContentLength = int64(len(newBody))
+			r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
 		}
 		return nil
 	}

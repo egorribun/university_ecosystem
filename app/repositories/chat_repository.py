@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from opentelemetry import trace
-from sqlalchemy import and_, delete, exists, func, or_, select, update
+from sqlalchemy import and_, delete, exists, func, or_, select, text, update
 from sqlalchemy.orm import selectinload
 
 from app.core.protocols import AsyncDatabaseSession
@@ -29,6 +29,21 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
     @property
     def dto_class(self) -> type[ChatDTO]:
         return ChatDTO
+
+    async def _set_rls_user(self, user_id: uuid.UUID) -> None:
+        """Set app.current_user_id for the current transaction.
+
+        MOD-02 (audit Wave 11): PostgreSQL RLS on the ``messages`` table uses
+        ``current_setting('app.current_user_id', TRUE)`` to filter rows.
+        ``SET LOCAL`` scopes the GUC to the current transaction, so the value
+        is automatically cleared when the transaction commits or rolls back —
+        no explicit cleanup required.  Must be called inside an open
+        transaction before any query that touches ``messages``.
+        """
+        await self.db.execute(
+            text("SET LOCAL app.current_user_id = :uid"),
+            {"uid": str(user_id)},
+        )
 
     async def get_by_id(
         self, chat_id: uuid.UUID, load_messages: bool = False
@@ -209,6 +224,10 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         """
         Count unread messages for a user in a chat.
         """
+        # MOD-02 (audit Wave 11): set RLS user so the PostgreSQL
+        # messages_participant_isolation policy applies.
+        await self._set_rls_user(user_id)
+
         query = (
             select(func.count())
             .select_from(Message)
@@ -241,11 +260,24 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         return MessageDTO.model_validate(row) if row else None
 
     async def get_messages(
-        self, chat_id: uuid.UUID, cursor: str | None, limit: int
+        self,
+        chat_id: uuid.UUID,
+        cursor: str | None,
+        limit: int,
+        *,
+        user_id: uuid.UUID | None = None,
     ) -> tuple[list[MessageDTO], bool, str | None]:
         """
         Fetch messages for a specific chat with pagination.
+
+        MOD-02 (audit Wave 11): if ``user_id`` is provided, set the PostgreSQL
+        RLS GUC so the ``messages_participant_isolation`` policy filters rows
+        to only those in chats the user participates in.  This is a defense-
+        in-depth layer on top of the existing SpiceDB authorization check.
         """
+        if user_id is not None:
+            await self._set_rls_user(user_id)
+
         query = (
             select(Message)
             .where(Message.chat_id == chat_id)

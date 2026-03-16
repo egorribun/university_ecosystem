@@ -22,7 +22,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.40.0
 	go.temporal.io/api v1.62.2
 	go.temporal.io/sdk v1.40.0
-	go.uber.org/zap v1.27.1
 	golang.org/x/image v0.36.0
 	google.golang.org/grpc v1.79.1
 )
@@ -74,7 +73,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	// go.temporal.io/api promoted to direct — used in main.go for enumspb constants (FP-P2-02)
-	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.48.0 // indirect

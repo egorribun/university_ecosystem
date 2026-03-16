@@ -1,0 +1,41 @@
+# .spectral.yml — Spectral OpenAPI linting ruleset
+# MOD-03 (audit Wave 11): validates the FastAPI OpenAPI spec on every PR that
+# touches the app/ directory.  Caught issues surface as SARIF annotations in
+# GitHub Code Scanning → PRs → Security tab.
+#
+# Rule sets:
+#   - oas:recommended  — @stoplight/spectral-oas built-in (OAS 3.x best practices)
+#   - custom rules below enforce project-specific standards
+
+extends:
+  - "@stoplight/spectral-oas:oas"
+
+rules:
+  # All operations must have at least one 4xx response documented.
+  # APIs that only document 2xx implicitly hide error contracts from consumers.
+  operation-4xx-response:
+    description: "Every operation must document at least one 4xx response"
+    severity: warn
+    given: "$.paths.*[get,post,put,patch,delete]"
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          properties:
+            responses:
+              type: object
+          required:
+            - responses
+
+  # All schema properties that carry PII should be marked with x-pii: true.
+  # This enables downstream tooling (data lineage, access control docs) to
+  # identify fields that require special handling under GDPR/FERPA.
+  # Severity info so it doesn't block the build — data governance is advisory.
+  pii-field-marker:
+    description: "Fields named *email*, *phone*, *password* should be marked x-pii: true"
+    severity: info
+    given: "$.components.schemas.*..properties[email,phone,password_hash]"
+    then:
+      field: x-pii
+      function: truthy

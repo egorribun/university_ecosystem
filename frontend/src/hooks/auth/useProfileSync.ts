@@ -5,6 +5,7 @@ import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 
 import api, { resetEtagCache, type ApiRequestConfig } from "@/api/client"
+import { clearCachesOnLogout } from "@/api/interceptors/etagCache"
 import type { User } from "@/types/User"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
@@ -653,7 +654,14 @@ export const useProfileSync = (
 
   const handleUnauthorized = useCallback(
     ({ broadcast = true, persist = true }: HandleUnauthorizedOptions = {}) => {
-      resetEtagCache()
+      // RED-02 (audit Wave 11): clearCachesOnLogout atomically increments the
+      // session epoch AND clears both response/etag caches.  The epoch increment
+      // races any in-flight async HMAC computations from the outgoing session,
+      // ensuring they discard their results and cannot pollute the next session.
+      // Must be called BEFORE updateSessionSigningKey(null) so that the epoch
+      // change is visible to any awaiting HMAC tasks before the key is cleared.
+      clearCachesOnLogout()
+      resetEtagCache() // belt-and-suspenders: also clear module-level copies in client.ts
       clearAccessToken()
       // We need to clear session signing key too.
       // We need to call updateSessionSigningKey(null)
