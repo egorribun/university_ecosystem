@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	enumspb "go.temporal.io/api/enums/v1"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
@@ -43,7 +45,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	// MOD-02 (audit Wave 10): semconv v1.27.0 for standardised OTel attributes.
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
 
 type contextKey string
@@ -121,10 +124,18 @@ func main() {
 	// Register Workflow and Activities
 	w.RegisterWorkflow(workflow.FileProcessingWorkflow)
 
+	// FP-P1-02 (audit Wave 10): build a singleton MinIO client with an explicit
+	// HTTP connection pool.  All activity invocations share this one client so
+	// connections are reused rather than re-established per-activity.
+	minioClient, err := workflow.BuildMinIOClient(cfg)
+	if err != nil {
+		logger.Fatal("Failed to initialize MinIO client", zap.Error(err))
+	}
+
 	// Activities require config-based init (MinIO)
 	// RZ-04 (audit 2026-03-15 Wave 7): NewFileActivities now returns an error
 	// instead of panicking, so K8s can restart the pod cleanly on init failure.
-	activities, err := workflow.NewFileActivities(cfg)
+	activities, err := workflow.NewFileActivities(cfg, minioClient)
 	if err != nil {
 		logger.Fatal("Failed to initialize file activities", zap.Error(err))
 	}
@@ -155,7 +166,20 @@ func main() {
 					return
 				}
 
-				opt := client.StartWorkflowOptions{ID: "nats-" + job.ID, TaskQueue: "FILE_PROCESSING_TASK_QUEUE"}
+				// FP-P1-03 (audit Wave 10): WorkflowExecutionTimeout hard-caps the
+			// entire workflow lifetime so a hung activity cannot orphan a workflow
+			// run indefinitely in Temporal.
+			//
+			// FP-P2-02 (audit Wave 10): append a per-delivery UUID so the
+			// workflow ID is unpredictable and NATS redeliveries each get their
+			// own run rather than resuming a previous one.  REJECT_DUPLICATE
+			// guards against accidental double-submission of the exact same ID.
+			opt := client.StartWorkflowOptions{
+				ID:                       "proc-" + job.ID + ":" + uuid.NewString(),
+				TaskQueue:                "FILE_PROCESSING_TASK_QUEUE",
+				WorkflowExecutionTimeout: 30 * time.Minute,
+				WorkflowIDReusePolicy:    enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+			}
 				if _, err := c.ExecuteWorkflow(context.Background(), opt, workflow.FileProcessingWorkflow, job); err != nil {
 					logger.Error("Failed to execute workflow from NATS", zap.Error(err))
 					return
@@ -211,11 +235,19 @@ func main() {
 	// GraphQL & Metrics HTTP Server
 	// Read schema (Assuming it's still in root/workdir)
 	s, err := os.ReadFile("schema.graphql")
-	var httpHandler http.Handler
+	// FP-P2-01 (audit Wave 10): previously fell back to http.DefaultServeMux when
+	// schema.graphql was missing. http.DefaultServeMux exposes /debug/pprof/ and
+	// /debug/vars if those packages are imported anywhere in the binary — all
+	// without authentication. Fail-secure: exit rather than start an unprotected server.
 	if err != nil {
-		logger.Warn("Failed to read schema.graphql, GraphQL disabled", zap.Error(err))
-		httpHandler = http.DefaultServeMux
-	} else {
+		logger.Fatal("schema.graphql not found — refusing to start without GraphQL schema; "+
+			"ensure schema.graphql is present in the working directory",
+			zap.Error(err),
+			zap.String("hint", "copy schema.graphql to the binary working directory"),
+		)
+	}
+	var httpHandler http.Handler
+	{
 		resolver := &gql.Resolver{
 			TemporalClient: c,
 			MinioBucket:    cfg.MinioBucket,

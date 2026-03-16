@@ -12,6 +12,8 @@ from app.services.schedule_service import ScheduleService
 class CreateScheduleCommand(Command):
     data: schemas.ScheduleCreate
     locale: str
+    # SEC-BE-01: actor_id records ownership so update/delete can enforce it
+    actor_id: uuid.UUID | None = None
 
 
 class CreateScheduleHandler(CommandHandler[CreateScheduleCommand, ScheduleDTO]):
@@ -20,7 +22,9 @@ class CreateScheduleHandler(CommandHandler[CreateScheduleCommand, ScheduleDTO]):
         self.cache = cache
 
     async def handle(self, command: CreateScheduleCommand) -> ScheduleDTO:
-        result = await self.service.create_schedule(command.data, locale=command.locale)
+        result = await self.service.create_schedule(
+            command.data, locale=command.locale, creator_id=command.actor_id
+        )
         await self.cache.invalidate(f"schedule:group:{result.group_id}")
         return result
 
@@ -29,6 +33,10 @@ class CreateScheduleHandler(CommandHandler[CreateScheduleCommand, ScheduleDTO]):
 class UpdateScheduleCommand(Command):
     schedule_id: uuid.UUID
     data: schemas.ScheduleUpdate
+    # SEC-BE-01 (audit Wave 10): actor fields for ownership enforcement.
+    # actor_id=None only accepted when actor_role == "admin".
+    actor_id: uuid.UUID | None = None
+    actor_role: str = "student"
 
 
 class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
@@ -40,6 +48,12 @@ class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
         sched = await self.service.get_by_id(command.schedule_id)
         if not sched:
             raise ValueError("Schedule not found")
+
+        # SEC-BE-01: non-admins may only update schedules they created.
+        # Schedules with creator_id=None (legacy rows) are admin-only.
+        if command.actor_role != "admin":
+            if sched.creator_id is None or sched.creator_id != command.actor_id:
+                raise PermissionError("Not the owner of this schedule")
 
         previous_group = sched.group_id
         updated = await self.service.update_schedule(command.schedule_id, command.data)

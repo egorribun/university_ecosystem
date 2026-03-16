@@ -8,13 +8,14 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # CI-03 (audit Wave 10)
     permissions:
       contents: write
       issues: write
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -35,7 +36,10 @@ jobs:
         id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: npx semantic-release
+        # CI-02 (audit Wave 10): pin semantic-release version — `npx semantic-release`
+        # without a version downloads the latest from npm at runtime, allowing a
+        # compromised npm package to exfiltrate RELEASE_TOKEN with repo write access.
+        run: npx semantic-release@24.2.0
 
   build:
     name: Build & Sign Releases

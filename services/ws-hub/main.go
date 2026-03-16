@@ -112,7 +112,7 @@ func main() {
 	// msgLimiters that were not cleaned up due to goroutine panics in ReadPump.
 	h.StartLimiterCleanup(ctx)
 	go h.Run(ctx)
-	h.SubscribeToNATS()
+	h.SubscribeToNATS(ctx) // WSH-P1-03: pass app context for graceful shutdown
 
 	hub.SetAllowedOrigins(cfg.AllowedOrigins)
 

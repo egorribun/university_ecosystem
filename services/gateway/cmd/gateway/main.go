@@ -35,7 +35,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	// MOD-02 (audit Wave 10): semconv v1.27.0 for standardised OTel attributes.
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -159,7 +160,13 @@ func main() {
 				// Security Hardening: Strip access_token from JSON to protect against XSS
 				// if the frontend is fully transitioned to cookies.
 				delete(data, "access_token")
-				newBody, _ := json.Marshal(data)
+				// GW-P1-01 (audit Wave 10): handle json.Marshal error — restored on failure.
+				newBody, marshalErr := json.Marshal(data)
+				if marshalErr != nil {
+					r.Body = io.NopCloser(bytes.NewBuffer(body))
+					r.Header.Set("X-Proxy-Modify-Error", "json_marshal_failed")
+					return nil
+				}
 				r.Body = io.NopCloser(bytes.NewBuffer(newBody))
 				r.ContentLength = int64(len(newBody))
 				r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
@@ -216,7 +223,9 @@ func main() {
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
 		ExposeHeaders:    []string{"X-Request-ID", "X-RateLimit-Remaining"},
 		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+		// GW-P3-01 (audit Wave 10): 12h exceeds browser preflight cache limits
+		// (Chrome caps at 7200s = 2h, Firefox at 86400s). Use 1h to match Chrome.
+		MaxAge: 1 * time.Hour,
 	}))
 
 	// Initialize rate limiter

@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import (
@@ -132,6 +132,19 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
 
     if not hmac.compare_digest(signature, expected_signature):
         raise_validation_error("errors.profile_cache.invalid_signature", locale)
+
+    # SEC-BE-02 (audit Wave 10): validate temporal bounds AFTER HMAC so we do
+    # not leak timing information before signature verification.
+    # Without this check, any previously-valid HMAC envelope can be replayed
+    # indefinitely — HMAC proves authenticity, not freshness.
+    try:
+        expires_at = datetime.fromisoformat(payload["expiresAt"])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if datetime.now(UTC) > expires_at:
+            raise_validation_error("errors.profile_cache.envelope_expired", locale)
+    except ValueError:
+        raise_validation_error("errors.profile_cache.invalid_expires_at", locale)
 
 
 @password_router.post(

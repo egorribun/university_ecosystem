@@ -16,6 +16,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// GW-P1-02 (audit Wave 10): temporal guards for JWT iat claim.
+// WithIssuedAt() in golang-jwt/v5 only rejects tokens issued in the future
+// (up to clock-skew tolerance). It does NOT reject tokens that are unreasonably
+// old — a token issued before the service existed, for example, would still
+// pass signature verification. These constants bound both directions.
+const (
+	jwtMaxClockSkew = 5 * time.Minute
+	jwtMaxTokenAge  = 24 * time.Hour
+)
+
 // AccessTokenCookieName is the canonical cookie name shared between the
 // Go gateway and the Python backend. Must match the Python setting
 // `ACCESS_TOKEN_COOKIE_NAME` (currently "access_token_v2").
@@ -165,6 +175,11 @@ func (m *JWTMiddleware) checkL1Cache(key string) (exists bool, found bool) {
 
 // checkSessionInRedis checks session status in Redis and updates L1 cache
 // Returns: (exists, error)
+// GW-P1-03 (audit Wave 10): previously swallowed Redis errors and returned
+// (false, nil) — meaning "not revoked" — which made failSecure a no-op for
+// BOTH Validate() and Optional(). Now errors are propagated so that:
+//   - Validate() (failSecure=true)  → 503 Service Unavailable
+//   - Optional() (failSecure=false) → continue as unauthenticated (not as authenticated)
 func (m *JWTMiddleware) checkSessionInRedis(ctx context.Context, key string) (bool, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 	defer cancel()
@@ -172,13 +187,9 @@ func (m *JWTMiddleware) checkSessionInRedis(ctx context.Context, key string) (bo
 	exists, err := m.redis.Exists(reqCtx, key).Result()
 	if err != nil {
 		redisErrors.Inc()
-		// RZ-06 (audit 2026-03-15 Wave 7): Fail-OPEN on Redis error.
-		// Primary protection is the JWT signature (already verified above).
-		// Redis is the secondary revocation layer — a brief outage should not
-		// cause 100% 503 for all authenticated users.  The Prometheus
-		// redisErrors counter will trigger an alert for sustained failures.
-		// Return false (= "not revoked") so callers treat the token as valid.
-		return false, nil
+		// Propagate the error so callers can apply their failSecure policy.
+		// The Prometheus redisErrors counter will trigger an alert for sustained failures.
+		return false, err
 	}
 
 	// Update L1 cache with the result
@@ -217,6 +228,25 @@ func (m *JWTMiddleware) verifySession(ctx context.Context, sessionID string, fai
 	}
 
 	return !exists, false, nil
+}
+
+// validateIAT enforces temporal bounds on the JWT iat claim.
+// golang-jwt/v5 WithIssuedAt() handles the "future" case but not "too old".
+// This fills the gap: a token issued > jwtMaxTokenAge ago is rejected even if
+// the exp claim (if present) would still be valid.
+func validateIAT(claims *Claims) error {
+	if claims.IssuedAt == nil {
+		return fmt.Errorf("token missing iat claim")
+	}
+	now := time.Now()
+	iat := claims.IssuedAt.Time
+	if iat.After(now.Add(jwtMaxClockSkew)) {
+		return fmt.Errorf("token issued in the future: iat=%v", iat)
+	}
+	if iat.Before(now.Add(-jwtMaxTokenAge)) {
+		return fmt.Errorf("token is too old: iat=%v", iat)
+	}
+	return nil
 }
 
 // keyFunc returns the correct verification key based on the token's algorithm.
@@ -279,6 +309,13 @@ func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "invalid token claims",
 			})
+			return
+		}
+
+		// GW-P1-02: enforce iat temporal bounds (issued-at must not be in the future
+		// or older than jwtMaxTokenAge).
+		if err := validateIAT(claims); err != nil {
+			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", err.Error(), "https://api.university.edu/probs/invalid-token")
 			return
 		}
 
@@ -353,8 +390,25 @@ func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 			return
 		}
 
-		// Edge-level Session Revocation Check (fail-open for optional auth)
-		isValid, _, _ := m.verifySession(c.Request.Context(), claims.ID, false)
+		// GW-P1-02: enforce iat temporal bounds for optional auth too.
+		if err := validateIAT(claims); err != nil {
+			c.Next()
+			return
+		}
+
+		// GW-P1-03: Edge-level Session Revocation Check (fail-safe for optional auth).
+		// failSecure=false means: on Redis error, verifySession returns (false, false, nil)
+		// → isValid=false → c.Next() without user context (unauthenticated, not authenticated).
+		// This is correct: a Redis outage should NOT treat revoked tokens as valid.
+		isValid, shouldDeny, _ := m.verifySession(c.Request.Context(), claims.ID, false)
+		if shouldDeny {
+			// Redis is unreachable: return 503 rather than silently accepting a
+			// potentially revoked token. Optional endpoints should handle 503 gracefully.
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"error": "auth_service_unavailable",
+			})
+			return
+		}
 		if !isValid {
 			// Session revoked or invalid: continue as unauthenticated
 			c.Next()

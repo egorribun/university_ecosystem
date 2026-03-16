@@ -41,6 +41,14 @@ class Schedule(Base, UUID7PrimaryKeyMixin):
         ForeignKey("groups.id", ondelete="CASCADE"),
         index=True,
     )
+    # SEC-BE-01 (audit Wave 10): creator_id tracks ownership for IDOR protection.
+    # Nullable so pre-existing rows without an owner can still be managed by admins.
+    creator_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     subject: Mapped[str] = mapped_column(String, nullable=False)
     teacher: Mapped[str | None] = mapped_column(String)
     room: Mapped[str | None] = mapped_column(String)

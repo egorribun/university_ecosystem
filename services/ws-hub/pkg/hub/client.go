@@ -117,13 +117,24 @@ func (c *Client) ReadPump() {
 			// a single WS connection from flooding NATS JetStream and causing
 			// backpressure / delivery failures for all other clients.
 			// Limit: 10 msg/sec, burst 20 — generous for human typing (~0.5 words/sec).
-			// Silent drop: do NOT notify the client — avoids fingerprinting the limit.
+			//
+			// WSH-P2-02 (audit Wave 10): notify the client so it can implement
+			// exponential back-off instead of silently losing messages.  The
+			// control frame is small and its presence does NOT fingerprint a
+			// useful limit value — the burst size is not disclosed.
 			raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
 				rate.NewLimiter(rate.Limit(10), 20))
 			if !raw.(*rate.Limiter).Allow() {
-				c.Hub.Logger.Warn("Client message rate limit exceeded — dropping",
+				c.Hub.Logger.Warn("Client message rate limit exceeded — notifying client",
 					zap.String("client_id", c.ID),
 					zap.String("room", msg.Room))
+				if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
+					select {
+					case c.Send <- notice:
+					default:
+						// Send buffer full — client is already overwhelmed; drop silently.
+					}
+				}
 				break
 			}
 			// Publish to NATS only. The hub's NATS subscriber will fan the

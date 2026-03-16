@@ -30,6 +30,7 @@ jobs:
   ci-diagnostic:
     name: CI Diagnostic
     runs-on: ubuntu-latest
+    timeout-minutes: 5 # CI-03 (audit Wave 10)
     steps:
       - name: System Check
         run: |
@@ -41,6 +42,7 @@ jobs:
   pre-commit-check:
     name: Pre-commit & Linting (Read-only)
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # CI-03 (audit Wave 10)
     permissions:
       contents: read
     steps:
@@ -95,6 +97,7 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: pre-commit-check
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # CI-03 (audit Wave 10)
     permissions:
       contents: write
     steps:
@@ -127,6 +130,7 @@ jobs:
   compose-validate:
     name: Validate docker-compose.yml
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -181,6 +185,7 @@ jobs:
   backend-type-check:
     name: Backend Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
       # P0-02 (audit 2026-03-06): SHA-pinned — tag-only refs are mutable and vulnerable
@@ -245,6 +250,7 @@ jobs:
   alembic-migrations:
     name: Alembic Migrations
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     services:
       postgres:
@@ -326,6 +332,7 @@ jobs:
   openapi-verify:
     name: Verify OpenAPI Types
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -391,6 +398,7 @@ jobs:
   verify-runtime-reqs:
     name: Verify Runtime Requirements
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -450,6 +458,7 @@ jobs:
   performance-gate:
     name: Performance Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # CI-03 (audit Wave 10)
     needs:
       - frontend-tests
     defaults:
@@ -500,6 +509,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
+    timeout-minutes: 5 # CI-03 (audit Wave 10)
     if: always()
     needs:
       - pre-commit-check

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httputil"
+	"regexp"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,20 +13,27 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
+// GW-P2-01 (audit Wave 10): validate X-Request-ID format to prevent log injection.
+// An attacker-controlled X-Request-ID containing newlines/control characters can
+// inject fake log entries into structured logging systems (Splunk, CloudWatch, etc.).
+var validRequestIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
 // ProxyHandler creates a Gin handler that proxies requests
 func ProxyHandler(proxy *httputil.ReverseProxy) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Add request ID header if absent.
-		// RZ-03: Use crypto-random UUID instead of timestamp prefix — predictable
-		// timestamps in IDs enable timing correlation and replay window estimation.
-		if c.GetHeader("X-Request-ID") == "" {
-			c.Request.Header.Set("X-Request-ID", uuid.New().String())
+		// Add request ID header if absent or malformed.
+		// RZ-03: Use crypto-random UUID instead of timestamp prefix.
+		// GW-P2-01: validate client-supplied ID against UUID format to prevent
+		// log injection — a non-UUID value is silently replaced with a fresh ID.
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" || !validRequestIDRe.MatchString(requestID) {
+			requestID = uuid.New().String()
 		}
+		c.Request.Header.Set("X-Request-ID", requestID)
 
 		// RZ: Prevent Header Spoofing Vulnerability. We must drop any internal auth headers
 		// sent by the client before proxying, to ensure zero-trust between gateway and backend.
@@ -60,16 +68,12 @@ func HealthHandler(c *gin.Context) {
 
 func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// RZ-04 (audit 2026-03-04): Restore gRPC connectivity state check.
-		// The previous implementation had this guard commented out, causing the
-		// gateway to forward requests to an unavailable file-processor and return
-		// a generic 500 instead of a semantically correct 503 ServiceUnavailable.
+		// GW-P2-02 (audit Wave 10): removed TOCTOU gRPC state pre-check.
+		// grpcConn.GetState() is advisory — the state can transition from Ready
+		// to TransientFailure between the check and the actual RPC call, creating
+		// a race condition.  gRPC itself returns codes.Unavailable on connection
+		// failure; we handle that in the error switch below.
 		if grpcConn == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File processor unavailable"})
-			return
-		}
-		state := grpcConn.GetState()
-		if state != connectivity.Ready && state != connectivity.Idle {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File processor unavailable"})
 			return
 		}

@@ -23,7 +23,10 @@ class ScheduleService:
         self.optimizer = optimizer
 
     async def create_schedule(
-        self, data: schemas.ScheduleCreate, locale: str = "en"
+        self,
+        data: schemas.ScheduleCreate,
+        locale: str = "en",
+        creator_id: uuid.UUID | None = None,
     ) -> ScheduleDTO:
         # Conflict check
         existing_group = await self.repo.get_by_group(data.group_id)
@@ -59,7 +62,7 @@ class ScheduleService:
                 translate("errors.schedule.conflict", locale=locale)
             )
 
-        schedule = await self.repo.create(data)
+        schedule = await self.repo.create(data, creator_id=creator_id)
         async with self.uow:
             await self.uow.commit()
 

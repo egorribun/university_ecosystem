@@ -15,7 +15,7 @@ from fastapi import (
 )
 
 from app.api.deps import get_current_user, get_current_user_optional
-from app.api.validation import ensure_exists, require_teacher_or_admin
+from app.api.validation import ensure_exists, raise_forbidden, require_teacher_or_admin
 from app.core.localization import resolve_locale
 from app.cqrs.bus import CommandBus, QueryBus
 from app.cqrs.commands.schedule import (
@@ -67,7 +67,7 @@ async def add_schedule(
     from app.core.exceptions.domain import BusinessRuleViolation
 
     try:
-        command = CreateScheduleCommand(data=data, locale=locale)
+        command = CreateScheduleCommand(data=data, locale=locale, actor_id=user.id)
         result = await command_bus.execute(command)
     except BusinessRuleViolation as e:
         # Map domain exception to API conflict error
@@ -126,8 +126,16 @@ async def update_schedule(
     require_teacher_or_admin(user, locale)
 
     try:
-        command = UpdateScheduleCommand(schedule_id=schedule_id, data=data)
+        command = UpdateScheduleCommand(
+            schedule_id=schedule_id,
+            data=data,
+            actor_id=user.id,
+            actor_role=user.role or "student",
+        )
         updated = await command_bus.execute(command)
+    except PermissionError:
+        # SEC-BE-01: teacher tried to update another teacher's schedule
+        raise_forbidden(locale)
     except ValueError:
         ensure_exists(None, "schedule", locale)  # Will raise 404
 

@@ -95,12 +95,17 @@ class ScheduleRepository(
         return [self._to_dto(s) for s in result.scalars().all()]
 
     async def create(
-        self, obj_in: schemas.ScheduleCreate | dict[str, Any]
+        self,
+        obj_in: schemas.ScheduleCreate | dict[str, Any],
+        creator_id: Any = None,
     ) -> ScheduleDTO:
         # Override to handle UTC conversion if needed
         data = obj_in.model_dump() if hasattr(obj_in, "model_dump") else obj_in.copy()
         data["start_time"] = self._ensure_utc(data["start_time"])
         data["end_time"] = self._ensure_utc(data["end_time"])
+        # SEC-BE-01: record creator for IDOR ownership enforcement
+        if creator_id is not None:
+            data["creator_id"] = creator_id
 
         return await super().create(data)
 

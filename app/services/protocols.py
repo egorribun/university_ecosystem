@@ -10,11 +10,19 @@ Why Protocols (structural) instead of ABCs (nominal)?
 - ``runtime_checkable`` enables isinstance() assertions in tests.
 - mypy verifies structural compatibility at the call site without explicit
   declaration in the implementation class.
+
+PY-P2-01 (audit Wave 10): each abstract method now uses `@abstractmethod` and
+`raise NotImplementedError(...)` instead of the bare `...` ellipsis.  This
+ensures that if a concrete class accidentally omits an implementation AND
+somehow a Protocol instance is called directly (e.g. a stub injected in a test
+that wasn't mocked), Python raises an informative error rather than returning
+None silently.
 """
 
 from __future__ import annotations
 
 import uuid
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -38,32 +46,41 @@ if TYPE_CHECKING:
 class IChatCreationService(Protocol):
     """Creates DM chats with Redis-based deduplication."""
 
+    @abstractmethod
     async def create_chat(
         self,
         user: User,
         participant_id: uuid.UUID | None,
         locale: str,
-    ) -> ChatResponse: ...
+    ) -> ChatResponse:
+        raise NotImplementedError(f"{type(self).__name__} must implement create_chat")
 
 
 @runtime_checkable
 class IChatQueryService(Protocol):
     """Read-only access to chats and messages."""
 
+    @abstractmethod
     async def get_chats(
         self,
         user: User,
         cursor: str | None,
         limit: int,
-    ) -> ChatsListOut: ...
+    ) -> ChatsListOut:
+        raise NotImplementedError(f"{type(self).__name__} must implement get_chats")
 
+    @abstractmethod
     async def get_chat_details(
         self,
         chat_id: uuid.UUID,
         user: User,
         locale: str,
-    ) -> ChatResponse: ...
+    ) -> ChatResponse:
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement get_chat_details"
+        )
 
+    @abstractmethod
     async def get_messages(
         self,
         chat_id: uuid.UUID,
@@ -71,13 +88,15 @@ class IChatQueryService(Protocol):
         cursor: str | None,
         limit: int,
         locale: str,
-    ) -> MessagesListOut: ...
+    ) -> MessagesListOut:
+        raise NotImplementedError(f"{type(self).__name__} must implement get_messages")
 
 
 @runtime_checkable
 class IChatCommandService(Protocol):
     """Message dispatch and chat maintenance commands."""
 
+    @abstractmethod
     async def send_message(
         self,
         chat_id: uuid.UUID,
@@ -86,28 +105,35 @@ class IChatCommandService(Protocol):
         files: list[UploadFile],
         locale: str,
         idempotency_key: str | None = ...,
-    ) -> MessageResponse: ...
+    ) -> MessageResponse:
+        raise NotImplementedError(f"{type(self).__name__} must implement send_message")
 
+    @abstractmethod
     async def mark_read(
         self,
         chat_id: uuid.UUID,
         user: User,
         locale: str,
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError(f"{type(self).__name__} must implement mark_read")
 
+    @abstractmethod
     async def clear_history(
         self,
         chat_id: uuid.UUID,
         user: User,
         locale: str,
-    ) -> ChatMaintenanceResult: ...
+    ) -> ChatMaintenanceResult:
+        raise NotImplementedError(f"{type(self).__name__} must implement clear_history")
 
+    @abstractmethod
     async def delete_chat(
         self,
         chat_id: uuid.UUID,
         user: User,
         locale: str,
-    ) -> ChatMaintenanceResult: ...
+    ) -> ChatMaintenanceResult:
+        raise NotImplementedError(f"{type(self).__name__} must implement delete_chat")
 
 
 # ── Search protocol ──────────────────────────────────────────────────────────
@@ -117,6 +143,7 @@ class IChatCommandService(Protocol):
 class ISearchService(Protocol):
     """Full-text search across indexed content."""
 
+    @abstractmethod
     async def search(
         self,
         query: str,
@@ -124,20 +151,29 @@ class ISearchService(Protocol):
         *,
         size: int = ...,
         offset: int = ...,
-    ) -> list[SearchResult]: ...
+    ) -> list[SearchResult]:
+        raise NotImplementedError(f"{type(self).__name__} must implement search")
 
+    @abstractmethod
     async def index_document(
         self,
         index: str,
         document_id: str,
         body: dict,
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement index_document"
+        )
 
+    @abstractmethod
     async def delete_document(
         self,
         index: str,
         document_id: str,
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement delete_document"
+        )
 
 
 __all__ = [

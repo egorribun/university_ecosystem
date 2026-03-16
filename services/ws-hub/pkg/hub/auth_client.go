@@ -23,6 +23,12 @@ type RoomAuthClient interface {
 	Invalidate(userID, roomID string)
 }
 
+// authCacheTTL is the single source of truth for both L1 (in-process LRU)
+// and L2 (Redis) cache lifetimes.  WSH-P3-02 (audit Wave 10): previously L1
+// was 1 min and L2 was 5 min, so a miss on L1 would repopulate from Redis
+// with data up to 4 min stale — defeating the shorter TTL entirely.
+const authCacheTTL = 1 * time.Minute
+
 type cacheEntry struct {
 	allowed   bool
 	expiresAt time.Time
@@ -121,7 +127,12 @@ func isValidUUID(s string) bool {
 // cancelled when the calling goroutine's context is done (e.g. shutdown).
 //
 // MOD-03 (audit 2026-03-15 Wave 7): wrapped by circuit breaker in CanJoinRoom.
-func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID string) bool {
+//
+// WSH-P1-02 (audit Wave 10): returns a non-nil error only for conditions that
+// indicate backend _unavailability_ (network/DNS errors, HTTP 5xx).  HTTP 4xx
+// responses mean the backend is healthy but denied the request — those are NOT
+// errors from the circuit-breaker's perspective and must return (false, nil).
+func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID string) (bool, error) {
 	params := url.Values{}
 	params.Set("user_id", userID)
 	params.Set("room_id", roomID)
@@ -129,11 +140,12 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
-		return false
+		return false, err
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return false
+		// Network/DNS/timeout error — backend may be unavailable.
+		return false, err
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
@@ -143,21 +155,31 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	// is closed and enters TIME_WAIT, quickly exhausting ephemeral ports.
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	return resp.StatusCode == http.StatusOK
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		return true, nil
+	case resp.StatusCode >= 500:
+		// HTTP 5xx: backend is reachable but struggling — count toward breaker.
+		return false, fmt.Errorf("auth backend returned HTTP %d", resp.StatusCode)
+	default:
+		// HTTP 4xx (403 Forbidden, 404, etc.): healthy denial — do not trip breaker.
+		return false, nil
+	}
 }
 
 // doRequestWithBreaker wraps doRequest with the circuit breaker.
 // Returns false when the circuit is open (fail-closed for auth).
 func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID, roomID string) bool {
 	result, err := c.cb.Execute(func() (interface{}, error) {
-		allowed := c.doRequest(ctx, userID, roomID)
-		if !allowed {
-			// Treat a 403/non-200 as a success from the circuit breaker's
-			// perspective — the backend responded correctly.  Only network
-			// errors / timeouts should count as failures that trip the breaker.
-			return false, nil
+		// WSH-P1-02: propagate reqErr so that network errors and HTTP 5xx trip
+		// the breaker, while healthy 4xx responses (backend up, access denied)
+		// are returned as success to gobreaker — they measure authorization, not
+		// availability.
+		allowed, reqErr := c.doRequest(ctx, userID, roomID)
+		if reqErr != nil {
+			return false, reqErr
 		}
-		return true, nil
+		return allowed, nil
 	})
 	if err != nil {
 		// gobreaker.ErrOpenState or gobreaker.ErrTooManyRequests (half-open limit)
@@ -193,10 +215,10 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 		val, err := c.redis.Get(ctx, redisKey).Result()
 		if err == nil {
 			allowed := val == "1"
-			// Populate L1 from L2
+			// Populate L1 from L2 — use same TTL constant so L1 never outlives L2.
 			c.cache.Add(key, cacheEntry{
 				allowed:   allowed,
-				expiresAt: time.Now().Add(1 * time.Minute),
+				expiresAt: time.Now().Add(authCacheTTL),
 			})
 			return allowed
 		}
@@ -221,8 +243,8 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	// Update cache
 	c.cache.Add(key, cacheEntry{
 		allowed: allowed,
-		// Cache for 1 minute to survive reconnect storms without long stale periods
-		expiresAt: time.Now().Add(1 * time.Minute),
+		// WSH-P3-02: use shared authCacheTTL constant (L1 = L2 = 1 min)
+		expiresAt: time.Now().Add(authCacheTTL),
 	})
 
 	// Update Redis L2
@@ -232,8 +254,8 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 		if allowed {
 			val = "1"
 		}
-		// TTL of 5 minutes for L2 as per PERF-006 brief
-		c.redis.Set(ctx, redisKey, val, 5*time.Minute)
+		// WSH-P3-02: align L2 TTL with L1 using shared authCacheTTL constant
+		c.redis.Set(ctx, redisKey, val, authCacheTTL)
 	}
 
 	// Resolve in-flight call

@@ -4,6 +4,11 @@ go 1.26.0
 
 require (
 	github.com/getsentry/sentry-go v0.43.0
+	// MOD-07 (audit 2026-03-16 Wave 10): Pact V4 provider verification for the
+	// university-backend → ws-hub NATS message contract.  pact-go/v2 wraps the
+	// Pact Rust FFI library; requires CGO and the pact_ffi shared library.
+	// Install the FFI once: go run github.com/pact-foundation/pact-go/v2/install
+	github.com/pact-foundation/pact-go/v2 v2.4.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3

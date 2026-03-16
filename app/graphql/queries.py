@@ -77,30 +77,83 @@ class Query:
         self: Any,
         info: strawberry.Info[GraphQLContext],
         limit: int = 20,
-        offset: int = 0,
+        after: str | None = strawberry.UNSET,  # type: ignore[assignment]
     ) -> NewsConnection:
+        """Paginated news using keyset cursor (MOD-03, audit Wave 10).
+
+        ``after`` is an opaque base64-encoded cursor returned in PageInfo.cursor.
+        Omit it (or pass null) to get the first page.  Keyset is O(log N) vs
+        OFFSET O(N) because Postgres can use the (created_at DESC, id DESC) index
+        to seek directly to the starting row.
+        """
         session = info.context.session
+        from sqlalchemy import and_, or_
+
         from app.models import News
+        from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
-        stmt = select(News).order_by(News.created_at.desc())
+        # Normalise strawberry.UNSET → None
+        cursor_str: str | None = None if after is strawberry.UNSET else after  # type: ignore[comparison-overlap]
 
-        # Count total
-        count_stmt = select(func.count()).select_from(stmt.subquery())
+        # PERF-GQL-02 (audit Wave 10): use direct COUNT(id) with a separate
+        # WHERE clause instead of .select_from(subquery()).  The subquery
+        # materializes the full result set in a CTE before counting — O(N) at
+        # large table sizes.  func.count(News.id) uses the primary key index
+        # directly and is O(log N).
+        count_stmt = select(func.count(News.id))
         count_result = await session.execute(count_stmt)
         total = count_result.scalar() or 0
 
-        # Fetch news without selectinload (DataLoaders will handle the author)
-        result = await session.execute(stmt.offset(offset).limit(limit))
-        news_list = result.scalars().all()
+        # PERF-GQL-01 (audit Wave 10): add selectinload(News.author) so all
+        # authors are fetched in a single IN query instead of N lazy loads.
+        stmt = (
+            select(News)
+            .options(selectinload(News.author))
+            .order_by(News.created_at.desc(), News.id.desc())
+        )
 
-        items = [_news_to_type(n) for n in news_list]
+        # MOD-03 (audit Wave 10): keyset filter — eliminates O(N) OFFSET scan.
+        if cursor_str:
+            decoded = decode_datetime_cursor(cursor_str)
+            if decoded:
+                last_created_at, last_id_str = decoded
+                import uuid as _uuid
+
+                try:
+                    last_id = _uuid.UUID(last_id_str)
+                except (ValueError, AttributeError):
+                    last_id = None
+                if last_id is not None:
+                    stmt = stmt.where(
+                        or_(
+                            News.created_at < last_created_at,
+                            and_(
+                                News.created_at == last_created_at,
+                                News.id < last_id,
+                            ),
+                        )
+                    )
+
+        # Fetch limit+1 to determine has_next_page without a COUNT.
+        result = await session.execute(stmt.limit(limit + 1))
+        news_rows = result.scalars().all()
+
+        has_next_page = len(news_rows) > limit
+        news_list = news_rows[:limit]
+        items = [_news_to_type(n, getattr(n, "author", None)) for n in news_list]
+
+        next_cursor: str | None = None
+        if has_next_page and news_list:
+            last = news_list[-1]
+            next_cursor = encode_datetime_cursor(last.created_at, str(last.id))
 
         return NewsConnection(
             items=items,
             page_info=PageInfo(
-                has_next_page=offset + limit < total,
-                has_previous_page=offset > 0,
+                has_next_page=has_next_page,
+                has_previous_page=cursor_str is not None,
                 total_count=total,
+                cursor=next_cursor,
             ),
         )
 
@@ -132,37 +185,80 @@ class Query:
         self: Any,
         info: strawberry.Info[GraphQLContext],
         limit: int = 25,
-        offset: int = 0,
+        after: str | None = strawberry.UNSET,  # type: ignore[assignment]
         active_only: bool = True,
     ) -> EventsConnection:
+        """Paginated events using keyset cursor (MOD-03, audit Wave 10).
+
+        ``after`` is an opaque base64-encoded cursor returned in PageInfo.cursor.
+        """
+        from sqlalchemy import and_, or_
+
         from app.models import Event
+        from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
         session = info.context.session
+        cursor_str: str | None = None if after is strawberry.UNSET else after  # type: ignore[comparison-overlap]
 
-        # Build query (removed selectinload to avoid Overfetching)
-        query = select(Event)
+        # Build base filter used for both count and data queries.
+        filters = []
         if active_only:
-            query = query.where(Event.is_active == True)  # noqa: E712
+            filters.append(Event.is_active == True)  # noqa: E712
 
-        # Count without subquery materialization
-        count_query = select(func.count()).select_from(query.subquery())
+        # PERF-GQL-02 (audit Wave 10): direct COUNT(id) with the same WHERE
+        # conditions avoids subquery materialization O(N) → index O(log N).
+        count_query = select(func.count(Event.id))
+        if filters:
+            count_query = count_query.where(*filters)
         count_result = await session.execute(count_query)
         total = count_result.scalar() or 0
 
-        # Fetch
-        result = await session.execute(
-            query.order_by(Event.starts_at.desc()).offset(offset).limit(limit)
-        )
-        events_list = result.scalars().all()
+        query = select(Event).order_by(Event.starts_at.desc(), Event.id.desc())
+        if filters:
+            query = query.where(*filters)
 
+        # MOD-03 (audit Wave 10): keyset filter on (starts_at, id).
+        if cursor_str:
+            decoded = decode_datetime_cursor(cursor_str)
+            if decoded:
+                last_starts_at, last_id_str = decoded
+                import uuid as _uuid
+
+                try:
+                    last_id = _uuid.UUID(last_id_str)
+                except (ValueError, AttributeError):
+                    last_id = None
+                if last_id is not None:
+                    query = query.where(
+                        or_(
+                            Event.starts_at < last_starts_at,
+                            and_(
+                                Event.starts_at == last_starts_at,
+                                Event.id < last_id,
+                            ),
+                        )
+                    )
+
+        # Fetch limit+1 to determine has_next_page.
+        result = await session.execute(query.limit(limit + 1))
+        events_rows = result.scalars().all()
+
+        has_next_page = len(events_rows) > limit
+        events_list = events_rows[:limit]
         items = [_event_to_type(e) for e in events_list]
+
+        next_cursor: str | None = None
+        if has_next_page and events_list:
+            last_evt = events_list[-1]
+            next_cursor = encode_datetime_cursor(last_evt.starts_at, str(last_evt.id))
 
         return EventsConnection(
             items=items,
             page_info=PageInfo(
-                has_next_page=offset + limit < total,
-                has_previous_page=offset > 0,
+                has_next_page=has_next_page,
+                has_previous_page=cursor_str is not None,
                 total_count=total,
+                cursor=next_cursor,
             ),
         )
 

@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -43,17 +44,48 @@ type ProcessResult struct {
 
 // FileProcessingWorkflow orchestrates the file processing
 func FileProcessingWorkflow(ctx workflow.Context, job ProcessJob) (*ProcessResult, error) {
+	// MOD-04 (audit Wave 10): Workflow versioning for safe rolling deploys.
+	//
+	// workflow.GetVersion pins this execution to a known code path so that
+	// in-flight workflow instances replaying against OLD workers continue on the
+	// v1 path while NEW workers execute v2.  Without versioning, deploying new
+	// workflow logic mid-flight causes a non-determinism panic in Temporal.
+	//
+	// Change log:
+	//   DefaultVersion (-1) → v1: original single-activity flow
+	//   v2: reserved — add e.g. a ClamAV scan activity here
+	//
+	// To add a new feature:
+	//   1. Increment maxSupported below (e.g. to 2)
+	//   2. Add a branch: if v >= 2 { workflow.ExecuteActivity(ctx, a.ScanActivity, job) }
+	//   3. Never delete old branches until all in-flight v<N workflows complete.
+	const (
+		changeID     = "file-processing-v1"
+		maxSupported = 1 // bump when adding new activity phases
+	)
+	_ = workflow.GetVersion(ctx, changeID, workflow.DefaultVersion, maxSupported)
+	// v is stored in workflow history and used during replay to select the code
+	// path that was active when this execution first ran.  The blank assignment
+	// suppresses the unused variable warning — add conditional logic here when
+	// introducing v2 features.
+
 	// MOD-W5-05: Explicit exponential back-off retry policy.
 	// NonRetryableErrorTypes prevents wasting attempts on deterministic errors
 	// (bad dimensions, oversized images) that will never succeed.
+	//
+	// FP-P1-03 (audit Wave 10): added ScheduleToCloseTimeout to bound the entire
+	// retry chain.  Without it, 5 attempts × 5 min each = up to 25 min per
+	// workflow, plus backoff.  WorkflowExecutionTimeout set in main.go enforces
+	// the hard per-workflow cap.
 	options := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Minute * 5,
+		StartToCloseTimeout:    time.Minute * 5,
+		ScheduleToCloseTimeout: time.Minute * 15, // bounds full retry chain
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:        time.Second,
 			BackoffCoefficient:     2.0,
-			MaximumInterval:        time.Minute,
+			MaximumInterval:        30 * time.Second,
 			MaximumAttempts:        5,
-			NonRetryableErrorTypes: []string{"InvalidInputError", "FileTooLargeError"},
+			NonRetryableErrorTypes: []string{"InvalidInputError", "FileTooLargeError", "ContextCancelled"},
 		},
 	}
 
@@ -81,20 +113,46 @@ type FileActivities struct {
 // NewFileActivities creates a new activity struct with dependencies.
 // Returns an error instead of panicking so main.go can call logger.Fatal
 // and let K8s restart the pod cleanly (RZ-04, audit 2026-03-15 Wave 7).
-func NewFileActivities(cfg *config.Config) (*FileActivities, error) {
-	// Initialize MinIO client
+//
+// FP-P1-02 (audit Wave 10): accepts a pre-built *minio.Client so the
+// connection pool (HTTP transport) is a singleton shared across all
+// activity invocations.  Creating a new client per-call would create an
+// unbounded number of TCP connections under parallel Temporal workflows.
+func NewFileActivities(cfg *config.Config, minioClient *minio.Client) (*FileActivities, error) {
+	if minioClient == nil {
+		return nil, fmt.Errorf("minioClient must not be nil")
+	}
+	return &FileActivities{
+		MinioClient: minioClient,
+		Bucket:      cfg.MinioBucket,
+	}, nil
+}
+
+// BuildMinIOClient constructs a MinIO client with an explicit HTTP transport
+// connection pool.  Call once at startup and pass the result to NewFileActivities.
+//
+// FP-P1-02 (audit Wave 10): the default http.Transport has no MaxConnsPerHost
+// limit.  Under 20 concurrent Temporal activities each opening a new TCP
+// connection to MinIO, the host can exhaust ephemeral ports (max 65535).
+// MaxConnsPerHost=50 + MaxIdleConnsPerHost=20 enforce reuse without starving
+// concurrent activities.
+func BuildMinIOClient(cfg *config.Config) (*minio.Client, error) {
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 20,
+		MaxConnsPerHost:     50,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
 	client, err := minio.New(cfg.MinioEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
-		Secure: cfg.MinioSecure,
+		Creds:     credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
+		Secure:    cfg.MinioSecure,
+		Transport: transport,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("minio client init failed for endpoint %s: %w", cfg.MinioEndpoint, err)
 	}
-
-	return &FileActivities{
-		MinioClient: client,
-		Bucket:      cfg.MinioBucket,
-	}, nil
+	return client, nil
 }
 
 const (
@@ -173,6 +231,18 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	}
 	doneCh := make(chan decodeResult, 1)
 	go func() {
+		// FP-P1-01 (audit Wave 10): propagate the Temporal context deadline to
+		// the underlying MinIO TCP connection so that a stalled MinIO read is
+		// interrupted at the network level, not just when obj.Close() eventually
+		// propagates through the HTTP response body.  Without this, image.Decode
+		// can block for the full OS-level socket timeout (minutes) even after the
+		// Temporal activity context has been cancelled.
+		type deadliner interface{ SetReadDeadline(time.Time) error }
+		if dl, ok := any(obj).(deadliner); ok {
+			if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
+				_ = dl.SetReadDeadline(deadline)
+			}
+		}
 		img, format, err := image.Decode(obj)
 		doneCh <- decodeResult{img, format, err}
 	}()

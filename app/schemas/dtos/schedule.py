@@ -27,4 +27,5 @@ class ScheduleDTO(DTOModel):
     room: str | None
     parity: str = "both"
     lesson_type: str | None = None
+    creator_id: uuid.UUID | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

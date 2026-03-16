@@ -17,6 +17,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	// MOD-02 (audit Wave 10): semconv v1.27.0 adds messaging.* attributes for
+	// NATS subjects, enabling correlation in Jaeger/Grafana Tempo.
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
 
@@ -65,6 +68,10 @@ type Hub struct {
 	// TD-01 (audit 2026-03-15 Wave 7): prevents a single WS client from
 	// flooding JetStream and causing backpressure for all other clients.
 	msgLimiters sync.Map // map[clientID string]*rate.Limiter
+	// WSH-P1-01 (audit Wave 10): stopOnce makes Stop() idempotent — a second
+	// call is a no-op.  Without this, rolling deploys and test teardowns can
+	// call Stop() twice, leaking the JWKS cache refresh goroutine each time.
+	stopOnce sync.Once
 }
 
 func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
@@ -284,7 +291,14 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 // shutdown via Stop().  Fatals on subscription error (RZ-4): a hub that
 // cannot receive NATS messages delivers no messages — better to fail loudly
 // at startup than silently serve a broken system.
-func (h *Hub) SubscribeToNATS() {
+//
+// WSH-P1-03 (audit Wave 10): appCtx is the application lifecycle context.
+// Each callback checks appCtx.Done() before processing so that in-flight
+// messages are discarded cleanly during shutdown rather than blocking the
+// NATS drain and causing terminationGracePeriodSeconds to be exceeded.
+func (h *Hub) SubscribeToNATS(appCtx context.Context) {
+	const natsCallbackTimeout = 30 * time.Second
+
 	chatSub, err := h.Nats.Subscribe("chat.>", func(msg *nats.Msg) {
 		// RZ-03 (audit 2026-03-15 Wave 7): recover() first so that any panic
 		// (e.g. nil pointer dereference on malformed NATS payload) is logged
@@ -298,9 +312,27 @@ func (h *Hub) SubscribeToNATS() {
 					zap.String("subject", msg.Subject))
 			}
 		}()
-		// Attempt to extract trace context from NATS message headers if present.
-		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.Chat")
+
+		// WSH-P1-03: exit immediately if the application is shutting down.
+		select {
+		case <-appCtx.Done():
+			return
+		default:
+		}
+
+		// Propagate W3C trace context from NATS headers, chained from appCtx
+		// so the span lifecycle is bounded by the application context.
+		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+		defer cancel()
+		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Chat",
+			// MOD-02: messaging.* semconv v1.27.0 for Jaeger/Tempo correlation.
+			trace.WithAttributes(
+				semconv.MessagingSystemKey.String("nats"),
+				semconv.MessagingOperationTypeKey.String("receive"),
+				semconv.MessagingDestinationNameKey.String("chat.*"),
+			),
+		)
 		defer span.End()
 
 		var wsMsg Message
@@ -330,8 +362,23 @@ func (h *Hub) SubscribeToNATS() {
 					zap.String("subject", msg.Subject))
 			}
 		}()
-		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.Notifications")
+
+		select {
+		case <-appCtx.Done():
+			return
+		default:
+		}
+
+		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+		defer cancel()
+		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Notifications",
+			trace.WithAttributes(
+				semconv.MessagingSystemKey.String("nats"),
+				semconv.MessagingOperationTypeKey.String("receive"),
+				semconv.MessagingDestinationNameKey.String("notifications.*"),
+			),
+		)
 		defer span.End()
 
 		var wsMsg Message
@@ -362,8 +409,23 @@ func (h *Hub) SubscribeToNATS() {
 					zap.String("subject", msg.Subject))
 			}
 		}()
-		ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(ctx, "NATS.Subscribe.CacheInvalidate")
+
+		select {
+		case <-appCtx.Done():
+			return
+		default:
+		}
+
+		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+		defer cancel()
+		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
+			trace.WithAttributes(
+				semconv.MessagingSystemKey.String("nats"),
+				semconv.MessagingOperationTypeKey.String("receive"),
+				semconv.MessagingDestinationNameKey.String("cache.invalidate"),
+			),
+		)
 		defer span.End()
 
 		var payload struct {
@@ -397,13 +459,18 @@ func (h *Hub) SubscribeToNATS() {
 				h.Logger.Warn("Invalid internal NATS signature — dropping event",
 					zap.String("room_id", payload.Data.RoomID),
 					zap.String("user_id", payload.Data.UserID))
-				otel.Tracer("hub").Start(ctx, "InvalidInternalSignature")
+				// MOD-02 fix: assign and end the span — bare Start() discards the span,
+				// causing an OTel span leak on every invalid-signature drop.
+				_, sigSpan := otel.Tracer("hub").Start(msgCtx, "InvalidInternalSignature")
+				sigSpan.End()
 				return
 			}
 
 			if h.authClient != nil {
 				h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
-				otel.Tracer("hub").Start(ctx, "CacheInvalidated")
+				// MOD-02 fix: same — assign and end to avoid unfinished span leak.
+				_, invSpan := otel.Tracer("hub").Start(msgCtx, "CacheInvalidated")
+				invSpan.End()
 			}
 		}
 	})
@@ -466,18 +533,26 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 //
 // TD-02 (audit 2026-03-15 Wave 7): cancel jwksCacheCancel so the
 // jwk.Cache internal goroutine exits promptly on shutdown.
+// Stop drains all NATS subscriptions, stops the per-IP upgrade rate limiter
+// GC goroutine, and cancels the JWKS cache refresh goroutine.
+//
+// WSH-P1-01 (audit Wave 10): wrapped in sync.Once so repeated calls (e.g.
+// SIGTERM handler + defer) are idempotent — the JWKS goroutine is cancelled
+// exactly once regardless of how many times Stop() is called.
 func (h *Hub) Stop() {
-	for _, sub := range h.subs {
-		if err := sub.Drain(); err != nil {
-			h.Logger.Warn("NATS subscription drain error", zap.Error(err))
+	h.stopOnce.Do(func() {
+		for _, sub := range h.subs {
+			if err := sub.Drain(); err != nil {
+				h.Logger.Warn("NATS subscription drain error", zap.Error(err))
+			}
 		}
-	}
-	if h.UpgradeLimiter != nil {
-		h.UpgradeLimiter.Stop()
-	}
-	if h.jwksCacheCancel != nil {
-		h.jwksCacheCancel()
-	}
+		if h.UpgradeLimiter != nil {
+			h.UpgradeLimiter.Stop()
+		}
+		if h.jwksCacheCancel != nil {
+			h.jwksCacheCancel()
+		}
+	})
 }
 
 // AuthorizeRoomJoin verifies that userID is a participant of the given room

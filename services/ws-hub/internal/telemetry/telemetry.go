@@ -11,7 +11,10 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	// MOD-02 (audit Wave 10): semconv v1.27.0 adds messaging.* attributes for
+	// NATS/Kafka, enabling correlation between WebSocket events and NATS messages
+	// in Jaeger/Grafana Tempo.  v1.17.0 lacked messaging operation type keys.
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
 
 func InitSentry(cfg *config.Config) error {

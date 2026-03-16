@@ -34,6 +34,10 @@ from app.api.validation import (
     raise_validation_error,
 )
 from app.api.ws.connection_manager import manager as ws_manager
+from app.api.ws.presence import (
+    invalidate_chat_participants_cache,
+    invalidate_presence_audience_cache,
+)
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
 from app.models.chat import Attachment
@@ -63,9 +67,7 @@ def _make_idempotency_key(
     raw = f"{chat_id}:{user_id}:{client_key}"
     secret = settings.idempotency_hmac_secret
     if secret:
-        digest = _hmac.new(
-            secret.encode(), raw.encode(), hashlib.blake2b
-        ).hexdigest()
+        digest = _hmac.new(secret.encode(), raw.encode(), hashlib.blake2b).hexdigest()
     else:
         digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
     return f"idm:msg:{digest}"
@@ -171,16 +173,42 @@ class ChatCommandService:
         # surface genuine infrastructure failures quickly.
         _UPLOAD_TIMEOUT_SECONDS = 30.0
 
-        # ── Phase 1: Upload processing (NO DB writes yet) ────────────────────
-        # Process ALL uploads before touching the DB.  If any upload fails, no
-        # Message record exists and no rollback is required — the error path is
-        # trivially clean.
+        # RACE-BE-01 (audit Wave 10): Reserve the idempotency slot BEFORE any
+        # upload so that failures in Phase 1 OR Phase 2 both hit the same except
+        # clause and release the slot.  Without pre-reservation the slot is only
+        # written on success (line ~300); a Phase-2 DB failure leaves no record
+        # and the next retry re-uploads — creating duplicate S3 objects.
+        #
+        # Redis SET NX: "pending" marks the slot as in-flight.  TTL 300 s covers
+        # the maximum upload + DB write time with room to spare.  An existing
+        # "pending" value means a concurrent/retried request — we fall through to
+        # the normal flow; the DB unique constraint is the final arbiter.
+        if _idempotency_cache_key:
+            import json as _json
+
+            from app.deps.cache import get_cache_client
+
+            _cache = await get_cache_client()
+            await _cache.set(
+                _idempotency_cache_key,
+                _json.dumps({"status": "pending"}),
+                nx=True,
+                ex=300,
+            )
+
+        # ── Phase 1 + Phase 2 wrapped together ───────────────────────────────
+        # Both phases share the same exception handler so that a Phase-2 failure
+        # also triggers file cleanup and idempotency slot release — closing the
+        # RACE-BE-01 window.
         from typing import Any
 
         processed_attachments: list[dict[str, Any]] = []
         saved_urls: list[str] = []
-        if uploads:
-            try:
+        try:
+            # ── Phase 1: Upload processing (NO DB writes yet) ─────────────────
+            # Process ALL uploads before touching the DB.  If any upload fails,
+            # no Message record exists and no rollback is required.
+            if uploads:
                 for upload in uploads:
                     try:
                         async with asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
@@ -191,51 +219,91 @@ class ChatCommandService:
                         raise_validation_error("errors.files.upload_timeout", locale)
                     saved_urls.append(str(meta["url"]))
                     processed_attachments.append(meta)
-            except Exception:
+
+        except Exception:
+            # Phase 1 failure: clean up any partial uploads and release slot.
+            if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
-                raise
+            if _idempotency_cache_key:
+                import json as _json
+
+                from app.deps.cache import get_cache_client
+
+                _cache = await get_cache_client()
+                await _cache.delete(_idempotency_cache_key)
+            raise
 
         # ── Phase 2: Atomic DB write ─────────────────────────────────────────
         # All uploads succeeded — now write Message + Attachments + MessageSent
-        # event in a single transaction.  If this fails only a DB rollback is
-        # needed; the already-uploaded files stay (acceptable: no user-visible
-        # duplicate, files will be GC'd by the orphan-cleanup job).
-        message = Message(
-            chat_id=chat_id,
-            sender_id=user.id,
-            content=content,
-        )
-        await self.repository.create_message(message)
-
-        for meta in processed_attachments:
-            attachment = Attachment(
-                message=message,
-                url=str(meta["url"]),
-                file_type=str(meta["file_type"]),
-                filename=str(meta["filename"]),
-                size=int(str(meta["size"])),
+        # event in a single transaction.  If this fails we clean up the uploaded
+        # files (best-effort) and release the idempotency pending slot so the
+        # next retry can start fresh — closing the RACE-BE-01 window.
+        try:
+            message = Message(
+                chat_id=chat_id,
+                sender_id=user.id,
+                content=content,
             )
-            self.repository.add(attachment)
+            await self.repository.create_message(message)
 
-        await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
-
-        # RZ-F-11 (Outbox Pattern): Atomic recording of the message intent.
-        # EventEmitterMixin captures this after_flush and stores in stored_events.
-        # record_event() is called BEFORE commit so it lands in the same
-        # transaction as the Message INSERT — atomicity guaranteed.
-        # Cast: Message inherits EventEmitterMixin (models/chat.py), but mypy
-        # cannot resolve SQLAlchemy's multi-inheritance graph statically.
-        cast(EventEmitterMixin, message).record_event(
-            MessageSent(
-                message_id=message.id,
-                chat_id=message.chat_id,
-                sender_id=message.sender_id,
-                content_preview=message.content[:50],
+            # ARCH-BE-01 (audit Wave 10): record_event() MUST be called BEFORE any
+            # SQL query that could trigger an autoflush (e.g. update_timestamp_by_id
+            # below issues an UPDATE which causes SQLAlchemy to autoflush the session
+            # before executing it).  Once the autoflush fires, `message` leaves
+            # session.new and may not be in session.dirty — the `after_flush` listener
+            # in capture_domain_events() scans only `new | dirty | deleted`, so any
+            # event registered after that flush is silently dropped and never lands in
+            # the `stored_events` (outbox) table.
+            #
+            # UUID7PrimaryKeyMixin uses a Python-side default (generate_uuid7), so
+            # message.id is populated by the __init__ constructor call above — it is
+            # safe to reference here before the INSERT is flushed.
+            #
+            # Cast: Message inherits EventEmitterMixin (models/chat.py), but mypy
+            # cannot resolve SQLAlchemy's multi-inheritance graph statically.
+            cast(EventEmitterMixin, message).record_event(
+                MessageSent(
+                    message_id=message.id,
+                    chat_id=message.chat_id,
+                    sender_id=message.sender_id,
+                    content_preview=message.content[:50],
+                )
             )
-        )
 
-        async with self.uow:
-            await self.uow.commit()
+            for meta in processed_attachments:
+                attachment = Attachment(
+                    message=message,
+                    url=str(meta["url"]),
+                    file_type=str(meta["file_type"]),
+                    filename=str(meta["filename"]),
+                    size=int(str(meta["size"])),
+                )
+                self.repository.add(attachment)
+
+            # The UPDATE below triggers an SQLAlchemy autoflush — at that point
+            # `message` (and its _pending_domain_events) are still in session.new,
+            # so capture_domain_events() correctly creates the StoredEvent row and
+            # adds it to the session.  Both Message and StoredEvent are committed
+            # atomically in the uow.commit() call below.
+            await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
+
+            async with self.uow:
+                await self.uow.commit()
+
+        except Exception:
+            # RACE-BE-01: Phase 2 failed — clean up already-uploaded files and
+            # release the idempotency slot so the next retry can re-upload fresh
+            # copies rather than re-using orphaned S3 objects.
+            if saved_urls:
+                await self.attachment_service.cleanup_files(saved_urls)
+            if _idempotency_cache_key:
+                import json as _json
+
+                from app.deps.cache import get_cache_client
+
+                _cache = await get_cache_client()
+                await _cache.delete(_idempotency_cache_key)
+            raise
 
         # Reload message with attachments for the response
         reloaded = await self.repository.get_last_messages([message.id])
@@ -271,19 +339,23 @@ class ChatCommandService:
         #     message, chat.participants, user
         # )
 
-        # ── Idempotency store (D-02 / BE-02) ────────────────────────────────
+        # ── Idempotency store (D-02 / BE-02 / RACE-BE-01) ───────────────────
         # BE-02 (audit 2026-03-08 Wave 5): Store only the message ID rather than
         # the full serialised MessageResponse.  Storing plaintext message content
         # in Redis for 24 h is a data-protection risk: if Redis is exfiltrated,
         # attackers gain access to all recently sent messages.  On cache hit we
         # re-fetch the full message from the DB (one PK lookup — negligible cost).
+        #
+        # RACE-BE-01: Overwrite the "pending" placeholder set before Phase 1 with
+        # the "completed" entry including message_id.  setex replaces regardless
+        # of current value — atomic promotion from pending → completed.
         if _idempotency_cache_key:
             import json as _json
 
             from app.deps.cache import get_cache_client
 
             _cache = await get_cache_client()
-            _slim = _json.dumps({"message_id": str(msg_data.id)})
+            _slim = _json.dumps({"status": "completed", "message_id": str(msg_data.id)})
             await _cache.setex(
                 _idempotency_cache_key,
                 86400,  # 24 h — covers any reasonable client retry window
