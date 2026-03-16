@@ -395,6 +395,41 @@ class ChatDeleted(DomainEvent):
 
 @register_domain_event
 @dataclass
+class AttachmentCleanupRequested(DomainEvent):
+    """Scheduled deletion of S3/static attachment files.
+
+    PERF-W10-05: Replaces inline ``cleanup_files()`` calls in clear_history()
+    and delete_chat().  By recording this event INSIDE the same DB transaction
+    as the message/chat DELETE, we get atomicity: either the row is deleted AND
+    the cleanup is scheduled, or neither happens.  OutboxWorker retries with
+    at-least-once delivery semantics so files are eventually removed even if the
+    process crashes between commit and the S3 delete call.
+
+    Payload: ``attachment_urls`` is a list of relative or absolute URLs returned
+    by ``ChatAttachmentService.collect_urls()``.
+    """
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    chat_id: UUID | None = None
+    attachment_urls: list[str] = field(default_factory=list)
+
+    EVENT_TYPE: ClassVar[str] = "chat.attachment_cleanup_requested"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AttachmentCleanupRequested:
+        """Deserialize from stored payload, handling schema migrations."""
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
 class NotificationSent(DomainEvent):
     """Fired when a notification is sent."""
 

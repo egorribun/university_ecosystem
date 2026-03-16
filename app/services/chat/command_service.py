@@ -1,3 +1,10 @@
+"""Chat message and maintenance commands.
+
+TD-W9-01 (audit 2026-03-16): Chat *creation* logic (Redis DM lock, presence
+hydration) lives in ChatCreationService.  This service owns message dispatch
+and maintenance operations (mark-read, clear-history, delete-chat).
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -15,8 +22,6 @@ if TYPE_CHECKING:
     from app.schemas.chat import (
         AttachmentResponse,
         ChatMaintenanceResult,
-        ChatParticipant,
-        ChatResponse,
         MessageResponse,
     )
 
@@ -29,19 +34,12 @@ from app.api.validation import (
     raise_validation_error,
 )
 from app.api.ws.connection_manager import manager as ws_manager
-from app.api.ws.presence import (
-    build_presence_map,
-    invalidate_chat_participants_cache,
-    invalidate_presence_audience_cache,
-)
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
-from app.core.exceptions import BusinessRuleViolation
 from app.models.chat import Attachment
 from app.models.models import Message
 from app.schemas.chat import (
     ChatMaintenanceResult,
-    ChatResponse,
     MessageResponse,
     PresenceStatus,
 )
@@ -52,19 +50,33 @@ def _make_idempotency_key(
 ) -> str:
     """Build a Redis idempotency key whose components cannot be reverse-enumerated.
 
-    BLAKE2b (16-byte digest) is cryptographically collision-resistant and
-    faster than SHA-256 on 64-bit CPUs.  The ``idm:msg:`` prefix keeps the
-    key recognisable in Redis MONITOR / keyspace notifications without leaking
-    chat_id or user_id.
+    RZ-W10-11: When IDEMPOTENCY_HMAC_SECRET is set, the raw string is signed
+    with HMAC-BLAKE2b so that an observer of the Idempotency-Key header cannot
+    enumerate (chat_id, user_id) pairs by brute-forcing client_key values.
+    Falls back to plain BLAKE2b when the secret is empty (backward-compat).
+
+    The ``idm:msg:`` prefix keeps the key recognisable in Redis MONITOR /
+    keyspace notifications without leaking chat_id or user_id.
     """
+    import hmac as _hmac
 
     raw = f"{chat_id}:{user_id}:{client_key}"
-    digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
+    secret = settings.idempotency_hmac_secret
+    if secret:
+        digest = _hmac.new(
+            secret.encode(), raw.encode(), hashlib.blake2b
+        ).hexdigest()
+    else:
+        digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
     return f"idm:msg:{digest}"
 
 
 class ChatCommandService:
-    """Handles write/modifying operations for chats and messages. (TD-1)"""
+    """Message dispatch and chat maintenance commands.
+
+    TD-W9-01: create_chat moved to ChatCreationService — it has different
+    dependencies (Redis lock, presence maps) from message-level operations.
+    """
 
     def __init__(
         self,
@@ -77,75 +89,6 @@ class ChatCommandService:
         self.session = uow.session
         self.attachment_service = attachment_service
         self.notification_service = notification_service
-
-    async def create_chat(
-        self, user: User, participant_id: uuid.UUID | None, locale: str
-    ) -> ChatResponse:
-        """Create a new chat or return an existing one."""
-        if not participant_id:
-            raise_validation_error("errors.chat.missing_participant", locale)
-
-        if participant_id == user.id:
-            raise_validation_error("errors.chat.self_chat", locale)
-
-        participant = await self.repository.get_user(participant_id)
-        ensure_exists(participant, "users", locale)
-        assert participant is not None  # nosec B101  # noqa: S101
-
-        from app.deps.cache import get_cache_client
-
-        cache_client = await get_cache_client()
-
-        if not user.id or not participant_id:
-            raise BusinessRuleViolation("errors.chat.invalid_participants")
-
-        min_id, max_id = sorted([user.id, participant_id])
-        lock_name = f"chat_init:{min_id}:{max_id}"
-
-        # TD-05 (audit 2026-03-15 Wave 7): wrap Redis lock acquisition in an outer
-        # asyncio.timeout so Uvicorn workers are never blocked longer than 5.5s
-        # even if Redis is slow.  blocking_timeout=4 is the inner Redis-level wait;
-        # 5.5s gives it room to raise LockNotAcquiredError before we cut the cord.
-        try:
-            async with asyncio.timeout(5.5):
-                async with cache_client.lock(lock_name, timeout=5, blocking_timeout=4):
-                    existing_chat = await self.repository.find_existing_dm(
-                        user.id, participant_id
-                    )
-                    if existing_chat:
-                        return ChatResponse(
-                            id=existing_chat.id,
-                            participants=cast(
-                                "list[ChatParticipant]", existing_chat.participants
-                            ),
-                            created_at=existing_chat.created_at,
-                            updated_at=existing_chat.updated_at,
-                        )
-
-                    new_chat = await self.repository.create_chat([user, participant])
-                    async with self.uow:
-                        await self.uow.commit()
-        except TimeoutError:
-            raise_validation_error("errors.chat.lock_timeout", locale)
-
-        participant_ids = [p.id for p in new_chat.participants]
-        await invalidate_chat_participants_cache(new_chat.id)
-        await invalidate_presence_audience_cache(*participant_ids)
-
-        presence_map = await build_presence_map(
-            [p.id for p in new_chat.participants], db=self.session
-        )
-
-        return ChatResponse(
-            id=new_chat.id,
-            participants=cast("list[ChatParticipant]", new_chat.participants),
-            created_at=new_chat.created_at,
-            updated_at=new_chat.updated_at,
-            presence={
-                p.id: presence_map.get(p.id, PresenceStatus())
-                for p in new_chat.participants
-            },
-        )
 
     async def send_message(
         self,
@@ -216,6 +159,11 @@ class ChatCommandService:
 
         if not content.strip() and not uploads:
             raise_validation_error("errors.chat.empty_message", locale)
+
+        # RZ-W10-10: Reject oversized messages before any DB or S3 I/O to
+        # prevent storage DoS via multi-MB message bodies.
+        if len(content) > settings.chat_max_message_length:
+            raise_validation_error("errors.chat.message_too_long", locale)
 
         # D-03 (audit 2026-03-08): Hard deadline on each individual upload so a
         # hung ClamAV scan or MinIO connection does not block the ASGI worker
@@ -377,13 +325,32 @@ class ChatCommandService:
         try:
             await self.repository.delete_messages([m.id for m in chat.messages])
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
+
+            # PERF-W10-05: Durable cleanup via Outbox — StoredEvent is written in
+            # the SAME transaction as message deletes.  OutboxWorker retries on
+            # failure, preventing permanent file leaks if the process crashes
+            # between the commit and the S3/static delete call.
+            if attachment_urls:
+                from app.core.events import AttachmentCleanupRequested as _ACR
+                from app.models.domain_events import StoredEvent as _StoredEvent
+
+                self.repository.add(
+                    _StoredEvent(
+                        event_type=_ACR.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={
+                            "chat_id": str(chat_id),
+                            "attachment_urls": attachment_urls,
+                        },
+                    )
+                )
+
             async with self.uow:
                 await self.uow.commit()
         except Exception:
             await self.uow.rollback()
             raise
-
-        await self.attachment_service.cleanup_files(attachment_urls)
 
         return ChatMaintenanceResult(
             chat_id=chat.id,
@@ -417,6 +384,7 @@ class ChatCommandService:
             # either both succeed or neither does.  OutboxWorker delivers them with
             # at-least-once semantics, closing the 60s BOLA window that existed
             # when invalidation was a best-effort post-commit network call.
+            from app.core.events import AttachmentCleanupRequested as _ACR
             from app.core.events import ChatDeleted as ChatDeletedEvent
             from app.models.domain_events import StoredEvent as _StoredEvent
 
@@ -427,6 +395,20 @@ class ChatCommandService:
                         aggregate_type="Chat",
                         aggregate_id=str(chat_id),
                         payload={"chat_id": str(chat_id), "participant_id": str(_pid)},
+                    )
+                )
+
+            # PERF-W10-05: Durable file cleanup alongside ChatDeleted in ONE tx.
+            if attachment_urls:
+                self.repository.add(
+                    _StoredEvent(
+                        event_type=_ACR.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={
+                            "chat_id": str(chat_id),
+                            "attachment_urls": attachment_urls,
+                        },
                     )
                 )
 
@@ -450,8 +432,6 @@ class ChatCommandService:
             *(invalidate_ws_hub_cache(str(_pid), str(chat_id)) for _pid in p_ids),
             return_exceptions=True,  # one failure must not abort the rest
         )
-
-        await self.attachment_service.cleanup_files(attachment_urls)
 
         return ChatMaintenanceResult(
             chat_id=chat_id,

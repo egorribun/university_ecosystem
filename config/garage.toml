@@ -1,0 +1,39 @@
+# Garage S3-compatible object storage — single-node configuration
+# MOD-W8-01 (audit 2026-03-15): replaces MinIO (archived 2026-02-13).
+#
+# Sensitive values (rpc_secret, admin_token) are NOT stored here.
+# Set via environment variables:
+#   GARAGE_RPC_SECRET  — 32-byte hex string (required)
+#   GARAGE_ADMIN_TOKEN — admin API bearer token (required)
+#
+# Generate a suitable RPC secret:
+#   openssl rand -hex 32
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir     = "/var/lib/garage/data"
+db_engine    = "lmdb"
+
+replication_factor = 1
+
+[rpc_bind_addr]
+addr = "0.0.0.0:3901"
+
+[rpc_public_addr]
+addr = "garage:3901"
+
+[s3_api]
+s3_region    = "us-east-1"
+api_bind_addr = "0.0.0.0:3900"
+# Allows path-style access (bucket name in path, not subdomain).
+# Required when running behind an internal Docker DNS alias.
+root_domain = ".s3.garage.localhost"
+
+[s3_web]
+bind_addr      = "0.0.0.0:3902"
+root_domain    = ".web.garage.localhost"
+index          = "index.html"
+error_document = "404.html"
+
+[admin]
+api_bind_addr = "0.0.0.0:3903"
+# admin_token is set via GARAGE_ADMIN_TOKEN env var — do not hardcode here.

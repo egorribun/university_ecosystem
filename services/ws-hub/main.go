@@ -59,11 +59,18 @@ func main() {
 		defer func() { _ = tp.Shutdown(ctx) }()
 	}
 
-	nc, err := nats.Connect(cfg.NatsURL,
+	// MOD-W10-04: credentials from separate env vars, not embedded in the URL.
+	// nats.go logs the URL on reconnect — having user:pass in it exposes secrets
+	// in log aggregators and /proc/<pid>/environ on Linux.
+	natsOpts := []nats.Option{
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
-		nats.ReconnectWait(2*time.Second),
-	)
+		nats.ReconnectWait(2 * time.Second),
+	}
+	if cfg.NatsUser != "" || cfg.NatsPassword != "" {
+		natsOpts = append(natsOpts, nats.UserInfo(cfg.NatsUser, cfg.NatsPassword))
+	}
+	nc, err := nats.Connect(cfg.NatsURL, natsOpts...)
 	if err != nil {
 		logger.Fatal("Failed to connect to NATS", zap.Error(err))
 	}
@@ -101,6 +108,9 @@ func main() {
 		}
 	}
 
+	// PERF-W9-06: Periodically evict orphaned rate.Limiter entries from
+	// msgLimiters that were not cleaned up due to goroutine panics in ReadPump.
+	h.StartLimiterCleanup(ctx)
 	go h.Run(ctx)
 	h.SubscribeToNATS()
 

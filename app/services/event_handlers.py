@@ -12,6 +12,7 @@ import logging
 from app.core.container import get_vector_service
 from app.core.database import async_session
 from app.core.events import (
+    AttachmentCleanupRequested,
     ChatDeleted,
     DomainEvent,
     EventCreated,
@@ -221,6 +222,30 @@ async def handle_notifications_requested(event: NotificationsRequested) -> None:
     # backstop recorded in the outbox.
 
 
+async def handle_attachment_cleanup_requested(
+    event: AttachmentCleanupRequested,
+) -> None:
+    """Delete files from static/S3 storage after chat history clear or chat delete.
+
+    PERF-W10-05: Called by OutboxWorker with at-least-once delivery semantics.
+    If the delete fails, the OutboxWorker retries until max_retries is reached,
+    at which point the event moves to the Dead Letter Queue.  Files in the DLQ
+    will be cleaned up by the periodic orphan-file GC job.
+    """
+    if not event.attachment_urls:
+        return
+
+    from app.services.chat.attachment_service import ChatAttachmentService
+
+    service = ChatAttachmentService()
+    await service.cleanup_files(event.attachment_urls)
+    logger.info(
+        "attachment_cleanup_requested: deleted %d file(s) for chat=%s",
+        len(event.attachment_urls),
+        event.chat_id,
+    )
+
+
 def configure_event_handlers() -> None:
     """
     Register all event handlers with the global event bus.
@@ -244,6 +269,11 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
     # RED-04: OutboxWorker delivers ChatDeleted events with at-least-once guarantees.
     event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
+    # PERF-W10-05: OutboxWorker delivers file cleanup with at-least-once guarantees.
+    event_bus.subscribe(
+        "chat.attachment_cleanup_requested",
+        handle_attachment_cleanup_requested,  # type: ignore[arg-type]
+    )
     # RED-02: OutboxWorker delivers NotificationsRequested events for at-least-once push.
     event_bus.subscribe(
         "notification.delivery_requested",

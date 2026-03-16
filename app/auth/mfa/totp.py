@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import time
@@ -12,6 +13,8 @@ from uuid import UUID
 
 import pyotp
 from fastapi import status
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from sqlalchemy import func, select
 
 from app.api.validation import raise_http_error, raise_validation_error
@@ -37,6 +40,7 @@ if TYPE_CHECKING:
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
 logger = logging.getLogger(__name__)
+_tracer = trace.get_tracer(__name__)
 
 _TOTP_SECRET_LENGTH = 32
 _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
@@ -75,8 +79,11 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     normalized = "".join(ch for ch in code if ch.isdigit())
     if len(normalized) != _TOTP_DIGITS:
         logger.warning(
-            "TOTP verify failed: length mismatch (expected %s digits)",
-            _TOTP_DIGITS,
+            "TOTP verification failed: length mismatch",
+            extra={
+                "event": "mfa.totp.verify_failed",
+                "reason": "digit_length_mismatch",
+            },
         )
         return False
     totp = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
@@ -89,8 +96,11 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     )
     if not result:
         logger.warning(
-            "TOTP verify failed (server time: %s)",
-            _utcnow(),
+            "TOTP verification failed",
+            extra={
+                "event": "mfa.totp.verify_failed",
+                "reason": "invalid_code",
+            },
         )
     return bool(result)
 
@@ -185,20 +195,31 @@ async def complete_totp_enrollment(
     enrollment: MfaTotpEnrollment,
     code: str,
 ) -> MfaTotpEnrollment:
-    if getattr(enrollment, "secret", None) is None:
-        logger.warning(
-            "Cannot complete TOTP enrollment %s: decryption failed",
-            enrollment.id,
-        )
-        raise_validation_error("errors.mfa.invalid_code", "en")
-    if not verify_totp(str(enrollment.secret), code):
-        raise_validation_error("errors.mfa.invalid_code", "en")
-    now = _utcnow()
-    enrollment.confirmed_at = now
-    enrollment.revoked_at = None
-    enrollment.is_active = True
-    await db.flush()
-    return enrollment
+    with _tracer.start_as_current_span("mfa.totp.enroll.complete") as span:
+        span.set_attribute("mfa.method", "totp")
+        if getattr(enrollment, "secret", None) is None:
+            logger.warning(
+                "Cannot complete TOTP enrollment: decryption failed",
+                extra={
+                    "event": "mfa.totp.enroll_failed",
+                    "reason": "decryption_failed",
+                },
+            )
+            span.set_attribute("mfa.result", "invalid_code")
+            span.set_status(Status(StatusCode.ERROR))
+            raise_validation_error("errors.mfa.invalid_code", "en")
+        if not verify_totp(str(enrollment.secret), code):
+            span.set_attribute("mfa.result", "invalid_code")
+            span.set_status(Status(StatusCode.ERROR))
+            raise_validation_error("errors.mfa.invalid_code", "en")
+        now = _utcnow()
+        enrollment.confirmed_at = now
+        enrollment.revoked_at = None
+        enrollment.is_active = True
+        await db.flush()
+        span.set_attribute("mfa.result", "success")
+        span.set_status(Status(StatusCode.OK))
+        return enrollment
 
 
 async def disable_totp(
@@ -236,16 +257,17 @@ async def start_totp_verification(
     locale: str | None = None,
     payload: MutableMapping[str, Any] | None = None,
 ) -> MfaChallenge:
-    challenge = await issue_challenge(
-        db,
-        user_id=user.id,
-        session_id=session.id if session else None,
-        challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
-        locale=locale,
-        payload=dict(payload or {}),
-        attempt_limit=settings.mfa_totp_attempt_limit,
-    )
-    return challenge
+    with _tracer.start_as_current_span("mfa.totp.challenge.issue"):
+        challenge = await issue_challenge(
+            db,
+            user_id=user.id,
+            session_id=session.id if session else None,
+            challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
+            locale=locale,
+            payload=dict(payload or {}),
+            attempt_limit=settings.mfa_totp_attempt_limit,
+        )
+        return challenge
 
 
 async def verify_totp_for_user(
@@ -258,86 +280,157 @@ async def verify_totp_for_user(
     session_id: UUID | None = None,
     locale: str | None = None,
 ) -> tuple[MfaTotpEnrollment, MfaChallenge | None]:
-    stmt = (
-        select(MfaTotpEnrollment)
-        .where(MfaTotpEnrollment.user_id == user.id)
-        .where(MfaTotpEnrollment.is_active.is_(True))
-        .where(MfaTotpEnrollment.revoked_at.is_(None))
-        .where(MfaTotpEnrollment.confirmed_at.is_not(None))
-    )
-    result = await db.execute(stmt)
-    enrollments = list(result.scalars())
-    if not enrollments and user.mfa_default_method == MFA_METHOD_TOTP:
-        legacy_stmt = (
-            select(MfaTotpEnrollment)
-            .where(MfaTotpEnrollment.user_id == user.id)
-            .where(MfaTotpEnrollment.is_active.is_(True))
-            .where(MfaTotpEnrollment.revoked_at.is_(None))
-            .where(MfaTotpEnrollment.confirmed_at.is_(None))
-        )
-        legacy_result = await db.execute(legacy_stmt)
-        enrollments = list(legacy_result.scalars())
-    if not enrollments:
-        raise_validation_error("errors.mfa.no_enrollment", locale or "en")
-    loaded_challenge = challenge
-    if challenge_token and loaded_challenge is None:
-        loaded_challenge = await get_challenge(
-            db,
-            token=challenge_token,
-            challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
-            user_id=user.id,
-            session_id=session_id,
-            locale=locale or "en",
-        )
-    if loaded_challenge is not None:
-        if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
-            raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
-        if loaded_challenge.user_id != user.id:
-            raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
-        if session_id is not None and loaded_challenge.session_id != session_id:
-            raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
-    limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
-    await _ensure_challenge_not_locked(
-        db,
-        loaded_challenge,
-        method=MFA_METHOD_TOTP,
-        limit=limit,
-        locale=locale,
-    )
-
-    # P0-W5-02: Iterate ALL enrollments unconditionally — no early return on match.
-    # This eliminates the timing oracle where returning on the first match leaks
-    # which enrollment position held a valid code.
-    matched_enrollment: MfaTotpEnrollment | None = None
-    for enrollment in enrollments:
-        if getattr(enrollment, "secret", None) is None:
-            logger.warning(
-                "Skipping TOTP enrollment %s for user %s: decryption failed",
-                enrollment.id,
-                user.id,
+    with _tracer.start_as_current_span("mfa.totp.verify") as span:
+        span.set_attribute("user.id", str(user.id))
+        span.set_attribute("mfa.method", "totp")
+        try:
+            # RZ-W8-05: Require a challenge to enable per-code invalidation via
+            # consume_challenge(). Without a challenge the same TOTP code can be
+            # replayed for the full ±30s window (up to 90 seconds total) because
+            # there is no mechanism to mark the code as "already used".
+            if not challenge_token and challenge is None:
+                raise ValueError(
+                    "challenge_token is required for TOTP verification "
+                    "(prevents replay attacks within the 90-second TOTP window). "
+                    "Call issue_challenge() first and pass the resulting token."
+                )
+            stmt = (
+                select(MfaTotpEnrollment)
+                .where(MfaTotpEnrollment.user_id == user.id)
+                .where(MfaTotpEnrollment.is_active.is_(True))
+                .where(MfaTotpEnrollment.revoked_at.is_(None))
+                .where(MfaTotpEnrollment.confirmed_at.is_not(None))
             )
-            continue
-        # Use constant-time comparison — record match but keep iterating
-        if _ct_verify_totp(str(enrollment.secret), code) and matched_enrollment is None:
-            matched_enrollment = enrollment
-
-    if matched_enrollment is not None:
-        if loaded_challenge is not None:
-            await consume_challenge(
+            result = await db.execute(stmt)
+            enrollments = list(result.scalars())
+            if not enrollments and user.mfa_default_method == MFA_METHOD_TOTP:
+                legacy_stmt = (
+                    select(MfaTotpEnrollment)
+                    .where(MfaTotpEnrollment.user_id == user.id)
+                    .where(MfaTotpEnrollment.is_active.is_(True))
+                    .where(MfaTotpEnrollment.revoked_at.is_(None))
+                    .where(MfaTotpEnrollment.confirmed_at.is_(None))
+                )
+                legacy_result = await db.execute(legacy_stmt)
+                enrollments = list(legacy_result.scalars())
+            if not enrollments:
+                span.set_attribute("mfa.result", "no_enrollment")
+                span.set_status(Status(StatusCode.ERROR))
+                raise_validation_error("errors.mfa.no_enrollment", locale or "en")
+            loaded_challenge = challenge
+            if challenge_token and loaded_challenge is None:
+                loaded_challenge = await get_challenge(
+                    db,
+                    token=challenge_token,
+                    challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
+                    user_id=user.id,
+                    session_id=session_id,
+                    locale=locale or "en",
+                )
+            if loaded_challenge is not None:
+                if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
+                    span.set_attribute("mfa.result", "invalid_code")
+                    span.set_status(Status(StatusCode.ERROR))
+                    raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+                if loaded_challenge.user_id != user.id:
+                    span.set_attribute("mfa.result", "invalid_code")
+                    span.set_status(Status(StatusCode.ERROR))
+                    raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+                if session_id is not None and loaded_challenge.session_id != session_id:
+                    span.set_attribute("mfa.result", "invalid_code")
+                    span.set_status(Status(StatusCode.ERROR))
+                    raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+            limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
+            await _ensure_challenge_not_locked(
                 db,
-                challenge_token=str(loaded_challenge.token),
-                challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
-                provided_code=code,
-                provided_method=MFA_METHOD_TOTP,
-                locale=locale or "en",
+                loaded_challenge,
+                method=MFA_METHOD_TOTP,
+                limit=limit,
+                locale=locale,
             )
-        return matched_enrollment, loaded_challenge
 
-    await _register_failed_attempt(
-        db,
-        loaded_challenge,
-        method=MFA_METHOD_TOTP,
-        limit=limit,
-        locale=locale,
-    )
-    raise_validation_error("errors.mfa.invalid_code", locale or "en")
+            # P0-W5-02: Iterate ALL enrollments unconditionally — no early return on match.
+            # This eliminates the timing oracle where returning on the first match leaks
+            # which enrollment position held a valid code.
+            matched_enrollment: MfaTotpEnrollment | None = None
+            for enrollment in enrollments:
+                if getattr(enrollment, "secret", None) is None:
+                    logger.warning(
+                        "Skipping TOTP enrollment: decryption failed",
+                        extra={
+                            "event": "mfa.totp.enrollment_skipped",
+                            "user_id": str(user.id),
+                            "reason": "decryption_failed",
+                        },
+                    )
+                    continue
+                # Use constant-time comparison — record match but keep iterating
+                if _ct_verify_totp(str(enrollment.secret), code) and matched_enrollment is None:
+                    matched_enrollment = enrollment
+
+            if matched_enrollment is not None:
+                # RZ-W9-01: Acquire a row-level lock on the enrollment BEFORE reading
+                # last_used_code_hash.  Without SELECT FOR UPDATE, two concurrent requests
+                # carrying the same TOTP code both see hash=NULL and both pass the replay
+                # check before either commits the updated hash, granting double login.
+                # nowait=False (blocking) ensures the second request waits for the first to
+                # commit, then sees the updated hash and raises code_already_used.
+                locked_result = await db.execute(
+                    select(MfaTotpEnrollment)
+                    .where(MfaTotpEnrollment.id == matched_enrollment.id)
+                    .with_for_update(nowait=False)
+                )
+                locked_enrollment = locked_result.scalars().first()
+                if locked_enrollment is None:
+                    # Enrollment disappeared between the initial read and the lock — treat
+                    # as invalid code rather than letting the request proceed unauthenticated.
+                    span.set_attribute("mfa.result", "invalid_code")
+                    span.set_status(Status(StatusCode.ERROR))
+                    raise_validation_error("errors.mfa.invalid_code", locale or "en")
+
+                # MOD-W8-06: Belt-and-suspenders replay prevention (now serialized by lock).
+                # Even if the challenge token was consumed by a concurrent request (clock-skew
+                # edge case), reject the identical code within the same TOTP window by
+                # comparing its SHA-256 hash against the last successfully used code hash.
+                code_hash = hashlib.sha256(code.encode()).hexdigest()
+                if (
+                    locked_enrollment.last_used_code_hash is not None
+                    and hmac.compare_digest(locked_enrollment.last_used_code_hash, code_hash)
+                ):
+                    span.set_attribute("mfa.result", "code_already_used")
+                    span.set_status(Status(StatusCode.ERROR))
+                    raise_validation_error("errors.mfa.code_already_used", locale or "en")
+
+                locked_enrollment.last_used_code_hash = code_hash
+                locked_enrollment.last_used_at = _utcnow()
+                matched_enrollment = locked_enrollment  # use the locked row for consume_challenge
+
+                if loaded_challenge is not None:
+                    await consume_challenge(
+                        db,
+                        challenge_token=str(loaded_challenge.token),
+                        challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
+                        provided_code=code,
+                        provided_method=MFA_METHOD_TOTP,
+                        locale=locale or "en",
+                    )
+                span.set_attribute("mfa.result", "success")
+                span.set_status(Status(StatusCode.OK))
+                return matched_enrollment, loaded_challenge
+
+            await _register_failed_attempt(
+                db,
+                loaded_challenge,
+                method=MFA_METHOD_TOTP,
+                limit=limit,
+                locale=locale,
+            )
+            span.set_attribute("mfa.result", "invalid_code")
+            span.set_status(Status(StatusCode.ERROR))
+            raise_validation_error("errors.mfa.invalid_code", locale or "en")
+        except Exception:
+            # Ensure ERROR status is set for any unexpected exception that wasn't
+            # already handled above (e.g. DB errors, unexpected library exceptions).
+            if span.status.status_code != StatusCode.OK:
+                span.set_status(Status(StatusCode.ERROR))
+            raise

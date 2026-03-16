@@ -40,6 +40,13 @@ class IntegrationSettings(BaseAppSettings):
         ""  # Must match WS_HUB_INTERNAL_SECRET in ws-hub config
     )
 
+    # RZ-W10-11: HMAC secret for idempotency key generation.
+    # Signs (chat_id:user_id:client_key) so that idempotency keys cannot be
+    # enumerated by an observer who can read the Idempotency-Key request header.
+    # Default empty string falls back to plain BLAKE2b for backward-compat.
+    # Must be set in production via IDEMPOTENCY_HMAC_SECRET env var.
+    idempotency_hmac_secret: str = ""
+
     @model_validator(mode="after")
     def _enforce_production_secrets(self) -> IntegrationSettings:
         """Fail-fast on startup if critical secrets are missing in production.
@@ -54,16 +61,31 @@ class IntegrationSettings(BaseAppSettings):
         is_ci = (
             os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
         )
-        if env_name in _DEV_ENVS or is_ci:
-            return self
 
         errors: list[str] = []
 
-        if not self.elasticsearch_password:
+        # RZ-W9-05: Enforce Elasticsearch authentication in production.
+        # An empty password means unauthenticated ES access regardless of env.
+        # Network-level isolation (docker-compose removing port 9200 from the
+        # public network) is defence-in-depth, not a substitute for auth.
+        # Developers running ES locally (outside Docker) with no password expose
+        # all indexed data on localhost:9200 without any access control.
+        # CI and dev/testing environments are exempted (no real ES instance).
+        if not self.elasticsearch_password and not is_ci and env_name not in _DEV_ENVS:
             errors.append(
-                "ELASTICSEARCH_PASSWORD is required in production. "
-                "Unauthenticated Elasticsearch access exposes all indexed data."
+                "ELASTICSEARCH_PASSWORD is required in all environments. "
+                "An empty password allows unauthenticated Elasticsearch access. "
+                "Set ELASTICSEARCH_PASSWORD in your .env or docker-compose override."
             )
+
+        if env_name in _DEV_ENVS or is_ci:
+            # Remaining checks are production-only.
+            if errors:
+                raise ValueError(
+                    "Secret validation failed:\n"
+                    + "\n".join(f"  · {e}" for e in errors)
+                )
+            return self
 
         if self.spicedb_preshared_key == "development-preshared-key":
             errors.append(
@@ -79,6 +101,16 @@ class IntegrationSettings(BaseAppSettings):
                 "SPOTIFY_OAUTH_STATE_SECRET must be set when Spotify is enabled. "
                 "Sharing the state secret with spotify_token_secret enables "
                 "confused-deputy attacks (state token → access token forgery)."
+            )
+
+        # RZ-W8-04: ws-hub cache invalidation endpoint is protected by this secret.
+        # An empty value makes the endpoint unauthenticated — any internal actor
+        # can POST to /internal/cache/invalidate and force all users offline.
+        if not self.ws_hub_internal_secret:
+            errors.append(
+                "WS_HUB_INTERNAL_SECRET must be set in production. "
+                "An empty value leaves the ws-hub cache-invalidation endpoint "
+                "unauthenticated, allowing any internal actor to force users offline."
             )
 
         if errors:

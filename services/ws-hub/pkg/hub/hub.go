@@ -385,9 +385,15 @@ func (h *Hub) SubscribeToNATS() {
 
 			hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
 			hFunc.Write(dataBytes)
-			expectedSig := hex.EncodeToString(hFunc.Sum(nil))
+			expectedSigBytes := hFunc.Sum(nil)
 
-			if payload.Signature != expectedSig {
+			// RZ-W9-02: Use constant-time comparison to prevent timing-based HMAC
+			// recovery.  String equality (!=) short-circuits on the first differing
+			// byte, leaking how many leading bytes of the signature are correct.
+			// Decode both sides to raw bytes so hmac.Equal (which calls
+			// subtle.ConstantTimeCompare) operates on equal-length slices.
+			payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
+			if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
 				h.Logger.Warn("Invalid internal NATS signature — dropping event",
 					zap.String("room_id", payload.Data.RoomID),
 					zap.String("user_id", payload.Data.UserID))
@@ -407,6 +413,50 @@ func (h *Hub) SubscribeToNATS() {
 	h.subs = append(h.subs, invSub)
 
 	h.Logger.Info("Subscribed to NATS topics")
+}
+
+// StartLimiterCleanup launches a background goroutine that periodically
+// removes orphaned rate.Limiter entries from msgLimiters.
+//
+// PERF-W9-06: msgLimiters entries are normally deleted in the defer inside
+// client.ReadPump().  When a goroutine panics before the defer executes, the
+// entry is never removed.  At ~10k connections/day with a 1% crash rate this
+// accumulates ~100 orphaned limiters/day (~100 KB/day).  The cleanup goroutine
+// performs a reconciliation sweep every 5 minutes: any entry whose client ID
+// is no longer in h.Clients is deleted.  The goroutine exits when ctx is done.
+func (h *Hub) StartLimiterCleanup(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// Snapshot the active client IDs under the read lock so the
+				// subsequent sync.Map walk does not need to hold the lock.
+				h.mu.RLock()
+				active := make(map[string]struct{}, len(h.Clients))
+				for id := range h.Clients {
+					active[id] = struct{}{}
+				}
+				h.mu.RUnlock()
+
+				var removed int
+				h.msgLimiters.Range(func(key, _ any) bool {
+					if _, ok := active[key.(string)]; !ok {
+						h.msgLimiters.Delete(key)
+						removed++
+					}
+					return true
+				})
+				if removed > 0 {
+					h.Logger.Info("Cleaned up orphaned msgLimiters",
+						zap.Int("removed", removed))
+				}
+			}
+		}
+	}()
 }
 
 // Stop drains all NATS subscriptions (flushing in-flight messages), stops

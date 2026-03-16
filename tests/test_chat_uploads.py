@@ -11,8 +11,6 @@ from app.models.chat import Attachment, Chat
 from app.services.chat.attachment_service import ChatAttachmentService
 from app.services.chat.command_service import ChatCommandService
 from app.services.chat.notification_service import ChatNotificationService
-from app.services.chat.query_service import ChatQueryService
-from app.services.chat_service import ChatService
 from app.utils import files
 
 
@@ -116,9 +114,7 @@ async def test_send_message_blocks_infected_file(
     uow = uow_from_session(db_session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(db_session)
-    queries = ChatQueryService(db_session, uow.chats)
-    commands = ChatCommandService(uow, attachments, notifications)
-    service = ChatService(db_session, attachments, notifications, queries, commands)
+    service = ChatCommandService(uow, attachments, notifications)
 
     with pytest.raises(HTTPException) as excinfo:
         await service.send_message(
@@ -173,9 +169,7 @@ async def test_send_message_generates_public_urls(
     uow = uow_from_session(db_session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(db_session)
-    queries = ChatQueryService(db_session, uow.chats)
-    commands = ChatCommandService(uow, attachments, notifications)
-    service = ChatService(db_session, attachments, notifications, queries, commands)
+    service = ChatCommandService(uow, attachments, notifications)
     message = await service.send_message(
         chat.id,
         user=sender,

@@ -115,7 +115,15 @@
       "Bash(pip index:*)",
       "Bash(npx tsc:*)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(go mod:*)"
+      "Bash(go mod:*)",
+      "Bash(find /c/Users/egorribun/Documents/university_ecosystem -type f \\\\\\(-name docker-compose*.yml -o -name Makefile -o -name justfile -o -name .semgrep.yml -o -name renovate.json \\\\\\))",
+      "Bash(ls -la /c/Users/egorribun/Documents/university_ecosystem/services/*/Dockerfile)",
+      "Bash(ls -t alembic/versions/*.py)",
+      "Bash(2)",
+      "Bash(ls \"C:\\\\Users\\\\egorribun\\\\Documents\\\\university_ecosystem\\\\scripts\"\" 2>/dev/null || echo \"no scripts dir \")",
+      "Bash(python -m pytest tests/ -x -q --tb=short)",
+      "Bash(python -m pytest tests/ -x -q --tb=short --timeout=60 -p no:asyncio)",
+      "Bash(python -m pytest tests/test_di_container.py tests/test_chat_api.py -x -q --tb=short --timeout=10)"
     ]
   }
 }

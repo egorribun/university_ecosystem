@@ -74,6 +74,17 @@ _TOKEN_NONCE_BYTES = 32
 # Period is safe in cookie values (RFC 6265) and is not produced by base64url.
 _TOKEN_SEPARATOR = "."  # nosec B105
 
+# RZ-W9-04: Anonymous session binding cookie.
+# Replaces the previous IP+UA fingerprint with a random per-client nonce so
+# that users behind shared NAT/CDN (same IP + identical UA) get independent
+# CSRF tokens and cannot cross-forge requests for each other.
+_ANON_NONCE_COOKIE_NAME = "_csrf_anon_nonce"
+_ANON_NONCE_HEX_LEN = 32  # secrets.token_hex(16) → 32 lowercase hex chars
+_ANON_NONCE_MAX_AGE = 3600  # 1 hour — matches typical pre-login session lifetime
+# State key to carry a newly-generated nonce from _extract_session_id to
+# send_with_csrf_cookie so the cookie can be set in the same response.
+_NEW_ANON_NONCE_STATE_KEY = "_csrf_new_anon_nonce"
+
 # Marker key in request.state used by auth endpoints to signal that the CSRF
 # token must be rotated after privilege escalation (login, MFA completion,
 # password change).  Call signal_csrf_rotation(request) in those handlers.
@@ -152,23 +163,27 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
     Priority (most specific → least specific):
     1. ``request.state.session_id`` — set by the auth middleware after the
        JWT is validated.  This is the tightest binding.
-    2. The nonce portion of the *existing* cookie token — allows the HMAC
-       to be verified during the request before the session is loaded.
+    2. ``_csrf_anon_nonce`` cookie — a random per-client nonce for anonymous
+       users that survives across requests within the same browser session.
+       RZ-W9-04: Replaces the previous IP+UA fingerprint.  IP+UA caused CSRF
+       token collisions for users sharing a corporate NAT/CDN with identical
+       User-Agents; a random nonce is unique per browser instance.
     """
     session_id: str = getattr(request.state, "session_id", None) or ""
     if not session_id:
-        # RZ-03/NEW-SEC-002 (audit 2026-03-12): Anonymous requests bind to client fingerprint.
-        # Sanitization (RZ-W5-03): User-Agent is untrusted input. Strip non-ASCII and truncate
-        # to prevent log injection and limit HMAC message length.
-        _client = getattr(request, "client", None)
-        client_host = _client.host if _client else "unknown"
-        _headers = getattr(request, "headers", {})
-        user_agent_raw = (
-            _headers.get("user-agent", "unknown") if _headers else "unknown"
-        )
-        # Strip control characters and non-ASCII, truncate to 256
-        user_agent = "".join(c for c in user_agent_raw if 32 <= ord(c) <= 126)[:256]
-        session_id = f"anon:{client_host}:{user_agent}"
+        # Read the persisted per-client nonce from the dedicated cookie.
+        anon_nonce = request.cookies.get(_ANON_NONCE_COOKIE_NAME, "")
+        # Validate: must be exactly _ANON_NONCE_HEX_LEN lowercase hex chars.
+        if (
+            not anon_nonce
+            or len(anon_nonce) != _ANON_NONCE_HEX_LEN
+            or not all(c in "0123456789abcdef" for c in anon_nonce)
+        ):
+            # Generate a fresh nonce and store it in request.state so that
+            # send_with_csrf_cookie can include the Set-Cookie in the response.
+            anon_nonce = secrets.token_hex(16)
+            setattr(request.state, _NEW_ANON_NONCE_STATE_KEY, anon_nonce)
+        session_id = f"anon:{anon_nonce}"
     return session_id
 
 
@@ -355,6 +370,18 @@ class CSRFMiddleware:
                         message.get("headers", [])
                     )
                     headers.append((b"set-cookie", set_cookie_header))
+                    # RZ-W9-04: If a new anonymous nonce was generated in
+                    # _extract_session_id (i.e. the client had no existing
+                    # _csrf_anon_nonce cookie), persist it as a separate
+                    # HttpOnly cookie so future requests can reuse the same
+                    # binding nonce without regenerating it every time.
+                    new_anon_nonce: str | None = getattr(
+                        request.state, _NEW_ANON_NONCE_STATE_KEY, None
+                    )
+                    if new_anon_nonce:
+                        headers.append(
+                            (b"set-cookie", self._build_anon_nonce_cookie(new_anon_nonce))
+                        )
                     message = {**message, "headers": headers}
             await send(message)
 
@@ -372,4 +399,23 @@ class CSRFMiddleware:
             parts.append("Secure")
         # HttpOnly is intentionally OMITTED — the SPA must read this cookie
         # in JavaScript to forward it as the X-CSRF-Token request header.
+        return "; ".join(parts).encode("latin-1")
+
+    def _build_anon_nonce_cookie(self, nonce: str) -> bytes:
+        """Build a raw ``Set-Cookie`` header value for the anonymous session nonce.
+
+        RZ-W9-04: Unlike the CSRF token, the nonce cookie IS HttpOnly — the
+        SPA never needs to read it directly; it is only used server-side as the
+        HMAC binding for anonymous users.  SameSite=Strict prevents it from
+        being sent on cross-site navigations.
+        """
+        parts = [
+            f"{_ANON_NONCE_COOKIE_NAME}={nonce}",
+            "Path=/",
+            f"Max-Age={_ANON_NONCE_MAX_AGE}",
+            "SameSite=" + self._cookie_samesite,
+            "HttpOnly",
+        ]
+        if self._cookie_secure:
+            parts.append("Secure")
         return "; ".join(parts).encode("latin-1")

@@ -6,6 +6,12 @@ from pydantic import ValidationInfo, field_validator
 
 from .base import _DEVELOPMENT_ENVIRONMENTS, BaseAppSettings
 
+# MOD-W10-03: Full set of accepted environment names.  Any other string causes a
+# startup ValidationError — prevents silent "prod" typos being treated as dev.
+_VALID_ENVIRONMENTS: frozenset[str] = _DEVELOPMENT_ENVIRONMENTS | frozenset(
+    {"staging", "production"}
+)
+
 
 class AppGeneralSettings(BaseAppSettings):
     environment: str = "development"
@@ -54,6 +60,22 @@ class AppGeneralSettings(BaseAppSettings):
     embedding_api_base: str = "https://api.openai.com/v1"
 
     health_storage_probe_min_interval_seconds: int = 3600
+
+    @field_validator("environment", mode="before")
+    @classmethod
+    def _validate_environment(cls, v: object) -> str:
+        """Fail-fast on unknown ENVIRONMENT values (e.g. 'prod' typo).
+
+        MOD-W10-03: Prevents 'prod' from silently falling through to
+        production-mode behaviour (or skipping production-only guards entirely).
+        """
+        normalized = str(v).lower().strip()
+        if normalized not in _VALID_ENVIRONMENTS:
+            raise ValueError(
+                f"Unknown ENVIRONMENT value {v!r}. "
+                f"Accepted values: {sorted(_VALID_ENVIRONMENTS)}"
+            )
+        return normalized
 
     @field_validator("auto_create_schema", mode="before")
     @classmethod

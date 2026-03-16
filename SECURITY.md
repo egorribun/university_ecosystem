@@ -25,7 +25,24 @@ If you discover a vulnerability, please report it privately so we can address it
 4. Remove allowlist entries as soon as upstream releases make the override unnecessary.
 
 ## Private Vulnerability Reporting
-To report a vulnerability, use the **Security** tab on GitHub and open a new **Private vulnerability report**. Issues are disabled for vulnerability discussions; instead, please submit a GitHub Security Advisory so the team can work with you directly on mitigation and disclosure.
+To report a vulnerability, use the **Security** tab on GitHub and open a new **Private vulnerability report**, or email **security@university.example.com**. Issues are disabled for vulnerability discussions; instead, please submit a GitHub Security Advisory so the team can work with you directly on mitigation and disclosure.
+
+### Response SLA (MOD-W8-03)
+
+| Severity | Acknowledgement | Triage | Fix |
+|----------|----------------|--------|-----|
+| Critical | 24 hours | 48 hours | 7 days |
+| High | 48 hours | 5 days | 30 days |
+| Medium | 5 days | 14 days | 90 days |
+| Low | 5 days | 30 days | Best-effort |
+
+We follow [coordinated disclosure](https://en.wikipedia.org/wiki/Coordinated_vulnerability_disclosure): findings are kept confidential until a fix is released and deployed to production.
+
+### Scope
+
+**In scope:** Authentication/authorization bypasses, data exposure, injection vulnerabilities (SQLi, XSS, SSRF, command injection), cryptographic weaknesses in token handling or MFA, privilege escalation, denial-of-service via resource exhaustion.
+
+**Out of scope:** Social engineering, physical access attacks, third-party services not under our control, vulnerabilities requiring local network access to unexposed internal ports.
 
 ## Password Storage & Policy
 

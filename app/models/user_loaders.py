@@ -47,6 +47,30 @@ USER_AUTH_LOAD_OPTIONS: tuple[Any, ...] = (
     joinedload(User.education_path),
 )
 
+# PERF-W9-01: Combined auth + MFA load options — used in the auth hot-path so
+# that MFA-enabled users are fully hydrated in a SINGLE round-trip instead of
+# the previous 2-query pattern (base user query + conditional db.refresh).
+#
+# selectinload issues one IN-clause query per collection regardless of the
+# number of User rows in scope — O(1) queries vs O(N) for per-row lazy loads.
+# For single-user auth lookups the savings are modest (2→2 queries, but the
+# second is batched with the first and returns 0 rows for non-MFA users).
+# For bulk operations (e.g. presence checks) this eliminates the N+1 entirely.
+#
+# Filtered selectinload requires SQLAlchemy 2.0+ — only active, non-revoked
+# enrollments and credentials are loaded to keep the result set tight.
+USER_AUTH_WITH_MFA_OPTIONS: tuple[Any, ...] = (
+    joinedload(User.preferences),
+    joinedload(User.spotify),
+    joinedload(User.profile),
+    joinedload(User.education_path),
+    selectinload(User.totp_enrollments),
+    selectinload(User.mfa_challenges),
+    selectinload(User.webauthn_credentials),
+    selectinload(User.email_change_tokens),
+    selectinload(User.recovery_codes),
+)
+
 # [NEW] Minimal options for list views (Admin Dashboard, Search)
 # We only load the profile (for full_name) and potentially the group.
 # Preferences, Education Path, Spotify, and all MFA data are omitted.

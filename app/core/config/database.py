@@ -21,7 +21,15 @@ class DatabaseSettings(BaseAppSettings):
     database_pool_size: int = (os.cpu_count() or 1) * 2 + 1
     database_max_overflow: int = (os.cpu_count() or 1) * 4
     database_pool_timeout: float = 30.0
-    database_pool_recycle: int = 1_800
+    # PERF-W9-05: Reduced from 1800 (30 min) to 540 (9 min).
+    # Most managed PostgreSQL providers (RDS, Cloud SQL, Supabase) close idle
+    # connections after ~10 minutes.  With a 30-min recycle, low-traffic periods
+    # (e.g. overnight) cause pool connections to be silently severed by the
+    # provider before they're recycled, triggering asyncpg.ConnectionDoesNotExistError
+    # on the first request after the idle gap.  9 minutes is safely under the
+    # 10-minute threshold.  pool_pre_ping=True (set in database.py) provides an
+    # additional belt-and-suspenders health check at checkout time.
+    database_pool_recycle: int = 540
 
     # Slow query logging configuration
     slow_query_logging_enabled: bool = True

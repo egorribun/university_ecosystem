@@ -165,6 +165,37 @@ async def _handle_schema_and_extensions() -> None:
         _logger.warning("Auto-schema failed: %s", exc)
 
 
+async def _validate_di_container(app: FastAPI) -> None:
+    """TD-W10-03: Smoke-test the DI container by resolving APP-scoped singletons.
+
+    Catches mis-registered or mis-wired providers at startup rather than on
+    the first production request.  Only APP-scoped services are resolved here
+    (request-scoped services require a live DB session and are verified by tests).
+    """
+    from app.deps.cache import BaseCache
+    from app.workers.outbox import OutboxWorker
+
+    container = app.state.dishka_container
+    critical_app_services: list[type] = [BaseCache, OutboxWorker]
+    failures: list[str] = []
+
+    for svc_type in critical_app_services:
+        try:
+            await container.get(svc_type)
+        except Exception as exc:
+            failures.append(f"{svc_type.__name__}: {exc}")
+
+    if failures:
+        msg = "DI container smoke-test FAILED:\n" + "\n".join(f"  - {f}" for f in failures)
+        if settings.environment not in {"development", "local", "testing"}:
+            raise RuntimeError(msg)
+        _logger.warning(msg)
+    else:
+        _logger.info(
+            "DI container validation passed (%d services)", len(critical_app_services)
+        )
+
+
 async def _startup_background_workers(app: FastAPI) -> None:
     """Stage 5: Pub/Sub workers, Outbox, and NATS task processors."""
     from app.core.nats_broker import NatsTaskBroker
@@ -236,7 +267,11 @@ async def _periodic_scheduler_loop() -> None:
             async with asyncio.timeout(300):
                 await task.kick()
         except Exception:
-            _logger.exception("Cleanup failed for %s", task.__class__.__name__)
+            task_name = type(task).__name__
+            _logger.exception("Cleanup failed for %s", task_name)
+            # MOD-W10-08: Increment Prometheus counter for Grafana alerting.
+            from app.core.metrics import record_background_task_error
+            record_background_task_error(task_name)
 
     async def _sleep_or_stop(seconds: float) -> bool:
         """Sleep for *seconds* or return True immediately if stop is signalled."""
@@ -298,6 +333,34 @@ async def _periodic_scheduler_loop() -> None:
             break
 
 
+async def _prewarm_jwt_public_key_cache() -> None:
+    """Pre-derive RSA public keys at startup so the first real requests don't block.
+
+    TD-W8-02: Without pre-warming, the first batch of JWT decode calls all miss
+    the _public_key_cache and block on threading.Lock while deriving the public key
+    from the RSA private PEM (1-50ms). This runs once at startup in a thread executor
+    to avoid blocking the event loop.
+    """
+    import asyncio
+
+    from app.auth.security import _auth_executor, _get_cached_public_key_pem
+
+    registry = settings.jwt_signing_key_registry
+    for kid, secret in registry.items():
+        if "PRIVATE KEY" in secret:
+            loop = asyncio.get_running_loop()
+            try:
+                await loop.run_in_executor(
+                    _auth_executor,
+                    _get_cached_public_key_pem,
+                    kid,
+                    secret,
+                )
+            except Exception as exc:
+                # Pre-warm failure is non-fatal — cache fills on first real request
+                _logger.warning("JWT key pre-warm failed for kid=%r: %s", kid, exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
@@ -306,6 +369,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await _startup_websocket_and_flags(app)
 
     # 2. Validation
+    await _validate_di_container(app)
     await _verify_database_readiness()
     await _handle_schema_and_extensions()
 
@@ -327,6 +391,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             await warm_cache()
         except Exception as exc:
             _logger.warning("Warm cache failed: %s", exc)
+
+    try:
+        await _prewarm_jwt_public_key_cache()
+    except Exception as exc:
+        _logger.warning("JWT public key pre-warm failed: %s", exc)
 
     try:
         yield
