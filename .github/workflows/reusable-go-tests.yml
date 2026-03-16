@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.3.0
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -52,7 +52,7 @@ jobs:
           echo "name=go-coverage-$SANITIZED" >> "$GITHUB_OUTPUT"
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.0
         if: always()
         with:
           name: ${{ steps.artifact-name.outputs.name }}
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.3.0
         with:
           go-version: ${{ inputs.go-version }}
           cache: true

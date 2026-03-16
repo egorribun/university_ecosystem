@@ -35,7 +35,7 @@ jobs:
           uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))" > frontend/openapi.json
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.0
         with:
           name: openapi
           path: frontend/openapi.json

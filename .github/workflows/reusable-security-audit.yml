@@ -137,7 +137,7 @@ jobs:
           exit-code: "0"
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.32.6
         if: always()
         continue-on-error: true
         with:
@@ -152,7 +152,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.4.0
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5.4.0
         with:
           go-version: "stable"
           cache: true
@@ -183,7 +183,7 @@ jobs:
           syft . --output spdx-json=sbom.spdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.0
         with:
           name: sbom-spdx-json
           path: sbom.spdx.json
@@ -246,7 +246,7 @@ jobs:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: Upload SARIF to GitHub Advanced Security
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.32.6
         if: always()
         continue-on-error: true
         with:

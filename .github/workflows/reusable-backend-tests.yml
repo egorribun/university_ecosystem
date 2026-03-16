@@ -110,7 +110,7 @@ jobs:
                     --dist=loadgroup
 
             - name: Upload coverage artifact
-              uses: actions/upload-artifact@v7
+              uses: actions/upload-artifact@v7.0.0
               with:
                   name: backend-coverage-${{ inputs.test-group-name }}
                   path: coverage.xml
