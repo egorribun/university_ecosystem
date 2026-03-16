@@ -325,13 +325,32 @@ class ChatCommandService:
         try:
             await self.repository.delete_messages([m.id for m in chat.messages])
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
+
+            # PERF-W10-05: Durable cleanup via Outbox — StoredEvent is written in
+            # the SAME transaction as message deletes.  OutboxWorker retries on
+            # failure, preventing permanent file leaks if the process crashes
+            # between the commit and the S3/static delete call.
+            if attachment_urls:
+                from app.core.events import AttachmentCleanupRequested as _ACR
+                from app.models.domain_events import StoredEvent as _StoredEvent
+
+                self.repository.add(
+                    _StoredEvent(
+                        event_type=_ACR.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={
+                            "chat_id": str(chat_id),
+                            "attachment_urls": attachment_urls,
+                        },
+                    )
+                )
+
             async with self.uow:
                 await self.uow.commit()
         except Exception:
             await self.uow.rollback()
             raise
-
-        await self.attachment_service.cleanup_files(attachment_urls)
 
         return ChatMaintenanceResult(
             chat_id=chat.id,
@@ -365,6 +384,7 @@ class ChatCommandService:
             # either both succeed or neither does.  OutboxWorker delivers them with
             # at-least-once semantics, closing the 60s BOLA window that existed
             # when invalidation was a best-effort post-commit network call.
+            from app.core.events import AttachmentCleanupRequested as _ACR
             from app.core.events import ChatDeleted as ChatDeletedEvent
             from app.models.domain_events import StoredEvent as _StoredEvent
 
@@ -375,6 +395,20 @@ class ChatCommandService:
                         aggregate_type="Chat",
                         aggregate_id=str(chat_id),
                         payload={"chat_id": str(chat_id), "participant_id": str(_pid)},
+                    )
+                )
+
+            # PERF-W10-05: Durable file cleanup alongside ChatDeleted in ONE tx.
+            if attachment_urls:
+                self.repository.add(
+                    _StoredEvent(
+                        event_type=_ACR.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={
+                            "chat_id": str(chat_id),
+                            "attachment_urls": attachment_urls,
+                        },
                     )
                 )
 
@@ -398,8 +432,6 @@ class ChatCommandService:
             *(invalidate_ws_hub_cache(str(_pid), str(chat_id)) for _pid in p_ids),
             return_exceptions=True,  # one failure must not abort the rest
         )
-
-        await self.attachment_service.cleanup_files(attachment_urls)
 
         return ChatMaintenanceResult(
             chat_id=chat_id,

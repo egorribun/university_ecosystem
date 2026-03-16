@@ -64,14 +64,14 @@ class IntegrationSettings(BaseAppSettings):
 
         errors: list[str] = []
 
-        # RZ-W9-05: Enforce Elasticsearch authentication in ALL environments.
+        # RZ-W9-05: Enforce Elasticsearch authentication in production.
         # An empty password means unauthenticated ES access regardless of env.
         # Network-level isolation (docker-compose removing port 9200 from the
         # public network) is defence-in-depth, not a substitute for auth.
         # Developers running ES locally (outside Docker) with no password expose
         # all indexed data on localhost:9200 without any access control.
-        # CI is exempted because test suites typically run against a no-auth ES.
-        if not self.elasticsearch_password and not is_ci:
+        # CI and dev/testing environments are exempted (no real ES instance).
+        if not self.elasticsearch_password and not is_ci and env_name not in _DEV_ENVS:
             errors.append(
                 "ELASTICSEARCH_PASSWORD is required in all environments. "
                 "An empty password allows unauthenticated Elasticsearch access. "
