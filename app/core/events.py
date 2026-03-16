@@ -437,7 +437,7 @@ class NotificationsRequested(DomainEvent):
     EVENT_TYPE: ClassVar[str] = "notification.delivery_requested"
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "NotificationsRequested":
+    def from_dict(cls, data: dict[str, Any]) -> NotificationsRequested:
         """Deserialize from stored payload, handling schema migrations."""
         data.pop("_schema_version", 1)
         known = {

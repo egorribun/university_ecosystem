@@ -25,8 +25,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("stored_events", sa.Column("aggregate_id_uuid", sa.UUID(), nullable=True))
-    op.add_column("stored_events", sa.Column("sequence_number", sa.BigInteger(), nullable=True))
+    op.add_column(
+        "stored_events", sa.Column("aggregate_id_uuid", sa.UUID(), nullable=True)
+    )
+    op.add_column(
+        "stored_events", sa.Column("sequence_number", sa.BigInteger(), nullable=True)
+    )
 
     if op.get_bind().dialect.name == "postgresql":
         op.execute(
