@@ -55,6 +55,28 @@ rustOptimizer:
     type: ClusterIP
     port: 8080
 
+# Network Policy ingress-controller selector.
+# DEBT-07 (RZ-W13): parametrized so the chart works with any ingress controller
+# (nginx, Traefik, AWS ALB, Istio). Override with --set for non-nginx clusters:
+#   --set networkPolicy.ingressController.namespaceSelector.kubernetes\.io/metadata\.name=traefik
+# OpenTelemetry sampling configuration.
+# PERF-03 (RZ-W13): Without explicit sampler config the SDK defaults to
+# parentbased_always_on (100% sampling). At production load (1000+ req/s)
+# this saturates the OTLP Collector and adds measurable CPU overhead.
+# Use parentbased_traceidratio + 0.1 for 10% head-based sampling in production.
+otel:
+  sampler: "parentbased_traceidratio"
+  samplerArg: "0.1"   # 10% in production; set 1.0 in staging/dev
+
+networkPolicy:
+  ingressController:
+    # Namespace where the ingress controller pods live.
+    namespaceSelector:
+      "kubernetes.io/metadata.name": ingress-nginx
+    # Labels on the ingress controller pods themselves.
+    podSelector:
+      "app.kubernetes.io/name": ingress-nginx
+
 # Infrastructure (Dependencies)
 # In a real chart, these would be subcharts (bitnami/redis, etc.)
 # For now, we define simple deployment values or assume external

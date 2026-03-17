@@ -69,10 +69,8 @@ async def get_context(
                     jti = payload.get("jti")
 
                     if user_id and jti:
-                        current_user = await validator.validate(
-                            str(user_id), str(jti)
-                        )
-    except Exception as exc:  # noqa: BLE001
+                        current_user = await validator.validate(str(user_id), str(jti))
+    except Exception as exc:
         from app.auth.security import SecurityError
 
         if isinstance(exc, SecurityError):
@@ -94,7 +92,7 @@ async def get_context(
             raise HTTPException(
                 status_code=503,
                 detail="Service temporarily unavailable",
-            )
+            ) from exc
 
     context = GraphQLContext(
         session=session,
@@ -126,7 +124,7 @@ def _build_schema_extensions() -> list[Any]:
         MaxTokensLimiter(max_token_count=1000),
         # TD-W8-06 (re-enabled): Complexity analysis prevents width-based N+1
         # amplification. max_complexity=100: nested list resolvers cost 100 units.
-        QueryComplexityLimiter(max_complexity=100),
+        QueryComplexityLimiter(max_complexity=100),  # type: ignore[call-arg]
     ]
 
     # Disable introspection in production -- schema enumeration lets attackers

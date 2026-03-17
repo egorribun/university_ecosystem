@@ -93,7 +93,7 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         after_id: Any = None,
         limit: int = 50,
         order_column: Any = None,
-        extra_filters: list[Any] | None = None,
+        extra_filters: Sequence[Any] | None = None,
     ) -> Sequence[DTOT]:
         """Keyset pagination — O(log N) vs O(N) for OFFSET-based paging.
 
@@ -122,8 +122,8 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
             # instead of a correlated subquery.  Correlated subqueries can
             # prevent index-only scans on composite indexes; a literal value
             # is always sargable and allows the optimizer to use the full range.
-            cursor_val = await self.db.scalar(  # type: ignore[attr-defined]
-                select(col).where(  # type: ignore[attr-defined]
+            cursor_val = await self.db.scalar(
+                select(col).where(
                     self.model.id == self._cast_id(after_id)  # type: ignore[attr-defined]
                 )
             )

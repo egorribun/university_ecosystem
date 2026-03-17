@@ -8,8 +8,8 @@ from .base import _DEVELOPMENT_ENVIRONMENTS, BaseAppSettings
 
 # MOD-W10-03: Full set of accepted environment names.  Any other string causes a
 # startup ValidationError — prevents silent "prod" typos being treated as dev.
-_VALID_ENVIRONMENTS: frozenset[str] = _DEVELOPMENT_ENVIRONMENTS | frozenset(
-    {"staging", "production"}
+_VALID_ENVIRONMENTS: frozenset[str] = frozenset(
+    _DEVELOPMENT_ENVIRONMENTS | frozenset({"staging", "production"})
 )
 
 

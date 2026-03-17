@@ -1,0 +1,242 @@
+# RZ-04 (audit Wave 12): NetworkPolicy — default-deny + per-component allow-lists.
+#
+# Design rationale:
+#   1. A namespace-wide default-deny blocks ALL ingress and egress for every pod
+#      in the release namespace.  Without this baseline, individual allow policies
+#      are purely additive and provide no isolation guarantee.
+#
+#   2. Each component then gets its own NetworkPolicy with explicit allow rules.
+#      This is the zero-trust network model: deny everything, allow exactly what
+#      is necessary.
+#
+#   3. DNS egress (UDP/TCP 53) must be explicitly allowed or image pulls and
+#      service discovery will silently fail — a common operational pitfall.
+#
+#   4. The "ingress-controller" podSelector relies on the standard label
+#      "app.kubernetes.io/name: ingress-nginx" set by the nginx-ingress Helm chart.
+#      Adjust to match the ingress controller deployed in your cluster.
+
+---
+# Default deny: block all ingress AND egress for every pod bearing release labels.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Gateway: receives external traffic from the ingress controller; calls backend,
+# redis, and the file-processor gRPC service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-gateway-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Accept traffic from the ingress controller.
+    # Labels are configured in values.yaml under networkPolicy.ingressController
+    # so the chart works with nginx, Traefik, AWS ALB, or Istio.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Internal health-check / Prometheus scraping from the monitoring namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9102
+  egress:
+    # Backend API proxy target.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Redis — rate limiter.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # File-processor gRPC.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: file-processor
+      ports:
+        - protocol: TCP
+          port: 50051
+    # OTLP trace exporter (gRPC 4317).
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    # DNS — required for service discovery and hostname resolution.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Backend: accepts traffic from the gateway only; calls postgres, redis, NATS,
+# and external HTTPS endpoints (HIBP, Spotify OAuth, etc.).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-backend-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: gateway
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Prometheus scraping from monitoring namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    # PostgreSQL.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Redis — session cache, rate limiting, pub/sub.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # NATS messaging.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nats
+      ports:
+        - protocol: TCP
+          port: 4222
+    # SpiceDB authz service.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spicedb
+      ports:
+        - protocol: TCP
+          port: 50051
+    # OTLP trace exporter.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    # External HTTPS: HIBP, Spotify OAuth, S3/Garage object storage.
+    - ports:
+        - protocol: TCP
+          port: 443
+    # DNS.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Frontend: accepts traffic from the ingress controller; egress is DNS-only
+# (static assets are served directly by nginx — no backend calls at pod level).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-frontend-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS only — nginx serves pre-built static assets with no upstream calls.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

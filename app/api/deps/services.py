@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 # TD-W9-01/05: ChatService wrapper removed — inject narrow services directly.
 
+
 def get_chat_command_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "ChatCommandService":
@@ -43,11 +44,12 @@ def get_chat_creation_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> "ChatCreationService":
     """FastAPI dep: ChatCreationService (DM creation with Redis lock)."""
+    from app.deps.cache import get_cache
     from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.creation_service import ChatCreationService
 
     uow = uow_from_session(session)
-    return ChatCreationService(uow=uow, session=session)
+    return ChatCreationService(uow=uow, session=session, cache=get_cache())
 
 
 def get_chat_query_service(

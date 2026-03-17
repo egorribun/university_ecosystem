@@ -67,7 +67,7 @@ def _make_idempotency_key(
     raw = f"{chat_id}:{user_id}:{client_key}"
     secret = settings.idempotency_hmac_secret
     if secret:
-        digest = _hmac.new(secret.encode(), raw.encode(), hashlib.blake2b).hexdigest()
+        digest = _hmac.new(secret.encode(), raw.encode(), hashlib.blake2b).hexdigest()  # type: ignore[arg-type]
     else:
         digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
     return f"idm:msg:{digest}"

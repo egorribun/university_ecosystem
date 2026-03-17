@@ -6,6 +6,7 @@ from pydantic import field_validator
 
 from .base import (
     BaseAppSettings,
+    _load_file_secret,
     _validate_non_negative_int,
     _validate_positive_float,
     _validate_positive_int,
@@ -35,6 +36,13 @@ class DatabaseSettings(BaseAppSettings):
     slow_query_logging_enabled: bool = True
     slow_query_threshold_ms: float = 500.0  # 500ms for production
     slow_query_explain_enabled: bool = False  # Enable EXPLAIN for slow queries
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _load_database_url_from_file(cls, v: str | None) -> str | None:
+        # RZ-05 (audit Wave 12): support DATABASE_URL_FILE=/run/secrets/database_url
+        # so the connection string (including password) never appears in docker inspect.
+        return _load_file_secret("DATABASE_URL_FILE", v)
 
     @field_validator("database_pool_size")
     @classmethod

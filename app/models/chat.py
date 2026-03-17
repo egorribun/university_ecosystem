@@ -72,7 +72,9 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     sender_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    content: Mapped[str] = mapped_column(String, nullable=False)
+    # DEBT-01 (RZ-W13): 32 KB cap matches frontend WS validation; prevents
+    # storage-amplification via oversized message payloads.
+    content: Mapped[str] = mapped_column(String(32768), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -94,16 +96,20 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
 class Attachment(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "attachments"
 
+    # DEBT-02 (RZ-W13): explicit index — FK without index causes full-table scan
+    # on DELETE CASCADE from messages and on attachment load per message.
     message_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("messages.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
-    url: Mapped[str] = mapped_column(String, nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    # DEBT-01 (RZ-W13): bounded String columns prevent storage-amplification attacks.
     file_type: Mapped[str] = mapped_column(
-        String, nullable=False
+        String(255), nullable=False
     )  # 'image', 'video', 'file'
-    filename: Mapped[str] = mapped_column(String, nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

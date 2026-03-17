@@ -48,10 +48,16 @@ fn detect_conflicts(target: &ScheduleItem, existing: Vec<ScheduleItem>) -> Vec<S
         .collect()
 }
 
+// PERF-05 (audit Wave 13): explicit constant — centralises the DoS guard limit
+// so it can be found by grep and updated in one place.
+const MAX_CONFLICT_ITEMS: usize = 2500;
+
 #[pyfunction]
 fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
-    if items.len() > 2500 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Input exceeds maximum allowed items (2500) for batch detection"));
+    if items.len() > MAX_CONFLICT_ITEMS {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("Input exceeds maximum allowed items ({MAX_CONFLICT_ITEMS}) for batch detection")
+        ));
     }
 
     // Parallelize conflict detection using rayon
@@ -213,5 +219,7 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_partition_info, m)?)?;
     m.add_function(wrap_pyfunction!(is_partition_expired, m)?)?;
     m.add_function(wrap_pyfunction!(verify_audit_signature, m)?)?;
+    // PERF-05: expose limit so Python callers can validate before calling into Rust.
+    m.add("MAX_CONFLICT_ITEMS", MAX_CONFLICT_ITEMS)?;
     Ok(())
 }

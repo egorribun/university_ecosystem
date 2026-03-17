@@ -133,12 +133,20 @@ func isValidUUID(s string) bool {
 // responses mean the backend is healthy but denied the request — those are NOT
 // errors from the circuit-breaker's perspective and must return (false, nil).
 func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID string) (bool, error) {
+	// PERF-01 (audit Wave 12): wrap the caller's context with a per-call 1.5s deadline.
+	// The client-level Transport timeout (3s) bounds total TCP dial + TLS + response,
+	// but under concurrent load 10 goroutines × 3s each = 30 goroutine-seconds of
+	// amplified latency.  A 1.5s per-call deadline aligns with P99 SLOs and creates
+	// back-pressure so slow backend responses shed load instead of accumulating.
+	callCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+
 	params := url.Values{}
 	params.Set("user_id", userID)
 	params.Set("room_id", roomID)
 	fullURL := fmt.Sprintf("%s/api/internal/chat/check-participant?%s", c.baseURL, params.Encode())
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return false, err
 	}

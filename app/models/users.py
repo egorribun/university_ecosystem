@@ -30,9 +30,12 @@ _T = TypeVar("_T")
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "users"
-    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    # DEBT-01 (RZ-W13): RFC 5321 §4.5.3.1.1 limits local-part to 64 chars and
+    # domain to 255 chars → total max 320; we use 254 (RFC 5321 §4.5.3.1 total).
+    # Prevents storage-amplification via unbounded email payloads.
+    email: Mapped[str] = mapped_column(String(254), unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
-    pending_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    pending_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
 
     __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
 

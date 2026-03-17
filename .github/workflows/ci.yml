@@ -52,9 +52,12 @@ jobs:
           fetch-depth: 0
 
       - name: Verify uv.lock is up to date (MOD-W5-03)
+        # MOD-03 (audit Wave 12): explicit error annotation in GitHub Actions UI panel.
+        # `uv lock --check` already exits non-zero on mismatch; the `|| (... && exit 1)`
+        # addition surfaces the error in the Checks summary, not just the raw log.
         run: |
           pip install uv
-          uv lock --check
+          uv lock --check || (echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile" && exit 1)
 
       - name: Run pre-commit (check only)
         id: precommit_check
@@ -154,6 +157,20 @@ jobs:
             exit 1
           fi
           echo "OK: $COUNT legacy deps files (baseline: $BASELINE)"
+      - name: Enforce no-pickle gate (RED-01 RZ-W13)
+        # RED-01 (audit Wave 13): pickle.loads/dumps enables RCE if the data
+        # source (Redis, DB) is ever compromised.  Pydantic JSON serialization
+        # is the safe replacement.  This gate prevents future re-introduction.
+        shell: bash
+        run: |
+          result=$(grep -r "import pickle\|from pickle\|pickle\.loads\|pickle\.dumps" app/ --include="*.py" || true)
+          if [ -n "$result" ]; then
+            echo "::error::pickle usage detected in app/ — replace with Pydantic model_validate_json / model_dump_json (see RED-01 in Wave 13 audit)"
+            echo "$result"
+            exit 1
+          fi
+          echo "OK: no pickle usage found in app/"
+
       - name: Validate docker compose configuration
         shell: pwsh
         run: |

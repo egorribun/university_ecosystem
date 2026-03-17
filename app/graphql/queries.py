@@ -77,7 +77,7 @@ class Query:
         self: Any,
         info: strawberry.Info[GraphQLContext],
         limit: int = 20,
-        after: str | None = strawberry.UNSET,  # type: ignore[assignment]
+        after: str | None = strawberry.UNSET,
     ) -> NewsConnection:
         """Paginated news using keyset cursor (MOD-03, audit Wave 10).
 
@@ -93,7 +93,7 @@ class Query:
         from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
         # Normalise strawberry.UNSET → None
-        cursor_str: str | None = None if after is strawberry.UNSET else after  # type: ignore[comparison-overlap]
+        cursor_str: str | None = None if after is strawberry.UNSET else after
 
         # PERF-GQL-02 (audit Wave 10): use direct COUNT(id) with a separate
         # WHERE clause instead of .select_from(subquery()).  The subquery
@@ -185,7 +185,7 @@ class Query:
         self: Any,
         info: strawberry.Info[GraphQLContext],
         limit: int = 25,
-        after: str | None = strawberry.UNSET,  # type: ignore[assignment]
+        after: str | None = strawberry.UNSET,
         active_only: bool = True,
     ) -> EventsConnection:
         """Paginated events using keyset cursor (MOD-03, audit Wave 10).
@@ -198,7 +198,7 @@ class Query:
         from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
         session = info.context.session
-        cursor_str: str | None = None if after is strawberry.UNSET else after  # type: ignore[comparison-overlap]
+        cursor_str: str | None = None if after is strawberry.UNSET else after
 
         # Build base filter used for both count and data queries.
         filters = []

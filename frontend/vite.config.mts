@@ -292,7 +292,7 @@ export default defineConfig(({ mode }) => {
             "vendor-http": ["axios"],
             // TD-04 (audit 2026-03-06): @zxcvbn-ts/core removed from this chunk.
             // Import it dynamically in password-entry components only (register / reset-password).
-            "vendor-security": ["dompurify", "@simplewebauthn/browser"],
+            "vendor-security": ["@simplewebauthn/browser"],
           },
         },
       },

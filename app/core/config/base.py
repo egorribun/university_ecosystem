@@ -197,6 +197,37 @@ class BaseAppSettings(BaseSettings):
     )
 
 
+def _load_file_secret(env_file_var: str, value: str | None) -> str | None:
+    """Return the contents of *env_file_var* path if the variable is set, else *value*.
+
+    Implements the Docker/K8s *_FILE convention (used by the official postgres,
+    redis, and nginx images).  The file is expected to be a /run/secrets/ tmpfs
+    mount — never visible in ``docker inspect`` or image layers.
+
+    RZ-05 (audit Wave 12): use this in field_validator(mode="before") for every
+    secret field so that both plain env vars and *_FILE variants are supported
+    transparently.
+
+    Args:
+        env_file_var: Name of the ``*_FILE`` environment variable (e.g. ``"SECRET_KEY_FILE"``).
+        value: The raw field value received from the environment (may be None
+               when the plain env var is absent).
+
+    Returns:
+        File contents (stripped) if *env_file_var* is set and the file exists,
+        otherwise *value* unchanged.
+    """
+    file_path = os.environ.get(env_file_var)
+    if file_path:
+        try:
+            return Path(file_path).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError(
+                f"{env_file_var} points to a non-readable file ({file_path!r}): {exc}"
+            ) from exc
+    return value
+
+
 def _should_allow_development_defaults(missing: Iterable[str] | None = None) -> bool:
     """Determine if development fallback values are permitted.
 
