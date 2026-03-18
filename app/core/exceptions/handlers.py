@@ -4,6 +4,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.core.exceptions.domain import (
@@ -17,6 +18,19 @@ from app.core.observability import get_trace_id
 
 if TYPE_CHECKING:
     from starlette.types import Send
+
+
+def _loc_to_pointer(loc: tuple[int | str, ...]) -> str:
+    """Convert a Pydantic v2 error location tuple to an RFC 6901 JSON Pointer.
+
+    Example: ("body", "user", "email") → "/body/user/email"
+    Tilde and slash characters in segment names are escaped per RFC 6901:
+      '~' → '~0', '/' → '~1'
+    """
+    if not loc:
+        return ""
+    segments = [str(part).replace("~", "~0").replace("/", "~1") for part in loc]
+    return "/" + "/".join(segments)
 
 
 async def asgi_json_problem(
