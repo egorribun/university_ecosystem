@@ -154,6 +154,9 @@ export function useChatWebSocket({
         reconnectAttemptRef.current = 0
 
         // Start ping interval (heartbeat)
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current)
+        }
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "ping" }))
@@ -244,6 +247,7 @@ export function useChatWebSocket({
                   const timeout = setTimeout(() => {
                     if (!mountedRef.current) return
                     setTypingUsers((p) => {
+                      if (!p.has(key)) return p
                       const updated = new Map(p)
                       updated.delete(key)
                       return updated

@@ -74,7 +74,8 @@ PROFILE_CACHE_HEADER = "x-profile-cache-envelope"
 def _enforce_profile_cache_integrity(request: Request) -> None:
     raw_envelope = request.headers.get(PROFILE_CACHE_HEADER)
     if not raw_envelope:
-        return
+        locale = resolve_locale(request=request)
+        raise_validation_error("errors.profile_cache.missing_envelope", locale)
 
     locale = resolve_locale(request=request)
     session = getattr(request.state, "active_session", None)
@@ -450,15 +451,13 @@ async def export_access_audit(
             },
         )
 
-    # RZ-03: Reduced from 20_000 → 5_000 rows to cap single-response memory use.
-    # Admins requiring larger exports should use async batch exports.
-    # NOTE: serialize_access_logs_csv MUST prefix formula-triggering characters
-    # (=, +, -, @) with a tab to prevent CSV injection (OWASP A03).
-    logs = await export_access_logs(db, start_at=start_at, end_at=end_at, limit=5_000)
+    from fastapi.responses import StreamingResponse
+    from app.services.data_access import export_access_logs_stream
+
     audit.log("users.audit.export", request, user_id=user.id)
-    csv_payload = serialize_access_logs_csv(logs)
-    return Response(
-        content=csv_payload,
+
+    return StreamingResponse(
+        export_access_logs_stream(db, start_at=start_at, end_at=end_at, actor_user_id=None, subject_user_id=None),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=access_audit.csv"},
     )

@@ -44,8 +44,9 @@ async def ensure_partitions_exist() -> None:
                     )
 
                     # RZ-2 Fix (audit 2026-03-12): Safely handle identifiers and literals
-                    safe_partition = str(partition_name).replace('"', '""')
-                    safe_table = str(table).replace('"', '""')
+                    preparer = conn.dialect.identifier_preparer
+                    safe_partition = preparer.quote(partition_name)
+                    safe_table = preparer.quote(table)
 
                     # Strict validation to prevent State Date Injection
                     from datetime import datetime
@@ -59,8 +60,8 @@ async def ensure_partitions_exist() -> None:
                     await conn.execute(
                         text(
                             f"""
-                        CREATE TABLE IF NOT EXISTS "{safe_partition}"
-                        PARTITION OF "{safe_table}"
+                        CREATE TABLE IF NOT EXISTS {safe_partition}
+                        PARTITION OF {safe_table}
                         FOR VALUES FROM ('{safe_start}')
                         TO ('{safe_end}');
                     """
@@ -92,8 +93,9 @@ async def ensure_partitions_exist() -> None:
                     if rust_ext.is_partition_expired(p_name, table, retention_days):
                         try:
                             logger.info(f"Pruning old partition {p_name}")
-                            safe_p_name = str(p_name).replace('"', '""')
-                            await conn.execute(text(f'DROP TABLE "{safe_p_name}"'))
+                            preparer = conn.dialect.identifier_preparer
+                            safe_p_name = preparer.quote(p_name)
+                            await conn.execute(text(f"DROP TABLE {safe_p_name}"))
                             await conn.commit()
                         except Exception as e:
                             logger.error(f"Failed to prune partition {p_name}: {e}")
@@ -106,7 +108,9 @@ async def start_partition_management_scheduler(
     Simplistic scheduler for partition management.
     In a real production environment, this might be a Celery Beat task or a cron job.
     """
-    import asyncio
+    from app.core.task_registry import TaskRegistry
+
+    registry = TaskRegistry()
 
     async def run_periodically() -> None:
         while True:
@@ -116,11 +120,9 @@ async def start_partition_management_scheduler(
                 logger.error(f"Error in partition management: {e}")
             await asyncio.sleep(interval_seconds)
 
-    task = asyncio.create_task(run_periodically())
+    registry.create_task(run_periodically(), name="partition_manager")
 
     async def stop() -> None:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        await registry.shutdown(timeout=10.0)
 
     return stop

@@ -51,6 +51,7 @@ async def user_factory(
                 pref_data[k] = kwargs.pop(k)
 
         defaults.update(kwargs)
+        defaults["_allow_system_managed_assignment"] = True
         user = models.User(**defaults)
 
         user.profile = models.UserProfile(**profile_data)

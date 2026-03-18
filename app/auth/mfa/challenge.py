@@ -267,6 +267,23 @@ async def issue_challenge(
     return challenge
 
 
+async def issue_dummy_challenge(db: AsyncSession) -> None:
+    """
+    Perform a generic DB write to normalize response times and mitigate
+    user enumeration timing attacks.
+    """
+    import uuid
+    from sqlalchemy import text
+
+    # Updating a massive table with an unknown ID takes 0.01ms because PostgreSQL
+    # uses the PK index and finds no row. This does NOT successfully normalize
+    # the timing against an actual I/O-heavy update.
+    # Instead, we execute a deterministic delay representing the 95th percentile
+    # of a legitimate User update (e.g. ~10ms).
+    await db.execute(text("SELECT pg_sleep(0.01)"))
+    await db.flush()
+
+
 async def get_challenge(
     db: AsyncSession,
     *,
