@@ -1,35 +1,121 @@
+# RZ-05 (audit Wave 12): Docker secrets — mounted at /run/secrets/<name> as tmpfs
+# files, invisible to `docker inspect` and not stored in image layers.
+#
+# Setup (Docker Swarm):
+#   echo "min-32-char-secret-key" | docker secret create secret_key -
+#   echo "postgresql://user:pass@host/db" | docker secret create database_url -
+#   echo "nats-auth-token" | docker secret create nats_auth_token -
+#
+# Setup (Docker Compose without Swarm) — use file: secrets (keep outside repo):
+#   secrets:
+#     secret_key:
+#       file: /etc/university/secrets/secret_key   # chmod 0400, owned by deploy user
+#
+# Python config reads SECRET_KEY_FILE, DATABASE_URL_FILE, NATS_AUTH_TOKEN_FILE
+# via _load_file_secret() in app/core/config/base.py.
+
+secrets:
+  secret_key:
+    external: true
+  database_url:
+    external: true
+  nats_auth_token:
+    external: true
+
 services:
   backend:
     profiles: ["prod"]
+    # RZ-05: secret files replace plain env vars so sensitive values never appear
+    # in `docker inspect` or the process environment.
+    secrets:
+      - secret_key
+      - database_url
+      - nats_auth_token
+    environment:
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      DATABASE_URL_FILE: /run/secrets/database_url
+      NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN for production}
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:?Set FRONTEND_ORIGINS for production}
+    # RZ-W13-05: container hardening — defence-in-depth on top of K8s securityContext.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+      - /app/cache:size=256m,nosuid
+    cap_drop:
+      - ALL
     deploy:
       resources:
         limits:
           cpus: '1.0'
           memory: 1G
-    environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN for production}
-      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:?Set FRONTEND_ORIGINS for production}
 
   notifications-worker:
     profiles: ["prod"]
+    secrets:
+      - secret_key
+      - database_url
+      - nats_auth_token
+    environment:
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      DATABASE_URL_FILE: /run/secrets/database_url
+      NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    cap_drop:
+      - ALL
     deploy:
       resources:
         limits:
           cpus: '0.50'
           memory: 512M
+
+  outbox-worker:
+    profiles: ["prod"]
+    secrets:
+      - secret_key
+      - database_url
+      - nats_auth_token
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      DATABASE_URL_FILE: /run/secrets/database_url
+      NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
 
   migrations:
     profiles: ["prod"]
+    secrets:
+      - secret_key
+      - database_url
+    environment:
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      DATABASE_URL_FILE: /run/secrets/database_url
+    # Migrations need write access for Alembic temp files; no read_only here.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     deploy:
       resources:
         limits:
           cpus: '0.50'
           memory: 512M
-    environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
 
   postgres:
     image: pgvector/pgvector:pg17

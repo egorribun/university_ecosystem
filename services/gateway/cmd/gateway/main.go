@@ -175,12 +175,18 @@ func main() {
 					zap.String("path", r.Request.URL.Path))
 			}
 
-			// GW-P1-01 (audit Wave 10): handle json.Marshal error — restore original on failure.
+			// GW-P1-01 (audit Wave 10): handle json.Marshal error.
+			// Wave 12 RZ-06: return the error rather than nil so the proxy's
+			// ErrorHandler emits a 502 instead of silently passing through the
+			// original body (which may still contain access_token/refresh_token).
+			// json.Marshal on a map[string]interface{} decoded from JSON cannot
+			// fail in practice; this branch is defensive dead-code protection.
 			newBody, marshalErr := json.Marshal(data)
 			if marshalErr != nil {
-				r.Body = io.NopCloser(bytes.NewBuffer(body))
-				r.Header.Set("X-Proxy-Modify-Error", "json_marshal_failed")
-				return nil
+				logger.Error("gateway: JSON remarshal failed — returning 502",
+					zap.String("path", r.Request.URL.Path),
+					zap.Error(marshalErr))
+				return fmt.Errorf("gateway: remarshal auth response: %w", marshalErr)
 			}
 			r.Body = io.NopCloser(bytes.NewBuffer(newBody))
 			r.ContentLength = int64(len(newBody))

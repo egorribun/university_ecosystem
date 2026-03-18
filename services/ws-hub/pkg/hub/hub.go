@@ -74,6 +74,11 @@ type Hub struct {
 	// call is a no-op.  Without this, rolling deploys and test teardowns can
 	// call Stop() twice, leaking the JWKS cache refresh goroutine each time.
 	stopOnce sync.Once
+	// jwksMu guards jwksCacheCancel and jwksCache against concurrent access
+	// between SetupJWKS (writer) and Stop (reader).  Wave 12 audit RZ-02:
+	// without this lock, a rolling deploy or test that calls SetupJWKS while
+	// Stop is executing races on these two fields.
+	jwksMu sync.Mutex
 }
 
 func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
@@ -108,6 +113,9 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	if jwksURL == "" {
 		return nil
 	}
+
+	h.jwksMu.Lock()
+	defer h.jwksMu.Unlock()
 
 	// RED-06 (audit Wave 11): Cancel any existing JWKS cache goroutine before
 	// replacing it.  Without this, repeated calls to SetupJWKS (e.g. in rolling
@@ -349,15 +357,23 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 		defer span.End()
 
 		var wsMsg Message
-		if err := json.Unmarshal(msg.Data, &wsMsg); err == nil {
-			// Non-blocking push: dropping here is safer than blocking the NATS
-			// subscriber goroutine (blocked goroutine → MaxPending exceeded → sub closed).
-			select {
-			case h.Broadcast <- &wsMsg:
-			default:
-				h.Logger.Warn("Broadcast channel full, dropping NATS chat message",
-					"subject", msg.Subject)
-			}
+		if err := json.Unmarshal(msg.Data, &wsMsg); err != nil {
+			// TD-03 (Wave 12): log malformed messages so protocol-injection
+			// attempts from compromised sidecars are visible in audit logs.
+			// Log subject+size only — never the raw payload (may contain PII).
+			h.Logger.Warn("ws-hub: malformed NATS chat message dropped",
+				"subject", msg.Subject,
+				"size", len(msg.Data),
+				"err", err)
+			return
+		}
+		// Non-blocking push: dropping here is safer than blocking the NATS
+		// subscriber goroutine (blocked goroutine → MaxPending exceeded → sub closed).
+		select {
+		case h.Broadcast <- &wsMsg:
+		default:
+			h.Logger.Warn("Broadcast channel full, dropping NATS chat message",
+				"subject", msg.Subject)
 		}
 	})
 	if err != nil {
@@ -395,14 +411,20 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 		defer span.End()
 
 		var wsMsg Message
-		if err := json.Unmarshal(msg.Data, &wsMsg); err == nil {
-			wsMsg.Type = "notification"
-			select {
-			case h.Broadcast <- &wsMsg:
-			default:
-				h.Logger.Warn("Broadcast channel full, dropping NATS notification",
-					"subject", msg.Subject)
-			}
+		if err := json.Unmarshal(msg.Data, &wsMsg); err != nil {
+			// TD-03 (Wave 12): same rationale as chat callback.
+			h.Logger.Warn("ws-hub: malformed NATS notification dropped",
+				"subject", msg.Subject,
+				"size", len(msg.Data),
+				"err", err)
+			return
+		}
+		wsMsg.Type = "notification"
+		select {
+		case h.Broadcast <- &wsMsg:
+		default:
+			h.Logger.Warn("Broadcast channel full, dropping NATS notification",
+				"subject", msg.Subject)
 		}
 	})
 	if err != nil {
@@ -450,8 +472,15 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 			Signature string `json:"signature"`
 		}
 
-		if err := json.Unmarshal(msg.Data, &payload); err == nil {
-			// TD-NEW-07: Validate HMAC signature before performing invalidation.
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			// TD-03 (Wave 12): same rationale as chat/notification callbacks.
+			h.Logger.Warn("ws-hub: malformed NATS cache.invalidate message dropped",
+				"subject", msg.Subject,
+				"size", len(msg.Data),
+				"err", err)
+			return
+		}
+		// TD-NEW-07: Validate HMAC signature before performing invalidation.
 			// Python side uses json.dumps(sort_keys=True, separators=(',', ':')).
 			// In Go, struct field order determines JSON key order in Marshal.
 			// We define the struct with RoomID, Timestamp, UserID (alphabetical)
@@ -485,7 +514,6 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 				_, invSpan := otel.Tracer("hub").Start(msgCtx, "CacheInvalidated")
 				invSpan.End()
 			}
-		}
 	})
 	if err != nil {
 		h.Logger.Error("NATS cache invalidation subscription failed", "err", err)
@@ -563,9 +591,11 @@ func (h *Hub) Stop() {
 		if h.UpgradeLimiter != nil {
 			h.UpgradeLimiter.Stop()
 		}
+		h.jwksMu.Lock()
 		if h.jwksCacheCancel != nil {
 			h.jwksCacheCancel()
 		}
+		h.jwksMu.Unlock()
 	})
 }
 

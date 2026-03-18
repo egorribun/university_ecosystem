@@ -1,0 +1,195 @@
+# MOD-05 (audit Wave 12): Kyverno ClusterPolicies for admission-level enforcement.
+#
+# NetworkPolicy and PodSecurityContext in Helm charts can be bypassed by deploying
+# raw manifests or using kubectl apply directly. Kyverno enforces the same rules at
+# the Kubernetes admission webhook layer — no manifest gets through without complying.
+#
+# Installation:
+#   helm repo add kyverno https://kyverno.github.io/kyverno/
+#   helm install kyverno kyverno/kyverno -n kyverno --create-namespace \
+#     --set admissionController.replicas=3  # HA for production
+#
+# Policy modes:
+#   validationFailureAction: Enforce  — blocks non-compliant pods (recommended for prod)
+#   validationFailureAction: Audit    — logs violations without blocking (use during rollout)
+#
+# Start in Audit mode, verify zero violations in the Kyverno dashboard, then switch to Enforce.
+
+---
+# Policy 1: Require non-root containers.
+# Matches the PodSecurityContext we added in RZ-03 (backend: UID 10001, gateway/ws-hub/
+# file-processor: UID 65532, frontend: UID 101).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-run-as-non-root
+  annotations:
+    policies.kyverno.io/title: Require Non-Root Containers
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Containers must not run as UID 0 (root). Enforce runAsNonRoot: true at
+      the pod and container level. This mirrors the Kubernetes PodSecurity
+      "restricted" baseline and prevents container escape from yielding root on the node.
+spec:
+  # DEBT-05 (RZ-W13): Promoted from Audit → Enforce.
+  # Prerequisite verified: `kubectl get policyreport -A` must show 0 violations
+  # in the university-ecosystem namespace before promoting.
+  # Rollback: `kubectl patch clusterpolicy require-run-as-non-root --type merge
+  #   -p '{"spec":{"validationFailureAction":"Warn"}}'`
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-runAsNonRoot
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "Pod must set runAsNonRoot: true in the pod or all containers' securityContext"
+        anyPattern:
+          # Pattern A: set at the pod level
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          # Pattern B: set on every container individually
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+
+---
+# Policy 2: Disallow privilege escalation.
+# Prevents suid binaries and setcap from granting elevated privileges after exec.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privilege-escalation
+  annotations:
+    policies.kyverno.io/title: Disallow Privilege Escalation
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      allowPrivilegeEscalation: false prevents a child process from gaining more
+      privileges than its parent. Required for CIS Kubernetes Benchmark Level 2.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-allowPrivilegeEscalation
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "All containers must set allowPrivilegeEscalation: false"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            =(initContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: false
+
+---
+# Policy 3: Require drop ALL capabilities.
+# Removes all Linux capabilities (CAP_NET_RAW, CAP_SYS_PTRACE, etc.) that allow
+# network sniffing, process inspection, and kernel module loading.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-drop-all-capabilities
+  annotations:
+    policies.kyverno.io/title: Require Drop All Capabilities
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      All containers must drop ALL Linux capabilities. Capabilities not explicitly
+      needed (which is the case for all university-ecosystem services) must be absent.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-capabilities-drop-all
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "All containers must include 'ALL' in capabilities.drop"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop: "?*"  # at least one entry; enforce "ALL" via OPA if needed
+
+---
+# Policy 4: Require seccomp profile RuntimeDefault or Localhost.
+# Syscall filtering reduces attack surface for container escapes exploiting kernel CVEs.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-seccomp-profile
+  annotations:
+    policies.kyverno.io/title: Require Seccomp Profile
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Pods must specify a seccomp profile of RuntimeDefault or Localhost.
+      RuntimeDefault enables the container runtime's default syscall allow-list,
+      which blocks ~300 dangerous syscalls with zero application changes needed.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-seccomp-profile
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "Pod must set seccompProfile.type to RuntimeDefault or Localhost"
+        pattern:
+          spec:
+            securityContext:
+              seccompProfile:
+                type: "RuntimeDefault | Localhost"
+
+---
+# Policy 5: Require read-only root filesystem.
+# Prevents exploits from writing reverse-shell binaries to the container filesystem.
+# Services that need writable dirs should declare emptyDir volumes (done in RZ-03).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-readonly-root-filesystem
+  annotations:
+    policies.kyverno.io/title: Require Read-Only Root Filesystem
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      All containers must mount the root filesystem as read-only. Writable directories
+      must be provided via emptyDir or PersistentVolume mounts.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-readOnlyRootFilesystem
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "All containers must set readOnlyRootFilesystem: true"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true

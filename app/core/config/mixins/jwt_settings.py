@@ -11,6 +11,7 @@ from pydantic import ValidationInfo, field_validator
 from app.core.config.base import (
     _DEVELOPMENT_ENVIRONMENTS,
     _coerce_str_list,
+    _load_file_secret,
 )
 
 
@@ -30,6 +31,13 @@ class JwtSettingsMixin:
     max_sessions_per_user: int = 5
     # RS256 / JWKS support (MOD-1: audit 2026-02-24)
     jwt_private_key_path: str | None = ".secrets/jwt_rs256.pem"
+
+    @field_validator("secret_key", mode="before")
+    @classmethod
+    def _load_secret_key_from_file(cls, v: str | None) -> str | None:
+        # RZ-05 (audit Wave 12): support SECRET_KEY_FILE=/run/secrets/secret_key
+        # so the plaintext value never appears in `docker inspect` environment.
+        return _load_file_secret("SECRET_KEY_FILE", v)
 
     @field_validator("secret_key")
     @classmethod

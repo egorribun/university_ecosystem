@@ -1,0 +1,64 @@
+# MOD-06 (audit Wave 13): PodDisruptionBudget — guarantee minimum availability
+# during voluntary disruptions (node drains, cluster upgrades, Helm rollouts).
+#
+# maxUnavailable: 1  means at most 1 pod can be down at a time.  This is the
+# right default for a 2-replica deployment: 1 pod stays serving while the
+# other is restarted.  For replicaCount=1 the PDB effectively prevents any
+# voluntary eviction — enable only when replicaCount >= 2.
+#
+# The {{- if gt (int .Values.*.replicaCount) 1 }} guards ensure PDBs are not
+# emitted for single-replica deployments where they would block all node drains.
+
+{{- if gt (int .Values.backend.replicaCount) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+{{- end }}
+
+{{- if gt (int .Values.gateway.replicaCount) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: gateway
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+{{- end }}
+
+{{- if gt (int .Values.fileProcessor.replicaCount) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-file-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: file-processor
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: file-processor
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -23,23 +23,79 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # TD-05 (audit Wave 12): use the dedicated ServiceAccount (automountServiceAccountToken=false).
+      serviceAccountName: {{ .Release.Name }}-backend
+      automountServiceAccountToken: false
+      # RZ-03 (audit Wave 12): pod-level security context — enforce non-root execution.
+      # runAsUser 10001 matches the 'app' user created in backend.Dockerfile.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          # RZ-03: container-level hardening — drop all Linux capabilities, block privilege
+          # escalation, and mount root filesystem read-only (writable dirs via emptyDir below).
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: {{ .Values.backend.service.port }}
               protocol: TCP
           env:
             {{- toYaml .Values.backend.env | nindent 12 }}
+            # PERF-03 (RZ-W13): configurable OTel sampling — default 10% in prod.
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ .Values.otel.sampler | quote }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ .Values.otel.samplerArg | quote }}
+          # TD-04 (audit Wave 12): explicit probe timing prevents premature liveness kills
+          # on slow startup. startupProbe gives up to 150s (30×5s) before handing off.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /healthz
               port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /healthz
               port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          # RZ-03: writable dirs for the Python backend (readOnlyRootFilesystem=true).
+          # /tmp: stdlib tempfile, uvicorn worker sockets.
+          # /app/cache: application-level cache dir created in backend.Dockerfile.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        - name: app-cache
+          emptyDir:
+            sizeLimit: 256Mi

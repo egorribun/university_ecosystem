@@ -49,7 +49,11 @@ def _generate_session_signing_key() -> str:
 class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "active_sessions"
 
-    jti: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    # DEBT-01 (RZ-W13): JTI is a UUID4 string — 36 chars. Explicit bound prevents
+    # index bloat and storage-amplification via crafted JTI values.
+    jti: Mapped[str] = mapped_column(
+        String(36), nullable=False, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -171,7 +175,7 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
 class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "failed_login_attempts"
 
-    email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)
     # TD-3 (audit 2026-02-26): Added ip_address and user_agent for distributed
     # brute-force analysis. Without ip_address it was impossible to detect an
     # attacker rotating through multiple email addresses from one IP.
@@ -240,7 +244,7 @@ class PasswordResetToken(Base, UUID7PrimaryKeyMixin, UserFK):
 class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "email_change_tokens"
 
-    new_email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    new_email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(
         String, unique=True, index=True, nullable=False
     )

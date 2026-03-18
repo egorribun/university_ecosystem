@@ -51,6 +51,14 @@ class WebSocketRateLimiter:
         return False
 
 
+# PERF-04 (audit Wave 13): Cap concurrent fan-out coroutines so that a large
+# presence audience (up to _PRESENCE_AUDIENCE_LIMIT=500) or chat broadcast
+# cannot spike memory or exhaust the Redis connection pool.  The semaphore is
+# module-level so it is shared across all ConnectionManager instances and
+# across both broadcast_to_chat and broadcast_presence call sites.
+_BROADCAST_SEMAPHORE: asyncio.Semaphore = asyncio.Semaphore(100)
+
+
 class ConnectionManager:
     """Manages WebSocket connections for all users."""
 
@@ -213,8 +221,13 @@ class ConnectionManager:
             for p_id in participant_ids
             if exclude_user_id is None or p_id != exclude_user_id
         ]
+
+        async def _throttled_send(uid: uuid.UUID) -> int:
+            async with _BROADCAST_SEMAPHORE:
+                return await self.send_to_user(uid, message)
+
         results = await asyncio.gather(
-            *(self.send_to_user(p_id, message) for p_id in targets),
+            *(_throttled_send(p_id) for p_id in targets),
             return_exceptions=True,
         )
         return sum(r for r in results if isinstance(r, int))
@@ -265,8 +278,12 @@ class ConnectionManager:
         if not audience:
             return 0
 
+        async def _throttled_presence_send(uid: uuid.UUID) -> int:
+            async with _BROADCAST_SEMAPHORE:
+                return await self.send_to_user(uid, payload)
+
         results = await asyncio.gather(
-            *(self.send_to_user(uid, payload) for uid in audience),
+            *(_throttled_presence_send(uid) for uid in audience),
             return_exceptions=True,
         )
         return sum(r for r in results if isinstance(r, int))

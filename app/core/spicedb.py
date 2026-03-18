@@ -123,13 +123,26 @@ async def get_async_spicedb_channel() -> AsyncIterator[object]:
     target = f"{host}:{port}"
     token = settings.spicedb_preshared_key
 
+    # DEBT-03 / RZ-W13-02: gRPC keepalive options ensure dead connections are
+    # detected quickly.  Without these, a network partition can leave the channel
+    # in a broken state for minutes, silently timing out every permission check.
+    _KEEPALIVE_OPTIONS = [
+        ("grpc.keepalive_time_ms", 10_000),  # send a ping every 10 s
+        ("grpc.keepalive_timeout_ms", 5_000),  # wait 5 s for pong
+        ("grpc.keepalive_permit_without_calls", 1),  # ping even with no active RPCs
+        ("grpc.max_reconnect_backoff_ms", 5_000),  # cap reconnect back-off at 5 s
+        ("grpc.http2.min_time_between_pings_ms", 10_000),
+    ]
+
     if use_ssl:
         from grpcutil import bearer_token_credentials
 
         credentials = bearer_token_credentials(token)
-        channel = grpc.aio.secure_channel(target, credentials)
+        channel = grpc.aio.secure_channel(
+            target, credentials, options=_KEEPALIVE_OPTIONS
+        )
     else:
-        channel = grpc.aio.insecure_channel(target)
+        channel = grpc.aio.insecure_channel(target, options=_KEEPALIVE_OPTIONS)
 
     logger.debug("SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl)
     try:

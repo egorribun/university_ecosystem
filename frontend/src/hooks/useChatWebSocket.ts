@@ -172,61 +172,64 @@ export function useChatWebSocket({
           }
           // Cast to the existing union type for backward compat with the switch body.
           // Runtime safety is already guaranteed by valibot above.
-          const data = validated as unknown as WebSocketMessage
-
-          switch (data.type) {
-            case "new_message":
-              if (data.message && data.chat_id) {
-                // Update messages cache
-                queryClient.setQueryData<MessagesListResponse>(
-                  ["messages", data.chat_id],
-                  (old) => {
-                    if (!old) return { items: [data.message!], has_more: false, next_cursor: null }
-                    // Check for duplicate
-                    if (old.items.some((m) => m.id === data.message!.id)) return old
-                    return { ...old, items: [...old.items, data.message!] }
-                  }
-                )
-                // MOD-04 (audit 2026-03-15 Wave 7): Reset staleness timestamp
-                // without triggering a background refetch.  setQueryData alone
-                // updates the cache but leaves the staleTime clock unchanged —
-                // TanStack Query may fire a background fetch immediately if
-                // staleTime=0 (the default), duplicating the WS-delivered data.
-                // refetchType: "none" = mark stale so the next mount fetches,
-                // but do NOT start a background refetch right now.
-                queryClient.invalidateQueries({
-                  queryKey: ["messages", data.chat_id],
-                  refetchType: "none",
-                })
-                // DEBT-04 (audit 2026-03-06): Update chats cache surgically instead of
-                // invalidating the full list (which triggers a network round-trip per message).
-                // unread_count is incremented unconditionally; it resets via the read-receipt
-                // pathway (sendRead → backend → WS "read" event → setQueryData).
-                queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
-                  if (!old) return old
-                  return {
-                    ...old,
-                    items: old.items.map((chat) =>
-                      chat.id === data.chat_id
-                        ? {
-                            ...chat,
-                            last_message: data.message,
-                            unread_count: chat.unread_count + 1,
-                          }
-                        : chat
-                    ),
-                  }
-                })
-                queryClient.invalidateQueries({
-                  queryKey: ["chats"],
-                  refetchType: "none",
-                })
-                onNewMessageRef.current?.(data.message, data.chat_id)
-              }
+          // TD-07 (audit Wave 12): use the validated WsServerMessage discriminated union
+          // directly — TypeScript narrows all required fields per case, so the
+          // redundant null checks and unsafe `as unknown as WebSocketMessage` cast
+          // below are eliminated.  Non-null assertions (!) are removed for the same reason.
+          switch (validated.type) {
+            case "new_message": {
+              const data = validated  // { type: "new_message"; chat_id: string; message: ParsedMessage }
+              // Update messages cache
+              queryClient.setQueryData<MessagesListResponse>(
+                ["messages", data.chat_id],
+                (old) => {
+                  if (!old) return { items: [data.message as unknown as Message], has_more: false, next_cursor: null }
+                  // Check for duplicate
+                  if (old.items.some((m) => m.id === data.message.id)) return old
+                  return { ...old, items: [...old.items, data.message as unknown as Message] }
+                }
+              )
+              // MOD-04 (audit 2026-03-15 Wave 7): Reset staleness timestamp
+              // without triggering a background refetch.  setQueryData alone
+              // updates the cache but leaves the staleTime clock unchanged —
+              // TanStack Query may fire a background fetch immediately if
+              // staleTime=0 (the default), duplicating the WS-delivered data.
+              // refetchType: "none" = mark stale so the next mount fetches,
+              // but do NOT start a background refetch right now.
+              queryClient.invalidateQueries({
+                queryKey: ["messages", data.chat_id],
+                refetchType: "none",
+              })
+              // DEBT-04 (audit 2026-03-06): Update chats cache surgically instead of
+              // invalidating the full list (which triggers a network round-trip per message).
+              // unread_count is incremented unconditionally; it resets via the read-receipt
+              // pathway (sendRead → backend → WS "read" event → setQueryData).
+              queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
+                if (!old) return old
+                return {
+                  ...old,
+                  items: old.items.map((chat) =>
+                    chat.id === data.chat_id
+                      ? {
+                          ...chat,
+                          last_message: data.message as unknown as Message,
+                          unread_count: chat.unread_count + 1,
+                        }
+                      : chat
+                  ),
+                }
+              })
+              queryClient.invalidateQueries({
+                queryKey: ["chats"],
+                refetchType: "none",
+              })
+              onNewMessageRef.current?.(data.message as unknown as Message, data.chat_id)
               break
+            }
 
-            case "typing":
-              if (data.chat_id && data.user_id && data.user_name) {
+            case "typing": {
+              const data = validated  // { type: "typing"; chat_id: string; user_id: string; user_name: string }
+              {
                 setTypingUsers((prev) => {
                   const newMap = new Map(prev)
                   const key = `${data.chat_id}:${data.user_id}`
@@ -257,52 +260,52 @@ export function useChatWebSocket({
                 onTypingRef.current?.(data.chat_id, data.user_id, data.user_name)
               }
               break
+            }
 
-            case "read":
-              if (data.chat_id && data.message_id && data.user_id) {
-                // Update message read status in cache
-                queryClient.setQueryData<MessagesListResponse>(
-                  ["messages", data.chat_id],
-                  (old) => {
-                    if (!old) return old
-                    return {
-                      ...old,
-                      items: old.items.map((m) =>
-                        m.id === data.message_id ? { ...m, read_status: true } : m
-                      ),
-                    }
+            case "read": {
+              const data = validated  // { type: "read"; chat_id: string; message_id: string; user_id: string }
+              // Update message read status in cache
+              queryClient.setQueryData<MessagesListResponse>(
+                ["messages", data.chat_id],
+                (old) => {
+                  if (!old) return old
+                  return {
+                    ...old,
+                    items: old.items.map((m) =>
+                      m.id === data.message_id ? { ...m, read_status: true } : m
+                    ),
                   }
-                )
-                // MOD-04: prevent background refetch after WS-driven cache update.
-                queryClient.invalidateQueries({
-                  queryKey: ["messages", data.chat_id],
-                  refetchType: "none",
-                })
-                onReadRef.current?.(data.chat_id, data.message_id, data.user_id)
-              }
+                }
+              )
+              // MOD-04: prevent background refetch after WS-driven cache update.
+              queryClient.invalidateQueries({
+                queryKey: ["messages", data.chat_id],
+                refetchType: "none",
+              })
+              onReadRef.current?.(data.chat_id, data.message_id, data.user_id)
               break
+            }
 
-            case "online":
-              if (data.user_id !== undefined && data.status !== undefined) {
-                onOnlineStatusRef.current?.(data.user_id, data.status)
-              }
+            case "online": {
+              const data = validated  // { type: "online"; user_id: string; status: boolean }
+              onOnlineStatusRef.current?.(data.user_id, data.status)
               break
+            }
 
-            case "presence":
-              if (data.user_id !== undefined && data.active !== undefined) {
-                const lastSeen = data.last_seen ?? null
-                onPresenceUpdateRef.current?.(data.user_id, data.active, lastSeen)
-                // Maintain backward compatibility with online status updates
-                onOnlineStatusRef.current?.(data.user_id, data.active)
-              }
+            case "presence": {
+              const data = validated  // { type: "presence"; user_id: string; active: boolean; last_seen: string | null }
+              onPresenceUpdateRef.current?.(data.user_id, data.active, data.last_seen)
+              // Maintain backward compatibility with online status updates
+              onOnlineStatusRef.current?.(data.user_id, data.active)
               break
+            }
 
             case "pong":
               // Heartbeat response, nothing to do
               break
 
             case "error":
-              logError("[WebSocket] Server error:", data)
+              logError("[WebSocket] Server error:", validated)
               break
           }
         } catch (e) {

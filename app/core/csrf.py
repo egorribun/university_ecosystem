@@ -57,6 +57,7 @@ from starlette.requests import Request
 from app.core.exceptions.handlers import asgi_json_problem
 from app.core.localization import resolve_locale
 from app.core.logging import get_logger
+from app.core.middleware import request_id_ctx  # TD-09 (audit Wave 12)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -72,7 +73,7 @@ CSRF_HEADER_NAME = "x-csrf-token"
 _TOKEN_NONCE_BYTES = 32
 # Separator between nonce and HMAC in the cookie value.
 # Period is safe in cookie values (RFC 6265) and is not produced by base64url.
-_TOKEN_SEPARATOR = "."  # nosec B105
+_TOKEN_SEPARATOR = "."  # nosec B105  # noqa: S105
 
 # RZ-W9-04: Anonymous session binding cookie.
 # Replaces the previous IP+UA fingerprint with a random per-client nonce so
@@ -326,6 +327,7 @@ class CSRFMiddleware:
                     path=path,
                     cookie_present=bool(cookie_token),
                     header_present=bool(header_token),
+                    request_id=request_id_ctx.get(""),
                 )
                 await _reject_csrf(scope, receive, send)
                 return
@@ -336,6 +338,7 @@ class CSRFMiddleware:
                     "CSRF rejected (token mismatch)",
                     method=method,
                     path=path,
+                    request_id=request_id_ctx.get(""),
                 )
                 await _reject_csrf(scope, receive, send)
                 return
@@ -349,6 +352,7 @@ class CSRFMiddleware:
                         "CSRF rejected (invalid HMAC signature)",
                         method=method,
                         path=path,
+                        request_id=request_id_ctx.get(""),
                     )
                     await _reject_csrf(scope, receive, send)
                     return
@@ -380,7 +384,10 @@ class CSRFMiddleware:
                     )
                     if new_anon_nonce:
                         headers.append(
-                            (b"set-cookie", self._build_anon_nonce_cookie(new_anon_nonce))
+                            (
+                                b"set-cookie",
+                                self._build_anon_nonce_cookie(new_anon_nonce),
+                            )
                         )
                     message = {**message, "headers": headers}
             await send(message)

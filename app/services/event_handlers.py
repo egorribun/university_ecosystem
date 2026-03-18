@@ -165,6 +165,11 @@ async def handle_message_sent(event: MessageSent) -> None:
             return
 
         # 2. Fetch chat with participants
+        if event.chat_id is None:
+            logger.error(
+                "Message %s has no chat_id, skipping notification", event.message_id
+            )
+            return
         chat = await repo.get_by_id(event.chat_id)
         if not chat:
             logger.error("Chat %s not found for notification", event.chat_id)

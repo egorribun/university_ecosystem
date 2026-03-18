@@ -1,0 +1,73 @@
+# TD-05 (audit Wave 12): RBAC — dedicated ServiceAccount per component with minimal
+# permissions. automountServiceAccountToken: false prevents pods from talking to the
+# K8s API by default; only components that genuinely need it should override this.
+#
+# Why separate service accounts?
+#   Shared service accounts give every pod the union of all roles. A compromised
+#   backend pod could use gateway permissions and vice versa. Separation limits
+#   blast radius to the specific component's permissions.
+#
+# IRSA annotation (EKS): attach an IAM role to the service account for AWS service
+# access (S3, SSM, Secrets Manager) without static credentials. Set
+#   serviceAccount.roleArn in values.yaml per component.
+
+{{- range $component := list "backend" "gateway" "frontend" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $.Release.Name }}-{{ $component }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+  {{- with (index $.Values (printf "%s" $component) | default dict) }}
+  {{- if .serviceAccount }}
+  {{- with .serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+# Prevent automatic mounting of the default service account token into pods.
+# Pods that need K8s API access must explicitly set serviceAccountName AND
+# automountServiceAccountToken: true in their PodSpec.
+automountServiceAccountToken: false
+{{- end }}
+
+---
+# Role: backend is the only component that may read ConfigMaps (feature flags, etc.)
+# and list Secrets by name (for ExternalSecrets operator reconciliation checks).
+# All other operations are denied.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-backend-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Allow reading own namespace metadata — used by some health-check libraries.
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-backend-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-backend
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ .Release.Name }}-backend-role
+  apiGroup: rbac.authorization.k8s.io

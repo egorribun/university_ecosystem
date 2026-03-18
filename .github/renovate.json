@@ -68,6 +68,46 @@
       "labels": ["go-toolchain", "dependencies"]
     },
     {
+      "description": "MOD-06 (audit Wave 12): Auto-merge Go module patch updates weekly. Supply-chain attacks via go.sum hash bypass are neutralised by automated PRs with SBOM diffs. Minor/major updates require manual review.",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "Go dependencies (patch)",
+      "schedule": ["every weekend"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "labels": ["go", "dependencies"]
+    },
+    {
+      "description": "MOD-06 (audit Wave 12): Group Go module minor/major updates for manual review.",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "major"],
+      "groupName": "Go dependencies (minor/major)",
+      "schedule": ["every weekend"],
+      "automerge": false,
+      "labels": ["go", "dependencies"]
+    },
+    {
+      "description": "MOD-06 (audit Wave 12): Auto-merge Rust (Cargo) patch updates. Cargo.lock pins exact versions; Renovate opens PRs when a patched version is available.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "Rust dependencies (patch)",
+      "schedule": ["every weekend"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "labels": ["rust", "dependencies"]
+    },
+    {
+      "description": "MOD-06: Group Rust minor/major updates for manual review.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "major"],
+      "groupName": "Rust dependencies (minor/major)",
+      "schedule": ["every weekend"],
+      "automerge": false,
+      "labels": ["rust", "dependencies"]
+    },
+    {
       "description": "Flag all security vulnerability alerts with the security label",
       "matchPackagePatterns": ["*"],
       "vulnerabilityAlerts": {

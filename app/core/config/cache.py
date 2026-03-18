@@ -8,6 +8,7 @@ from .base import (
     BaseAppSettings,
     _coerce_int_list,
     _coerce_str_list,
+    _load_file_secret,
     _validate_non_negative_int,
     _validate_positive_int,
 )
@@ -44,6 +45,12 @@ class CacheSettings(BaseAppSettings):
     cache_schedule_l1_max_size: int = 100
     cache_schedule_l1_ttl_s: float = 120.0
     cache_schedule_l2_ttl_s: float = 7200.0
+
+    @field_validator("nats_auth_token", mode="before")
+    @classmethod
+    def _load_nats_token_from_file(cls, v: str | None) -> str | None:
+        # RZ-05 (audit Wave 12): support NATS_AUTH_TOKEN_FILE=/run/secrets/nats_auth_token.
+        return _load_file_secret("NATS_AUTH_TOKEN_FILE", v)
 
     @field_validator("stats_cache_ttl_seconds")
     @classmethod

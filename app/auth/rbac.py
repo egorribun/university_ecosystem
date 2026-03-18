@@ -10,11 +10,18 @@ transport layer and makes it trivially testable without FastAPI machinery.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from collections import OrderedDict
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Hard per-call deadline for SpiceDB gRPC calls.
+# Without this, a slow (not dead) SpiceDB blocks the event loop indefinitely
+# and bypasses the grace-period cache entirely. (RZ-W13-02)
+_SPICEDB_CALL_TIMEOUT_SECONDS: float = 2.0
 
 # ---------------------------------------------------------------------------
 # TD-W5-08: Grace-period permission cache.
@@ -34,8 +41,15 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _GRACE_TTL_SECONDS: float = 60.0
 
+# RZ-W13-02: LRU-bounded to prevent unbounded memory growth.
+# At ~200 bytes per entry, 10 000 entries ≈ 2 MB — acceptable overhead.
+_PERMISSION_CACHE_MAX_SIZE: int = 10_000
+
+# OrderedDict provides O(1) LRU eviction via move_to_end + popitem(last=False).
 # {(user_id, resource_type, resource_id, permission): (result: bool, cached_at: float)}
-_permission_cache: dict[tuple[str, str, str, str], tuple[bool, float]] = {}
+_permission_cache: OrderedDict[tuple[str, str, str, str], tuple[bool, float]] = (
+    OrderedDict()
+)
 
 
 class SpiceDBUnavailableError(RuntimeError):
@@ -111,30 +125,37 @@ class PermissionChecker:
             # Build the async stub from the injected channel.
             client = PermissionsServiceStub(self._channel)
 
-            resp: CheckPermissionResponse = await client.CheckPermission(
-                CheckPermissionRequest(
-                    resource=ObjectReference(
-                        object_type=resource_type,
-                        object_id=resource_id,
-                    ),
-                    permission=permission,
-                    subject=SubjectReference(
-                        object=ObjectReference(
-                            object_type="user",
-                            object_id=user_id,
-                        )
-                    ),
+            # RZ-W13-02: Hard per-call deadline — a *slow* (not dead) SpiceDB
+            # would otherwise block the event loop indefinitely, bypassing the
+            # grace-period cache. asyncio.TimeoutError is caught below and
+            # treated the same as a connectivity failure.
+            async with asyncio.timeout(_SPICEDB_CALL_TIMEOUT_SECONDS):
+                resp: CheckPermissionResponse = await client.CheckPermission(
+                    CheckPermissionRequest(
+                        resource=ObjectReference(
+                            object_type=resource_type,
+                            object_id=resource_id,
+                        ),
+                        permission=permission,
+                        subject=SubjectReference(
+                            object=ObjectReference(
+                                object_type="user",
+                                object_id=user_id,
+                            )
+                        ),
+                    )
                 )
-            )
             result = bool(
                 resp.permissionship
                 == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
             )
             # Populate grace-period cache on every successful check.
-            _permission_cache[(user_id, resource_type, resource_id, permission)] = (
-                result,
-                time.monotonic(),
-            )
+            # RZ-W13-02: LRU eviction keeps the dict bounded.
+            cache_key = (user_id, resource_type, resource_id, permission)
+            _permission_cache[cache_key] = (result, time.monotonic())
+            _permission_cache.move_to_end(cache_key)
+            if len(_permission_cache) > _PERMISSION_CACHE_MAX_SIZE:
+                _permission_cache.popitem(last=False)
             return result
         except ImportError as exc:
             # grpc/authzed not installed — treat as unavailable rather than silently

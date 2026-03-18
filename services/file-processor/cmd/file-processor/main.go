@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -194,8 +195,14 @@ func main() {
 				WorkflowExecutionTimeout: 30 * time.Minute,
 				WorkflowIDReusePolicy:    enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 			}
-				if _, err := c.ExecuteWorkflow(context.Background(), opt, workflow.FileProcessingWorkflow, job); err != nil {
-					logger.Error("Failed to execute workflow from NATS", "err", err)
+				// TD-01 (Wave 12): use a timeout context instead of context.Background()
+			// so that a Temporal outage does not accumulate blocking goroutines
+			// indefinitely. 5 s is generous for a workflow enqueue (not execution).
+			wfCtx, wfCancel := context.WithTimeout(ctx, 5*time.Second)
+			_, execErr := c.ExecuteWorkflow(wfCtx, opt, workflow.FileProcessingWorkflow, job)
+			wfCancel()
+			if execErr != nil {
+					logger.Error("Failed to execute workflow from NATS", "err", execErr)
 					return
 				}
 
@@ -413,8 +420,14 @@ func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 	opts = append(opts, otlptracegrpc.WithEndpoint(endpoint))
 
 	if cfg.OTLPInsecure {
-		// Development / local Docker Compose: no TLS.
-		// NEVER set OTLP_INSECURE=true in production environments.
+		// TD-02 (Wave 12): fail-fast in production — a comment is not enforcement.
+		// Mirrors _enforce_production_secrets pattern from the Python backend.
+		if cfg.Environment == "production" {
+			return nil, errors.New(
+				"OTLP_INSECURE=true is forbidden in production; unset OTLP_INSECURE or set it to false",
+			)
+		}
+		slog.Warn("OTLP running without TLS — development mode only; never set OTLP_INSECURE=true in production")
 		opts = append(opts, otlptracegrpc.WithInsecure())
 	} else {
 		// Production: enforce TLS.  The default TLS config uses the system CA
