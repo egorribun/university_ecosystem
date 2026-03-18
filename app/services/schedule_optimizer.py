@@ -41,14 +41,15 @@ class ScheduleOptimizerService:
             # Deterministic hash to stay within i32 range
             rust_id = hash(item.id) & 0x7FFFFFFF
 
-        # Convert time to datetime if needed (use a dummy date)
+        # Convert time to datetime if needed (use 1970-01-01 to avoid OS/platform
+        # overflow errors when calling .timestamp() on year 1)
         st = item.start_time
         if isinstance(st, time):
-            st = datetime.combine(datetime.min.date(), st)
+            st = datetime.combine(datetime(1970, 1, 1).date(), st, tzinfo=UTC)
 
         et = item.end_time
         if isinstance(et, time):
-            et = datetime.combine(datetime.min.date(), et)
+            et = datetime.combine(datetime(1970, 1, 1).date(), et, tzinfo=UTC)
 
         return rust_ext.ScheduleItem(
             weekday=str(item.weekday),
@@ -143,10 +144,14 @@ class ScheduleOptimizerService:
         try:
             existing_rust = [self._to_rust_item(item) for item in existing]
 
+            days = preferred_weekdays or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+            # Domain-driven schedule available blocks (hours) instead of hardcoded in Rust
+            available_blocks = [(day, [9, 11, 13, 15]) for day in days]
+
             suggested_rust = rust_ext.find_optimal_slot(
                 duration_minutes=duration_minutes,
                 existing_schedule=existing_rust,
-                preferred_weekdays=preferred_weekdays,
+                available_blocks=available_blocks,
             )
 
             if suggested_rust:

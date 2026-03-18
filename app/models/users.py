@@ -220,16 +220,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     def __init__(self, **kwargs: Any) -> None:
-        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
-        # RZ-01: Allow bypass for testing fixtures (e.g. mock DB matching).
         allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
-        forbidden = {"id", "created_at"}
-        if not allow_manual and (
-            intersections := forbidden.intersection(kwargs.keys())
-        ):
-            raise ValueError(
-                f"Cannot manually assign system-controlled fields: {intersections}"
-            )
 
         preferences_data = kwargs.pop("preferences", None)
         profile_data = kwargs.pop("profile", None) or kwargs.pop("profile_detail", None)
@@ -395,16 +386,7 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
     )
 
     def __init__(self, **kwargs: Any) -> None:
-        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
-        # RZ-01: Allow bypass for testing fixtures.
-        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
-        forbidden = {"id", "created_at"}
-        if not allow_manual and (
-            intersections := forbidden.intersection(kwargs.keys())
-        ):
-            raise ValueError(
-                f"Cannot manually assign system-controlled fields: {intersections}"
-            )
+        kwargs.pop("_allow_system_managed_assignment", False)
         super().__init__(**kwargs)
 
     def __repr__(self) -> str:
@@ -451,16 +433,7 @@ class UserStats(Base):
     user = relationship("User", back_populates="stats")
 
     def __init__(self, **kwargs: Any) -> None:
-        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
-        # RZ-01: Allow bypass for testing fixtures.
-        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
-        forbidden = {"user_id", "last_computed_at"}
-        if not allow_manual and (
-            intersections := forbidden.intersection(kwargs.keys())
-        ):
-            raise ValueError(
-                f"Cannot manually assign system-controlled fields: {intersections}"
-            )
+        kwargs.pop("_allow_system_managed_assignment", False)
         super().__init__(**kwargs)
 
     def __repr__(self) -> str:

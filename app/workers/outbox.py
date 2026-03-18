@@ -149,30 +149,18 @@ class OutboxWorker:
                 # sequence_number / created_at), so events for the same aggregate
                 # are never processed out of order by parallel workers.
                 # Falls back to the simple created_at ordering for SQLite (CI).
-                _is_pg = not str(settings.database_url).startswith("sqlite")
-                if _is_pg:
-                    stmt = (
-                        select(StoredEvent)
-                        .where(StoredEvent.processed_at.is_(None))
-                        .where(StoredEvent.error_count < self.max_retries)
-                        .distinct(StoredEvent.aggregate_id_uuid)
-                        .order_by(
-                            StoredEvent.aggregate_id_uuid,
-                            StoredEvent.sequence_number,
-                            StoredEvent.created_at,
-                        )
-                        .limit(self.batch_size)
-                        .with_for_update(skip_locked=True)
+                stmt = (
+                    select(StoredEvent)
+                    .where(StoredEvent.processed_at.is_(None))
+                    .where(StoredEvent.error_count < self.max_retries)
+                    .order_by(
+                        StoredEvent.aggregate_id_uuid,
+                        StoredEvent.sequence_number,
+                        StoredEvent.created_at,
                     )
-                else:
-                    stmt = (
-                        select(StoredEvent)
-                        .where(StoredEvent.processed_at.is_(None))
-                        .where(StoredEvent.error_count < self.max_retries)
-                        .order_by(StoredEvent.created_at)
-                        .limit(self.batch_size)
-                        .with_for_update(skip_locked=True)
-                    )
+                    .limit(self.batch_size)
+                    .with_for_update(skip_locked=True)
+                )
                 result = await db.execute(stmt)
                 events = result.scalars().all()
 

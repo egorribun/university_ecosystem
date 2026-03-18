@@ -44,6 +44,7 @@ _AUDIT_SECRET_PLACEHOLDERS: frozenset[str] = frozenset(
         "example",
         "secret",
         "your-secret",
+        "86dfd54641624c4e8ae58a2d18449c25",
     }
 )
 
@@ -148,3 +149,11 @@ class SecuritySettings(
                     "AUDIT_LOG_SECRET entries must be at least 32 characters long"
                 )
         return ",".join(secrets)
+
+    @field_validator("internal_hmac_secret")
+    @classmethod
+    def _validate_internal_hmac_secret(cls, v: str, info: ValidationInfo) -> str:
+        env = str(info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")).lower()
+        if env not in _DEVELOPMENT_ENVIRONMENTS and not v:
+            raise ValueError("INTERNAL_HMAC_SECRET MUST be set in production to prevent identity spoofing (SSRF).")
+        return v

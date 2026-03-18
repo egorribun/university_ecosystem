@@ -130,19 +130,33 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         return result.scalar() or 0
 
     async def search(
-        self, query: str, *, skip: int = 0, limit: int = 20
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        after_starts_at: datetime | None = None,
+        after_id: uuid.UUID | None = None,
     ) -> list[EventDTO]:
-        """Search events by title (case-insensitive)."""
+        """Search events by title (case-insensitive) using keyset pagination."""
         # CRIT-01 (audit 2026-03-11): Escape LIKE wildcards before embedding.
         safe_query = self._escape_like(query.strip().lower())
         pattern = f"%{safe_query}%"
-        result = await self.db.execute(
+
+        stmt = (
             select(Event)
             .where(func.lower(Event.title).like(pattern, escape="\\"))
-            .order_by(Event.starts_at.desc())
-            .offset(skip)
-            .limit(limit)
         )
+        if after_starts_at is not None and after_id is not None:
+            stmt = stmt.where(
+                or_(
+                    Event.starts_at < after_starts_at,
+                    and_(Event.starts_at == after_starts_at, Event.id < after_id),
+                )
+            )
+
+        stmt = stmt.order_by(Event.starts_at.desc(), Event.id.desc()).limit(limit)
+
+        result = await self.db.execute(stmt)
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
 

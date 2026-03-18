@@ -124,77 +124,6 @@ func main() {
 		w.WriteHeader(http.StatusBadGateway)
 	}
 
-	// BFF Logic: Intercept login/refresh to set cookies
-	proxy.ModifyResponse = func(r *http.Response) error {
-		if (r.Request.URL.Path == "/api/v1/auth/login" || r.Request.URL.Path == "/api/v1/auth/refresh") && r.StatusCode == http.StatusOK {
-			// DEBT-05 (audit Wave 11): cap body size to 1 MiB — prevents OOM from a
-			// rogue backend or response-smuggling attack inflating the read buffer.
-			const maxBodyBytes = 1 << 20 // 1 MiB
-			body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
-			if err != nil {
-				return err
-			}
-			_ = r.Body.Close()
-
-			var data map[string]interface{}
-			decoder := json.NewDecoder(bytes.NewReader(body))
-			decoder.UseNumber() // RZ-3 Fix (audit 2026-03-05): Prevent precision loss on 64-bit IDs!
-			if err := decoder.Decode(&data); err != nil {
-				// Non-JSON body — pass through unchanged, log for observability.
-				logger.Warn("gateway: non-JSON response from auth endpoint, skipping token strip",
-					zap.String("path", r.Request.URL.Path))
-				r.Body = io.NopCloser(bytes.NewBuffer(body))
-				return nil
-			}
-
-			if token, ok := data["access_token"].(string); ok {
-				// Set cookie — name must match middleware.AccessTokenCookieName so the
-				// gateway's auth middleware can read it on subsequent requests.
-				cookie := &http.Cookie{
-					Name:     middleware.AccessTokenCookieName,
-					Value:    token,
-					Path:     "/",
-					HttpOnly: true,
-					Secure:   cfg.Environment != "development", // Use Secure in production
-					SameSite: http.SameSiteStrictMode,
-					MaxAge:   3600, // 1 hour (align with Python token TTL)
-				}
-				r.Header.Add("Set-Cookie", cookie.String())
-			}
-
-			// DEBT-05: strip BOTH token fields — access_token moved to HttpOnly cookie;
-			// refresh_token must not appear in the JS-accessible JSON body either.
-			delete(data, "access_token")
-			delete(data, "refresh_token")
-
-			// DEBT-05: schema validation — warn if the response lacks the expected shape.
-			_, hasUser := data["user"]
-			_, hasSession := data["session"]
-			if !hasUser && !hasSession {
-				logger.Warn("gateway: login response missing user/session field",
-					zap.String("path", r.Request.URL.Path))
-			}
-
-			// GW-P1-01 (audit Wave 10): handle json.Marshal error.
-			// Wave 12 RZ-06: return the error rather than nil so the proxy's
-			// ErrorHandler emits a 502 instead of silently passing through the
-			// original body (which may still contain access_token/refresh_token).
-			// json.Marshal on a map[string]interface{} decoded from JSON cannot
-			// fail in practice; this branch is defensive dead-code protection.
-			newBody, marshalErr := json.Marshal(data)
-			if marshalErr != nil {
-				logger.Error("gateway: JSON remarshal failed — returning 502",
-					zap.String("path", r.Request.URL.Path),
-					zap.Error(marshalErr))
-				return fmt.Errorf("gateway: remarshal auth response: %w", marshalErr)
-			}
-			r.Body = io.NopCloser(bytes.NewBuffer(newBody))
-			r.ContentLength = int64(len(newBody))
-			r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
-		}
-		return nil
-	}
-
 	// Connect to File Processor gRPC (CRIT-02: Optional TLS via system CA pool)
 	var grpcCreds grpc.DialOption
 	if cfg.GrpcUseTLS {
@@ -205,13 +134,13 @@ func main() {
 
 	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds)
 	if err != nil {
-		logger.Warn("Failed to connect to File Processor gRPC", zap.Error(err))
-	} else {
-		defer func() {
-			_ = grpcConn.Close()
-		}()
-		logger.Info("Connected to File Processor gRPC", zap.String("addr", cfg.FileProcessorAddr))
+		logger.Fatal("Failed to initialize File Processor gRPC transport", zap.Error(err))
 	}
+	defer func() {
+		_ = grpcConn.Close()
+	}()
+	logger.Info("Connected to File Processor gRPC", zap.String("addr", cfg.FileProcessorAddr))
+
 	fileClient := pb.NewFileProcessingServiceClient(grpcConn)
 
 	// Set Gin mode
@@ -337,8 +266,13 @@ func main() {
 	// Start server with graceful shutdown
 	addr := ":" + cfg.Port
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: router,
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 13,
 	}
 
 	go func() {

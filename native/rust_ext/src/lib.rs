@@ -64,12 +64,11 @@ fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleIte
     let conflicts = items
         .par_iter()
         .enumerate()
-        .flat_map(|(i, a)| {
+        .flat_map_iter(|(i, a)| {
             items[i + 1..]
-                .par_iter()
+                .iter()
                 .filter(move |b| check_conflict_proto(a, b))
                 .map(move |b| (a.clone(), b.clone()))
-                .collect::<Vec<_>>()
         })
         .collect();
 
@@ -77,18 +76,14 @@ fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleIte
 }
 
 #[pyfunction]
-#[pyo3(signature = (duration_minutes, existing_schedule, preferred_weekdays=None))]
+#[pyo3(signature = (duration_minutes, existing_schedule, available_blocks))]
 fn find_optimal_slot(
     duration_minutes: u32,
     existing_schedule: Vec<ScheduleItem>,
-    preferred_weekdays: Option<Vec<String>>,
+    available_blocks: Vec<(String, Vec<u32>)>,
 ) -> Option<ScheduleItem> {
-    let days = preferred_weekdays.unwrap_or_else(|| {
-        vec!["Monday".to_string(), "Tuesday".to_string(), "Wednesday".to_string(), "Thursday".to_string(), "Friday".to_string()]
-    });
-
-    for day in days {
-        for hour in [9, 11, 13, 15] {
+    for (day, hours) in available_blocks {
+        for hour in hours {
             let now = Utc::now();
             let current_year = now.year();
 

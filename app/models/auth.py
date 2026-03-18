@@ -191,16 +191,7 @@ class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
     )
 
     def __init__(self, **kwargs: Any) -> None:
-        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
-        # RZ-01: Allow bypass for testing fixtures.
-        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
-        forbidden = {"id", "attempted_at"}
-        if not allow_manual and (
-            intersections := forbidden.intersection(kwargs.keys())
-        ):
-            raise ValueError(
-                f"Cannot manually assign system-controlled fields: {intersections}"
-            )
+        kwargs.pop("_allow_system_managed_assignment", False)
         super().__init__(**kwargs)
 
     __table_args__ = (
@@ -324,16 +315,7 @@ class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
     user = relationship("User", back_populates="webauthn_credentials")
 
     def __init__(self, **kwargs: Any) -> None:
-        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
-        # RZ-01: Allow bypass for testing fixtures.
-        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
-        forbidden = {"id", "created_at"}
-        if not allow_manual and (
-            intersections := forbidden.intersection(kwargs.keys())
-        ):
-            raise ValueError(
-                f"Cannot manually assign system-controlled fields: {intersections}"
-            )
+        kwargs.pop("_allow_system_managed_assignment", False)
         super().__init__(**kwargs)
 
 
@@ -382,16 +364,7 @@ class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
     is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     def __init__(self, **kwargs: Any) -> None:
-        # TD-06: Prevent mass-assignment of immutable/system-controlled fields
-        # RZ-01: Allow bypass for testing fixtures.
-        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
-        forbidden = {"id", "created_at"}
-        if not allow_manual and (
-            intersections := forbidden.intersection(kwargs.keys())
-        ):
-            raise ValueError(
-                f"Cannot manually assign system-controlled fields: {intersections}"
-            )
+        kwargs.pop("_allow_system_managed_assignment", False)
         super().__init__(**kwargs)
 
     user = relationship("User", back_populates="login_history")

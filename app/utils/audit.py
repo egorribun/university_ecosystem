@@ -22,25 +22,22 @@ def calculate_log_signature(
     """
     Calculate a deterministic HMAC-SHA256 signature for a DataAccessLog entry.
     """
-    # Canonical string representation
-    # Sort context keys to ensure deterministic serialization
-    context_json = json.dumps(context, sort_keys=True, default=str)
-
-    # Use ISO format for timestamp to ensure consistency
+    # Canonical representation using JSON array avoids delimiter injection (Canonicalization vulnerability)
     timestamp_str = created_at.isoformat()
 
-    payload = "|".join(
+    payload = json.dumps(
         [
-            str(actor_user_id or ""),
-            str(subject_user_id or ""),
+            str(actor_user_id) if actor_user_id else None,
+            str(subject_user_id) if subject_user_id else None,
             resource_type,
-            resource_id or "",
+            resource_id,
             action,
-            context_json,
-            ip_address or "",
-            user_agent or "",
+            context,
+            ip_address,
+            user_agent,
             timestamp_str,
-        ]
+        ],
+        separators=(",", ":"),
     )
 
     primary_secret = settings.audit_log_secret.split(",")[0].strip()

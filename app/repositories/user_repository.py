@@ -211,18 +211,13 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         _MAX_PAGE_SIZE = 200
         capped_limit = min(filters.limit, _MAX_PAGE_SIZE)
 
-        # TD-11/PERF-03 (audit 2026-03-11): Keyset pagination avoids the
-        # O(offset) sequential scan that OFFSET imposes.  When after_id is
-        # supplied the query becomes a bounded range scan on the PK index.
-        # The legacy offset branch is preserved for backwards compatibility.
-        if filters.after_id is not None:
-            stmt = (
-                stmt.where(User.id > filters.after_id)
-                .order_by(User.id)
-                .limit(capped_limit)
-            )
-        else:
-            stmt = stmt.limit(capped_limit).offset(filters.offset)
+        # Strictly enforce cursor-based pagination to prevent O(N) sequential scans
+        after_id_val = filters.after_id or uuid.UUID(int=0)
+        stmt = (
+            stmt.where(User.id > after_id_val)
+            .order_by(User.id)
+            .limit(capped_limit)
+        )
 
         result = await self.db.execute(stmt)
         # unique() is required after contains_eager to deduplicate rows produced
@@ -394,7 +389,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         """
         stmt = select(models.InviteCode).where(models.InviteCode.code == code)
         if with_for_update:
-            stmt = stmt.with_for_update()  # no skip_locked — serialize, not skip
+            stmt = stmt.with_for_update(skip_locked=False, nowait=True)  # no skip_locked — serialize, not skip
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
@@ -609,6 +604,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         user_id: uuid.UUID | str,
         limit: int = 200,
         before_dt: datetime | None = None,
+        after_id: uuid.UUID | None = None,
     ) -> list[models.DataAccessLog]:
         """Get access logs where user is actor or subject."""
         if isinstance(user_id, str):
@@ -617,39 +613,29 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             except ValueError:
                 return []
 
-        # We want logs where the user is EITHER the actor OR the subject
-        # matching the logic in UserService.export_user_data which passed both
-        # actor_user_id=user.id and subject_user_id=user.id to export_access_logs
-        # but export_access_logs treated them as AND if both provided.
-        # Wait, let's verify export_access_logs logic in data_access.py.
-        # It says: if actor_user_id: where(actor == ...); if subject: where(subject == ...)
-        # So passing BOTH means logic AND.
-        # The original code was:
-        # export_access_logs(..., actor_user_id=user.id, subject_user_id=user.id, ...)
-        # This implies it wanted logs where user acted on themselves?
-        # Or did it mean OR?
-        # Typically "export my data" includes everything involves me.
-        # Let's look at data_access.py content again from context.
-        # stmt = stmt.where(DataAccessLog.actor_user_id == actor_user_id)
-        # stmt = stmt.where(DataAccessLog.subject_user_id == subject_user_id)
-        # Yes, it is boolean AND.
-        # So the user only sees logs where they acted on themselves?
-        # That seems restrictive.
-        # However, I must preserve existing behavior during refactoring unless it's clearly a bug.
-        # If I look at strict translation:
-
         condition = or_(
             models.DataAccessLog.actor_user_id == user_id,
             models.DataAccessLog.subject_user_id == user_id,
         )
-        if before_dt:
-            condition = (condition) & (models.DataAccessLog.created_at < before_dt)
+
+        from sqlalchemy import and_
+
+        if before_dt and after_id:
+            condition = condition & or_(
+                models.DataAccessLog.created_at < before_dt,
+                and_(
+                    models.DataAccessLog.created_at == before_dt,
+                    models.DataAccessLog.id < after_id
+                )
+            )
+        elif before_dt:
+            condition = condition & (models.DataAccessLog.created_at < before_dt)
 
         capped = min(limit, self._ACCESS_LOGS_MAX_LIMIT)
         stmt = (
             select(models.DataAccessLog)
             .where(condition)
-            .order_by(models.DataAccessLog.created_at.desc())
+            .order_by(models.DataAccessLog.created_at.desc(), models.DataAccessLog.id.desc())
             .limit(capped)
         )
         result = await self.db.execute(stmt)

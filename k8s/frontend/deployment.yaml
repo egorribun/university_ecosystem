@@ -24,7 +24,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
-          image: university-ecosystem/frontend:latest
+          image: university-ecosystem/frontend:${IMAGE_TAG:-latest}
           ports:
             - containerPort: 80
               name: http

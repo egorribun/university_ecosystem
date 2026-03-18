@@ -185,22 +185,18 @@ async def websocket_chat(websocket: WebSocket) -> None:
             await dispatcher.dispatch(websocket, user, session_jti, data)
 
     except WebSocketDisconnect:
-        await manager.disconnect(websocket)
-        last_seen = await _update_last_seen(session_jti)
-        await manager.broadcast_presence(
-            user.id,
-            False,
-            last_seen,
-            source=PRESENCE_SOURCE_DISCONNECT,
-            force=True,
-        )
         logger.info("WebSocket disconnected for user %s", user.id)
     except Exception:
         # Unexpected error in the WebSocket loop: log at ERROR so Sentry captures
         # the full traceback. The connection is cleaned up regardless.
         logger.exception("WebSocket unexpectedly closed for user %s", user.id)
+    finally:
+        # Guaranteed execution of cleanup and presence state update to prevent Zombie Users
         await manager.disconnect(websocket)
-        last_seen = await _update_last_seen(session_jti)
+        try:
+            last_seen = await _update_last_seen(session_jti)
+        except Exception:
+            last_seen = datetime.now(UTC)
         await manager.broadcast_presence(
             user.id,
             False,
@@ -208,7 +204,6 @@ async def websocket_chat(websocket: WebSocket) -> None:
             source=PRESENCE_SOURCE_DISCONNECT,
             force=True,
         )
-    finally:
         metrics.dec_ws_connections(path="/ws/chat")
         logger.info("WebSocket cleanup for user %s", user.id)
 

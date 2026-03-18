@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import uuid
+import json
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -206,3 +207,56 @@ def serialize_access_logs_csv(entries: Iterable[DataAccessLogDTO]) -> str:
             ]
         )
     return buffer.getvalue()
+
+
+from collections.abc import AsyncIterable
+
+async def export_access_logs_stream(
+    db: AsyncDatabaseSession,
+    *,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+    actor_user_id: int | None = None,
+    subject_user_id: int | None = None,
+) -> AsyncIterable[str]:
+    start = _normalize_time(start_at)
+    end = _normalize_time(end_at)
+    stmt = select(DataAccessLog).order_by(DataAccessLog.created_at.desc())
+    if start is not None:
+        stmt = stmt.where(DataAccessLog.created_at >= start)
+    if end is not None:
+        stmt = stmt.where(DataAccessLog.created_at <= end)
+    if actor_user_id is not None:
+        stmt = stmt.where(DataAccessLog.actor_user_id == actor_user_id)
+    if subject_user_id is not None:
+        stmt = stmt.where(DataAccessLog.subject_user_id == subject_user_id)
+
+    # Write header
+    yield "created_at,actor_user_id,subject_user_id,resource_type,resource_id,action,ip_address,user_agent,context\n"
+
+    repo = AuditRepository(db)
+
+    stream = await db.stream(stmt.execution_options(yield_per=1000))
+    async for row in stream.scalars():
+        dto = repo._to_dto(row)
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+
+        def _sanitize_csv(val: Any) -> Any:
+            if isinstance(val, str) and val.startswith(('=', '+', '-', '@')):
+                return f"\t{val}"
+            return val
+
+        writer.writerow([
+            dto.created_at.isoformat() if dto.created_at else None,
+            dto.actor_user_id,
+            dto.subject_user_id,
+            _sanitize_csv(dto.resource_type),
+            _sanitize_csv(dto.resource_id),
+            _sanitize_csv(dto.action),
+            dto.ip_address,
+            _sanitize_csv(dto.user_agent),
+            _sanitize_csv(json.dumps(dto.context) if dto.context else ""),
+        ])
+        yield buffer.getvalue()
