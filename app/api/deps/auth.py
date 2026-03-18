@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
+import secrets
 import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -67,6 +70,34 @@ async def get_current_user(
     x_session_id = request.headers.get("X-Session-ID")
 
     if x_user_id and x_session_id:
+        # RZ-14-05: Verify gateway HMAC-SHA256 signature before trusting these headers.
+        # The gateway signs "{user_id}:{session_id}" with INTERNAL_HMAC_SECRET and sets
+        # X-Internal-Signature. Without this check, any service that can reach the backend
+        # directly (SSRF, path smuggling, compromised gateway peer) can impersonate any user.
+        #
+        # Skip verification when INTERNAL_HMAC_SECRET is not configured (dev/single-node).
+        # In production, set the same secret on both gateway and backend.
+        _hmac_secret = settings.internal_hmac_secret
+        if _hmac_secret:
+            sig_header = request.headers.get("X-Internal-Signature", "")
+            expected_sig = hmac.new(
+                _hmac_secret.encode(),
+                f"{x_user_id}:{x_session_id}".encode(),
+                hashlib.sha256,
+            ).hexdigest()
+            if not secrets.compare_digest(expected_sig, sig_header):
+                _logger.warning(
+                    "X-Internal-Signature verification failed for X-User-ID=%s — "
+                    "possible gateway bypass or missing INTERNAL_HMAC_SECRET on gateway",
+                    x_user_id,
+                )
+                raise_unauthorized(locale, "errors.auth.credentials_invalid")
+        else:
+            _logger.debug(
+                "INTERNAL_HMAC_SECRET not configured — skipping gateway signature verification "
+                "(set INTERNAL_HMAC_SECRET in production for zero-trust enforcement)"
+            )
+
         try:
             user_id = _uuid_mod.UUID(x_user_id)
             jti = x_session_id
@@ -155,7 +186,7 @@ async def get_current_user(
     # 4. Security Lifecycle Validation
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
-    assert session is not None  # nosec B101
+    assert session is not None  # nosec B101  # noqa: S101
 
     security_service = AuthSecurityService(db, locale)
     security_service.validate_session_expiry(session)

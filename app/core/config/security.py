@@ -73,7 +73,7 @@ class SecuritySettings(
     # use a common placeholder substring to avoid the production validator's
     # rejection and the development warning.
     audit_log_secret: str = (
-        "86dfd54641624c4e8ae58a2d18449c25"  # 32-char hex placeholder
+        "86dfd54641624c4e8ae58a2d18449c25"  # 32-char hex placeholder  # noqa: S105
     )
 
     # ── Image proxy ──────────────────────────────────────────────────────────
@@ -92,6 +92,17 @@ class SecuritySettings(
     # Default: derived from SECRET_KEY only in dev/testing to keep the
     # application bootable without extra config in local environments.
     csrf_hmac_secret: str = ""
+
+    # ── Internal gateway signature (RZ-14-05, audit 2026-03-18) ─────────────
+    # Shared secret used to verify that X-User-ID / X-Session-ID headers were
+    # injected by the trusted gateway (not forged by a client or SSRF).
+    # The gateway signs `"{user_id}:{session_id}"` with HMAC-SHA256 and sets
+    # X-Internal-Signature; the backend verifies it before trusting the headers.
+    #
+    # When empty: verification is skipped (dev/single-node mode, logs a warning).
+    # In production: set INTERNAL_HMAC_SECRET to an independent ≥32-byte random
+    # value (e.g. `openssl rand -hex 32`) and set it on BOTH gateway and backend.
+    internal_hmac_secret: str = ""
 
     @field_validator("audit_log_secret")
     @classmethod

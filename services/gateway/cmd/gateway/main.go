@@ -290,6 +290,11 @@ func main() {
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
 	jwtMiddleware.ListenForRevocations(ctx)
 
+	// RZ-14-05: Convert the shared HMAC secret to []byte once for all proxy handlers.
+	// When empty (dev/single-node mode), ProxyHandler skips signing and the backend
+	// skips verification — X-Internal-Signature is not set.
+	internalSecret := []byte(cfg.InternalHMACSecret)
+
 	// --- API Grouping & JWT Architecture (CRIT-04) ---
 
 	// 1. Core API (Always Validated)
@@ -300,23 +305,23 @@ func main() {
 		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
 
 		// Proxies to backend for all v1 and admin routes (Catch-all fallbacks)
-		api.Any("/v1/*path", handlers.ProxyHandler(proxy))
-		api.Any("/admin/*path", handlers.ProxyHandler(proxy))
+		api.Any("/v1/*path", handlers.ProxyHandler(proxy, internalSecret))
+		api.Any("/admin/*path", handlers.ProxyHandler(proxy, internalSecret))
 	}
 
 	// 2. Public API (Optional Auth - passes headers if logged in)
 	optional := router.Group("/")
 	optional.Use(jwtMiddleware.Optional())
 	{
-		optional.Any("/api/public/*path", handlers.ProxyHandler(proxy))
-		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy))
-		optional.Any("/graphql", handlers.ProxyHandler(proxy))
+		optional.Any("/api/public/*path", handlers.ProxyHandler(proxy, internalSecret))
+		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy, internalSecret))
+		optional.Any("/graphql", handlers.ProxyHandler(proxy, internalSecret))
 	}
 
-	// 2. Public API (No Auth or Optional)
+	// 3. Public API (No Auth or Optional)
 	publicAPI := router.Group("/api/public")
 	{
-		publicAPI.Any("/*path", handlers.ProxyHandler(proxy))
+		publicAPI.Any("/*path", handlers.ProxyHandler(proxy, internalSecret))
 	}
 
 	// NoRoute fallback: return 404 for unmatched /api/ paths; proxy everything else (static assets, etc.)
@@ -325,7 +330,7 @@ func main() {
 			c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
 			return
 		}
-		handlers.ProxyHandler(proxy)(c)
+		handlers.ProxyHandler(proxy, internalSecret)(c)
 	})
 	logger.Info("JWT validation enabled")
 

@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
@@ -22,8 +25,13 @@ import (
 // inject fake log entries into structured logging systems (Splunk, CloudWatch, etc.).
 var validRequestIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// ProxyHandler creates a Gin handler that proxies requests
-func ProxyHandler(proxy *httputil.ReverseProxy) gin.HandlerFunc {
+// ProxyHandler creates a Gin handler that proxies requests to the backend.
+//
+// When internalSecret is non-empty (RZ-14-05), it HMAC-SHA256 signs the
+// X-User-ID and X-Session-ID headers and forwards the digest as
+// X-Internal-Signature. The backend verifies this signature before trusting
+// the headers, preventing impersonation via path smuggling or SSRF.
+func ProxyHandler(proxy *httputil.ReverseProxy, internalSecret []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Add request ID header if absent or malformed.
 		// RZ-03: Use crypto-random UUID instead of timestamp prefix.
@@ -35,17 +43,33 @@ func ProxyHandler(proxy *httputil.ReverseProxy) gin.HandlerFunc {
 		}
 		c.Request.Header.Set("X-Request-ID", requestID)
 
-		// RZ: Prevent Header Spoofing Vulnerability. We must drop any internal auth headers
-		// sent by the client before proxying, to ensure zero-trust between gateway and backend.
+		// RZ: Drop any internal auth headers from the client before proxying.
+		// This ensures zero-trust between client and backend — only gateway-issued
+		// headers (verified below) are forwarded.
 		c.Request.Header.Del("X-User-ID")
 		c.Request.Header.Del("X-Session-ID")
+		c.Request.Header.Del("X-Internal-Signature") // RZ-14-05: prevent client forgery
 
-		// Add user info from JWT to headers
-		if userID, exists := c.Get("user_id"); exists {
-			c.Request.Header.Set("X-User-ID", userID.(string))
+		// Inject verified identity headers from validated JWT claims.
+		userIDVal, hasUser := c.Get("user_id")
+		sessionIDVal, hasSession := c.Get("session_id")
+
+		if hasUser {
+			c.Request.Header.Set("X-User-ID", userIDVal.(string))
 		}
-		if sessionID, exists := c.Get("session_id"); exists {
-			c.Request.Header.Set("X-Session-ID", sessionID.(string))
+		if hasSession {
+			c.Request.Header.Set("X-Session-ID", sessionIDVal.(string))
+		}
+
+		// RZ-14-05: Sign identity headers with HMAC-SHA256 so the backend can
+		// cryptographically verify that this request passed through the gateway.
+		// Signature covers "{user_id}:{session_id}" — both fields must be present.
+		if len(internalSecret) > 0 && hasUser && hasSession {
+			userID := userIDVal.(string)
+			sessionID := sessionIDVal.(string)
+			mac := hmac.New(sha256.New, internalSecret)
+			mac.Write([]byte(userID + ":" + sessionID))
+			c.Request.Header.Set("X-Internal-Signature", hex.EncodeToString(mac.Sum(nil)))
 		}
 
 		proxy.ServeHTTP(c.Writer, c.Request)

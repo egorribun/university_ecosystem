@@ -28,6 +28,11 @@ type Config struct {
 	AppVersion        string
 	// CRIT-02 (audit 2026-03-11): Toggle for gRPC TLS
 	GrpcUseTLS        bool
+	// InternalHMACSecret is the shared secret used to sign X-User-ID/X-Session-ID
+	// headers set by this gateway (RZ-14-05). The backend verifies the resulting
+	// X-Internal-Signature to reject requests that bypass the gateway.
+	// Optional in dev; required in production for full zero-trust enforcement.
+	InternalHMACSecret string
 }
 
 // Load loads the configuration from environment variables
@@ -50,6 +55,8 @@ func Load() (*Config, error) {
 		// AUDIT-INFRA-05: Fail-closed — TLS on by default. Set GRPC_USE_TLS=false
 		// ONLY for local dev (docker-compose.yml). Production/K8s inherit TLS=true.
 		GrpcUseTLS: os.Getenv("GRPC_USE_TLS") != "false",
+		// RZ-14-05: optional in dev, required in production.
+		InternalHMACSecret: os.Getenv("INTERNAL_HMAC_SECRET"),
 	}
 
 	if cfg.JWTSecret == "" {
