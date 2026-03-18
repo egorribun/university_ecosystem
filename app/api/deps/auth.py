@@ -8,6 +8,7 @@ import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
@@ -241,10 +242,32 @@ async def get_current_user_full(
     return user
 
 
+# TD-14-05 (audit 2026-03-18): Bridge FastAPI Depends() → Dishka-managed PermissionChecker.
+#
+# The SpiceDB gRPC channel lives at Scope.APP (singleton — opened once per process, shared
+# across all requests via HTTP/2 multiplexing). The PermissionChecker wrapping it lives at
+# Scope.REQUEST.  Route handlers that use `Depends(get_permission_checker)` get a fresh
+# PermissionChecker per request backed by the reused singleton channel — no TCP+TLS overhead.
+#
+# This bridge function is @inject-decorated so Dishka resolves FromDishka[PermissionChecker]
+# through its middleware-managed request scope, then returns a plain PermissionChecker that
+# FastAPI can forward to route handlers via ordinary Depends().
+@inject
+async def get_permission_checker(
+    checker: FromDishka[PermissionChecker],
+) -> PermissionChecker:
+    """FastAPI dependency that returns the Dishka-managed PermissionChecker.
+
+    Use as:
+        checker: PermissionChecker = Depends(get_permission_checker)
+    """
+    return checker
+
+
 async def get_current_admin_user(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
-    checker: Annotated[PermissionChecker, Depends()],
+    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
 ) -> User:
     """Dependency that ensures the current user is an admin via SpiceDB."""
     try:

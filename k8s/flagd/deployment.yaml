@@ -1,0 +1,129 @@
+# MOD-14-01 (audit 2026-03-18): flagd — self-hosted OpenFeature provider.
+#
+# flagd serves feature flag evaluation via gRPC (port 8013) and HTTP (port 8016).
+# The backend connects to flagd via openfeature-provider-flagd using the gRPC endpoint.
+#
+# Feature flag definitions are stored in a ConfigMap (flagd-flags) and mounted at
+# /etc/flagd/flags.json. To update flags without restarting flagd, update the ConfigMap
+# and reload flagd (SIGHUP), or use a GitOps approach with ArgoCD (MOD-14-07).
+#
+# Production checklist:
+#   1. Set FLAGD_METRICS_EXPORTER=otel and OTEL_EXPORTER_OTLP_ENDPOINT for tracing.
+#   2. Pin the image SHA to prevent supply-chain substitution.
+#   3. Review NetworkPolicy to restrict flagd access to backend pods only.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  namespace: university
+  labels:
+    app: flagd
+    component: feature-flags
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flagd
+  template:
+    metadata:
+      labels:
+        app: flagd
+        component: feature-flags
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: flagd
+          image: ghcr.io/open-feature/flagd:v0.10.1
+          args:
+            - start
+            - --uri
+            - file:/etc/flagd/flags.json
+            - --port
+            - "8013"
+            - --metrics-port
+            - "8016"
+          ports:
+            - name: grpc
+              containerPort: 8013
+            - name: metrics
+              containerPort: 8016
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: flags-config
+              mountPath: /etc/flagd
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            grpc:
+              port: 8013
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            grpc:
+              port: 8013
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: flags-config
+          configMap:
+            name: flagd-flags
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: flagd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagd
+  namespace: university
+  labels:
+    app: flagd
+    component: feature-flags
+spec:
+  selector:
+    app: flagd
+  ports:
+    - name: grpc
+      port: 8013
+      targetPort: grpc
+    - name: metrics
+      port: 8016
+      targetPort: metrics
+  type: ClusterIP
+---
+# ServiceMonitor for Prometheus scraping of flagd metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: flagd
+  namespace: university
+  labels:
+    app: flagd
+spec:
+  selector:
+    matchLabels:
+      app: flagd
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics

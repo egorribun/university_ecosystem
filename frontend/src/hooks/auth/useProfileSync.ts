@@ -14,13 +14,18 @@ import { extractApiError } from "@/utils/error"
 import { useAuthStore } from "@/stores/useAuthStore"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-export const PROFILE_CACHE_SCHEMA_VERSION = 7
+// TD-14-07 (2026-03-18): Bumped from v7 → v8 to force-evict any previously
+// cached entries that contained PII fields (email, role, profile_detail,
+// education_path). On first load after upgrade, migrateProfileCache() will
+// remove the v7 entry so no sensitive data remains in localStorage.
+export const PROFILE_CACHE_SCHEMA_VERSION = 8
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
 const LEGACY_PROFILE_CACHE_KEYS = [
   "ecosystem.profile.cache.v1",
   "ecosystem.profile.cache.v4",
   "ecosystem.profile.cache.v5",
+  "ecosystem.profile.cache.v7", // TD-14-07: v7 may contain PII (email, role) — evict on upgrade
 ]
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
@@ -28,12 +33,16 @@ const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 
 export const currentUserQueryKey = ["users", "me"] as const
 
+// TD-14-07: Only non-PII fields may be stored here.
+// NEVER add: email, phone, role, permissions, address, pending_email.
+// Fields email and role were removed in TD-14-07 (2026-03-18).
+// profile_detail and education_path omitted — they contain contact/academic PII
+// (telegram, department, institute, program, track).
+// See: OWASP WSTG-SESS-09 — sensitive data in localStorage.
 export type CachedUserSnapshot = Pick<
   User,
   | "id"
-  | "email"
   | "full_name"
-  | "role"
   | "group_id"
   | "avatar_url"
   | "cover_url"
@@ -43,8 +52,6 @@ export type CachedUserSnapshot = Pick<
   Partial<
     Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at" | "totp_enrollments">
   > & {
-    profile_detail?: User["profile_detail"]
-    education_path?: User["education_path"]
     preferences?: User["preferences"]
   }
 
@@ -93,16 +100,19 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
 
 const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   id: snapshot.id,
-  email: snapshot.email,
-  full_name: snapshot.full_name,
-  role: snapshot.role,
-  group_id: snapshot.group_id,
-  avatar_url: snapshot.avatar_url,
-  cover_url: snapshot.cover_url,
-  spotify_connected: snapshot.spotify_connected,
-  profile_detail: snapshot.profile_detail,
-  education_path: snapshot.education_path,
-  preferences: snapshot.preferences,
+  // TD-14-07: email and role are not cached; provide safe defaults for optimistic render.
+  // The authoritative values arrive from the /users/me API response shortly after mount.
+  email: "",
+  full_name: snapshot.full_name ?? null,
+  role: "student",
+  group_id: snapshot.group_id ?? null,
+  avatar_url: snapshot.avatar_url ?? null,
+  cover_url: snapshot.cover_url ?? null,
+  spotify_connected: snapshot.spotify_connected ?? false,
+  // TD-14-07: profile_detail and education_path are not cached (contain PII).
+  profile_detail: undefined,
+  education_path: undefined,
+  preferences: snapshot.preferences ?? null,
   is_active: false,
   mfa_required: Boolean(snapshot.mfa_required),
   mfa_default_method: snapshot.mfa_default_method ?? null,
@@ -387,17 +397,16 @@ const persistUserToCacheAsync = async (value: User | null, signingKey: string | 
   if (typeof localStorage === "undefined") return
   try {
     if (value != null && signingKey) {
+      // TD-14-07: Allowlist filter — only non-PII fields are persisted to localStorage.
+      // NEVER add: email, role, phone, address, permissions, profile_detail, education_path.
+      // See: OWASP WSTG-SESS-09 — sensitive data in localStorage.
       const snapshot: CachedUserSnapshot = {
         id: value.id,
-        email: value.email,
         full_name: value.full_name,
-        role: value.role,
         group_id: value.group_id,
         avatar_url: value.avatar_url,
         cover_url: value.cover_url,
         spotify_connected: value.spotify_connected,
-        profile_detail: value.profile_detail,
-        education_path: value.education_path,
         preferences: value.preferences,
         is_active: value.is_active,
         mfa_required: value.mfa_required,

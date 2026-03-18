@@ -177,11 +177,10 @@ describe("AuthProvider caching", () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     // 1. Setup a valid cache entry (manually simulate re-entry or valid state)
+    // TD-14-07: email and role are no longer cached (PII). Use only allowed fields.
     const validData: CachedUserSnapshot = {
       id: "test-id",
-      email: "test@example.com",
       full_name: "Test User",
-      role: "student",
       is_active: true,
     }
     const encryptedData = await encryptData(validData, mockSigningKey)

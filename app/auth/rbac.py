@@ -19,7 +19,28 @@ from typing import Any
 
 from prometheus_client import Counter
 
+from app.core.circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpenError,
+)
+
 logger = logging.getLogger(__name__)
+
+# MOD-14-04 (audit 2026-03-18): Circuit breaker for SpiceDB gRPC calls.
+# After failure_threshold=3 consecutive failures, the circuit opens and
+# subsequent calls immediately fall through to the grace-period cache
+# (O(1) dict lookup instead of waiting for gRPC timeouts).
+# recovery_timeout=15s gives SpiceDB a short window to recover before
+# probe calls re-enable live permission checks.
+_spicedb_breaker = CircuitBreaker(
+    "spicedb",
+    config=CircuitBreakerConfig(
+        failure_threshold=3,
+        recovery_timeout_seconds=15.0,
+        success_threshold=1,  # one successful probe closes the circuit
+    ),
+)
 
 # PERF-14-02: Permission cache observability — track call/stale ratios
 # to understand cache effectiveness and tune _GRACE_TTL_SECONDS / _PERMISSION_CACHE_MAX_SIZE.
@@ -163,26 +184,31 @@ class PermissionChecker:
             # Build the async stub from the injected channel.
             client = PermissionsServiceStub(self._channel)
 
-            # RZ-W13-02: Hard per-call deadline — a *slow* (not dead) SpiceDB
-            # would otherwise block the event loop indefinitely, bypassing the
-            # grace-period cache. asyncio.TimeoutError is caught below and
-            # treated the same as a connectivity failure.
-            async with asyncio.timeout(_SPICEDB_CALL_TIMEOUT_SECONDS):
-                resp: CheckPermissionResponse = await client.CheckPermission(
-                    CheckPermissionRequest(
-                        resource=ObjectReference(
-                            object_type=resource_type,
-                            object_id=resource_id,
-                        ),
-                        permission=permission,
-                        subject=SubjectReference(
-                            object=ObjectReference(
-                                object_type="user",
-                                object_id=user_id,
-                            )
-                        ),
+            # MOD-14-04: Circuit breaker guards the gRPC call — after 3 consecutive
+            # failures the circuit opens and subsequent calls bypass the network and
+            # fall through to the grace-period cache immediately (O(1) lookup).
+            # CircuitBreakerOpenError is caught in the `except Exception` block below.
+            async with _spicedb_breaker:
+                # RZ-W13-02: Hard per-call deadline — a *slow* (not dead) SpiceDB
+                # would otherwise block the event loop indefinitely, bypassing the
+                # grace-period cache. asyncio.TimeoutError is caught below and
+                # treated the same as a connectivity failure.
+                async with asyncio.timeout(_SPICEDB_CALL_TIMEOUT_SECONDS):
+                    resp: CheckPermissionResponse = await client.CheckPermission(
+                        CheckPermissionRequest(
+                            resource=ObjectReference(
+                                object_type=resource_type,
+                                object_id=resource_id,
+                            ),
+                            permission=permission,
+                            subject=SubjectReference(
+                                object=ObjectReference(
+                                    object_type="user",
+                                    object_id=user_id,
+                                )
+                            ),
+                        )
                     )
-                )
             result = bool(
                 resp.permissionship
                 == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
