@@ -501,18 +501,14 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 				h.Logger.Warn("Invalid internal NATS signature — dropping event",
 					"room_id", payload.Data.RoomID,
 					"user_id", payload.Data.UserID)
-				// MOD-02 fix: assign and end the span — bare Start() discards the span,
-				// causing an OTel span leak on every invalid-signature drop.
-				_, sigSpan := otel.Tracer("hub").Start(msgCtx, "InvalidInternalSignature")
-				sigSpan.End()
+				// TD-14-08: Removed empty OTel spans (no attributes, pure overhead).
+				// The slog.Warn above already records the event in the log pipeline.
 				return
 			}
 
 			if h.authClient != nil {
 				h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
-				// MOD-02 fix: same — assign and end to avoid unfinished span leak.
-				_, invSpan := otel.Tracer("hub").Start(msgCtx, "CacheInvalidated")
-				invSpan.End()
+				// TD-14-08: Removed empty span — invalidation is visible via slog + metrics.
 			}
 	})
 	if err != nil {

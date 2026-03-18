@@ -32,6 +32,7 @@ from app.core.middleware import (
     configure_middleware,
 )
 from app.core.observability import configure_observability
+from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
 from app.core.versioning import API_VERSION
 from app.graphql.schema import graphql_router
 from app.services.file_scanner import (
@@ -66,6 +67,22 @@ app = FastAPI(
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(DomainException, domain_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
+
+
+async def _rate_limit_storage_unavailable_handler(
+    request: object, exc: Exception
+) -> JSONResponse:
+    """RZ-14-01: Fail-closed rate limit storage → HTTP 503 (not silent in-memory fallback)."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Rate limit service temporarily unavailable"},
+        headers={"Retry-After": "5"},
+    )
+
+
+app.add_exception_handler(
+    RateLimitStorageUnavailable, _rate_limit_storage_unavailable_handler
+)
 
 # Observability & Metrics
 configure_observability(app, engine=engine)

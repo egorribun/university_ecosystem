@@ -282,8 +282,10 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
 
-	// Encode
+	// Encode — TD-14-09: WebP has no native Go stdlib encoder; convert to PNG
+	// to preserve lossless quality rather than silently re-encoding as JPEG.
 	var buf bytes.Buffer
+	outFormat := format // track the actual encoded format (may differ from input)
 	switch format {
 	case "jpeg", "jpg":
 		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
@@ -293,15 +295,21 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 		if err := png.Encode(&buf, dst); err != nil {
 			return nil, err
 		}
+	case "webp":
+		// Go stdlib has no native WebP encoder — transcode to PNG (lossless).
+		outFormat = "png"
+		if err := png.Encode(&buf, dst); err != nil {
+			return nil, fmt.Errorf("webp→png transcode: %w", err)
+		}
 	default:
-		// Default to JPEG if unknown output
+		// Default to JPEG for any other unknown format.
 		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
 			return nil, err
 		}
 	}
 
 	// Upload result
-	contentType, ok := imageMIMETypes[format]
+	contentType, ok := imageMIMETypes[outFormat]
 	if !ok {
 		contentType = "application/octet-stream"
 	}

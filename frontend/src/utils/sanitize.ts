@@ -93,6 +93,8 @@ export const sanitizeTelegramUrl = (raw: string | null | undefined): string => {
   }
 
   const withoutPrefix = trimmed.replace(/^@+/, "")
-  if (!withoutPrefix) return ""
-  return `https://t.me/${encodeURIComponent(withoutPrefix)}`
+  // TD-14-06: Validate Telegram username format — [a-zA-Z0-9_]{5,32}
+  // Rejects path-traversal attempts like "../../admin" or empty strings.
+  if (!/^[a-zA-Z0-9_]{5,32}$/.test(withoutPrefix)) return ""
+  return `https://t.me/${withoutPrefix}`
 }

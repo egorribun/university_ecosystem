@@ -352,7 +352,8 @@ func httpJWTMiddleware(secret string, log *slog.Logger, next http.Handler) http.
 
 		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, status.Errorf(codes.Unauthenticated, "unexpected signing method: %v", t.Header["alg"])
+				// RZ-14-04: Do not echo back the algorithm — prevents enumeration oracle.
+				return nil, status.Errorf(codes.Unauthenticated, "invalid token")
 			}
 			return []byte(secret), nil
 		})
