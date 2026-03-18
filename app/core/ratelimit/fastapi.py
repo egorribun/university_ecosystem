@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.localization import resolve_locale
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.delay import ProgressiveDelayTracker
-from app.core.ratelimit.exceptions import RateLimitExceeded
+from app.core.ratelimit.exceptions import RateLimitExceeded, RateLimitStorageUnavailable
 from app.core.ratelimit.logic import enforce_rate_limit
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
@@ -85,6 +85,9 @@ def sensitive_route_limit(
                 locale,
                 headers=headers,
             )
+        except RateLimitStorageUnavailable:
+            # RZ-14-01: Propagate storage failure as 503 — do not silently allow.
+            raise
 
     return dependency
 

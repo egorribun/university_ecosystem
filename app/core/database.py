@@ -156,7 +156,15 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
         # PERF-009 (audit 2026-03-04): Optimize Postgres pool efficiency and safety
         # PERF-01 (audit 2026-03-14): Fast-fail pool defaults — see comment below.
         kwargs["connect_args"] = {
-            "statement_cache_size": 100,
+            # MOD-14-06 (audit 2026-03-18): PgBouncer transaction pooling mode
+            # requires statement_cache_size=0 because prepared statements are
+            # connection-scoped, but PgBouncer reuses server connections across
+            # different clients.  A non-zero cache causes asyncpg to issue
+            # PREPARE on a connection that PgBouncer may route to a different
+            # backend next time, resulting in "prepared statement does not exist"
+            # errors.  Set to 0 to force asyncpg to use extended-query protocol
+            # without server-side prepared statement caching.
+            "statement_cache_size": 0,
             # PERF-01: reduced from 30 s → 15 s. Hard per-statement PG timeout so a
             # runaway query does not block the asyncpg connection for half a minute.
             "command_timeout": 15.0,

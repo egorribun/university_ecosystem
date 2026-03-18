@@ -27,6 +27,9 @@ services:
     profiles: ["prod"]
     # RZ-05: secret files replace plain env vars so sensitive values never appear
     # in `docker inspect` or the process environment.
+    # MOD-14-06: DATABASE_URL_FILE must contain a URL with host=pgbouncer (not
+    # postgres) so connections go through PgBouncer in transaction pooling mode.
+    # Example: postgresql+asyncpg://university:<pass>@pgbouncer:5432/university
     secrets:
       - secret_key
       - database_url
@@ -129,3 +132,39 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-university}
       POSTGRES_DB: ${POSTGRES_DB:-university}
       POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:?Provide POSTGRES_PASSWORD_FILE for production}
+
+  # MOD-14-06 (audit 2026-03-18): PgBouncer connection pooler in transaction mode.
+  # Sits between backend/workers and PostgreSQL; caps server-side connections at
+  # PGBOUNCER_DEFAULT_POOL_SIZE (25) regardless of how many app replicas are running.
+  # Auth uses scram-sha-256 via pgbouncer.get_auth() so PgBouncer never holds
+  # plaintext passwords.  DATABASE_URL_FILE must point to a URL using host=pgbouncer.
+  pgbouncer:
+    image: pgbouncer/pgbouncer:1.23.1
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: "5432"
+      DATABASES_DBNAME: "${POSTGRES_DB:-university}"
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: "1000"
+      PGBOUNCER_DEFAULT_POOL_SIZE: "25"
+      PGBOUNCER_AUTH_TYPE: scram-sha-256
+      PGBOUNCER_AUTH_USER: "${POSTGRES_USER:-university}"
+      PGBOUNCER_AUTH_QUERY: "SELECT password FROM pgbouncer.get_auth($1)"
+      PGBOUNCER_SERVER_TLS_SSLMODE: require
+      PGBOUNCER_ADMIN_USERS: "${POSTGRES_USER:-university}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

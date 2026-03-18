@@ -189,8 +189,9 @@ const adminTopicsSchema = v.object({
 })
 
 export async function fetchAdminUserTopics(userId: string): Promise<AdminUserTopicsResponse> {
+  // RZ-14-03: user_id is a UUID string — backend path param is now uuid.UUID, not int.
   const { data } = await adminGetUserTopicsApiV1PushAdminTopicsUserIdGet({
-    path: { user_id: userId as unknown as number },
+    path: { user_id: userId },
   })
   return ensureValidResponse(adminTopicsSchema, data, `GET /api/v1/push/admin/topics/${userId}`)
 }
@@ -199,8 +200,9 @@ export async function updateAdminUserTopics(
   userId: string,
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
+  // RZ-14-03: user_id is a UUID string — backend path param is now uuid.UUID, not int.
   const { data } = await adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut({
-    path: { user_id: userId as unknown as number },
+    path: { user_id: userId },
     body: { topics },
   })
   return ensureValidResponse(adminTopicsSchema, data, `PUT /api/v1/push/admin/topics/${userId}`)

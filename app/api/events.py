@@ -33,6 +33,7 @@ from app.api.validation import (
     raise_not_found,
     require_teacher_or_admin,
 )
+from app.api.deps.auth import get_permission_checker
 from app.auth.rbac import PermissionChecker
 from app.core.cache_versioning import events_cache_version
 from app.core.config import settings
@@ -246,7 +247,7 @@ async def upload_event_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
-    checker: PermissionChecker = Depends(),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> models.EventFile:
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, id)
@@ -320,7 +321,7 @@ async def update_event(
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     events: EventService = Depends(get_event_service),
-    checker: PermissionChecker = Depends(),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
@@ -374,7 +375,7 @@ async def delete_event(
     request: Request,
     events: EventService = Depends(get_event_service),
     user: models.User = Depends(get_current_user),
-    checker: PermissionChecker = Depends(),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
 
@@ -428,7 +429,7 @@ async def delete_event_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
-    checker: PermissionChecker = Depends(),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)

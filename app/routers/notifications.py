@@ -673,7 +673,7 @@ async def send_test(
 
 @router.get("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
 async def admin_get_user_topics(
-    user_id: int,
+    user_id: uuid.UUID,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
@@ -716,7 +716,7 @@ async def admin_get_user_topics(
 
 @router.put("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
 async def admin_update_user_topics(
-    user_id: int,
+    user_id: uuid.UUID,
     payload: AdminUserTopicsUpdate,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 import time
 from typing import Any, cast
@@ -8,6 +9,31 @@ from redis.exceptions import NoScriptError, RedisError, ResponseError
 
 from app.core.ratelimit.models import RateLimitInfo
 from app.core.ratelimit.strategies.base import get_shared_client
+
+# PERF-14-01: Cache the Lua script SHA1 so subsequent calls use EVALSHA
+# instead of sending the full ~500-byte script on every request.
+# Invalidated (set to None) on NoScriptError so it's reloaded after Redis restart.
+_RATE_LIMIT_SHA: str | None = None
+_SHA_LOCK: asyncio.Lock | None = None  # created lazily to survive event-loop changes
+
+
+def _get_sha_lock() -> asyncio.Lock:
+    global _SHA_LOCK
+    if _SHA_LOCK is None:
+        _SHA_LOCK = asyncio.Lock()
+    return _SHA_LOCK
+
+
+async def _load_script_sha(client: Any) -> str:
+    """Load the Lua script once and cache its SHA1 (PERF-14-01)."""
+    global _RATE_LIMIT_SHA
+    if _RATE_LIMIT_SHA is not None:
+        return _RATE_LIMIT_SHA
+    async with _get_sha_lock():
+        if _RATE_LIMIT_SHA is None:
+            _RATE_LIMIT_SHA = await cast(Any, client).script_load(_RATE_LIMIT_SCRIPT)
+        return _RATE_LIMIT_SHA
+
 
 _RATE_LIMIT_SCRIPT = """
 local key       = KEYS[1]
@@ -60,6 +86,23 @@ class RedisSlidingWindowStrategy:
         redis_key = f"rate-limit:{key}"
 
         try:
+            # PERF-14-01: Prefer EVALSHA (SHA1 lookup, no script transfer) over
+            # EVAL (sends full ~500-byte Lua script on every call). Falls back to
+            # EVAL on NoScriptError (server restarted / script cache flushed).
+            sha = await _load_script_sha(client)
+            eval_result = await cast(Any, client).evalsha(
+                sha,
+                1,
+                redis_key,
+                str(limit),
+                str(now_ms),
+                str(window_ms),
+            )
+            result = cast(list[Any], eval_result)
+        except NoScriptError:
+            # Script was flushed (SCRIPT FLUSH or server restart) — reload and retry.
+            global _RATE_LIMIT_SHA
+            _RATE_LIMIT_SHA = None
             eval_result = await cast(Any, client).eval(
                 _RATE_LIMIT_SCRIPT,
                 1,
@@ -70,12 +113,9 @@ class RedisSlidingWindowStrategy:
             )
             result = cast(list[Any], eval_result)
         except RedisError as exc:
-            # NoScriptError: EVALSHA cache miss — script not loaded on this node.
             # ResponseError: covers Redis Cluster "unknown command" for EVAL/scripting.
             # All other RedisError subtypes (ConnectionError, TimeoutError, etc.) are re-raised.
-            if isinstance(exc, NoScriptError):
-                pass  # always fall back
-            elif isinstance(exc, ResponseError):
+            if isinstance(exc, ResponseError):
                 err_str = str(exc).lower()
                 if (
                     "unknown command" not in err_str

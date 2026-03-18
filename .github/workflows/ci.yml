@@ -19,11 +19,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # CI-01 (audit 2026-03-04): Never store secrets as plaintext in workflow env blocks.
-  # Use a GitHub Actions encrypted secret; fall back to a random dummy only if the
-  # secret is not configured (e.g. forks running the test matrix without access).
-  # Set SECRETS.CI_TEST_SECRET_KEY in repo Settings → Secrets and variables → Actions.
-  SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'ci-only-dummy-key-minimum-32-chars-entropy' }}
+  # RZ-14-06 (audit 2026-03-18): Use the configured repo secret; jobs that need
+  # SECRET_KEY add an early "Generate CI secret" step that falls back to
+  # `openssl rand -hex 32` so no static string ever appears in workflow logs.
+  # Set CI_TEST_SECRET_KEY in repo Settings → Secrets and variables → Actions.
+  SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
   ENVIRONMENT: testing
 
 jobs:
@@ -137,6 +137,11 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Generate CI secret key if not configured (RZ-14-06)
+        # RZ-14-06: Avoid hardcoded fallback strings visible in fork logs.
+        # When CI_TEST_SECRET_KEY is not set (fork PRs), generate ephemeral 32-byte key.
+        if: env.SECRET_KEY == ''
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Enforce Rate Limit Shim Deadline (TD-003)
         run: |
           count=$(git grep "from app.core import rate_limit" app/ | wc -l || echo "0")
@@ -320,7 +325,7 @@ jobs:
 
       - name: Create database tables
         env:
-          SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
+          SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
         shell: bash
         run: |
@@ -339,7 +344,7 @@ jobs:
 
       - name: Run Alembic upgrade and downgrade
         env:
-          SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
+          SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
         shell: pwsh
         run: |

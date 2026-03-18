@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import functools
+import logging
+
 from redis.exceptions import RedisError
 
 from app.core.config import settings
 from app.core.ratelimit.contract import RateLimitStrategy
-from app.core.ratelimit.exceptions import RateLimitExceeded
+from app.core.ratelimit.exceptions import RateLimitExceeded, RateLimitStorageUnavailable
 from app.core.ratelimit.models import RateLimitInfo
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import compose_identifier
+
+_log = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=4)
+def _get_redis_strategy(redis_url: str) -> RedisSlidingWindowStrategy:
+    """Return a cached strategy instance per redis_url (TD-14-01)."""
+    return RedisSlidingWindowStrategy(redis_url)
 
 
 async def check_rate_limit(
@@ -19,15 +30,26 @@ async def check_rate_limit(
     window_seconds: int,
     redis_url: str | None = None,
 ) -> RateLimitInfo:
-    """Check a rate limit for an arbitrary identifier."""
+    """Check a rate limit for an arbitrary identifier.
+
+    Fail-closed (RZ-14-01): when Redis is configured but unreachable, raises
+    RateLimitStorageUnavailable (→ HTTP 503) instead of silently falling back
+    to per-process in-memory counting, which would defeat distributed limiting.
+    """
     key = compose_identifier(namespace, identifier)
     if redis_url and redis_url.lower().startswith(("redis://", "rediss://")):
+        strategy = _get_redis_strategy(redis_url)
         try:
-            redis_strategy = RedisSlidingWindowStrategy(redis_url)
-            return await redis_strategy.check(key, limit, window_seconds)
-        except (RedisError, OSError):
-            pass
+            return await strategy.check(key, limit, window_seconds)
+        except (RedisError, OSError) as exc:
+            _log.error(
+                "rate_limit_storage_unavailable",
+                extra={"identifier": identifier, "error": str(exc)},
+            )
+            raise RateLimitStorageUnavailable("Rate limit backend unreachable") from exc
 
+    # Non-distributed mode: in-memory is only acceptable when Redis is not configured.
+    _log.warning("rate_limit_memory_mode", extra={"reason": "no redis_url configured"})
     memory_strategy = MemorySlidingWindowStrategy(namespace)
     return await memory_strategy.check(identifier, limit, window_seconds)
 
@@ -35,7 +57,7 @@ async def check_rate_limit(
 def get_default_strategy(namespace: str = "") -> RateLimitStrategy:
     """Get the default rate limit strategy based on application settings."""
     if settings.rate_limit_storage_backend == "redis":
-        return RedisSlidingWindowStrategy(settings.rate_limit_storage_uri)
+        return _get_redis_strategy(settings.rate_limit_storage_uri)
     return MemorySlidingWindowStrategy(namespace)
 
 
@@ -46,21 +68,23 @@ async def enforce_rate_limit(
     window_seconds: int,
     strategy: RateLimitStrategy,
 ) -> RateLimitInfo:
-    """Enforce a rate limit, raising RateLimitExceeded if exceeded."""
+    """Enforce a rate limit, raising RateLimitExceeded if exceeded.
+
+    Fail-closed (RZ-14-01): propagates RedisError as RateLimitStorageUnavailable
+    (→ HTTP 503) instead of silently degrading to per-process in-memory counting.
+    """
     try:
         info = await strategy.check(
             key=identifier,
             limit=limit,
             window_seconds=window_seconds,
         )
-    except RedisError:
-        # Fallback to in-memory limiting
-        fallback = MemorySlidingWindowStrategy("fallback")
-        info = await fallback.check(
-            key=identifier,
-            limit=limit,
-            window_seconds=window_seconds,
+    except RedisError as exc:
+        _log.error(
+            "rate_limit_storage_unavailable",
+            extra={"identifier": identifier, "error": str(exc)},
         )
+        raise RateLimitStorageUnavailable("Rate limit backend unreachable") from exc
 
     if not info.allowed:
         raise RateLimitExceeded(info)

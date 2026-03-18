@@ -100,4 +100,10 @@ export class StorageItem<T> {
 
 // Pre-defined storage keys for non-React contexts
 export const pushConsentStorage = new StorageItem<"granted" | "denied">("push-notification-consent")
+// TD-14-07: Only non-PII fields may be stored here.
+// NEVER add: email, phone, role, permissions, address.
+// See: OWASP WSTG-SESS-09 — sensitive data in localStorage.
+// The actual profile cache (ecosystem.profile.cache.vN) is written by
+// useProfileSync.ts which enforces its own allowlist; this key is kept for
+// legacy consumers only and must not be written with sensitive user data.
 export const profileCacheStorage = new StorageItem<unknown>("sub-profile-cache")

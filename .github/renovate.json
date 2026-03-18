@@ -116,6 +116,7 @@
       }
     }
   ],
+  "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "enabled": true,
     "labels": ["security"]
