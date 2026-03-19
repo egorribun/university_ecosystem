@@ -20,7 +20,6 @@ linters:
     - contextcheck # Ensure context propagation is consistent
     - cyclop # Cyclomatic complexity (default threshold: 10)
     - gocognit # Cognitive complexity (default threshold: 30)
-    - gofmt # Enforce gofmt formatting
     - misspell # Catch common English spelling mistakes in comments/strings
     - revive # Fast, extensible drop-in replacement for golint
     - unconvert # Remove unnecessary type conversions
@@ -72,3 +71,7 @@ issues:
   # Do not limit the number of issues per linter so CI output is complete.
   max-issues-per-linter: 0
   max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
