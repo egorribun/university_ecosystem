@@ -250,7 +250,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         )
         result = await self.db.execute(stmt)
 
-        if result.rowcount == 0:
+        if result.rowcount == 0:  # type: ignore[attr-defined]
             # Row existed, so this is a 'remove like' action.
             from sqlalchemy import delete
 

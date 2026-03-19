@@ -1,0 +1,46 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: university-ecosystem-alerts
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: application-alerts
+      rules:
+        - alert: ContainerMemoryHigh
+          expr: container_memory_usage_bytes{namespace="university-ecosystem"} / container_spec_memory_limit_bytes{namespace="university-ecosystem"} > 0.85
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Container Memory > 85%"
+            description: "Pod {{ $labels.pod }} is nearing its memory limit."
+
+        - alert: OutboxStagnant
+          expr: increase(outbox_events_pending[5m]) > 100
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Outbox events stagnating"
+            description: "More than 100 outbox events pending over 5 minutes."
+
+        - alert: SpiceDBLatencyHigh
+          expr: histogram_quantile(0.99, rate(spicedb_request_duration_seconds_bucket[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "SpiceDB Latency > 100ms"
+            description: "SpiceDB p99 latency is elevated."
+
+        - alert: WebSocketHubMemHigh
+          expr: process_resident_memory_bytes{job="ws-hub"} > 512000000
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ws-hub Memory > 512MB"
+            description: "WebSocket hub is consuming excessive memory."

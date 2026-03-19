@@ -11,7 +11,7 @@ import asyncio
 import hashlib
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
@@ -72,15 +72,13 @@ def _make_idempotency_key(
     return f"idm:msg:{digest}"
 
 
-from typing import TYPE_CHECKING, Any, Protocol
-
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
 
 class AttachmentProcessorProtocol(Protocol):
     async def process_upload(
-        self, upload: UploadFile, chat_id: uuid.UUID, locale: str
+        self, upload: UploadFile, chat_id: uuid.UUID, *, locale: str | None
     ) -> dict[str, Any]: ...
     async def cleanup_files(self, urls: list[str]) -> None: ...
     async def collect_urls(self, chat: Any) -> list[str]: ...
@@ -235,7 +233,7 @@ class ChatMessageDispatcher:
                 for res in results:
                     if isinstance(res, TimeoutError):
                         raise_validation_error("errors.files.upload_timeout", locale)
-                    if isinstance(res, Exception):
+                    if isinstance(res, BaseException):
                         raise res
                     saved_urls.append(str(res["url"]))
                     processed_attachments.append(res)

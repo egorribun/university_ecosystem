@@ -527,38 +527,31 @@ _public_key_cache_lock = threading.Lock()
 def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
     """Derive and cache the RSA public key PEM from a private key PEM.
 
-    PERF-NEW-003: Replaces `lru_cache` with a manual dictionary cache. `lru_cache`
-    retains its arguments in memory indefinitely as part of the caching keys, meaning
-    the raw Private Key string was leaking into the heap. This custom implementation
-    extracts the public key and only stores it mapped against the `kid`.
-
-    TD-W8-02: Fast path (no lock on cache hit) + LRU single-entry eviction instead
-    of full-clear. Full-clear evicts all 32 keys simultaneously — subsequent requests
-    all miss the cache and block on the lock while serialization.load_pem_private_key()
-    runs (1–50 ms), creating a thundering-herd latency spike on JWT decode.
+    MOD-004: Adopts Copy-on-Write (CoW) to ensure GIL-free thread safety
+    for fast-path reads in Python 3.13. Dictionary instances are never mutated
+    in-place; instead, the global reference is swapped.
     """
+    global _public_key_cache
     cache_key = kid or hashlib.sha256(private_key_pem.encode()).hexdigest()
 
-    # Fast path — no lock needed; dict read is GIL-atomic in CPython.
-    if cache_key in _public_key_cache:
-        return _public_key_cache[cache_key]
+    # Fast path — atomic reference read. The local dict copy is immutable.
+    local_cache = _public_key_cache
+    if cache_key in local_cache:
+        return local_cache[cache_key]
 
     with _public_key_cache_lock:
-        # Double-check under lock to handle concurrent first-miss.
         if cache_key in _public_key_cache:
             return _public_key_cache[cache_key]
 
-        if len(_public_key_cache) >= 32:
-            # Evict only the oldest entry (LRU approximation via dict insertion order,
-            # guaranteed in Python 3.7+). Full-clear would evict all warm keys and
-            # cause a thundering herd on the lock for every decode call.
-            oldest_key = next(iter(_public_key_cache))
-            del _public_key_cache[oldest_key]
+        new_cache = _public_key_cache.copy()
+        if len(new_cache) >= 32:
+            oldest_key = next(iter(new_cache))
+            del new_cache[oldest_key]
 
         key = serialization.load_pem_private_key(
             private_key_pem.encode(), password=None
         )
-        _public_key_cache[cache_key] = (
+        new_cache[cache_key] = (
             key.public_key()
             .public_bytes(
                 encoding=serialization.Encoding.PEM,
@@ -566,6 +559,8 @@ def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
             )
             .decode()
         )
+        _public_key_cache = new_cache
+
     return _public_key_cache[cache_key]
 
 

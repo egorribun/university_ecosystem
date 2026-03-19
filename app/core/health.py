@@ -126,11 +126,11 @@ async def check_spicedb_health(timeout_s: float = 2.0) -> tuple[str, float]:
     Returns:
         tuple[status, latency_ms]
     """
-    from app.core.spicedb import get_global_spicedb_channel
+    from app.core.spicedb import get_async_spicedb_channel
 
     start = time.perf_counter()
     try:
-        channel = await get_global_spicedb_channel()
+        channel = await anext(get_async_spicedb_channel())
         if channel is None:
             return "disabled", 0.0
 
@@ -141,7 +141,10 @@ async def check_spicedb_health(timeout_s: float = 2.0) -> tuple[str, float]:
         # But for absolute perfection, we just check if we can at least ping the channel.
         # We'll use the 'experimental' watch or just check ready state to avoid side effects.
         try:
-            await asyncio.wait_for(channel.channel_ready(), timeout=timeout_s)
+            await asyncio.wait_for(
+                channel.channel_ready(),  # type: ignore[attr-defined]
+                timeout=timeout_s,
+            )
             status = "ok"
         except (TimeoutError, grpc.RpcError):
             status = "error"

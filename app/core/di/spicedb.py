@@ -54,7 +54,7 @@ class SpiceDBProvider(Provider):
         ]
 
         if use_ssl:
-            from grpcutil import bearer_token_credentials  # type: ignore[import]
+            from grpcutil import bearer_token_credentials
 
             credentials = bearer_token_credentials(token)
             channel = grpc.aio.secure_channel(

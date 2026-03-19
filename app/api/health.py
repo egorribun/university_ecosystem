@@ -308,5 +308,5 @@ async def ready() -> dict[str, str]:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Shutting down",
         )
-    await wait_db(max_attempts=1, delay=0.1)
+    await wait_db(max_attempts=1)
     return {"status": "ready"}
