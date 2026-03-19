@@ -11,6 +11,37 @@ if TYPE_CHECKING:
     from app.core.config import Settings
 
 
+# PERF-NEW-001 (audit 2026-03-19): Moved _StreamState from inside __call__ to module
+# level with __slots__. The dataclass was re-defined (and its descriptor re-compiled)
+# on every HTTP request, wasting ~200ns. __slots__ also eliminates the __dict__
+# per-instance allocation (~56 bytes), reducing GC pressure at high RPS.
+class _StreamState:
+    """Mutable state bag for SecurityHeadersMiddleware per-request HTML buffering."""
+
+    __slots__ = ("headers_sent", "html_headers", "is_html", "status_code")
+
+    def __init__(self) -> None:
+        self.is_html: bool = False
+        self.headers_sent: bool = False
+        self.html_headers: list[tuple[bytes, bytes]] | None = None
+        self.status_code: int = 200
+
+
+# PERF-NEW-002 (audit 2026-03-19): Exempt health/metrics routes from CSP header
+# building. These endpoints are hit at very high frequency by load balancers and
+# monitoring systems, yet never return HTML, so CSP is irrelevant and wastes CPU.
+_CSP_EXEMPT_PATHS: frozenset[str] = frozenset(
+    {
+        "/health",
+        "/healthz",
+        "/ready",
+        "/metrics",
+        "/api/v1/health",
+        "/api/v1/health/db",
+    }
+)
+
+
 class SecurityHeadersMiddleware:
     """Pure ASGI security headers injector — never buffers response body."""
 
@@ -35,12 +66,17 @@ class SecurityHeadersMiddleware:
             nonce = secrets.token_urlsafe(16)
             request.state.csp_nonce = nonce
 
-        # PERF-05 (audit 2026-03-11): Combine pre-built static headers with the
-        # per-request CSP header (nonce changes every call).  Static headers are
-        # computed once in __init__; only _build_csp_header() runs here.
-        # MOD-W8-04: _build_csp_header returns a list — one header in report-only
-        # mode, two headers (enforcing + shadow CSP-RO) in production.
-        csp_headers = self._build_csp_header(nonce=nonce)
+        # PERF-NEW-002 (audit 2026-03-19): Skip CSP header building for exempt paths
+        # (health, metrics) and static files. These never return HTML and are called
+        # at high frequency. However, we STILL apply base static headers (HSTS, etc.)
+        # to ensure they are protected.
+        path: str = scope.get("path", "")
+        if path in _CSP_EXEMPT_PATHS or path.startswith("/static/"):
+            csp_headers = []  # Omit CSP for performance/compatibility
+        else:
+            # PERF-05: Combine pre-built static headers with the per-request CSP
+            csp_headers = self._build_csp_header(nonce=nonce)
+
         extra_headers = [*csp_headers, *self._static_headers]
 
         _accumulated_html_bytes = 0
@@ -51,16 +87,9 @@ class SecurityHeadersMiddleware:
         # concurrent requests, buffering can spike worker RSS by hundreds of MB.
         _HTML_BUFFER_LIMIT = 64 * 1024  # 64 KB
 
-        from dataclasses import dataclass
-
-        @dataclass
-        class StreamState:
-            is_html: bool = False
-            headers_sent: bool = False
-            html_headers: list[tuple[bytes, bytes]] | None = None
-            status_code: int = 200
-
-        state = StreamState()
+        # PERF-NEW-001 (audit 2026-03-19): Use module-level _StreamState (with
+        # __slots__) instead of a per-request dataclass definition.
+        state = _StreamState()
 
         async def send_with_security_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -180,9 +209,11 @@ class SecurityHeadersMiddleware:
                     await send(message)
                 return
 
-            await send(message)
-
-            # Passthrough for other events
+            # Passthrough for any other ASGI event types (e.g. http.disconnect).
+            # A single send() call is the correct ASGI contract — sending twice
+            # would violate the protocol and cause duplicate response bodies
+            # or Uvicorn assertion errors under concurrent load.
+            # (RZ-NEW-001: audit 2026-03-19)
             await send(message)
 
         await self._app(scope, receive, send_with_security_headers)

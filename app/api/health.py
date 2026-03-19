@@ -264,6 +264,14 @@ async def healthz() -> JSONResponse:
     latencies["file_scanner_latency_ms"] = max(scanner_elapsed * 1000, 0.0)
     record_health_probe("file_scanner", scanner_status, scanner_elapsed)
 
+    # SpiceDB check (RZ-05, audit 2026-03-19)
+    from app.core.health import check_spicedb_health
+
+    authz_status, authz_latency_ms = await check_spicedb_health()
+    statuses["spicedb"] = authz_status
+    latencies["spicedb_latency_ms"] = authz_latency_ms
+    record_health_probe("spicedb", authz_status, authz_latency_ms / 1000.0)
+
     overall_ok = all(value != "error" for value in statuses.values())
     http_status = (
         status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE

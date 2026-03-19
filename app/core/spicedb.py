@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from functools import lru_cache
 from urllib.parse import urlparse
 
+import grpc
 from authzed.api.v1 import Client, InsecureClient
 
 from app.core.config import settings
@@ -104,49 +105,52 @@ def get_spicedb_client() -> Client:
 # ---------------------------------------------------------------------------
 
 
+_global_channel: grpc.aio.Channel | None = None
+
+
 async def get_async_spicedb_channel() -> AsyncIterator[object]:
     """Yield an async-native grpc.aio.Channel for the duration of a request.
 
-    The channel is closed when the generator is exhausted (Dishka REQUEST scope
-    cleans up after each request). A new connection is established per-request;
-    grpc.aio handles HTTP/2 multiplexing internally so this is cost-effective.
-
-    Usage with Dishka:
-        @provide(scope=Scope.REQUEST)
-        async def spicedb_channel(self) -> AsyncIterator[AsyncSpiceDBChannel]:
-            async for ch in get_async_spicedb_channel():
-                yield ch
+    The channel is yielded from a global singleton to properly utilize HTTP/2
+    multiplexing across all requests and avoid connection thrashing.
     """
+    global _global_channel
     import grpc
 
-    host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
-    target = f"{host}:{port}"
-    token = settings.spicedb_preshared_key
+    if _global_channel is None:
+        host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
+        target = f"{host}:{port}"
+        token = settings.spicedb_preshared_key
 
-    # DEBT-03 / RZ-W13-02: gRPC keepalive options ensure dead connections are
-    # detected quickly.  Without these, a network partition can leave the channel
-    # in a broken state for minutes, silently timing out every permission check.
-    _KEEPALIVE_OPTIONS = [
-        ("grpc.keepalive_time_ms", 10_000),  # send a ping every 10 s
-        ("grpc.keepalive_timeout_ms", 5_000),  # wait 5 s for pong
-        ("grpc.keepalive_permit_without_calls", 1),  # ping even with no active RPCs
-        ("grpc.max_reconnect_backoff_ms", 5_000),  # cap reconnect back-off at 5 s
-        ("grpc.http2.min_time_between_pings_ms", 10_000),
-    ]
+        _KEEPALIVE_OPTIONS = [
+            ("grpc.keepalive_time_ms", 10_000),
+            ("grpc.keepalive_timeout_ms", 5_000),
+            ("grpc.keepalive_permit_without_calls", 1),
+            ("grpc.max_reconnect_backoff_ms", 5_000),
+            ("grpc.http2.min_time_between_pings_ms", 10_000),
+        ]
 
-    if use_ssl:
-        from grpcutil import bearer_token_credentials
+        if use_ssl:
+            from grpcutil import bearer_token_credentials
 
-        credentials = bearer_token_credentials(token)
-        channel = grpc.aio.secure_channel(
-            target, credentials, options=_KEEPALIVE_OPTIONS
-        )
-    else:
-        channel = grpc.aio.insecure_channel(target, options=_KEEPALIVE_OPTIONS)
+            credentials = bearer_token_credentials(token)
+            _global_channel = grpc.aio.secure_channel(
+                target, credentials, options=_KEEPALIVE_OPTIONS
+            )
+        else:
+            _global_channel = grpc.aio.insecure_channel(
+                target, options=_KEEPALIVE_OPTIONS
+            )
 
-    logger.debug("SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl)
-    try:
-        yield channel
-    finally:
-        await channel.close()
-        logger.debug("SpiceDB async channel closed: %s:%s", host, port)
+        logger.debug("SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl)
+
+    yield _global_channel
+
+
+async def close_global_spicedb_channel() -> None:
+    """Close the global SpiceDB async channel. Must be called during app shutdown."""
+    global _global_channel
+    if _global_channel is not None:
+        await _global_channel.close()
+        _global_channel = None
+        logger.debug("SpiceDB async channel closed globally")

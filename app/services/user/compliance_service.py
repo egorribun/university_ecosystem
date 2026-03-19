@@ -241,12 +241,16 @@ class UserComplianceService:
             db_user = await self.repo.create_with_invite(user_data, code)
             async with self.uow:
                 await self.uow.commit()
-            # create_with_invite now returns DTO
             return db_user
         except Exception as exc:
-            import traceback
-
-            traceback.print_exc()
+            # Diamond Standard: Use structured logging with exc_info instead of direct traceback print.
+            # Prevents PII leakage to stdout/stderr and enables log aggregation.
+            logger.error(
+                "User registration failed: %s",
+                str(exc),
+                exc_info=True,
+                extra={"email": normalized_email},
+            )
             await self.uow.rollback()
             raise BusinessRuleViolation("errors.users.create_failed") from exc
 

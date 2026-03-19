@@ -6,6 +6,7 @@ news, events, schedule, and other data.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import strawberry
@@ -24,12 +25,14 @@ from app.graphql.types import (
 )
 from app.models import Event, News, User
 
+logger = logging.getLogger(__name__)
 
-def _user_to_type(user: User) -> UserType:
-    """Convert SQLAlchemy User model to GraphQL UserType."""
+
+def _user_to_type(user: User, show_email: bool = False) -> UserType:
+    """Convert SQLAlchemy User model to GraphQL UserType with PII protection."""
     return UserType(
         id=strawberry.ID(str(user.id)),
-        email=user.email,
+        email=user.email if show_email else None,
         full_name=user.profile.full_name if getattr(user, "profile", None) else None,
         is_active=user.is_active,
         created_at=user.created_at,
@@ -277,6 +280,26 @@ class Query:
         except (ValueError, TypeError):
             return []
 
+        # RZ-GQL-AUTH: Enforce ReBAC for group schedules.
+        # Only members or staff with "view" permission on the group can see the schedule.
+        # Fail-closed: return empty list on permission denial or service failure.
+        try:
+            checker = info.context.checker
+            current_user = info.context.current_user
+            user_id = str(current_user.id) if current_user else "anonymous"
+
+            if not await checker.check_permission(
+                resource_type="group",
+                resource_id=str(uid),
+                permission="view",
+                user_id=user_id,
+            ):
+                return []
+        except Exception as exc:
+            # P1: Log auth degradation but don't leak schedule data.
+            logger.warning("GraphQL ReBAC check failed for group %s: %s", uid, exc)
+            return []
+
         result = await info.context.session.execute(
             select(Schedule).where(Schedule.group_id == uid)
         )
@@ -304,4 +327,4 @@ class Query:
         user = info.context.current_user
         if not user:
             return None
-        return _user_to_type(user)
+        return _user_to_type(user, show_email=True)

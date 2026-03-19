@@ -24,6 +24,8 @@ from app.workers.outbox import OutboxWorker
 
 _logger = logging.getLogger(__name__)
 
+_LISTENERS_REGISTERED: bool = False
+
 # TD-3 (audit 2026-03-05): Module-level stop event so _shutdown_subsystems can
 # interrupt the scheduler sleep instantly instead of waiting 3600 s to expire.
 _SCHEDULER_STOP: asyncio.Event = asyncio.Event()
@@ -102,7 +104,7 @@ async def _startup_websocket_and_flags(app: FastAPI) -> None:
 async def _verify_database_readiness() -> None:
     """Stage 3: Connectivity and migration alignment checks."""
     try:
-        await asyncio.wait_for(wait_db(max_attempts=10, delay=0.5), timeout=5.0)
+        await asyncio.wait_for(wait_db(max_attempts=10, base_delay=0.5), timeout=5.0)
     except (TimeoutError, Exception) as exc:
         if settings.environment not in {"development", "local", "testing"}:
             raise
@@ -285,20 +287,23 @@ async def _periodic_scheduler_loop() -> None:
             return False  # normal timeout — continue
 
     # Jitter: spread first execution across 0–60 s
-    jitter = random.uniform(0, 60)  # nosec B311
+    jitter = random.uniform(0, 60)  # nosec B311; noqa: S311
     _logger.debug("Periodic scheduler: initial jitter %.1f s", jitter)
     if await _sleep_or_stop(jitter):
         return
 
-    _last_hour_ran: int = -1
+    # PERF-NEW-005 (audit 2026-03-19): Track both Day of Year and Hour to
+    # prevent duplicate execution or missed hours during Daylight Saving Time (DST)
+    # transitions when the same hour can occur twice or be skipped.
+    _last_ran: tuple[int, int] = (-1, -1)
     import datetime
 
     while not _SCHEDULER_STOP.is_set():
         now_utc = datetime.datetime.now(datetime.UTC)
-        cur_hour = now_utc.hour
+        current_key = (now_utc.timetuple().tm_yday, now_utc.hour)
 
         # Deduplication: skip if already ran this hour (clock drift / fast restart guard)
-        if cur_hour != _last_hour_ran:
+        if current_key != _last_ran:
             tasks = [
                 cleanup_stories_task,
                 cleanup_password_reset_tokens_task,
@@ -306,9 +311,9 @@ async def _periodic_scheduler_loop() -> None:
                 cleanup_mfa_challenges_task,
             ]
 
-            if cur_hour % 6 == 0:
+            if now_utc.hour % 6 == 0:
                 tasks.append(cleanup_sessions_task)
-            if cur_hour == 2:
+            if now_utc.hour == 2:
                 tasks.extend(
                     [
                         cleanup_notifications_task,
@@ -330,7 +335,7 @@ async def _periodic_scheduler_loop() -> None:
             async with asyncio.TaskGroup() as tg:
                 for task in tasks:
                     tg.create_task(_kick(task))
-            _last_hour_ran = cur_hour
+            _last_ran = current_key
 
         if await _sleep_or_stop(3600):
             break
@@ -377,10 +382,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await _handle_schema_and_extensions()
 
     # 3. Business Logic Registration
-    await register_event_listeners()
-    from app.services.event_handlers import configure_event_handlers
+    # TD-NEW-003 (audit 2026-03-19): Guard against duplicate listener registration.
+    # During hot-reload (uvicorn --reload) or test suites where lifespan is exercised
+    # multiple times in the same process, calling register_event_listeners() more than
+    # once accumulates duplicate handlers — events fire N times for N restarts.
+    if not _LISTENERS_REGISTERED:
+        await register_event_listeners()
+        from app.services.event_handlers import configure_event_handlers
 
-    configure_event_handlers()
+        configure_event_handlers()
+        globals()["_LISTENERS_REGISTERED"] = True
+    else:
+        import logging as _llog
+
+        _llog.getLogger(__name__).debug(
+            "TD-NEW-003: Skipping event listener registration (already registered in this process)."
+        )
 
     # 4. Workers & Data Warming
     await _startup_background_workers(app)
@@ -443,6 +460,11 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
 
     await feature_flags.shutdown()
     await stop_memory_cleanup_task()
+
+    from app.core.spicedb import close_global_spicedb_channel
+
+    await close_global_spicedb_channel()
+
     shutdown_observability()
     shutdown_geolocation_service()
     await close_hibp_client()

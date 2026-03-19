@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { StoryList } from "../StoryList"
 import type { StoryItem } from "@/types/Story"
@@ -55,19 +56,21 @@ describe("StoryList", () => {
     expect(screen.getByLabelText("Story: Story 2")).toBeInTheDocument()
   })
 
-  it("calls onOpenStory when a story is clicked", () => {
+  it("calls onOpenStory when a story is clicked", async () => {
+    const user = userEvent.setup()
     const handleOpen = vi.fn()
     render(<StoryList stories={mockStories} onOpenStory={handleOpen} />)
 
-    fireEvent.click(screen.getByLabelText("Story: Story 1"))
+    await user.click(screen.getByLabelText("Story: Story 1"))
     expect(handleOpen).toHaveBeenCalledWith(mockStories[0], 0)
   })
 
-  it("calls onPrefetch on hover", () => {
+  it("calls onPrefetch on hover", async () => {
+    const user = userEvent.setup()
     const handlePrefetch = vi.fn()
     render(<StoryList stories={mockStories} onOpenStory={vi.fn()} onPrefetch={handlePrefetch} />)
 
-    fireEvent.mouseEnter(screen.getByLabelText("Story: Story 1"))
+    await user.hover(screen.getByLabelText("Story: Story 1"))
     expect(handlePrefetch).toHaveBeenCalled()
   })
 })

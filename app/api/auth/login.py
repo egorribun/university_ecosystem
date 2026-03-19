@@ -100,8 +100,6 @@ async def login_passkey_start(
     )
     await db.commit()
 
-    await ensure_minimum_time(start, settings.auth_min_response_time)
-
     audit.log(
         "auth.login.passkey_start",
         request,
@@ -109,6 +107,8 @@ async def login_passkey_start(
         reason="issued",
         extra={"challenge_id": challenge.id},
     )
+
+    await ensure_minimum_time(start, settings.auth_min_response_time)
 
     return WebAuthnAuthenticationOptionsOut(
         publicKey=options,

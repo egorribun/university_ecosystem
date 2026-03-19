@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -115,6 +116,7 @@ beforeEach(() => {
 
 describe("Settings radio buttons", () => {
   it("renders theme radio buttons and allows interaction", async () => {
+    const user = userEvent.setup()
     const { container } = renderSettings()
 
     // Wait for page to render with theme section
@@ -139,7 +141,7 @@ describe("Settings radio buttons", () => {
     // Click each radio button to verify it's interactive
     const lightRadio = themeRadios.find((r) => r.value === "light")
     if (lightRadio) {
-      fireEvent.click(lightRadio)
+      await user.click(lightRadio)
       // Wait for MUI to update localStorage
       await waitFor(() => {
         expect(localStorage.getItem("ue-mode")).toBe("light")
@@ -148,6 +150,7 @@ describe("Settings radio buttons", () => {
   })
 
   it("renders language radio buttons and allows interaction", async () => {
+    const user = userEvent.setup()
     const { container } = renderSettings()
 
     // Wait for language section to render
@@ -173,7 +176,7 @@ describe("Settings radio buttons", () => {
     // Click a language radio to verify it's interactive
     const enRadio = langRadios.find((r) => r.value === "en")
     if (enRadio) {
-      fireEvent.click(enRadio)
+      await user.click(enRadio)
       // Wait a bit for state update
       await new Promise((resolve) => setTimeout(resolve, 100))
       expect(localStorage.getItem("ue:language")).toBe("en")

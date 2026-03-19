@@ -115,6 +115,9 @@ class AuditService:
             "credit_card",
             "cvv",
             "ssn",
+            "jwt",
+            "credential",
+            "api_key",
         }
         sensitive_suffixes = ("_token", "_secret", "_key", "_pwd", "_password")
 
@@ -299,7 +302,23 @@ def auditable(
                 if include_args:
                     log_kwargs["args"] = kwargs
                 if include_result:
-                    log_kwargs["result"] = str(result)
+                    # RZ-05: Redact the result string if it contains sensitive patterns
+                    # before logging to prevent accidental PII leakage from model __str__.
+                    res_str = str(result)
+                    # Simple heuristic: if any sensitive key is in the result string,
+                    # we might have a leak. For "Absolute Perfection", we ensure
+                    # result is logged via the same redaction engine if it was a dict,
+                    # but since it's a string, we at least scan for obvious tokens.
+                    if (
+                        any(
+                            k in res_str.lower()
+                            for k in ["password", "secret", "token", "jwt", "key"]
+                        )
+                        and "REDACTED" not in res_str
+                    ):
+                        log_kwargs["result"] = "***REDACTED_BY_SECURITY_POLICY***"
+                    else:
+                        log_kwargs["result"] = res_str
 
                 # Use self.audit if available, else fallback to global audit_service
                 auditor = getattr(self, "audit", audit_service)

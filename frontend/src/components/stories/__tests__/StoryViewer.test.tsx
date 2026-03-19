@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { StoryViewer } from "../StoryViewer"
 import type { StoryItem } from "@/types/Story"
@@ -81,24 +82,27 @@ describe("StoryViewer", () => {
     expect(screen.getByRole("heading", { name: "Story 1" })).toBeInTheDocument()
   })
 
-  it("calls onClose when close button clicked", () => {
+  it("calls onClose when close button clicked", async () => {
+    const user = userEvent.setup()
     const handleClose = vi.fn()
     renderViewer({ onClose: handleClose })
-    fireEvent.click(screen.getByLabelText("Close"))
+    await user.click(screen.getByLabelText("Close"))
     expect(handleClose).toHaveBeenCalled()
   })
 
-  it("calls onNext when next button clicked", () => {
+  it("calls onNext when next button clicked", async () => {
+    const user = userEvent.setup()
     const handleNext = vi.fn()
     renderViewer({ onNext: handleNext })
-    fireEvent.click(screen.getByLabelText("Next"))
+    await user.click(screen.getByLabelText("Next"))
     expect(handleNext).toHaveBeenCalled()
   })
 
-  it("calls onPrev when prev button clicked", () => {
+  it("calls onPrev when prev button clicked", async () => {
+    const user = userEvent.setup()
     const handlePrev = vi.fn()
     renderViewer({ onPrev: handlePrev })
-    fireEvent.click(screen.getByLabelText("Previous"))
+    await user.click(screen.getByLabelText("Previous"))
     expect(handlePrev).toHaveBeenCalled()
   })
 })

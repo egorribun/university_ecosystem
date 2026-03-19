@@ -423,8 +423,13 @@ class ChatMaintenanceService:
         assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
-        if user.id not in participant_ids:
+        if user.id not in participant_ids and user.role != "admin":
             raise_forbidden(locale, "errors.chat.not_participant")
+
+        # RACE-02 Fix: DMs are shared state. Unilateral history destruction by a regular
+        # participant allows bad actors to delete evidence from the victim's device.
+        if user.role != "admin":
+            raise_forbidden(locale, "errors.chat.history_clear_forbidden_non_admin")
 
         attachment_urls = await self.attachment_service.collect_urls(chat)
         message_count = len(chat.messages)
@@ -476,8 +481,13 @@ class ChatMaintenanceService:
         assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
-        if user.id not in participant_ids:
+        if user.id not in participant_ids and user.role != "admin":
             raise_forbidden(locale, "errors.chat.not_participant")
+
+        # RACE-02 Fix: DMs are shared state. Unilateral deletion by a regular
+        # participant allows bad actors to delete evidence from the victim's device.
+        if user.role != "admin":
+            raise_forbidden(locale, "errors.chat.deletion_forbidden_non_admin")
 
         attachment_urls = await self.attachment_service.collect_urls(chat)
         message_count = len(chat.messages)

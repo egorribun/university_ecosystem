@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
 
+import grpc.aio
 from dishka import Provider, Scope, provide
+
+from app.auth.rbac import PermissionChecker
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +34,8 @@ class SpiceDBProvider(Provider):
     """
 
     @provide(scope=Scope.APP)
-    async def spicedb_channel(self) -> AsyncIterator[Any]:
-        """Singleton async gRPC channel — opened once per app process.
-
-        Yields:
-            grpc.aio.Channel connected to SpiceDB (TLS or insecure based on config).
-        """
-        import grpc
+    async def spicedb_channel(self) -> AsyncIterator[grpc.aio.Channel]:
+        """Singleton async gRPC channel — opened once per app process."""
 
         from app.core.config import settings
         from app.core.spicedb import _parse_endpoint
@@ -78,12 +75,12 @@ class SpiceDBProvider(Provider):
             logger.info("SpiceDB singleton channel closed: %s", target)
 
     @provide(scope=Scope.REQUEST)
-    def permission_checker(self, channel: Any) -> Any:
+    def provide_permission_checker(
+        self, spicedb_channel: grpc.aio.Channel
+    ) -> PermissionChecker:
         """Construct a PermissionChecker for this request using the singleton channel.
 
         Returns:
             PermissionChecker wired to the APP-scoped gRPC channel.
         """
-        from app.auth.rbac import PermissionChecker
-
-        return PermissionChecker(channel)
+        return PermissionChecker(spicedb_channel)

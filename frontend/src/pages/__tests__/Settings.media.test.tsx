@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
+import { render, screen, waitFor, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { MemoryRouter } from "react-router-dom"
@@ -149,14 +149,15 @@ afterEach(() => {
 
 describe("Settings media actions", () => {
   it("uploads avatar and refreshes the profile", async () => {
+    const user = userEvent.setup()
     const updatedUser = { ...baseUser, avatar_url: "/media/avatars/new.png" }
     const postSpy = vi.spyOn(api, "post").mockResolvedValue({ data: updatedUser } as any)
     const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
     const { mockSetUser } = renderSettings()
 
-    fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
-    await userEvent.click(await screen.findByText(tSettings("media.avatar.title")))
+    await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await user.click(await screen.findByText(tSettings("media.avatar.title")))
 
     await waitFor(() =>
       expect(document.querySelectorAll("input[type='file']").length).toBeGreaterThan(1)
@@ -169,7 +170,7 @@ describe("Settings media actions", () => {
     const file = new File(["avatar"], "avatar.png", { type: "image/png" })
 
     await act(async () => {
-      fireEvent.change(fileInputs[0], { target: { files: [file] } })
+      await user.upload(fileInputs[0]!, file)
       await new Promise((resolve) => setTimeout(resolve, 15))
     })
 
@@ -195,16 +196,16 @@ describe("Settings media actions", () => {
 
   it("shows an error when avatar upload fails", async () => {
     vi.spyOn(api, "post").mockRejectedValue({ response: { data: { detail: "Upload error" } } })
-
+    const user = userEvent.setup()
     renderSettings()
-    fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
-    await userEvent.click(await screen.findByText(tSettings("media.avatar.title")))
+    await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await user.click(await screen.findByText(tSettings("media.avatar.title")))
     await waitFor(() => expect(document.querySelector("input[type='file']")).toBeTruthy())
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']")
     const file = new File(["avatar"], "avatar.png", { type: "image/png" })
 
     await act(async () => {
-      fireEvent.change(fileInputs[0], { target: { files: [file] } })
+      await user.upload(fileInputs[0]!, file)
     })
 
     await waitFor(() => expect(api.post).toHaveBeenCalled())
@@ -224,10 +225,11 @@ describe("Settings media actions", () => {
     })
     vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
+    const user = userEvent.setup()
     const { mockSetUser } = renderSettings()
 
-    fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
-    await userEvent.click(await screen.findByText(tSettings("media.cover.title")))
+    await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await user.click(await screen.findByText(tSettings("media.cover.title")))
 
     await waitFor(() =>
       expect(document.querySelectorAll("input[type='file']").length).toBeGreaterThan(1)
@@ -242,7 +244,7 @@ describe("Settings media actions", () => {
 
     const file = new File(["cover"], "cover.png", { type: "image/png" })
     await act(async () => {
-      fireEvent.change(fileInputs[1], { target: { files: [file] } })
+      await user.upload(fileInputs[1]!, file)
       await new Promise((resolve) => setTimeout(resolve, 15))
     })
 
@@ -260,17 +262,18 @@ describe("Settings media actions", () => {
     const deleteSpy = vi.spyOn(api, "delete").mockResolvedValue({ data: updatedUser } as any)
     const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
+    const user = userEvent.setup()
     const { mockSetUser } = renderSettings()
 
-    fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
-    await userEvent.click(await screen.findByText(tSettings("media.avatar.title")))
+    await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await user.click(await screen.findByText(tSettings("media.avatar.title")))
 
     const deleteButton = await screen.findByRole("button", {
       name: tSettings("media.avatar.delete"),
     })
 
     await act(async () => {
-      fireEvent.click(deleteButton)
+      await user.click(deleteButton)
     })
 
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("/users/me/avatar"))
@@ -283,17 +286,18 @@ describe("Settings media actions", () => {
     const deleteSpy = vi.spyOn(api, "delete").mockResolvedValue({ data: updatedUser } as any)
     const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
+    const user = userEvent.setup()
     const { mockSetUser } = renderSettings()
 
-    fireEvent.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
-    await userEvent.click(await screen.findByText(tSettings("media.cover.title")))
+    await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await user.click(await screen.findByText(tSettings("media.cover.title")))
 
     const deleteButton = await screen.findByRole("button", {
       name: tSettings("media.cover.remove"),
     })
 
     await act(async () => {
-      fireEvent.click(deleteButton)
+      await user.click(deleteButton)
     })
 
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("/users/me/cover"))

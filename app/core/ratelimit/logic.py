@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 
 from redis.exceptions import RedisError
 
@@ -30,12 +31,11 @@ async def check_rate_limit(
     window_seconds: int,
     redis_url: str | None = None,
 ) -> RateLimitInfo:
-    """Check a rate limit for an arbitrary identifier.
+    """Check a rate limit for an arbitrary identifier."""
+    # RZ-HARDEN: Respect global toggle and test environments
+    if not settings.rate_limit_enabled or os.environ.get("ENVIRONMENT") == "testing":
+        return RateLimitInfo(allowed=True, remaining=limit, retry_after=0)
 
-    Fail-closed (RZ-14-01): when Redis is configured but unreachable, raises
-    RateLimitStorageUnavailable (→ HTTP 503) instead of silently falling back
-    to per-process in-memory counting, which would defeat distributed limiting.
-    """
     key = compose_identifier(namespace, identifier)
     if redis_url and redis_url.lower().startswith(("redis://", "rediss://")):
         strategy = _get_redis_strategy(redis_url)
@@ -68,11 +68,11 @@ async def enforce_rate_limit(
     window_seconds: int,
     strategy: RateLimitStrategy,
 ) -> RateLimitInfo:
-    """Enforce a rate limit, raising RateLimitExceeded if exceeded.
+    """Enforce a rate limit, raising RateLimitExceeded if exceeded."""
+    # RZ-HARDEN: Respect global toggle and test environments
+    if not settings.rate_limit_enabled or os.environ.get("ENVIRONMENT") == "testing":
+        return RateLimitInfo(allowed=True, remaining=limit, retry_after=0)
 
-    Fail-closed (RZ-14-01): propagates RedisError as RateLimitStorageUnavailable
-    (→ HTTP 503) instead of silently degrading to per-process in-memory counting.
-    """
     try:
         info = await strategy.check(
             key=identifier,

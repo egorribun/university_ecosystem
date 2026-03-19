@@ -88,6 +88,10 @@ app.add_exception_handler(
 configure_observability(app, engine=engine)
 configure_metrics(app)
 
+
+# Routers and Middlewares setup
+
+
 # Middlewares
 configure_middleware(app, settings=settings)
 

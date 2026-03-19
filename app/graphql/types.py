@@ -13,7 +13,7 @@ import strawberry
 @strawberry.type(description="User profile information")
 class UserType:
     id: strawberry.ID
-    email: str
+    email: str | None = None
     full_name: str | None = None
     is_active: bool = True
     created_at: datetime | None = None

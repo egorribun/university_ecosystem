@@ -25,6 +25,10 @@ class JwtSettingsMixin:
     secret_key: str
     jwt_signing_keys: list[str] | str = ""
     jwt_active_kid: str | None = None
+    # RZ-NEW-003 (audit 2026-03-19): Explicit audience field — never rely on getattr fallback
+    # in decode_token. If not configured, the default provides a sane value; in production
+    # operators SHOULD override via JWT_AUDIENCE to a service-specific audience string to
+    # prevent cross-service token reuse (e.g. dev service accepting staging token).
     jwt_audience: str = "university-ecosystem-api"
     algorithm: str = "RS256"
     access_token_expire_minutes: int = 60
@@ -133,6 +137,38 @@ class JwtSettingsMixin:
                 stacklevel=2,
             )
         return v.upper()
+
+    @field_validator("jwt_audience")
+    @classmethod
+    def _validate_jwt_audience(cls, v: str, info: ValidationInfo) -> str:
+        """Enforce explicit JWT audience configuration in non-development environments.
+
+        RZ-NEW-003 (audit 2026-03-19): Prevents the decode_token() from silently
+        falling back to a hardcoded string via getattr. If an operator misconfigures
+        JWT_AUDIENCE, this validator surfaces the error at startup rather than at
+        runtime where it could silently accept tokens for a different service.
+        """
+        if not v or not v.strip():
+            raise ValueError("JWT_AUDIENCE must not be empty")
+        env = str(
+            info.data.get("environment")
+            or os.environ.get("ENVIRONMENT", "development")
+            or "development"
+        ).lower()
+        # Warn in any environment if the audience looks like an uncustomized placeholder.
+        _AUDIENCE_PLACEHOLDERS: frozenset[str] = frozenset(
+            {"api", "app", "service", "my-api", "example"}
+        )
+        if v.lower() in _AUDIENCE_PLACEHOLDERS and env not in _DEVELOPMENT_ENVIRONMENTS:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "JWT_AUDIENCE='%s' looks like a generic placeholder. "
+                "Set JWT_AUDIENCE to a service-specific string to prevent "
+                "cross-service token reuse.",
+                v,
+            )
+        return v.strip()
 
     def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
         entries: list[tuple[str, str]] = []

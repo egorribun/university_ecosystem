@@ -17,6 +17,8 @@ from app.api.deps.services import (
     get_auth_service,
     get_chat_command_service,
     get_chat_creation_service,
+    get_chat_maintenance_service,
+    get_chat_message_dispatcher,
     get_chat_query_service,
     get_chat_service,  # legacy alias
     get_event_service,
@@ -43,6 +45,8 @@ __all__ = [
     "get_auth_service",
     "get_chat_command_service",
     "get_chat_creation_service",
+    "get_chat_maintenance_service",
+    "get_chat_message_dispatcher",
     "get_chat_query_service",
     "get_chat_service",
     "get_current_admin_user",

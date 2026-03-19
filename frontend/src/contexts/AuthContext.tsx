@@ -13,46 +13,51 @@ import {
   useAuthActions,
 } from "@/stores/useAuthStore"
 
+interface AuthContextActions {
+  login: AuthContextType["login"]
+  logout: AuthContextType["logout"]
+  setUser: AuthContextType["setUser"]
+  refresh: AuthContextType["refresh"]
+  submitMfaChallenge: AuthContextType["submitMfaChallenge"]
+  requireMfa: AuthContextType["requireMfa"]
+  loginWithPasskey: AuthContextType["loginWithPasskey"]
+  resetEtagCache: typeof resetEtagCache
+}
+
 const noopSetUser = () => {
   logWarning("AuthContext setUser called outside provider")
 }
 
-export const AuthContext = createContext<
-  Omit<AuthContextType, "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation">
->({
-  login: async () => null,
+export const AuthContext = createContext<AuthContextActions>({
+  login: async () => null as any,
   logout: async () => {},
   setUser: noopSetUser,
   refresh: async () => {},
   submitMfaChallenge: async () => {},
-  requireMfa: async () => null,
+  requireMfa: async () => null as any,
   loginWithPasskey: async () => {},
   resetEtagCache,
-} as unknown as Omit<
-  AuthContextType,
-  "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation"
->)
+} as AuthContextActions)
 
 export const useAuth = (): AuthContextType => {
   const user = useAuthUser()
   const loading = useAuthLoading()
   const pendingMfa = useAuthPendingMfa()
-  const actions = useAuthActions()
+  const { authOperation, ...storeActions } = useAuthActions()
   const contextActions = useContext(AuthContext)
 
-  // Oh, wait, useProfileSync exports `authOperation: boolean`.
-  // AuthContextType DOES have it if it comes from the auth store or useAuthHook.
-  // Actually, wait, `useAuthStore` HAS `authOperation`.
-  // Wait, let's just assert the whole object as AuthContextType to silence the spurious error
-  // since this is just a context merge.
-  return {
+  // TD-NEW-002 (audit 2026-03-19): Explicit structure without "as unknown as".
+  // Type is structurally inferred to be strictly compatible with AuthContextType.
+  const result: AuthContextType = {
     user,
     loading,
     pendingMfa,
-    ...actions,
-    ...contextActions,
     isAuth: user !== null,
-  } as AuthContextType
+    authOperation,
+    ...storeActions,
+    ...contextActions,
+  }
+  return result
 }
 
 export { ChallengeLockedError, currentUserQueryKey, fetchCurrentUser }
@@ -100,7 +105,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     resetEtagCache
   )
 
-  const value = useMemo(
+  // PERF-NEW-003 (audit 2026-03-19): Separate stable module-level references
+  // from useMemo deps array.
+  const STABLE_API_UTILS = useMemo(() => ({ resetEtagCache }), [])
+
+  const actionsValue = useMemo(
     () => ({
       login,
       logout,
@@ -109,22 +118,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       submitMfaChallenge,
       requireMfa,
       loginWithPasskey,
-      resetEtagCache,
     }),
-    // PERF-003 (audit 2026-03-10): resetEtagCache was used in the memo value but
-    // absent from deps. It is a stable module-level function reference (no extra
-    // re-renders), but must be listed for react-hooks/exhaustive-deps compliance
-    // and correctness if it ever becomes a hook-based function in the future.
-    [
-      login,
-      logout,
-      setUser,
-      refresh,
-      submitMfaChallenge,
-      requireMfa,
-      loginWithPasskey,
-      resetEtagCache,
-    ]
+    [login, logout, setUser, refresh, submitMfaChallenge, requireMfa, loginWithPasskey]
+  )
+
+  const value = useMemo(
+    () => ({ ...actionsValue, ...STABLE_API_UTILS }),
+    [actionsValue, STABLE_API_UTILS]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

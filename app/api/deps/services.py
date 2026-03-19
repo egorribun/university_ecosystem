@@ -104,6 +104,13 @@ def get_read_chat_service(
     return get_read_chat_query_service(session)
 
 
+def get_chat_command_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> "ChatMessageDispatcher":
+    """Legacy alias for get_chat_message_dispatcher."""
+    return get_chat_message_dispatcher(session)
+
+
 def _build_event_service(
     session: AsyncDatabaseSession, vector_service: Any
 ) -> "EventService":
@@ -296,6 +303,7 @@ __all__ = [
     "get_analytics_service",
     "get_audit_service",
     "get_auth_service",
+    "get_chat_command_service",  # legacy alias
     "get_chat_creation_service",
     "get_chat_maintenance_service",
     "get_chat_message_dispatcher",

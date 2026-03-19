@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import BackToTop from "@/components/BackToTop"
 import i18n from "@/i18n/config"
@@ -56,6 +57,7 @@ describe("BackToTop", () => {
   })
 
   it("scrolls smoothly to top when clicked", async () => {
+    const user = userEvent.setup()
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
     render(<BackToTop />)
 
@@ -67,7 +69,7 @@ describe("BackToTop", () => {
     })
 
     const button = screen.getByRole("button", { name: getLabel() })
-    fireEvent.click(button)
+    await user.click(button)
 
     expect(scrollTo).toHaveBeenCalledTimes(1)
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
