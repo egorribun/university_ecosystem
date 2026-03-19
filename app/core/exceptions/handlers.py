@@ -4,7 +4,6 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request, status
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.core.exceptions.domain import (

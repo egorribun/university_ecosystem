@@ -153,7 +153,11 @@ class SecuritySettings(
     @field_validator("internal_hmac_secret")
     @classmethod
     def _validate_internal_hmac_secret(cls, v: str, info: ValidationInfo) -> str:
-        env = str(info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")).lower()
+        env = str(
+            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        ).lower()
         if env not in _DEVELOPMENT_ENVIRONMENTS and not v:
-            raise ValueError("INTERNAL_HMAC_SECRET MUST be set in production to prevent identity spoofing (SSRF).")
+            raise ValueError(
+                "INTERNAL_HMAC_SECRET MUST be set in production to prevent identity spoofing (SSRF)."
+            )
         return v

@@ -142,10 +142,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         safe_query = self._escape_like(query.strip().lower())
         pattern = f"%{safe_query}%"
 
-        stmt = (
-            select(Event)
-            .where(func.lower(Event.title).like(pattern, escape="\\"))
-        )
+        stmt = select(Event).where(func.lower(Event.title).like(pattern, escape="\\"))
         if after_starts_at is not None and after_id is not None:
             stmt = stmt.where(
                 or_(

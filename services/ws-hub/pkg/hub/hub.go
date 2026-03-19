@@ -531,6 +531,11 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 // is no longer in h.Clients is deleted.  The goroutine exits when ctx is done.
 func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				h.Logger.Error("CRITICAL: Panic in LimiterCleanup goroutine avoided ws-hub crash", "panic", r)
+			}
+		}()
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for {

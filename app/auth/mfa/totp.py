@@ -331,16 +331,24 @@ async def verify_totp_for_user(
                 if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
                     span.set_attribute("mfa.result", "invalid_code")
                     span.set_status(Status(StatusCode.ERROR))
-                    raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+                    raise_validation_error(
+                        "errors.mfa.invalid_challenge", locale or "en"
+                    )
                 if loaded_challenge.user_id != user.id:
                     span.set_attribute("mfa.result", "invalid_code")
                     span.set_status(Status(StatusCode.ERROR))
-                    raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+                    raise_validation_error(
+                        "errors.mfa.invalid_challenge", locale or "en"
+                    )
                 if session_id is not None and loaded_challenge.session_id != session_id:
                     span.set_attribute("mfa.result", "invalid_code")
                     span.set_status(Status(StatusCode.ERROR))
-                    raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
-            limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
+                    raise_validation_error(
+                        "errors.mfa.invalid_challenge", locale or "en"
+                    )
+            limit = _extract_attempt_limit(
+                loaded_challenge, settings.mfa_totp_attempt_limit
+            )
             await _ensure_challenge_not_locked(
                 db,
                 loaded_challenge,
@@ -365,7 +373,10 @@ async def verify_totp_for_user(
                     )
                     continue
                 # Use constant-time comparison — record match but keep iterating
-                if _ct_verify_totp(str(enrollment.secret), code) and matched_enrollment is None:
+                if (
+                    _ct_verify_totp(str(enrollment.secret), code)
+                    and matched_enrollment is None
+                ):
                     matched_enrollment = enrollment
 
             if matched_enrollment is not None:
@@ -395,15 +406,21 @@ async def verify_totp_for_user(
                 code_hash = hashlib.sha256(code.encode()).hexdigest()
                 if (
                     locked_enrollment.last_used_code_hash is not None
-                    and hmac.compare_digest(locked_enrollment.last_used_code_hash, code_hash)
+                    and hmac.compare_digest(
+                        locked_enrollment.last_used_code_hash, code_hash
+                    )
                 ):
                     span.set_attribute("mfa.result", "code_already_used")
                     span.set_status(Status(StatusCode.ERROR))
-                    raise_validation_error("errors.mfa.code_already_used", locale or "en")
+                    raise_validation_error(
+                        "errors.mfa.code_already_used", locale or "en"
+                    )
 
                 locked_enrollment.last_used_code_hash = code_hash
                 locked_enrollment.last_used_at = _utcnow()
-                matched_enrollment = locked_enrollment  # use the locked row for consume_challenge
+                matched_enrollment = (
+                    locked_enrollment  # use the locked row for consume_challenge
+                )
 
                 if loaded_challenge is not None:
                     await consume_challenge(

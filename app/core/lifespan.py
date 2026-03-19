@@ -186,7 +186,9 @@ async def _validate_di_container(app: FastAPI) -> None:
             failures.append(f"{svc_type.__name__}: {exc}")
 
     if failures:
-        msg = "DI container smoke-test FAILED:\n" + "\n".join(f"  - {f}" for f in failures)
+        msg = "DI container smoke-test FAILED:\n" + "\n".join(
+            f"  - {f}" for f in failures
+        )
         if settings.environment not in {"development", "local", "testing"}:
             raise RuntimeError(msg)
         _logger.warning(msg)
@@ -271,6 +273,7 @@ async def _periodic_scheduler_loop() -> None:
             _logger.exception("Cleanup failed for %s", task_name)
             # MOD-W10-08: Increment Prometheus counter for Grafana alerting.
             from app.core.metrics import record_background_task_error
+
             record_background_task_error(task_name)
 
     async def _sleep_or_stop(seconds: float) -> bool:

@@ -24,6 +24,7 @@ from app.api.deps import (
     get_event_service,
     get_read_event_service,
 )
+from app.api.deps.auth import get_permission_checker
 from app.api.deps.etag import _set_language_headers, cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import (
@@ -33,7 +34,6 @@ from app.api.validation import (
     raise_not_found,
     require_teacher_or_admin,
 )
-from app.api.deps.auth import get_permission_checker
 from app.auth.rbac import PermissionChecker
 from app.core.cache_versioning import events_cache_version
 from app.core.config import settings

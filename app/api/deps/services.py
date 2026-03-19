@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from app.services.auth.login_service import LoginService
     from app.services.auth.redis_session import RedisSessionService
     from app.services.auth_service import AuthService
-    from app.services.chat.command_service import ChatCommandService
+    from app.services.chat.command_service import ChatMaintenanceService, ChatMessageDispatcher
     from app.services.chat.creation_service import ChatCreationService
     from app.services.chat.query_service import ChatQueryService
     from app.services.event_service import EventService
@@ -25,19 +25,32 @@ if TYPE_CHECKING:
 # TD-W9-01/05: ChatService wrapper removed — inject narrow services directly.
 
 
-def get_chat_command_service(
+def get_chat_message_dispatcher(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatCommandService":
-    """FastAPI dep: ChatCommandService (write + maintenance) on write DB."""
+) -> "ChatMessageDispatcher":
+    """FastAPI dep: ChatMessageDispatcher on write DB."""
     from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.attachment_service import ChatAttachmentService
-    from app.services.chat.command_service import ChatCommandService
+    from app.services.chat.command_service import ChatMessageDispatcher
     from app.services.chat.notification_service import ChatNotificationService
 
     uow = uow_from_session(session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(session)
-    return ChatCommandService(uow, attachments, notifications)
+    return ChatMessageDispatcher(uow, attachments, notifications)
+
+
+def get_chat_maintenance_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> "ChatMaintenanceService":
+    """FastAPI dep: ChatMaintenanceService on write DB."""
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.chat.attachment_service import ChatAttachmentService
+    from app.services.chat.command_service import ChatMaintenanceService
+
+    uow = uow_from_session(session)
+    attachments = ChatAttachmentService()
+    return ChatMaintenanceService(uow, attachments)
 
 
 def get_chat_creation_service(
@@ -78,8 +91,8 @@ def get_read_chat_query_service(
 # do not break immediately.  Remove after audit confirms no other usages.
 def get_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatCommandService":
-    return get_chat_command_service(session)
+) -> "ChatMessageDispatcher":
+    return get_chat_message_dispatcher(session)
 
 
 def get_read_chat_service(
@@ -280,7 +293,8 @@ __all__ = [
     "get_analytics_service",
     "get_audit_service",
     "get_auth_service",
-    "get_chat_command_service",
+    "get_chat_maintenance_service",
+    "get_chat_message_dispatcher",
     "get_chat_creation_service",
     "get_chat_query_service",
     "get_chat_service",  # legacy alias

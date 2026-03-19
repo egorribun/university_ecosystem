@@ -272,7 +272,6 @@ async def issue_dummy_challenge(db: AsyncSession) -> None:
     Perform a generic DB write to normalize response times and mitigate
     user enumeration timing attacks.
     """
-    import uuid
     from sqlalchemy import text
 
     # Updating a massive table with an unknown ID takes 0.01ms because PostgreSQL

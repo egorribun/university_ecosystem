@@ -47,9 +47,7 @@ from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.data_access import (
     batch_log_data_access,
-    export_access_logs,
     log_data_access,
-    serialize_access_logs_csv,
 )
 from app.services.file_scanner import scan_for_malware
 from app.services.group_service import GroupService
@@ -452,12 +450,19 @@ async def export_access_audit(
         )
 
     from fastapi.responses import StreamingResponse
+
     from app.services.data_access import export_access_logs_stream
 
     audit.log("users.audit.export", request, user_id=user.id)
 
     return StreamingResponse(
-        export_access_logs_stream(db, start_at=start_at, end_at=end_at, actor_user_id=None, subject_user_id=None),
+        export_access_logs_stream(
+            db,
+            start_at=start_at,
+            end_at=end_at,
+            actor_user_id=None,
+            subject_user_id=None,
+        ),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=access_audit.csv"},
     )
