@@ -371,7 +371,10 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     )
     await db_session.commit()
     res_enr, res_chal = await mfa.verify_totp_for_user(
-        db_session, user=user, code=totp.now(), challenge_token=challenge_for_success.token
+        db_session,
+        user=user,
+        code=totp.now(),
+        challenge_token=challenge_for_success.token,
     )
     assert res_enr.id == enrollment.id
 
@@ -386,7 +389,10 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     await db_session.commit()
     with pytest.raises(HTTPException):  # raise_validation_error raises HTTPException
         await mfa.verify_totp_for_user(
-            db_session, user=user, code="000000", challenge_token=challenge_for_invalid.token
+            db_session,
+            user=user,
+            code="000000",
+            challenge_token=challenge_for_invalid.token,
         )
 
     # With challenge token

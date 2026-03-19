@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import csv
 import io
-import uuid
 import json
+import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -211,6 +211,7 @@ def serialize_access_logs_csv(entries: Iterable[DataAccessLogDTO]) -> str:
 
 from collections.abc import AsyncIterable
 
+
 async def export_access_logs_stream(
     db: AsyncDatabaseSession,
     *,
@@ -244,19 +245,21 @@ async def export_access_logs_stream(
         writer = csv.writer(buffer)
 
         def _sanitize_csv(val: Any) -> Any:
-            if isinstance(val, str) and val.startswith(('=', '+', '-', '@')):
+            if isinstance(val, str) and val.startswith(("=", "+", "-", "@")):
                 return f"\t{val}"
             return val
 
-        writer.writerow([
-            dto.created_at.isoformat() if dto.created_at else None,
-            dto.actor_user_id,
-            dto.subject_user_id,
-            _sanitize_csv(dto.resource_type),
-            _sanitize_csv(dto.resource_id),
-            _sanitize_csv(dto.action),
-            dto.ip_address,
-            _sanitize_csv(dto.user_agent),
-            _sanitize_csv(json.dumps(dto.context) if dto.context else ""),
-        ])
+        writer.writerow(
+            [
+                dto.created_at.isoformat() if dto.created_at else None,
+                dto.actor_user_id,
+                dto.subject_user_id,
+                _sanitize_csv(dto.resource_type),
+                _sanitize_csv(dto.resource_id),
+                _sanitize_csv(dto.action),
+                dto.ip_address,
+                _sanitize_csv(dto.user_agent),
+                _sanitize_csv(json.dumps(dto.context) if dto.context else ""),
+            ]
+        )
         yield buffer.getvalue()

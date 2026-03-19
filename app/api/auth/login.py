@@ -82,6 +82,7 @@ async def login_passkey_start(
 
     if not user or not user.is_active:
         from app.auth.mfa.challenge import issue_dummy_challenge
+
         await issue_dummy_challenge(db)
         webauthn_options = service.get_dummy_authentication_options()
         await ensure_minimum_time(start, settings.auth_min_response_time)

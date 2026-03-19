@@ -144,7 +144,13 @@ class ScheduleOptimizerService:
         try:
             existing_rust = [self._to_rust_item(item) for item in existing]
 
-            days = preferred_weekdays or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+            days = preferred_weekdays or [
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+            ]
             # Domain-driven schedule available blocks (hours) instead of hardcoded in Rust
             available_blocks = [(day, [9, 11, 13, 15]) for day in days]
 

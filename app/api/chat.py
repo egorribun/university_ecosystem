@@ -68,7 +68,9 @@ async def get_chats(
 async def create_chat(
     chat_in: ChatCreate,
     current_user: Annotated[User, Depends(get_current_user)],
-    creation_service: Annotated[ChatCreationService, Depends(get_chat_creation_service)],
+    creation_service: Annotated[
+        ChatCreationService, Depends(get_chat_creation_service)
+    ],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatResponse:
     """Create a new chat with a user.  If a DM chat already exists, return it."""

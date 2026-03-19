@@ -38,7 +38,9 @@ depends_on: str | Sequence[str] | None = None
 # The previous migration accidentally referenced the wrong table name ("message"
 # instead of "messages").  We clean it up here in case it was applied.
 _OLD_IDX_WRONG_TABLE = "idx_message_chat_pagination"  # on table "message" (wrong)
-_OLD_IDX_CORRECT_TABLE = "idx_message_chat_pagination"  # on table "messages" (if it ever existed)
+_OLD_IDX_CORRECT_TABLE = (
+    "idx_message_chat_pagination"  # on table "messages" (if it ever existed)
+)
 _NEW_IDX = "idx_messages_chat_pagination_covering"
 
 
@@ -55,9 +57,7 @@ def upgrade() -> None:
 
     # Drop legacy index from the previous migration (wrong table "message").
     # IF NOT EXISTS / IF EXISTS guard makes this idempotent.
-    conn.execute(
-        text(f"DROP INDEX CONCURRENTLY IF EXISTS {_OLD_IDX_WRONG_TABLE}")
-    )
+    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_OLD_IDX_WRONG_TABLE}"))
 
     # Create the new covering index on the correct table "messages".
     conn.execute(

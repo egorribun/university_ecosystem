@@ -22,7 +22,6 @@ from prometheus_client import Counter
 from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
-    CircuitBreakerOpenError,
 )
 
 logger = logging.getLogger(__name__)

@@ -40,8 +40,8 @@ class SpiceDBProvider(Provider):
         """
         import grpc
 
-        from app.core.spicedb import _parse_endpoint
         from app.core.config import settings
+        from app.core.spicedb import _parse_endpoint
 
         host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
         target = f"{host}:{port}"
@@ -60,7 +60,9 @@ class SpiceDBProvider(Provider):
             from grpcutil import bearer_token_credentials  # type: ignore[import]
 
             credentials = bearer_token_credentials(token)
-            channel = grpc.aio.secure_channel(target, credentials, options=_KEEPALIVE_OPTIONS)
+            channel = grpc.aio.secure_channel(
+                target, credentials, options=_KEEPALIVE_OPTIONS
+            )
         else:
             channel = grpc.aio.insecure_channel(target, options=_KEEPALIVE_OPTIONS)
 

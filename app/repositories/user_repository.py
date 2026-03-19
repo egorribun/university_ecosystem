@@ -213,11 +213,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
 
         # Strictly enforce cursor-based pagination to prevent O(N) sequential scans
         after_id_val = filters.after_id or uuid.UUID(int=0)
-        stmt = (
-            stmt.where(User.id > after_id_val)
-            .order_by(User.id)
-            .limit(capped_limit)
-        )
+        stmt = stmt.where(User.id > after_id_val).order_by(User.id).limit(capped_limit)
 
         result = await self.db.execute(stmt)
         # unique() is required after contains_eager to deduplicate rows produced
@@ -389,7 +385,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         """
         stmt = select(models.InviteCode).where(models.InviteCode.code == code)
         if with_for_update:
-            stmt = stmt.with_for_update(skip_locked=False, nowait=True)  # no skip_locked — serialize, not skip
+            stmt = stmt.with_for_update(
+                skip_locked=False, nowait=True
+            )  # no skip_locked — serialize, not skip
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
@@ -625,8 +623,8 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
                 models.DataAccessLog.created_at < before_dt,
                 and_(
                     models.DataAccessLog.created_at == before_dt,
-                    models.DataAccessLog.id < after_id
-                )
+                    models.DataAccessLog.id < after_id,
+                ),
             )
         elif before_dt:
             condition = condition & (models.DataAccessLog.created_at < before_dt)
@@ -635,7 +633,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         stmt = (
             select(models.DataAccessLog)
             .where(condition)
-            .order_by(models.DataAccessLog.created_at.desc(), models.DataAccessLog.id.desc())
+            .order_by(
+                models.DataAccessLog.created_at.desc(), models.DataAccessLog.id.desc()
+            )
             .limit(capped)
         )
         result = await self.db.execute(stmt)

@@ -9,9 +9,6 @@ from app.auth.security import get_password_hash
 from app.core.database import get_db, get_read_db
 from app.main import app
 from app.models.chat import Chat, Message
-from app.services.chat.attachment_service import ChatAttachmentService
-from app.services.chat.command_service import ChatCommandService
-from app.services.chat.notification_service import ChatNotificationService
 from app.services.chat.query_service import ChatQueryService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 

@@ -7,6 +7,7 @@ If either test fails it means:
   - MfaTotpEnrollment.secret is no longer encrypted at the ORM level, OR
   - RecoveryCode.code_hash is no longer hashed before storage.
 """
+
 from __future__ import annotations
 
 import pytest
