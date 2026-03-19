@@ -65,11 +65,11 @@ spec:
             timeoutSeconds: 3
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 250m
+              memory: 768Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: 1500m
+              memory: 1536Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000

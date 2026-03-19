@@ -51,6 +51,13 @@ _Session: sessionmaker[Session] | None = None
 _sync_init_lock = Lock()
 _async_init_lock = asyncio.Lock()
 
+# TD-002 / PERF-001: Cap concurrent outgoing WebPush HTTP connections to prevent
+# self-DoS when broadcasting to large subscriber lists (e.g. 500+ recipients).
+# Without a semaphore, asyncio.gather fires all connections simultaneously,
+# exhausting the connection pool and triggering APNS/GCM rate-limit bans.
+# 50 concurrent slots provide high throughput (~50 msg/s) without flooding.
+_PUSH_DELIVERY_SEMAPHORE = asyncio.Semaphore(50)
+
 
 def _initialize_sync_resources() -> None:
     global _sync_engine, _Session
@@ -804,7 +811,12 @@ async def send_to_user(
             status="no_matching_topics",
         )
         return []
-    results = await asyncio.gather(*tasks)
+
+    async def _bounded_send_dispatch(task: Any) -> Any:
+        async with _PUSH_DELIVERY_SEMAPHORE:
+            return await task
+
+    results = await asyncio.gather(*(_bounded_send_dispatch(t) for t in tasks))
     await process_push_results(list(results))
 
     _log_event(
@@ -867,7 +879,12 @@ async def broadcast_to_topic(
             user=getattr(sub, "user", None),
         )
         tasks.append(_send_push_async(sub, prepared))
-    results = await asyncio.gather(*tasks)
+
+    async def _bounded_send_broadcast(task: Any) -> Any:
+        async with _PUSH_DELIVERY_SEMAPHORE:
+            return await task
+
+    results = await asyncio.gather(*(_bounded_send_broadcast(t) for t in tasks))
     await process_push_results(list(results))
 
     _log_event(

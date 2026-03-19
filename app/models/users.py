@@ -34,7 +34,9 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     # domain to 255 chars → total max 320; we use 254 (RFC 5321 §4.5.3.1 total).
     # Prevents storage-amplification via unbounded email payloads.
     email: Mapped[str] = mapped_column(String(254), unique=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    # Argon2id hash format: $argon2id$v=19$m=32768,t=3,p=4$<salt>$<hash>
+    # Max length: 97 bytes encoded (hex base64). Use 256 chars for safety margin.
+    hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
     pending_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
 
     __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
@@ -220,7 +222,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     def __init__(self, **kwargs: Any) -> None:
-        allow_manual = kwargs.pop("_allow_system_managed_assignment", False)
+        kwargs.pop("_allow_system_managed_assignment", False)
 
         preferences_data = kwargs.pop("preferences", None)
         profile_data = kwargs.pop("profile", None) or kwargs.pop("profile_detail", None)

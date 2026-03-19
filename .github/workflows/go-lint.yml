@@ -43,9 +43,10 @@ jobs:
           cache: false  # golangci-lint-action manages its own cache
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v6.5.2
+        uses: golangci/golangci-lint-action@v9 # MOD-05 (audit Wave 10): Upgrade to v9 for golangci-lint v2 support.
         with:
-          version: v1.64.8
+          version: v2.3.0
+          install-mode: goinstall
           working-directory: services/${{ matrix.service }}
           args: --config ../../.golangci.yml --timeout 5m
 

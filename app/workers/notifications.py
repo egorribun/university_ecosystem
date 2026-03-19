@@ -203,7 +203,7 @@ async def run_worker() -> None:
             port=metrics_port,
         )
 
-    await wait_db(max_attempts=10, delay=1.0)
+    await wait_db(max_attempts=10)
 
     stop_event = asyncio.Event()
 

@@ -1,80 +1,77 @@
-# MOD-05 (audit Wave 10): golangci-lint configuration for all Go services
-# (ws-hub, file-processor, gateway).
-#
-# Run: golangci-lint run ./...
-# CI:  golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v6.5.2
+version: "2" # MOD-05 (audit Wave 10): version 2 for golangci-lint v2.
 
 run:
   timeout: 5m
   # Allow parallel execution when the linter supports it.
   concurrency: 4
-  # Exit cleanly so downstream CI can distinguish lint failures from tool errors.
-  issues-exit-code: 1
 
 linters:
   # Disable the default set so we can be explicit about what we run.
-  disable-all: true
+  default: none
   enable:
-    - errcheck       # Catch all ignored errors (pairs with check-blank below)
-    - gosec          # Security-focused static analysis (replaces manual SAST)
-    - govet          # Official go vet — catches suspicious constructs
-    - staticcheck    # Comprehensive SA analysis (nilness, unreachable, etc.)
-    - exhaustive     # Enum switch coverage — prevents silent missing-case bugs
-    - godot          # Enforce terminating punctuation on comments
-    - noctx          # Flag context.Background() in HTTP handlers
-    - bodyclose      # Detect unclosed HTTP response bodies (→ goroutine/fd leak)
-    - contextcheck   # Ensure context propagation is consistent
-    - cyclop         # Cyclomatic complexity (default threshold: 10)
-    - gocognit       # Cognitive complexity (default threshold: 30)
-    - gofmt          # Enforce gofmt formatting
-    - misspell       # Catch common English spelling mistakes in comments/strings
-    - revive         # Fast, extensible drop-in replacement for golint
-    - unconvert      # Remove unnecessary type conversions
-    - unused         # Detect unused code
+    - errcheck # Catch all ignored errors (pairs with check-blank below)
+    - gosec # Security-focused static analysis (replaces manual SAST)
+    - govet # Official go vet — catches suspicious constructs
+    - staticcheck # Comprehensive SA analysis (nilness, unreachable, etc.)
+    - exhaustive # Enum switch coverage — prevents silent missing-case bugs
+    - godot # Enforce terminating punctuation on comments
+    - noctx # Flag context.Background() in HTTP handlers
+    - bodyclose # Detect unclosed HTTP response bodies (→ goroutine/fd leak)
+    - contextcheck # Ensure context propagation is consistent
+    - cyclop # Cyclomatic complexity (default threshold: 10)
+    - gocognit # Cognitive complexity (default threshold: 30)
+    - misspell # Catch common English spelling mistakes in comments/strings
+    - revive # Fast, extensible drop-in replacement for golint
+    - unconvert # Remove unnecessary type conversions
+    - unused # Detect unused code
 
-linters-settings:
-  errcheck:
-    # Catch `_ = f()` patterns — forces developers to handle or explicitly
-    # annotate intentional error ignores with //nolint:errcheck.
-    check-blank: true
+  settings:
+    errcheck:
+      # Catch `_ = f()` patterns — forces developers to handle or explicitly
+      # annotate intentional error ignores with //nolint:errcheck.
+      check-blank: true
 
-  gosec:
-    # G104 (unhandled errors in defer/goroutine): excluded because our audit
-    # log sinks intentionally ignore write errors to avoid log feedback loops.
-    excludes:
-      - G104
+    gosec:
+      # G104 (unhandled errors in defer/goroutine): excluded because our audit
+      # log sinks intentionally ignore write errors to avoid log feedback loops.
+      excludes:
+        - G104
 
-  cyclop:
-    # Allow up to complexity 15 before flagging.  The default 10 fires too
-    # often in protocol handler switch statements.
-    max-complexity: 15
+    cyclop:
+      # Allow up to complexity 15 before flagging.  The default 10 fires too
+      # often in protocol handler switch statements.
+      max-complexity: 15
 
-  gocognit:
-    # Cognitive complexity threshold.
-    min-complexity: 30
+    gocognit:
+      # Cognitive complexity threshold.
+      min-complexity: 30
 
-  revive:
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+        - name: var-naming
+          severity: warning
+
+  exclusions:
+    # Exclude vendor / generated code.
+    paths:
+      - vendor
+      - gen
+      - mocks
+    # Allow the standard "exported function should have comment" pattern in test
+    # files, where docs are typically omitted for brevity.
     rules:
-      - name: exported
-        severity: warning
-      - name: var-naming
-        severity: warning
+      - path: "_test\\.go"
+        linters:
+          - godot
+          - revive
 
 issues:
   # Do not limit the number of issues per linter so CI output is complete.
   max-issues-per-linter: 0
   max-same-issues: 0
 
-  # Exclude vendor / generated code.
-  exclude-dirs:
-    - vendor
-    - gen
-    - mocks
-
-  # Allow the standard "exported function should have comment" pattern in test
-  # files, where docs are typically omitted for brevity.
-  exclude-rules:
-    - path: "_test\\.go"
-      linters:
-        - godot
-        - revive
+formatters:
+  enable:
+    - gofmt

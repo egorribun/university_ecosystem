@@ -23,3 +23,10 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_in_flight
+        target:
+          type: AverageValue
+          averageValue: "100"

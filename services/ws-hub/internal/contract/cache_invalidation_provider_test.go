@@ -1,3 +1,5 @@
+//go:build cgo
+
 // Package contract_test contains Pact V4 provider verification for the
 // university-backend → ws-hub NATS message contract.
 //

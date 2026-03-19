@@ -1,0 +1,19 @@
+rules:
+  - id: no-bare-except-pass
+    message: "CWE-391: Exception swallowed. Log or re-raise."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      try:
+        ...
+      except Exception:
+        pass
+
+  - id: unbounded-asyncio-gather
+    message: "asyncio.gather without Semaphore — potential self-DoS. Either use a Semaphore or return_exceptions=True."
+    severity: WARNING
+    languages: [python]
+    pattern: |
+      await asyncio.gather($...TASKS)
+    pattern-not: |
+      await asyncio.gather($...TASKS, return_exceptions=True)

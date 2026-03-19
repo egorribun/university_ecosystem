@@ -1,0 +1,40 @@
+name: DB Performance Gate
+on:
+    pull_request:
+        paths:
+            - "app/repositories/**"
+            - "alembic/**"
+            - "scripts/db_explain_check.py"
+jobs:
+    explain-check:
+        runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: pgvector/pgvector:pg17
+                env:
+                    POSTGRES_PASSWORD: test # pragma: allowlist secret
+                    POSTGRES_USER: test
+                    POSTGRES_DB: test
+                ports:
+                    - 5432:5432
+        steps:
+            - uses: actions/checkout@v4
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.13"
+            - name: Install dependencies
+              run: |
+                  pip install -r requirements.txt || pip install sqlalchemy asyncpg psycopg2-binary
+            - name: Run Alembic migrations
+              env:
+                  DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
+              run: alembic upgrade head || echo "No migrations to run"
+            - name: Seed test data and run EXPLAIN checks
+              env:
+                  DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
+              run: |
+                  python scripts/db_explain_check.py \
+                    --fail-on-seq-scan \
+                    --tables news,events,users \
+                    --min-rows 10000

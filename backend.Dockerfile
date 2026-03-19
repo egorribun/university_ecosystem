@@ -20,10 +20,10 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     apt-get update \
     && apt-get dist-upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
-       build-essential \
-       curl \
-       rustc \
-       cargo \
+    build-essential \
+    curl \
+    rustc \
+    cargo \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/uv/bin:$PATH" \
@@ -86,4 +86,16 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# TD-007 (audit 2026-03-19): Use gunicorn as process manager with uvicorn workers
+# Workers = 2 × CPU + 1 (using 2 workers for baseline memory limits).
+# --graceful-timeout 30: matches terminationGracePeriodSeconds in K8s
+CMD ["gunicorn", "app.main:app", \
+    "--worker-class", "uvicorn.workers.UvicornWorker", \
+    "--workers", "2", \
+    "--bind", "0.0.0.0:8000", \
+    "--graceful-timeout", "30", \
+    "--timeout", "60", \
+    "--keep-alive", "5", \
+    "--access-logfile", "-", \
+    "--error-logfile", "-"]
