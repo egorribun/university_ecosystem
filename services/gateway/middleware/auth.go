@@ -142,7 +142,12 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 	ch := pubsub.Channel()
 
 	go func() {
-		defer func() { _ = pubsub.Close() }()
+		defer func() {
+			_ = pubsub.Close()
+			if r := recover(); r != nil {
+				fmt.Printf("CRITICAL: Panic in Redis revocation listener avoided gateway crash: %v\n", r)
+			}
+		}()
 		for {
 			select {
 			case <-ctx.Done():

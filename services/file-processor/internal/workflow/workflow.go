@@ -231,6 +231,11 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	}
 	doneCh := make(chan decodeResult, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				doneCh <- decodeResult{nil, "", fmt.Errorf("panic during image decode: %v", r)}
+			}
+		}()
 		// FP-P1-01 (audit Wave 10): propagate the Temporal context deadline to
 		// the underlying MinIO TCP connection so that a stalled MinIO read is
 		// interrupted at the network level, not just when obj.Close() eventually

@@ -22,8 +22,9 @@ from fastapi import (
 )
 
 from app.api.deps import (
-    get_chat_command_service,
     get_chat_creation_service,
+    get_chat_maintenance_service,
+    get_chat_message_dispatcher,
     get_current_user,
     get_locale,
     get_read_chat_query_service,
@@ -38,7 +39,7 @@ from app.schemas.chat import (
     MessageResponse,
     MessagesListOut,
 )
-from app.services.chat.command_service import ChatCommandService
+from app.services.chat.command_service import ChatMaintenanceService, ChatMessageDispatcher
 from app.services.chat.creation_service import ChatCreationService
 from app.services.chat.query_service import ChatQueryService
 
@@ -121,7 +122,7 @@ async def get_messages(
 async def send_message(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    command_service: Annotated[ChatCommandService, Depends(get_chat_command_service)],
+    dispatcher: Annotated[ChatMessageDispatcher, Depends(get_chat_message_dispatcher)],
     locale: Annotated[str, Depends(get_locale)],
     content: str = Form(""),
     files: list[UploadFile] = File(default=[]),
@@ -133,7 +134,7 @@ async def send_message(
     ),
 ) -> MessageResponse:
     """Send a message to a chat.  Supports ``Idempotency-Key`` header for retry-safe sends."""
-    return await command_service.send_message(
+    return await dispatcher.send_message(
         chat_id,
         current_user,
         content,
@@ -150,11 +151,11 @@ async def send_message(
 async def mark_read(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    command_service: Annotated[ChatCommandService, Depends(get_chat_command_service)],
+    maintenance: Annotated[ChatMaintenanceService, Depends(get_chat_maintenance_service)],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Mark all messages in a chat as read."""
-    await command_service.mark_read(chat_id, current_user, locale=locale)
+    await maintenance.mark_read(chat_id, current_user, locale=locale)
     return {"status": "ok"}
 
 
@@ -166,11 +167,11 @@ async def mark_read(
 async def clear_chat_history(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    command_service: Annotated[ChatCommandService, Depends(get_chat_command_service)],
+    maintenance: Annotated[ChatMaintenanceService, Depends(get_chat_maintenance_service)],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:
     """Remove all messages (and attachments) from a chat for its participants."""
-    return await command_service.clear_history(chat_id, current_user, locale=locale)
+    return await maintenance.clear_history(chat_id, current_user, locale=locale)
 
 
 @router.delete(
@@ -181,8 +182,8 @@ async def clear_chat_history(
 async def delete_chat(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    command_service: Annotated[ChatCommandService, Depends(get_chat_command_service)],
+    maintenance: Annotated[ChatMaintenanceService, Depends(get_chat_maintenance_service)],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:
     """Delete a chat entirely for all participants (messages, attachments, links)."""
-    return await command_service.delete_chat(chat_id, current_user, locale=locale)
+    return await maintenance.delete_chat(chat_id, current_user, locale=locale)

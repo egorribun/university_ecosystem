@@ -73,17 +73,27 @@ def _make_idempotency_key(
     return f"idm:msg:{digest}"
 
 
-class ChatCommandService:
-    """Message dispatch and chat maintenance commands.
+from typing import Protocol, Any, TYPE_CHECKING
+if TYPE_CHECKING:
+    from fastapi import UploadFile
 
-    TD-W9-01: create_chat moved to ChatCreationService — it has different
-    dependencies (Redis lock, presence maps) from message-level operations.
+class AttachmentProcessorProtocol(Protocol):
+    async def process_upload(self, upload: 'UploadFile', chat_id: uuid.UUID, locale: str) -> dict[str, Any]: ...
+    async def cleanup_files(self, urls: list[str]) -> None: ...
+    async def collect_urls(self, chat: Any) -> list[str]: ...
+
+
+class ChatMessageDispatcher:
+    """Message dispatch commands.
+
+    TD-W9-01: Refactored from the legacy ChatCommandService to satisfy the Single
+    Responsibility Principle. Maintenance tasks extracted to ChatMaintenanceService.
     """
 
     def __init__(
         self,
         uow: UnitOfWork,
-        attachment_service: ChatAttachmentService,
+        attachment_service: AttachmentProcessorProtocol,
         notification_service: ChatNotificationService,
     ):
         self.uow = uow
@@ -209,16 +219,22 @@ class ChatCommandService:
             # Process ALL uploads before touching the DB.  If any upload fails,
             # no Message record exists and no rollback is required.
             if uploads:
-                for upload in uploads:
-                    try:
-                        async with asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
-                            meta = await self.attachment_service.process_upload(
-                                upload, chat_id, locale=locale
-                            )
-                    except TimeoutError:
+                sem = asyncio.Semaphore(3)
+
+                async def _upload_task(upload: 'UploadFile') -> dict[str, Any]:
+                    async with sem, asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
+                        return await self.attachment_service.process_upload(
+                            upload, chat_id, locale=locale
+                        )
+
+                results = await asyncio.gather(*[_upload_task(u) for u in uploads], return_exceptions=True)
+                for res in results:
+                    if isinstance(res, TimeoutError):
                         raise_validation_error("errors.files.upload_timeout", locale)
-                    saved_urls.append(str(meta["url"]))
-                    processed_attachments.append(meta)
+                    if isinstance(res, Exception):
+                        raise res
+                    saved_urls.append(str(res["url"]))
+                    processed_attachments.append(res)
 
         except Exception:
             # Phase 1 failure: clean up any partial uploads and release slot.
@@ -363,6 +379,21 @@ class ChatCommandService:
             )
 
         return msg_data
+
+class ChatMaintenanceService:
+    """Chat maintenance commands (mark-read, clear-history, delete-chat).
+
+    Extracted from ChatCommandService to satisfy the Single Responsibility Principle.
+    """
+
+    def __init__(
+        self,
+        uow: UnitOfWork,
+        attachment_service: AttachmentProcessorProtocol,
+    ):
+        self.uow = uow
+        self.repository = uow.chats
+        self.attachment_service = attachment_service
 
     async def mark_read(self, chat_id: uuid.UUID, user: User, locale: str) -> None:
         """Mark all messages in a chat as read by the user."""

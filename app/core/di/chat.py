@@ -14,7 +14,7 @@ from app.deps.cache import BaseCache
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.unit_of_work import UnitOfWork
 from app.services.chat.attachment_service import ChatAttachmentService
-from app.services.chat.command_service import ChatCommandService
+from app.services.chat.command_service import ChatMaintenanceService, ChatMessageDispatcher
 from app.services.chat.creation_service import ChatCreationService
 from app.services.chat.notification_service import (
     ChatNotificationService as ChatWSNotificationService,
@@ -42,16 +42,27 @@ class ChatProvider(Provider):
         return ChatQueryService(session=uow.session, repository=uow.chats)
 
     @provide(scope=Scope.REQUEST)
-    def chat_command_service(
+    def chat_message_dispatcher(
         self,
         uow: UnitOfWork,
         attachments: ChatAttachmentService,
         notifications: ChatWSNotificationService,
-    ) -> ChatCommandService:
-        return ChatCommandService(
+    ) -> ChatMessageDispatcher:
+        return ChatMessageDispatcher(
             uow=uow,
             attachment_service=attachments,
             notification_service=notifications,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def chat_maintenance_service(
+        self,
+        uow: UnitOfWork,
+        attachments: ChatAttachmentService,
+    ) -> ChatMaintenanceService:
+        return ChatMaintenanceService(
+            uow=uow,
+            attachment_service=attachments,
         )
 
     @provide(scope=Scope.REQUEST)
