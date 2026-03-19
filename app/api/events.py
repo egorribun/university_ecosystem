@@ -194,7 +194,7 @@ async def attend(
         raise_forbidden(locale, "errors.events.registration_forbidden")
     event = await db.get(models.Event, data.event_id)
     ensure_exists(event, "events", locale)
-    assert event is not None  # nosec B101
+    assert event is not None  # noqa: S101
     event_ends_at = _to_utc(event.ends_at)
     if not event.is_active or event_ends_at <= datetime.now(UTC):
         raise_conflict("errors.events.registration_closed", locale)
@@ -253,7 +253,7 @@ async def upload_event_file(
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, id)
     ensure_exists(event, "events", locale)
-    assert event is not None  # nosec B101
+    assert event is not None  # noqa: S101
     if not await checker.check_permission(
         resource_type="event",
         resource_id=str(event.id),
@@ -315,7 +315,7 @@ async def upload_event_image(
     # RZ-003 Fix: Deny unlinked anonymous file uploads to prevent Storage DoS
     event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
-    assert event is not None  # nosec B101
+    assert event is not None  # noqa: S101
 
     # Check if user has edit rights for this specific event
     if not await checker.check_permission(
@@ -327,8 +327,26 @@ async def upload_event_image(
         raise_forbidden(locale)
 
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
-    url = await save_upload(file, "event_images", f"event_{event_id}", locale=locale)
-    return {"url": url}
+
+    from contextlib import suppress
+
+    from app.utils.files import delete_static_file
+
+    url = ""
+    try:
+        # RZ-003: Upload to 'tmp/' prefix. A MinIO lifecycle policy will reap
+        # objects in this prefix that are older than 24h, mitigating storage DoS
+        # from abandoned uploads. A separate worker or client action must copy
+        # the file to permanent storage when the event is actually saved.
+        url = await save_upload(
+            file, "tmp/event_images", f"event_{event_id}", locale=locale
+        )
+        return {"url": url}
+    except Exception:
+        if url:
+            with suppress(Exception):
+                await delete_static_file(str(url))
+        raise
 
 
 @router.patch("/{event_id}", response_model=schemas.EventOut)
@@ -344,7 +362,7 @@ async def update_event(
     locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
     ensure_exists(q, "events", locale)
-    assert q is not None  # nosec B101
+    assert q is not None  # noqa: S101
 
     # ReBAC: Migrated from require_owner_or_admin
     if not await checker.check_permission(
@@ -453,14 +471,14 @@ async def delete_event_file(
     ef = await db.get(models.EventFile, file_id)
     if not ef:
         raise_not_found("events", locale, exact_key="errors.events.file_not_found")
-    assert ef is not None  # nosec B101 # narrowing for type checkers
+    assert ef is not None  # noqa: S101  # narrowing for type checkers
     event = await db.get(models.Event, ef.event_id)
     # RZ-004 (audit 2026-03-04): explicitly guard against a concurrently deleted
     # parent event. Without this check `event.created_by` raises AttributeError
     # which propagated as an unhandled 500, while the file deletion still
     # proceeded — an authorization bypass.
     ensure_exists(event, "events", locale)
-    assert event is not None  # nosec B101 # narrowing for type checkers
+    assert event is not None  # noqa: S101  # narrowing for type checkers
     if not await checker.check_permission(
         resource_type="event",
         resource_id=str(event.id),

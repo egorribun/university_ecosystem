@@ -184,7 +184,15 @@ export function useChatWebSocket({
                 (old) => {
                   if (!old) return { items: [validated.message as unknown as Message], has_more: false, next_cursor: null }
                   if (old.items.some((m) => m.id === validated.message.id)) return old
-                  return { ...old, items: [...old.items, validated.message as unknown as Message] }
+                  // RZ-004: Sliding window prevents V8 heap exhaustion in long-lived sessions.
+                  // Cap in-memory buffer at 200 messages — older messages are re-fetched
+                  // via cursor-based pagination when the user scrolls up.
+                  const MAX_BUFFERED_MESSAGES = 200
+                  const appended = [...old.items, validated.message as unknown as Message]
+                  const trimmed = appended.length > MAX_BUFFERED_MESSAGES
+                    ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
+                    : appended
+                  return { ...old, items: trimmed }
                 }
               )
               queryClient.invalidateQueries({

@@ -147,9 +147,10 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
                 )
 
         if rank_expr is not None:
-            stmt = stmt.order_by(
-                rank_expr.asc(), News.created_at.desc(), News.id.desc()
-            )
+            # TD-003: pgvector HNSW indexes require strict ORDER BY distance LIMIT N.
+            # Adding other columns to ORDER BY (like created_at) breaks the index
+            # and forces a full sequential scan + sort.
+            stmt = stmt.order_by(rank_expr.asc())
         else:
             stmt = stmt.order_by(News.created_at.desc(), News.id.desc())
 
