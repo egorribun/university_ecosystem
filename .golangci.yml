@@ -72,5 +72,3 @@ issues:
   # Do not limit the number of issues per linter so CI output is complete.
   max-issues-per-linter: 0
   max-same-issues: 0
-  # Exit cleanly so downstream CI can distinguish lint failures from tool errors.
-  exit-code: 1
