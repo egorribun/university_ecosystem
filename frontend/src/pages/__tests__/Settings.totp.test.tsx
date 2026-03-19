@@ -1,7 +1,7 @@
 import { type PropsWithChildren } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -124,7 +124,7 @@ describe("Settings TOTP enrollment", () => {
     await waitFor(() => expect(otpInputs[0]).not.toBeDisabled())
 
     for (let i = 0; i < 6; i++) {
-      fireEvent.change(otpInputs[i]!, { target: { value: (i + 1).toString() } })
+      await user.type(otpInputs[i]!, (i + 1).toString())
     }
 
     await waitFor(
@@ -172,7 +172,7 @@ describe("Settings TOTP enrollment", () => {
     await waitFor(() => expect(otpInputs[0]).not.toBeDisabled())
 
     for (let i = 0; i < 6; i++) {
-      fireEvent.change(otpInputs[i]!, { target: { value: "0" } })
+      await user.type(otpInputs[i]!, "0")
     }
 
     const alerts = await screen.findAllByText(/Invalid verification code/i)

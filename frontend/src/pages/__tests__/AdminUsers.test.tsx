@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -145,13 +145,14 @@ describe("AdminUsers page", () => {
   })
 
   it("handles group change", async () => {
+    const user = userEvent.setup()
     renderPage()
     const selects = await screen.findAllByRole("combobox")
     // The first select is for filters, others are for users
     // Let's find the one for John Doe (it has value g1)
     const johnSelect = selects.find((s) => (s as HTMLSelectElement).value === "g1")
     if (johnSelect) {
-      fireEvent.change(johnSelect, { target: { value: "g2" } })
+      await user.selectOptions(johnSelect, "g2")
     }
   })
 })

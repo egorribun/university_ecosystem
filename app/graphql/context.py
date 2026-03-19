@@ -17,6 +17,7 @@ from strawberry.fastapi import BaseContext
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.auth.rbac import PermissionChecker
     from app.graphql.dataloaders import DataLoaderRegistry
     from app.models import User
 
@@ -27,6 +28,7 @@ class GraphQLContext(BaseContext):
 
     session: AsyncSession
     loaders: DataLoaderRegistry
+    checker: PermissionChecker
     current_user: User | None = None
 
     @property

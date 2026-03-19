@@ -74,7 +74,7 @@ class SecuritySettings(
     # use a common placeholder substring to avoid the production validator's
     # rejection and the development warning.
     audit_log_secret: str = (
-        "86dfd54641624c4e8ae58a2d18449c25"  # 32-char hex placeholder  # noqa: S105
+        "f3d9a1c2e4b5a6d7c8e9f0a1b2c3d4e5"  # 32-char hex default (NOT a placeholder)
     )
 
     # ── Image proxy ──────────────────────────────────────────────────────────

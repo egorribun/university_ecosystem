@@ -8,6 +8,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     File,
+    Form,
     Header,
     HTTPException,
     Query,
@@ -305,11 +306,28 @@ async def upload_event_image(
     *,
     request: Request,
     user: models.User = Depends(get_current_user),
+    event_id: uuid.UUID | int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
-    require_teacher_or_admin(user, locale)
+
+    # RZ-003 Fix: Deny unlinked anonymous file uploads to prevent Storage DoS
+    event = await db.get(models.Event, event_id)
+    ensure_exists(event, "events", locale)
+    assert event is not None  # nosec B101
+
+    # Check if user has edit rights for this specific event
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event.id),
+        permission="edit",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
+
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
-    url = await save_upload(file, "event_images", "event", locale=locale)
+    url = await save_upload(file, "event_images", f"event_{event_id}", locale=locale)
     return {"url": url}
 
 
@@ -451,9 +469,15 @@ async def delete_event_file(
     ):
         raise_forbidden(locale)
     file_url = ef.file_url
+    # RZ-003 Fix: Delete from storage BEFORE committing the DB transaction.
+    # This prevents orphaned files in storage if the DB commit fails or is
+    # interrupted. While this may leave a "broken link" in the DB if the
+    # storage deletion succeeds but commit fails, it prevents the more
+    # dangerous "Storage Exhaustion DoS" vector where unlinked files
+    # accumulate indefinitely without any path for automated cleanup.
+    await delete_static_file(str(file_url))
     await db.delete(ef)
     await db.commit()
-    await delete_static_file(str(file_url))
     return {"ok": True}
 
 

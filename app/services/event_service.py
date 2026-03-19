@@ -250,14 +250,10 @@ class EventService:
         file_urls = await self.repo.get_event_file_urls(event_id)
         image_url = event.image_url
 
-        # Delete files records via repo
-        await self.repo.delete_event_files(event_id)
-        await self.repo.delete(event_id)
-        async with self.uow:
-            await self.uow.commit()
-
         from app.utils.files import delete_static_file
 
+        # RZ-003 pattern: Delete from storage BEFORE committing the DB transaction.
+        # prevents orphaned files in case of commit failure/interruption.
         if image_url:
             with contextlib.suppress(Exception):
                 await delete_static_file(str(image_url))
@@ -265,6 +261,12 @@ class EventService:
         for url in file_urls:
             with contextlib.suppress(Exception):
                 await delete_static_file(url)
+
+        # Delete records
+        await self.repo.delete_event_files(event_id)
+        await self.repo.delete(event_id)
+        async with self.uow:
+            await self.uow.commit()
 
         return True
 

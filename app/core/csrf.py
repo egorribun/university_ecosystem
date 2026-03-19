@@ -255,16 +255,42 @@ class CSRFMiddleware:
         # cookies on restart, which would effectively make them permanent.
         self._cookie_max_age = cookie_max_age
 
-        # RZ-003: Derive bytes key once at construction time.
+        # RZ-003 / RZ-NEW-004 (audit 2026-03-19): Derive bytes key at construction.
         if csrf_hmac_secret:
+            if len(csrf_hmac_secret) < 32:  # HMAC-SHA256 requires >=32 bytes of entropy
+                raise ValueError(
+                    f"CSRF_HMAC_SECRET is too short ({len(csrf_hmac_secret)} chars). "
+                    "Minimum 32 bytes required for HMAC-SHA256 security margin. "
+                    'Generate with: python -c "import secrets; print(secrets.token_hex(32))"'
+                )
             self._hmac_key: bytes = csrf_hmac_secret.encode("utf-8")
             self._signed: bool = True
         else:
-            # Graceful unsigned fallback for local dev — warn once.
+            # RZ-NEW-004: Fail-fast in non-development environments.
+            # A warning-only downgrade is unacceptable in production: operators
+            # may not review logs for hours, leaving the app vulnerable to
+            # subdomain fixation attacks (OWASP CSRF Cheat Sheet).
+            from app.core.config import settings as _csrf_settings
+
+            _csrf_env: str = getattr(
+                _csrf_settings, "environment", "production"
+            ).lower()
+            _csrf_dev_envs: frozenset[str] = frozenset(
+                {"development", "local", "testing", "test"}
+            )
+            if _csrf_env not in _csrf_dev_envs:
+                raise RuntimeError(
+                    "CSRF_HMAC_SECRET must be configured in non-development environments. "
+                    "Unsigned CSRF fallback is NOT acceptable in production "
+                    "(subdomain fixation attack vector — OWASP CSRF Cheat Sheet). "
+                    'Generate with: python -c "import secrets; print(secrets.token_hex(32))"'
+                )
+            # Graceful unsigned fallback for local dev only — warn once.
             self._hmac_key = b""
             self._signed = False
             _logger.warning(
-                "RZ-003: CSRF_HMAC_SECRET is not configured. Falling back to unsigned Double-Submit pattern.",
+                "RZ-003: CSRF_HMAC_SECRET is not configured. "
+                "Falling back to unsigned Double-Submit pattern (development only).",
                 vulnerability="subdomain fixation",
                 recommendation="Set CSRF_HMAC_SECRET (>=32 bytes) in production.",
             )

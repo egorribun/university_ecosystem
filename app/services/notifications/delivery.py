@@ -250,42 +250,46 @@ async def create_notifications_for_users(
         send_jobs: list[tuple[PushSubscription, int]] = []
         tasks: list[Awaitable[WebPushResult]] = []
 
+        # MOD-01 Fix: Use a high-level semaphore to control fan-out concurrency.
+        # While the underlying service has its own lock, managing 5000+
+        # in-flight coroutines can cause memory spikes and event-loop lag.
+        _fanout_semaphore = asyncio.Semaphore(50)
+
         async def _send_push(
             subscription: PushSubscription, payload: Mapping[str, Any]
         ) -> WebPushResult:
-            # RED-07 (audit 2026-03-15): Delegate to webpush_module._send_push_async
-            # which enforces a 30-slot semaphore + 15 s asyncio.timeout per call.
-            # The previous inline asyncio.to_thread() had no per-call deadline, so
-            # slow/hung push vendors could fill the ThreadPoolExecutor and stall all
-            # other asyncio.to_thread() calls across the application.
-            # Allow test monkeypatching via globals() for send_web_push; when the
-            # module-level name is replaced in tests, _send_push_async would still
-            # call the real webpush() — so we only delegate to the async helper when
-            # the send function has not been overridden.
-            _send_func = globals().get("send_web_push", webpush_module.send_web_push)
-            if _send_func is webpush_module.send_web_push:
-                return await webpush_module._send_push_async(
-                    subscription, dict(payload)
+            async with _fanout_semaphore:
+                # RED-07 (audit 2026-03-15): Delegate to webpush_module._send_push_async
+                # which enforces a 30-slot semaphore + 15 s asyncio.timeout per call.
+                _send_func = globals().get(
+                    "send_web_push", webpush_module.send_web_push
                 )
-            # Monkeypatched path (tests): preserve the override, but still apply a
-            # per-call timeout so the test environment doesn't hang indefinitely.
-            try:
-                async with asyncio.timeout(15.0):
-                    return await asyncio.to_thread(_send_func, subscription, payload)
-            except TimeoutError:
-                import uuid as _uuid_local
+                if _send_func is webpush_module.send_web_push:
+                    return await webpush_module._send_push_async(
+                        subscription, dict(payload)
+                    )
 
-                user_id = getattr(subscription, "user_id", None)
-                logger.warning(
-                    "WebPush timeout (test path) for subscription %s", subscription.id
-                )
-                return WebPushResult(
-                    subscription_id=subscription.id,
-                    endpoint=str(subscription.endpoint),
-                    user_id=_uuid_local.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
-                    status="error",
-                    error="push delivery timed out",
-                )
+                # Monkeypatched path (tests): preserve the override.
+                try:
+                    async with asyncio.timeout(15.0):
+                        return await asyncio.to_thread(
+                            _send_func, subscription, payload
+                        )
+                except TimeoutError:
+                    import uuid as _uuid_local
+
+                    user_id = getattr(subscription, "user_id", None)
+                    logger.warning(
+                        "WebPush timeout (test path) for subscription %s",
+                        subscription.id,
+                    )
+                    return WebPushResult(
+                        subscription_id=subscription.id,
+                        endpoint=str(subscription.endpoint),
+                        user_id=_uuid_local.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+                        status="error",
+                        error="push delivery timed out",
+                    )
 
         for sub in subs:
             user_id_raw = getattr(sub, "user_id", None)

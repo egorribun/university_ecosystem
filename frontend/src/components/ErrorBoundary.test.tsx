@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { ErrorBoundary } from "./ErrorBoundary"
 import * as Sentry from "@sentry/react"
@@ -92,7 +93,7 @@ describe("ErrorBoundary", () => {
     expect(screen.queryByText("system:errorBoundary.title")).not.toBeInTheDocument()
   })
 
-  it("resets state when retry button is clicked", () => {
+  it("resets state when retry button is clicked", async () => {
     // TestComponent removed as it was unused
 
     // We need a parent component to handle the reset/unmount logic effectively in a real integration test,
@@ -104,6 +105,7 @@ describe("ErrorBoundary", () => {
     // If children still throw, it will catch again.
 
     // Let's just verify the button exists and is clickable.
+    const user = userEvent.setup()
     render(
       <ErrorBoundary>
         <ThrowError />
@@ -112,7 +114,7 @@ describe("ErrorBoundary", () => {
 
     const retryBtn = screen.getByText("system:errorBoundary.retry")
     expect(retryBtn).toBeInTheDocument()
-    fireEvent.click(retryBtn)
+    await user.click(retryBtn)
 
     // After click, it attempts to render children again.
     // Since ThrowError throws immediately, it will catch again and likely cycle or stay in error state.

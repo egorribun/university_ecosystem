@@ -7,6 +7,7 @@ pool status, and latency monitoring.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -118,9 +119,44 @@ async def check_database_connectivity(
         return False
 
 
+async def check_spicedb_health(timeout_s: float = 2.0) -> tuple[str, float]:
+    """
+    Perform a reachability probe for SpiceDB.
+
+    Returns:
+        tuple[status, latency_ms]
+    """
+    from app.core.spicedb import get_global_spicedb_channel
+
+    start = time.perf_counter()
+    try:
+        channel = await get_global_spicedb_channel()
+        if channel is None:
+            return "disabled", 0.0
+
+        import grpc
+
+        # Perform a low-level check (e.g. check channel state or hit local health if exists)
+        # Authzed SpiceDB usually mirrors gRPC Health Checking Protocol
+        # But for absolute perfection, we just check if we can at least ping the channel.
+        # We'll use the 'experimental' watch or just check ready state to avoid side effects.
+        try:
+            await asyncio.wait_for(channel.channel_ready(), timeout=timeout_s)
+            status = "ok"
+        except (TimeoutError, grpc.RpcError):
+            status = "error"
+
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        return status, latency_ms
+    except Exception:
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        return "error", latency_ms
+
+
 __all__ = [
     "DatabaseHealthResult",
     "HealthStatus",
     "check_database_connectivity",
     "check_database_health",
+    "check_spicedb_health",
 ]

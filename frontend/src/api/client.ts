@@ -170,9 +170,8 @@ api.interceptors.response.use(
         delete headers[SKIP_UNAUTHORIZED_HEADER]
         return Promise.reject(error)
       }
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED_EVENT))
-      }
+      // DEBT-02: Removed legacy `window.dispatchEvent` workaround.
+      // 401s are now handled via declarative error boundaries and React Query conventions.
     }
     return Promise.reject(error)
   }

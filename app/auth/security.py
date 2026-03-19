@@ -4,7 +4,7 @@ import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from functools import partial
+from functools import cache, partial
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -78,37 +78,33 @@ _auth_executor = ThreadPoolExecutor(
 # of all racing to the executor at once. Always >=1 to avoid deadlock.
 _ARGON2_CONCURRENCY_LIMIT: int = max(1, _AUTH_EXECUTOR_WORKERS - 1)
 
-# RZ-001 (audit 2026-03-10): asyncio.Semaphore is NOT fork-safe.
-# When Gunicorn uses --preload, worker processes are forked AFTER the module is
-# imported but BEFORE the asyncio event loop starts. A module-level Semaphore
-# created in the master process is bound to the master's (non-existent) event
-# loop — all workers share a dead object and deadlock on the first acquire().
-#
-# Fix: create the Semaphore lazily inside _get_argon2_semaphore() which is
-# called at request-time, AFTER the worker's event loop is running.
-# Using a module-level None sentinel means each forked process initializes
-# its own Semaphore on first use (safe — Python's GIL makes the None check
-# and assignment atomic for CPython).
 
-_argon2_semaphore: asyncio.Semaphore | None = None
-_argon2_semaphore_python_lock = threading.Lock()
+# RZ-NEW-002 (audit 2026-03-19): Replace threading.Lock double-checked locking with
+# a per-event-loop lru_cache pattern that is safe for Python 3.13 free-threading.
+# threading.Lock was relying on CPython GIL-atomicity of None assignment — an implicit
+# assumption that BREAKS with free-threaded Python (PEP 703, --disable-gil builds).
+# lru_cache keyed on loop identity is threadsafe since CPython 3.2 and GIL-free safe.
+@cache
+def _get_argon2_semaphore_for_loop(loop_id: int) -> asyncio.Semaphore:
+    """Return a Semaphore scoped to a specific event loop instance.
+
+    Called lazily at request-time, AFTER the worker's event loop is running.
+    Fork-safe: each forked Gunicorn worker gets its own loop with a unique id.
+    Free-threading safe: lru_cache dict operations are GIL-free safe (dict is
+    protected by its own per-object lock in Python 3.13 free-threading).
+    """
+    return asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
 
 
 def _get_argon2_semaphore() -> asyncio.Semaphore:
-    """Return (or lazily create) a per-worker asyncio.Semaphore.
+    """Return the per-event-loop Semaphore for Argon2 concurrency control.
 
-    Uses double-checked locking with threading.Lock to eliminate race condition
-    between coroutines during burst logins on worker startup.
+    Uses the running event loop's identity as the cache key. This is
+    correct because asyncio.Semaphore is bound to its creation loop and
+    each OS process has exactly one running loop at a time.
     """
-    global _argon2_semaphore
-    if _argon2_semaphore is not None:
-        return _argon2_semaphore
-
-    with _argon2_semaphore_python_lock:
-        if _argon2_semaphore is None:
-            _argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
-
-    return _argon2_semaphore
+    loop = asyncio.get_running_loop()
+    return _get_argon2_semaphore_for_loop(id(loop))
 
 
 class SecurityError(Exception):
@@ -190,13 +186,18 @@ _hibp_client_lock: asyncio.Lock | None = None
 def _get_hibp_client_lock() -> asyncio.Lock:
     """Return (or lazily create) a per-worker asyncio.Lock for HIBP client init.
 
-    Called at request-time, after the worker's event loop is running.
-    Fork-safe: each forked Gunicorn worker creates its own Lock on first use.
+    RZ-NEW-002 (audit 2026-03-19): Uses lru_cache keyed on event loop id
+    to avoid threading.Lock dependency (free-threading Python 3.13 safe).
+    Fork-safe: each forked Gunicorn worker gets its own loop with a unique id.
     """
-    global _hibp_client_lock
-    if _hibp_client_lock is None:
-        _hibp_client_lock = asyncio.Lock()
-    return _hibp_client_lock
+    loop = asyncio.get_running_loop()
+    return _get_hibp_lock_for_loop(id(loop))
+
+
+@cache
+def _get_hibp_lock_for_loop(loop_id: int) -> asyncio.Lock:
+    """Return an asyncio.Lock scoped to a specific event loop instance."""
+    return asyncio.Lock()
 
 
 async def _get_hibp_client() -> httpx.AsyncClient:
@@ -642,9 +643,15 @@ def decode_token(token: str) -> dict[str, Any] | None:
                 verification_key,
                 algorithms=[settings.algorithm],
                 options={
-                    "require": ["exp", "iat", "sub", "jti"],
+                    # RZ-NEW-003 (audit 2026-03-19): Added "aud" to required claims.
+                    # Previously only exp/iat/sub/jti were required; a token without
+                    # an aud claim would be accepted even when audience validation is
+                    # configured. Now any token missing aud is explicitly rejected.
+                    "require": ["exp", "iat", "sub", "jti", "aud"],
                 },
-                audience=getattr(settings, "jwt_audience", "university-ecosystem-api"),
+                # Direct access to settings field — never use getattr fallback.
+                # (RZ-NEW-003: getattr fallback hides misconfiguration at startup.)
+                audience=settings.jwt_audience,
             )
             return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:

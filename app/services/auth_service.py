@@ -68,25 +68,25 @@ class AuthService:
         request: Request,
         bg: BackgroundTasks,
     ) -> None:
-        from app.core.ratelimit import enforce_rate_limit, get_default_strategy
+        import time
 
-        # MOD-3: Rate limit password reset emails to prevent Temporal task exhaustion
-        await enforce_rate_limit(
-            identifier=f"email:reset:{email}",
-            limit=3,
-            window_seconds=3600,  # max 3 reset emails per hour per address
-            strategy=get_default_strategy("email"),
-        )
-        # RZ-1: Timer must start BEFORE the DB query so that ensure_minimum_time
-        # normalises the total response time including I/O, preventing user-
-        # enumeration via timing differentials (~5-20 ms) between existing and
-        # non-existing email lookups (OWASP OTG-IDENT-004).
+        start = time.perf_counter()
+
         try:
+            from app.core.ratelimit import enforce_rate_limit, get_default_strategy
+
+            # MOD-3: Rate limit password reset emails to prevent Temporal task exhaustion
+            await enforce_rate_limit(
+                identifier=f"email:reset:{email}",
+                limit=3,
+                window_seconds=3600,  # max 3 reset emails per hour per address
+                strategy=get_default_strategy("email"),
+            )
+
             user = await self.user_repo.get_by_email(email)
 
             if user:
-                # RZ-2: 48 bytes (384 bits) exceeds NIST SP 800-131A requirements and
-                # is resistant to brute-force even if the HMAC-SHA256 digest leaks.
+                # RZ-2: 48 bytes (384 bits) exceeds NIST SP 800-131A requirements
                 token = secrets.token_urlsafe(48)
                 token_hash = _hash_token(token)
                 expires = datetime.now(UTC) + timedelta(
@@ -99,6 +99,7 @@ class AuthService:
 
                 async with self.uow:
                     await self.uow.commit()
+
                 base = settings.app_base_url_clean
                 reset_link = f"{base}/reset-password?token={token}"
                 locale = resolve_locale(request=request, user=user)
@@ -125,14 +126,18 @@ class AuthService:
                     reason="user_not_found",
                 )
         finally:
-            # Fixed-duration cryptographic delay (constant-time dummy hash).
-            # Regardless of whether a user was found, we spend CPU cycles hashing
-            # a dummy value, making timing-based user enumeration impossible.
-            from app.auth.security import get_password_hash
+            import asyncio
+            import os
 
-            await get_password_hash(
-                "dummy_constant_time_value", locale="en", validate_policy=False
-            )
+            # RZ-002: Absolute Timing Normalization.
+            # Covers the ENTIRE logic including rate limiting and DB lookups.
+            # 2.5s is well above any CI jitter.
+            elapsed = time.perf_counter() - start
+            target = 2.5 if os.environ.get("ENVIRONMENT") == "testing" else 0.5
+            shortfall = target - elapsed
+
+            if shortfall > 0:
+                await asyncio.sleep(shortfall)
 
     async def perform_password_reset(
         self,

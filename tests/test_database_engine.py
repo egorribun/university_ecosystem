@@ -159,7 +159,7 @@ async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
     monkeypatch.setattr(database_module.asyncio, "sleep", _fake_sleep)
 
     with caplog.at_level(logging.WARNING), pytest.raises(RuntimeError) as excinfo:
-        await database_module.wait_db(max_attempts=2, delay=0.25)
+        await database_module.wait_db(max_attempts=2, base_delay=0.25)
 
     assert "Database connection failed after 2 attempts: transient outage" in str(
         excinfo.value

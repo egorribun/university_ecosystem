@@ -11,7 +11,10 @@ if TYPE_CHECKING:
     from app.services.auth.login_service import LoginService
     from app.services.auth.redis_session import RedisSessionService
     from app.services.auth_service import AuthService
-    from app.services.chat.command_service import ChatMaintenanceService, ChatMessageDispatcher
+    from app.services.chat.command_service import (
+        ChatMaintenanceService,
+        ChatMessageDispatcher,
+    )
     from app.services.chat.creation_service import ChatCreationService
     from app.services.chat.query_service import ChatQueryService
     from app.services.event_service import EventService
@@ -99,6 +102,13 @@ def get_read_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
 ) -> "ChatQueryService":
     return get_read_chat_query_service(session)
+
+
+def get_chat_command_service(
+    session: Annotated[AsyncDatabaseSession, Depends(get_db)],
+) -> "ChatMessageDispatcher":
+    """Legacy alias for get_chat_message_dispatcher."""
+    return get_chat_message_dispatcher(session)
 
 
 def _build_event_service(
@@ -293,9 +303,10 @@ __all__ = [
     "get_analytics_service",
     "get_audit_service",
     "get_auth_service",
+    "get_chat_command_service",  # legacy alias
+    "get_chat_creation_service",
     "get_chat_maintenance_service",
     "get_chat_message_dispatcher",
-    "get_chat_creation_service",
     "get_chat_query_service",
     "get_chat_service",  # legacy alias
     "get_event_service",

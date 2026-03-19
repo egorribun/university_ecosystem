@@ -9,7 +9,7 @@ from collections.abc import AsyncGenerator, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Engine, event, text
 from sqlalchemy.ext.asyncio import (
@@ -71,11 +71,6 @@ class PoolHealthMetrics:
     peak_active_connections pair to ensure consistency between them.
     """
 
-    total_checkouts: int = 0
-    total_checkins: int = 0
-    total_invalidations: int = 0
-    failed_checkouts: int = 0
-
     # Protected pair: active ↔ peak must stay consistent.
     _active_connections: int = field(default=0, init=False)
     _peak_active_connections: int = field(default=0, init=False)
@@ -84,6 +79,10 @@ class PoolHealthMetrics:
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False, compare=False
     )
+    _total_checkouts: int = field(default=0, init=False)
+    _total_checkins: int = field(default=0, init=False)
+    _total_invalidations: int = field(default=0, init=False)
+    _failed_checkouts: int = field(default=0, init=False)
 
     @property
     def active_connections(self) -> int:
@@ -95,44 +94,69 @@ class PoolHealthMetrics:
         with self._lock:
             return self._peak_active_connections
 
-    def record_checkout(self) -> None:
-        self.total_checkouts += 1  # GIL-safe increment
+    @property
+    def total_checkouts(self) -> int:
         with self._lock:
+            return self._total_checkouts
+
+    @property
+    def total_checkins(self) -> int:
+        with self._lock:
+            return self._total_checkins
+
+    @property
+    def total_invalidations(self) -> int:
+        with self._lock:
+            return self._total_invalidations
+
+    @property
+    def failed_checkouts(self) -> int:
+        with self._lock:
+            return self._failed_checkouts
+
+    def record_checkout(self) -> None:
+        # TD-NEW-006 (audit 2026-03-19): Use lock for all counters.
+        # `+= 1` is NOT atomic in Python 3.13+ free-threading (PEP 703).
+        with self._lock:
+            self._total_checkouts += 1
             self._active_connections += 1
             if self._active_connections > self._peak_active_connections:
                 self._peak_active_connections = self._active_connections
 
     def record_checkin(self) -> None:
-        self.total_checkins += 1
         with self._lock:
+            self._total_checkins += 1
             self._active_connections = max(0, self._active_connections - 1)
 
     def record_invalidation(self) -> None:
-        self.total_invalidations += 1
         with self._lock:
+            self._total_invalidations += 1
             self._active_connections = max(0, self._active_connections - 1)
+
+    def record_failed_checkout(self) -> None:
+        with self._lock:
+            self._failed_checkouts += 1
 
     def reset_peak_active_connections(self) -> None:
         """Reset the peak active connections counter to current active count. (TD-008)"""
         with self._lock:
             self._peak_active_connections = self._active_connections
 
-    def record_failed_checkout(self) -> None:
-        self.failed_checkouts += 1
-
     def get_snapshot(self) -> dict[str, int]:
-        """Return a consistent point-in-time copy of all counters."""
+        """Return a consistent point-in-time copy of all counters.
+
+        TD-NEW-006 (audit 2026-03-19): All counters are read inside a single
+        lock acquisition to ensure true point-in-time consistency.
+        """
         with self._lock:
-            active = self._active_connections
-            peak = self._peak_active_connections
-        return {
-            "total_checkouts": self.total_checkouts,
-            "total_checkins": self.total_checkins,
-            "total_invalidations": self.total_invalidations,
-            "active_connections": active,
-            "peak_active_connections": peak,
-            "failed_checkouts": self.failed_checkouts,
-        }
+            return {
+                "total_checkouts": self._total_checkouts,
+                "total_checkins": self._total_checkins,
+                "total_invalidations": self._total_invalidations,
+                "active_connections": self._active_connections,
+                "peak_active_connections": self._peak_active_connections,
+                "failed_checkouts": self._failed_checkouts,
+            }
 
 
 # Global pool metrics instance
@@ -399,12 +423,25 @@ def create_session_factory(
     return engine, session_factory, read_replica_engine
 
 
-T = TypeVar("T")
+# RZ-NEW-005 / TD-NEW-001 (audit 2026-03-19): Explicit whitelist of dunder attributes
+# that the _LazyProxy is allowed to set on itself. A broad startswith/endswith(__)
+# guard allowed ANY __dunder__ to be set including __class__, enabling type-confusion.
+_PROXY_ALLOWED_DUNDER_SETATTR: frozenset[str] = frozenset(
+    {
+        "__class__",  # Required by SQLAlchemy ORM mapper initialization
+        "__wrapped__",  # Required by functools.wraps decorators
+        "__dict__",  # Required by Pydantic model cloning internals
+    }
+)
 
 
 class _LazyProxy:
     """A proxy that delegates all attribute access and calls to an underlying
     object that is initialized later. (TD-4)
+
+    Implements the full Python data model: attribute access, calls, async
+    context manager (__aenter__/__aexit__), container protocols (__len__,
+    __iter__, __contains__). (TD-NEW-001: LSP compliance, audit 2026-03-19)
     """
 
     __slots__ = ("_get_target", "_name")
@@ -434,10 +471,9 @@ class _LazyProxy:
         return getattr(self._get_current_object(), name)
 
     def __setattr__(self, name: str, value: object) -> None:
-        # Mutation of the proxy target is prohibited to prevent race conditions.
-        # However, we must allow Dunder methods (like __class__) to be set
-        # during ORM initialization or proxy setup. (TD-003)
-        if name.startswith("__") and name.endswith("__"):
+        # RZ-NEW-005 (audit 2026-03-19): Use module-level _PROXY_ALLOWED_DUNDER_SETATTR
+        # constant — avoids recreating the frozenset on every __setattr__ call.
+        if name in _PROXY_ALLOWED_DUNDER_SETATTR:
             object.__setattr__(self, name, value)
             return
 
@@ -448,6 +484,38 @@ class _LazyProxy:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self._get_current_object()(*args, **kwargs)
+
+    async def __aenter__(self) -> Any:
+        """TD-NEW-001 (audit 2026-03-19): Delegate async context manager entry.
+
+        Allows ``async with engine.connect() as conn`` to work when ``engine``
+        is a _LazyProxy. Previously this fell through to __getattr__ which
+        worked at runtime but broke async type inference in static analysers.
+        """
+        return await self._get_current_object().__aenter__()
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        """TD-NEW-001: Delegate async context manager exit to the underlying object."""
+        return await self._get_current_object().__aexit__(exc_type, exc_val, exc_tb)
+
+    def __iter__(self) -> Any:
+        """TD-NEW-001: Delegate iteration to the underlying object."""
+        return iter(self._get_current_object())
+
+    def __len__(self) -> int:
+        """TD-NEW-001: Delegate len() to the underlying object."""
+        return len(self._get_current_object())
+
+    def __bool__(self) -> bool:
+        """RZ-NEW-005 (audit 2026-03-19): Explicit truthiness check.
+        Prevents AsyncSession(bind=proxy) from falling through to __len__
+        when bind is truth-tested, which fails on non-container proxies (Engine).
+        """
+        return bool(self._get_current_object())
+
+    def __contains__(self, item: Any) -> bool:
+        """TD-NEW-001: Delegate 'in' operator to the underlying object."""
+        return item in self._get_current_object()
 
     def __repr__(self) -> str:
         try:
@@ -544,8 +612,20 @@ async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:
         yield session
 
 
-async def wait_db(max_attempts: int = 5, delay: float = 1.0) -> None:
-    """Ensure the database is reachable before continuing."""
+async def wait_db(
+    max_attempts: int = 5,
+    base_delay: float = 0.5,
+    max_delay: float = 30.0,
+) -> None:
+    """Ensure the database is reachable before continuing.
+
+    PERF-NEW-004 (audit 2026-03-19): Uses exponential backoff with full jitter
+    instead of a fixed delay.  Full jitter formula:
+        sleep = random(0, min(max_delay, base_delay * 2^attempt))
+    Prevents thundering herd when multiple workers restart simultaneously.
+    Reference: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+    """
+    import random  # stdlib — import inside function to avoid polluting module namespace
 
     last_exc: Exception | None = None
     for attempt in range(1, max_attempts + 1):
@@ -564,7 +644,10 @@ async def wait_db(max_attempts: int = 5, delay: float = 1.0) -> None:
                 exc_info=attempt == max_attempts,
             )
             if attempt < max_attempts:
-                await asyncio.sleep(delay)
+                # Full jitter: sleep in [0, min(max_delay, base * 2^attempt)]
+                cap = min(max_delay, base_delay * (2**attempt))
+                sleep_time = random.uniform(0, cap)  # nosec B311 — not crypto use
+                await asyncio.sleep(sleep_time)
     if last_exc is not None:
         raise RuntimeError(
             f"Database connection failed after {max_attempts} attempts: {last_exc}"

@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 
 import { FeatureErrorBoundary } from "../FeatureErrorBoundary"
 import { WidgetErrorBoundary } from "../WidgetErrorBoundary"
@@ -67,7 +68,8 @@ describe("FeatureErrorBoundary", () => {
     expect(screen.getByText("Custom error")).toBeInTheDocument()
   })
 
-  it("resets state on retry click", () => {
+  it("resets state on retry click", async () => {
+    const user = userEvent.setup()
     render(
       <FeatureErrorBoundary featureName="Test">
         <BrokenComponent shouldThrow={true} />
@@ -83,7 +85,7 @@ describe("FeatureErrorBoundary", () => {
     expect(retryButton).toBeInTheDocument()
 
     // Click triggers reset (even though component will error again)
-    fireEvent.click(retryButton)
+    await user.click(retryButton)
     // The boundary attempts to render children, which throws again
     // This verifies the reset mechanism works
     expect(screen.getByText("Test unavailable")).toBeInTheDocument()

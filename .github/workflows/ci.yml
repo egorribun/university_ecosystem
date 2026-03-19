@@ -234,7 +234,9 @@ jobs:
         run: uv run mypy
 
       - name: Enforce Mypy override budget
-        run: uv run python scripts/check_mypy_budget.py
+        run: |
+          uv run python scripts/check_mypy_budget.py
+          uv run python scripts/check_mypy_overrides_budget.py
 
   go-tests:
     name: Go Tests (${{ matrix.service }})
@@ -292,6 +294,27 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # MOD-NEW-008 (audit 2026-03-19): Integrate Squawk to automatically lint
+      # Alembic migrations. Blocks destructive statements (DROP COLUMN, ALTER TYPE)
+      # ensuring Zero-Downtime Deployment (ZDD) compatibility.
+      - name: Install Squawk Linter
+        uses: jaxxstorm/action-install-gh-release@c5ead9a448b4660cf1e7866ee22e4dc1e5dc422d # v1.12.0
+        with:
+          repo: sbdchd/squawk
+          tag: v0.32.0 # Pinned release
+          cache: enable
+          extension-matching: disable
+          rename-to: squawk
+          chmod: 0755
+
+      - name: Lint Postgres Migrations (Squawk)
+        run: |
+          echo "Linting all Alembic migrations for ZDD safety..."
+          squawk app/alembic/versions/*.py || {
+            echo "::error::Squawk detected unsafe database operations! Please use expand-and-contract patterns instead of direct dropping."
+            exit 1
+          }
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -501,7 +524,10 @@ jobs:
 
       - name: Download Lighthouse results
         id: download_lighthouse_results
-        uses: actions/download-artifact@v8
+        # RZ-NEW-007 (audit 2026-03-19): SHA-pinned to prevent supply chain attack via
+        # mutable @v8 tag. All other CI actions already use SHA pinning — this was the
+        # only exception. Equivalent to actions/download-artifact@v4.1.7.
+        uses: actions/download-artifact@fa0a91b85d4f404e444306cec23f47f1309c5165 # v4.1.7
         with:
           name: lighthouse-reports
           path: frontend/.lighthouseci

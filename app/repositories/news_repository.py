@@ -130,9 +130,12 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
                 and query_embedding
                 and any(abs(v) > 1e-9 for v in query_embedding)
             ):
-                sim_score = 1.0 - News.embedding.cosine_distance(query_embedding)
-                rank_expr = sim_score.label("sim_score")
-                stmt = stmt.where(sim_score > 0.45)
+                # PERF-01 Fix: Use ORDER BY distance LIMIT N instead of distance-based filter.
+                # This ensures pgvector HNSW/IVFFlat indexes are utilized for ANN search.
+                # Distance-based filters (WHERE dist < X) trigger a full table scan in many PG versions.
+                rank_expr = News.embedding.cosine_distance(query_embedding).label(
+                    "vector_dist"
+                )
             else:
                 stmt = stmt.where(
                     or_(
@@ -145,7 +148,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
 
         if rank_expr is not None:
             stmt = stmt.order_by(
-                rank_expr.desc(), News.created_at.desc(), News.id.desc()
+                rank_expr.asc(), News.created_at.desc(), News.id.desc()
             )
         else:
             stmt = stmt.order_by(News.created_at.desc(), News.id.desc())
@@ -234,30 +237,29 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         return likes_count, is_liked
 
     async def toggle_like(self, news_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-        """Atomic toggle like operation to prevent race conditions."""
-        # Use SELECT FOR UPDATE to lock the row if it exists, or just ensure
-        # we have a consistent view. However, a better way in PG is a CTE or
-        # a specific locking strategy.
-        # Here we lock on the news_id and user_id combination conceptually.
+        """Atomic toggle like operation using Postgres-native Upsert."""
+        from sqlalchemy.dialects.postgresql import insert
 
-        # Implementation: Check existence with a lock or perform atomic switch.
-        # Since we use SQLAlchemy, we'll fetch with_for_update.
+        # RZ-004 Fix: Avoid SELECT ... FOR UPDATE on non-existent rows.
+        # Use INSERT ON CONFLICT DO NOTHING for atomic seat-taking.
         stmt = (
-            select(models.NewsLike)
-            .where(
-                models.NewsLike.news_id == news_id, models.NewsLike.user_id == user_id
-            )
-            .with_for_update()
+            insert(models.NewsLike)
+            .values(news_id=news_id, user_id=user_id)
+            .on_conflict_do_nothing()
         )
         result = await self.db.execute(stmt)
-        like = result.scalar_one_or_none()
 
-        if like:
-            await self.db.delete(like)
+        if result.rowcount == 0:
+            # Row existed, so this is a 'remove like' action.
+            from sqlalchemy import delete
+
+            del_stmt = delete(models.NewsLike).where(
+                models.NewsLike.news_id == news_id, models.NewsLike.user_id == user_id
+            )
+            await self.db.execute(del_stmt)
             return False
-        else:
-            self.db.add(models.NewsLike(news_id=news_id, user_id=user_id))
-            return True
+
+        return True
 
     async def get_comment(self, comment_id: uuid.UUID) -> models.NewsComment | None:
         """Get a comment by ID."""
@@ -357,24 +359,23 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         self, start_date: datetime | None = None, end_date: datetime | None = None
     ) -> tuple[Sequence[Any], Sequence[str]]:
         """Fetch raw news data for high-performance Polars analytics."""
-        likes_sub = (
-            select(func.count(models.NewsLike.id))
-            .where(models.NewsLike.news_id == models.News.id)
-            .scalar_subquery()
-        )
-        comments_sub = (
-            select(func.count(models.NewsComment.id))
-            .where(models.NewsComment.news_id == models.News.id)
-            .scalar_subquery()
+        likes_count = func.count(func.distinct(models.NewsLike.id)).label("likes_count")
+        comments_count = func.count(func.distinct(models.NewsComment.id)).label(
+            "comments_count"
         )
 
-        stmt = select(
-            models.News.id,
-            models.News.title,
-            models.News.created_at,
-            likes_sub.label("likes_count"),
-            comments_sub.label("comments_count"),
-            func.date_trunc("day", models.News.created_at).label("date"),
+        stmt = (
+            select(
+                models.News.id,
+                models.News.title,
+                models.News.created_at,
+                likes_count,
+                comments_count,
+                func.date_trunc("day", models.News.created_at).label("date"),
+            )
+            .outerjoin(models.NewsLike, models.NewsLike.news_id == models.News.id)
+            .outerjoin(models.NewsComment, models.NewsComment.news_id == models.News.id)
+            .group_by(models.News.id)
         )
         if start_date:
             stmt = stmt.where(models.News.created_at >= start_date)

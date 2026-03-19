@@ -1,8 +1,8 @@
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useEffect, useRef, useCallback, useState, useSyncExternalStore } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Message, MessagesListResponse, ChatsListResponse } from "@/api/chat"
 // Auth token storage handled natively via cookies
-import { logDebug, logError } from "@/app/logger"
+import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
 
 // Reconnection configuration
@@ -12,7 +12,6 @@ const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
 
 // MOD-W10-05: Per-message-type minimum interval (ms) for outgoing WS messages.
 // Prevents a runaway component from flooding the server with typing events
-// on every keystroke or saturating the read-receipt pipeline.
 const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
   typing: 500,  // at most one "typing" event per 500 ms
   read: 200,    // at most one "read" receipt per 200 ms per chat
@@ -20,20 +19,12 @@ const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
 
 /**
  * Calculate reconnection delay with full-jitter exponential backoff.
- *
- * DEBT-01 (audit Wave 11): Replaced ±10% additive jitter with full-jitter (0 to base).
- * Full-jitter distributes reconnect attempts uniformly across the entire backoff window,
- * preventing thundering-herd bursts when 1000+ clients reconnect simultaneously after
- * a network outage. Reference: AWS "Exponential Backoff And Jitter" (2015).
- *
- * Old: delay = base * (1 ± 0.1) — clients cluster tightly around base
- * New: delay = random(0, base)   — clients spread uniformly across [0, base]
  */
 function calculateReconnectDelay(attempt: number): number {
   const base = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), RECONNECT_MAX_DELAY_MS)
-  // Full-jitter: uniform random in [0, base]
   return Math.floor(Math.random() * base)
 }
+
 // WebSocket message types
 export type WebSocketMessageType =
   | "ping"
@@ -73,6 +64,38 @@ interface TypingUser {
   timeout: ReturnType<typeof setTimeout>
 }
 
+/**
+ * MOD-11 Fix: useSyncExternalStore for robust WS connection state.
+ *
+ * TD-09: Replaced manual useRef/useEffect connection tracking with an external
+ * store pattern. This natively handles React Strict Mode double-mounts
+ * without complex internal flags and ensures consistent 'isConnected' state
+ * across all consuming components.
+ */
+class WebSocketStore {
+  private isConnected = false
+  private listeners: Set<() => void> = new Set()
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  getSnapshot = () => this.isConnected
+
+  setConnected(status: boolean) {
+    if (this.isConnected === status) return
+    this.isConnected = status
+    this.emitChange()
+  }
+
+  private emitChange() {
+    for (const listener of this.listeners) listener()
+  }
+}
+
+const wsStore = new WebSocketStore()
+
 export function useChatWebSocket({
   enabled = true,
   onNewMessage,
@@ -85,28 +108,27 @@ export function useChatWebSocket({
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconnectAttemptRef = useRef(0)
-  const [isConnected, setIsConnected] = useState(false)
+
+  // MOD-11: Subscribe to external store for connection state
+  const isConnected = useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot)
+
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()
-  // MOD-W10-05: Track last-sent timestamp per message type for rate limiting.
   const lastSentRef = useRef<Map<string, number>>(new Map())
 
-  // Store callbacks in refs to avoid recreating connect on every render
   const onNewMessageRef = useRef(onNewMessage)
   const onTypingRef = useRef(onTyping)
   const onReadRef = useRef(onRead)
   const onOnlineStatusRef = useRef(onOnlineStatus)
   const onPresenceUpdateRef = useRef(onPresenceUpdate)
-  const enabledRef = useRef(enabled)
+  const mountedRef = useRef(false)
 
-  // Keep refs updated
   useEffect(() => {
     onNewMessageRef.current = onNewMessage
     onTypingRef.current = onTyping
     onReadRef.current = onRead
     onOnlineStatusRef.current = onOnlineStatus
     onPresenceUpdateRef.current = onPresenceUpdate
-    enabledRef.current = enabled
   })
 
   const cleanup = useCallback(() => {
@@ -125,38 +147,24 @@ export function useChatWebSocket({
   }, [])
 
   const connect = useCallback(() => {
-    if (!enabledRef.current) return
+    if (!enabled) return
 
-    // Prevent duplicate connections (important for React StrictMode)
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-      if (import.meta.env.DEV) logDebug("[WebSocket] Already connected or connecting, skipping")
       return
     }
 
-    // Determine WebSocket URL
-    // In dev mode, use same origin (Vite proxy will forward to backend)
-    // In production, use same origin directly
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:"
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
 
     try {
-      // Authentication is handled via HttpOnly cookie (access_token_v2).
-      // The browser sends it automatically — no token in Sec-WebSocket-Protocol needed.
-      // Passing a token as subprotocol logs it in every Nginx access line (SECURITY RISK).
-      // Backend fallback: websocket.py:809 reads access_token_v2 cookie directly.
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
-        if (import.meta.env.DEV) logDebug("[WebSocket] Connected")
-        setIsConnected(true)
-        // Reset reconnect attempts on successful connection
+        wsStore.setConnected(true)
         reconnectAttemptRef.current = 0
 
-        // Start ping interval (heartbeat)
-        if (pingIntervalRef.current) {
-          clearInterval(pingIntervalRef.current)
-        }
+        if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "ping" }))
@@ -166,147 +174,102 @@ export function useChatWebSocket({
 
       ws.onmessage = (event) => {
         try {
-          // RZ-NEW-05 (audit 2026-03): Runtime validation via valibot variant schema.
-          // Replaces bare JSON.parse cast that let malformed frames corrupt the query cache.
           const validated = parseWsMessage(event.data)
-          if (!validated) {
-            logError("[WebSocket] Received invalid or unknown message frame:", event.data)
-            return
-          }
-          // Cast to the existing union type for backward compat with the switch body.
-          // Runtime safety is already guaranteed by valibot above.
-          // TD-07 (audit Wave 12): use the validated WsServerMessage discriminated union
-          // directly — TypeScript narrows all required fields per case, so the
-          // redundant null checks and unsafe `as unknown as WebSocketMessage` cast
-          // below are eliminated.  Non-null assertions (!) are removed for the same reason.
+          if (!validated) return
+
           switch (validated.type) {
             case "new_message": {
-              const data = validated  // { type: "new_message"; chat_id: string; message: ParsedMessage }
-              // Update messages cache
               queryClient.setQueryData<MessagesListResponse>(
-                ["messages", data.chat_id],
+                ["messages", validated.chat_id],
                 (old) => {
-                  if (!old) return { items: [data.message as unknown as Message], has_more: false, next_cursor: null }
-                  // Check for duplicate
-                  if (old.items.some((m) => m.id === data.message.id)) return old
-                  return { ...old, items: [...old.items, data.message as unknown as Message] }
+                  if (!old) return { items: [validated.message as unknown as Message], has_more: false, next_cursor: null }
+                  if (old.items.some((m) => m.id === validated.message.id)) return old
+                  return { ...old, items: [...old.items, validated.message as unknown as Message] }
                 }
               )
-              // MOD-04 (audit 2026-03-15 Wave 7): Reset staleness timestamp
-              // without triggering a background refetch.  setQueryData alone
-              // updates the cache but leaves the staleTime clock unchanged —
-              // TanStack Query may fire a background fetch immediately if
-              // staleTime=0 (the default), duplicating the WS-delivered data.
-              // refetchType: "none" = mark stale so the next mount fetches,
-              // but do NOT start a background refetch right now.
               queryClient.invalidateQueries({
-                queryKey: ["messages", data.chat_id],
+                queryKey: ["messages", validated.chat_id],
                 refetchType: "none",
               })
-              // DEBT-04 (audit 2026-03-06): Update chats cache surgically instead of
-              // invalidating the full list (which triggers a network round-trip per message).
-              // unread_count is incremented unconditionally; it resets via the read-receipt
-              // pathway (sendRead → backend → WS "read" event → setQueryData).
               queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
                 if (!old) return old
                 return {
                   ...old,
                   items: old.items.map((chat) =>
-                    chat.id === data.chat_id
+                    chat.id === validated.chat_id
                       ? {
                           ...chat,
-                          last_message: data.message as unknown as Message,
+                          last_message: validated.message as unknown as Message,
                           unread_count: chat.unread_count + 1,
                         }
                       : chat
                   ),
                 }
               })
-              queryClient.invalidateQueries({
-                queryKey: ["chats"],
-                refetchType: "none",
-              })
-              onNewMessageRef.current?.(data.message as unknown as Message, data.chat_id)
+              queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+              onNewMessageRef.current?.(validated.message as unknown as Message, validated.chat_id)
               break
             }
 
             case "typing": {
-              const data = validated  // { type: "typing"; chat_id: string; user_id: string; user_name: string }
-              {
-                setTypingUsers((prev) => {
-                  const newMap = new Map(prev)
-                  const key = `${data.chat_id}:${data.user_id}`
+              setTypingUsers((prev) => {
+                const newMap = new Map(prev)
+                const key = `${validated.chat_id}:${validated.user_id}`
+                const existing = newMap.get(key)
+                if (existing) clearTimeout(existing.timeout)
 
-                  // Clear previous timeout
-                  const existing = newMap.get(key)
-                  if (existing) clearTimeout(existing.timeout)
-
-                  // Set new typing indicator with 3 second timeout.
-                  // Guard mountedRef.current so the setState after the timeout
-                  // does not fire on an already-unmounted component.
-                  const timeout = setTimeout(() => {
-                    if (!mountedRef.current) return
-                    setTypingUsers((p) => {
-                      if (!p.has(key)) return p
-                      const updated = new Map(p)
-                      updated.delete(key)
-                      return updated
-                    })
-                  }, 3000)
-
-                  newMap.set(key, {
-                    userId: data.user_id!,
-                    userName: data.user_name!,
-                    timeout,
+                const timeout = setTimeout(() => {
+                  if (!mountedRef.current) return
+                  setTypingUsers((p) => {
+                    if (!p.has(key)) return p
+                    const updated = new Map(p)
+                    updated.delete(key)
+                    return updated
                   })
-                  return newMap
+                }, 3000)
+
+                newMap.set(key, {
+                  userId: validated.user_id,
+                  userName: validated.user_name,
+                  timeout,
                 })
-                onTypingRef.current?.(data.chat_id, data.user_id, data.user_name)
-              }
+                return newMap
+              })
+              onTypingRef.current?.(validated.chat_id, validated.user_id, validated.user_name)
               break
             }
 
             case "read": {
-              const data = validated  // { type: "read"; chat_id: string; message_id: string; user_id: string }
-              // Update message read status in cache
               queryClient.setQueryData<MessagesListResponse>(
-                ["messages", data.chat_id],
+                ["messages", validated.chat_id],
                 (old) => {
                   if (!old) return old
                   return {
                     ...old,
                     items: old.items.map((m) =>
-                      m.id === data.message_id ? { ...m, read_status: true } : m
+                      m.id === validated.message_id ? { ...m, read_status: true } : m
                     ),
                   }
                 }
               )
-              // MOD-04: prevent background refetch after WS-driven cache update.
               queryClient.invalidateQueries({
-                queryKey: ["messages", data.chat_id],
+                queryKey: ["messages", validated.chat_id],
                 refetchType: "none",
               })
-              onReadRef.current?.(data.chat_id, data.message_id, data.user_id)
+              onReadRef.current?.(validated.chat_id, validated.message_id, validated.user_id)
               break
             }
 
             case "online": {
-              const data = validated  // { type: "online"; user_id: string; status: boolean }
-              onOnlineStatusRef.current?.(data.user_id, data.status)
+              onOnlineStatusRef.current?.(validated.user_id, validated.status)
               break
             }
 
             case "presence": {
-              const data = validated  // { type: "presence"; user_id: string; active: boolean; last_seen: string | null }
-              onPresenceUpdateRef.current?.(data.user_id, data.active, data.last_seen)
-              // Maintain backward compatibility with online status updates
-              onOnlineStatusRef.current?.(data.user_id, data.active)
+              onPresenceUpdateRef.current?.(validated.user_id, validated.active, validated.last_seen)
+              onOnlineStatusRef.current?.(validated.user_id, validated.active)
               break
             }
-
-            case "pong":
-              // Heartbeat response, nothing to do
-              break
 
             case "error":
               logError("[WebSocket] Server error:", validated)
@@ -318,20 +281,12 @@ export function useChatWebSocket({
       }
 
       ws.onclose = (event) => {
-        if (import.meta.env.DEV) logDebug("[WebSocket] Disconnected:", event.code, event.reason)
-        setIsConnected(false)
+        wsStore.setConnected(false)
         cleanup()
 
-        // Reconnect with exponential backoff + jitter unless it was a clean close or auth error
-        // Error codes: 1000 = normal close, 4001 = unauthorized, 4003 = forbidden
         if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
           const delay = calculateReconnectDelay(reconnectAttemptRef.current)
           reconnectAttemptRef.current += 1
-          if (import.meta.env.DEV) {
-            logDebug(
-              `[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`
-            )
-          }
           reconnectTimeoutRef.current = setTimeout(() => {
             connect()
           }, delay)
@@ -344,7 +299,7 @@ export function useChatWebSocket({
     } catch (e) {
       logError("[WebSocket] Failed to connect:", e)
     }
-  }, [cleanup, queryClient])
+  }, [enabled, cleanup, queryClient])
 
   const disconnect = useCallback(() => {
     cleanup()
@@ -352,37 +307,19 @@ export function useChatWebSocket({
       wsRef.current.close(1000)
       wsRef.current = null
     }
-    setIsConnected(false)
+    wsStore.setConnected(false)
   }, [cleanup])
 
-  // Store connect/disconnect in refs for stable effect
-  const connectRef = useRef(connect)
-  const disconnectRef = useRef(disconnect)
   useEffect(() => {
-    connectRef.current = connect
-    disconnectRef.current = disconnect
-  })
-
-  // Connect on mount, disconnect on unmount
-  // Use mounted flag to handle React StrictMode double mount/unmount
-  const mountedRef = useRef(false)
-  useEffect(() => {
-    // Cancel any pending disconnect from previous unmount
     mountedRef.current = true
-    connectRef.current()
+    if (enabled) connect()
 
     return () => {
       mountedRef.current = false
-      // Delay disconnect slightly to allow StrictMode remount to cancel it
-      setTimeout(() => {
-        if (!mountedRef.current) {
-          disconnectRef.current()
-        }
-      }, 100)
+      disconnect()
     }
-  }, [])
+  }, [enabled, connect, disconnect])
 
-  // Send typing indicator — rate-limited to at most once per 500 ms (MOD-W10-05).
   const sendTyping = useCallback((chatId: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `typing:${chatId}`
@@ -392,7 +329,6 @@ export function useChatWebSocket({
     wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
   }, [])
 
-  // Send read receipt — rate-limited to at most once per 200 ms (MOD-W10-05).
   const sendRead = useCallback((chatId: string, messageId: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `read:${chatId}`
@@ -402,7 +338,6 @@ export function useChatWebSocket({
     wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
   }, [])
 
-  // Get typing users for a specific chat
   const getTypingUsersForChat = useCallback(
     (chatId: string) => {
       const users: { userId: string; userName: string }[] = []
