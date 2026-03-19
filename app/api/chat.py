@@ -39,7 +39,10 @@ from app.schemas.chat import (
     MessageResponse,
     MessagesListOut,
 )
-from app.services.chat.command_service import ChatMaintenanceService, ChatMessageDispatcher
+from app.services.chat.command_service import (
+    ChatMaintenanceService,
+    ChatMessageDispatcher,
+)
 from app.services.chat.creation_service import ChatCreationService
 from app.services.chat.query_service import ChatQueryService
 
@@ -151,7 +154,9 @@ async def send_message(
 async def mark_read(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[ChatMaintenanceService, Depends(get_chat_maintenance_service)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Mark all messages in a chat as read."""
@@ -167,7 +172,9 @@ async def mark_read(
 async def clear_chat_history(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[ChatMaintenanceService, Depends(get_chat_maintenance_service)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:
     """Remove all messages (and attachments) from a chat for its participants."""
@@ -182,7 +189,9 @@ async def clear_chat_history(
 async def delete_chat(
     chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[ChatMaintenanceService, Depends(get_chat_maintenance_service)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:
     """Delete a chat entirely for all participants (messages, attachments, links)."""

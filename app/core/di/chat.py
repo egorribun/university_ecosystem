@@ -14,7 +14,10 @@ from app.deps.cache import BaseCache
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.unit_of_work import UnitOfWork
 from app.services.chat.attachment_service import ChatAttachmentService
-from app.services.chat.command_service import ChatMaintenanceService, ChatMessageDispatcher
+from app.services.chat.command_service import (
+    ChatMaintenanceService,
+    ChatMessageDispatcher,
+)
 from app.services.chat.creation_service import ChatCreationService
 from app.services.chat.notification_service import (
     ChatNotificationService as ChatWSNotificationService,

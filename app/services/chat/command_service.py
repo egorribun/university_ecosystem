@@ -25,7 +25,6 @@ if TYPE_CHECKING:
         MessageResponse,
     )
 
-    from .attachment_service import ChatAttachmentService
     from .notification_service import ChatNotificationService
 
 from app.api.validation import (
@@ -73,12 +72,16 @@ def _make_idempotency_key(
     return f"idm:msg:{digest}"
 
 
-from typing import Protocol, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
+
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
+
 class AttachmentProcessorProtocol(Protocol):
-    async def process_upload(self, upload: 'UploadFile', chat_id: uuid.UUID, locale: str) -> dict[str, Any]: ...
+    async def process_upload(
+        self, upload: UploadFile, chat_id: uuid.UUID, locale: str
+    ) -> dict[str, Any]: ...
     async def cleanup_files(self, urls: list[str]) -> None: ...
     async def collect_urls(self, chat: Any) -> list[str]: ...
 
@@ -210,7 +213,6 @@ class ChatMessageDispatcher:
         # Both phases share the same exception handler so that a Phase-2 failure
         # also triggers file cleanup and idempotency slot release — closing the
         # RACE-BE-01 window.
-        from typing import Any
 
         processed_attachments: list[dict[str, Any]] = []
         saved_urls: list[str] = []
@@ -221,13 +223,15 @@ class ChatMessageDispatcher:
             if uploads:
                 sem = asyncio.Semaphore(3)
 
-                async def _upload_task(upload: 'UploadFile') -> dict[str, Any]:
+                async def _upload_task(upload: UploadFile) -> dict[str, Any]:
                     async with sem, asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
                         return await self.attachment_service.process_upload(
                             upload, chat_id, locale=locale
                         )
 
-                results = await asyncio.gather(*[_upload_task(u) for u in uploads], return_exceptions=True)
+                results = await asyncio.gather(
+                    *[_upload_task(u) for u in uploads], return_exceptions=True
+                )
                 for res in results:
                     if isinstance(res, TimeoutError):
                         raise_validation_error("errors.files.upload_timeout", locale)
@@ -379,6 +383,7 @@ class ChatMessageDispatcher:
             )
 
         return msg_data
+
 
 class ChatMaintenanceService:
     """Chat maintenance commands (mark-read, clear-history, delete-chat).
