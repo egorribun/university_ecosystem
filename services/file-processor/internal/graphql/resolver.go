@@ -12,11 +12,13 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
+// Resolver is the root resolver for the GraphQL API.
 type Resolver struct {
 	TemporalClient client.Client
 	MinioBucket    string
 }
 
+// Health returns the health status of the service.
 func (r *Resolver) Health() string {
 	return "OK"
 }
@@ -29,6 +31,7 @@ func sanitizeKey(key string) (string, error) {
 	return cleaned[1:], nil
 }
 
+// File returns a resolver for a specific file.
 func (r *Resolver) File(args struct{ ID string }) *FileResolver {
 	safeID, err := sanitizeKey(args.ID)
 	if err != nil {
@@ -44,6 +47,7 @@ func (r *Resolver) File(args struct{ ID string }) *FileResolver {
 	}
 }
 
+// ProcessFile starts a file processing job.
 func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFileInput }) (*FileJobResolver, error) {
 	options := make(map[string]interface{})
 	if args.Input.Width != nil {
@@ -124,7 +128,6 @@ func (r *FileJobResolver) Status() string { return r.status }
 // ResultURL returns the result URL.
 func (r *FileJobResolver) ResultURL() *string { return &r.resultURL }
 
-// Input Struct
 // ProcessFileInput defines the input for the ProcessFile mutation.
 type ProcessFileInput struct {
 	Type      string

@@ -319,7 +319,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 
 	grpcSrv.GracefulStop()
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := graphqlSrv.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(ctx, "HTTP Server forced to shutdown", "err", err)

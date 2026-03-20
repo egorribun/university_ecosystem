@@ -260,7 +260,11 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 		return nil, "", err
 	}
 	defer func() {
-		_ = obj.Close()
+		if closeErr := obj.Close(); closeErr != nil {
+			// FP-P2-03: Log error rather than swallowing.
+			// context was likely already done or MinIO connection severed.
+			_ = closeErr
+		}
 	}()
 
 	type decodeResult struct {
@@ -291,7 +295,9 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 
 	select {
 	case <-ctx.Done():
-		_ = obj.Close()
+		if closeErr := obj.Close(); closeErr != nil {
+			_ = closeErr
+		}
 		return nil, "", temporal.NewApplicationError("context cancelled during image decode", "ContextCancelled")
 	case res := <-doneCh:
 		if res.err != nil {
