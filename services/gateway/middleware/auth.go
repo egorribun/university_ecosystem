@@ -327,7 +327,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 		}
 
 		// Edge-level Session Revocation Check with L1 Cache (fail-secure)
-		isValid, shouldDeny, err := m.verifySession(c.Request.Context(), claims.ID, true)
+		isValid, shouldDeny, err := m.verifySession(ctx, claims.ID, true)
 		if err != nil {
 			// FP-P2-03: Log error rather than swallowing.
 			// Handled by shouldDeny logic below if failSecure=true.
@@ -412,7 +412,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 		// failSecure=false means: on Redis error, verifySession returns (false, false, nil)
 		// → isValid=false → c.Next() without user context (unauthenticated, not authenticated).
 		// This is correct: a Redis outage should NOT treat revoked tokens as valid.
-		isValid, shouldDeny, err := m.verifySession(c.Request.Context(), claims.ID, false)
+		isValid, shouldDeny, err := m.verifySession(ctx, claims.ID, false)
 		if err != nil {
 			_ = err
 		}
