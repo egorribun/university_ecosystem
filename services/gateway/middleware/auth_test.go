@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ func TestNewJWTMiddleware_CreatesMiddlewareWithSecret(t *testing.T) {
 
 func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
@@ -56,7 +57,7 @@ func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
 
 func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	testCases := []struct {
 		name   string
@@ -83,7 +84,7 @@ func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
 
 func TestValidate_RejectsInvalidToken(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer invalid.token.here")
@@ -97,7 +98,7 @@ func TestValidate_RejectsInvalidToken(t *testing.T) {
 
 func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -120,7 +121,7 @@ func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 
 func TestValidate_RejectsInactiveUser(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -149,7 +150,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 	var capturedRole interface{}
 
 	router := gin.New()
-	router.GET("/test", middleware.Validate(), func(c *gin.Context) {
+	router.GET("/test", middleware.Validate(context.Background()), func(c *gin.Context) {
 		capturedUserID, _ = c.Get("user_id")
 		capturedRole, _ = c.Get("user_role")
 		c.Status(http.StatusOK)
@@ -182,7 +183,7 @@ func TestOptional_AllowsRequestWithoutToken(t *testing.T) {
 
 	handlerCalled := false
 	router := gin.New()
-	router.GET("/test", middleware.Optional(), func(c *gin.Context) {
+	router.GET("/test", middleware.Optional(context.Background()), func(c *gin.Context) {
 		handlerCalled = true
 		c.Status(http.StatusOK)
 	})
@@ -201,7 +202,7 @@ func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
 
 	var capturedUserID interface{}
 	router := gin.New()
-	router.GET("/test", middleware.Optional(), func(c *gin.Context) {
+	router.GET("/test", middleware.Optional(context.Background()), func(c *gin.Context) {
 		capturedUserID, _ = c.Get("user_id")
 		c.Status(http.StatusOK)
 	})

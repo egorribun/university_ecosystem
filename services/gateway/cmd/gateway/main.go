@@ -196,12 +196,12 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 	}
 
 	// Rate Limiter
-	rateLimiter, err := middleware.NewRateLimiter(cfg.RedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
+	rateLimiter, err := middleware.NewRateLimiter(ctx, cfg.RedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
 	var redisClient *redis.Client
 	if err != nil {
 		logger.Warn("Rate limiter not available, continuing without", zap.Error(err))
 	} else {
-		router.Use(rateLimiter.Middleware())
+		router.Use(rateLimiter.Middleware(ctx))
 		redisClient = rateLimiter.GetClient()
 		collector := redisprometheus.NewCollector("gateway", "redis", redisClient)
 		if err := prometheus.Register(collector); err != nil {
@@ -229,16 +229,16 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 
 	// Core API
 	api := router.Group("/api")
-	api.Use(jwtMiddleware.Validate())
+	api.Use(jwtMiddleware.Validate(ctx))
 	{
-		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
+		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(ctx, grpcConn, fileClient, logger))
 		api.Any("/v1/*path", handlers.ProxyHandler(proxy, internalSecret))
 		api.Any("/admin/*path", handlers.ProxyHandler(proxy, internalSecret))
 	}
 
 	// Public API (Optional)
 	optional := router.Group("/")
-	optional.Use(jwtMiddleware.Optional())
+	optional.Use(jwtMiddleware.Optional(ctx))
 	{
 		optional.Any("/api/public/*path", handlers.ProxyHandler(proxy, internalSecret))
 		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy, internalSecret))

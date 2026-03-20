@@ -92,7 +92,7 @@ func HealthHandler(c *gin.Context) {
 }
 
 // FileProcessSyncHandler proximales a synchronous file processing request to the file-processor service over gRPC.
-func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
+func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// GW-P2-02 (audit Wave 10): removed TOCTOU gRPC state pre-check.
 		// grpcConn.GetState() is advisory — the state can transition from Ready
@@ -118,7 +118,7 @@ func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcess
 		}
 
 		// Call gRPC
-		rpcCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		// Propagate Authorization header to gRPC metadata
