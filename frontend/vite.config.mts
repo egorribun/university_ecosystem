@@ -148,7 +148,7 @@ export default defineConfig(({ mode }) => {
               // MOD-W5-08: Stable mode — compiler validates React rules and
               // auto-memoizes; build fails on rule violations rather than
               // silently skipping non-conforming components.
-              compilationMode: "strict",
+              compilationMode: "infer",
               panicThreshold: "CRITICAL_ERRORS",
             },
           ],

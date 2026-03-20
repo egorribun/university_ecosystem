@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { motion, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion"
 import { EASE_OUT_EXPO } from "./activityTypes"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -31,15 +31,13 @@ export default function AnimatedRing({
   const stroke = 8
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
-  const prevValueRef = useRef(value)
-  const mv = useMotionValue(reduce ? value : prevValueRef.current)
+  const mv = useMotionValue(reduce ? value : value)
 
   useEffect(() => {
     const controls = animate(mv, value, {
       duration: reduce ? 0 : motionTokens.durationLazy,
       ease: EASE_OUT_EXPO,
     })
-    prevValueRef.current = value
     return () => controls.stop()
   }, [value, reduce, mv])
 

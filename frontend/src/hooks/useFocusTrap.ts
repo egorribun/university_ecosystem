@@ -36,8 +36,10 @@ export default function useFocusTrap<T extends HTMLElement>({
   const skipDeactivateRef = useRef(false)
   const initialFocusRef = useRef<InitialFocusTarget | undefined>(initialFocus)
 
-  deactivateRef.current = onDeactivate
-  initialFocusRef.current = initialFocus
+  useEffect(() => {
+    deactivateRef.current = onDeactivate
+    initialFocusRef.current = initialFocus
+  }, [onDeactivate, initialFocus])
 
   useEffect(() => {
     if (!isBrowser) return undefined

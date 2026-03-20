@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
@@ -105,6 +105,15 @@ export function useSessionManagement({
     },
   })
 
+  const handleRevokeSessionRef = useRef<
+    ((sessionId: string, options?: { skipStepUp?: boolean }) => Promise<void>) | null
+  >(null)
+  const handleRevokeAllSessionsRef = useRef<
+    ((options?: { skipStepUp?: boolean }) => Promise<void>) | null
+  >(null)
+
+
+
   const handleRevokeSession = useCallback(
     async (sessionId: string, options?: { skipStepUp?: boolean }) => {
       try {
@@ -124,7 +133,7 @@ export function useSessionManagement({
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error) && openStepUpFor) {
           openStepUpFor(async () => {
-            await handleRevokeSession(sessionId, { skipStepUp: true })
+            await handleRevokeSessionRef.current?.(sessionId, { skipStepUp: true })
           })
           return
         }
@@ -151,7 +160,7 @@ export function useSessionManagement({
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error) && openStepUpFor) {
           openStepUpFor(async () => {
-            await handleRevokeAllSessions({ skipStepUp: true })
+            await handleRevokeAllSessionsRef.current?.({ skipStepUp: true })
           })
           return
         }
@@ -163,6 +172,14 @@ export function useSessionManagement({
     },
     [openStepUpFor, queryClient, revokeAllSessionsMutation, sessionsKey, setSnackbar, t]
   )
+
+  useEffect(() => {
+    handleRevokeSessionRef.current = handleRevokeSession
+  }, [handleRevokeSession])
+
+  useEffect(() => {
+    handleRevokeAllSessionsRef.current = handleRevokeAllSessions
+  }, [handleRevokeAllSessions])
 
   const formatSessionTimestamp = useCallback(
     (value: string | null) => {

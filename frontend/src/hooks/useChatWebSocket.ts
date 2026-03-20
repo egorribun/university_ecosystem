@@ -142,6 +142,7 @@ export function useChatWebSocket({
   const onOnlineStatusRef = useRef(onOnlineStatus)
   const onPresenceUpdateRef = useRef(onPresenceUpdate)
   const mountedRef = useRef(false)
+  const connectRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     onNewMessageRef.current = onNewMessage
@@ -326,7 +327,7 @@ export function useChatWebSocket({
           const delay = calculateReconnectDelay(reconnectAttemptRef.current)
           reconnectAttemptRef.current += 1
           reconnectTimeoutRef.current = setTimeout(() => {
-            connect()
+            connectRef.current()
           }, delay)
         }
       }
@@ -347,6 +348,10 @@ export function useChatWebSocket({
     }
     wsStore.setConnected(false)
   }, [cleanup, wsStore])
+
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   useEffect(() => {
     mountedRef.current = true

@@ -41,7 +41,11 @@ export function useEventFilterPopover({
 
   const filtersActive = Boolean(type?.trim() || location?.trim())
 
-  const { refs, floatingStyles, context } = useFloating({
+  const {
+    refs: { setReference, setFloating },
+    floatingStyles,
+    context,
+  } = useFloating({
     open: isOpen,
     onOpenChange: setIsOpen,
     placement,
@@ -63,11 +67,11 @@ export function useEventFilterPopover({
   return {
     isOpen,
     filtersActive,
-    referenceProps: { ref: refs.setReference, ...getReferenceProps() },
+    referenceProps: { ref: setReference, ...getReferenceProps() },
     popoverNode: isOpen ? (
       <FloatingFocusManager context={context} modal={false}>
         <div
-          ref={refs.setFloating}
+          ref={setFloating}
           style={floatingStyles}
           {...getFloatingProps()}
           className="z-modal min-w-64 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"

@@ -1,4 +1,4 @@
-use ammonia::{Builder, UrlRelative};
+use ammonia::Builder;
 use std::collections::{HashSet, HashMap};
 use wasm_bindgen::prelude::*;
 

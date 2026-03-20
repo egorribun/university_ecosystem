@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { logWarning } from "@/app/logger"
 
 export interface UseLocalStorageOptions<T> {
@@ -23,15 +23,21 @@ export function useLocalStorage<T>(
   options: UseLocalStorageOptions<T> = {}
 ): [T, (value: T | ((val: T) => T)) => void, () => void] {
   const { initializeWithValue = true } = options
-  const serializer = useRef((value: T) => {
-    if (options.serializer) return options.serializer(value)
-    return JSON.stringify(value)
-  })
-  const deserializer = useRef((value: string) => {
-    if (options.deserializer) return options.deserializer(value)
-    if (value === "undefined") return undefined as unknown as T
-    return JSON.parse(value)
-  })
+  const serializer = useMemo(
+    () => (value: T) => {
+      if (options.serializer) return options.serializer(value)
+      return JSON.stringify(value)
+    },
+    [options]
+  )
+  const deserializer = useMemo(
+    () => (value: string) => {
+      if (options.deserializer) return options.deserializer(value)
+      if (value === "undefined") return undefined as unknown as T
+      return JSON.parse(value)
+    },
+    [options]
+  )
 
   // Get value from storage, or fallback to initialValue
   // Wrapped in function to be used as useState initializer
@@ -44,12 +50,12 @@ export function useLocalStorage<T>(
       if (raw === null) {
         return initial
       }
-      return deserializer.current(raw)
+      return deserializer(raw)
     } catch (e) {
       logWarning(`[useLocalStorage] Error reading key "${key}":`, { error: e })
       return initial
     }
-  }, [initialValue, key])
+  }, [initialValue, key, deserializer])
 
   const [storedValue, setStoredValue] = useState<T>(() => {
     if (initializeWithValue) return readValue()
@@ -67,7 +73,7 @@ export function useLocalStorage<T>(
         setStoredValue(valueToStore)
 
         if (IS_BROWSER) {
-          const serialized = serializer.current(valueToStore)
+          const serialized = serializer(valueToStore)
           window.localStorage.setItem(key, serialized)
 
           // Dispatch storage event for same-tab sync
@@ -83,7 +89,7 @@ export function useLocalStorage<T>(
         logWarning(`[useLocalStorage] Error setting key "${key}":`, { error: e })
       }
     },
-    [key, storedValue]
+    [key, storedValue, serializer]
   )
 
   const removeValue = useCallback(() => {
@@ -115,7 +121,7 @@ export function useLocalStorage<T>(
           setStoredValue(initialValue instanceof Function ? initialValue() : initialValue)
         } else {
           try {
-            setStoredValue(deserializer.current(e.newValue))
+            setStoredValue(deserializer(e.newValue))
           } catch (err) {
             logWarning("[useLocalStorage] Sync error", { error: err })
           }
@@ -127,7 +133,7 @@ export function useLocalStorage<T>(
     // unless we manually dispatch it (which we do in setValue)
     window.addEventListener("storage", handleStorageChange)
     return () => window.removeEventListener("storage", handleStorageChange)
-  }, [key, initialValue])
+  }, [key, initialValue, deserializer])
 
   return [storedValue, setValue, removeValue]
 }
