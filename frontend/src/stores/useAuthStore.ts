@@ -39,6 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 export const useAuthUser = () => useAuthStore((state) => state.user)
 export const useAuthLoading = () => useAuthStore((state) => state.loading)
 export const useAuthPendingMfa = () => useAuthStore((state) => state.pendingMfa)
+export const useAuthOperation = () => useAuthStore((state) => state.authOperation)
 
 export const useAuthActions = () =>
   useAuthStore(

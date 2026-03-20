@@ -23,6 +23,7 @@ export type AuthContextType = {
   logout: () => Promise<void>
   user: UserState
   loading: boolean
+  authOperation: boolean
   setUser: Dispatch<SetUserArg>
   refresh: () => Promise<void>
   pendingMfa: PendingMfaState | null

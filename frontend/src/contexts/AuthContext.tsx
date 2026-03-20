@@ -22,6 +22,7 @@ interface AuthContextActions {
   requireMfa: AuthContextType["requireMfa"]
   loginWithPasskey: AuthContextType["loginWithPasskey"]
   resetEtagCache: typeof resetEtagCache
+  authOperation: boolean
 }
 
 const noopSetUser = () => {
@@ -37,13 +38,14 @@ export const AuthContext = createContext<AuthContextActions>({
   requireMfa: async () => null,
   loginWithPasskey: async () => {},
   resetEtagCache,
+  authOperation: false,
 } as AuthContextActions)
 
 export const useAuth = (): AuthContextType => {
   const user = useAuthUser()
   const loading = useAuthLoading()
   const pendingMfa = useAuthPendingMfa()
-  const { authOperation, ...storeActions } = useAuthActions()
+  const storeActions = useAuthActions()
   const contextActions = useContext(AuthContext)
 
   // TD-NEW-002 (audit 2026-03-19): Explicit structure without "as unknown as".
@@ -53,7 +55,6 @@ export const useAuth = (): AuthContextType => {
     loading,
     pendingMfa,
     isAuth: user !== null,
-    authOperation,
     ...storeActions,
     ...contextActions,
   }
@@ -123,8 +124,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   )
 
   const value = useMemo(
-    () => ({ ...actionsValue, ...STABLE_API_UTILS }),
-    [actionsValue, STABLE_API_UTILS]
+    () => ({ ...actionsValue, ...STABLE_API_UTILS, authOperation }),
+    [actionsValue, STABLE_API_UTILS, authOperation]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

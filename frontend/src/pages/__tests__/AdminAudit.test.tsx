@@ -83,6 +83,7 @@ const authValue = {
   submitMfaChallenge: vi.fn(),
   requireMfa: vi.fn(),
   resetEtagCache: vi.fn(),
+  authOperation: false,
 }
 
 const renderPage = () => {
