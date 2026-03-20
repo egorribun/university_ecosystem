@@ -56,7 +56,7 @@ type WSUpgradeRateLimiter struct {
 
 // NewWSUpgradeRateLimiter creates a limiter.
 // capacity:   max burst (e.g. 10 → allow 10 upgrades in a burst)
-// windowSec:  replenishment window (e.g. 60 → full refill in 60 s, i.e. 1/6 tok/s)
+// windowSec:  replenishment window (e.g. 60 → full refill in 60 s, i.e. 1/6 tok/s).
 func NewWSUpgradeRateLimiter(capacity int, windowSec int) *WSUpgradeRateLimiter {
 	l := &WSUpgradeRateLimiter{
 		capacity:    float64(capacity),
