@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -35,6 +31,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
 	// MOD-02 (audit Wave 10): semconv v1.27.0 for standardised OTel attributes.
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"google.golang.org/grpc"
