@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// wsUpgradeBucket tracks token state for one IP address.
+// wsUpgradeBucket tracks token state for one IP address..
 type wsUpgradeBucket struct {
 	mu       sync.Mutex
 	tokens   float64
@@ -47,10 +47,10 @@ func (b *wsUpgradeBucket) allow(capacity, ratePerSec float64) bool {
 
 // WSUpgradeRateLimiter holds per-IP buckets and runs periodic GC.
 type WSUpgradeRateLimiter struct {
-	buckets     sync.Map        // map[string]*wsUpgradeBucket
-	capacity    float64         // max burst (initial tokens)
-	ratePerSec  float64         // steady-state refill rate
-	idleTimeout time.Duration   // GC: remove buckets idle longer than this
+	buckets     sync.Map      // map[string]*wsUpgradeBucket
+	capacity    float64       // max burst (initial tokens)
+	ratePerSec  float64       // steady-state refill rate
+	idleTimeout time.Duration // GC: remove buckets idle longer than this
 	stopGC      chan struct{}
 }
 

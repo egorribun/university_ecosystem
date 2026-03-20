@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-// Config holds the gateway configuration
+// Config holds the gateway configuration.
 type Config struct {
-	Port              string
-	BackendURL        string
-	RedisURL          string
-	JWTSecret         string
+	Port       string
+	BackendURL string
+	RedisURL   string
+	JWTSecret  string
 	// JWKSPublicKeyPEM is the PEM-encoded RSA/EC public key used to verify RS256 tokens.
 	// Optional. When empty, only HS256 tokens are accepted. Set JWKS_PUBLIC_KEY_PEM to
 	// enable RS256 support without a round-trip to the Python JWKS endpoint at startup.
@@ -23,11 +23,11 @@ type Config struct {
 	AllowedOrigins    []string
 	SentryDSN         string
 	Environment       string
-	// MED-02 (audit 2026-03-11): Externalize hardcoded telemetry endpoints
-	OtelEndpoint      string
-	AppVersion        string
-	// CRIT-02 (audit 2026-03-11): Toggle for gRPC TLS
-	GrpcUseTLS        bool
+	// MED-02 (audit 2026-03-11): Externalize hardcoded telemetry endpoints.
+	OtelEndpoint string
+	AppVersion   string
+	// CRIT-02 (audit 2026-03-11): Toggle for gRPC TLS.
+	GrpcUseTLS bool
 	// InternalHMACSecret is the shared secret used to sign X-User-ID/X-Session-ID
 	// headers set by this gateway (RZ-14-05). The backend verifies the resulting
 	// X-Internal-Signature to reject requests that bypass the gateway.
@@ -42,7 +42,7 @@ func Load() (*Config, error) {
 		Port:              getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:        getEnv("BACKEND_URL", "http://backend:8000"),
 		RedisURL:          getEnv("REDIS_URL", "redis://redis:6379/3"),
-		JWTSecret:         os.Getenv("JWT_SECRET"),       // No default — fail secure
+		JWTSecret:         os.Getenv("JWT_SECRET"),          // No default — fail secure
 		JWKSPublicKeyPEM:  os.Getenv("JWKS_PUBLIC_KEY_PEM"), // Optional RS256 public key
 		FileProcessorAddr: getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
 		RateLimitRPS:      getEnvInt("RATE_LIMIT_RPS", 100),

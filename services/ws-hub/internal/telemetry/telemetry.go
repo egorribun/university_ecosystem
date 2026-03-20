@@ -11,12 +11,14 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
 	// MOD-02 (audit Wave 10): semconv v1.27.0 adds messaging.* attributes for
 	// NATS/Kafka, enabling correlation between WebSocket events and NATS messages
 	// in Jaeger/Grafana Tempo.  v1.17.0 lacked messaging operation type keys.
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
 
+// InitSentry initializes Raven/Sentry for error tracking.
 func InitSentry(cfg *config.Config) error {
 	if cfg.SentryDSN == "" {
 		return nil
@@ -29,6 +31,7 @@ func InitSentry(cfg *config.Config) error {
 	})
 }
 
+// InitTracer set up OpenTelemetry gRPC exporter and TracerProvider.
 func InitTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
 	// MOD-01 (audit 2026-03-15 Wave 7): Use OTel SDK env-based config instead
 	// of hardcoded endpoint + insecure flag.  The SDK automatically reads:
@@ -69,4 +72,3 @@ func InitTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 	otel.SetTracerProvider(tp)
 	return tp, nil
 }
-

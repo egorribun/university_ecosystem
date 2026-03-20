@@ -10,34 +10,26 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// Client represents a connected WebSocket user.
 type Client struct {
-	ID     string
-	UserID string
-	Conn   *websocket.Conn
-	Rooms  map[string]bool
+	ID        string
+	UserID    string
+	Conn      *websocket.Conn
+	Rooms     map[string]bool
 	Send      chan []byte
 	Hub       *Hub
 	mu        sync.Mutex
 	closeOnce sync.Once
 	// ctx / cancel are tied to this connection's lifetime.
-	// ctx is cancelled when ReadPump exits (connection closed / client gone).
-	// Pass ctx to AuthorizeRoomJoin so that backend HTTP checks are cancelled
-	// when the client disconnects. (WSH-05, audit 2026-03-08 Wave 5)
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // safeSend writes data to ch without panicking if the channel is already
-// closed.  It returns true when the message was queued and false when either
-// the channel is full (non-evict path) or was closed (RZ-F-02).
-//
-// Background: Go panics on any send to a closed channel, including sends
-// inside a select statement.  After broadcastMessage releases h.mu.RLock,
-// the Unregister handler can close client.Send before the fan-out loop
-// reaches that client.  recover() is the only way to catch that panic safely.
+// closed.
 func safeSend(ch chan []byte, data []byte) (sent bool) {
 	defer func() {
-		if recover() != nil {
+		if r := recover(); r != nil {
 			sent = false
 		}
 	}()
@@ -49,37 +41,38 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 	}
 }
 
+// ReadPump pumps messages from the websocket connection to the hub.
 func (c *Client) ReadPump() {
 	defer func() {
-		// Cancel the client context so that any pending AuthorizeRoomJoin
-		// HTTP checks (CanJoinRoom) are aborted immediately on disconnect.
 		c.cancel()
-		// TD-01 (audit 2026-03-15 Wave 7): remove per-client rate limiter
-		// entry to prevent unbounded growth of msgLimiters sync.Map.
 		c.Hub.msgLimiters.Delete(c.ID)
 		c.Hub.Unregister <- c
-		_ = c.Conn.Close()
+		if err := c.Conn.Close(); err != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close websocket connection", "client_id", c.ID, "err", err)
+		}
 	}()
 
 	c.Conn.SetReadLimit(64 * 1024)
-	_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		c.Hub.Logger.ErrorContext(c.ctx, "Failed to set read deadline", "err", err)
+	}
 	c.Conn.SetPongHandler(func(string) error {
-		_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to update read deadline in pong handler", "err", err)
+		}
 		return nil
 	})
 
 	for {
 		_, data, err := c.Conn.ReadMessage()
 		if err != nil {
-			// TD-07 (audit 2026-03-15 Wave 7): distinguish normal closes from
-			// unexpected errors so operators can spot protocol violations or attacks.
 			if websocket.IsCloseError(err,
 				websocket.CloseNormalClosure,
 				websocket.CloseGoingAway,
 				websocket.CloseNoStatusReceived) {
-				c.Hub.Logger.Debug("WebSocket closed normally", "client_id", c.ID)
+				c.Hub.Logger.DebugContext(c.ctx, "WebSocket closed normally", "client_id", c.ID)
 			} else {
-				c.Hub.Logger.Warn("WebSocket read error",
+				c.Hub.Logger.WarnContext(c.ctx, "WebSocket read error",
 					"client_id", c.ID,
 					"err", err)
 			}
@@ -92,77 +85,87 @@ func (c *Client) ReadPump() {
 		}
 
 		msg.From = c.ID
+		c.handleIncomingMessage(msg, data)
+	}
+}
 
-		switch msg.Type {
-		case "join":
-			// Every room-join must be authorized against the Python backend's
-			// participant table to prevent OWASP A01 (broken access control).
-			// Any authenticated user who knows a chat UUID must be blocked
-			// from joining rooms they are not a participant of.
-			if msg.Room == "" {
-				break
+func (c *Client) handleIncomingMessage(msg Message, data []byte) {
+	switch msg.Type {
+	case "join":
+		c.handleJoin(msg)
+	case "leave":
+		c.handleLeave(msg)
+	case "message":
+		c.handleMessage(msg, data)
+	}
+}
+
+func (c *Client) handleJoin(msg Message) {
+	if msg.Room == "" {
+		return
+	}
+	if !c.Hub.AuthorizeRoomJoin(c.ctx, c.UserID, msg.Room) {
+		c.Hub.Logger.WarnContext(c.ctx, "Unauthorized room join rejected",
+			"user", c.UserID,
+			"room", msg.Room)
+		return
+	}
+	c.JoinRoom(msg.Room)
+}
+
+func (c *Client) handleLeave(msg Message) {
+	c.LeaveRoom(msg.Room)
+}
+
+func (c *Client) handleMessage(msg Message, data []byte) {
+	raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
+		rate.NewLimiter(rate.Limit(10), 20))
+	if !raw.(*rate.Limiter).Allow() {
+		c.Hub.Logger.WarnContext(c.ctx, "Client message rate limit exceeded — notifying client",
+			"client_id", c.ID,
+			"room", msg.Room)
+		if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
+			select {
+			case c.Send <- notice:
+			default:
+				// Send buffer full — client is already overwhelmed; drop silently.
 			}
-			if !c.Hub.AuthorizeRoomJoin(c.ctx, c.UserID, msg.Room) {
-				c.Hub.Logger.Warn("Unauthorized room join rejected",
-					"user", c.UserID,
-					"room", msg.Room)
-				break
-			}
-			c.JoinRoom(msg.Room)
-		case "leave":
-			c.LeaveRoom(msg.Room)
-		case "message":
-			// TD-01 (audit 2026-03-15 Wave 7): per-client token bucket prevents
-			// a single WS connection from flooding NATS JetStream and causing
-			// backpressure / delivery failures for all other clients.
-			// Limit: 10 msg/sec, burst 20 — generous for human typing (~0.5 words/sec).
-			//
-			// WSH-P2-02 (audit Wave 10): notify the client so it can implement
-			// exponential back-off instead of silently losing messages.  The
-			// control frame is small and its presence does NOT fingerprint a
-			// useful limit value — the burst size is not disclosed.
-			raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
-				rate.NewLimiter(rate.Limit(10), 20))
-			if !raw.(*rate.Limiter).Allow() {
-				c.Hub.Logger.Warn("Client message rate limit exceeded — notifying client",
-					"client_id", c.ID,
-					"room", msg.Room)
-				if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
-					select {
-					case c.Send <- notice:
-					default:
-						// Send buffer full — client is already overwhelmed; drop silently.
-					}
-				}
-				break
-			}
-			// Publish to NATS only. The hub's NATS subscriber will fan the
-			// message out to all connected clients via the Broadcast channel.
-			// Direct Broadcast <- &msg is intentionally removed to prevent
-			// duplicate delivery (RZ-6: audit 2026-02-24).
-			if js, err := c.Hub.Nats.JetStream(); err == nil {
-				_, _ = js.PublishAsync("chat."+msg.Room, data)
-			} else {
-				c.Hub.Logger.Error("Failed to init JetStream, falling back to core NATS", "err", err)
-				_ = c.Hub.Nats.Publish("chat."+msg.Room, data)
-			}
+		}
+		return
+	}
+
+	if js, err := c.Hub.Nats.JetStream(); err == nil {
+		if _, err := js.PublishAsync("chat."+msg.Room, data); err != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish async to JetStream", "err", err)
+		}
+	} else {
+		c.Hub.Logger.ErrorContext(c.ctx, "Failed to init JetStream, falling back to core NATS", "err", err)
+		if err := c.Hub.Nats.Publish("chat."+msg.Room, data); err != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish to NATS", "err", err)
 		}
 	}
 }
 
+// WritePump pumps messages from the hub to the websocket connection.
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
-		_ = c.Conn.Close()
+		if err := c.Conn.Close(); err != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close websocket connection In WritePump", "err", err)
+		}
 	}()
 
 	for {
 		select {
 		case msg, ok := <-c.Send:
-			_ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
+			}
 			if !ok {
-				_ = c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+					c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
+				}
 				return
 			}
 
@@ -171,7 +174,9 @@ func (c *Client) WritePump() {
 			}
 
 		case <-ticker.C:
-			_ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline for ping", "err", err)
+			}
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -179,6 +184,7 @@ func (c *Client) WritePump() {
 	}
 }
 
+// JoinRoom adds the client to the specified room.
 func (c *Client) JoinRoom(room string) {
 	if room == "" {
 		return
@@ -187,8 +193,6 @@ func (c *Client) JoinRoom(room string) {
 	c.Hub.mu.Lock()
 	defer c.Hub.mu.Unlock()
 
-	// Acquire client-local lock after hub-global lock to establish a
-	// consistent total lock order (hub.mu -> client.mu) matching Unregister.
 	c.mu.Lock()
 	c.Rooms[room] = true
 	c.mu.Unlock()
@@ -198,9 +202,10 @@ func (c *Client) JoinRoom(room string) {
 	}
 	c.Hub.Rooms[room][c] = true
 
-	c.Hub.Logger.Debug("Client joined room", "client", c.ID, "room", room)
+	c.Hub.Logger.DebugContext(c.ctx, "Client joined room", "client", c.ID, "room", room)
 }
 
+// LeaveRoom removes the client from the specified room.
 func (c *Client) LeaveRoom(room string) {
 	if room == "" {
 		return
@@ -209,7 +214,6 @@ func (c *Client) LeaveRoom(room string) {
 	c.Hub.mu.Lock()
 	defer c.Hub.mu.Unlock()
 
-	// Same lock order as JoinRoom: hub.mu before client.mu.
 	c.mu.Lock()
 	delete(c.Rooms, room)
 	c.mu.Unlock()

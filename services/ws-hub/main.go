@@ -41,12 +41,12 @@ func main() {
 	// AUDIT-INFRA-02: fail-fast — empty InternalSecret allows HMAC forgery on
 	// the /internal/cache/invalidate endpoint from any container on service_net.
 	if cfg.InternalSecret == "" {
-		logger.Error("WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
+		logger.ErrorContext(context.Background(), "WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
 		os.Exit(1)
 	}
 
 	if err := telemetry.InitSentry(cfg); err != nil {
-		logger.Error("Sentry initialization failed", "err", err)
+		logger.ErrorContext(context.Background(), "Sentry initialization failed", "err", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,9 +54,13 @@ func main() {
 
 	tp, err := telemetry.InitTracer(ctx, cfg)
 	if err != nil {
-		logger.Error("OpenTelemetry initialization failed", "err", err)
+		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
 	} else {
-		defer func() { _ = tp.Shutdown(ctx) }()
+		defer func() {
+			if err := tp.Shutdown(ctx); err != nil {
+				logger.ErrorContext(ctx, "Failed to shutdown tracer provider", "err", err)
+			}
+		}()
 	}
 
 	// MOD-W10-04: credentials from separate env vars, not embedded in the URL.
@@ -72,7 +76,7 @@ func main() {
 	}
 	nc, err := nats.Connect(cfg.NatsURL, natsOpts...)
 	if err != nil {
-		logger.Error("Failed to connect to NATS", "err", err)
+		logger.ErrorContext(ctx, "Failed to connect to NATS", "err", err)
 		os.Exit(1)
 	}
 	defer nc.Close()
@@ -84,15 +88,15 @@ func main() {
 	})
 	// Check connection
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		logger.Warn("Redis connection failed, continuing without L2 cache", "err", err)
+		logger.WarnContext(ctx, "Redis connection failed, continuing without L2 cache", "err", err)
 		rdb = nil
 	} else {
 		defer func() {
 			if err := rdb.Close(); err != nil {
-				logger.Error("Failed to close Redis connection", "err", err)
+				logger.ErrorContext(context.Background(), "Failed to close Redis connection", "err", err)
 			}
 		}()
-		logger.Info("Redis connected (L2 Cache enabled)", "addr", cfg.RedisURL)
+		logger.InfoContext(ctx, "Redis connected (L2 Cache enabled)", "addr", cfg.RedisURL)
 	}
 
 	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL, rdb)
@@ -105,7 +109,7 @@ func main() {
 	// MOD-1: initialize JWKS cache for RS256 support.
 	if cfg.JWKSURL != "" {
 		if err := h.SetupJWKS(ctx, cfg.JWKSURL); err != nil {
-			logger.Error("Failed to setup JWKS", "err", err)
+			logger.ErrorContext(ctx, "Failed to setup JWKS", "err", err)
 			os.Exit(1)
 		}
 	}
@@ -123,9 +127,11 @@ func main() {
 	}), "websocket_upgrade"))
 
 	http.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "healthy",
-		})
+		}); err != nil {
+			logger.ErrorContext(r.Context(), "Failed to encode health check response", "err", err)
+		}
 	}), "health_check"))
 
 	// INF-02 (audit 2026-03-08 Wave 5): Prometheus metrics endpoint.
@@ -149,9 +155,9 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("Starting WebSocket Hub", "port", cfg.Port)
+		logger.InfoContext(context.Background(), "Starting WebSocket Hub", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			logger.Error("Server error", "err", err)
+			logger.ErrorContext(context.Background(), "Server error", "err", err)
 			os.Exit(1)
 		}
 	}()
@@ -160,7 +166,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down...")
+	logger.InfoContext(context.Background(), "Shutting down...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
@@ -168,5 +174,7 @@ func main() {
 	// in-flight messages are flushed to clients rather than dropped.
 	h.Stop()
 
-	_ = server.Shutdown(shutdownCtx)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
+	}
 }

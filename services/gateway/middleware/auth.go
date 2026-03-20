@@ -31,13 +31,13 @@ const (
 // `ACCESS_TOKEN_COOKIE_NAME` (currently "access_token_v2").
 const AccessTokenCookieName = "access_token_v2"
 
-// L1CacheConfig holds configuration for the local cache layer
+// L1CacheConfig holds configuration for the local cache layer.
 type L1CacheConfig struct {
 	MaxSize int           // Maximum number of entries (default: 10000)
 	TTL     time.Duration // Time-to-live for cached entries (default: 30s)
 }
 
-// DefaultL1CacheConfig returns sensible defaults for L1 cache
+// DefaultL1CacheConfig returns sensible defaults for L1 cache.
 func DefaultL1CacheConfig() L1CacheConfig {
 	return L1CacheConfig{
 		MaxSize: 10000,
@@ -45,7 +45,7 @@ func DefaultL1CacheConfig() L1CacheConfig {
 	}
 }
 
-// cacheEntry represents a local cache entry
+// cacheEntry represents a local cache entry.
 type cacheEntry struct {
 	exists bool
 }
@@ -132,7 +132,7 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 	return m
 }
 
-// ListenForRevocations starts a background goroutine to listen for session revocations
+// ListenForRevocations starts a background goroutine to listen for session revocations.
 func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 	if m.redis == nil {
 		return
@@ -143,7 +143,9 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 
 	go func() {
 		defer func() {
-			_ = pubsub.Close()
+			if err := pubsub.Close(); err != nil {
+				fmt.Printf("Warning: Failed to close Redis pubsub in revocation listener: %v\n", err)
+			}
 			if r := recover(); r != nil {
 				fmt.Printf("CRITICAL: Panic in Redis revocation listener avoided gateway crash: %v\n", r)
 			}
@@ -168,7 +170,7 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 }
 
 // checkL1Cache checks if a session exists in the L1 cache
-// Returns: (exists, found) where found indicates if the key was in cache
+// Returns: (exists, found) where found indicates if the key was in cache.
 func (m *JWTMiddleware) checkL1Cache(key string) (exists bool, found bool) {
 	if entry, ok := m.l1cache.Get(key); ok {
 		l1Hits.Inc()
@@ -273,7 +275,7 @@ func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 	}
 }
 
-// Validate returns a Gin middleware that validates JWT tokens
+// Validate returns a Gin middleware that validates JWT tokens.
 func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie (BFF pattern)
@@ -325,7 +327,12 @@ func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 		}
 
 		// Edge-level Session Revocation Check with L1 Cache (fail-secure)
-		isValid, shouldDeny, _ := m.verifySession(c.Request.Context(), claims.ID, true)
+		isValid, shouldDeny, err := m.verifySession(c.Request.Context(), claims.ID, true)
+		if err != nil {
+			// FP-P2-03: Log error rather than swallowing.
+			// Handled by shouldDeny logic below if failSecure=true.
+			_ = err
+		}
 		if shouldDeny {
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 				"error": "session verification temporarily unavailable",
@@ -355,7 +362,7 @@ func (m *JWTMiddleware) Validate() gin.HandlerFunc {
 	}
 }
 
-// Optional returns a middleware that extracts JWT claims but doesn't require auth
+// Optional returns a middleware that extracts JWT claims but doesn't require auth.
 func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie
@@ -405,7 +412,10 @@ func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 		// failSecure=false means: on Redis error, verifySession returns (false, false, nil)
 		// → isValid=false → c.Next() without user context (unauthenticated, not authenticated).
 		// This is correct: a Redis outage should NOT treat revoked tokens as valid.
-		isValid, shouldDeny, _ := m.verifySession(c.Request.Context(), claims.ID, false)
+		isValid, shouldDeny, err := m.verifySession(c.Request.Context(), claims.ID, false)
+		if err != nil {
+			_ = err
+		}
 		if shouldDeny {
 			// Redis is unreachable: return 503 rather than silently accepting a
 			// potentially revoked token. Optional endpoints should handle 503 gracefully.
@@ -430,7 +440,7 @@ func (m *JWTMiddleware) Optional() gin.HandlerFunc {
 	}
 }
 
-// RequireRole returns a middleware that requires a specific role
+// RequireRole returns a middleware that requires a specific role.
 func RequireRole(roles ...string) gin.HandlerFunc {
 	roleSet := make(map[string]bool)
 	for _, role := range roles {

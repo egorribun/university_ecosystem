@@ -65,7 +65,9 @@ func TestRateLimiter_GetClientKey_UsesXForwardedFor(t *testing.T) {
 
 	router := gin.New()
 	router.ForwardedByClientIP = true
-	_ = router.SetTrustedProxies([]string{"127.0.0.1"})
+	if err := router.SetTrustedProxies([]string{"127.0.0.1"}); err != nil {
+		t.Fatalf("failed to set trusted proxies: %v", err)
+	}
 
 	var capturedKey string
 	router.GET("/test", func(c *gin.Context) {
@@ -92,7 +94,9 @@ func TestRateLimiter_GetClientKey_TrimsWhitespaceFromForwardedIP(t *testing.T) {
 
 	router := gin.New()
 	router.ForwardedByClientIP = true
-	_ = router.SetTrustedProxies([]string{"127.0.0.1"})
+	if err := router.SetTrustedProxies([]string{"127.0.0.1"}); err != nil {
+		t.Fatalf("failed to set trusted proxies: %v", err)
+	}
 
 	var capturedKey string
 	router.GET("/test", func(c *gin.Context) {

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,7 +21,10 @@ func init() {
 
 func createValidToken(secret string, claims Claims) string {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(secret))
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		panic(fmt.Sprintf("failed to sign test token: %v", err))
+	}
 	return tokenString
 }
 
@@ -98,7 +102,7 @@ func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "user-123",
 		IsActive: true,
@@ -121,7 +125,7 @@ func TestValidate_RejectsInactiveUser(t *testing.T) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "user-123",
 		IsActive: false,
@@ -154,7 +158,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "user-456",
 		Role:     "admin",
@@ -205,7 +209,7 @@ func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "optional-user",
 		IsActive: true,
