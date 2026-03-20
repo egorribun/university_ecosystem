@@ -66,7 +66,7 @@ export function useSessionManagement({
     staleTime: 30_000,
   })
 
-  const sessions = Array.isArray(sessionsData) ? sessionsData : []
+  const sessions = useMemo(() => (Array.isArray(sessionsData) ? sessionsData : []), [sessionsData])
 
   const sortedSessions = useMemo(() => {
     const weight = (session: ActiveSession) => {

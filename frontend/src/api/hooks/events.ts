@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-query"
 import { useMemo } from "react"
 
-import { apiClient, type TypedRequestOptions } from "@/api/client"
+import { allEventsApiV1EventsGet, myEventsApiV1EventsMyGet } from "@/api/generated/sdk.gen"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
@@ -153,14 +153,14 @@ const createEventsListQueryFn =
       params.cursor = pageParam
     }
 
-    const requestConfig: TypedRequestOptions<"/api/v1/events", "get"> = {
-      params,
+    const requestConfig = {
+      query: params,
       signal,
-      validateStatus: (status) => status >= 200 && status < 400,
+      validateStatus: (status: number) => status >= 200 && status < 400,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 
-    const response = await apiClient.get("/api/v1/events", requestConfig)
+    const response = await allEventsApiV1EventsGet(requestConfig as Parameters<typeof allEventsApiV1EventsGet>[0])
 
     if (response.status === 304) {
       const cached =
@@ -168,7 +168,6 @@ const createEventsListQueryFn =
       return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
     }
 
-    // @ts-expect-error - type mismatch in generated response
     return ensurePaginatedResponse(response.data, normalized.limit)
   }
 
@@ -198,7 +197,7 @@ export const useEventsListQuery = (
 ): UseEventsListQueryResult => {
   const queryClient = useQueryClient()
   const normalized = normalizeEventsListFilters(filters)
-  const queryKey: EventsListQueryKey = ["events", "list", normalized]
+  const queryKey: EventsListQueryKey = useMemo(() => ["events", "list", normalized], [normalized])
   const { enabled = true, ...rest } = options ?? {}
 
   const queryFn = useMemo(
@@ -338,19 +337,19 @@ export const useMyEventsQuery = (
     placeholderData,
     queryFn: async ({ signal }) => {
       const etagKey = createMyEventsEtagKey(normalized)
-      const config: TypedRequestOptions<"/api/v1/events/my", "get"> = {
+      const config = {
         signal,
         validateStatus: (status: number) => status >= 200 && status < 400,
         etagCacheKey: etagKey,
       }
 
-      const response = await apiClient.get("/api/v1/events/my", config)
+      const response = await myEventsApiV1EventsMyGet(config as Parameters<typeof myEventsApiV1EventsMyGet>[0])
 
       if (response.status === 304) {
         return queryClient.getQueryData<Event[]>(queryKey) ?? []
       }
 
-      return Array.isArray(response.data) ? response.data : []
+      return Array.isArray(response.data) ? (response.data as Event[]) : []
     },
     ...rest,
   })

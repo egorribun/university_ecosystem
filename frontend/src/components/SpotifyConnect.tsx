@@ -64,7 +64,7 @@ export default function SpotifyConnect() {
   useEffect(() => {
     const qp = new URLSearchParams(window.location.search)
     if (qp.get("spotify")) void nowPlayingQuery.refetch()
-  }, [])
+  }, [nowPlayingQuery])
 
   if (!user) return null
 

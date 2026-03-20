@@ -785,7 +785,7 @@ export const useProfileSync = (
         channel.close()
       }
     }
-  }, [applyUserState, handleUnauthorized, updatePendingMfa])
+  }, [applyUserState, handleUnauthorized, queryClient, sessionSigningKeyRef, updatePendingMfa])
 
   useEffect(() => {
     userStateRef.current = userState
@@ -839,7 +839,7 @@ export const useProfileSync = (
         }
       }
     })()
-  }, [ensureSessionSigningKey, handleUnauthorized, setUser])
+  }, [ensureSessionSigningKey, handleUnauthorized, initializing, setUser])
 
   useEffect(() => {
     useAuthStore.setState({

@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query"
 import { useMemo } from "react"
 
-import { apiClient, type TypedRequestOptions } from "@/api/client"
+import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
 import type { NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
@@ -115,14 +115,14 @@ const createNewsListQueryFn =
       params.cursor = pageParam
     }
 
-    const requestConfig: TypedRequestOptions<"/api/v1/news", "get"> = {
-      params,
+    const requestConfig = {
+      query: params,
       signal,
       validateStatus: (status: number) => status >= 200 && status < 400,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 
-    const response = await apiClient.get("/api/v1/news", requestConfig)
+    const response = await newsListApiV1NewsGet(requestConfig as Parameters<typeof newsListApiV1NewsGet>[0])
 
     if (response.status === 304) {
       const cached =
@@ -159,7 +159,7 @@ export const useNewsListQuery = (
 ): UseNewsListQueryResult => {
   const queryClient = useQueryClient()
   const normalized = normalizeNewsListFilters(filters)
-  const queryKey: NewsListQueryKey = ["news", "list", normalized]
+  const queryKey: NewsListQueryKey = useMemo(() => ["news", "list", normalized], [normalized])
   const { enabled = true, ...rest } = options ?? {}
 
   const queryFn = useMemo(

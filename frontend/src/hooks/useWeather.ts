@@ -52,7 +52,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
       overrideCoordinates
         ? Object.freeze({ lat: overrideCoordinates.lat, lon: overrideCoordinates.lon })
         : CAMPUS_COORDINATES,
-    [overrideCoordinates?.lat, overrideCoordinates?.lon]
+    [overrideCoordinates]
   )
   const signature = useMemo(() => toSignature(coordinates), [coordinates])
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -60,7 +60,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
 
   const initialCached = useMemo(
     () => readWeatherCache(coordinates, { allowExpired: true }),
-    [signature]
+    [coordinates]
   )
   const hasFreshCache = Boolean(initialCached && initialCached.expiresAt > Date.now())
 

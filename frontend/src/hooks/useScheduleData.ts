@@ -256,7 +256,7 @@ export function useScheduleData() {
     networkMode: "online",
     retry: 1,
   })
-  const groups = groupsQuery.data ?? []
+  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
 
   const activeGroupId = selectedGroup
   const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
@@ -282,7 +282,7 @@ export function useScheduleData() {
     retry: 1,
   })
 
-  const groupScheduleRaw = scheduleQuery.data ?? []
+  const groupScheduleRaw = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
   const groupSchedule = useMemo(
     () => normalizeLessons(groupScheduleRaw),
     [groupScheduleRaw, normalizeLessons]

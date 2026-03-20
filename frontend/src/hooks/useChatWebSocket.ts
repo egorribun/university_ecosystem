@@ -318,7 +318,7 @@ export function useChatWebSocket({
     } catch (e) {
       logError("[WebSocket] Failed to connect:", e)
     }
-  }, [enabled, cleanup, queryClient])
+  }, [enabled, cleanup, queryClient, wsStore])
 
   const disconnect = useCallback(() => {
     cleanup()
@@ -327,7 +327,7 @@ export function useChatWebSocket({
       wsRef.current = null
     }
     wsStore.setConnected(false)
-  }, [cleanup])
+  }, [cleanup, wsStore])
 
   useEffect(() => {
     mountedRef.current = true

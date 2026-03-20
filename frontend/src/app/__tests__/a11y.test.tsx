@@ -11,7 +11,8 @@ import Profile from "@/pages/Profile"
 import { AuthContext } from "@/contexts/AuthContext"
 import { checkA11y } from "@/tests/axeTest"
 import { createQueryClient } from "@/app/queryClient"
-import api, { apiClient } from "@/api/client"
+import api from "@/api/client"
+import * as sdk from "@/api/generated/sdk.gen"
 import type { User } from "@/types/User"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { ThemeProvider } from "@/contexts/ThemeContext"
@@ -209,11 +210,15 @@ describe("Accessibility checks", () => {
       }
       return mockResponse([])
     })
-    const typedGetSpy = vi.spyOn(apiClient, "get").mockImplementation(async (path: string) => {
-      if (path === "/news") {
-        return mockResponse([])
-      }
-      return mockResponse([])
+    const typedGetSpy = vi.spyOn(sdk, "newsListApiV1NewsGet").mockImplementation(async () => {
+      return mockResponse({
+        items: [],
+        total: 0,
+        limit: 12,
+        cursor: null,
+        next_cursor: null,
+        has_more: false,
+      })
     })
 
     const { Wrapper } = createWrapper("/dashboard")

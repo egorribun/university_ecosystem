@@ -29,12 +29,12 @@ const noopSetUser = () => {
 }
 
 export const AuthContext = createContext<AuthContextActions>({
-  login: async () => null as any,
+  login: async () => null,
   logout: async () => {},
   setUser: noopSetUser,
   refresh: async () => {},
   submitMfaChallenge: async () => {},
-  requireMfa: async () => null as any,
+  requireMfa: async () => null,
   loginWithPasskey: async () => {},
   resetEtagCache,
 } as AuthContextActions)

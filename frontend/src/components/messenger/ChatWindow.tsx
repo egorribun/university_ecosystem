@@ -37,7 +37,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
     if (messages.length > 0) {
       virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" })
     }
-  }, [])
+  }, [messages.length, virtualizer])
 
   return (
     <div

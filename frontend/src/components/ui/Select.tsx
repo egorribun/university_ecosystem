@@ -63,7 +63,7 @@ const Select = ({
 
   const triggerButtonId = `${baseId}-trigger`
   const listboxId = `${baseId}-listbox`
-  const computeOptionId = (index: number) => `${baseId}-option-${index}`
+  const computeOptionId = React.useCallback((index: number) => `${baseId}-option-${index}`, [baseId])
 
   // Close on outside click
   React.useEffect(() => {
@@ -81,7 +81,7 @@ const Select = ({
     if (!isOpen || activeIndex < 0) return
     const optionElement = document.getElementById(computeOptionId(activeIndex))
     optionElement?.scrollIntoView({ block: "nearest" })
-  }, [activeIndex, isOpen])
+  }, [activeIndex, isOpen, computeOptionId])
 
   const openListbox = React.useCallback(() => {
     if (disabled) return
