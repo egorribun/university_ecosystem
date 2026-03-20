@@ -128,7 +128,7 @@ jobs:
 
       - name: Run Go provider contract test
         run: |
-          go test ./internal/contract/... -v -count=1 -timeout 5m
+          go test -tags contract ./internal/contract/... -v -count=1 -timeout 5m
         working-directory: services/ws-hub
         env:
           # Point to the pact file downloaded in the previous step.
