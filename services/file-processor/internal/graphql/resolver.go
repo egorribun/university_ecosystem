@@ -84,33 +84,48 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 	return &FileJobResolver{
 		jobID:     run.GetID(),
 		status:    "STARTED",
-		resultUrl: "",
+		resultURL: "",
 	}, nil
 }
 
 // -- Sub-Resolvers --
 
+// FileResolver resolves file-related fields.
 type FileResolver struct {
 	id  string
 	url string
 }
 
-func (r *FileResolver) ID() string    { return r.id }
-func (r *FileResolver) URL() string   { return r.url }
-func (r *FileResolver) Size() *int32  { s := int32(0); return &s } // Mock
+// ID returns the file ID.
+func (r *FileResolver) ID() string { return r.id }
+
+// URL returns the file URL.
+func (r *FileResolver) URL() string { return r.url }
+
+// Size returns the file size (mocked).
+func (r *FileResolver) Size() *int32 { s := int32(0); return &s } // Mock
+
+// Type returns the file type (mocked).
 func (r *FileResolver) Type() *string { t := "unknown"; return &t }
 
+// FileJobResolver resolves file processing job fields.
 type FileJobResolver struct {
 	jobID     string
 	status    string
-	resultUrl string
+	resultURL string
 }
 
-func (r *FileJobResolver) JobId() string      { return r.jobID }
-func (r *FileJobResolver) Status() string     { return r.status }
-func (r *FileJobResolver) ResultUrl() *string { return &r.resultUrl }
+// JobID returns the job ID.
+func (r *FileJobResolver) JobID() string { return r.jobID }
+
+// Status returns the job status.
+func (r *FileJobResolver) Status() string { return r.status }
+
+// ResultURL returns the result URL.
+func (r *FileJobResolver) ResultURL() *string { return &r.resultURL }
 
 // Input Struct
+// ProcessFileInput defines the input for the ProcessFile mutation.
 type ProcessFileInput struct {
 	Type      string
 	SourceKey string

@@ -13,12 +13,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Server implements the FileProcessingService gRPC server
+// Server implements the FileProcessingService gRPC server.
 type Server struct {
 	pb.UnimplementedFileProcessingServiceServer
 	TemporalClient client.Client
 }
 
+// ProcessFile is the gRPC method to start a file processing job.
 func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
 	// Create common job from proto
 	job := workflow.ProcessJob{
