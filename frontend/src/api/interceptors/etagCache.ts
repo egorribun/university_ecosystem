@@ -32,7 +32,7 @@ export const incrementSessionEpoch = (): void => {
  * that in-flight requests (which captured the old key) cannot store data after clear.
  */
 export const clearCachesOnLogout = (): void => {
-  _sessionEpoch++     // invalidate any in-flight async computations first
+  _sessionEpoch++ // invalidate any in-flight async computations first
   responseCache.clear()
   etagCache.clear()
 }

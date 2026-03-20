@@ -249,9 +249,12 @@ export const useMessengerController = () => {
 
   // --- Handlers ---
 
-  const markAsRead = useCallback((chatId: string) => {
-    markReadMutation.mutate(chatId)
-  }, [markReadMutation])
+  const markAsRead = useCallback(
+    (chatId: string) => {
+      markReadMutation.mutate(chatId)
+    },
+    [markReadMutation]
+  )
 
   useEffect(() => {
     if (selectedChatId) {

@@ -1,4 +1,13 @@
-import { useEffect, useRef, useCallback, useState, useSyncExternalStore, createContext, useContext, useMemo } from "react"
+import {
+  useEffect,
+  useRef,
+  useCallback,
+  useState,
+  useSyncExternalStore,
+  createContext,
+  useContext,
+  useMemo,
+} from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Message, MessagesListResponse, ChatsListResponse } from "@/api/chat"
 // Auth token storage handled natively via cookies
@@ -13,8 +22,8 @@ const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
 // MOD-W10-05: Per-message-type minimum interval (ms) for outgoing WS messages.
 // Prevents a runaway component from flooding the server with typing events
 const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
-  typing: 500,  // at most one "typing" event per 500 ms
-  read: 200,    // at most one "read" receipt per 200 ms per chat
+  typing: 500, // at most one "typing" event per 500 ms
+  read: 200, // at most one "read" receipt per 200 ms per chat
 } as const
 
 /**
@@ -193,16 +202,22 @@ export function useChatWebSocket({
               queryClient.setQueryData<MessagesListResponse>(
                 ["messages", validated.chat_id],
                 (old) => {
-                  if (!old) return { items: [validated.message as unknown as Message], has_more: false, next_cursor: null }
+                  if (!old)
+                    return {
+                      items: [validated.message as unknown as Message],
+                      has_more: false,
+                      next_cursor: null,
+                    }
                   if (old.items.some((m) => m.id === validated.message.id)) return old
                   // RZ-004: Sliding window prevents V8 heap exhaustion in long-lived sessions.
                   // Cap in-memory buffer at 200 messages — older messages are re-fetched
                   // via cursor-based pagination when the user scrolls up.
                   const MAX_BUFFERED_MESSAGES = 200
                   const appended = [...old.items, validated.message as unknown as Message]
-                  const trimmed = appended.length > MAX_BUFFERED_MESSAGES
-                    ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
-                    : appended
+                  const trimmed =
+                    appended.length > MAX_BUFFERED_MESSAGES
+                      ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
+                      : appended
                   return { ...old, items: trimmed }
                 }
               )
@@ -285,7 +300,11 @@ export function useChatWebSocket({
             }
 
             case "presence": {
-              onPresenceUpdateRef.current?.(validated.user_id, validated.active, validated.last_seen)
+              onPresenceUpdateRef.current?.(
+                validated.user_id,
+                validated.active,
+                validated.last_seen
+              )
               onOnlineStatusRef.current?.(validated.user_id, validated.active)
               break
             }

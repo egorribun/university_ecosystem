@@ -41,13 +41,7 @@ export const currentUserQueryKey = ["users", "me"] as const
 // See: OWASP WSTG-SESS-09 — sensitive data in localStorage.
 export type CachedUserSnapshot = Pick<
   User,
-  | "id"
-  | "full_name"
-  | "group_id"
-  | "avatar_url"
-  | "cover_url"
-  | "is_active"
-  | "spotify_connected"
+  "id" | "full_name" | "group_id" | "avatar_url" | "cover_url" | "is_active" | "spotify_connected"
 > &
   Partial<
     Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at" | "totp_enrollments">

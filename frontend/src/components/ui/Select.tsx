@@ -63,7 +63,10 @@ const Select = ({
 
   const triggerButtonId = `${baseId}-trigger`
   const listboxId = `${baseId}-listbox`
-  const computeOptionId = React.useCallback((index: number) => `${baseId}-option-${index}`, [baseId])
+  const computeOptionId = React.useCallback(
+    (index: number) => `${baseId}-option-${index}`,
+    [baseId]
+  )
 
   // Close on outside click
   React.useEffect(() => {

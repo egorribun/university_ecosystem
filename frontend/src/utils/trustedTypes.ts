@@ -50,7 +50,10 @@ const ensureSanitizePolicy = async (win: TrustedTypesWindow): Promise<TrustedTyp
     // RED-01 (audit Wave 11): Log security-critical failure — propagates to Sentry
     // via the global window.onerror / unhandledrejection handler if configured.
     // Previously silent, making WASM policy failures undetectable in production.
-    console.error("[TrustedTypes] Failed to create sanitize policy — HTML sanitization may be degraded:", err)
+    console.error(
+      "[TrustedTypes] Failed to create sanitize policy — HTML sanitization may be degraded:",
+      err
+    )
     win.__ttSanitizePolicy = false
   }
   return win.__ttSanitizePolicy || null

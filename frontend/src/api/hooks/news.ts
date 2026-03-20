@@ -122,7 +122,9 @@ const createNewsListQueryFn =
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 
-    const response = await newsListApiV1NewsGet(requestConfig as Parameters<typeof newsListApiV1NewsGet>[0])
+    const response = await newsListApiV1NewsGet(
+      requestConfig as Parameters<typeof newsListApiV1NewsGet>[0]
+    )
 
     if (response.status === 304) {
       const cached =

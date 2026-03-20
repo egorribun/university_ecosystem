@@ -160,7 +160,9 @@ const createEventsListQueryFn =
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 
-    const response = await allEventsApiV1EventsGet(requestConfig as Parameters<typeof allEventsApiV1EventsGet>[0])
+    const response = await allEventsApiV1EventsGet(
+      requestConfig as Parameters<typeof allEventsApiV1EventsGet>[0]
+    )
 
     if (response.status === 304) {
       const cached =
@@ -343,7 +345,9 @@ export const useMyEventsQuery = (
         etagCacheKey: etagKey,
       }
 
-      const response = await myEventsApiV1EventsMyGet(config as Parameters<typeof myEventsApiV1EventsMyGet>[0])
+      const response = await myEventsApiV1EventsMyGet(
+        config as Parameters<typeof myEventsApiV1EventsMyGet>[0]
+      )
 
       if (response.status === 304) {
         return queryClient.getQueryData<Event[]>(queryKey) ?? []
