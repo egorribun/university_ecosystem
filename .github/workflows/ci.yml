@@ -187,12 +187,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.13"]
         include:
           - python-version: "3.13"
             coverage-check: true
-          - python-version: "3.12"
-            coverage-check: false
     needs: pre-commit-check
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:

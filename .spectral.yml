@@ -8,7 +8,7 @@
 #   - custom rules below enforce project-specific standards
 
 extends:
-  - "@stoplight/spectral-oas:oas"
+  - "spectral:oas"
 
 rules:
   # All operations must have at least one 4xx response documented.
