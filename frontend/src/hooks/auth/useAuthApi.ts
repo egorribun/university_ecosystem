@@ -330,12 +330,10 @@ export const useAuthApi = (
   }, [updatePendingMfa])
 
   const refresh = useCallback(async () => {
-    console.error("[Trace] refresh starting")
     resetEtagCache()
     setAuthOperation(true)
     try {
       const profile = await fetchCurrentUser()
-      console.error("[Trace] profile fetched")
       setUser(profile as User)
 
       // Try to recover push consent if localStorage was cleared but browser still has subscription
@@ -347,12 +345,10 @@ export const useAuthApi = (
         })
       }
     } catch (error) {
-      console.error(`[Trace] refresh error: ${error}`)
       if (isAxiosError(error) && error.response?.status === 401) {
         handleUnauthorized()
       }
     } finally {
-      console.error("[Trace] refresh finally")
       setAuthOperation(false)
     }
   }, [handleUnauthorized, resetEtagCache, setAuthOperation, setUser])

@@ -51,7 +51,6 @@ export const useAuth = (): AuthContextType => {
   // Derive loading from both initial synchronization and active operations
   const loading = storeLoading || contextActions.authOperation
 
-  console.error(`[Trace] useAuth: store=${storeLoading} op=${contextActions.authOperation} => ${loading}`)
 
   // TD-NEW-002 (audit 2026-03-19): Explicit structure without "as unknown as".
   // Type is structurally inferred to be strictly compatible with AuthContextType.
@@ -70,7 +69,6 @@ export { ChallengeLockedError, currentUserQueryKey, fetchCurrentUser }
 export { PROFILE_CACHE_STORAGE_KEY } from "@/hooks/auth/useProfileSync"
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  console.error("[Trace] AuthProvider rendering")
   const {
     sessionSigningKey,
     sessionSigningKeyRef,

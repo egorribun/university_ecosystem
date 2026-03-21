@@ -141,12 +141,7 @@ const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
-    console.log("[TestDebug] Raw storage length:", raw.length, "Content prefix:", raw.slice(0, 50))
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== "object") return undefined
-    return parsed as CachedProfileEnvelope
-  } catch (e) {
-    process.stderr.write(`[TestDebug] readCachedEnvelope parse error: ${e instanceof Error ? e.message : String(e)}\n`)
+  } catch (_e) {
     clearProfileCacheStorage("parse_error")
     return undefined
   }
@@ -238,12 +233,8 @@ const verifyHmacAsync = async (
     )
     const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
     const result = await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
-    if (!result) {
-      console.log("[TestDebug] HMAC verification failed for payload:", JSON.stringify(payload).slice(0, 50))
-    }
     return result
-  } catch (e) {
-    console.log("[TestDebug] verifyHmacAsync error:", e instanceof Error ? e.message : String(e))
+  } catch (_e) {
     return false
   }
 }
@@ -566,6 +557,8 @@ export const useProfileSync = (
   })
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
+  const autoFetchAttemptedRef = useRef(false)
+  const initializingRef = useRef(initializing)
 
   useEffect(() => {
     let mounted = true
@@ -802,8 +795,12 @@ export const useProfileSync = (
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
     const hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    if (userStateRef.current == null && !hasCache && !initializing) {
+    if (userStateRef.current == null && !hasCache && !initializingRef.current && !autoFetchAttemptedRef.current) {
+      autoFetchAttemptedRef.current = true
       setInitializing(true)
+    } else if (autoFetchAttemptedRef.current && !initializingRef.current) {
+      // Already tried or have data, nothing to do
+      return
     }
     ;(async () => {
       try {
@@ -840,7 +837,11 @@ export const useProfileSync = (
         }
       }
     })()
-  }, [ensureSessionSigningKey, handleUnauthorized, initializing, setUser])
+  }, [ensureSessionSigningKey, handleUnauthorized, setUser])
+
+  useEffect(() => {
+    initializingRef.current = initializing
+  }, [initializing])
 
   useEffect(() => {
     useAuthStore.setState({
