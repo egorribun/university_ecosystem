@@ -223,6 +223,7 @@ module = [
   "grpc",
   "clamd",
   "pact.*",
+  "elasticsearch.*",
 ]
 ignore_missing_imports = true
 
@@ -309,7 +310,7 @@ dev = [
   "fakeredis>=2",
   "hypothesis>=6.112",
   "maturin>=1.7,<2",
-  "mypy>=1.19.1",
+  "mypy>=1.14.0,<1.15",
   "pyright>=1.1.400",
   "pre-commit>=3.8",
   "bandit[toml]>=1.9.4",

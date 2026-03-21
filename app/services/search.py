@@ -26,10 +26,10 @@ _MAX_SEARCH_OFFSET = 10_000
 _HIGHLIGHT_OPEN = "\x00MARK_OPEN\x00"
 _HIGHLIGHT_CLOSE = "\x00MARK_CLOSE\x00"
 
-from elasticsearch import (  # type: ignore[import-not-found]  # noqa: E402
+from elasticsearch import (  # noqa: E402
     AsyncElasticsearch,
 )
-from elasticsearch.helpers import (  # type: ignore[import-not-found]  # noqa: E402
+from elasticsearch.helpers import (  # noqa: E402
     async_bulk,
 )
 

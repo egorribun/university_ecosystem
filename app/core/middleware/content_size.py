@@ -136,7 +136,7 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
 
         # Slow-path for chunked data or huge files
         buffer = bytearray()
-        tmpfile = None
+        tmpfile: Any = None
         accumulated = 0
         try:
             async for chunk in request.stream():
