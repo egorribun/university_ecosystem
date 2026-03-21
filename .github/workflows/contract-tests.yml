@@ -117,7 +117,7 @@ jobs:
         # This step downloads the correct binary for the runner OS/arch and
         # places it in /usr/local/lib so the dynamic linker can find it.
         run: |
-          go run github.com/pact-foundation/pact-go/v2/install \
+          go run github.com/pact-foundation/pact-go/v2 install \
             -libDir /usr/local/lib
           sudo ldconfig
         working-directory: services/ws-hub
