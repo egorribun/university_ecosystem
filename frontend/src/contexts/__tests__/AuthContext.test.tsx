@@ -164,7 +164,7 @@ describe("AuthProvider caching", () => {
   it("discards tampered cached envelopes", { timeout: 20000 }, async () => {
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") {
-        return Promise.reject({ response: { status: 401 } })
+        return Promise.reject({ response: { status: 401 }, isAxiosError: true })
       }
       return Promise.resolve({ data: { signing_key: mockSigningKey } })
     })
@@ -209,8 +209,17 @@ describe("AuthProvider caching", () => {
       )
     })
 
-    await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
-    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), {
+    console.log("[TestDebug] Waiting for user to be null")
+    await waitFor(() => {
+      console.log("[TestDebug] current user:", result.current.user?.id)
+      expect(result.current.user).toBeNull()
+    }, { timeout: 15000 })
+    console.log("[TestDebug] User is null, clearing storage check")
+    await waitFor(() => {
+      const val = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      console.log("[TestDebug] storage value:", val ? "exists" : "null")
+      expect(val).toBeNull()
+    }, {
       timeout: 10000,
     })
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
@@ -367,19 +376,31 @@ describe("AuthProvider loading state", () => {
     await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
 
     let refreshPromise!: Promise<void>
-    await act(async () => {
+    console.error("[Trace] Calling refresh()")
+    console.error("[Trace] result.current properties:", Object.keys(result.current))
+    act(() => {
       refreshPromise = result.current.refresh()
     })
+    console.error("[Trace] refreshPromise created")
 
-    await waitFor(() => expect(result.current.loading).toBe(true), { timeout: 15000 })
+    console.error("[Trace] Waiting for loading to be true")
+    await waitFor(() => {
+      console.error("[Trace] Current loading state:", result.current.loading)
+      expect(result.current.loading).toBe(true)
+    }, { timeout: 15000 })
 
+    console.error("[Trace] Resolving user request")
     await act(async () => {
       resolveUserRequest?.({ data: testUser })
       resolveUserRequest = null
       await refreshPromise
     })
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+    console.error("[Trace] Waiting for loading to be false")
+    await waitFor(() => {
+      console.error("[Trace] Loading state final:", result.current.loading)
+      expect(result.current.loading).toBe(false)
+    }, { timeout: 15000 })
 
     queryClient.clear()
   })
@@ -551,3 +572,6 @@ describe("AuthProvider dashboard prefetch", () => {
     queryClient.clear()
   })
 })
+import fs from "node:fs"
+const log = (msg) => fs.appendFileSync("debug_trace.txt", msg + "\n")
+log(`[Trace] AuthContext test starting`)

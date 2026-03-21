@@ -161,4 +161,4 @@ console.warn = (...args: unknown[]) => {
   originalConsoleWarn(...args)
 }
 // eslint-disable-next-line no-console
-console.log = (..._args: unknown[]) => {}
+// console.log = (..._args: unknown[]) => {}

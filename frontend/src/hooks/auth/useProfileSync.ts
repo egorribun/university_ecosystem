@@ -141,10 +141,12 @@ const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
+    console.log("[TestDebug] Raw storage length:", raw.length, "Content prefix:", raw.slice(0, 50))
     const parsed = JSON.parse(raw) as unknown
     if (!parsed || typeof parsed !== "object") return undefined
     return parsed as CachedProfileEnvelope
-  } catch {
+  } catch (e) {
+    process.stderr.write(`[TestDebug] readCachedEnvelope parse error: ${e instanceof Error ? e.message : String(e)}\n`)
     clearProfileCacheStorage("parse_error")
     return undefined
   }
@@ -235,8 +237,13 @@ const verifyHmacAsync = async (
       ["verify"]
     )
     const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
-    return await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
-  } catch {
+    const result = await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
+    if (!result) {
+      console.log("[TestDebug] HMAC verification failed for payload:", JSON.stringify(payload).slice(0, 50))
+    }
+    return result
+  } catch (e) {
+    console.log("[TestDebug] verifyHmacAsync error:", e instanceof Error ? e.message : String(e))
     return false
   }
 }
