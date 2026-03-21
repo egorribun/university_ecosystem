@@ -40,7 +40,7 @@ os.environ["ENABLE_OTEL"] = "false"
 os.environ["SESSION_STORAGE_BACKEND"] = "redis"
 os.environ["RATE_LIMIT_STORAGE_BACKEND"] = "redis"
 os.environ["RATE_LIMIT_STORAGE_URI"] = "redis://localhost"
-os.environ["RATE_LIMIT_ENABLED"] = "true"
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["RATE_LIMIT_NEWS"] = "5/minute"
 os.environ["RATE_LIMIT_AUTH_REGISTER"] = "4/minute"
 os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"
@@ -255,7 +255,9 @@ def mock_spicedb_permissions():
     mock_checker.check_admin = AsyncMock(side_effect=mock_check_admin)
     mock_checker.check_permission = AsyncMock(side_effect=mock_check_permission)
 
-    app.dependency_overrides[PermissionChecker] = lambda: mock_checker
+    from app.api.deps.auth import get_permission_checker
+
+    app.dependency_overrides[get_permission_checker] = lambda: mock_checker
     yield mock_checker
 
 

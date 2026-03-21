@@ -75,6 +75,7 @@ def test_csrf_anonymous_session_binding():
     class MockRequest:
         def __init__(self):
             self.state = type("State", (), {"session_id": None})
+            self.cookies = {}
 
     request = MockRequest()
     session_id = _extract_session_id(request, cookie_token="nonce:hmac")

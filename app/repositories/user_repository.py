@@ -16,6 +16,7 @@ from app.models import models
 from app.models.models import User, UserProfile
 from app.models.user_loaders import (
     USER_AUTH_WITH_MFA_OPTIONS,
+    USER_MFA_COLLECTION_OPTIONS,
     USER_MFA_LOAD_OPTIONS,
     USER_MFA_RELATIONSHIP_NAMES,
 )
@@ -263,7 +264,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             .where(User.is_active.is_(True))
             .offset(skip)
             .limit(limit)
-            .options(contains_eager(User.profile), *USER_MFA_LOAD_OPTIONS)
+            .options(contains_eager(User.profile), *USER_MFA_COLLECTION_OPTIONS)
         )
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]

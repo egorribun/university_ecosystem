@@ -38,7 +38,13 @@ def extract_request_fingerprint(request: Request) -> str:
         ip = request.client.host or ""
 
     # Cap User-Agent length to 512 bytes to prevent DoS via huge UA strings.
-    user_agent = request.headers.get("User-Agent", "")[:512]
+    # Case-insensitive lookup for headers to handle both Starlette Headers and plain dicts in tests.
+    headers = (
+        {k.lower(): v for k, v in request.headers.items()}
+        if isinstance(request.headers, dict)
+        else request.headers
+    )
+    user_agent = headers.get("user-agent", "")[:512]
 
     raw = f"{ip}|{user_agent}"
     key = (

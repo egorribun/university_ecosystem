@@ -24,12 +24,16 @@ USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "recovery_codes",
 )
 
-USER_MFA_LOAD_OPTIONS: tuple[Any, ...] = (
+USER_MFA_COLLECTION_OPTIONS: tuple[Any, ...] = (
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
     selectinload(User.webauthn_credentials),
     selectinload(User.email_change_tokens),
     selectinload(User.recovery_codes),
+)
+
+USER_MFA_LOAD_OPTIONS: tuple[Any, ...] = (
+    *USER_MFA_COLLECTION_OPTIONS,
     joinedload(User.preferences),
     joinedload(User.spotify),
     joinedload(User.profile),

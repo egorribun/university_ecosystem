@@ -40,6 +40,9 @@ def sensitive_route_limit(
         resolved_limit = limit if limit is not None else default_limit
         resolved_window = window_sec if window_sec is not None else default_window
 
+        if not settings.rate_limit_enabled:
+            return
+
         if resolved_limit <= 0 or resolved_window <= 0:
             return
 

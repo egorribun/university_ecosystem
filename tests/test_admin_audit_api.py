@@ -90,8 +90,8 @@ async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
     # Create logs with different attributes
     log_action = models.DataAccessLog(
         actor_user_id=admin.id,
-        action="special_action",
-        resource_type="test",
+        action="data.view",
+        resource_type="profile",
         created_at=datetime.now(UTC),
     )
     log_subject = models.DataAccessLog(
@@ -106,11 +106,11 @@ async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
 
     # Filter by action
     response = await root_client.get(
-        "/admin/audit?action=special_action",
+        "/admin/audit?action=data.view",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
-    assert all(item["action"] == "special_action" for item in response.json()["items"])
+    assert all(item["action"] == "data.view" for item in response.json()["items"])
 
     # Filter by subject_id
     response = await root_client.get(
@@ -144,7 +144,7 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
             models.DataAccessLog(
                 actor_user_id=admin.id,
                 action=f"action_{i}",
-                resource_type="pagination",
+                resource_type="profile",
                 created_at=datetime.now(UTC),
             )
         )
@@ -152,7 +152,7 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
 
     # Test limit
     response = await root_client.get(
-        "/admin/audit?limit=2&resource_type=pagination",
+        "/admin/audit?limit=2&resource_type=profile",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
@@ -160,7 +160,7 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
 
     # Test offset
     response = await root_client.get(
-        "/admin/audit?offset=3&resource_type=pagination",
+        "/admin/audit?offset=3&resource_type=profile",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
