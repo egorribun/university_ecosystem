@@ -39,10 +39,11 @@ def extract_request_fingerprint(request: Request) -> str:
 
     # Cap User-Agent length to 512 bytes to prevent DoS via huge UA strings.
     # Case-insensitive lookup for headers to handle both Starlette Headers and plain dicts in tests.
+    headers_raw: Any = request.headers
     headers = (
-        {k.lower(): v for k, v in request.headers.items()}
-        if isinstance(request.headers, dict)
-        else request.headers
+        {k.lower(): v for k, v in headers_raw.items()}
+        if isinstance(headers_raw, dict)
+        else headers_raw
     )
     user_agent = headers.get("user-agent", "")[:512]
 
