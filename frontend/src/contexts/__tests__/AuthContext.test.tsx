@@ -572,6 +572,3 @@ describe("AuthProvider dashboard prefetch", () => {
     queryClient.clear()
   })
 })
-import fs from "node:fs"
-const log = (msg) => fs.appendFileSync("debug_trace.txt", msg + "\n")
-log(`[Trace] AuthContext test starting`)
