@@ -6,12 +6,12 @@ description = "University Ecosystem Platform"
 # Benefits: @override decorator, tomllib in stdlib, faster TaskGroup, ~5% CPython throughput.
 requires-python = ">=3.13"
 dependencies = [
-    "aiofiles>=23.0,<25",  # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
+    "aiofiles>=23.0,<25",    # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
     "aiosqlite>=0.19,<1.0",  # TD-W9-06: upper bound — aiosqlite 1.0 may break API
     "alembic>=1.13,<2.0",
     "anyio>=4.0.0,<5.0",
     "argon2-cffi>=23.1.0",
-    "asyncpg>=0.30.0,<0.31",  # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
+    "asyncpg>=0.30.0,<0.31", # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
     "bcrypt==5.0.0",
     # PERF-7 (audit 2026-03-05): Switched from synchronous boto3 to aioboto3 (async
     # native wrapper). boto3 is a transitive dependency of aioboto3 so no separate
@@ -19,20 +19,20 @@ dependencies = [
     "aioboto3>=15,<16",
     "brotli-asgi>=1.4",
     "clamd>=1.0.2",
-    "cryptography>=41,<45",  # TD-06 (audit 2026-03-15): cap major to prevent silent API breakage
+    "cryptography>=41,<45",                             # TD-06 (audit 2026-03-15): cap major to prevent silent API breakage
     "defusedxml>=0.7.1",
     "diskcache>=5.6.0",
     "elasticsearch[async]>=8.0,<9.0.0",
     "email-validator>=2.0",
-    "fastapi>=0.135.1,<0.136",  # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
+    "fastapi>=0.135.1,<0.136",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
     "filelock>=3.20.3",
     "geoip2>=4.0",
     "gputil>=1.4.0",
     "grpcio>=1.60.0",
     "gunicorn>=21.2.0",
-    "httpx[http2]>=0.27,<1.0",  # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
+    "httpx[http2]>=0.27,<1.0",                          # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
     "minio>=7.2",
-    "nats-py>=2.9,<3",  # MOD-W10-01: upper bound; nats-py 3.0 has breaking JetStream API changes
+    "nats-py>=2.9,<3",                                  # MOD-W10-01: upper bound; nats-py 3.0 has breaking JetStream API changes
     "nh3>=0.2.17",
     "opentelemetry-api>=1.30.0",
     "opentelemetry-exporter-otlp>=1.30.0",
@@ -55,10 +55,10 @@ dependencies = [
     "psutil>=6.0.0",
     "psycopg[binary]>=3.1",
     "pyasn1>=0.6.2",
-    "pydantic>=2.12.5,<2.13.0",
+    "pydantic>=2.12.5,<3",
     "pydantic-settings>=2.13.0,<3",
     "pyjwt>=2.10.1",
-    "pyotp>=2.9,<3",  # TD-06 (audit 2026-03-15): upper bound; Renovate will open PR for v3
+    "pyotp>=2.9,<3",                                    # TD-06 (audit 2026-03-15): upper bound; Renovate will open PR for v3
     "pyroscope-io>=0.8.0 ; sys_platform != 'win32'",
     "python-dotenv>=1.0",
     "python-magic>=0.4.27",
@@ -68,18 +68,18 @@ dependencies = [
     "redis>=5,<6",
     "sentry-sdk[opentelemetry]>=2,<3",
     "sqlalchemy[asyncio]>=2.0.48,<3",
-    "starlette>=0.40,<1.0",  # MOD-W10-01: upper bound; starlette 1.0 will be a breaking release
-    "strawberry-graphql[fastapi]>=0.250,<0.260",  # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
+    "starlette>=0.40,<1.0",                             # MOD-W10-01: upper bound; starlette 1.0 will be a breaking release
+    "strawberry-graphql[fastapi]>=0.282.0,<0.283.0",    # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
     "structlog>=24.0",
     "typer>=0.12.0",
-    "urllib3>=2.6.3,<2.7",  # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
+    "urllib3>=2.6.3,<2.7",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
     "uvicorn[standard]>=0.23",
     "uvloop>=0.21 ; sys_platform != 'win32'",
     "webauthn>=2.0.0",
     "zxcvbn>=4.5.0",
     "authzed>=1.15.0",
     "grpcio-health-checking>=1.60.0",
-    "dishka>=0.14,<2",  # MOD-W10-01: upper bound; dishka 2.0 may restructure DI container API
+    "dishka>=0.14,<2",                                  # MOD-W10-01: upper bound; dishka 2.0 may restructure DI container API
     "openfeature-sdk>=0.8.4",
     "rust_ext",
     # PY-P1-02 (audit Wave 10): pyo3_sanitizer removed from production deps —
@@ -338,11 +338,7 @@ dev = [
 #   bandit   — Python SAST (AST-based, complements ruff's flake8-bandit rules)
 #   semgrep  — multi-language semantic SAST with OWASP/CVE rulesets
 #   pip-audit — dependency vulnerability scanner (OSV/PyPI Advisory DB)
-security = [
-    "bandit[toml]>=1.9.4",
-    "semgrep>=1.105",
-    "pip-audit>=2.8",
-]
+security = ["bandit[toml]>=1.9.4", "semgrep>=1.105", "pip-audit>=2.8"]
 
 [tool.uv.workspace]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]
