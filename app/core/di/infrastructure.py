@@ -12,7 +12,7 @@ from app.auth.fingerprint import SuspiciousActivityDetector
 from app.auth.redis_session import SessionBackend
 from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession
-from app.deps.cache import BaseCache, create_cache_backend, get_cache
+from app.deps.cache import BaseCache, get_cache
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,

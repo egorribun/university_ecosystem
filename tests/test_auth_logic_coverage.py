@@ -403,7 +403,10 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     )
     await db_session.commit()
     res_enr, res_chal = await mfa.verify_totp_for_user(
-        db_session, user=user, code=totp.at(int(_time.time()) + 31), challenge_token=challenge.token
+        db_session,
+        user=user,
+        code=totp.at(int(_time.time()) + 31),
+        challenge_token=challenge.token,
     )
     assert res_chal.id == challenge.id
     assert res_chal.consumed_at is not None

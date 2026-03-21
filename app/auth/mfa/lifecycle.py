@@ -185,7 +185,9 @@ async def refresh_user_mfa_preferences(
         new_default = None
 
     new_required = new_default is not None
-    changed = user.mfa_default_method != new_default or user.mfa_required != new_required
+    changed = (
+        user.mfa_default_method != new_default or user.mfa_required != new_required
+    )
 
     if changed:
         # Use an explicit UPDATE so this works regardless of which session owns

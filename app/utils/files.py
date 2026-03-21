@@ -142,13 +142,12 @@ def detect_mime_type(data: bytes) -> str | None:
     if _magic_mime_detector is _MAGIC_NOT_INITIALIZED:
         detector = None
         try:
-            import magic as _magic_import  # noqa: PLC0415
+            import magic as _magic_import
+
             _magic_module = _magic_import
             detector = _magic_import.Magic(mime=True)
         except Exception:  # pragma: no cover - ImportError or OSError on missing DLL
-            logger.warning(
-                "Failed to initialize libmagic MIME detector", exc_info=True
-            )
+            logger.warning("Failed to initialize libmagic MIME detector", exc_info=True)
             detector = None
         _magic_mime_detector = detector
     else:

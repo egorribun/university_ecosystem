@@ -266,7 +266,9 @@ async def test_totp_start_rejects_when_active_factor_exists(
     fresh_token = fresh_verify.cookies.get("access_token_v2")
     fresh_headers = {"Authorization": f"Bearer {fresh_token}"}
 
-    second_start = await async_client.post("/auth/mfa/totp/start", headers=fresh_headers)
+    second_start = await async_client.post(
+        "/auth/mfa/totp/start", headers=fresh_headers
+    )
     assert second_start.status_code == status.HTTP_400_BAD_REQUEST
     assert second_start.json()["detail"] == translate(
         "errors.mfa.totp_limit_reached", locale="en"

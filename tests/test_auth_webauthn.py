@@ -293,10 +293,13 @@ async def test_list_and_delete_credentials(
     )
     assert step_up_login.status_code == status.HTTP_202_ACCEPTED
     webauthn_method = next(
-        m for m in step_up_login.json()["methods"] if m["method"] == mfa.MFA_METHOD_WEBAUTHN
+        m
+        for m in step_up_login.json()["methods"]
+        if m["method"] == mfa.MFA_METHOD_WEBAUTHN
     )
     # Fetch actual credential_id from DB for WebAuthn verify
     from sqlalchemy import select as sa_select
+
     stmt = sa_select(models.WebAuthnCredential).where(
         models.WebAuthnCredential.user_id == user.id
     )
