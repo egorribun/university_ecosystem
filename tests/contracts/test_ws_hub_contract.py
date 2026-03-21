@@ -30,8 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pact.v3 import Pact
-from pact.v3.match import like, regex
+from pact import Pact, match
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -170,11 +169,11 @@ def test_cache_invalidation_event_contract(pact: Pact) -> None:
         .with_body(
             {
                 "data": {
-                    "user_id": regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
-                    "room_id": regex(_SAMPLE_ROOM_ID, regex=_UUID_PATTERN),
-                    "timestamp": like(_SAMPLE_TIMESTAMP),
+                    "user_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
+                    "room_id": match.regex(_SAMPLE_ROOM_ID, regex=_UUID_PATTERN),
+                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
                 },
-                "signature": regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
+                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
             },
             "application/json",
         )
