@@ -57,26 +57,20 @@ jobs:
           python-version: "3.13"
 
       - name: Install uv
-        run: pip install --quiet uv
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7.1.5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Install pact-python and pytest
-        # Install only the test toolchain — no need for the full application
-        # dependency tree.  pact-python downloads the Pact Rust FFI library
-        # on first import (cached in ~/.local/share/pact).
-        run: |
-          uv pip install --system \
-            "pact-python>=2.3.0,<3" \
-            "pytest>=8.3" \
-            "pytest-asyncio>=0.23" \
-            "bcrypt==5.0.0" \
-            "sqlalchemy>=2.0.48,<3" \
-            "fakeredis>=2" \
-            "redis>=5,<6"
+      - name: Install dependencies
+        # Use frozen sync to ensure the environment exactly matches the lockfile.
+        # This provides all modules required by shared conftest.py/fixtures.
+        run: uv sync --frozen
 
       - name: Run consumer contract test
         # Generates tests/contracts/pacts/ws-hub-university-backend.json
         run: |
-          pytest tests/contracts/test_ws_hub_contract.py -v \
+          uv run pytest tests/contracts/test_ws_hub_contract.py -v \
             --tb=short \
             -p no:cacheprovider
         env:
