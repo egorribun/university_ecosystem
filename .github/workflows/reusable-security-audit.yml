@@ -174,7 +174,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@df80a2d718b525f00e28f115998a4497e682ca7f # v0.18.0
+        uses: anchore/sbom-action/download-syft@57aae52e987c9edce7c413280145edc50a455aae # v0.23.1
 
       - name: Generate SPDX-JSON SBOM
         # Scans the full repository (all languages/ecosystems Syft detects).
