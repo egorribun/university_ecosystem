@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "University Ecosystem Platform"
 # MOD-03 (audit 2026-03-06): CI and mypy already target 3.12; enforce it here.
 # Benefits: @override decorator, tomllib in stdlib, faster TaskGroup, ~5% CPython throughput.
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "aiofiles>=23.0,<25",    # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
     "aiosqlite>=0.19,<1.0",  # TD-W9-06: upper bound — aiosqlite 1.0 may break API
