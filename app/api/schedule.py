@@ -76,10 +76,10 @@ async def add_schedule(
     return schemas.ScheduleOut.model_validate(result)
 
 
-@router.get("/{group_id}", response_model=list[schemas.ScheduleOut])
+@router.get("/{id}", response_model=list[schemas.ScheduleOut])
 @inject
 async def get_schedule(
-    group_id: uuid.UUID,
+    id: uuid.UUID,
     request: Request,
     response: Response,
     query_bus: FromDishka[QueryBus],
@@ -92,7 +92,7 @@ async def get_schedule(
     _set_schedule_cache_headers(response)
 
     query = GetScheduleQuery(
-        group_id=group_id,
+        group_id=id,
         locale=locale,
         if_none_match=if_none_match,
     )
@@ -113,10 +113,10 @@ async def get_schedule(
     return cast(list[schemas.ScheduleOut], result.payload)
 
 
-@router.patch("/{schedule_id}", response_model=schemas.ScheduleOut)
+@router.patch("/{id}", response_model=schemas.ScheduleOut)
 @inject
 async def update_schedule(
-    schedule_id: uuid.UUID,
+    id: uuid.UUID,
     data: schemas.ScheduleUpdate,
     request: Request,
     command_bus: FromDishka[CommandBus],
@@ -127,7 +127,7 @@ async def update_schedule(
 
     try:
         command = UpdateScheduleCommand(
-            schedule_id=schedule_id,
+            schedule_id=id,
             data=data,
             actor_id=user.id,
             actor_role=user.role or "student",
@@ -142,10 +142,10 @@ async def update_schedule(
     return schemas.ScheduleOut.model_validate(updated)
 
 
-@router.delete("/{schedule_id}", response_model=dict)
+@router.delete("/{id}", response_model=dict)
 @inject
 async def delete_schedule(
-    schedule_id: uuid.UUID,
+    id: uuid.UUID,
     request: Request,
     command_bus: FromDishka[CommandBus],
     user: models.User = Depends(get_current_user),
@@ -153,7 +153,7 @@ async def delete_schedule(
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
-    command = DeleteScheduleCommand(schedule_id=schedule_id)
+    command = DeleteScheduleCommand(schedule_id=id)
     deleted = await command_bus.execute(command)
     if not deleted:
         ensure_exists(None, "schedule", locale)

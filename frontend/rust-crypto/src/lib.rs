@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use sha2::{Sha256, Digest};
+use sha2::Sha256;
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use scrypt::{scrypt, Params as ScryptParams};

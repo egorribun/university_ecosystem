@@ -204,7 +204,11 @@ Include
 Lib
 Lib64
 Local
-Scripts
+# Python virtual environment folders on Windows
+.venv/Scripts/
+venv/Scripts/
+ENV/Scripts/
+env/Scripts/
 pyvenv.cfg
 pip-selfcheck.json
 dist-ssr/

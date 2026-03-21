@@ -57,22 +57,20 @@ jobs:
           python-version: "3.13"
 
       - name: Install uv
-        run: pip install --quiet uv
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7.1.5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Install pact-python and pytest
-        # Install only the test toolchain — no need for the full application
-        # dependency tree.  pact-python downloads the Pact Rust FFI library
-        # on first import (cached in ~/.local/share/pact).
-        run: |
-          uv pip install --system \
-            "pact-python>=2.3.0,<3" \
-            "pytest>=8.3" \
-            "pytest-asyncio>=0.23"
+      - name: Install dependencies
+        # Use frozen sync to ensure the environment exactly matches the lockfile.
+        # This provides all modules required by shared conftest.py/fixtures.
+        run: uv sync --frozen
 
       - name: Run consumer contract test
         # Generates tests/contracts/pacts/ws-hub-university-backend.json
         run: |
-          pytest tests/contracts/test_ws_hub_contract.py -v \
+          uv run pytest tests/contracts/test_ws_hub_contract.py -v \
             --tb=short \
             -p no:cacheprovider
         env:
@@ -118,9 +116,10 @@ jobs:
         # pact-go/v2 wraps the Pact Rust FFI shared library.
         # This step downloads the correct binary for the runner OS/arch and
         # places it in /usr/local/lib so the dynamic linker can find it.
+        # Requires sudo to write to /usr/local/lib.
         run: |
-          go run github.com/pact-foundation/pact-go/v2/install \
-            -libDir /usr/local/lib
+          sudo go run github.com/pact-foundation/pact-go/v2 -l DEBUG install \
+            --libDir /usr/local/lib
           sudo ldconfig
         working-directory: services/ws-hub
         env:
@@ -128,7 +127,7 @@ jobs:
 
       - name: Run Go provider contract test
         run: |
-          go test ./internal/contract/... -v -count=1 -timeout 5m
+          go test -tags contract ./internal/contract/... -v -count=1 -timeout 5m
         working-directory: services/ws-hub
         env:
           # Point to the pact file downloaded in the previous step.
@@ -138,5 +137,5 @@ jobs:
           LD_LIBRARY_PATH: /usr/local/lib
           # Use a placeholder secret — the contract verifies schema structure,
           # not a specific HMAC value.  Real secrets never appear in CI logs.
-          WS_HUB_INTERNAL_SECRET: "contract-test-placeholder-secret-not-for-production"  # pragma: allowlist secret
+          WS_HUB_INTERNAL_SECRET: "contract-test-placeholder-secret-not-for-production" # pragma: allowlist secret
           PACT_DO_NOT_TRACK: "true"

@@ -303,10 +303,8 @@ async def test_create_notifications_records_skip_without_credentials(
     deliveries = (
         (await db_session.execute(select(NotificationDelivery))).scalars().all()
     )
-    assert len(deliveries) == 1
-    delivery = deliveries[0]
-    assert delivery.status == "skipped_no_credentials"
-    assert delivery.delivered_at is None
+    # DEBT-06 audit (2026-03-15): Delivery rows are no longer created when push is unconfigured.
+    assert len(deliveries) == 0
     _reset_vapid_cache()
 
 

@@ -12,11 +12,13 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
+// Resolver is the root resolver for the GraphQL API.
 type Resolver struct {
 	TemporalClient client.Client
 	MinioBucket    string
 }
 
+// Health returns the health status of the service.
 func (r *Resolver) Health() string {
 	return "OK"
 }
@@ -29,6 +31,7 @@ func sanitizeKey(key string) (string, error) {
 	return cleaned[1:], nil
 }
 
+// File returns a resolver for a specific file.
 func (r *Resolver) File(args struct{ ID string }) *FileResolver {
 	safeID, err := sanitizeKey(args.ID)
 	if err != nil {
@@ -44,6 +47,7 @@ func (r *Resolver) File(args struct{ ID string }) *FileResolver {
 	}
 }
 
+// ProcessFile starts a file processing job.
 func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFileInput }) (*FileJobResolver, error) {
 	options := make(map[string]interface{})
 	if args.Input.Width != nil {
@@ -84,33 +88,47 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 	return &FileJobResolver{
 		jobID:     run.GetID(),
 		status:    "STARTED",
-		resultUrl: "",
+		resultURL: "",
 	}, nil
 }
 
 // -- Sub-Resolvers --
 
+// FileResolver resolves file-related fields.
 type FileResolver struct {
 	id  string
 	url string
 }
 
-func (r *FileResolver) ID() string    { return r.id }
-func (r *FileResolver) URL() string   { return r.url }
-func (r *FileResolver) Size() *int32  { s := int32(0); return &s } // Mock
+// ID returns the file ID.
+func (r *FileResolver) ID() string { return r.id }
+
+// URL returns the file URL.
+func (r *FileResolver) URL() string { return r.url }
+
+// Size returns the file size (mocked).
+func (r *FileResolver) Size() *int32 { s := int32(0); return &s } // Mock
+
+// Type returns the file type (mocked).
 func (r *FileResolver) Type() *string { t := "unknown"; return &t }
 
+// FileJobResolver resolves file processing job fields.
 type FileJobResolver struct {
 	jobID     string
 	status    string
-	resultUrl string
+	resultURL string
 }
 
-func (r *FileJobResolver) JobId() string      { return r.jobID }
-func (r *FileJobResolver) Status() string     { return r.status }
-func (r *FileJobResolver) ResultUrl() *string { return &r.resultUrl }
+// JobID returns the job ID.
+func (r *FileJobResolver) JobID() string { return r.jobID }
 
-// Input Struct
+// Status returns the job status.
+func (r *FileJobResolver) Status() string { return r.status }
+
+// ResultURL returns the result URL.
+func (r *FileJobResolver) ResultURL() *string { return &r.resultURL }
+
+// ProcessFileInput defines the input for the ProcessFile mutation.
 type ProcessFileInput struct {
 	Type      string
 	SourceKey string

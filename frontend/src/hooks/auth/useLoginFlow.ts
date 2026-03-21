@@ -232,7 +232,7 @@ export function useMfaFlow() {
         setMfaBusy(false)
       }
     },
-    [loginChallenge, otpChallenge, navigate, submitMfaChallenge, t]
+    [loginChallenge, otpChallenge, navigate, submitMfaChallenge, t, redirectPath]
   )
 
   const handleWebAuthnVerify = useCallback(
@@ -275,7 +275,7 @@ export function useMfaFlow() {
         setMfaBusy(false)
       }
     },
-    [loginChallenge, webauthnChallenge, navigate, submitMfaChallenge, t]
+    [loginChallenge, webauthnChallenge, navigate, submitMfaChallenge, t, redirectPath]
   )
 
   return {

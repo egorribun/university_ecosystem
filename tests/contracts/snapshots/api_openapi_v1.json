@@ -525,7 +525,7 @@
         "title": "Body_upload_cover_api_v1_users_me_cover_post",
         "type": "object"
       },
-      "Body_upload_event_file_api_v1_events__id__upload_file_post": {
+      "Body_upload_event_file_api_v1_events__event_id__upload_file_post": {
         "properties": {
           "file": {
             "contentMediaType": "application/octet-stream",
@@ -536,7 +536,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_upload_event_file_api_v1_events__id__upload_file_post",
+        "title": "Body_upload_event_file_api_v1_events__event_id__upload_file_post",
         "type": "object"
       },
       "Body_upload_event_image_api_v1_events_upload_image_post": {

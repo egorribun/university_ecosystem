@@ -46,6 +46,13 @@ async def test_concurrent_sessions_enforced(
         unittest.mock.patch(
             "app.core.ratelimit.logic.check_rate_limit", return_value=mock_info
         ),
+        unittest.mock.patch(
+            "app.core.ratelimit.fastapi.enforce_rate_limit", return_value=mock_info
+        ),
+        unittest.mock.patch(
+            "app.core.ratelimit.fastapi.sensitive_route_limit",
+            return_value=lambda r: None,
+        ),
     ):
         from app.core.config import settings
 

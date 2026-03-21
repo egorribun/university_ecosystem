@@ -22,6 +22,7 @@ interface AuthContextActions {
   requireMfa: AuthContextType["requireMfa"]
   loginWithPasskey: AuthContextType["loginWithPasskey"]
   resetEtagCache: typeof resetEtagCache
+  authOperation: boolean
 }
 
 const noopSetUser = () => {
@@ -29,22 +30,26 @@ const noopSetUser = () => {
 }
 
 export const AuthContext = createContext<AuthContextActions>({
-  login: async () => null as any,
+  login: async () => null,
   logout: async () => {},
   setUser: noopSetUser,
   refresh: async () => {},
   submitMfaChallenge: async () => {},
-  requireMfa: async () => null as any,
+  requireMfa: async () => null,
   loginWithPasskey: async () => {},
   resetEtagCache,
+  authOperation: false,
 } as AuthContextActions)
 
 export const useAuth = (): AuthContextType => {
   const user = useAuthUser()
-  const loading = useAuthLoading()
+  const storeLoading = useAuthLoading()
   const pendingMfa = useAuthPendingMfa()
-  const { authOperation, ...storeActions } = useAuthActions()
+  const storeActions = useAuthActions()
   const contextActions = useContext(AuthContext)
+
+  // Derive loading from both initial synchronization and active operations
+  const loading = storeLoading || contextActions.authOperation
 
   // TD-NEW-002 (audit 2026-03-19): Explicit structure without "as unknown as".
   // Type is structurally inferred to be strictly compatible with AuthContextType.
@@ -53,7 +58,6 @@ export const useAuth = (): AuthContextType => {
     loading,
     pendingMfa,
     isAuth: user !== null,
-    authOperation,
     ...storeActions,
     ...contextActions,
   }
@@ -123,8 +127,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   )
 
   const value = useMemo(
-    () => ({ ...actionsValue, ...STABLE_API_UTILS }),
-    [actionsValue, STABLE_API_UTILS]
+    () => ({ ...actionsValue, ...STABLE_API_UTILS, authOperation }),
+    [actionsValue, STABLE_API_UTILS, authOperation]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

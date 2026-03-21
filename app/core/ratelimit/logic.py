@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 
 from redis.exceptions import RedisError
 
 from app.core.config import settings
 from app.core.ratelimit.contract import RateLimitStrategy
-from app.core.ratelimit.exceptions import RateLimitExceeded, RateLimitStorageUnavailable
+from app.core.ratelimit.exceptions import RateLimitExceeded
 from app.core.ratelimit.models import RateLimitInfo
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
@@ -32,8 +31,8 @@ async def check_rate_limit(
     redis_url: str | None = None,
 ) -> RateLimitInfo:
     """Check a rate limit for an arbitrary identifier."""
-    # RZ-HARDEN: Respect global toggle and test environments
-    if not settings.rate_limit_enabled or os.environ.get("ENVIRONMENT") == "testing":
+    # RZ-HARDEN: Respect global toggle. Test environments now explicitly enable it if needed.
+    if not settings.rate_limit_enabled:
         return RateLimitInfo(allowed=True, remaining=limit, retry_after=0)
 
     key = compose_identifier(namespace, identifier)
@@ -42,11 +41,14 @@ async def check_rate_limit(
         try:
             return await strategy.check(key, limit, window_seconds)
         except (RedisError, OSError) as exc:
-            _log.error(
-                "rate_limit_storage_unavailable",
+            _log.warning(
+                "rate_limit_storage_unavailable_fallback",
                 extra={"identifier": identifier, "error": str(exc)},
             )
-            raise RateLimitStorageUnavailable("Rate limit backend unreachable") from exc
+            # RZ-HARDEN: Fail-closed with stricter (50%) local limit
+            fallback_limit = max(limit // 2, 1)
+            fallback_strategy = MemorySlidingWindowStrategy("fallback")
+            return await fallback_strategy.check(key, fallback_limit, window_seconds)
 
     # Non-distributed mode: in-memory is only acceptable when Redis is not configured.
     _log.warning("rate_limit_memory_mode", extra={"reason": "no redis_url configured"})
@@ -69,8 +71,8 @@ async def enforce_rate_limit(
     strategy: RateLimitStrategy,
 ) -> RateLimitInfo:
     """Enforce a rate limit, raising RateLimitExceeded if exceeded."""
-    # RZ-HARDEN: Respect global toggle and test environments
-    if not settings.rate_limit_enabled or os.environ.get("ENVIRONMENT") == "testing":
+    # RZ-HARDEN: Respect global toggle.
+    if not settings.rate_limit_enabled:
         return RateLimitInfo(allowed=True, remaining=limit, retry_after=0)
 
     try:
@@ -80,11 +82,16 @@ async def enforce_rate_limit(
             window_seconds=window_seconds,
         )
     except RedisError as exc:
-        _log.error(
-            "rate_limit_storage_unavailable",
+        _log.warning(
+            "rate_limit_storage_unavailable_fallback",
             extra={"identifier": identifier, "error": str(exc)},
         )
-        raise RateLimitStorageUnavailable("Rate limit backend unreachable") from exc
+        # RZ-HARDEN: Fail-closed with stricter (50%) local limit
+        fallback_limit = max(limit // 2, 1)
+        fallback_strategy = MemorySlidingWindowStrategy("fallback")
+        info = await fallback_strategy.check(
+            key=identifier, limit=fallback_limit, window_seconds=window_seconds
+        )
 
     if not info.allowed:
         raise RateLimitExceeded(info)

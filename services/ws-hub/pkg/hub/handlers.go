@@ -36,68 +36,48 @@ var (
 	}
 )
 
+// SetAllowedOrigins configures the origins allowed for WebSocket upgrades.
 func SetAllowedOrigins(origins []string) {
 	originsMu.Lock()
 	defer originsMu.Unlock()
 	allowedOrigins = origins
 }
 
+// HandleWebSocket upgrades HTTP connections to WebSocket and registers clients.
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *config.Config) {
+	ctx := r.Context()
 	// RZ-2: per-IP token-bucket check BEFORE any cryptographic work.
-	// This prevents an attacker from exhausting the CPU with rapid upgrade
-	// requests carrying invalid JWTs (each JWT.Parse call runs HMAC-SHA256).
-	// requests carrying invalid JWTs (each JWT.Parse call runs HMAC-SHA256).
-	// PERF-04 (Wave 11): pass TrustedCIDRs for multi-hop XFF chain traversal.
 	clientIP := RealIP(r, cfg.TrustedProxiesSet, cfg.TrustedCIDRs)
 	if !h.UpgradeLimiter.Allow(clientIP) {
-		h.Logger.Warn("WebSocket upgrade rate limit exceeded", "ip", clientIP)
+		h.Logger.WarnContext(ctx, "WebSocket upgrade rate limit exceeded", "ip", clientIP)
 		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 		return
 	}
 
 	// Extract JWT exclusively from the Sec-WebSocket-Protocol header.
-	// Format: "Sec-WebSocket-Protocol: access_token, <jwt>"
-	// Query-string tokens (e.g. ?token=<jwt>) are intentionally not supported:
-	// URL parameters appear verbatim in proxy access logs, browser history, and
-	// OpenTelemetry spans — making any token in a URL effectively public.
-	tokenStr := ""
-	rawProtocol := r.Header.Get("Sec-WebSocket-Protocol")
-	if strings.Contains(rawProtocol, "access_token") {
-		protocols := strings.Split(rawProtocol, ",")
-		for i, p := range protocols {
-			p = strings.TrimSpace(p)
-			if p == "access_token" && i+1 < len(protocols) {
-				tokenStr = strings.TrimSpace(protocols[i+1])
-				break
-			}
-		}
-	}
-
+	tokenStr := h.extractToken(r.Header.Get("Sec-WebSocket-Protocol"))
 	if tokenStr == "" {
-		h.Logger.Warn("WebSocket connection rejected: missing or malformed Sec-WebSocket-Protocol token")
+		h.Logger.WarnContext(ctx, "WebSocket connection rejected: missing or malformed Sec-WebSocket-Protocol token")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	if len(cfg.JWTSecrets) == 0 {
-		h.Logger.Error("No JWT secrets configured — rejecting connection")
+		h.Logger.ErrorContext(ctx, "No JWT secrets configured — rejecting connection")
 		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
-	// WSH-02 (audit 2026-03-08 Wave 5): Pass request context so that JWKS
-	// fetches are cancelled when the client disconnects, preventing goroutine
-	// accumulation under rapid-reconnect / invalid-token attack patterns.
-	userID, err := h.ValidateToken(r.Context(), tokenStr, cfg.JWTSecrets)
+	userID, err := h.ValidateToken(ctx, tokenStr, cfg.JWTSecrets)
 	if err != nil {
-		h.Logger.Warn("WebSocket invalid authentication token", "err", err)
+		h.Logger.WarnContext(ctx, "WebSocket invalid authentication token", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.Logger.Error("WebSocket upgrade failed", "err", err)
+		h.Logger.ErrorContext(ctx, "WebSocket upgrade failed", "err", err)
 		return
 	}
 
@@ -106,11 +86,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		clientID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 
-	// Create a context for this specific client connection.
-	// ReadPump calls cancel() on exit (disconnect), which propagates to any
-	// in-flight AuthorizeRoomJoin / CanJoinRoom HTTP checks. (WSH-05)
 	clientCtx, clientCancel := context.WithCancel(context.Background())
-
 	client := &Client{
 		ID:     clientID,
 		UserID: userID,
@@ -123,87 +99,89 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	}
 
 	h.Register <- client
-
 	go client.WritePump()
 	go client.ReadPump()
 }
 
+func (h *Hub) extractToken(rawProtocol string) string {
+	if strings.Contains(rawProtocol, "access_token") {
+		protocols := strings.Split(rawProtocol, ",")
+		for i, p := range protocols {
+			p = strings.TrimSpace(p)
+			if p == "access_token" && i+1 < len(protocols) {
+				return strings.TrimSpace(protocols[i+1])
+			}
+		}
+	}
+	return ""
+}
+
 // ValidateToken verifies tokenStr against JWKS (RS256) or HMAC secrets.
 // Prefers RS256/JWKS if configured; falls back to HMAC for backward compatibility.
-// ctx is used for JWKS cache access — pass r.Context() so that JWKS fetches
-// are cancelled when the HTTP handler context is done (WSH-02).
-// (RZ-3: audit 2026-02-24, MOD-1, WSH-02/03: audit 2026-03-08 Wave 5)
+// (RZ-3: audit 2026-02-24, MOD-1, WSH-02/03: audit 2026-03-08 Wave 5).
 func (h *Hub) ValidateToken(ctx context.Context, tokenStr string, secrets []string) (string, error) {
-	// ── Phase 1: Try RS256 via JWKS ──────────────────────────────────────────
-	if h.jwksCache != nil && h.jwksURL != "" {
-		// Use the caller's context so that JWKS fetches respect request
-		// cancellation and don't accumulate goroutines on client disconnect.
-		keySet, err := h.jwksCache.Get(ctx, h.jwksURL)
-		if err != nil {
-			// WSH-03: Log JWKS failure at ERROR level so operators are alerted.
-			// A silent fall-through to HMAC without logging hides security
-			// degradation (e.g. transient JWKS unreachability under DNS attack).
-			h.Logger.Error("JWKS fetch failed, falling back to HMAC secrets",
-				"jwks_url", h.jwksURL,
-				"err", err,
-			)
-			// If no HMAC secrets are configured, fail immediately rather than
-			// returning an opaque signature error without context.
-			if len(secrets) == 0 {
-				return "", fmt.Errorf("JWKS unavailable and no HMAC secrets configured: %w", err)
-			}
-			// Fall through to Phase 2 with HMAC.
-		} else {
-			token, parseErr := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-				// RZ-3: Pin to exactly RS256 for JWKS verification.
-				if t.Method != jwt.SigningMethodRS256 {
-					return nil, fmt.Errorf("unexpected signing method for JWKS: %v", t.Header["alg"])
-				}
-				// Use the kid from the token header to find the matching public key in the JWKS.
-				kid, _ := t.Header["kid"].(string)
-				key, ok := keySet.LookupKeyID(kid)
-				if !ok {
-					return nil, fmt.Errorf("kid %s not found in JWKS", kid)
-				}
-				var pubKey interface{}
-				if err := key.Raw(&pubKey); err != nil {
-					return nil, fmt.Errorf("failed to extract raw public key: %w", err)
-				}
-				return pubKey, nil
-			})
+	// 1. Try RS256 via JWKS
+	if sub, err := h.validateRS256(ctx, tokenStr); err == nil {
+		return sub, nil
+	} else if h.jwksCache != nil && h.jwksURL != "" && len(secrets) == 0 {
+		// If JWKS was intended but failed and no HMAC fallback, return the error.
+		return "", err
+	}
 
-			if parseErr == nil && token.Valid {
-				if claims, ok := token.Claims.(jwt.MapClaims); ok {
-					if sub, ok := claims["sub"].(string); ok {
-						return sub, nil
-					}
-				}
-			}
-			// WSH-03: RS256 validation failed — log before falling back to HMAC
-			// so that token format mismatches are visible in production logs.
-			if parseErr != nil {
-				h.Logger.Warn("RS256 JWT validation failed, falling back to HMAC",
-					"err", parseErr,
-				)
+	// 2. Fall back to HMAC
+	return h.validateHMAC(tokenStr, secrets)
+}
+
+func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error) {
+	if h.jwksCache == nil || h.jwksURL == "" {
+		return "", fmt.Errorf("JWKS not configured")
+	}
+
+	keySet, err := h.jwksCache.Get(ctx, h.jwksURL)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "JWKS fetch failed, falling back to HMAC secrets",
+			"jwks_url", h.jwksURL, "err", err)
+		return "", err
+	}
+
+	token, parseErr := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodRS256 {
+			return nil, fmt.Errorf("unexpected signing method for JWKS: %v", t.Header["alg"])
+		}
+		kid, _ := t.Header["kid"].(string)
+		key, ok := keySet.LookupKeyID(kid)
+		if !ok {
+			return nil, fmt.Errorf("kid %s not found in JWKS", kid)
+		}
+		var pubKey interface{}
+		if err := key.Raw(&pubKey); err != nil {
+			return nil, fmt.Errorf("failed to extract raw public key: %w", err)
+		}
+		return pubKey, nil
+	})
+
+	if parseErr == nil && token.Valid {
+		if claims, ok := token.Claims.(jwt.MapClaims); ok {
+			if sub, ok := claims["sub"].(string); ok {
+				return sub, nil
 			}
 		}
 	}
 
-	// ── Phase 2: Fall back to HMAC secrets ───────────────────────────────────
+	if parseErr != nil {
+		h.Logger.WarnContext(ctx, "RS256 JWT validation failed, falling back to HMAC", "err", parseErr)
+	}
+	return "", fmt.Errorf("invalid RS256 token")
+}
+
+func (h *Hub) validateHMAC(tokenStr string, secrets []string) (string, error) {
 	if len(secrets) == 0 {
-		// No HMAC secrets configured and JWKS either not set or already handled.
-		if h.jwksCache == nil {
-			return "", jwt.ErrTokenSignatureInvalid
-		}
-		// JWKS was configured but failed and no HMAC fallback — error already
-		// returned above in the err != nil branch. This path means JWKS failed
-		// and caller has HMAC secrets; continue to Phase 2.
+		return "", jwt.ErrTokenSignatureInvalid
 	}
 
 	var lastErr error
 	for _, secret := range secrets {
 		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-			// RZ-3: pin to exactly HS256 for symmetric secrets.
 			if t.Method != jwt.SigningMethodHS256 {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}

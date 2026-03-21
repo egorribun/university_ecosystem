@@ -32,7 +32,10 @@ export function ScheduleCard({
     (userRole as "student" | "teacher" | "admin" | null) ?? null,
     userGroupId ?? null
   )
-  const schedule: DashboardLesson[] = dashboardScheduleQuery.data ?? []
+  const schedule: DashboardLesson[] = useMemo(
+    () => dashboardScheduleQuery.data ?? [],
+    [dashboardScheduleQuery.data]
+  )
   const loadingSched = shouldLoadSchedule
     ? dashboardScheduleQuery.isLoading && schedule.length === 0
     : false

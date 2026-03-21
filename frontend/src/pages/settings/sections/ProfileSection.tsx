@@ -21,8 +21,25 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   const navigate = useNavigate()
   const { user } = useAuth()
 
-  const avatar = useAvatarUpload(setSnackbar)
-  const cover = useCoverUpload(setSnackbar)
+  const {
+    avatarSrc,
+    handleError: handleAvatarError,
+    triggerPick: triggerAvatarPick,
+    busy: avatarBusy,
+    remove: removeAvatar,
+    inputRef: avatarInputRef,
+    upload: uploadAvatar,
+  } = useAvatarUpload(setSnackbar)
+
+  const {
+    coverSrc,
+    coverUrl,
+    triggerPick: triggerCoverPick,
+    busy: coverBusy,
+    remove: removeCover,
+    inputRef: coverInputRef,
+    upload: uploadCover,
+  } = useCoverUpload(setSnackbar)
 
   return (
     <SectionCard component="section">
@@ -40,11 +57,11 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
           >
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
               <Avatar
-                src={avatar.avatarSrc}
+                src={avatarSrc}
                 alt={user?.full_name || "avatar"}
                 className="w-20 h-20"
                 imgProps={{
-                  onError: avatar.handleError,
+                  onError: handleAvatarError,
                   loading: "lazy",
                   decoding: "async",
                   referrerPolicy: "no-referrer",
@@ -54,8 +71,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                 <Button
                   size="sm"
                   variant="solid"
-                  onClick={avatar.triggerPick}
-                  disabled={avatar.busy}
+                  onClick={triggerAvatarPick}
+                  disabled={avatarBusy}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.avatar.change")}
@@ -64,8 +81,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   size="sm"
                   variant="outline"
                   color="error"
-                  onClick={avatar.remove}
-                  disabled={avatar.busy}
+                  onClick={removeAvatar}
+                  disabled={avatarBusy}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.avatar.delete")}
@@ -86,8 +103,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                 data-testid="settings-cover-preview"
                 className="h-20 w-32 rounded-xl border shrink-0"
                 style={{
-                  background: cover.coverSrc
-                    ? `url(${cover.coverSrc}) center/cover no-repeat`
+                  background: coverSrc
+                    ? `url(${coverSrc}) center/cover no-repeat`
                     : "var(--bg-surface-hover)",
                   borderColor: "var(--glass-border-subtle)",
                 }}
@@ -96,19 +113,19 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                 <Button
                   size="sm"
                   variant="solid"
-                  onClick={cover.triggerPick}
-                  disabled={cover.busy}
+                  onClick={triggerCoverPick}
+                  disabled={coverBusy}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.cover.change")}
                 </Button>
-                {cover.coverUrl && (
+                {coverUrl && (
                   <Button
                     size="sm"
                     variant="outline"
                     color="error"
-                    onClick={cover.remove}
-                    disabled={cover.busy}
+                    onClick={removeCover}
+                    disabled={coverBusy}
                     className="w-full sm:w-auto"
                   >
                     {t("settings:media.cover.remove")}
@@ -144,23 +161,23 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
 
       {/* Hidden File Inputs */}
       <input
-        ref={avatar.inputRef}
+        ref={avatarInputRef}
         type="file"
         accept="image/*"
         hidden
         onChange={(e) => {
           const f = e.currentTarget.files?.[0]
-          if (f) avatar.upload(f)
+          if (f) uploadAvatar(f)
         }}
       />
       <input
-        ref={cover.inputRef}
+        ref={coverInputRef}
         type="file"
         accept="image/*"
         hidden
         onChange={(e) => {
           const f = e.currentTarget.files?.[0]
-          if (f) cover.upload(f)
+          if (f) uploadCover(f)
         }}
       />
     </SectionCard>

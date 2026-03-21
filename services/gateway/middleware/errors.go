@@ -4,7 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ProblemDetail represents an RFC 7807 problem detail response
+// ProblemDetail represents an RFC 7807 problem detail response.
 type ProblemDetail struct {
 	Type     string `json:"type"`
 	Title    string `json:"title"`
@@ -13,7 +13,7 @@ type ProblemDetail struct {
 	Instance string `json:"instance"`
 }
 
-// AbortWithProblem stops the request and returns an RFC 7807 response
+// AbortWithProblem stops the request and returns an RFC 7807 response.
 func AbortWithProblem(c *gin.Context, status int, title, detail, problemType string) {
 	c.Header("Content-Type", "application/problem+json")
 	c.AbortWithStatusJSON(status, ProblemDetail{

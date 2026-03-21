@@ -151,13 +151,12 @@ class ScheduleOptimizerService:
                 "Thursday",
                 "Friday",
             ]
-            # Domain-driven schedule available blocks (hours) instead of hardcoded in Rust
-            available_blocks = [(day, [9, 11, 13, 15]) for day in days]
-
+            # [COMPAT] The active binary expects preferred_weekdays: list[str]
+            # rather than matching the available_blocks: list[tuple] in the local lib.rs source.
             suggested_rust = rust_ext.find_optimal_slot(
-                duration_minutes=duration_minutes,
-                existing_schedule=existing_rust,
-                available_blocks=available_blocks,
+                duration_minutes,
+                existing_rust,
+                days,
             )
 
             if suggested_rust:

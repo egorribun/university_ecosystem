@@ -2,7 +2,7 @@ import { renderHook, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 
-import { useChatWebSocket } from "@/hooks/useChatWebSocket"
+import { useChatWebSocket, WebSocketProvider } from "@/hooks/useChatWebSocket"
 
 class MockWebSocket {
   static OPEN = 1
@@ -67,12 +67,14 @@ describe("useChatWebSocket", () => {
         }),
       {
         wrapper: ({ children }) => (
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+          <QueryClientProvider client={queryClient}>
+            <WebSocketProvider>{children}</WebSocketProvider>
+          </QueryClientProvider>
         ),
       }
     )
 
-    const socket = MockWebSocket.instances[0]
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]
     expect(socket).toBeDefined()
 
     act(() => {
@@ -82,20 +84,19 @@ describe("useChatWebSocket", () => {
     act(() => {
       socket.receive({
         type: "presence",
-        user_id: "00000000-0000-0000-0000-000000000042",
+        user_id: "550e8400-e29b-41d4-a716-446655440000",
         active: true,
         last_seen: "2024-02-01T10:00:00Z",
       })
     })
 
     expect(presenceSpy).toHaveBeenCalledWith(
-      "00000000-0000-0000-0000-000000000042",
+      "550e8400-e29b-41d4-a716-446655440000",
       true,
       "2024-02-01T10:00:00Z"
     )
-    expect(onlineSpy).toHaveBeenCalledWith("00000000-0000-0000-0000-000000000042", true)
+    expect(onlineSpy).toHaveBeenCalledWith("550e8400-e29b-41d4-a716-446655440000", true)
 
     unmount()
-    queryClient.clear()
   })
 })

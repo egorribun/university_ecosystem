@@ -48,6 +48,7 @@ const baseAuthValue: AuthContextValue = {
   submitMfaChallenge: vi.fn(),
   requireMfa: vi.fn(),
   resetEtagCache: vi.fn(),
+  authOperation: false,
 }
 
 const unauthenticatedAuthValue: AuthContextValue = {

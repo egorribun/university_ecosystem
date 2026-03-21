@@ -59,10 +59,6 @@ export function ScheduleDesktopTable({
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const headRefs = useRef<(HTMLTableCellElement | null)[]>([])
 
-  if (headRefs.current.length !== weekdayBackend.length) {
-    headRefs.current = Array(weekdayBackend.length).fill(null)
-  }
-
   const tableRowsBase = useMemo(
     () => buildTable(schedule, weekdayBackend),
     [schedule, weekdayBackend]

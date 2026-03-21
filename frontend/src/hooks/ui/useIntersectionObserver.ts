@@ -33,7 +33,7 @@ export function useIntersectionObserver({
     observer.observe(node)
 
     return () => observer.disconnect()
-  }, [ref?.current, JSON.stringify(threshold), root, rootMargin, frozen])
+  }, [threshold, root, rootMargin, frozen])
 
   return [ref, !!entry?.isIntersecting]
 }

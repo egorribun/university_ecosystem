@@ -44,6 +44,11 @@ def set_shutdown_flag() -> None:
     _shutdown_flag.set()
 
 
+def reset_shutdown_flag() -> None:
+    """Reset the shutdown flag. Used primarily in test suites."""
+    _shutdown_flag.clear()
+
+
 _storage_probe_cache: dict[str, Any] = {
     "expires_at": 0.0,
     "status": "unknown",

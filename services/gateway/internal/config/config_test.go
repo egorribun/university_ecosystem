@@ -9,7 +9,9 @@ import (
 
 func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_UNSET_VARIABLE_XYZ"
-	_ = os.Unsetenv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
 
 	result := getEnv(key, "default_value")
 
@@ -19,9 +21,13 @@ func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 	key := "TEST_SET_VARIABLE_XYZ"
 	expected := "custom_value"
-	_ = os.Setenv(key, expected)
+	if err := os.Setenv(key, expected); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	defer func() {
-		_ = os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Errorf("failed to unset env: %v", err)
+		}
 	}()
 
 	result := getEnv(key, "default_value")
@@ -31,7 +37,9 @@ func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_UNSET_INT_XYZ"
-	_ = os.Unsetenv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
 
 	result := getEnvInt(key, 42)
 
@@ -40,9 +48,13 @@ func TestGetEnvInt_ReturnsDefaultWhenNotSet(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultWhenEmpty(t *testing.T) {
 	key := "TEST_EMPTY_INT_XYZ"
-	_ = os.Setenv(key, "")
+	if err := os.Setenv(key, ""); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	defer func() {
-		_ = os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Errorf("failed to unset env: %v", err)
+		}
 	}()
 
 	result := getEnvInt(key, 100)
@@ -52,9 +64,13 @@ func TestGetEnvInt_ReturnsDefaultWhenEmpty(t *testing.T) {
 
 func TestGetEnvInt_ParsesValidInteger(t *testing.T) {
 	key := "TEST_VALID_INT_XYZ"
-	_ = os.Setenv(key, "200")
+	if err := os.Setenv(key, "200"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	defer func() {
-		_ = os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Errorf("failed to unset env: %v", err)
+		}
 	}()
 
 	result := getEnvInt(key, 0)
@@ -64,9 +80,13 @@ func TestGetEnvInt_ParsesValidInteger(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultOnInvalidInteger(t *testing.T) {
 	key := "TEST_INVALID_INT_XYZ"
-	_ = os.Setenv(key, "not_a_number")
+	if err := os.Setenv(key, "not_a_number"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	defer func() {
-		_ = os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Errorf("failed to unset env: %v", err)
+		}
 	}()
 
 	result := getEnvInt(key, 99)
@@ -76,9 +96,13 @@ func TestGetEnvInt_ReturnsDefaultOnInvalidInteger(t *testing.T) {
 
 func TestGetEnvInt_ParsesNegativeInteger(t *testing.T) {
 	key := "TEST_NEGATIVE_INT_XYZ"
-	_ = os.Setenv(key, "-50")
+	if err := os.Setenv(key, "-50"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	defer func() {
-		_ = os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Errorf("failed to unset env: %v", err)
+		}
 	}()
 
 	result := getEnvInt(key, 0)
@@ -88,9 +112,13 @@ func TestGetEnvInt_ParsesNegativeInteger(t *testing.T) {
 
 func TestGetEnvInt_ParsesZero(t *testing.T) {
 	key := "TEST_ZERO_INT_XYZ"
-	_ = os.Setenv(key, "0")
+	if err := os.Setenv(key, "0"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	defer func() {
-		_ = os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Errorf("failed to unset env: %v", err)
+		}
 	}()
 
 	result := getEnvInt(key, 999)
@@ -109,22 +137,36 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	originalBurst := os.Getenv("RATE_LIMIT_BURST")
 
 	defer func() {
-		restoreEnv("JWT_SECRET", originalJWT)
-		restoreEnv("BACKEND_URL", originalBackend)
-		restoreEnv("GATEWAY_PORT", originalPort)
-		restoreEnv("REDIS_URL", originalRedis)
-		restoreEnv("FILE_PROCESSOR_ADDR", originalFileProc)
-		restoreEnv("RATE_LIMIT_RPS", originalRPS)
-		restoreEnv("RATE_LIMIT_BURST", originalBurst)
+		restoreEnv(t, "JWT_SECRET", originalJWT)
+		restoreEnv(t, "BACKEND_URL", originalBackend)
+		restoreEnv(t, "GATEWAY_PORT", originalPort)
+		restoreEnv(t, "REDIS_URL", originalRedis)
+		restoreEnv(t, "FILE_PROCESSOR_ADDR", originalFileProc)
+		restoreEnv(t, "RATE_LIMIT_RPS", originalRPS)
+		restoreEnv(t, "RATE_LIMIT_BURST", originalBurst)
 	}()
 
-	_ = os.Setenv("JWT_SECRET", "test-secret-key")
-	_ = os.Setenv("BACKEND_URL", "http://test-backend:8000")
-	_ = os.Setenv("GATEWAY_PORT", "9090")
-	_ = os.Setenv("REDIS_URL", "redis://test-redis:6379")
-	_ = os.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051")
-	_ = os.Setenv("RATE_LIMIT_RPS", "50")
-	_ = os.Setenv("RATE_LIMIT_BURST", "100")
+	if err := os.Setenv("JWT_SECRET", "test-secret-key"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("BACKEND_URL", "http://test-backend:8000"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("GATEWAY_PORT", "9090"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("REDIS_URL", "redis://test-redis:6379"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("RATE_LIMIT_RPS", "50"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("RATE_LIMIT_BURST", "100"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -144,14 +186,20 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 	originalPort := os.Getenv("GATEWAY_PORT")
 
 	defer func() {
-		restoreEnv("JWT_SECRET", originalJWT)
-		restoreEnv("BACKEND_URL", originalBackend)
-		restoreEnv("GATEWAY_PORT", originalPort)
+		restoreEnv(t, "JWT_SECRET", originalJWT)
+		restoreEnv(t, "BACKEND_URL", originalBackend)
+		restoreEnv(t, "GATEWAY_PORT", originalPort)
 	}()
 
-	_ = os.Setenv("JWT_SECRET", "required-secret")
-	_ = os.Unsetenv("GATEWAY_PORT")
-	_ = os.Unsetenv("BACKEND_URL")
+	if err := os.Setenv("JWT_SECRET", "required-secret"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Unsetenv("GATEWAY_PORT"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
+	if err := os.Unsetenv("BACKEND_URL"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -163,8 +211,10 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 
 func TestLoad_ReturnsErrorWhenJWTSecretMissing(t *testing.T) {
 	originalJWT := os.Getenv("JWT_SECRET")
-	_ = os.Unsetenv("JWT_SECRET")
-	defer restoreEnv("JWT_SECRET", originalJWT)
+	if err := os.Unsetenv("JWT_SECRET"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
+	defer restoreEnv(t, "JWT_SECRET", originalJWT)
 
 	cfg, err := Load()
 	assert.Error(t, err)
@@ -192,10 +242,15 @@ func TestConfig_StructFields(t *testing.T) {
 	assert.Equal(t, 200, cfg.RateLimitBurst)
 }
 
-func restoreEnv(key, value string) {
+func restoreEnv(t *testing.T, key, value string) {
+	t.Helper()
 	if value == "" {
-		_ = os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Errorf("failed to restore (unset) env %s: %v", key, err)
+		}
 	} else {
-		_ = os.Setenv(key, value)
+		if err := os.Setenv(key, value); err != nil {
+			t.Errorf("failed to restore (set) env %s: %v", key, err)
+		}
 	}
 }

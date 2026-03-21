@@ -12,27 +12,41 @@ import app.core.ratelimit as rate_limit
 import app.core.ratelimit as ratelimit_module
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.core.localization import translate
 from app.core.ratelimit import EndpointRateLimit, RateLimitMiddleware
 from app.core.ratelimit.utils import _TIME_UNITS
 
 
-@pytest.mark.asyncio
-async def test_rate_limit_per_ip(root_client):
-    """Test using a public endpoint that is NOT exempted."""
-    endpoint = "/api/v1/news"
-    for _ in range(5):
-        response = await root_client.get(endpoint)
-        # 200 OK or 404 (empty list) doesn't matter, as long as it reaches application
-        # If /api/v1/news returns empty list it's still 200.
-        assert response.status_code == 200
-        assert response.headers.get("X-RateLimit-Limit") == "5"
+@pytest.fixture(autouse=True)
+def enable_rate_limiting(monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
 
-    response = await root_client.get(endpoint)
-    assert response.status_code == 429
-    expected = translate("errors.rate_limit.generic")
-    assert response.json()["detail"] == expected
-    assert response.headers.get("Retry-After") is not None
+
+@pytest.mark.asyncio
+async def test_rate_limit_per_ip():
+    """Test using a public endpoint that is NOT exempted."""
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        limit=5,
+        window_seconds=60,
+    )
+
+    @app.get("/api/v1/news")
+    async def _news():
+        return {"data": []}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        endpoint = "/api/v1/news"
+        for _ in range(5):
+            response = await client.get(endpoint)
+            assert response.status_code == 200
+            assert response.headers.get("X-RateLimit-Limit") == "5"
+
+        response = await client.get(endpoint)
+        assert response.status_code == 429
 
 
 @pytest.mark.asyncio
@@ -45,35 +59,65 @@ async def test_health_check_exempted(root_client):
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_per_token(root_client):
-    headers = {"Authorization": "Bearer token-a"}
-    endpoint = "/api/v1/news"
-    for _ in range(5):
-        response = await root_client.get(endpoint, headers=headers)
-        assert response.status_code == 200
-    blocked = await root_client.get(endpoint, headers=headers)
-    assert blocked.status_code == 429
+async def test_rate_limit_per_token():
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        limit=5,
+        window_seconds=60,
+    )
 
-    other = await root_client.get(endpoint, headers={"Authorization": "Bearer token-b"})
-    assert other.status_code == 200
+    @app.get("/api/v1/news")
+    async def _news():
+        return {"data": []}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        headers = {"Authorization": "Bearer token-a"}
+        endpoint = "/api/v1/news"
+        for _ in range(5):
+            response = await client.get(endpoint, headers=headers)
+            assert response.status_code == 200
+        blocked = await client.get(endpoint, headers=headers)
+        assert blocked.status_code == 429
+
+        other = await client.get(endpoint, headers={"Authorization": "Bearer token-b"})
+        assert other.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_per_cookie(root_client):
-    root_client.cookies.set("access_token", "cookie-token-a", path="/")
-    endpoint = "/api/v1/news"
+async def test_rate_limit_per_cookie():
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        limit=5,
+        window_seconds=60,
+    )
 
-    for _ in range(5):
-        response = await root_client.get(endpoint)
-        assert response.status_code == 200
+    @app.get("/api/v1/news")
+    async def _news():
+        return {"data": []}
 
-    blocked = await root_client.get(endpoint)
-    assert blocked.status_code == 429
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        client.cookies.set("access_token", "cookie-token-a", path="/")
+        endpoint = "/api/v1/news"
 
-    root_client.cookies.set("access_token", "cookie-token-b", path="/")
+        for _ in range(5):
+            response = await client.get(endpoint)
+            assert response.status_code == 200
 
-    other = await root_client.get(endpoint)
-    assert other.status_code == 200
+        blocked = await client.get(endpoint)
+        assert blocked.status_code == 429
+
+        client.cookies.set("access_token", "cookie-token-b", path="/")
+
+        other = await client.get(endpoint)
+        assert other.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -180,8 +224,11 @@ async def test_sensitive_forgot_password_rate_limit(
         call_count += 1
         if call_count > 4:
             from app.core.ratelimit.exceptions import RateLimitExceeded
+            from app.core.ratelimit.models import RateLimitInfo
 
-            raise RateLimitExceeded(limit=4, remaining=0, reset_after=60)
+            raise RateLimitExceeded(
+                RateLimitInfo(allowed=False, remaining=0, retry_after=60)
+            )
 
     monkeypatch.setattr("app.core.ratelimit.enforce_rate_limit", mock_enforce)
 

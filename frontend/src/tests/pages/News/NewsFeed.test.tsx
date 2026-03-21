@@ -55,6 +55,7 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
     submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
     requireMfa: vi.fn().mockResolvedValue(null),
     resetEtagCache: vi.fn(),
+    authOperation: false,
   }
 
   const client =

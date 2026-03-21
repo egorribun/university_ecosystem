@@ -208,6 +208,28 @@ def mock_nats_broker(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def mock_health_checks(monkeypatch):
+    """
+    Mock health check probes that require external infrastructure (SpiceDB, etc.)
+    to prevent 503 Service Unavailable errors in integration tests.
+    """
+
+    async def mock_spicedb_health(*args, **kwargs):
+        return "ok", 0.0
+
+    monkeypatch.setattr("app.core.health.check_spicedb_health", mock_spicedb_health)
+
+    async def mock_wait_db(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.health.wait_db", mock_wait_db)
+    from app.api.health import reset_shutdown_flag
+
+    reset_shutdown_flag()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def mock_spicedb_permissions():
     """
     Global mock for SpiceDB permissions to prevent 503 errors in integration tests.
@@ -233,7 +255,9 @@ def mock_spicedb_permissions():
     mock_checker.check_admin = AsyncMock(side_effect=mock_check_admin)
     mock_checker.check_permission = AsyncMock(side_effect=mock_check_permission)
 
-    app.dependency_overrides[PermissionChecker] = lambda: mock_checker
+    from app.api.deps.auth import get_permission_checker
+
+    app.dependency_overrides[get_permission_checker] = lambda: mock_checker
     yield mock_checker
 
 

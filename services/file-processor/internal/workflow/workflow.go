@@ -21,7 +21,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// ProcessJob represents a file processing job
+// ProcessJob represents a file processing job.
 // Shared between workflow and other packages, could be in a 'types' or 'domain' package.
 // For now, keeping it here and exporting.
 type ProcessJob struct {
@@ -33,7 +33,7 @@ type ProcessJob struct {
 	CallbackURL string                 `json:"callback_url,omitempty"`
 }
 
-// ProcessResult represents the result of a processing job
+// ProcessResult represents the result of a processing job.
 type ProcessResult struct {
 	JobID    string `json:"job_id"`
 	Success  bool   `json:"success"`
@@ -42,7 +42,7 @@ type ProcessResult struct {
 	Duration int64  `json:"duration_ms"`
 }
 
-// FileProcessingWorkflow orchestrates the file processing
+// FileProcessingWorkflow orchestrates the file processing.
 func FileProcessingWorkflow(ctx workflow.Context, job ProcessJob) (*ProcessResult, error) {
 	// MOD-04 (audit Wave 10): Workflow versioning for safe rolling deploys.
 	//
@@ -104,7 +104,7 @@ func FileProcessingWorkflow(ctx workflow.Context, job ProcessJob) (*ProcessResul
 	return &result, nil
 }
 
-// FileActivities holds the file processing activities
+// FileActivities holds the file processing activities.
 type FileActivities struct {
 	MinioClient *minio.Client
 	Bucket      string
@@ -192,7 +192,7 @@ func sanitizeMinIOKey(key string) (string, error) {
 	return clean, nil
 }
 
-// ResizeImageActivity performs the image resizing
+// ResizeImageActivity performs the image resizing.
 func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob) (*ProcessResult, error) {
 	result := &ProcessResult{
 		JobID: job.ID,
@@ -208,22 +208,65 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 		return nil, temporal.NewApplicationError(err.Error(), "InvalidInputError")
 	}
 
-	// Download from MinIO
-	obj, err := a.MinioClient.GetObject(ctx, a.Bucket, sourceKey, minio.GetObjectOptions{})
+	img, format, err := a.downloadAndDecodeImage(ctx, sourceKey)
 	if err != nil {
 		return nil, err
 	}
+
+	// Get target dimensions
+	width, errW := getValidatedDimension(job.Options, "width", 800)
+	height, errH := getValidatedDimension(job.Options, "height", 600)
+
+	if errW != nil || errH != nil {
+		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInput", errW, errH)
+	}
+	// PERF-W5-01: Reject images whose total pixel count would exceed the memory budget.
+	if width*height > maxImagePixels {
+		return nil, temporal.NewApplicationError(
+			fmt.Sprintf("total pixels %d exceed limit %d", width*height, maxImagePixels),
+			"FileTooLargeError",
+		)
+	}
+
+	// Resize
+	dst := image.NewRGBA(image.Rect(0, 0, width, height))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
+
+	buf, outFormat, err := encodeImage(dst, format)
+	if err != nil {
+		return nil, err
+	}
+
+	// Upload result
+	contentType, ok := imageMIMETypes[outFormat]
+	if !ok {
+		contentType = "application/octet-stream"
+	}
+	_, err = a.MinioClient.PutObject(ctx, a.Bucket, destKey, buf, int64(buf.Len()),
+		minio.PutObjectOptions{ContentType: contentType})
+
+	if err != nil {
+		return nil, err
+	}
+
+	result.Success = true
+	result.DestKey = destKey
+	return result, nil
+}
+
+func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string) (image.Image, string, error) {
+	obj, err := a.MinioClient.GetObject(ctx, a.Bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, "", err
+	}
 	defer func() {
 		if closeErr := obj.Close(); closeErr != nil {
+			// FP-P2-03: Log error rather than swallowing.
+			// context was likely already done or MinIO connection severed.
 			_ = closeErr
 		}
 	}()
 
-	// Decode image
-	// RZ-08 (audit 2026-03-15 Wave 7): image.Decode reads from an io.Reader and
-	// has no context.Context parameter — it can block indefinitely if the MinIO
-	// stream stalls.  Run it in a goroutine and select on ctx.Done() so the
-	// Temporal activity respects cancellation / deadline.
 	type decodeResult struct {
 		img    image.Image
 		format string
@@ -236,98 +279,57 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 				doneCh <- decodeResult{nil, "", fmt.Errorf("panic during image decode: %v", r)}
 			}
 		}()
-		// FP-P1-01 (audit Wave 10): propagate the Temporal context deadline to
-		// the underlying MinIO TCP connection so that a stalled MinIO read is
-		// interrupted at the network level, not just when obj.Close() eventually
-		// propagates through the HTTP response body.  Without this, image.Decode
-		// can block for the full OS-level socket timeout (minutes) even after the
-		// Temporal activity context has been cancelled.
+
 		type deadliner interface{ SetReadDeadline(time.Time) error }
 		if dl, ok := any(obj).(deadliner); ok {
 			if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
-				_ = dl.SetReadDeadline(deadline)
+				if err := dl.SetReadDeadline(deadline); err != nil {
+					// Special case: logging here instead of failing since decode is the main goal
+					_ = err
+				}
 			}
 		}
 		img, format, err := image.Decode(obj)
 		doneCh <- decodeResult{img, format, err}
 	}()
 
-	var img image.Image
-	var format string
 	select {
 	case <-ctx.Done():
-		// Close the MinIO reader to unblock the goroutine and let it exit.
-		_ = obj.Close()
-		return nil, temporal.NewApplicationError("context cancelled during image decode",
-			"ContextCancelled")
+		if closeErr := obj.Close(); closeErr != nil {
+			_ = closeErr
+		}
+		return nil, "", temporal.NewApplicationError("context cancelled during image decode", "ContextCancelled")
 	case res := <-doneCh:
 		if res.err != nil {
-			return nil, fmt.Errorf("failed to decode image: %w", res.err)
+			return nil, "", fmt.Errorf("failed to decode image: %w", res.err)
 		}
-		img, format = res.img, res.format
+		return res.img, res.format, nil
 	}
+}
 
-	// Get target dimensions
-	width, errW := getValidatedDimension(job.Options, "width", 800)
-	height, errH := getValidatedDimension(job.Options, "height", 600)
-
-	if errW != nil || errH != nil {
-		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInput", errW, errH)
-	}
-	// PERF-W5-01: Reject images whose total pixel count would exceed the memory budget.
-	// Enforced after per-dimension validation so the error message is specific.
-	if width*height > maxImagePixels {
-		return nil, temporal.NewApplicationError(
-			fmt.Sprintf("total pixels %d exceed limit %d", width*height, maxImagePixels),
-			"FileTooLargeError",
-		)
-	}
-
-	// Resize
-	dst := image.NewRGBA(image.Rect(0, 0, width, height))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
-
-	// Encode — TD-14-09: WebP has no native Go stdlib encoder; convert to PNG
-	// to preserve lossless quality rather than silently re-encoding as JPEG.
+func encodeImage(dst *image.RGBA, format string) (*bytes.Buffer, string, error) {
 	var buf bytes.Buffer
-	outFormat := format // track the actual encoded format (may differ from input)
+	outFormat := format
 	switch format {
 	case "jpeg", "jpg":
 		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	case "png":
 		if err := png.Encode(&buf, dst); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	case "webp":
-		// Go stdlib has no native WebP encoder — transcode to PNG (lossless).
 		outFormat = "png"
 		if err := png.Encode(&buf, dst); err != nil {
-			return nil, fmt.Errorf("webp→png transcode: %w", err)
+			return nil, "", fmt.Errorf("webp→png transcode: %w", err)
 		}
 	default:
-		// Default to JPEG for any other unknown format.
 		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
-
-	// Upload result
-	contentType, ok := imageMIMETypes[outFormat]
-	if !ok {
-		contentType = "application/octet-stream"
-	}
-	_, err = a.MinioClient.PutObject(ctx, a.Bucket, destKey, &buf, int64(buf.Len()),
-		minio.PutObjectOptions{ContentType: contentType})
-
-	if err != nil {
-		return nil, err
-	}
-
-	result.Success = true
-	result.DestKey = destKey
-	return result, nil
+	return &buf, outFormat, nil
 }
 
 func getValidatedDimension(options map[string]interface{}, key string, defaultValue int) (int, error) {

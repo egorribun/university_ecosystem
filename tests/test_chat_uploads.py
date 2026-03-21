@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.localization import translate
 from app.models.chat import Attachment, Chat
 from app.services.chat.attachment_service import ChatAttachmentService
-from app.services.chat.command_service import ChatCommandService
+from app.services.chat.command_service import ChatMessageDispatcher
 from app.services.chat.notification_service import ChatNotificationService
 from app.utils import files
 
@@ -114,7 +114,7 @@ async def test_send_message_blocks_infected_file(
     uow = uow_from_session(db_session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(db_session)
-    service = ChatCommandService(uow, attachments, notifications)
+    service = ChatMessageDispatcher(uow, attachments, notifications)
 
     with pytest.raises(HTTPException) as excinfo:
         await service.send_message(
@@ -169,7 +169,7 @@ async def test_send_message_generates_public_urls(
     uow = uow_from_session(db_session)
     attachments = ChatAttachmentService()
     notifications = ChatNotificationService(db_session)
-    service = ChatCommandService(uow, attachments, notifications)
+    service = ChatMessageDispatcher(uow, attachments, notifications)
     message = await service.send_message(
         chat.id,
         user=sender,

@@ -235,14 +235,14 @@ async def my_events(
 
 
 @router.post(
-    "/{id}/upload_file",
+    "/{event_id}/upload_file",
     response_model=schemas.EventFileOut,
     dependencies=[
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
     ],
 )
 async def upload_event_file(
-    id: uuid.UUID | int,
+    event_id: uuid.UUID | int,
     file: UploadFile = File(...),
     *,
     request: Request,
@@ -251,7 +251,7 @@ async def upload_event_file(
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> models.EventFile:
     locale = resolve_locale(request=request, user=user)
-    event = await db.get(models.Event, id)
+    event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
     assert event is not None  # noqa: S101
     if not await checker.check_permission(
@@ -262,8 +262,8 @@ async def upload_event_file(
     ):
         raise_forbidden(locale)
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
-    url = await save_attachment(file, "event_files", f"event_{id}", locale=locale)
-    ef = models.EventFile(event_id=id, file_url=url)
+    url = await save_attachment(file, "event_files", f"event_{event_id}", locale=locale)
+    ef = models.EventFile(event_id=event_id, file_url=url)
     db.add(ef)
     try:
         await db.commit()
@@ -279,14 +279,14 @@ async def upload_event_file(
     return ef
 
 
-@router.get("/{id}/files", response_model=list[schemas.EventFileOut])
+@router.get("/{event_id}/files", response_model=list[schemas.EventFileOut])
 async def get_event_files(
-    id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)
+    event_id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)
 ) -> list[models.EventFile]:
     files = (
         (
             await db.execute(
-                select(models.EventFile).where(models.EventFile.event_id == id)
+                select(models.EventFile).where(models.EventFile.event_id == event_id)
             )
         )
         .scalars()
@@ -436,14 +436,14 @@ async def delete_event(
     return {"ok": True}
 
 
-@router.get("/{id}", response_model=schemas.EventOut)
+@router.get("/{event_id}", response_model=schemas.EventOut)
 @cached_endpoint(
     version_resolver=events_cache_version,
     cache_prefix="ue:events:detail",
     cache_control=_EVENTS_CACHE_CONTROL,
 )
 async def get_event(
-    id: uuid.UUID | int,
+    event_id: uuid.UUID | int,
     request: Request,
     response: Response,
     user: models.User = Depends(get_current_user),
@@ -452,7 +452,7 @@ async def get_event(
 ) -> schemas.EventOut | Response | Any:
     locale = resolve_locale(request=request, user=user)
 
-    payload = await events.get_event_detail(id, user.id, locale=locale)
+    payload = await events.get_event_detail(event_id, user.id, locale=locale)
     if not payload:
         raise_not_found("events", locale)
 

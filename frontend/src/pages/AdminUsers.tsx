@@ -41,11 +41,14 @@ export default function AdminUsers() {
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const roleOptions: Record<UserRole, string> = {
-    student: t("users.roles.student"),
-    teacher: t("users.roles.teacher"),
-    admin: t("users.roles.admin"),
-  }
+  const roleOptions: Record<UserRole, string> = useMemo(
+    () => ({
+      student: t("users.roles.student"),
+      teacher: t("users.roles.teacher"),
+      admin: t("users.roles.admin"),
+    }),
+    [t]
+  )
 
   const fetchUsers = useCallback(async () => {
     const queryParameters: Record<string, string> = {}

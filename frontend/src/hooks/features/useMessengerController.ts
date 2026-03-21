@@ -65,7 +65,7 @@ export const useMessengerController = () => {
     queryKey: ["chats"],
     queryFn: () => chatApi.getChats(),
   })
-  const chats = chatsData?.items ?? []
+  const chats = useMemo(() => chatsData?.items ?? [], [chatsData?.items])
 
   const { data: singleChatData } = useQuery({
     queryKey: ["chats", chatId],
@@ -82,7 +82,7 @@ export const useMessengerController = () => {
         : Promise.resolve({ items: [], has_more: false, next_cursor: null }),
     enabled: !!selectedChatId,
   })
-  const messages = messagesData?.items ?? []
+  const messages = useMemo(() => messagesData?.items ?? [], [messagesData?.items])
 
   // --- Computed ---
 
@@ -249,9 +249,12 @@ export const useMessengerController = () => {
 
   // --- Handlers ---
 
-  const markAsRead = useCallback((chatId: string) => {
-    markReadMutation.mutate(chatId)
-  }, [])
+  const markAsRead = useCallback(
+    (chatId: string) => {
+      markReadMutation.mutate(chatId)
+    },
+    [markReadMutation]
+  )
 
   useEffect(() => {
     if (selectedChatId) {

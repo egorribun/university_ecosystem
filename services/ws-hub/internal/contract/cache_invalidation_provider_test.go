@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build contract
 
 // Package contract_test contains Pact V4 provider verification for the
 // university-backend → ws-hub NATS message contract.
@@ -114,7 +114,9 @@ func buildInvalidationPayload(userID, roomID, secret string) (cacheInvalidationP
 //   - The handler produces a body matching the pact interaction body matchers.
 //   - The handler produces metadata with the expected nats_subject.
 func TestCacheInvalidationMessageProvider(t *testing.T) {
-	pactLog.SetLogLevel("INFO")
+	if err := pactLog.SetLogLevel("INFO"); err != nil {
+		t.Logf("Failed to set pact log level: %v", err)
+	}
 
 	// Locate the pact file produced by the Python consumer test.
 	pactDir := os.Getenv("PACT_DIR")
@@ -152,11 +154,13 @@ func TestCacheInvalidationMessageProvider(t *testing.T) {
 	}
 
 	verifier := provider.NewVerifier()
-	verifier.VerifyProvider(t, provider.VerifyRequest{
+	if err := verifier.VerifyProvider(t, provider.VerifyRequest{
 		Provider: "university-backend",
 		PactFiles: []string{
 			filepath.ToSlash(filepath.Join(pactDir, "ws-hub-university-backend.json")),
 		},
 		MessageHandlers: handlers,
-	})
+	}); err != nil {
+		t.Errorf("Pact verification failed: %v", err)
+	}
 }

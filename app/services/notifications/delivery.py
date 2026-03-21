@@ -37,6 +37,7 @@ from app.services.notifications.core import (
 from app.services.notifications.quiet_hours import prepare_push_payload_for_user
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import WebPushResult
+from app.utils.uuid_v7 import generate_uuid7
 
 if TYPE_CHECKING:
     from sqlalchemy.sql import Select
@@ -112,6 +113,7 @@ async def create_notifications_for_users(
 
     notifications_data = [
         {
+            "id": generate_uuid7(),
             "user_id": uid,
             "title": title_ru,
             "title_en": notification_title_en,
@@ -131,13 +133,9 @@ async def create_notifications_for_users(
 
     for i in range(0, len(notifications_data), batch_size):
         batch = notifications_data[i : i + batch_size]
-        stmt = (
-            insert(Notification)
-            .values(batch)
-            .returning(Notification.id, Notification.user_id)
-        )
-        db_result = await db.execute(stmt)
-        for row in db_result.mappings():
+        stmt = insert(Notification).values(batch)
+        await db.execute(stmt)
+        for row in batch:
             notification_ids_by_user[uuid.UUID(str(row["user_id"]))] = row["id"]
 
     await db.flush()
@@ -247,7 +245,7 @@ async def create_notifications_for_users(
             if normalized_actions:
                 base_payload["actions"] = normalized_actions
 
-        send_jobs: list[tuple[PushSubscription, int]] = []
+        send_jobs: list[tuple[Any, Any]] = []
         tasks: list[Awaitable[WebPushResult]] = []
 
         # MOD-01 Fix: Use a high-level semaphore to control fan-out concurrency.
@@ -312,7 +310,7 @@ async def create_notifications_for_users(
             prepared_payload = prepare_push_payload_for_user(
                 base_payload, getattr(sub, "user", None)
             )
-            send_jobs.append((sub, notification_id))
+            send_jobs.append((sub, notification_id))  # type: ignore[arg-type]
             tasks.append(_send_push(sub, prepared_payload))
 
         if tasks:

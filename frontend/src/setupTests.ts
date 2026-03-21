@@ -160,5 +160,3 @@ console.warn = (...args: unknown[]) => {
   if (typeof firstArg === "string" && IGNORED_WARNINGS.some((w) => firstArg.includes(w))) return
   originalConsoleWarn(...args)
 }
-// eslint-disable-next-line no-console
-console.log = (..._args: unknown[]) => {}

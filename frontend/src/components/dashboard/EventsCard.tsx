@@ -28,7 +28,10 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
   const dashboardEventsQuery = useDashboardEvents()
-  const events: Event[] = dashboardEventsQuery.data ?? []
+  const events: Event[] = useMemo(
+    () => dashboardEventsQuery.data ?? [],
+    [dashboardEventsQuery.data]
+  )
   const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
 
   const warmEventsPage = () => import("../../pages/Events").catch(() => {})

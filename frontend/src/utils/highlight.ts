@@ -15,8 +15,8 @@
  *   - Never insert raw API highlight strings directly into innerHTML.
  */
 
-const MARK_OPEN = "\x00MARK_OPEN\x00";
-const MARK_CLOSE = "\x00MARK_CLOSE\x00";
+const MARK_OPEN = "\x00MARK_OPEN\x00"
+const MARK_CLOSE = "\x00MARK_CLOSE\x00"
 
 /**
  * Convert a raw search highlight string (with sentinel delimiters) to safe HTML.
@@ -34,11 +34,11 @@ export function renderHighlight(raw: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#x27;");
+    .replace(/'/g, "&#x27;")
 
   return escaped
     .replace(new RegExp(escapeRegExp(MARK_OPEN), "g"), "<mark>")
-    .replace(new RegExp(escapeRegExp(MARK_CLOSE), "g"), "</mark>");
+    .replace(new RegExp(escapeRegExp(MARK_CLOSE), "g"), "</mark>")
 }
 
 /**
@@ -48,9 +48,9 @@ export function renderHighlight(raw: string): string {
  * @returns HTML-safe string with fragments separated by " … "
  */
 export function renderHighlightFragments(fragments: string[]): string {
-  return fragments.map(renderHighlight).join(" … ");
+  return fragments.map(renderHighlight).join(" … ")
 }
 
 function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

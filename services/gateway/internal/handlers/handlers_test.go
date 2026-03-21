@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -235,7 +236,6 @@ func TestProxyHandler_DropsForgedSignatureWhenNoSecret(t *testing.T) {
 	assert.Empty(t, capturedSig, "Client-supplied X-Internal-Signature must always be stripped")
 }
 
-
 func TestGenerateRequestID_IsUnique(t *testing.T) {
 	ids := make(map[string]bool)
 	for i := 0; i < 100; i++ {
@@ -246,6 +246,9 @@ func TestGenerateRequestID_IsUnique(t *testing.T) {
 }
 
 func createTestProxy(targetURL string) *httputil.ReverseProxy {
-	target, _ := url.Parse(targetURL)
+	target, err := url.Parse(targetURL)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse test backend URL: %v", err))
+	}
 	return httputil.NewSingleHostReverseProxy(target)
 }

@@ -120,7 +120,7 @@ def _ct_verify_totp(secret: str, code: str) -> bool:
     matched = False
     # Always evaluate all three windows — no short-circuit via `or`
     for offset in (-30, 0, 30):
-        candidate = totp_obj.at(now + offset)
+        candidate = totp_obj.at(int(now) + offset)
         if hmac.compare_digest(normalized, candidate):
             matched = True
     return matched
@@ -448,6 +448,5 @@ async def verify_totp_for_user(
         except Exception:
             # Ensure ERROR status is set for any unexpected exception that wasn't
             # already handled above (e.g. DB errors, unexpected library exceptions).
-            if span.status.status_code != StatusCode.OK:
-                span.set_status(Status(StatusCode.ERROR))
+            span.set_status(Status(StatusCode.ERROR))
             raise

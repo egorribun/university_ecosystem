@@ -37,7 +37,7 @@ type RateLimiter struct {
 
 // NewRateLimiter creates a new rate limiter with Redis backend.
 // Fallback defaults: 10 requests / 60 s per client key.
-func NewRateLimiter(redisURL string, rps, burst int) (*RateLimiter, error) {
+func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*RateLimiter, error) {
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
 		return nil, err
@@ -46,10 +46,10 @@ func NewRateLimiter(redisURL string, rps, burst int) (*RateLimiter, error) {
 	client := redis.NewClient(opt)
 
 	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if err := client.Ping(ctx).Err(); err != nil {
+	if err := client.Ping(pingCtx).Err(); err != nil {
 		return nil, err
 	}
 
@@ -90,7 +90,7 @@ func (rl *RateLimiter) inMemoryAllow(key string) bool {
 }
 
 // Middleware returns a Gin middleware for rate limiting.
-func (rl *RateLimiter) Middleware() gin.HandlerFunc {
+func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get client identifier (IP or User ID)
 		key := rl.getClientKey(c)
@@ -98,7 +98,7 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 		// PERF-06 (audit 2026-03-04): Apply a tight deadline on the Redis call.
 		// Without a timeout a slow/overloaded Redis server blocks the Gin goroutine
 		// indefinitely, cascading into a connection exhaustion outage.
-		rCtx, cancel := context.WithTimeout(c.Request.Context(), 50*time.Millisecond)
+		rCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()
 
 		// Apply rate limit

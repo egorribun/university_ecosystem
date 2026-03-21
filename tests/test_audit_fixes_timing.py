@@ -30,6 +30,13 @@ async def test_password_reset_timing_normalization(
         unittest.mock.patch(
             "app.core.ratelimit.logic.check_rate_limit", return_value=mock_info
         ),
+        unittest.mock.patch(
+            "app.core.ratelimit.fastapi.enforce_rate_limit", return_value=mock_info
+        ),
+        unittest.mock.patch(
+            "app.core.ratelimit.fastapi.sensitive_route_limit",
+            return_value=lambda r: None,
+        ),
     ):
         password = "Existing123!"
         hashed = await get_password_hash(password)

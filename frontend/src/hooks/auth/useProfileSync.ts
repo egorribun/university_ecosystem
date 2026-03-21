@@ -41,13 +41,7 @@ export const currentUserQueryKey = ["users", "me"] as const
 // See: OWASP WSTG-SESS-09 — sensitive data in localStorage.
 export type CachedUserSnapshot = Pick<
   User,
-  | "id"
-  | "full_name"
-  | "group_id"
-  | "avatar_url"
-  | "cover_url"
-  | "is_active"
-  | "spotify_connected"
+  "id" | "full_name" | "group_id" | "avatar_url" | "cover_url" | "is_active" | "spotify_connected"
 > &
   Partial<
     Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at" | "totp_enrollments">
@@ -147,10 +141,7 @@ const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== "object") return undefined
-    return parsed as CachedProfileEnvelope
-  } catch {
+  } catch (_e) {
     clearProfileCacheStorage("parse_error")
     return undefined
   }
@@ -241,8 +232,9 @@ const verifyHmacAsync = async (
       ["verify"]
     )
     const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
-    return await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
-  } catch {
+    const result = await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
+    return result
+  } catch (_e) {
     return false
   }
 }
@@ -565,6 +557,8 @@ export const useProfileSync = (
   })
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
+  const autoFetchAttemptedRef = useRef(false)
+  const initializingRef = useRef(initializing)
 
   useEffect(() => {
     let mounted = true
@@ -785,7 +779,7 @@ export const useProfileSync = (
         channel.close()
       }
     }
-  }, [applyUserState, handleUnauthorized, updatePendingMfa])
+  }, [applyUserState, handleUnauthorized, queryClient, sessionSigningKeyRef, updatePendingMfa])
 
   useEffect(() => {
     userStateRef.current = userState
@@ -801,8 +795,17 @@ export const useProfileSync = (
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
     const hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    if (userStateRef.current == null && !hasCache && !initializing) {
+    if (
+      userStateRef.current == null &&
+      !hasCache &&
+      !initializingRef.current &&
+      !autoFetchAttemptedRef.current
+    ) {
+      autoFetchAttemptedRef.current = true
       setInitializing(true)
+    } else if (autoFetchAttemptedRef.current && !initializingRef.current) {
+      // Already tried or have data, nothing to do
+      return
     }
     ;(async () => {
       try {
@@ -840,6 +843,10 @@ export const useProfileSync = (
       }
     })()
   }, [ensureSessionSigningKey, handleUnauthorized, setUser])
+
+  useEffect(() => {
+    initializingRef.current = initializing
+  }, [initializing])
 
   useEffect(() => {
     useAuthStore.setState({

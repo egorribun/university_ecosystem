@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -35,6 +32,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
 	// MOD-02 (audit Wave 10): semconv v1.27.0 for standardised OTel attributes.
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"google.golang.org/grpc"
@@ -48,7 +46,56 @@ import (
 )
 
 func main() {
-	// Initialize standardized logger
+	// 1. Initialize Logger
+	logger := initLogger()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			// FP-P2-03: Stdout fallback if zap sync fails
+			fmt.Printf("Warning: failed to sync logger: %v\n", err)
+		}
+	}()
+
+	// 2. Load Configuration
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Fatal("Failed to load configuration", zap.Error(err))
+	}
+
+	// 3. Initialize Sentry
+	initSentry(cfg, logger)
+
+	// 4. Initialize OpenTelemetry
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	tp, err := initTracer(ctx, cfg)
+	if err != nil {
+		logger.Error("OpenTelemetry initialization failed", zap.Error(err))
+	} else {
+		defer func() {
+			if err := tp.Shutdown(ctx); err != nil {
+				logger.Error("Failed to shutdown tracer provider", zap.Error(err))
+			}
+		}()
+		logger.Info("OpenTelemetry initialized")
+	}
+
+	// 5. Initialize gRPC connection to File Processor
+	grpcConn, fileClient := initGRPC(cfg, logger)
+	defer func() {
+		if err := grpcConn.Close(); err != nil {
+			logger.Error("Failed to close gRPC connection", zap.Error(err))
+		}
+	}()
+
+	// 6. Setup Router & Middleware
+	router := setupRouter(cfg, logger, grpcConn, fileClient, ctx)
+
+	// 7. Start Server
+	runServer(cfg, router, logger)
+}
+
+func initLogger() *zap.Logger {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.TimeKey = "timestamp"
 	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -57,56 +104,80 @@ func main() {
 	zapConfig := zap.NewProductionConfig()
 	zapConfig.EncoderConfig = encoderConfig
 
-	logger, _ := zapConfig.Build(zap.Fields(zap.String("service", "gateway")))
-	defer func() {
-		_ = logger.Sync()
-	}()
-
-	// Load configuration
-	cfg, err := config.Load()
+	logger, err := zapConfig.Build(zap.Fields(zap.String("service", "gateway")))
 	if err != nil {
-		logger.Fatal("Failed to load configuration", zap.Error(err))
+		// If logger fails to build, we can only panic with standard fmt
+		panic(fmt.Sprintf("failed to build logger: %v", err))
 	}
+	return logger
+}
 
-	// Create a context for OpenTelemetry shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Initialize Sentry
-	if cfg.SentryDSN != "" {
-		err := sentry.Init(sentry.ClientOptions{
-			Dsn:              cfg.SentryDSN,
-			Environment:      cfg.Environment,
-			Release:          cfg.AppVersion,
-			TracesSampleRate: 1.0,
-		})
-		if err != nil {
-			logger.Error("Sentry initialization failed", zap.Error(err))
-		} else {
-			logger.Info("Sentry initialized", zap.String("environment", cfg.Environment))
-		}
+func initSentry(cfg *config.Config, logger *zap.Logger) {
+	if cfg.SentryDSN == "" {
+		return
 	}
-
-	// Initialize OpenTelemetry
-	tp, err := initTracer(ctx, cfg)
+	err := sentry.Init(sentry.ClientOptions{
+		Dsn:              cfg.SentryDSN,
+		Environment:      cfg.Environment,
+		Release:          cfg.AppVersion,
+		TracesSampleRate: 1.0,
+	})
 	if err != nil {
-		logger.Error("OpenTelemetry initialization failed", zap.Error(err))
+		logger.Error("Sentry initialization failed", zap.Error(err))
+		return
+	}
+	logger.Info("Sentry initialized", zap.String("environment", cfg.Environment))
+}
+
+func initGRPC(cfg *config.Config, logger *zap.Logger) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
+	var grpcCreds grpc.DialOption
+	if cfg.GrpcUseTLS {
+		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	} else {
-		defer func() { _ = tp.Shutdown(ctx) }()
-		logger.Info("OpenTelemetry initialized")
+		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 
-	// Parse backend URL
+	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds)
+	if err != nil {
+		logger.Fatal("Failed to initialize File Processor gRPC transport", zap.Error(err))
+	}
+	logger.Info("Connected to File Processor gRPC", zap.String("addr", cfg.FileProcessorAddr))
+
+	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn)
+}
+
+func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, ctx context.Context) *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+
+	// FIX 1.4: Security Hardening: Explicitly trust only internal networks and local proxies.
+	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}); err != nil {
+		logger.Error("Failed to set trusted proxies", zap.Error(err))
+	}
+
+	router.Use(gin.Recovery())
+	router.Use(ginzap.Ginzap(logger, time.RFC3339, true))
+	router.Use(ginzap.RecoveryWithZap(logger, true))
+
+	if cfg.SentryDSN != "" {
+		router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
+	}
+	router.Use(otelgin.Middleware("gateway"))
+
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     cfg.AllowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
+		ExposeHeaders:    []string{"X-Request-ID", "X-RateLimit-Remaining"},
+		AllowCredentials: true,
+		MaxAge:           1 * time.Hour,
+	}))
+
+	// Proxy configuration
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
 		logger.Fatal("Invalid backend URL", zap.Error(err), zap.String("url", cfg.BackendURL))
 	}
-
-	// Create reverse proxy
-	// PERF-02 (audit 2026-03-15 Wave 7): set explicit transport timeouts so
-	// a slow or hung Python backend cannot accumulate gateway goroutines
-	// indefinitely.  ResponseHeaderTimeout is the critical setting: it bounds
-	// the wait for the first response byte after the request is sent.
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
 	proxy.Transport = &http.Transport{
 		DialContext: (&net.Dialer{
@@ -124,136 +195,60 @@ func main() {
 		w.WriteHeader(http.StatusBadGateway)
 	}
 
-	// Connect to File Processor gRPC (CRIT-02: Optional TLS via system CA pool)
-	var grpcCreds grpc.DialOption
-	if cfg.GrpcUseTLS {
-		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
-	} else {
-		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
-	}
-
-	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds)
-	if err != nil {
-		logger.Fatal("Failed to initialize File Processor gRPC transport", zap.Error(err))
-	}
-	defer func() {
-		_ = grpcConn.Close()
-	}()
-	logger.Info("Connected to File Processor gRPC", zap.String("addr", cfg.FileProcessorAddr))
-
-	fileClient := pb.NewFileProcessingServiceClient(grpcConn)
-
-	// Set Gin mode
-	gin.SetMode(gin.ReleaseMode)
-
-	// Create router
-	router := gin.New()
-
-	// FIX 1.4: Security Hardening: Explicitly trust only internal networks and local proxies.
-	// Without this, Gin trusts 'X-Forwarded-For' from ANY source, allowing Rate Limit IP spoofing.
-	_ = router.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
-
-	router.Use(gin.Recovery())
-	router.Use(ginzap.Ginzap(logger, time.RFC3339, true))
-	router.Use(ginzap.RecoveryWithZap(logger, true))
-
-	// Add Observability Middlewares
-	if cfg.SentryDSN != "" {
-		router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
-	}
-	router.Use(otelgin.Middleware("gateway"))
-
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.AllowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
-		ExposeHeaders:    []string{"X-Request-ID", "X-RateLimit-Remaining"},
-		AllowCredentials: true,
-		// GW-P3-01 (audit Wave 10): 12h exceeds browser preflight cache limits
-		// (Chrome caps at 7200s = 2h, Firefox at 86400s). Use 1h to match Chrome.
-		MaxAge: 1 * time.Hour,
-	}))
-
-	// Initialize rate limiter
-	rateLimiter, err := middleware.NewRateLimiter(cfg.RedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
+	// Rate Limiter
+	rateLimiter, err := middleware.NewRateLimiter(ctx, cfg.RedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
+	var redisClient *redis.Client
 	if err != nil {
 		logger.Warn("Rate limiter not available, continuing without", zap.Error(err))
 	} else {
-		router.Use(rateLimiter.Middleware())
-		logger.Info("Rate limiter enabled", zap.Int("rps", cfg.RateLimitRPS))
-
-		// Register Redis metrics collector
-		collector := redisprometheus.NewCollector("gateway", "redis", rateLimiter.GetClient())
+		router.Use(rateLimiter.Middleware(ctx))
+		redisClient = rateLimiter.GetClient()
+		collector := redisprometheus.NewCollector("gateway", "redis", redisClient)
 		if err := prometheus.Register(collector); err != nil {
 			logger.Warn("Failed to register Redis metrics collector", zap.Error(err))
-		} else {
-			logger.Info("Redis metrics collector registered")
 		}
 	}
 
-	// Initialize Prometheus
-	// RZ-09 (audit 2026-03-15 Wave 7): expose /metrics on an internal-only port
-	// so it is NOT reachable via the public API router.  K8s NetworkPolicy already
-	// allows Prometheus scraper access to :9102 — see k8s/backend/network-policy.yaml.
+	// Prometheus
 	p := ginprometheus.NewPrometheus("gin")
 	p.SetListenAddress(":9102")
 	p.Use(router)
 
-	// Public routes (initially empty group, will add middleware below)
+	// Admin/Metrics separation
 	public := router.Group("/")
-	{
-		public.GET("/health", handlers.HealthHandler)
-	}
+	public.GET("/health", handlers.HealthHandler)
 
-	// Initialize JWT Middleware
+	// JWT
 	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
-		logger.Fatal("JWT_SECRET must be set and at least 32 characters. Gateway cannot start securely without it.")
+		logger.Fatal("JWT_SECRET must be set and at least 32 characters.")
 	}
-
-	var redisClient *redis.Client
-	if rateLimiter != nil {
-		redisClient = rateLimiter.GetClient()
-	}
-
-	// Wire RS256 public key if configured (MOD-1 / RZ-6).
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
 	jwtMiddleware.ListenForRevocations(ctx)
 
-	// RZ-14-05: Convert the shared HMAC secret to []byte once for all proxy handlers.
-	// When empty (dev/single-node mode), ProxyHandler skips signing and the backend
-	// skips verification — X-Internal-Signature is not set.
 	internalSecret := []byte(cfg.InternalHMACSecret)
 
-	// --- API Grouping & JWT Architecture (CRIT-04) ---
-
-	// 1. Core API (Always Validated)
+	// Core API
 	api := router.Group("/api")
-	api.Use(jwtMiddleware.Validate())
+	api.Use(jwtMiddleware.Validate(ctx))
 	{
-		// New gRPC Endpoint for Synchronous File Processing MUST be registered BEFORE the catch-all
-		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
-
-		// Proxies to backend for all v1 and admin routes (Catch-all fallbacks)
+		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(ctx, grpcConn, fileClient, logger))
 		api.Any("/v1/*path", handlers.ProxyHandler(proxy, internalSecret))
 		api.Any("/admin/*path", handlers.ProxyHandler(proxy, internalSecret))
 	}
 
-	// 2. Public API (Optional Auth - passes headers if logged in)
+	// Public API (Optional)
 	optional := router.Group("/")
-	optional.Use(jwtMiddleware.Optional())
+	optional.Use(jwtMiddleware.Optional(ctx))
 	{
 		optional.Any("/api/public/*path", handlers.ProxyHandler(proxy, internalSecret))
 		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy, internalSecret))
 		optional.Any("/graphql", handlers.ProxyHandler(proxy, internalSecret))
 	}
 
-	// 3. Public API (No Auth or Optional)
+	// Public API (No Auth)
 	publicAPI := router.Group("/api/public")
-	{
-		publicAPI.Any("/*path", handlers.ProxyHandler(proxy, internalSecret))
-	}
+	publicAPI.Any("/*path", handlers.ProxyHandler(proxy, internalSecret))
 
-	// NoRoute fallback: return 404 for unmatched /api/ paths; proxy everything else (static assets, etc.)
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
@@ -261,9 +256,11 @@ func main() {
 		}
 		handlers.ProxyHandler(proxy, internalSecret)(c)
 	})
-	logger.Info("JWT validation enabled")
 
-	// Start server with graceful shutdown
+	return router
+}
+
+func runServer(cfg *config.Config, router *gin.Engine, logger *zap.Logger) {
 	addr := ":" + cfg.Port
 	srv := &http.Server{
 		Addr:              addr,
@@ -282,7 +279,6 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

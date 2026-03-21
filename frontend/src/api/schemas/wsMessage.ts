@@ -13,7 +13,7 @@
  * All incoming frames MUST pass parseWsMessage before touching the query cache
  * or calling callbacks.
  */
-import { z } from "zod/v4"
+import { z } from "zod"
 
 // ── Leaf field schemas ────────────────────────────────────────────────────────
 
@@ -103,5 +103,8 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
     return null
   }
   const result = WsServerMessageSchema.safeParse(parsed)
-  return result.success ? result.data : null
+  if (!result.success) {
+    return null
+  }
+  return result.data
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// Config holds application configuration.
 type Config struct {
 	Port    string
 	NatsURL string
@@ -64,6 +65,7 @@ type Config struct {
 	RedisDB       int
 }
 
+// LoadConfig initializes Config from environment variables.
 func LoadConfig() *Config {
 	trustedProxies := getEnvSlice("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"})
 	// P-03 (audit 2026-03-08): Pre-build map for O(1) lookup in RealIP().
@@ -80,26 +82,26 @@ func LoadConfig() *Config {
 		}
 	}
 	return &Config{
-		Port:              getEnv("WS_HUB_PORT", "8081"),
-		NatsURL:           getEnv("NATS_URL", "nats://nats:4222"),
-		NatsUser:          os.Getenv("NATS_USER"),     // empty means no auth override
-		NatsPassword:      os.Getenv("NATS_PASSWORD"), // empty means no auth override
-		JWTSecrets:        loadJWTSecrets(),
-		SentryDSN:         getEnv("SENTRY_DSN", ""),
-		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
-		AllowedOrigins:    getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
-		TrustedProxies:    trustedProxies,
-		TrustedProxiesSet: trustedProxiesSet,
-		TrustedCIDRs:      trustedCIDRs,
-		BackendURL:        getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
-		JWKSURL:           getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
-		SendBufferSize:    getEnvInt("WS_SEND_BUFFER_SIZE", 256),
+		Port:                getEnv("WS_HUB_PORT", "8081"),
+		NatsURL:             getEnv("NATS_URL", "nats://nats:4222"),
+		NatsUser:            os.Getenv("NATS_USER"),     // empty means no auth override
+		NatsPassword:        os.Getenv("NATS_PASSWORD"), // empty means no auth override
+		JWTSecrets:          loadJWTSecrets(),
+		SentryDSN:           getEnv("SENTRY_DSN", ""),
+		Environment:         getEnv("VITE_ENVIRONMENT", "development"),
+		AllowedOrigins:      getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		TrustedProxies:      trustedProxies,
+		TrustedProxiesSet:   trustedProxiesSet,
+		TrustedCIDRs:        trustedCIDRs,
+		BackendURL:          getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
+		JWKSURL:             getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
+		SendBufferSize:      getEnvInt("WS_SEND_BUFFER_SIZE", 256),
 		BroadcastBufferSize: getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
-		InternalSecret:    os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
-		MaxClients:        getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
-		RedisURL:          getEnv("REDIS_URL", "redis:6379"),
-		RedisPassword:     getEnv("REDIS_PASSWORD", ""),
-		RedisDB:           getEnvInt("REDIS_DB", 0),
+		InternalSecret:      os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
+		MaxClients:          getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		RedisURL:            getEnv("REDIS_URL", "redis:6379"),
+		RedisPassword:       getEnv("REDIS_PASSWORD", ""),
+		RedisDB:             getEnvInt("REDIS_DB", 0),
 	}
 }
 

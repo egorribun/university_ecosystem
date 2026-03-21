@@ -36,8 +36,6 @@ if TYPE_CHECKING:
         MessageResponse,
         MessagesListOut,
     )
-    from app.schemas.search import SearchResult
-
 
 # ── Chat protocols ──────────────────────────────────────────────────────────
 
@@ -136,49 +134,8 @@ class IChatCommandService(Protocol):
         raise NotImplementedError(f"{type(self).__name__} must implement delete_chat")
 
 
-# ── Search protocol ──────────────────────────────────────────────────────────
-
-
-@runtime_checkable
-class ISearchService(Protocol):
-    """Full-text search across indexed content."""
-
-    @abstractmethod
-    async def search(
-        self,
-        query: str,
-        indices: list[str] | None = ...,
-        *,
-        size: int = ...,
-        offset: int = ...,
-    ) -> list[SearchResult]:
-        raise NotImplementedError(f"{type(self).__name__} must implement search")
-
-    @abstractmethod
-    async def index_document(
-        self,
-        index: str,
-        document_id: str,
-        body: dict,
-    ) -> None:
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement index_document"
-        )
-
-    @abstractmethod
-    async def delete_document(
-        self,
-        index: str,
-        document_id: str,
-    ) -> None:
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement delete_document"
-        )
-
-
 __all__ = [
     "IChatCommandService",
     "IChatCreationService",
     "IChatQueryService",
-    "ISearchService",
 ]

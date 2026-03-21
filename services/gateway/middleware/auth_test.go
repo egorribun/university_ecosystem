@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,7 +22,10 @@ func init() {
 
 func createValidToken(secret string, claims Claims) string {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(secret))
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		panic(fmt.Sprintf("failed to sign test token: %v", err))
+	}
 	return tokenString
 }
 
@@ -39,7 +44,7 @@ func TestNewJWTMiddleware_CreatesMiddlewareWithSecret(t *testing.T) {
 
 func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
@@ -52,7 +57,7 @@ func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
 
 func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	testCases := []struct {
 		name   string
@@ -79,7 +84,7 @@ func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
 
 func TestValidate_RejectsInvalidToken(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer invalid.token.here")
@@ -93,12 +98,12 @@ func TestValidate_RejectsInvalidToken(t *testing.T) {
 
 func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "user-123",
 		IsActive: true,
@@ -116,12 +121,12 @@ func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 
 func TestValidate_RejectsInactiveUser(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
-	router := createTestRouter(middleware.Validate())
+	router := createTestRouter(middleware.Validate(context.Background()))
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "user-123",
 		IsActive: false,
@@ -145,7 +150,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 	var capturedRole interface{}
 
 	router := gin.New()
-	router.GET("/test", middleware.Validate(), func(c *gin.Context) {
+	router.GET("/test", middleware.Validate(context.Background()), func(c *gin.Context) {
 		capturedUserID, _ = c.Get("user_id")
 		capturedRole, _ = c.Get("user_role")
 		c.Status(http.StatusOK)
@@ -154,7 +159,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "user-456",
 		Role:     "admin",
@@ -178,7 +183,7 @@ func TestOptional_AllowsRequestWithoutToken(t *testing.T) {
 
 	handlerCalled := false
 	router := gin.New()
-	router.GET("/test", middleware.Optional(), func(c *gin.Context) {
+	router.GET("/test", middleware.Optional(context.Background()), func(c *gin.Context) {
 		handlerCalled = true
 		c.Status(http.StatusOK)
 	})
@@ -197,7 +202,7 @@ func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
 
 	var capturedUserID interface{}
 	router := gin.New()
-	router.GET("/test", middleware.Optional(), func(c *gin.Context) {
+	router.GET("/test", middleware.Optional(context.Background()), func(c *gin.Context) {
 		capturedUserID, _ = c.Get("user_id")
 		c.Status(http.StatusOK)
 	})
@@ -205,7 +210,7 @@ func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID:   "optional-user",
 		IsActive: true,

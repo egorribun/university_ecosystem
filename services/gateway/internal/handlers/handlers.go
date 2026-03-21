@@ -86,11 +86,13 @@ func GenerateRequestID() string {
 	return uuid.New().String()
 }
 
+// HealthHandler returns a simple OK status to indicate the gateway is running.
 func HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "gateway"})
 }
 
-func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
+// FileProcessSyncHandler proximales a synchronous file processing request to the file-processor service over gRPC.
+func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// GW-P2-02 (audit Wave 10): removed TOCTOU gRPC state pre-check.
 		// grpcConn.GetState() is advisory — the state can transition from Ready
@@ -116,7 +118,7 @@ func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcess
 		}
 
 		// Call gRPC
-		rpcCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		// Propagate Authorization header to gRPC metadata
@@ -149,6 +151,21 @@ func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcess
 			case codes.ResourceExhausted:
 				logger.Warn("gRPC resource exhausted", zap.Error(err))
 				c.JSON(http.StatusTooManyRequests, gin.H{"error": "too_many_requests"})
+			case codes.InvalidArgument:
+				logger.Warn("gRPC invalid argument", zap.Error(err))
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_argument"})
+			case codes.NotFound:
+				logger.Warn("gRPC resource not found", zap.Error(err))
+				c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
+			case codes.AlreadyExists:
+				logger.Warn("gRPC resource already exists", zap.Error(err))
+				c.JSON(http.StatusConflict, gin.H{"error": "already_exists"})
+			case codes.Unimplemented:
+				logger.Warn("gRPC method unimplemented", zap.Error(err))
+				c.JSON(http.StatusNotImplemented, gin.H{"error": "unimplemented"})
+			case codes.OK, codes.Canceled, codes.Unknown, codes.FailedPrecondition, codes.Aborted, codes.OutOfRange, codes.Internal, codes.DataLoss:
+				// Fallthrough to default handler for uncommon/unexpected codes
+				fallthrough
 			default:
 				logger.Error("gRPC call failed", zap.Error(err))
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "processing_failed"})

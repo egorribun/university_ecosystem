@@ -40,6 +40,7 @@ type call struct {
 	res bool
 }
 
+// InternalAPIAuthClient implements RoomAuthClient using backend HTTP calls.
 type InternalAPIAuthClient struct {
 	baseURL    string
 	httpClient *http.Client
@@ -59,8 +60,13 @@ type InternalAPIAuthClient struct {
 	cb *gobreaker.CircuitBreaker
 }
 
+// NewInternalAPIAuthClient creates a client with L1/L2 caching.
 func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
-	cache, _ := lru.New[string, cacheEntry](100000)
+	cache, err := lru.New[string, cacheEntry](100000)
+	if err != nil {
+		// FP-P2-03: Panic if LRU fails to initialize (should never happen with valid size)
+		panic(fmt.Sprintf("failed to initialize LRU cache: %v", err))
+	}
 
 	// MOD-03 (audit 2026-03-15 Wave 7): Circuit breaker configuration.
 	// ReadyToTrip: open after 10 consecutive HTTP failures (not cache hits).
@@ -106,6 +112,7 @@ func (c *InternalAPIAuthClient) StartEviction(ctx context.Context) {
 	// Expired entries are ignored on read and eventually evicted when space is needed.
 }
 
+// Invalidate removes a (user, room) entry from the local cache.
 func (c *InternalAPIAuthClient) Invalidate(userID, roomID string) {
 	if !isValidUUID(userID) || !isValidUUID(roomID) {
 		return
@@ -161,7 +168,10 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	// We must read the body to EOF to allow standard library net/http
 	// to reuse the TCP connection (keep-alive). Otherwise, the connection
 	// is closed and enters TIME_WAIT, quickly exhausting ephemeral ports.
-	_, _ = io.Copy(io.Discard, resp.Body)
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		// Log but don't fail; connection might just be closed
+		_ = err
+	}
 
 	switch {
 	case resp.StatusCode == http.StatusOK:

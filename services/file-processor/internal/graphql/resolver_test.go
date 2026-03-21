@@ -70,17 +70,17 @@ func TestFileJobResolver_JobId_ReturnsJobID(t *testing.T) {
 	resolver := &FileJobResolver{
 		jobID:     "job-123",
 		status:    "RUNNING",
-		resultUrl: "http://result.com",
+		resultURL: "http://result.com",
 	}
 
-	assert.Equal(t, "job-123", resolver.JobId())
+	assert.Equal(t, "job-123", resolver.JobID())
 }
 
 func TestFileJobResolver_Status_ReturnsStatus(t *testing.T) {
 	resolver := &FileJobResolver{
 		jobID:     "job-123",
 		status:    "COMPLETED",
-		resultUrl: "",
+		resultURL: "",
 	}
 
 	assert.Equal(t, "COMPLETED", resolver.Status())
@@ -90,10 +90,10 @@ func TestFileJobResolver_ResultUrl_ReturnsPointer(t *testing.T) {
 	resolver := &FileJobResolver{
 		jobID:     "job-123",
 		status:    "COMPLETED",
-		resultUrl: "http://result.com/file.jpg",
+		resultURL: "http://result.com/file.jpg",
 	}
 
-	url := resolver.ResultUrl()
+	url := resolver.ResultURL()
 
 	assert.NotNil(t, url)
 	assert.Equal(t, "http://result.com/file.jpg", *url)
