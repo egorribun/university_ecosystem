@@ -116,9 +116,10 @@ jobs:
         # pact-go/v2 wraps the Pact Rust FFI shared library.
         # This step downloads the correct binary for the runner OS/arch and
         # places it in /usr/local/lib so the dynamic linker can find it.
+        # Requires sudo to write to /usr/local/lib.
         run: |
-          go run github.com/pact-foundation/pact-go/v2 install \
-            -libDir /usr/local/lib
+          sudo go run github.com/pact-foundation/pact-go/v2 -l DEBUG install \
+            --libDir /usr/local/lib
           sudo ldconfig
         working-directory: services/ws-hub
         env:
