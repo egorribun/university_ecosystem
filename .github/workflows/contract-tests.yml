@@ -67,7 +67,11 @@ jobs:
           uv pip install --system \
             "pact-python>=2.3.0,<3" \
             "pytest>=8.3" \
-            "pytest-asyncio>=0.23"
+            "pytest-asyncio>=0.23" \
+            "bcrypt==5.0.0" \
+            "sqlalchemy>=2.0.48,<3" \
+            "fakeredis>=2" \
+            "redis>=5,<6"
 
       - name: Run consumer contract test
         # Generates tests/contracts/pacts/ws-hub-university-backend.json
@@ -138,5 +142,5 @@ jobs:
           LD_LIBRARY_PATH: /usr/local/lib
           # Use a placeholder secret — the contract verifies schema structure,
           # not a specific HMAC value.  Real secrets never appear in CI logs.
-          WS_HUB_INTERNAL_SECRET: "contract-test-placeholder-secret-not-for-production"  # pragma: allowlist secret
+          WS_HUB_INTERNAL_SECRET: "contract-test-placeholder-secret-not-for-production" # pragma: allowlist secret
           PACT_DO_NOT_TRACK: "true"
