@@ -40,7 +40,7 @@ os.environ["ENABLE_OTEL"] = "false"
 os.environ["SESSION_STORAGE_BACKEND"] = "redis"
 os.environ["RATE_LIMIT_STORAGE_BACKEND"] = "redis"
 os.environ["RATE_LIMIT_STORAGE_URI"] = "redis://localhost"
-os.environ["RATE_LIMIT_ENABLED"] = "false"
+os.environ["RATE_LIMIT_ENABLED"] = "true"
 os.environ["RATE_LIMIT_NEWS"] = "5/minute"
 os.environ["RATE_LIMIT_AUTH_REGISTER"] = "4/minute"
 os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"
@@ -205,6 +205,28 @@ def mock_nats_broker(monkeypatch):
     monkeypatch.setattr(broker, "close", mock_close)
     monkeypatch.setattr(broker, "run_worker", mock_run_worker)
     monkeypatch.setattr(broker, "enqueue", mock_enqueue)
+
+
+@pytest.fixture(autouse=True)
+def mock_health_checks(monkeypatch):
+    """
+    Mock health check probes that require external infrastructure (SpiceDB, etc.)
+    to prevent 503 Service Unavailable errors in integration tests.
+    """
+
+    async def mock_spicedb_health(*args, **kwargs):
+        return "ok", 0.0
+
+    monkeypatch.setattr("app.core.health.check_spicedb_health", mock_spicedb_health)
+
+    async def mock_wait_db(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.health.wait_db", mock_wait_db)
+    from app.api.health import reset_shutdown_flag
+
+    reset_shutdown_flag()
+    yield
 
 
 @pytest.fixture(autouse=True)

@@ -93,7 +93,7 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.exec_driver_sql(
             """
             CREATE TABLE IF NOT EXISTS notifications (
-                id VARCHAR(36) PRIMARY KEY,
+                id VARCHAR(36) NOT NULL,
                 user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 title VARCHAR NOT NULL,
                 title_en VARCHAR,
@@ -104,7 +104,8 @@ async def prepare_database() -> AsyncIterator[None]:
                 dedupe_key VARCHAR(255),
                 read BOOLEAN DEFAULT 0,
                 read_at DATETIME,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id, created_at)
             )
         """
         )
@@ -125,17 +126,20 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.exec_driver_sql(
             """
             CREATE TABLE IF NOT EXISTS notification_deliveries (
-                id VARCHAR(36) PRIMARY KEY,
+                id VARCHAR(36) NOT NULL,
                 notification_id VARCHAR(36) NOT NULL,
                 notification_created_at TIMESTAMP NOT NULL,
                 channel VARCHAR NOT NULL DEFAULT 'inapp',
+                subscription_id VARCHAR(36),
                 status VARCHAR NOT NULL DEFAULT 'delivered',
                 attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 delivered_at DATETIME,
                 status_code INTEGER,
                 detail TEXT,
-                FOREIGN KEY (notification_id)
-                REFERENCES notifications(id) ON DELETE CASCADE
+                UNIQUE (notification_id, channel, subscription_id),
+                PRIMARY KEY (id, attempted_at),
+                FOREIGN KEY (notification_id, notification_created_at)
+                REFERENCES notifications(id, created_at) ON DELETE CASCADE
             )
         """
         )
@@ -229,7 +233,9 @@ async def prepare_database() -> AsyncIterator[None]:
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 processed_at DATETIME,
                 error_count INTEGER NOT NULL DEFAULT 0,
-                last_error VARCHAR
+                last_error VARCHAR,
+                aggregate_id_uuid UUID,
+                sequence_number BIGINT
             )
         """
         )

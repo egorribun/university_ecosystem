@@ -180,8 +180,11 @@ async def test_sensitive_forgot_password_rate_limit(
         call_count += 1
         if call_count > 4:
             from app.core.ratelimit.exceptions import RateLimitExceeded
+            from app.core.ratelimit.models import RateLimitInfo
 
-            raise RateLimitExceeded(limit=4, remaining=0, reset_after=60)
+            raise RateLimitExceeded(
+                RateLimitInfo(allowed=False, remaining=0, retry_after=60)
+            )
 
     monkeypatch.setattr("app.core.ratelimit.enforce_rate_limit", mock_enforce)
 

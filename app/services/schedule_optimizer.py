@@ -155,9 +155,9 @@ class ScheduleOptimizerService:
             available_blocks = [(day, [9, 11, 13, 15]) for day in days]
 
             suggested_rust = rust_ext.find_optimal_slot(
-                duration_minutes=duration_minutes,
-                existing_schedule=existing_rust,
-                available_blocks=available_blocks,
+                duration_minutes,
+                existing_rust,
+                available_blocks,
             )
 
             if suggested_rust:

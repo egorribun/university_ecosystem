@@ -7,7 +7,7 @@ configure_uvloop()
 
 import logging
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -32,7 +32,10 @@ from app.core.middleware import (
     configure_middleware,
 )
 from app.core.observability import configure_observability
-from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
+from app.core.ratelimit.exceptions import (
+    RateLimitExceeded,
+    RateLimitStorageUnavailable,
+)
 from app.core.versioning import API_VERSION
 from app.graphql.schema import graphql_router
 from app.services.file_scanner import (
@@ -83,6 +86,31 @@ async def _rate_limit_storage_unavailable_handler(
 app.add_exception_handler(
     RateLimitStorageUnavailable, _rate_limit_storage_unavailable_handler
 )
+
+
+async def _rate_limit_exceeded_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """RZ-14-02: Global handler for RateLimitExceeded → HTTP 429."""
+    if not isinstance(exc, RateLimitExceeded):
+        return await http_exception_handler(request, exc)  # Fallback
+
+    from app.core.localization import resolve_locale, translate
+
+    locale = resolve_locale(request=request)
+    detail = translate("errors.rate_limit.generic", locale=locale)
+
+    retry_after = max(0, exc.info.retry_after)
+    headers = {"Retry-After": str(retry_after)} if retry_after else None
+
+    return JSONResponse(
+        status_code=429,
+        content={"detail": detail},
+        headers=headers,
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Observability & Metrics
 configure_observability(app, engine=engine)
