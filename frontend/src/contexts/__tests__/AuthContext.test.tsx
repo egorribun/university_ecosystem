@@ -209,15 +209,11 @@ describe("AuthProvider caching", () => {
       )
     })
 
-    console.log("[TestDebug] Waiting for user to be null")
     await waitFor(() => {
-      console.log("[TestDebug] current user:", result.current.user?.id)
       expect(result.current.user).toBeNull()
     }, { timeout: 15000 })
-    console.log("[TestDebug] User is null, clearing storage check")
     await waitFor(() => {
       const val = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-      console.log("[TestDebug] storage value:", val ? "exists" : "null")
       expect(val).toBeNull()
     }, {
       timeout: 10000,

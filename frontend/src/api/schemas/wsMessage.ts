@@ -104,7 +104,6 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   }
   const result = WsServerMessageSchema.safeParse(parsed)
   if (!result.success) {
-    console.log("[TestDebug] Zod validation failed:", JSON.stringify(result.error.format(), null, 2))
     return null
   }
   return result.data

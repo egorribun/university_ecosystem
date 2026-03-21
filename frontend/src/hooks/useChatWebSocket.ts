@@ -178,7 +178,6 @@ export function useChatWebSocket({
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
 
     try {
-      console.log("[TestDebug] Connecting to WebSocket", wsUrl)
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
@@ -195,10 +194,8 @@ export function useChatWebSocket({
       }
 
       ws.onmessage = (event) => {
-        console.log("[TestDebug] Received WS message:", event.data)
         try {
           const validated = parseWsMessage(event.data)
-          console.log("[TestDebug] Validated message type:", validated?.type)
           if (!validated) return
 
           switch (validated.type) {
