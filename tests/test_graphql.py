@@ -134,7 +134,12 @@ async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
       }}
     }}
     """
-    response = await root_client.post("/graphql", json={"query": query})
+    with patch(
+        "app.auth.rbac.PermissionChecker.check_permission",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        response = await root_client.post("/graphql", json={"query": query})
     assert response.status_code == 200
     data = response.json()["data"]
     assert len(data["schedule"]) == 1

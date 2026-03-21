@@ -50,7 +50,8 @@ async def test_get_password_hash_enforces_length_bounds():
 @pytest.mark.asyncio
 async def test_password_policy_allows_limits():
     minimal = "Abcd123!"
-    maximal = "A" * 194 + "a!1234"
+    # First 72 chars must score >= 1 on zxcvbn; avoid repetition-only prefixes.
+    maximal = ("Tr0ub4dor&3!Xy7Mn-Qp" * 10)[:200]
 
     assert len(minimal) == 8
     assert len(maximal) == 200

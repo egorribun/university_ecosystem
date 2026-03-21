@@ -30,7 +30,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pact import Pact, match
+
+pact_lib = pytest.importorskip("pact", reason="pact-python not installed")
+Pact = pact_lib.Pact
+match = pact_lib.match
 
 # ---------------------------------------------------------------------------
 # Constants

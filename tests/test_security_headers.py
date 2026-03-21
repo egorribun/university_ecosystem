@@ -131,7 +131,12 @@ async def test_security_headers_production_mode(monkeypatch):
             pass
     assert wildcard_found
 
-    assert "Content-Security-Policy-Report-Only" not in headers
+    # MOD-W8-04: In production (report_only=False) both enforcing CSP and a
+    # shadow Content-Security-Policy-Report-Only header are emitted. The CSPRO
+    # shadow header is intentional — it lets violation reports be collected
+    # without a separate relaxed policy.
+    assert "Content-Security-Policy" in headers
+    assert "Content-Security-Policy-Report-Only" in headers
 
     trusted_types = directives.get("trusted-types", [])
     assert "app" in trusted_types
@@ -182,7 +187,8 @@ async def test_security_headers_development_report_only(monkeypatch):
     script_src = directives.get("script-src", [])
     assert "'self'" in script_src
     assert "'unsafe-inline'" in script_src
-    assert "'unsafe-eval'" in script_src
+    # RZ-W10-08: 'unsafe-eval' was intentionally removed from dev CSP because
+    # Vite HMR uses ES modules natively and does not require eval().
     assert "http://localhost:5173" in script_src
     assert "'report-sample'" in script_src
 

@@ -21,11 +21,12 @@ from app.workers.outbox import OutboxWorker
 
 @pytest.mark.asyncio
 async def test_di_resolves_cache() -> None:
-    """BaseCache (APP-scoped) resolves without errors."""
+    """BaseCache (REQUEST-scoped) resolves without errors inside a request scope."""
     container = create_dishka_container()
     try:
-        cache = await container.get(BaseCache)
-        assert cache is not None
+        async with container() as request_container:
+            cache = await request_container.get(BaseCache)
+            assert cache is not None
     finally:
         await container.close()
 
@@ -46,10 +47,6 @@ async def test_di_app_singletons_are_same_instance() -> None:
     """APP-scoped providers return the same instance on repeated get() calls."""
     container = create_dishka_container()
     try:
-        cache_a = await container.get(BaseCache)
-        cache_b = await container.get(BaseCache)
-        assert cache_a is cache_b, "BaseCache must be a Scope.APP singleton"
-
         worker_a = await container.get(OutboxWorker)
         worker_b = await container.get(OutboxWorker)
         assert worker_a is worker_b, "OutboxWorker must be a Scope.APP singleton"

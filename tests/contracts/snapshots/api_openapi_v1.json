@@ -487,7 +487,7 @@
           "files": {
             "default": [],
             "items": {
-              "contentMediaType": "application/octet-stream",
+              "format": "binary",
               "type": "string"
             },
             "title": "Files",
@@ -500,7 +500,7 @@
       "Body_upload_avatar_api_v1_users_me_avatar_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -514,7 +514,7 @@
       "Body_upload_cover_api_v1_users_me_cover_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -528,7 +528,7 @@
       "Body_upload_event_file_api_v1_events__event_id__upload_file_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -541,14 +541,27 @@
       },
       "Body_upload_event_image_api_v1_events_upload_image_post": {
         "properties": {
+          "event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Event Id"
+          },
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
         },
         "required": [
-          "file"
+          "file",
+          "event_id"
         ],
         "title": "Body_upload_event_image_api_v1_events_upload_image_post",
         "type": "object"
@@ -556,7 +569,7 @@
       "Body_upload_news_image_api_v1_news_upload_image_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -570,7 +583,7 @@
       "Body_upload_story_cover_api_v1_stories_upload_cover_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           }
@@ -1802,6 +1815,8 @@
             "type": "string"
           },
           "content": {
+            "maxLength": 2000,
+            "minLength": 1,
             "title": "Content",
             "type": "string"
           },
@@ -2145,6 +2160,9 @@
       "MfaVerifyIn": {
         "properties": {
           "challenge_token": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$",
             "title": "Challenge Token",
             "type": "string"
           },
@@ -5774,13 +5792,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -6012,14 +6023,6 @@
               ],
               "title": "Action"
             }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
-            }
           }
         ],
         "responses": {
@@ -6060,16 +6063,6 @@
       "get": {
         "description": "List all registered feature flags.",
         "operationId": "list_feature_flags_admin_feature_flags_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -6084,16 +6077,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "security": [
@@ -6120,14 +6103,6 @@
             "schema": {
               "title": "Name",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
             }
           }
         ],
@@ -7111,7 +7086,7 @@
     },
     "/api/v1/chats": {
       "get": {
-        "description": "Get all chats for the current user with cursor-based pagination.\n\nReturns chats ordered by last message timestamp (newest first).\nUse the `next_cursor` from the response to fetch the next page.",
+        "description": "Get all chats for the current user with cursor-based pagination.",
         "operationId": "get_chats_api_v1_chats_get",
         "parameters": [
           {
@@ -7180,7 +7155,7 @@
         ]
       },
       "post": {
-        "description": "Create a new chat with a user. If a chat already exists, return it.",
+        "description": "Create a new chat with a user.  If a DM chat already exists, return it.",
         "operationId": "create_chat_api_v1_chats_post",
         "requestBody": {
           "content": {
@@ -7372,7 +7347,7 @@
     },
     "/api/v1/chats/{chat_id}/messages": {
       "get": {
-        "description": "Get messages for a chat with cursor-based pagination.\n\nMessages are returned in ascending order (oldest first).\nUse the `next_cursor` from the response to fetch older messages.",
+        "description": "Get messages for a chat with cursor-based pagination (oldest first).",
         "operationId": "get_messages_api_v1_chats__chat_id__messages_get",
         "parameters": [
           {
@@ -7451,7 +7426,7 @@
         ]
       },
       "post": {
-        "description": "Send a message to a chat.\n\nThe message is saved to the database and all chat participants\nare notified via WebSocket in real-time.\n\nSupports the ``Idempotency-Key`` header: identical requests with the same\nkey return the cached response for 24 hours without creating duplicate\nmessages (Stripe-style retry-safe API).",
+        "description": "Send a message to a chat.  Supports ``Idempotency-Key`` header for retry-safe sends.",
         "operationId": "send_message_api_v1_chats__chat_id__messages_post",
         "parameters": [
           {
@@ -7874,14 +7849,6 @@
               ],
               "title": "File Id"
             }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
-            }
           }
         ],
         "responses": {
@@ -8059,6 +8026,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "summary": "Semantic Search",
         "tags": [
           "events"
@@ -8135,14 +8107,6 @@
               ],
               "title": "Event Id"
             }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
-            }
           }
         ],
         "responses": {
@@ -8179,8 +8143,8 @@
           "events"
         ]
       },
-      "patch": {
-        "operationId": "update_event_api_v1_events__event_id__patch",
+      "get": {
+        "operationId": "get_event_api_v1_events__event_id__get",
         "parameters": [
           {
             "in": "path",
@@ -8197,79 +8161,6 @@
                 }
               ],
               "title": "Event Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EventUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EventOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Update Event",
-        "tags": [
-          "events"
-        ]
-      }
-    },
-    "/api/v1/events/{id}": {
-      "get": {
-        "operationId": "get_event_api_v1_events__id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ],
-              "title": "Id"
             }
           },
           {
@@ -8320,15 +8211,13 @@
         "tags": [
           "events"
         ]
-      }
-    },
-    "/api/v1/events/{id}/files": {
-      "get": {
-        "operationId": "get_event_files_api_v1_events__id__files_get",
+      },
+      "patch": {
+        "operationId": "update_event_api_v1_events__event_id__patch",
         "parameters": [
           {
             "in": "path",
-            "name": "id",
+            "name": "event_id",
             "required": true,
             "schema": {
               "anyOf": [
@@ -8340,7 +8229,72 @@
                   "type": "integer"
                 }
               ],
-              "title": "Id"
+              "title": "Event Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Event",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/events/{event_id}/files": {
+      "get": {
+        "operationId": "get_event_files_api_v1_events__event_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Event Id"
             }
           }
         ],
@@ -8352,7 +8306,7 @@
                   "items": {
                     "$ref": "#/components/schemas/EventFileOut"
                   },
-                  "title": "Response Get Event Files Api V1 Events  Id  Files Get",
+                  "title": "Response Get Event Files Api V1 Events  Event Id  Files Get",
                   "type": "array"
                 }
               }
@@ -8376,13 +8330,13 @@
         ]
       }
     },
-    "/api/v1/events/{id}/upload_file": {
+    "/api/v1/events/{event_id}/upload_file": {
       "post": {
-        "operationId": "upload_event_file_api_v1_events__id__upload_file_post",
+        "operationId": "upload_event_file_api_v1_events__event_id__upload_file_post",
         "parameters": [
           {
             "in": "path",
-            "name": "id",
+            "name": "event_id",
             "required": true,
             "schema": {
               "anyOf": [
@@ -8394,15 +8348,7 @@
                   "type": "integer"
                 }
               ],
-              "title": "Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
+              "title": "Event Id"
             }
           }
         ],
@@ -8410,7 +8356,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_event_file_api_v1_events__id__upload_file_post"
+                "$ref": "#/components/schemas/Body_upload_event_file_api_v1_events__event_id__upload_file_post"
               }
             }
           },
@@ -8870,6 +8816,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "summary": "Semantic Search",
         "tags": [
           "news"
@@ -9192,6 +9143,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -9713,8 +9665,9 @@
             "name": "user_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "User Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -9758,8 +9711,9 @@
             "name": "user_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "User Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -10190,17 +10144,65 @@
         ]
       }
     },
-    "/api/v1/schedule/{group_id}": {
-      "get": {
-        "operationId": "get_schedule_api_v1_schedule__group_id__get",
+    "/api/v1/schedule/{id}": {
+      "delete": {
+        "operationId": "delete_schedule_api_v1_schedule__id__delete",
         "parameters": [
           {
             "in": "path",
-            "name": "group_id",
+            "name": "id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Group Id",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Schedule Api V1 Schedule  Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Schedule",
+        "tags": [
+          "schedule"
+        ]
+      },
+      "get": {
+        "operationId": "get_schedule_api_v1_schedule__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
               "type": "string"
             }
           },
@@ -10229,7 +10231,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ScheduleOut"
                   },
-                  "title": "Response Get Schedule Api V1 Schedule  Group Id  Get",
+                  "title": "Response Get Schedule Api V1 Schedule  Id  Get",
                   "type": "array"
                 }
               }
@@ -10256,67 +10258,17 @@
         "tags": [
           "schedule"
         ]
-      }
-    },
-    "/api/v1/schedule/{schedule_id}": {
-      "delete": {
-        "operationId": "delete_schedule_api_v1_schedule__schedule_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "schedule_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Schedule Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Delete Schedule Api V1 Schedule  Schedule Id  Delete",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Delete Schedule",
-        "tags": [
-          "schedule"
-        ]
       },
       "patch": {
-        "operationId": "update_schedule_api_v1_schedule__schedule_id__patch",
+        "operationId": "update_schedule_api_v1_schedule__id__patch",
         "parameters": [
           {
             "in": "path",
-            "name": "schedule_id",
+            "name": "id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Schedule Id",
+              "title": "Id",
               "type": "string"
             }
           }
@@ -11253,6 +11205,23 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "after_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Id"
+            }
           }
         ],
         "responses": {
@@ -11846,14 +11815,6 @@
               "title": "User Id",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
-            }
           }
         ],
         "responses": {
@@ -11902,14 +11863,6 @@
               "title": "User Id",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "channel",
-            "required": true,
-            "schema": {
-              "title": "Channel"
-            }
           }
         ],
         "requestBody": {
@@ -11955,6 +11908,56 @@
         ]
       }
     },
+    "/health/live": {
+      "get": {
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Liveness Health Live Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness Probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ready Health Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness Probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "operationId": "healthz_healthz_get",
@@ -11968,7 +11971,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Healthz",
+        "summary": "Full Health Check",
         "tags": [
           "health"
         ]
@@ -11993,7 +11996,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Ready",
+        "summary": "Legacy Readiness Check",
         "tags": [
           "health"
         ]

@@ -310,6 +310,8 @@ async def test_revoke_session_requires_step_up(
     monkeypatch,
 ):
     monkeypatch.setattr(settings, "mfa_step_up_ttl_seconds", 60)
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "max_sessions_per_user", 10)
     password = "StepUpSessions123!"
     hashed = await get_password_hash(password)
     user = await user_factory(

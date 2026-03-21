@@ -5,6 +5,7 @@ import pytest
 from fastapi import status
 
 from app.api.deps import get_current_user, get_db, get_event_service
+from app.api.deps.auth import get_permission_checker
 from app.main import app
 
 
@@ -52,7 +53,7 @@ async def test_update_event_rebac_allowed(async_client, user_factory):
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = lambda: mock_session
     app.dependency_overrides[get_event_service] = lambda: mock_event_service
-    app.dependency_overrides[PermissionChecker] = lambda: mock_checker
+    app.dependency_overrides[get_permission_checker] = lambda: mock_checker
 
     try:
         with patch("app.api.events.delete_static_file", new_callable=AsyncMock):
@@ -90,7 +91,7 @@ async def test_update_event_rebac_denied(async_client, user_factory):
 
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = lambda: mock_session
-    app.dependency_overrides[PermissionChecker] = lambda: mock_checker
+    app.dependency_overrides[get_permission_checker] = lambda: mock_checker
 
     try:
         response = await async_client.patch(

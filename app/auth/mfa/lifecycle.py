@@ -184,20 +184,21 @@ async def refresh_user_mfa_preferences(
     else:
         new_default = None
 
-    changed = False
-    if user.mfa_default_method != new_default:
-        user.mfa_default_method = new_default
-        changed = True
-
-    if new_default is not None and not user.mfa_required:
-        user.mfa_required = True
-        changed = True
-    elif new_default is None and user.mfa_required:
-        user.mfa_required = False
-        changed = True
+    new_required = new_default is not None
+    changed = user.mfa_default_method != new_default or user.mfa_required != new_required
 
     if changed:
-        await db.flush()
+        # Use an explicit UPDATE so this works regardless of which session owns
+        # the `user` object (e.g. when `user` was loaded via a different Depends
+        # session than the dishka-provided `db`).
+        await db.execute(
+            update(User)
+            .where(User.id == user.id)
+            .values(mfa_default_method=new_default, mfa_required=new_required)
+        )
+        # Keep the in-memory object consistent for the remainder of this request.
+        user.mfa_default_method = new_default
+        user.mfa_required = new_required
 
     return new_default
 

@@ -526,7 +526,7 @@ def capture_domain_events(
                     event_data, "EVENT_VERSION", 1
                 ),  # DEBT-02: schema version
                 **{
-                    k: v
+                    k: str(v) if isinstance(v, UUID) else v
                     for k, v in event_data.__dict__.items()
                     if k not in ("event_id", "occurred_at", "metadata")
                 },

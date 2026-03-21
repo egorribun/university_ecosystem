@@ -12,7 +12,7 @@ from app.auth.fingerprint import SuspiciousActivityDetector
 from app.auth.redis_session import SessionBackend
 from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession
-from app.deps.cache import BaseCache, create_cache_backend
+from app.deps.cache import BaseCache, create_cache_backend, get_cache
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,
@@ -66,9 +66,9 @@ class InfrastructureProvider(Provider):
         async with session_factory() as session:
             yield session
 
-    @provide(scope=Scope.APP)
+    @provide(scope=Scope.REQUEST)
     def cache(self) -> BaseCache:
-        return create_cache_backend()
+        return get_cache()
 
     @provide(scope=Scope.APP)
     def audit_service(self) -> AuditService:

@@ -209,6 +209,8 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
+    monkeypatch.setenv("INTERNAL_HMAC_SECRET", "a" * 32)
+    monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -241,6 +243,8 @@ def test_auto_create_schema_warns_when_enabled_in_production(
     monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
+    monkeypatch.setenv("INTERNAL_HMAC_SECRET", "a" * 32)
+    monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

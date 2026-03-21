@@ -244,6 +244,7 @@ async def test_notifications_list_returns_bilingual_fields(
         url="/status",
         user_ids=[user.id],
     )
+    await db_session.commit()
 
     headers = await _login(async_client, user.email, password)
 

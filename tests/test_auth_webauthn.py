@@ -277,7 +277,7 @@ async def test_list_and_delete_credentials(
         },
     )
 
-    # List
+    # List (using pre-enrollment token is fine for read-only)
     list_resp = await async_client.get("/auth/mfa/webauthn", headers=headers)
     assert list_resp.status_code == status.HTTP_200_OK
     items = list_resp.json()
@@ -285,9 +285,47 @@ async def test_list_and_delete_credentials(
     assert items[0]["label"] == "My Key"
     cred_id = items[0]["id"]
 
+    # Step-up: after WebAuthn enrollment, delete requires fresh MFA token.
+    step_up_login = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert step_up_login.status_code == status.HTTP_202_ACCEPTED
+    webauthn_method = next(
+        m for m in step_up_login.json()["methods"] if m["method"] == mfa.MFA_METHOD_WEBAUTHN
+    )
+    # Fetch actual credential_id from DB for WebAuthn verify
+    from sqlalchemy import select as sa_select
+    stmt = sa_select(models.WebAuthnCredential).where(
+        models.WebAuthnCredential.user_id == user.id
+    )
+    result = await db_session.execute(stmt)
+    credential = result.scalars().first()
+    fresh_verify = await async_client.post(
+        "/auth/mfa/verify",
+        json={
+            "method": mfa.MFA_METHOD_WEBAUTHN,
+            "challenge_token": webauthn_method["challenge_token"],
+            "webauthn_response": {
+                "id": credential.credential_id,
+                "rawId": credential.credential_id,
+                "response": {
+                    "authenticatorData": "mock_auth_data",
+                    "clientDataJSON": "mock_client_data",
+                    "signature": "mock_signature",
+                },
+                "type": "public-key",
+            },
+        },
+    )
+    assert fresh_verify.status_code == status.HTTP_200_OK
+    fresh_token = fresh_verify.cookies.get("access_token_v2")
+    fresh_headers = {"Authorization": f"Bearer {fresh_token}"}
+
     # Delete
     del_resp = await async_client.delete(
-        f"/auth/mfa/webauthn/{cred_id}", headers=headers
+        f"/auth/mfa/webauthn/{cred_id}", headers=fresh_headers
     )
     assert del_resp.status_code == status.HTTP_200_OK
     del_data = del_resp.json()

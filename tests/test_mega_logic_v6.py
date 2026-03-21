@@ -224,7 +224,7 @@ async def test_service_advanced_branches():
     mock_uow_events.commit = AsyncMock()
     e_service = EventService(mock_uow_events, VectorService(db))
 
-    cursor = _encode_event_cursor(datetime.datetime.now(datetime.UTC), 10)
+    cursor = _encode_event_cursor(datetime.datetime.now(datetime.UTC), str(uuid.uuid4()))
     mock_res_events = MagicMock()
     mock_res_events.all.return_value = []
     db.execute.return_value = mock_res_events

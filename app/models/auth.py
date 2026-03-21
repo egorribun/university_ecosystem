@@ -155,7 +155,11 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
     )
     # TD-W5-01: Explicit state machine column — single source of truth.
     state: Mapped[ChallengeState] = mapped_column(
-        SAEnum(ChallengeState, name="challenge_state_enum"),
+        SAEnum(
+            ChallengeState,
+            name="challenge_state_enum",
+            values_callable=lambda x: [m.value for m in x],
+        ),
         nullable=False,
         server_default=ChallengeState.PENDING,
         default=ChallengeState.PENDING,

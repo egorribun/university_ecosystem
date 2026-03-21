@@ -260,6 +260,7 @@ async def test_attendance_registration(event_service, mock_uow, mock_repo):
 
     mock_repo.get_attendance.return_value = None
     mock_repo.get.return_value = create_mock_event()
+    mock_repo.get_for_registration.return_value = create_mock_event()
     mock_attendance = EventAttendanceDTO(
         id=uuid4(), event_id=data.event_id, user_id=user_id, registered_at=None
     )
@@ -344,6 +345,7 @@ async def test_register_attendance_full_failure(event_service, mock_uow, mock_re
     user_id = uuid4()
 
     mock_repo.get_attendance.return_value = None
+    mock_repo.get_for_registration.return_value = create_mock_event()
     mock_uow.commit.side_effect = IntegrityError("stmt", "params", "orig")
     mock_repo.get.return_value = None  # Event not found after retry
 

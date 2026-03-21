@@ -83,13 +83,12 @@ _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
     "image/webp": ".webp",
 }
 
-try:  # pragma: no cover - exercised indirectly via detect_mime_type
-    import magic
-except ImportError:  # pragma: no cover - handled at runtime
-    magic = None
-
+# python-magic is imported lazily inside detect_mime_type to avoid hanging on
+# Windows when libmagic.dll is missing (ImportError is not raised — the import
+# blocks indefinitely against a missing DLL).
 _MAGIC_NOT_INITIALIZED: Final[object] = object()
 _magic_mime_detector: Any = _MAGIC_NOT_INITIALIZED
+_magic_module: Any = None  # Populated on first successful import
 
 
 async def _read_limited(
@@ -134,7 +133,7 @@ def _normalize_mime_type(value: str | None) -> str:
 def detect_mime_type(data: bytes) -> str | None:
     """Best-effort MIME type detection for arbitrary payloads."""
 
-    global _magic_mime_detector
+    global _magic_mime_detector, _magic_module
 
     if not data:
         return None
@@ -142,14 +141,15 @@ def detect_mime_type(data: bytes) -> str | None:
     detector: Any | None
     if _magic_mime_detector is _MAGIC_NOT_INITIALIZED:
         detector = None
-        if magic is not None:  # pragma: no branch - trivial branch
-            try:
-                detector = magic.Magic(mime=True)
-            except Exception:  # pragma: no cover - depends on runtime env
-                logger.warning(
-                    "Failed to initialize libmagic MIME detector", exc_info=True
-                )
-                detector = None
+        try:
+            import magic as _magic_import  # noqa: PLC0415
+            _magic_module = _magic_import
+            detector = _magic_import.Magic(mime=True)
+        except Exception:  # pragma: no cover - ImportError or OSError on missing DLL
+            logger.warning(
+                "Failed to initialize libmagic MIME detector", exc_info=True
+            )
+            detector = None
         _magic_mime_detector = detector
     else:
         detector = _magic_mime_detector
@@ -160,7 +160,9 @@ def detect_mime_type(data: bytes) -> str | None:
         except AttributeError:  # pragma: no cover - fallback path
             try:
                 result = (
-                    magic.from_buffer(data, mime=True) if magic is not None else None
+                    _magic_module.from_buffer(data, mime=True)
+                    if _magic_module is not None
+                    else None
                 )
             except Exception:  # pragma: no cover - depends on runtime env
                 logger.warning("libmagic failed to detect MIME type", exc_info=True)
