@@ -21,6 +21,10 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Generate CI secret key if not configured (RZ-14-06)
+        if: env.SECRET_KEY == ''
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Install uv
         uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7.1.5
         with:
@@ -41,4 +45,3 @@ jobs:
         run: |
           echo "Required secrets DATABASE_URL and SECRET_KEY are not configured; skipping cleanup."
           exit 0
-
