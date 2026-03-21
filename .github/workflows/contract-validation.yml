@@ -53,7 +53,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7.1.5
 
       - name: Install Python dependencies
         run: uv sync --frozen
@@ -104,3 +104,4 @@ jobs:
             --ruleset .spectral.yml \
             --format text \
             --fail-severity error
+

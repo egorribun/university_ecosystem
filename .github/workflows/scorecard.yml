@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout code"
-        uses: actions/checkout@v6
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.2.2
         with:
           # Scorecard needs full history to check commit signing, branch protection, etc.
           persist-credentials: false
@@ -44,8 +44,9 @@ jobs:
           sarif_file: scorecard-results.sarif
 
       - name: Download artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.2.0
         with:
           name: scorecard-results
           path: scorecard-results.sarif
           retention-days: 90
+
