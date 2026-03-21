@@ -51,7 +51,6 @@ export const useAuth = (): AuthContextType => {
   // Derive loading from both initial synchronization and active operations
   const loading = storeLoading || contextActions.authOperation
 
-
   // TD-NEW-002 (audit 2026-03-19): Explicit structure without "as unknown as".
   // Type is structurally inferred to be strictly compatible with AuthContextType.
   const result: AuthContextType = {

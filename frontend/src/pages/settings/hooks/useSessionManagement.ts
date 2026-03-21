@@ -112,8 +112,6 @@ export function useSessionManagement({
     ((options?: { skipStepUp?: boolean }) => Promise<void>) | null
   >(null)
 
-
-
   const handleRevokeSession = useCallback(
     async (sessionId: string, options?: { skipStepUp?: boolean }) => {
       try {

@@ -95,7 +95,7 @@ const renderSettings = () => {
                 submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
                 requireMfa: vi.fn().mockResolvedValue(null),
                 resetEtagCache: vi.fn(),
-    authOperation: false,
+                authOperation: false,
               }}
             >
               <Settings />

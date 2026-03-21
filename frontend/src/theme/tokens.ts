@@ -91,8 +91,7 @@ export const zIndexTokens = {
   tooltip: "var(--z-tooltip)",
 } as const
 
-export const focusRing = {
-} as const
+export const focusRing = {} as const
 
 export const shadows = {
   glass: "var(--shadow-glass)",
@@ -184,4 +183,3 @@ export const letterSpacing = {
   hero: "var(--tracking-hero)",
   "widest-xl": "var(--tracking-widest-xl)",
 } as const
-

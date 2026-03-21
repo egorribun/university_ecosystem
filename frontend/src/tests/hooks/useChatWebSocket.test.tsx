@@ -90,7 +90,11 @@ describe("useChatWebSocket", () => {
       })
     })
 
-    expect(presenceSpy).toHaveBeenCalledWith("550e8400-e29b-41d4-a716-446655440000", true, "2024-02-01T10:00:00Z")
+    expect(presenceSpy).toHaveBeenCalledWith(
+      "550e8400-e29b-41d4-a716-446655440000",
+      true,
+      "2024-02-01T10:00:00Z"
+    )
     expect(onlineSpy).toHaveBeenCalledWith("550e8400-e29b-41d4-a716-446655440000", true)
 
     unmount()

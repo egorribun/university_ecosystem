@@ -209,15 +209,21 @@ describe("AuthProvider caching", () => {
       )
     })
 
-    await waitFor(() => {
-      expect(result.current.user).toBeNull()
-    }, { timeout: 15000 })
-    await waitFor(() => {
-      const val = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-      expect(val).toBeNull()
-    }, {
-      timeout: 10000,
-    })
+    await waitFor(
+      () => {
+        expect(result.current.user).toBeNull()
+      },
+      { timeout: 15000 }
+    )
+    await waitFor(
+      () => {
+        const val = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+        expect(val).toBeNull()
+      },
+      {
+        timeout: 10000,
+      }
+    )
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
     queryClient.clear()
@@ -380,10 +386,13 @@ describe("AuthProvider loading state", () => {
     console.error("[Trace] refreshPromise created")
 
     console.error("[Trace] Waiting for loading to be true")
-    await waitFor(() => {
-      console.error("[Trace] Current loading state:", result.current.loading)
-      expect(result.current.loading).toBe(true)
-    }, { timeout: 15000 })
+    await waitFor(
+      () => {
+        console.error("[Trace] Current loading state:", result.current.loading)
+        expect(result.current.loading).toBe(true)
+      },
+      { timeout: 15000 }
+    )
 
     console.error("[Trace] Resolving user request")
     await act(async () => {
@@ -393,10 +402,13 @@ describe("AuthProvider loading state", () => {
     })
 
     console.error("[Trace] Waiting for loading to be false")
-    await waitFor(() => {
-      console.error("[Trace] Loading state final:", result.current.loading)
-      expect(result.current.loading).toBe(false)
-    }, { timeout: 15000 })
+    await waitFor(
+      () => {
+        console.error("[Trace] Loading state final:", result.current.loading)
+        expect(result.current.loading).toBe(false)
+      },
+      { timeout: 15000 }
+    )
 
     queryClient.clear()
   })

@@ -45,7 +45,6 @@ export function ScheduleMobileView({
   const { openDialog, setAddDay } = useSchedulePage()
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
 
-
   const getLessonTypeLabel = useCallback(
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
     [lessonTypeLabels]

@@ -795,7 +795,12 @@ export const useProfileSync = (
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
     const hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    if (userStateRef.current == null && !hasCache && !initializingRef.current && !autoFetchAttemptedRef.current) {
+    if (
+      userStateRef.current == null &&
+      !hasCache &&
+      !initializingRef.current &&
+      !autoFetchAttemptedRef.current
+    ) {
       autoFetchAttemptedRef.current = true
       setInitializing(true)
     } else if (autoFetchAttemptedRef.current && !initializingRef.current) {
