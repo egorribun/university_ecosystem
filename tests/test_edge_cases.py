@@ -258,12 +258,15 @@ def test_sanitize_optional_text_invalid_utf8_ignored() -> None:
     assert "hello" in result
 
 
-@pytest.mark.parametrize("value,expected", [
-    (0, "0"),
-    (42, "42"),
-    (3.14, "3.14"),
-    (False, "False"),   # str(False) = "False" → strip() → "False" (truthy)
-])
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (0, "0"),
+        (42, "42"),
+        (3.14, "3.14"),
+        (False, "False"),  # str(False) = "False" → strip() → "False" (truthy)
+    ],
+)
 def test_sanitize_optional_text_numeric(value: object, expected: str) -> None:
     result = sanitize_optional_text(value)
     assert result == expected
@@ -350,15 +353,22 @@ def test_normalize_ip(ip: str | None, expected: str | None) -> None:
 # _extract_ip_from_forwarded — RFC 7239 Forwarded header parsing
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("header,expected", [
-    ('for=192.0.2.60;proto=http;by=203.0.113.43', "192.0.2.60"),
-    ('for="[2001:db8::cafe]";proto=http', "2001:db8::cafe"),  # brackets stripped by strip('"[]')
-    ('FOR=192.0.2.1', "192.0.2.1"),          # case-insensitive
-    ('by=proxy;for=10.0.0.1', "10.0.0.1"),  # 'for' not first
-    ('proto=https;by=proxy', None),           # no 'for' part
-    ('', None),                              # empty
-    ('for=', ""),                            # for with no value
-])
+
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        ("for=192.0.2.60;proto=http;by=203.0.113.43", "192.0.2.60"),
+        (
+            'for="[2001:db8::cafe]";proto=http',
+            "2001:db8::cafe",
+        ),  # brackets stripped by strip('"[]')
+        ("FOR=192.0.2.1", "192.0.2.1"),  # case-insensitive
+        ("by=proxy;for=10.0.0.1", "10.0.0.1"),  # 'for' not first
+        ("proto=https;by=proxy", None),  # no 'for' part
+        ("", None),  # empty
+        ("for=", ""),  # for with no value
+    ],
+)
 def test_extract_ip_from_forwarded(header: str, expected: str | None) -> None:
     result = _extract_ip_from_forwarded(header)
     assert result == expected
