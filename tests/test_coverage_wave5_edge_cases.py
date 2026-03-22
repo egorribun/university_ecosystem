@@ -52,8 +52,8 @@ _XSS_VECTORS = [
     "<<SCRIPT>alert('XSS');//<</SCRIPT>",
     # Data URIs
     '<img src="data:text/html,<script>alert(1)</script>">',
-    # VBScript
-    '<img src=`javascript:alert("RSnake says, 'XSS'")`>',
+    # VBScript / backtick attribute injection
+    "<img src=`javascript:alert(1)`>",
 ]
 
 

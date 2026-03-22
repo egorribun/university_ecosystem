@@ -295,8 +295,6 @@ async def test_log_all_events() -> None:
     from app.core.events import DomainEvent, EventMetadata
     from app.services.event_handlers import log_all_events
 
-    @pytest.helpers if False else None  # type: ignore[attr-defined]
-
     # Create a concrete DomainEvent-like mock
     mock_event = MagicMock(spec=DomainEvent)
     mock_event.event_type = "test.event"
