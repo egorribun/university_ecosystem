@@ -346,7 +346,7 @@ def test_extract_user_id_from_str() -> None:
 
 
 def test_extract_user_id_from_has_id() -> None:
-    from app.core.protocols import HasID, extract_user_id
+    from app.core.protocols import extract_user_id
 
     uid = uuid.uuid4()
 
