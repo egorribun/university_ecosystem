@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 from logging.config import fileConfig
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import make_url, Engine
@@ -92,32 +92,12 @@ def run_migrations_online() -> None:
         )
 
         async def async_run_migrations() -> None:
-            # Cast connectable to AsyncEngine to ensure connect() returns AsyncConnection
-            engine = cast(AsyncEngine, connectable)
-            # RZ-12 (audit 2026-03-09): Use an engine with AUTOCOMMIT isolation level.
-            # This ensures SQLAlchemy/asyncpg doesn't start an implicit
-            # transaction, allowing `CREATE INDEX CONCURRENTLY` to work.
-            autocommit_engine = engine.execution_options(isolation_level="AUTOCOMMIT")
-
-            max_retries = 10
-            retry_delay = 2
-            last_exception = None
-
-            for attempt in range(max_retries):
-                try:
-                    async with autocommit_engine.connect() as connection:
-                        await connection.run_sync(run_sync_migrations)
-                    return
-                except Exception as e:
-                    last_exception = e
-                    # Specifically log name resolution or connection failures
-                    print(f"Connection attempt {attempt + 1} failed: {e}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2
-                    else:
-                        print("Max retries reached. Migration failed.")
-                        raise last_exception from None
+            # RZ-12: Use AUTOCOMMIT isolation level for concurrent index support.
+            autocommit_engine = connectable.execution_options(
+                isolation_level="AUTOCOMMIT"
+            )
+            async with autocommit_engine.connect() as connection:
+                await connection.run_sync(run_sync_migrations)
 
         try:
             asyncio.run(async_run_migrations())

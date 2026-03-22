@@ -53,7 +53,7 @@ def upgrade() -> None:
 
     conn = op.get_bind()
     # CONCURRENTLY requires running outside an explicit transaction block.
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
 
     # Index 1: user_id → chat_id covering index.
     conn.execute(
@@ -82,6 +82,6 @@ def downgrade() -> None:
         return
 
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_USER_CHAT}"))
     conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_CHAT_USER}"))

@@ -24,7 +24,7 @@ down_revision = "202603070001"
 branch_labels = None
 depends_on = None
 
-_TABLE = "news_comment"
+_TABLE = "news_comments"
 _IDX = "idx_news_comment_cursor"
 
 
@@ -41,7 +41,7 @@ def upgrade() -> None:
 
     conn = op.get_bind()
     # CONCURRENTLY requires autocommit — commit any open transaction first.
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     conn.execute(
         text(
             f"""

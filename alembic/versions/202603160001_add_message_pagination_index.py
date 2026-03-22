@@ -61,12 +61,12 @@ def upgrade() -> None:
 
     conn = op.get_bind()
     # CONCURRENTLY requires running outside an explicit transaction block.
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     conn.execute(
         text(
             f"""
             CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_MSG_PAGINATION}
-            ON message (chat_id, created_at DESC, id DESC)
+            ON messages (chat_id, created_at DESC, id DESC)
             """
         )
     )
