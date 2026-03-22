@@ -151,8 +151,6 @@ class ScheduleOptimizerService:
                 "Thursday",
                 "Friday",
             ]
-            # [COMPAT] The active binary expects preferred_weekdays: list[str]
-            # rather than matching the available_blocks: list[tuple] in the local lib.rs source.
             suggested_rust = rust_ext.find_optimal_slot(
                 duration_minutes,
                 existing_rust,
