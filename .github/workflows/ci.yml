@@ -312,10 +312,14 @@ jobs:
           chmod: 0755
 
       - name: Lint Postgres Migrations (Squawk)
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
         run: |
-          echo "Linting all Alembic migrations for ZDD safety..."
-          squawk alembic/versions/*.py || {
-            echo "::error::Squawk detected unsafe database operations! Please use expand-and-contract patterns instead of direct dropping."
+          echo "Linting all Alembic migrations (base to head) for ZDD safety..."
+          # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
+          uv run alembic upgrade base:head --sql | squawk || {
+            echo "::error::Squawk detected unsafe database operations in migrations! Review the output above."
             exit 1
           }
 
