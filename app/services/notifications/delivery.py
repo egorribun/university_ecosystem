@@ -14,7 +14,7 @@ import uuid as _uuid_mod
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import selectinload
@@ -129,14 +129,16 @@ async def create_notifications_for_users(
     ]
 
     batch_size = 5000
-    notification_ids_by_user = {}
+    notification_ids_by_user: dict[uuid.UUID, uuid.UUID] = {}
 
     for i in range(0, len(notifications_data), batch_size):
         batch = notifications_data[i : i + batch_size]
         stmt = insert(Notification).values(batch)
         await db.execute(stmt)
         for row in batch:
-            notification_ids_by_user[uuid.UUID(str(row["user_id"]))] = row["id"]
+            notification_ids_by_user[uuid.UUID(str(row["user_id"]))] = cast(
+                uuid.UUID, row["id"]
+            )
 
     await db.flush()
 
@@ -206,10 +208,10 @@ async def create_notifications_for_users(
 
     if not subs:
         attempt_ts = dt.datetime.now(UTC)
-        for notification_id in notification_ids_by_user.values():
+        for nid in notification_ids_by_user.values():
             delivery_rows.append(
                 _build_delivery_row(
-                    notification_id,
+                    nid,
                     now,
                     status="skipped_no_subscription",
                     attempted_at=attempt_ts,
@@ -310,7 +312,7 @@ async def create_notifications_for_users(
             prepared_payload = prepare_push_payload_for_user(
                 base_payload, getattr(sub, "user", None)
             )
-            send_jobs.append((sub, notification_id))  # type: ignore[arg-type]
+            send_jobs.append((sub, notification_id))
             tasks.append(_send_push(sub, prepared_payload))
 
         if tasks:

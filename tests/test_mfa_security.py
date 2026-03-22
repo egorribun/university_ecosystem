@@ -39,7 +39,7 @@ async def test_totp_secret_is_encrypted_in_db(db_session, user_factory):
     # Read the raw column value from the DB, bypassing ORM-level decryption.
     result = await db_session.execute(
         text("SELECT secret FROM mfa_totp_enrollments WHERE id = :id"),
-        {"id": str(enrollment.id)},
+        {"id": enrollment.id.hex},  # SQLite stores UUID as 32-char hex without dashes
     )
     raw_value = result.scalar_one()
 
@@ -74,7 +74,7 @@ async def test_recovery_codes_are_hashed_in_db(db_session, user_factory):
             "WHERE user_id = :user_id AND is_used = 0 "
             "LIMIT 1"
         ),
-        {"user_id": str(user.id)},
+        {"user_id": user.id.hex},  # SQLite stores UUID as 32-char hex without dashes
     )
     raw_hash = result.scalar_one()
 

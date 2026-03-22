@@ -169,6 +169,7 @@ async def test_list_news_search_semantic(news_repo, mock_db):
     with (
         patch.object(settings, "semantic_search_enabled", True),
         patch("app.repositories.news_repository.select"),
+        patch("app.repositories.news_repository.selectinload"),
         patch("app.repositories.news_repository.News") as mock_news,
     ):
         # Mock arithmetic: 1.0 - distance -> score_expr
@@ -196,6 +197,7 @@ async def test_list_news_search_text(news_repo, mock_db):
     with (
         patch.object(settings, "semantic_search_enabled", False),
         patch("app.repositories.news_repository.select"),
+        patch("app.repositories.news_repository.selectinload"),
         patch("app.repositories.news_repository.or_"),
         patch("app.repositories.news_repository.and_"),
         patch("app.repositories.news_repository.func"),
@@ -232,31 +234,29 @@ async def test_get_with_interactions(news_repo, mock_db):
 
 @pytest.mark.asyncio
 async def test_toggle_like_add(news_repo, mock_db):
-    # Mock finding existing like -> None
+    # INSERT ON CONFLICT DO NOTHING inserts new row -> rowcount=1 -> returns True
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
+    mock_result.rowcount = 1
     mock_db.execute.return_value = mock_result
 
     result = await news_repo.toggle_like(1, 123)
 
     assert result is True
-    # Should call db.add
-    mock_db.add.assert_called()
+    mock_db.execute.assert_called()
 
 
 @pytest.mark.asyncio
 async def test_toggle_like_remove(news_repo, mock_db):
-    # Mock finding existing like -> present
-    mock_like = MagicMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = mock_like
-    mock_db.execute.return_value = mock_result
+    # INSERT ON CONFLICT DO NOTHING hits conflict -> rowcount=0 -> delete and return False
+    mock_insert_result = MagicMock()
+    mock_insert_result.rowcount = 0
+    mock_delete_result = MagicMock()
+    mock_db.execute.side_effect = [mock_insert_result, mock_delete_result]
 
     result = await news_repo.toggle_like(1, 123)
 
     assert result is False
-    # Should call db.delete
-    mock_db.delete.assert_called_with(mock_like)
+    assert mock_db.execute.call_count == 2
 
 
 def test_get_news_repository_factory():

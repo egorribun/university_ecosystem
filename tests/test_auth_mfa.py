@@ -245,7 +245,30 @@ async def test_totp_start_rejects_when_active_factor_exists(
     await db_session.refresh(user)
     assert user.mfa_default_method == mfa.MFA_METHOD_TOTP
 
-    second_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    # After TOTP enrollment, subsequent MFA management requests require step-up.
+    # Log in again to get an MFA challenge, then verify to get a fresh token.
+    mfa_login = await async_client.post(
+        "/auth/login",
+        data={"username": user.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert mfa_login.status_code == status.HTTP_202_ACCEPTED
+    mfa_challenge = _get_method_entry(mfa_login.json(), mfa.MFA_METHOD_TOTP)
+    fresh_verify = await async_client.post(
+        "/auth/mfa/verify",
+        json={
+            "method": mfa.MFA_METHOD_TOTP,
+            "challenge_token": mfa_challenge["challenge_token"],
+            "code": totp.now(),
+        },
+    )
+    assert fresh_verify.status_code == status.HTTP_200_OK
+    fresh_token = fresh_verify.cookies.get("access_token_v2")
+    fresh_headers = {"Authorization": f"Bearer {fresh_token}"}
+
+    second_start = await async_client.post(
+        "/auth/mfa/totp/start", headers=fresh_headers
+    )
     assert second_start.status_code == status.HTTP_400_BAD_REQUEST
     assert second_start.json()["detail"] == translate(
         "errors.mfa.totp_limit_reached", locale="en"
@@ -512,7 +535,7 @@ async def test_totp_attempt_limit_blocks_challenge(
     challenge_row = result.scalars().first()
     assert challenge_row is not None
     assert challenge_row.attempt_count == 2
-    assert challenge_row.consumed_at is not None
+    assert challenge_row.locked_at is not None
 
 
 @pytest.mark.asyncio

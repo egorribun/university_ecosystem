@@ -7,6 +7,12 @@ from typing import Any, cast
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Pre-register magic as unavailable to prevent libmagic.dll hang on Windows.
+# python-magic is installed but libmagic.dll may be missing; without this guard
+# `import magic` blocks indefinitely (instead of raising ImportError).
+if "magic" not in sys.modules:
+    sys.modules["magic"] = None  # type: ignore[assignment]
+
 # Workaround for passlib/bcrypt 4.1+ incompatibility
 import bcrypt
 import pytest

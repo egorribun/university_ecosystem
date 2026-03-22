@@ -48,13 +48,13 @@ class TestCSPReport:
         assert response.status_code == 204
 
     def test_receive_invalid_json(self, client):
-        """Should handle invalid JSON gracefully."""
+        """Should return 400 for invalid JSON (TD-W5-07: lets browser know report was malformed)."""
         response = client.post(
             "/api/v1/csp-report",
             content=b"not valid json",
         )
 
-        assert response.status_code == 204
+        assert response.status_code == 400
 
     def test_receive_flat_report(self, client):
         """Should accept report without csp-report wrapper."""

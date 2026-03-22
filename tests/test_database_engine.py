@@ -123,8 +123,11 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         "pool_timeout": 45.0,
         "pool_recycle": 900,
         "connect_args": {
-            "statement_cache_size": 100,
-            "command_timeout": 30.0,
+            # statement_cache_size=0: PgBouncer transaction-pooling mode requires
+            # this; prepared statements are not preserved across connections.
+            "statement_cache_size": 0,
+            "command_timeout": 15.0,
+            "server_settings": {"application_name": "university-backend"},
         },
     }
     assert captured["engine"] == engine
@@ -164,8 +167,11 @@ async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
     assert "Database connection failed after 2 attempts: transient outage" in str(
         excinfo.value
     )
-    # Sleep is only performed between attempts, not after the final failure.
-    assert sleep_calls == [0.25]
+    # Sleep is only performed between attempts (1 sleep for 2 attempts), not
+    # after the final failure. Full-jitter backoff means sleep is in [0, cap]
+    # where cap = min(max_delay, base_delay * 2^attempt).
+    assert len(sleep_calls) == 1
+    assert 0.0 <= sleep_calls[0] <= 0.5  # cap = min(max_delay, 0.25 * 2^1) = 0.5
 
     error_logs = [
         record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}

@@ -222,7 +222,7 @@ async def _register_failed_attempt(
         # Just locked by this very update — raise the appropriate error
         raise_http_error(
             status_code,
-            "errors.mfa.too_many_attempts",
+            "errors.auth.mfa_challenge_locked",
             locale or "en",
         )
 

@@ -50,6 +50,8 @@ async def test_get_current_user_invalid_token():
 async def test_get_current_user_redis_hit():
     request = MagicMock(spec=Request)
     request.state = MagicMock()
+    # Ensure gateway header path is bypassed so JWT token path is exercised.
+    request.headers.get = MagicMock(return_value=None)
     db = AsyncMock()
     user_id = uuid.uuid4()
     jti = "test-jti"
