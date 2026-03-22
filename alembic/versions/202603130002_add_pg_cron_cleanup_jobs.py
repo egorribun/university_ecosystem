@@ -102,12 +102,23 @@ def downgrade() -> None:
     if not _is_postgresql():
         return
 
+    # pg_cron may not be installed in all environments (e.g., CI without the extension).
+    # Guard against missing cron schema before attempting to unschedule.
+    has_cron = (
+        op.get_bind()
+        .execute(
+            text("SELECT 1 FROM information_schema.schemata WHERE schema_name = 'cron'")
+        )
+        .scalar()
+    )
+    if not has_cron:
+        return
+
     # Remove the three scheduled jobs by name; ignore if they don't exist.
     for job_name in _CRON_JOB_NAMES:
         op.execute(
             text(
                 "SELECT cron.unschedule(:job_name) "
                 "WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = :job_name)"
-            ),
-            {"job_name": job_name},
+            ).bindparams(job_name=job_name)
         )

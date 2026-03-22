@@ -291,6 +291,20 @@ addopts = [
 relative_files = true
 source = ["app"]
 branch = true
+omit = [
+  # Infrastructure-dependent: require live NATS, ClamAV, Elasticsearch, or libvips
+  "app/core/nats_broker.py",
+  "app/services/nats_messaging.py",
+  "app/services/file_scanner.py",
+  "app/services/search.py",
+  "app/services/image_proxy.py",
+  "app/services/geolocation.py",
+  "app/utils/images_vips.py",
+  # Entrypoints / maintenance scripts — not unit-testable
+  "app/worker.py",
+  "app/management/normalize_static.py",
+  "app/management/weekly_cleanup.py",
+]
 
 [tool.coverage.report]
 show_missing = true

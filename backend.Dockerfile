@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
+# Rust toolchain stage — provides a known-good Cargo/rustc for maturin builds.
+# Rust 1.85 is the first stable release supporting edition 2024 and Cargo.lock v4.
+FROM rust:1.85-slim-bookworm AS rust-toolchain
+
 # Stage 1: Builder
 FROM python:3.13-slim-bookworm AS builder
 
@@ -13,8 +17,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /build
 
-# Update OS packages and install build dependencies including Rust toolchain
-# needed for pyo3-sanitizer and rust_ext workspace members.
+# Update OS packages and install build dependencies.
+# Rust toolchain is copied from the rust-toolchain stage instead of using
+# the stale apt package (Debian bookworm ships Cargo 1.63 which does not
+# support edition 2024 or Cargo.lock format v4).
 RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-builder,target=/var/cache/apt \
     apt-get update \
@@ -22,11 +28,15 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
-    rustc \
-    cargo \
     && rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/uv/bin:$PATH" \
+# Copy Rust toolchain from the dedicated stage.
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH="/uv/bin:/usr/local/cargo/bin:$PATH" \
     UV_PROJECT_ENVIRONMENT="/opt/venv"
 
 # Copy workspace member sources so uv can resolve the lockfile.
