@@ -96,7 +96,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop subscription_id column and associated index."""
     if _is_postgresql():
-        op.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}"))
+        # CONCURRENTLY is not supported for partitioned indexes (PostgreSQL restriction).
+        op.execute(text(f"DROP INDEX IF EXISTS {_INDEX_NAME}"))
     else:
         op.drop_index(_INDEX_NAME, table_name=_TABLE_NAME)
 
