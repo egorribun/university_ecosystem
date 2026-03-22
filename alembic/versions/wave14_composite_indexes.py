@@ -64,9 +64,7 @@ def downgrade() -> None:
     # notifications is a partitioned table: CONCURRENTLY is not supported for
     # partitioned indexes in PostgreSQL.
     connection.execute(
-        sa.text(
-            "DROP INDEX IF EXISTS idx_notifications_user_unread_created"
-        )
+        sa.text("DROP INDEX IF EXISTS idx_notifications_user_unread_created")
     )
     connection.execute(
         sa.text("DROP INDEX CONCURRENTLY IF EXISTS idx_active_sessions_user_valid")
