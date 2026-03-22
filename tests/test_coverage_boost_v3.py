@@ -4,6 +4,7 @@ Covers: graphql/extensions, graphql/permissions, user_stats_repository,
 data_access, cache_invalidation, privacy_cleanup, schedule_service,
 notifications/cleanup, graphql_token_validator, schedule_optimizer.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -11,7 +12,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # 1. graphql/extensions.py — QueryCostExtension + _CostVisitor
@@ -21,7 +21,7 @@ import pytest
 def test_cost_visitor_scalar_field():
     from graphql.language.ast import FieldNode, NameNode
 
-    from app.graphql.extensions import _CostVisitor, _FIELD_COST, _LIST_FIELD_COST
+    from app.graphql.extensions import _FIELD_COST, _LIST_FIELD_COST, _CostVisitor
 
     visitor = _CostVisitor()
     scalar_node = MagicMock(spec=FieldNode)
@@ -38,7 +38,7 @@ def test_cost_visitor_scalar_field():
 
 
 def test_cost_visitor_all_list_fields():
-    from app.graphql.extensions import _CostVisitor, _LIST_FIELD_NAMES, _LIST_FIELD_COST
+    from app.graphql.extensions import _LIST_FIELD_COST, _LIST_FIELD_NAMES, _CostVisitor
 
     visitor = _CostVisitor()
     for name in list(_LIST_FIELD_NAMES)[:3]:
@@ -60,8 +60,9 @@ def test_query_cost_extension_low_cost():
     visitor_instance = MagicMock(spec=_CostVisitor)
     visitor_instance.cost = 10  # under max
 
-    with patch("app.graphql.extensions.visit"), patch(
-        "app.graphql.extensions._CostVisitor", return_value=visitor_instance
+    with (
+        patch("app.graphql.extensions.visit"),
+        patch("app.graphql.extensions._CostVisitor", return_value=visitor_instance),
     ):
         gen = ext.on_validate()
         next(gen)
@@ -73,7 +74,8 @@ def test_query_cost_extension_low_cost():
 
 def test_query_cost_extension_high_cost():
     from graphql import GraphQLError
-    from app.graphql.extensions import QueryCostExtension, _CostVisitor, _MAX_QUERY_COST
+
+    from app.graphql.extensions import _MAX_QUERY_COST, QueryCostExtension, _CostVisitor
 
     ext = object.__new__(QueryCostExtension)
     ext.execution_context = MagicMock()
@@ -84,8 +86,9 @@ def test_query_cost_extension_high_cost():
     visitor_instance = MagicMock(spec=_CostVisitor)
     visitor_instance.cost = _MAX_QUERY_COST + 1
 
-    with patch("app.graphql.extensions.visit"), patch(
-        "app.graphql.extensions._CostVisitor", return_value=visitor_instance
+    with (
+        patch("app.graphql.extensions.visit"),
+        patch("app.graphql.extensions._CostVisitor", return_value=visitor_instance),
     ):
         gen = ext.on_validate()
         next(gen)
@@ -175,8 +178,8 @@ async def test_is_admin_no_checker():
 
 @pytest.mark.asyncio
 async def test_is_admin_spicedb_unavailable():
-    from app.graphql.permissions import IsAdmin
     from app.auth.rbac import SpiceDBUnavailableError
+    from app.graphql.permissions import IsAdmin
 
     perm = IsAdmin()
     info = MagicMock()
@@ -332,8 +335,8 @@ def test_serialize_access_logs_csv_empty():
 
 
 def test_serialize_access_logs_csv_with_entries():
-    from app.services.data_access import serialize_access_logs_csv
     from app.schemas.dtos.audit import DataAccessLogDTO
+    from app.services.data_access import serialize_access_logs_csv
 
     entry = DataAccessLogDTO(
         id=uuid.uuid4(),
@@ -565,7 +568,10 @@ async def test_cleanup_failed_logins_mock():
 
 @pytest.mark.asyncio
 async def test_cleanup_privacy_artifacts_with_db():
-    from app.services.privacy_cleanup import PrivacyCleanupConfig, cleanup_privacy_artifacts
+    from app.services.privacy_cleanup import (
+        PrivacyCleanupConfig,
+        cleanup_privacy_artifacts,
+    )
 
     mock_db = AsyncMock()
     mock_result = MagicMock()
@@ -579,8 +585,14 @@ async def test_cleanup_privacy_artifacts_with_db():
     run_ctx.__aenter__ = AsyncMock(return_value=run_ctx)
     run_ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("app.services.privacy_cleanup.cleanup_access_logs", new_callable=AsyncMock, return_value=0), \
-         patch("app.services.privacy_cleanup._METRICS") as mock_metrics:
+    with (
+        patch(
+            "app.services.privacy_cleanup.cleanup_access_logs",
+            new_callable=AsyncMock,
+            return_value=0,
+        ),
+        patch("app.services.privacy_cleanup._METRICS") as mock_metrics,
+    ):
         mock_metrics.track_execution.return_value = run_ctx
         result = await cleanup_privacy_artifacts(db=mock_db, config=cfg)
 
@@ -704,8 +716,8 @@ async def test_schedule_service_create_group():
 
 @pytest.mark.asyncio
 async def test_schedule_service_create_with_conflict():
-    from app.services.schedule_service import ScheduleService
     from app.core.exceptions.domain import BusinessRuleViolation
+    from app.services.schedule_service import ScheduleService
 
     mock_uow = MagicMock()
     mock_uow.schedules = AsyncMock()
@@ -916,4 +928,3 @@ async def test_graphql_token_validator_load_db_session_db_error():
     validator = GraphQLTokenValidator(MagicMock(), mock_session)
     result = await validator._load_db_session("some-jti")
     assert result is None
-
