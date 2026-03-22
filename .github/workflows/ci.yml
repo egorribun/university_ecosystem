@@ -304,7 +304,8 @@ jobs:
         uses: jaxxstorm/action-install-gh-release@cd6b2b78ad38bdd294341cda064ec0692b06215b # v1.13.1
         with:
           repo: sbdchd/squawk
-          tag: v0.32.0 # Pinned release
+          tag: v2.44.0 # MOD-008: update to latest release v2.44.0
+          file-name: squawk-linux-x64 # Specify explicit binary name
           cache: enable
           extension-matching: disable
           rename-to: squawk
@@ -313,7 +314,7 @@ jobs:
       - name: Lint Postgres Migrations (Squawk)
         run: |
           echo "Linting all Alembic migrations for ZDD safety..."
-          squawk app/alembic/versions/*.py || {
+          squawk alembic/versions/*.py || {
             echo "::error::Squawk detected unsafe database operations! Please use expand-and-contract patterns instead of direct dropping."
             exit 1
           }
