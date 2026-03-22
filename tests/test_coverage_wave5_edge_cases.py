@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from redis.exceptions import RedisError
@@ -79,46 +79,53 @@ def test_sanitize_rich_text_strips_xss(vector: str) -> None:
 # sanitize_url — extended OWASP / SSRF edge cases
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("dangerous_url", [
-    "javascript:alert(1)",
-    "JAVASCRIPT:alert(1)",
-    "Javascript:alert(1)",
-    "data:text/html,<script>alert(1)</script>",
-    "DATA:text/html,x",
-    "vbscript:msgbox(1)",
-    "file:///etc/passwd",
-    "FILE:///etc/passwd",
-    # SSRF — private / loopback IP
-    "http://127.0.0.1/admin",
-    "http://0.0.0.0/",
-    "http://[::1]/",
-    "http://169.254.169.254/latest/meta-data/",  # AWS metadata
-    "http://192.168.1.1/",
-    "http://10.0.0.1/",
-    "http://172.16.0.1/",
-    # Credentials in URL
-    "https://user:pass@example.com",
-    "https://:pass@example.com",
-    # Localhost variants
-    "http://localhost/",
-    "http://localhost:8080/admin",
-    # Empty string
-    "",
-    # No netloc
-    "https://",
-    # Non-http scheme
-    "ftp://example.com/file",
-])
+
+@pytest.mark.parametrize(
+    "dangerous_url",
+    [
+        "javascript:alert(1)",
+        "JAVASCRIPT:alert(1)",
+        "Javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "DATA:text/html,x",
+        "vbscript:msgbox(1)",
+        "file:///etc/passwd",
+        "FILE:///etc/passwd",
+        # SSRF — private / loopback IP
+        "http://127.0.0.1/admin",
+        "http://0.0.0.0/",
+        "http://[::1]/",
+        "http://169.254.169.254/latest/meta-data/",  # AWS metadata
+        "http://192.168.1.1/",
+        "http://10.0.0.1/",
+        "http://172.16.0.1/",
+        # Credentials in URL
+        "https://user:pass@example.com",
+        "https://:pass@example.com",
+        # Localhost variants
+        "http://localhost/",
+        "http://localhost:8080/admin",
+        # Empty string
+        "",
+        # No netloc
+        "https://",
+        # Non-http scheme
+        "ftp://example.com/file",
+    ],
+)
 def test_sanitize_url_blocks_dangerous(dangerous_url: str) -> None:
     assert sanitize_url(dangerous_url) is None
 
 
-@pytest.mark.parametrize("safe_url", [
-    "https://example.com",
-    "https://example.com/path?q=1",
-    "http://example.com:8080/",
-    "https://sub.example.com/api/v1",
-])
+@pytest.mark.parametrize(
+    "safe_url",
+    [
+        "https://example.com",
+        "https://example.com/path?q=1",
+        "http://example.com:8080/",
+        "https://sub.example.com/api/v1",
+    ],
+)
 def test_sanitize_url_allows_safe(safe_url: str) -> None:
     assert sanitize_url(safe_url) == safe_url
 
@@ -140,10 +147,14 @@ def test_sanitize_url_idn_non_punycode_blocked() -> None:
 # sanitize_filename — truncation, unicode, control chars
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("filename,expected_suffix", [
-    ("a" * 300 + ".txt", ".txt"),   # long name with extension
-    ("a" * 300, ""),                # long name without extension
-])
+
+@pytest.mark.parametrize(
+    "filename,expected_suffix",
+    [
+        ("a" * 300 + ".txt", ".txt"),  # long name with extension
+        ("a" * 300, ""),  # long name without extension
+    ],
+)
 def test_sanitize_filename_truncates(filename: str, expected_suffix: str) -> None:
     result = sanitize_filename(filename)
     assert len(result) <= 255
@@ -151,14 +162,17 @@ def test_sanitize_filename_truncates(filename: str, expected_suffix: str) -> Non
         assert result.endswith(expected_suffix)
 
 
-@pytest.mark.parametrize("filename,expected", [
-    ("", "unnamed"),
-    (".", "unnamed"),           # after lstrip('.') → empty → "unnamed"
-    (".hidden", "hidden"),      # leading dot stripped
-    ("file\x00name.txt", "filename.txt"),  # null byte removed
-    ("file\x1fname.txt", "filename.txt"),  # control char removed
-    ("hello world .txt", "hello world .txt"),  # spaces preserved
-])
+@pytest.mark.parametrize(
+    "filename,expected",
+    [
+        ("", "unnamed"),
+        (".", "unnamed"),  # after lstrip('.') → empty → "unnamed"
+        (".hidden", "hidden"),  # leading dot stripped
+        ("file\x00name.txt", "filename.txt"),  # null byte removed
+        ("file\x1fname.txt", "filename.txt"),  # control char removed
+        ("hello world .txt", "hello world .txt"),  # spaces preserved
+    ],
+)
 def test_sanitize_filename_edge_cases(filename: str, expected: str) -> None:
     result = sanitize_filename(filename)
     assert result == expected
@@ -168,12 +182,16 @@ def test_sanitize_filename_edge_cases(filename: str, expected: str) -> None:
 # sanitize_email
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("email,expected", [
-    (None, ""),
-    ("", ""),
-    ("  USER@EXAMPLE.COM  ", "user@example.com"),
-    ("user+tag@example.com", "user+tag@example.com"),
-])
+
+@pytest.mark.parametrize(
+    "email,expected",
+    [
+        (None, ""),
+        ("", ""),
+        ("  USER@EXAMPLE.COM  ", "user@example.com"),
+        ("user+tag@example.com", "user+tag@example.com"),
+    ],
+)
 def test_sanitize_email_parametrize(email: str | None, expected: str) -> None:
     assert sanitize_email(email) == expected  # type: ignore[arg-type]
 
@@ -182,17 +200,21 @@ def test_sanitize_email_parametrize(email: str | None, expected: str) -> None:
 # strip_control_chars — additional control characters
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("text,expected", [
-    ("hello\x00world", "helloworld"),       # null byte
-    ("hello\x08world", "helloworld"),       # backspace
-    ("hello\x0bworld", "helloworld"),       # vertical tab
-    ("hello\x0cworld", "helloworld"),       # form feed
-    ("hello\x0eworld", "helloworld"),       # shift out
-    ("hello\x7fworld", "helloworld"),       # DEL
-    ("line\nfeed", "line\nfeed"),           # newline preserved
-    ("tab\there", "tab\there"),             # tab preserved
-    ("", ""),
-])
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("hello\x00world", "helloworld"),  # null byte
+        ("hello\x08world", "helloworld"),  # backspace
+        ("hello\x0bworld", "helloworld"),  # vertical tab
+        ("hello\x0cworld", "helloworld"),  # form feed
+        ("hello\x0eworld", "helloworld"),  # shift out
+        ("hello\x7fworld", "helloworld"),  # DEL
+        ("line\nfeed", "line\nfeed"),  # newline preserved
+        ("tab\there", "tab\there"),  # tab preserved
+        ("", ""),
+    ],
+)
 def test_strip_control_chars_parametrize(text: str, expected: str) -> None:
     assert strip_control_chars(text) == expected
 
@@ -201,16 +223,20 @@ def test_strip_control_chars_parametrize(text: str, expected: str) -> None:
 # truncate — edge cases
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("text,max_len,suffix,expected", [
-    ("hello", 10, "...", "hello"),
-    ("hello world", 8, "...", "hello..."),
-    ("hello", 5, "...", "hello"),      # exact length — no truncation
-    ("hi", 3, "...", "hi"),            # shorter than max
-    ("abcde", 5, "!", "abcde"),        # exact length with 1-char suffix
-    ("abcdef", 5, "!", "abcd!"),       # needs truncation
-    (None, 5, "...", None),            # None passthrough per impl
-    ("", 5, "...", ""),
-])
+
+@pytest.mark.parametrize(
+    "text,max_len,suffix,expected",
+    [
+        ("hello", 10, "...", "hello"),
+        ("hello world", 8, "...", "hello..."),
+        ("hello", 5, "...", "hello"),  # exact length — no truncation
+        ("hi", 3, "...", "hi"),  # shorter than max
+        ("abcde", 5, "!", "abcde"),  # exact length with 1-char suffix
+        ("abcdef", 5, "!", "abcd!"),  # needs truncation
+        (None, 5, "...", None),  # None passthrough per impl
+        ("", 5, "...", ""),
+    ],
+)
 def test_truncate_parametrize(
     text: str | None, max_len: int, suffix: str, expected: str | None
 ) -> None:
@@ -220,6 +246,7 @@ def test_truncate_parametrize(
 # ---------------------------------------------------------------------------
 # sanitize_optional_text — bytearray + invalid UTF-8 + whitespace only
 # ---------------------------------------------------------------------------
+
 
 def test_sanitize_optional_text_bytearray() -> None:
     val = bytearray(b"hello bytes")
@@ -239,12 +266,15 @@ def test_sanitize_optional_text_invalid_utf8_ignored() -> None:
     assert "hello" in result
 
 
-@pytest.mark.parametrize("value,expected", [
-    (0, None),       # "0".strip() is "0" which is truthy — actually returns "0"
-    (42, "42"),
-    (3.14, "3.14"),
-    (False, None),   # str(False) = "False" → truthy → "False"
-])
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (0, None),  # "0".strip() is "0" which is truthy — actually returns "0"
+        (42, "42"),
+        (3.14, "3.14"),
+        (False, None),  # str(False) = "False" → truthy → "False"
+    ],
+)
 def test_sanitize_optional_text_numeric(value: object, expected: str | None) -> None:
     result = sanitize_optional_text(value)
     # For edge values: 0 → "0" (truthy), False → "False" (truthy)
@@ -267,40 +297,43 @@ from app.core.ratelimit.utils import (
 )
 
 
-@pytest.mark.parametrize("value,fallback,expected", [
-    # None / empty → fallback
-    (None, (5, 60), (5, 60)),
-    ("", (5, 60), (5, 60)),
-    ("  ", (5, 60), (5, 60)),
-    # Standard slash notation
-    ("10/60", (5, 60), (10, 60)),
-    ("1/s", (5, 60), (1, 1)),
-    ("100/minute", (5, 60), (100, 60)),
-    ("50/hour", (5, 60), (50, 3600)),
-    ("200/day", (5, 60), (200, 86400)),
-    # 'per' notation
-    ("5 per second", (5, 60), (5, 1)),
-    ("10 per min", (5, 60), (10, 60)),
-    ("20 per hr", (5, 60), (20, 3600)),
-    # Numeric unit (raw seconds)
-    ("100/300", (5, 60), (100, 300)),
-    # Invalid count → fallback
-    ("abc/60", (5, 60), (5, 60)),
-    # Invalid unit → fallback
-    ("10/fortnight", (5, 60), (5, 60)),
-    # Zero / negative count → fallback
-    ("0/60", (5, 60), (5, 60)),
-    ("-1/60", (5, 60), (5, 60)),
-    # Zero seconds → fallback
-    ("10/0", (5, 60), (5, 60)),
-    # Too many parts
-    ("10/60/extra", (5, 60), (5, 60)),
-    # Single token (no delimiter) → fallback
-    ("10", (5, 60), (5, 60)),
-    # Plural stripping: "seconds" → "second" → matched
-    ("5 per seconds", (5, 60), (5, 1)),
-    ("10 per minutes", (5, 60), (10, 60)),
-])
+@pytest.mark.parametrize(
+    "value,fallback,expected",
+    [
+        # None / empty → fallback
+        (None, (5, 60), (5, 60)),
+        ("", (5, 60), (5, 60)),
+        ("  ", (5, 60), (5, 60)),
+        # Standard slash notation
+        ("10/60", (5, 60), (10, 60)),
+        ("1/s", (5, 60), (1, 1)),
+        ("100/minute", (5, 60), (100, 60)),
+        ("50/hour", (5, 60), (50, 3600)),
+        ("200/day", (5, 60), (200, 86400)),
+        # 'per' notation
+        ("5 per second", (5, 60), (5, 1)),
+        ("10 per min", (5, 60), (10, 60)),
+        ("20 per hr", (5, 60), (20, 3600)),
+        # Numeric unit (raw seconds)
+        ("100/300", (5, 60), (100, 300)),
+        # Invalid count → fallback
+        ("abc/60", (5, 60), (5, 60)),
+        # Invalid unit → fallback
+        ("10/fortnight", (5, 60), (5, 60)),
+        # Zero / negative count → fallback
+        ("0/60", (5, 60), (5, 60)),
+        ("-1/60", (5, 60), (5, 60)),
+        # Zero seconds → fallback
+        ("10/0", (5, 60), (5, 60)),
+        # Too many parts
+        ("10/60/extra", (5, 60), (5, 60)),
+        # Single token (no delimiter) → fallback
+        ("10", (5, 60), (5, 60)),
+        # Plural stripping: "seconds" → "second" → matched
+        ("5 per seconds", (5, 60), (5, 1)),
+        ("10 per minutes", (5, 60), (10, 60)),
+    ],
+)
 def test_parse_rate_limit(
     value: str | None, fallback: tuple[int, int], expected: tuple[int, int]
 ) -> None:
@@ -311,17 +344,21 @@ def test_parse_rate_limit(
 # _normalize_ip — valid IPv4, IPv6, invalid inputs
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("ip,expected", [
-    ("127.0.0.1", "127.0.0.1"),
-    ("  10.0.0.1  ", "10.0.0.1"),          # strips whitespace
-    ("::1", "::1"),
-    ("2001:db8::1", "2001:db8::1"),
-    ("", None),
-    (None, None),
-    ("not-an-ip", None),
-    ("999.999.999.999", None),
-    ("256.0.0.1", None),
-])
+
+@pytest.mark.parametrize(
+    "ip,expected",
+    [
+        ("127.0.0.1", "127.0.0.1"),
+        ("  10.0.0.1  ", "10.0.0.1"),  # strips whitespace
+        ("::1", "::1"),
+        ("2001:db8::1", "2001:db8::1"),
+        ("", None),
+        (None, None),
+        ("not-an-ip", None),
+        ("999.999.999.999", None),
+        ("256.0.0.1", None),
+    ],
+)
 def test_normalize_ip(ip: str | None, expected: str | None) -> None:
     assert _normalize_ip(ip) == expected
 
@@ -330,15 +367,19 @@ def test_normalize_ip(ip: str | None, expected: str | None) -> None:
 # _extract_ip_from_forwarded — RFC 7239 Forwarded header parsing
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("header,expected", [
-    ('for=192.0.2.60;proto=http;by=203.0.113.43', "192.0.2.60"),
-    ('for="[2001:db8::cafe]";proto=http', "[2001:db8::cafe]"),
-    ('FOR=192.0.2.1', "192.0.2.1"),          # case-insensitive
-    ('by=proxy;for=10.0.0.1', "10.0.0.1"),  # 'for' not first
-    ('proto=https;by=proxy', None),           # no 'for' part
-    ('', None),                              # empty
-    ('for=', ""),                            # for with no value
-])
+
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        ("for=192.0.2.60;proto=http;by=203.0.113.43", "192.0.2.60"),
+        ('for="[2001:db8::cafe]";proto=http', "[2001:db8::cafe]"),
+        ("FOR=192.0.2.1", "192.0.2.1"),  # case-insensitive
+        ("by=proxy;for=10.0.0.1", "10.0.0.1"),  # 'for' not first
+        ("proto=https;by=proxy", None),  # no 'for' part
+        ("", None),  # empty
+        ("for=", ""),  # for with no value
+    ],
+)
 def test_extract_ip_from_forwarded(header: str, expected: str | None) -> None:
     result = _extract_ip_from_forwarded(header)
     assert result == expected
@@ -347,6 +388,7 @@ def test_extract_ip_from_forwarded(header: str, expected: str | None) -> None:
 # ---------------------------------------------------------------------------
 # MemoryCache — expiry, eviction, wildcard invalidation, probabilistic refresh
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_memory_cache_entry_expires() -> None:
@@ -458,6 +500,7 @@ async def test_memory_cache_update_existing_key() -> None:
 # CacheEntry.should_refresh_probabilistic — branch coverage
 # ---------------------------------------------------------------------------
 
+
 def test_cache_entry_no_ttl_no_refresh() -> None:
     from app.deps.cache import CacheEntry
 
@@ -498,6 +541,7 @@ def test_cache_entry_fresh_rarely_refreshes() -> None:
 # ---------------------------------------------------------------------------
 # RedisCache — RedisError → returns None (graceful degradation)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_redis_cache_get_redis_error_returns_none() -> None:
@@ -577,6 +621,7 @@ async def test_redis_cache_close_no_client() -> None:
 # ---------------------------------------------------------------------------
 # sanitize_path — additional edge cases
 # ---------------------------------------------------------------------------
+
 
 def test_sanitize_path_exact_base_allowed() -> None:
     from pathlib import Path

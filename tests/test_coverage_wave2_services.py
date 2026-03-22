@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # app/services/content_processing.py
 # ---------------------------------------------------------------------------
@@ -29,7 +28,9 @@ import pytest
 def test_content_processing_strip_mode() -> None:
     from app.services.content_processing import SanitizationMode, sanitize
 
-    result = sanitize("<b>hello</b> <script>alert(1)</script>", mode=SanitizationMode.STRIP)
+    result = sanitize(
+        "<b>hello</b> <script>alert(1)</script>", mode=SanitizationMode.STRIP
+    )
     assert "<b>" not in result
     assert "<script>" not in result
     assert "hello" in result
@@ -55,7 +56,7 @@ def test_content_processing_rich_text_mode() -> None:
 
 
 def test_content_processing_default_mode_is_rich_text() -> None:
-    from app.services.content_processing import SanitizationMode, sanitize
+    from app.services.content_processing import sanitize
 
     result = sanitize("<p>text</p>")
     # Should default to RICH_TEXT
@@ -160,7 +161,7 @@ async def test_ws_hub_client_signature_is_hmac() -> None:
     data = payload["data"]
     json_payload = json.dumps(data, sort_keys=True, separators=(",", ":"))
     expected_sig = hmac.new(
-        "supersecret".encode(), json_payload.encode(), hashlib.sha256
+        b"supersecret", json_payload.encode(), hashlib.sha256
     ).hexdigest()
     assert payload["signature"] == expected_sig
 
@@ -231,7 +232,10 @@ async def test_deliver_push_successful_delivery() -> None:
             "app.services.notifications.prepare_push_payload_for_user",
             return_value={"title": "test"},
         ),
-        patch("app.services.push_service.prepare_push_payload_for_user", return_value={"title": "test"}),
+        patch(
+            "app.services.push_service.prepare_push_payload_for_user",
+            return_value={"title": "test"},
+        ),
     ):
         with patch(
             "app.services.push_service._deliver_one",
@@ -292,7 +296,7 @@ async def test_deliver_push_handles_exception_result() -> None:
 
 @pytest.mark.asyncio
 async def test_log_all_events() -> None:
-    from app.core.events import DomainEvent, EventMetadata
+    from app.core.events import DomainEvent
     from app.services.event_handlers import log_all_events
 
     # Create a concrete DomainEvent-like mock
@@ -485,8 +489,12 @@ async def test_generate_event_embedding_not_found() -> None:
     mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
     with (
-        patch("app.services.event_handlers.async_session", return_value=mock_session_ctx),
-        patch("app.services.event_handlers.get_vector_service", return_value=MagicMock()),
+        patch(
+            "app.services.event_handlers.async_session", return_value=mock_session_ctx
+        ),
+        patch(
+            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
+        ),
     ):
         await generate_event_embedding(mock_event)  # returns early when not found
 
@@ -506,8 +514,12 @@ async def test_generate_news_embedding_not_found() -> None:
     mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
     with (
-        patch("app.services.event_handlers.async_session", return_value=mock_session_ctx),
-        patch("app.services.event_handlers.get_vector_service", return_value=MagicMock()),
+        patch(
+            "app.services.event_handlers.async_session", return_value=mock_session_ctx
+        ),
+        patch(
+            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
+        ),
     ):
         await generate_news_embedding(mock_event)
 
@@ -536,7 +548,9 @@ async def test_generate_event_embedding_found() -> None:
     mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
     with (
-        patch("app.services.event_handlers.async_session", return_value=mock_session_ctx),
+        patch(
+            "app.services.event_handlers.async_session", return_value=mock_session_ctx
+        ),
         patch(
             "app.services.event_handlers.get_vector_service",
             return_value=mock_vector_svc,
@@ -598,9 +612,7 @@ async def test_vector_service_get_embedding_http_success() -> None:
     mock_db = AsyncMock()
 
     mock_response = MagicMock(spec=httpx.Response)
-    mock_response.json.return_value = {
-        "data": [{"embedding": [0.1, 0.2, 0.3]}]
-    }
+    mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
     mock_response.raise_for_status = MagicMock()
 
     with patch("app.services.vector_service.settings") as mock_settings:
@@ -723,7 +735,9 @@ async def test_vector_service_search_similar_with_results() -> None:
         mock_settings.embedding_dimensions = 3
 
         svc = VectorService(db=mock_db)
-        with patch("app.services.vector_service.select", return_value=MagicMock()) as mock_select:
+        with patch(
+            "app.services.vector_service.select", return_value=MagicMock()
+        ) as mock_select:
             # Chain all the mock SQLAlchemy calls
             mock_stmt = MagicMock()
             mock_select.return_value = mock_stmt
@@ -771,7 +785,9 @@ async def test_fraud_detection_record_event_high_severity() -> None:
 
     svc = FraudDetectionService(redis_client=mock_redis)
     uid = str(uuid.uuid4())
-    await svc.record_event({"action": "brute_force", "user_id": uid, "severity": "high"})
+    await svc.record_event(
+        {"action": "brute_force", "user_id": uid, "severity": "high"}
+    )
 
     mock_redis.pipeline.assert_called_once()
     mock_pipeline.execute.assert_awaited_once()
@@ -919,11 +935,10 @@ def test_ical_format_dt_utc() -> None:
 
 
 def test_ical_format_dt_aware_non_utc() -> None:
-    from datetime import timezone
 
     from app.services.ical import _format_dt
 
-    tz = timezone.utc  # UTC is UTC regardless
+    tz = UTC  # UTC is UTC regardless
     dt = datetime(2025, 1, 1, 0, 0, 0, tzinfo=tz)
     result = _format_dt(dt)
     assert result.endswith("Z")
