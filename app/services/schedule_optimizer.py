@@ -151,10 +151,12 @@ class ScheduleOptimizerService:
                 "Thursday",
                 "Friday",
             ]
+            # Rust expects Vec<(String, Vec<u32>)>: each day paired with candidate hours.
+            available_blocks = [(day, list(range(8, 21))) for day in days]
             suggested_rust = rust_ext.find_optimal_slot(
                 duration_minutes,
                 existing_rust,
-                days,
+                available_blocks,
             )
 
             if suggested_rust:
