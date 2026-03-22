@@ -233,15 +233,11 @@ async def test_deliver_push_successful_delivery() -> None:
             return_value={"title": "test"},
         ),
     ):
-        with patch(
-            "app.services.push_service._deliver_one",
-            side_effect=None,
-        ):
-            results = await deliver_push_to_subscriptions(
-                subscriptions=[mock_sub],
-                payload={"title": "test"},
-                topic=None,
-            )
+        results = await deliver_push_to_subscriptions(
+            subscriptions=[mock_sub],
+            payload={"title": "test"},
+            topic=None,
+        )
 
     # results may be list of WebPushResult or empty depending on mocking
     assert isinstance(results, list)
@@ -714,6 +710,8 @@ async def test_vector_service_search_disabled_returns_empty() -> None:
 
     with patch("app.services.vector_service.settings") as mock_settings:
         mock_settings.semantic_search_enabled = False
+        mock_settings.embedding_api_base = "http://localhost:8001"
+        mock_settings.embedding_api_key = None
 
         svc = VectorService(db=mock_db)
         results = await svc.search_similar_with_scores(
@@ -732,6 +730,8 @@ async def test_vector_service_search_empty_embedding_returns_empty() -> None:
 
     with patch("app.services.vector_service.settings") as mock_settings:
         mock_settings.semantic_search_enabled = True
+        mock_settings.embedding_api_base = "http://localhost:8001"
+        mock_settings.embedding_api_key = None
 
         svc = VectorService(db=mock_db)
         results = await svc.search_similar_with_scores(
