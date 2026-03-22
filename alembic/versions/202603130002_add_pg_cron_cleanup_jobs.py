@@ -108,6 +108,5 @@ def downgrade() -> None:
             text(
                 "SELECT cron.unschedule(:job_name) "
                 "WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = :job_name)"
-            ),
-            {"job_name": job_name},
+            ).bindparams(job_name=job_name)
         )
