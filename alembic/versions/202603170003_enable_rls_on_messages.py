@@ -27,6 +27,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
+import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "202603170003"
@@ -48,8 +49,8 @@ def upgrade() -> None:
     # 1. Enable RLS on the messages table.
     #    FORCE ROW LEVEL SECURITY also applies the policy to the table owner
     #    (the application DB user), preventing bypass via super-user-like role.
-    conn.execute(op.inline_literal("ALTER TABLE messages ENABLE ROW LEVEL SECURITY"))
-    conn.execute(op.inline_literal("ALTER TABLE messages FORCE ROW LEVEL SECURITY"))
+    conn.execute(sa.text("ALTER TABLE messages ENABLE ROW LEVEL SECURITY"))
+    conn.execute(sa.text("ALTER TABLE messages FORCE ROW LEVEL SECURITY"))
 
     # 2. Create the participant-isolation policy.
     #    A row in ``messages`` is visible only if the current user is a
@@ -59,7 +60,7 @@ def upgrade() -> None:
     #    set return NULL rather than raising an error — those sessions see no
     #    rows (fail-closed, correct behaviour for unauthenticated contexts).
     conn.execute(
-        op.inline_literal(
+        sa.text(
             """
             CREATE POLICY messages_participant_isolation ON messages
                 AS PERMISSIVE
@@ -86,9 +87,7 @@ def downgrade() -> None:
     conn = op.get_bind()
 
     conn.execute(
-        op.inline_literal(
-            "DROP POLICY IF EXISTS messages_participant_isolation ON messages"
-        )
+        sa.text("DROP POLICY IF EXISTS messages_participant_isolation ON messages")
     )
-    conn.execute(op.inline_literal("ALTER TABLE messages NO FORCE ROW LEVEL SECURITY"))
-    conn.execute(op.inline_literal("ALTER TABLE messages DISABLE ROW LEVEL SECURITY"))
+    conn.execute(sa.text("ALTER TABLE messages NO FORCE ROW LEVEL SECURITY"))
+    conn.execute(sa.text("ALTER TABLE messages DISABLE ROW LEVEL SECURITY"))

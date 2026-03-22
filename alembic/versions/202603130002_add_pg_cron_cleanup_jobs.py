@@ -39,11 +39,18 @@ def _is_postgresql() -> bool:
 
 
 def upgrade() -> None:
-    if not _is_postgresql():
+    # Check if pg_cron is available in the cluster before attempting to create it.
+    res = (
+        op.get_bind()
+        .execute(text("SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron'"))
+        .fetchone()
+    )
+    if not res:
+        # P0-W5: Skip pg_cron setup in environments where the extension is not installed
+        # (e.g. standard local Docker containers, custom builds without pg_cron).
         return
 
-    # Enable pg_cron if not already present.  `checkfirst` equivalent: IF NOT EXISTS.
-    # The superuser who runs `alembic upgrade head` must have CREATE EXTENSION rights.
+    # Enable pg_cron if not already present.
     op.execute(text("CREATE EXTENSION IF NOT EXISTS pg_cron"))
 
     # 1. Expire unused password-reset tokens hourly to keep the table small.

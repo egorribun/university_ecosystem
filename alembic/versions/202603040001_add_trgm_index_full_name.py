@@ -53,7 +53,7 @@ def upgrade() -> None:
     # Enable the extension inside the transaction (allowed).
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     # CONCURRENTLY requires running outside an explicit transaction block.
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     conn.execute(
         text(
             f"""
@@ -72,5 +72,5 @@ def downgrade() -> None:
         return
 
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_GIN_INDEX_NAME}"))

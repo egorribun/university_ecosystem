@@ -32,7 +32,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # CONCURRENTLY requires autocommit (no surrounding transaction).
     connection = op.get_bind()
-    connection.execution_options(isolation_level="AUTOCOMMIT")
+    # connection.execution_options(isolation_level="AUTOCOMMIT")
 
     connection.execute(
         sa.text(
@@ -42,7 +42,7 @@ def upgrade() -> None:
     )
     connection.execute(
         sa.text(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_notifications_user_unread_created "
+            "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread_created "
             "ON notifications (user_id, created_at DESC) WHERE read = false"
         )
     )
@@ -56,7 +56,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     connection = op.get_bind()
-    connection.execution_options(isolation_level="AUTOCOMMIT")
+    # connection.execution_options(isolation_level="AUTOCOMMIT")
 
     connection.execute(
         sa.text("DROP INDEX CONCURRENTLY IF EXISTS idx_messages_chat_created")

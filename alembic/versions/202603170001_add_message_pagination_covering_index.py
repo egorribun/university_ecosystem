@@ -53,7 +53,7 @@ def upgrade() -> None:
         return
 
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
 
     # Drop legacy index from the previous migration (wrong table "message").
     # IF NOT EXISTS / IF EXISTS guard makes this idempotent.
@@ -76,7 +76,7 @@ def downgrade() -> None:
         return
 
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_NEW_IDX}"))
 
     # Restore the original index (correct table name, no INCLUDE).

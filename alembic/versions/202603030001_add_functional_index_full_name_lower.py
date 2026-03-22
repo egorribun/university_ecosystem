@@ -49,7 +49,7 @@ def upgrade() -> None:
 
     # CONCURRENTLY requires running outside an explicit transaction block.
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     # Functional index: lower(full_name) with text_pattern_ops operator class.
     # text_pattern_ops allows LIKE 'prefix%' patterns to use the index even
     # though the column is TEXT; without it, PostgreSQL would fall back to seqscan.
@@ -69,5 +69,5 @@ def downgrade() -> None:
         return
 
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
+    # conn.execute(text("COMMIT"))
     conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}"))

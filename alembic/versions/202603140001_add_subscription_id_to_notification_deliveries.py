@@ -79,7 +79,7 @@ def upgrade() -> None:
         # row per notification per channel).
         op.execute(
             text(
-                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_INDEX_NAME} "
+                f"CREATE INDEX IF NOT EXISTS {_INDEX_NAME} "
                 f"ON {_TABLE_NAME} (notification_id, channel, subscription_id)"
             )
         )

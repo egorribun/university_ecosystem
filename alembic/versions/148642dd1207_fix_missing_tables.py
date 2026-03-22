@@ -132,7 +132,7 @@ def upgrade() -> None:
 
     if is_postgresql:
         # Normalize UserRole Enum values to lowercase and add missing ones
-        op.execute("COMMIT")  # Can't alter type in transaction block usually
+        # op.execute("COMMIT")  # Can't alter type in transaction block usually
         for role in ["student", "teacher", "admin", "superuser", "anonymous"]:
             op.execute(sa.text(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{role}'"))
 
