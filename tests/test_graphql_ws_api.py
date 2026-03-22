@@ -546,7 +546,8 @@ def test_page_empty() -> None:
 def test_cursor_params_no_after() -> None:
     from app.repositories.pagination import CursorParams
 
-    params = CursorParams()
+    # Must pass after=None explicitly — dataclass default is FastAPI's Query() object
+    params = CursorParams(after=None)
     assert params.after is None
     assert params.after_uuid is None
     assert params.after_int is None
@@ -578,7 +579,7 @@ def test_apply_cursor_no_after() -> None:
     mock_stmt.where = MagicMock(return_value=mock_stmt)
 
     mock_column = MagicMock()
-    params = CursorParams(limit=5)
+    params = CursorParams(limit=5, after=None)
 
     result = apply_cursor(mock_stmt, mock_column, params)
     # Should call limit(params.limit + 1)

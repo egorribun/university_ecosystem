@@ -251,18 +251,17 @@ def test_failed_event_to_dict() -> None:
     assert d["handler_name"] == "test_handler"
 
 
-def test_dlq_max_size_eviction() -> None:
+@pytest.mark.asyncio
+async def test_dlq_max_size_eviction() -> None:
     """When max_size is reached, oldest events are evicted."""
 
     from app.core.event_dlq import DeadLetterQueue
 
     dlq = DeadLetterQueue(max_size=2)
 
-    async def _add_three() -> None:
-        for i in range(3):
-            await dlq.add(_make_mock_event(f"type.{i}"), Exception(str(i)))
+    for i in range(3):
+        await dlq.add(_make_mock_event(f"type.{i}"), Exception(str(i)))
 
-    asyncio.get_event_loop().run_until_complete(_add_three())
     # deque(maxlen=2) keeps only the last 2
     assert dlq.size == 2
 
@@ -1057,7 +1056,7 @@ def test_csp_production_policy_has_nonce() -> None:
 
     csp = ContentSecurityPolicy(is_development=False)
     nonce = "abc123"
-    policy = csp.get_policy(nonce=nonce)
+    policy = csp.generate(nonce=nonce)
     assert nonce in policy
     assert "nonce-" in policy
 
@@ -1066,7 +1065,7 @@ def test_csp_development_policy_has_connect_src() -> None:
     from app.core.policies.csp import ContentSecurityPolicy
 
     csp = ContentSecurityPolicy(is_development=True)
-    policy = csp.get_policy()
+    policy = csp.generate()
     assert "connect-src" in policy
     assert "localhost" in policy
 
@@ -1076,7 +1075,7 @@ def test_csp_custom_policy_overrides() -> None:
 
     custom = "default-src 'none'"
     csp = ContentSecurityPolicy(custom_policy=custom)
-    policy = csp.get_policy()
+    policy = csp.generate()
     assert custom in policy
 
 
@@ -1094,7 +1093,7 @@ def test_csp_extra_connect_src() -> None:
         is_development=False,
         connect_src_extra=["wss://push.example.com"],
     )
-    policy = csp.get_policy(nonce="xyz")
+    policy = csp.generate(nonce="xyz")
     assert "wss://push.example.com" in policy
 
 
@@ -1105,7 +1104,7 @@ def test_csp_report_uri_included() -> None:
         is_development=False,
         report_uri="/csp-report",
     )
-    policy = csp.get_policy(nonce="nonce")
+    policy = csp.generate(nonce="nonce")
     assert "/csp-report" in policy or "report-uri" in policy
 
 
@@ -1113,7 +1112,7 @@ def test_csp_require_trusted_types_in_dev() -> None:
     from app.core.policies.csp import ContentSecurityPolicy
 
     csp = ContentSecurityPolicy(is_development=True)
-    policy = csp.get_policy()
+    policy = csp.generate()
     assert "trusted-types" in policy or "require-trusted-types" in policy
 
 
@@ -1139,17 +1138,9 @@ async def test_security_headers_adds_hsts() -> None:
     async def call_next(request: Any) -> Any:
         return mock_response
 
-    mw = SecurityHeadersMiddleware(
-        mock_app,
-        hsts_max_age=31536000,
-        hsts_include_subdomains=True,
-    )
-
-    mock_request = MagicMock()
-    mock_request.url.path = "/test"
-
-    with patch.object(mw, "dispatch", wraps=mw.dispatch):
-        pass  # Just test the import and instantiation
+    mock_settings = MagicMock()
+    mw = SecurityHeadersMiddleware(mock_app, settings=mock_settings)
+    assert mw is not None  # Just test instantiation with required settings arg
 
 
 def test_security_headers_middleware_exists() -> None:
@@ -1165,48 +1156,53 @@ def test_security_headers_middleware_exists() -> None:
 
 
 def test_response_hardening_import() -> None:
-    from app.core.middleware.response_hardening import HardenedResponseMiddleware
+    """Module exports the ASGI middleware function."""
+    from app.core.middleware.response_hardening import http_response_hardening
 
-    assert HardenedResponseMiddleware is not None
+    assert callable(http_response_hardening)
 
 
 @pytest.mark.asyncio
-async def test_response_hardening_removes_server_header() -> None:
-    from app.core.middleware.response_hardening import HardenedResponseMiddleware
+async def test_response_hardening_adds_cache_control_for_static() -> None:
+    """Static paths get Cache-Control header."""
+    from starlette.responses import Response
 
-    responses_seen: list[dict] = []
+    from app.core.middleware.response_hardening import http_response_hardening
 
-    async def fake_app(scope: Any, receive: Any, send: Any) -> None:
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 200,
-                "headers": [
-                    [b"server", b"uvicorn"],
-                    [b"content-type", b"application/json"],
-                ],
-            }
-        )
-        await send({"type": "http.response.body", "body": b"ok"})
+    mock_request = MagicMock()
+    mock_request.url.path = "/static/avatar.png"
+    mock_request.method = "GET"
+    mock_request.headers = {}
 
-    sent_responses: list[dict] = []
+    mock_response = Response(content=b"img", status_code=200)
 
-    async def capture_send(msg: dict) -> None:
-        sent_responses.append(msg)
+    async def call_next(req: Any) -> Any:
+        return mock_response
 
-    mw = HardenedResponseMiddleware(fake_app)
+    result = await http_response_hardening(mock_request, call_next)
+    assert result.headers.get("cache-control") == "public, max-age=86400"
 
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [],
-        "query_string": b"",
-    }
-    await mw(scope, AsyncMock(), capture_send)
 
-    # Check headers in the start response
-    start_msgs = [m for m in sent_responses if m.get("type") == "http.response.start"]
-    if start_msgs:
-        header_names = [h[0] for h in start_msgs[0].get("headers", [])]
-        assert b"server" not in header_names
+@pytest.mark.asyncio
+async def test_ensure_vary_header_adds_origin() -> None:
+    """_ensure_vary_header appends to Vary if not present."""
+    from starlette.responses import Response
+
+    from app.core.middleware.response_hardening import _ensure_vary_header
+
+    response = Response()
+    _ensure_vary_header(response, "Origin")
+    assert response.headers.get("Vary") == "Origin"
+
+
+@pytest.mark.asyncio
+async def test_ensure_vary_header_no_duplicate() -> None:
+    """_ensure_vary_header does not duplicate existing Vary entries."""
+    from starlette.responses import Response
+
+    from app.core.middleware.response_hardening import _ensure_vary_header
+
+    response = Response()
+    response.headers["Vary"] = "Origin"
+    _ensure_vary_header(response, "Origin")
+    assert response.headers["Vary"] == "Origin"  # not "Origin, Origin"

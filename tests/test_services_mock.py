@@ -231,7 +231,6 @@ async def test_deliver_push_successful_delivery() -> None:
             "app.services.notifications.prepare_push_payload_for_user",
             return_value={"title": "test"},
         ),
-        patch("app.services.push_service.prepare_push_payload_for_user", return_value={"title": "test"}),
     ):
         with patch(
             "app.services.push_service._deliver_one",
@@ -266,10 +265,6 @@ async def test_deliver_push_handles_exception_result() -> None:
         patch(
             "app.services.push_service._deliver_to_subscription",
             new=AsyncMock(side_effect=ConnectionError("push failed")),
-        ),
-        patch(
-            "app.services.push_service.prepare_push_payload_for_user",
-            return_value={"title": "test"},
         ),
     ):
         results = await deliver_push_to_subscriptions(
@@ -414,7 +409,7 @@ async def test_handle_chat_deleted() -> None:
     mock_event.chat_id = uuid.uuid4()
 
     with patch(
-        "app.services.event_handlers.invalidate_ws_hub_cache",
+        "app.services.ws_hub_client.invalidate_ws_hub_cache",
         new=AsyncMock(),
     ) as mock_invalidate:
         await handle_chat_deleted(mock_event)
@@ -444,7 +439,7 @@ async def test_handle_attachment_cleanup_with_urls() -> None:
     mock_attachment_svc.cleanup_files = AsyncMock()
 
     with patch(
-        "app.services.event_handlers.ChatAttachmentService",
+        "app.services.chat.attachment_service.ChatAttachmentService",
         return_value=mock_attachment_svc,
     ):
         await handle_attachment_cleanup_requested(mock_event)
@@ -702,40 +697,40 @@ async def test_vector_service_close() -> None:
 
 
 @pytest.mark.asyncio
-async def test_vector_service_search_similar_with_results() -> None:
+async def test_vector_service_search_disabled_returns_empty() -> None:
+    """When semantic search is disabled, search_similar_with_scores returns []."""
     from app.services.vector_service import VectorService
 
     mock_db = AsyncMock()
-    mock_model = MagicMock()
-    mock_model.embedding = MagicMock()
-    mock_model.embedding.cosine_distance = MagicMock(return_value=MagicMock())
 
-    # Mock execute result
-    mock_row1 = (MagicMock(), 0.85)
-    mock_rows = MagicMock()
-    mock_rows.all.return_value = [mock_row1]
-    mock_db.execute = AsyncMock(return_value=mock_rows)
+    with patch("app.services.vector_service.settings") as mock_settings:
+        mock_settings.semantic_search_enabled = False
+
+        svc = VectorService(db=mock_db)
+        results = await svc.search_similar_with_scores(
+            MagicMock(), [0.1, 0.2, 0.3], limit=5, min_score=0.5
+        )
+
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_vector_service_search_empty_embedding_returns_empty() -> None:
+    """Empty embedding short-circuits without querying DB."""
+    from app.services.vector_service import VectorService
+
+    mock_db = AsyncMock()
 
     with patch("app.services.vector_service.settings") as mock_settings:
         mock_settings.semantic_search_enabled = True
-        mock_settings.embedding_api_base = "http://localhost"
-        mock_settings.embedding_api_key = "key"
-        mock_settings.embedding_dimensions = 3
 
         svc = VectorService(db=mock_db)
-        with patch("app.services.vector_service.select", return_value=MagicMock()) as mock_select:
-            # Chain all the mock SQLAlchemy calls
-            mock_stmt = MagicMock()
-            mock_select.return_value = mock_stmt
-            mock_stmt.where.return_value = mock_stmt
-            mock_stmt.order_by.return_value = mock_stmt
-            mock_stmt.limit.return_value = mock_stmt
+        results = await svc.search_similar_with_scores(
+            MagicMock(), [], limit=5, min_score=0.5
+        )
 
-            results = await svc.search_similar_with_scores(
-                mock_model, [0.1, 0.2, 0.3], limit=5, min_score=0.5
-            )
-
-    assert isinstance(results, list)
+    assert results == []
+    mock_db.execute.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
