@@ -147,22 +147,9 @@ def test_sanitize_url_idn_non_punycode_blocked() -> None:
 # sanitize_filename — truncation, unicode, control chars
 # ---------------------------------------------------------------------------
 
-<<<<<<< HEAD:tests/test_edge_cases.py
-def test_sanitize_filename_truncates_with_extension() -> None:
-    # Long filename with extension — result should fit in 255 chars and keep extension
-    filename = "a" * 300 + ".txt"
-=======
 
-@pytest.mark.parametrize(
-    "filename,expected_suffix",
-    [
-        ("a" * 300 + ".txt", ".txt"),  # long name with extension
-        ("a" * 300, ""),  # long name without extension
-    ],
-)
-def test_sanitize_filename_truncates(filename: str, expected_suffix: str) -> None:
->>>>>>> 78c7ecbc4da7a5bab8714611b3fea0381ee974cf:tests/test_coverage_wave5_edge_cases.py
-    result = sanitize_filename(filename)
+def test_sanitize_filename_truncates() -> None:
+    result = sanitize_filename("a" * 300 + ".txt")
     assert len(result) <= 255
     assert result.endswith(".txt")
 
@@ -271,7 +258,6 @@ def test_sanitize_optional_text_invalid_utf8_ignored() -> None:
     assert "hello" in result
 
 
-<<<<<<< HEAD:tests/test_edge_cases.py
 @pytest.mark.parametrize("value,expected", [
     (0, "0"),
     (42, "42"),
@@ -279,18 +265,6 @@ def test_sanitize_optional_text_invalid_utf8_ignored() -> None:
     (False, "False"),   # str(False) = "False" → strip() → "False" (truthy)
 ])
 def test_sanitize_optional_text_numeric(value: object, expected: str) -> None:
-=======
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        (0, None),  # "0".strip() is "0" which is truthy — actually returns "0"
-        (42, "42"),
-        (3.14, "3.14"),
-        (False, None),  # str(False) = "False" → truthy → "False"
-    ],
-)
-def test_sanitize_optional_text_numeric(value: object, expected: str | None) -> None:
->>>>>>> 78c7ecbc4da7a5bab8714611b3fea0381ee974cf:tests/test_coverage_wave5_edge_cases.py
     result = sanitize_optional_text(value)
     assert result == expected
 
@@ -376,7 +350,6 @@ def test_normalize_ip(ip: str | None, expected: str | None) -> None:
 # _extract_ip_from_forwarded — RFC 7239 Forwarded header parsing
 # ---------------------------------------------------------------------------
 
-<<<<<<< HEAD:tests/test_edge_cases.py
 @pytest.mark.parametrize("header,expected", [
     ('for=192.0.2.60;proto=http;by=203.0.113.43', "192.0.2.60"),
     ('for="[2001:db8::cafe]";proto=http', "2001:db8::cafe"),  # brackets stripped by strip('"[]')
@@ -386,21 +359,6 @@ def test_normalize_ip(ip: str | None, expected: str | None) -> None:
     ('', None),                              # empty
     ('for=', ""),                            # for with no value
 ])
-=======
-
-@pytest.mark.parametrize(
-    "header,expected",
-    [
-        ("for=192.0.2.60;proto=http;by=203.0.113.43", "192.0.2.60"),
-        ('for="[2001:db8::cafe]";proto=http', "[2001:db8::cafe]"),
-        ("FOR=192.0.2.1", "192.0.2.1"),  # case-insensitive
-        ("by=proxy;for=10.0.0.1", "10.0.0.1"),  # 'for' not first
-        ("proto=https;by=proxy", None),  # no 'for' part
-        ("", None),  # empty
-        ("for=", ""),  # for with no value
-    ],
-)
->>>>>>> 78c7ecbc4da7a5bab8714611b3fea0381ee974cf:tests/test_coverage_wave5_edge_cases.py
 def test_extract_ip_from_forwarded(header: str, expected: str | None) -> None:
     result = _extract_ip_from_forwarded(header)
     assert result == expected

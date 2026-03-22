@@ -232,13 +232,6 @@ async def test_deliver_push_successful_delivery() -> None:
             "app.services.notifications.prepare_push_payload_for_user",
             return_value={"title": "test"},
         ),
-<<<<<<< HEAD:tests/test_services_mock.py
-=======
-        patch(
-            "app.services.push_service.prepare_push_payload_for_user",
-            return_value={"title": "test"},
-        ),
->>>>>>> 78c7ecbc4da7a5bab8714611b3fea0381ee974cf:tests/test_coverage_wave2_services.py
     ):
         with patch(
             "app.services.push_service._deliver_one",
@@ -741,21 +734,9 @@ async def test_vector_service_search_empty_embedding_returns_empty() -> None:
         mock_settings.semantic_search_enabled = True
 
         svc = VectorService(db=mock_db)
-<<<<<<< HEAD:tests/test_services_mock.py
         results = await svc.search_similar_with_scores(
             MagicMock(), [], limit=5, min_score=0.5
         )
-=======
-        with patch(
-            "app.services.vector_service.select", return_value=MagicMock()
-        ) as mock_select:
-            # Chain all the mock SQLAlchemy calls
-            mock_stmt = MagicMock()
-            mock_select.return_value = mock_stmt
-            mock_stmt.where.return_value = mock_stmt
-            mock_stmt.order_by.return_value = mock_stmt
-            mock_stmt.limit.return_value = mock_stmt
->>>>>>> 78c7ecbc4da7a5bab8714611b3fea0381ee974cf:tests/test_coverage_wave2_services.py
 
     assert results == []
     mock_db.execute.assert_not_awaited()
