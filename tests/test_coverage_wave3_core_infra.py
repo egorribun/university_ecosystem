@@ -18,12 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # app/core/event_dlq.py — DeadLetterQueue
@@ -255,7 +253,6 @@ def test_failed_event_to_dict() -> None:
 
 def test_dlq_max_size_eviction() -> None:
     """When max_size is reached, oldest events are evicted."""
-    import asyncio
 
     from app.core.event_dlq import DeadLetterQueue
 
@@ -366,7 +363,9 @@ def test_retry_config_defaults() -> None:
 def test_retry_middleware_calculate_delay_capped() -> None:
     from app.core.event_retry import RetryMiddleware
 
-    mw = RetryMiddleware(max_retries=10, base_delay=1.0, max_delay=5.0, exponential_base=2.0)
+    mw = RetryMiddleware(
+        max_retries=10, base_delay=1.0, max_delay=5.0, exponential_base=2.0
+    )
     # attempt=10: 1.0 * 2^10 = 1024 → capped to 5.0
     delay = mw._calculate_delay(10)
     assert delay == 5.0
@@ -375,7 +374,9 @@ def test_retry_middleware_calculate_delay_capped() -> None:
 def test_retry_middleware_calculate_delay_uncapped() -> None:
     from app.core.event_retry import RetryMiddleware
 
-    mw = RetryMiddleware(max_retries=3, base_delay=0.1, max_delay=10.0, exponential_base=2.0)
+    mw = RetryMiddleware(
+        max_retries=3, base_delay=0.1, max_delay=10.0, exponential_base=2.0
+    )
     # attempt=0: 0.1 * 2^0 = 0.1
     delay = mw._calculate_delay(0)
     assert delay == pytest.approx(0.1)
@@ -412,7 +413,9 @@ def test_event_retry_exhausted_str() -> None:
     from app.core.event_retry import EventRetryExhausted
 
     event = _make_mock_event("foo.bar")
-    exc = EventRetryExhausted(event=event, original_error=ValueError("oops"), attempts=3)
+    exc = EventRetryExhausted(
+        event=event, original_error=ValueError("oops"), attempts=3
+    )
     assert "foo.bar" in str(exc)
     assert "3" in str(exc)
 
@@ -635,8 +638,9 @@ async def test_internal_access_valid_ip_passes() -> None:
 
 @pytest.mark.asyncio
 async def test_internal_access_denied_wrong_token() -> None:
-    from app.core.internal_access import InternalAccessMiddleware
     from starlette.responses import JSONResponse
+
+    from app.core.internal_access import InternalAccessMiddleware
 
     mock_app = AsyncMock()
 
@@ -661,8 +665,9 @@ async def test_internal_access_denied_wrong_token() -> None:
 
 @pytest.mark.asyncio
 async def test_internal_access_no_client_still_denies() -> None:
-    from app.core.internal_access import InternalAccessMiddleware
     from starlette.responses import JSONResponse
+
+    from app.core.internal_access import InternalAccessMiddleware
 
     mock_app = AsyncMock()
 
@@ -803,7 +808,9 @@ def test_parse_rate_limit_fallback_on_zero() -> None:
         ("1/day", (1, 86400)),
     ],
 )
-def test_parse_rate_limit_parametrized(rate_str: str, expected: tuple[int, int]) -> None:
+def test_parse_rate_limit_parametrized(
+    rate_str: str, expected: tuple[int, int]
+) -> None:
     from app.core.ratelimit.utils import parse_rate_limit
 
     result = parse_rate_limit(rate_str, fallback=(0, 0))
@@ -843,7 +850,10 @@ def test_normalize_ip_none() -> None:
 
 @pytest.mark.asyncio
 async def test_memory_strategy_allows_under_limit() -> None:
-    from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy, clear_memory_state
+    from app.core.ratelimit.strategies.memory import (
+        MemorySlidingWindowStrategy,
+        clear_memory_state,
+    )
 
     clear_memory_state()
     strategy = MemorySlidingWindowStrategy(namespace="test")
@@ -857,7 +867,10 @@ async def test_memory_strategy_allows_under_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_memory_strategy_blocks_at_limit() -> None:
-    from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy, clear_memory_state
+    from app.core.ratelimit.strategies.memory import (
+        MemorySlidingWindowStrategy,
+        clear_memory_state,
+    )
 
     clear_memory_state()
     strategy = MemorySlidingWindowStrategy(namespace="block_test")
@@ -885,7 +898,10 @@ async def test_memory_strategy_invalid_params() -> None:
 
 @pytest.mark.asyncio
 async def test_memory_strategy_different_keys_independent() -> None:
-    from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy, clear_memory_state
+    from app.core.ratelimit.strategies.memory import (
+        MemorySlidingWindowStrategy,
+        clear_memory_state,
+    )
 
     clear_memory_state()
     strategy = MemorySlidingWindowStrategy(namespace="ns")
@@ -955,7 +971,6 @@ async def test_check_rate_limit_memory_fallback_no_redis() -> None:
 @pytest.mark.asyncio
 async def test_enforce_rate_limit_disabled() -> None:
     from app.core.ratelimit.logic import enforce_rate_limit
-    from app.core.ratelimit.models import RateLimitInfo
     from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 
     with patch("app.core.ratelimit.logic.settings") as mock_settings:
@@ -976,8 +991,10 @@ async def test_enforce_rate_limit_disabled() -> None:
 async def test_enforce_rate_limit_exceeded_raises() -> None:
     from app.core.ratelimit.exceptions import RateLimitExceeded
     from app.core.ratelimit.logic import enforce_rate_limit
-    from app.core.ratelimit.models import RateLimitInfo
-    from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy, clear_memory_state
+    from app.core.ratelimit.strategies.memory import (
+        MemorySlidingWindowStrategy,
+        clear_memory_state,
+    )
 
     clear_memory_state()
 
@@ -1012,7 +1029,9 @@ async def test_check_rate_limit_redis_error_fallback() -> None:
 
     with (
         patch("app.core.ratelimit.logic.settings") as mock_settings,
-        patch("app.core.ratelimit.logic._get_redis_strategy", return_value=mock_strategy),
+        patch(
+            "app.core.ratelimit.logic._get_redis_strategy", return_value=mock_strategy
+        ),
     ):
         mock_settings.rate_limit_enabled = True
 

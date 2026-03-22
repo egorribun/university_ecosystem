@@ -32,7 +32,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-
 # ---------------------------------------------------------------------------
 # app/core/constants.py
 # ---------------------------------------------------------------------------
@@ -725,9 +724,7 @@ def test_get_optimized_image_url_no_extension() -> None:
         mock_settings.imgproxy_key = "c" * 64
         mock_settings.imgproxy_salt = "d" * 64
         mock_settings.imgproxy_base_url = "http://imgproxy"
-        result = get_optimized_image_url(
-            "http://example.com/img.png", extension=None
-        )
+        result = get_optimized_image_url("http://example.com/img.png", extension=None)
     assert result is not None
 
 
@@ -970,7 +967,7 @@ def test_sanitize_optional_text_validator() -> None:
 
 
 def test_truncate_validators() -> None:
-    from app.schemas.validators import _truncate_1000, _truncate_256, _truncate_5000
+    from app.schemas.validators import _truncate_256, _truncate_1000, _truncate_5000
 
     long_str = "a" * 10000
     assert len(_truncate_256(long_str)) <= 256

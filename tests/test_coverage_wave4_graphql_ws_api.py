@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # app/graphql/context.py — GraphQLContext
 # ---------------------------------------------------------------------------
@@ -190,10 +189,14 @@ async def test_is_admin_fails_closed_on_spicedb_error() -> None:
     mock_info.context = mock_context
 
     # Mock SpiceDBUnavailableError
-    with patch("app.graphql.permissions.checker") if False else patch(
-        "app.auth.rbac.SpiceDBUnavailableError", RuntimeError
+    with (
+        patch("app.graphql.permissions.checker")
+        if False
+        else patch("app.auth.rbac.SpiceDBUnavailableError", RuntimeError)
     ):
-        mock_checker.check_admin = AsyncMock(side_effect=RuntimeError("SpiceDB unavailable"))
+        mock_checker.check_admin = AsyncMock(
+            side_effect=RuntimeError("SpiceDB unavailable")
+        )
         result = await perm.has_permission(source=None, info=mock_info)
 
     assert result is False
@@ -230,9 +233,9 @@ async def test_is_admin_fails_closed_on_unexpected_error() -> None:
 def test_cost_visitor_cheap_fields() -> None:
     """Simple scalar fields cost 1 each."""
     from graphql.language import parse
+    from graphql.language.visitor import visit
 
     from app.graphql.extensions import _CostVisitor
-    from graphql.language.visitor import visit
 
     doc = parse("{ me { id email } }")
     visitor = _CostVisitor()
@@ -245,9 +248,9 @@ def test_cost_visitor_cheap_fields() -> None:
 def test_cost_visitor_list_fields_cost_more() -> None:
     """List fields like 'chats' cost 5."""
     from graphql.language import parse
-
-    from app.graphql.extensions import _CostVisitor, _LIST_FIELD_COST, _FIELD_COST
     from graphql.language.visitor import visit
+
+    from app.graphql.extensions import _CostVisitor
 
     doc = parse("{ chats { id } messages { id } }")
     visitor = _CostVisitor()
@@ -259,9 +262,9 @@ def test_cost_visitor_list_fields_cost_more() -> None:
 
 def test_cost_visitor_mixed_fields() -> None:
     from graphql.language import parse
+    from graphql.language.visitor import visit
 
     from app.graphql.extensions import _CostVisitor
-    from graphql.language.visitor import visit
 
     doc = parse("{ me { name } chats { participants { id } } }")
     visitor = _CostVisitor()
@@ -312,7 +315,7 @@ def test_cost_extension_rejects_expensive_query() -> None:
     from graphql import GraphQLError
     from graphql.language import parse
 
-    from app.graphql.extensions import QueryCostExtension, _MAX_QUERY_COST
+    from app.graphql.extensions import QueryCostExtension
 
     ext = QueryCostExtension.__new__(QueryCostExtension)
 
@@ -618,11 +621,14 @@ def test_apply_cursor_malformed_after_treats_as_first_page() -> None:
     mock_stmt.limit.assert_called_once_with(6)
 
 
-@pytest.mark.parametrize("limit,expected_rows", [
-    (5, 5),
-    (10, 10),
-    (1, 1),
-])
+@pytest.mark.parametrize(
+    "limit,expected_rows",
+    [
+        (5, 5),
+        (10, 10),
+        (1, 1),
+    ],
+)
 def test_page_from_rows_respects_limit(limit: int, expected_rows: int) -> None:
     from app.repositories.pagination import Page
 
