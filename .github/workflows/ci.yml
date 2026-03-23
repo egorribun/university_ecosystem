@@ -264,7 +264,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: "1.26.x"
           cache-dependency-path: services/ws-hub/go.sum
@@ -278,7 +278,7 @@ jobs:
           go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=120s
 
       - name: Upload fuzz corpus on failure
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: failure()
         with:
           name: fuzz-crash-corpus
@@ -642,7 +642,7 @@ jobs:
         run: docker build -t university-ecosystem/backend:${{ github.sha }} -f backend.Dockerfile .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.28.0
         with:
           image-ref: university-ecosystem/backend:${{ github.sha }}
           format: sarif
