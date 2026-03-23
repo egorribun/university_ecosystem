@@ -64,8 +64,6 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
-        with:
-          cosign-release: v3.0.5
 
       - name: Build and push
         id: build
