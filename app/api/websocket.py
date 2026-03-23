@@ -38,7 +38,6 @@ from app.api.ws.presence import (
 )
 from app.api.ws.serializers import serialize_message
 from app.core import metrics
-from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.chat import Message
 
@@ -101,27 +100,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
       - Participant presence updates
     - {"type": "error", "message": "..."} - Error message
     """
-    # --- RZ-6: CSRF protection for WebSocket (audit 2026-02-26) ---
-    # WebSocket upgrades are exempt from the CSRF middleware because they use
-    # HTTP Upgrade — the browser attaches cookies automatically, making cookie-
-    # authenticated WebSocket connections vulnerable to CSRF from any origin.
-    # Mitigation: validate the Origin header against the CORS allowlist *before*
-    # accepting the upgrade.  Allowed origins are the same set used by CORSMiddleware.
-    # Native clients (no Origin header) are permitted to connect via explicit JWT.
-    _origin = websocket.headers.get("origin")
-    if _origin is not None:
-        _allowed_origins: set[str] = set(
-            getattr(settings, "cors_allow_origins_list", [])
-            or getattr(settings, "frontend_origins", "").split(",")
-        )
-        # Normalise: strip trailing slash and lowercase scheme+host
-        _origin_normalised = _origin.rstrip("/").lower()
-        _allowed_normalised = {o.rstrip("/").lower() for o in _allowed_origins if o}
-        if _origin_normalised not in _allowed_normalised:
-            logger.warning("WebSocket rejected: Origin '%s' not in allowlist", _origin)
-            await websocket.close(code=4403, reason="Origin not allowed")
-            return
-    # ------------------------------------------------------------------
+    # MED-W19: Origin check removed from here — it is a duplicate of the check
+    # already performed inside authenticator.authenticate_upgrade() (see
+    # app/api/ws/authenticator.py).  Keeping both was redundant and could cause
+    # divergence if the allowlist logic was updated in only one place.
 
     import orjson
 

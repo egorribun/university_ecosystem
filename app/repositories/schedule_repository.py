@@ -107,7 +107,17 @@ class ScheduleRepository(
         if creator_id is not None:
             data["creator_id"] = creator_id
 
-        return await super().create(data)
+        result = await super().create(data)
+
+        # MED-W19: Invalidate stale cache entries so the next read fetches fresh
+        # data. Without this, list_groups and get_by_group would serve stale
+        # results indefinitely after a write.
+        group_id = data.get("group_id")
+        if group_id is not None:
+            await schedule_cache.delete(f"schedule:group:{group_id}")
+        await schedule_cache.delete("schedule:groups")
+
+        return result
 
 
 def get_group_repository(db: AsyncDatabaseSession) -> GroupRepository:

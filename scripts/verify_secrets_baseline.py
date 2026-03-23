@@ -22,7 +22,8 @@ import sys
 
 
 def load_json(path: str) -> dict:
-    with open(path) as fh:
+    # LOW-W19: explicit encoding to avoid platform-dependent default encoding
+    with open(path, encoding="utf-8") as fh:
         return json.load(fh)
 
 

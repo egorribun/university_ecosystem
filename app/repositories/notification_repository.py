@@ -90,7 +90,11 @@ class NotificationRepository(
             .values(read=True, read_at=now)
         )
         await self.db.flush()
-        return int(getattr(result, "rowcount", 0) or 0)
+        # LOW-W19: rowcount may be -1 (driver does not support it); treat as 0.
+        rc = getattr(result, "rowcount", 0)
+        if rc < 0:
+            return 0
+        return int(rc)
 
     async def mark_all_as_read(self, user_id: uuid.UUID | str | int) -> int:
         """Mark all notifications as read for a user."""
@@ -106,7 +110,11 @@ class NotificationRepository(
             .values(read=True, read_at=now)
         )
         await self.db.flush()
-        return int(getattr(result, "rowcount", 0) or 0)
+        # LOW-W19: rowcount may be -1 (driver does not support it); treat as 0.
+        rc = getattr(result, "rowcount", 0)
+        if rc < 0:
+            return 0
+        return int(rc)
 
     async def get_by_dedupe_key(
         self, user_id: uuid.UUID | str | int, dedupe_key: str

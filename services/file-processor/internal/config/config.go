@@ -35,7 +35,10 @@ type Config struct {
 
 // Load loads the configuration from environment variables using Viper.
 func Load() (*Config, error) {
-	viper.SetEnvPrefix("") // No prefix, or use "FP" if strictnamespacing needed, but existing envs are loose
+	// LOW-W19: set prefix "FP" so this service reads FP_GRPC_PORT etc. and does
+	// not accidentally consume unrelated env vars from the host environment.
+	// Existing deployments that use un-prefixed vars must be updated to add "FP_".
+	viper.SetEnvPrefix("FP")
 	viper.AutomaticEnv()
 
 	// Default values

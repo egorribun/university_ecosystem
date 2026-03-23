@@ -19,7 +19,6 @@ from app.api.validation import (
     raise_unauthorized,
     raise_validation_error,
 )
-from app.auth.security import decode_token
 from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -317,7 +316,14 @@ async def spotify_callback(
     db: AsyncDatabaseSession = Depends(get_db),
 ) -> RedirectResponse:
     locale = resolve_locale(request=request)
-    payload = decode_token(state) or {}
+    # RZ-W19-07: decode state with the SAME key used to mint it
+    state_secret = settings.spotify_oauth_state_secret
+    if not state_secret:
+        raise_http_error(503, "errors.spotify.misconfigured", locale)
+    try:
+        payload = jwt.decode(state, state_secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        payload = {}
     if not payload.get("sub"):
         raise_validation_error("errors.spotify.invalid_state", locale)
     user = await db.get(User, uuid.UUID(payload["sub"]))

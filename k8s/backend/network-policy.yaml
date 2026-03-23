@@ -22,12 +22,13 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
-    # Allow traffic from ingress controller
+    # Allow traffic from ingress controller (AND semantics — both selectors must match)
+    # RZ-W19-09: merged into single from item for AND semantics (was OR — too permissive)
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ingress-nginx
-        - podSelector:
+          podSelector:
             matchLabels:
               app.kubernetes.io/name: ingress-nginx
       ports:

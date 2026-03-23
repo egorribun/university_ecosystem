@@ -30,19 +30,21 @@ def check_health(url, name, timeout=30, interval=2):
 def run_smoke_test():
     gateway_url = os.environ.get("GATEWAY_URL", "http://localhost:8080/health")
     ws_hub_url = os.environ.get("WS_HUB_URL", "http://localhost:8083/health")
-    rust_optimizer_url = os.environ.get(
-        "RUST_OPTIMIZER_URL", "http://localhost:8090/health"
-    )
     backend_url = os.environ.get("BACKEND_URL", "http://localhost:8000/healthz")
     frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:8081/")
 
     results = [
         check_health(gateway_url, "Gateway"),
         check_health(ws_hub_url, "WS-Hub"),
-        check_health(rust_optimizer_url, "Rust Optimizer"),
         check_health(backend_url, "Python Backend"),
         check_health(frontend_url, "Frontend"),
     ]
+
+    # LOW-W19: rust-optimizer is not present in the default compose stack; only
+    # include its health check when RUST_OPTIMIZER_URL is explicitly set.
+    rust_optimizer_url = os.environ.get("RUST_OPTIMIZER_URL")
+    if rust_optimizer_url:
+        results.append(check_health(rust_optimizer_url, "Rust Optimizer"))
 
     if all(results):
         print("🚀 All services are healthy! Smoke test passed.")

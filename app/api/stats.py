@@ -1,6 +1,6 @@
 import asyncio
 import hashlib
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
@@ -55,6 +55,9 @@ def _resolve_period(period: str | None) -> tuple[str, int]:
     return _PERIOD_DEFAULT
 
 
+_VALID_STAT_KINDS: frozenset[str] = frozenset({"attendance", "grades", "participation"})
+
+
 async def _handle_stats_query(
     kind: str,
     period: str,
@@ -68,8 +71,12 @@ async def _handle_stats_query(
     period_key, days = _resolve_period(period)
     locale = resolve_locale(request=request, user=user)
 
+    if kind not in _VALID_STAT_KINDS:
+        kind = "attendance"
+    validated_kind = cast(Literal["attendance", "grades", "participation"], kind)
+
     query = GetStatsQuery(
-        kind=kind,
+        kind=validated_kind,
         user_id=user.id,
         period_key=period_key,
         period_days=days,
@@ -189,7 +196,9 @@ async def stats_summary(
     period_key, days = _resolve_period(period)
     locale = resolve_locale(request=request, user=user)
 
-    def _make_query(kind: str) -> GetStatsQuery:
+    def _make_query(
+        kind: Literal["attendance", "grades", "participation"],
+    ) -> GetStatsQuery:
         return GetStatsQuery(
             kind=kind,
             user_id=user.id,
@@ -237,16 +246,12 @@ async def creation_analytics(
     Analytics powered by UUID v7:
     Creation time distribution without DB indexes on created_at.
     """
-    # This is a demonstration of using extract_timestamp_from_uuid_v7
-    # In a real implementation, we would query IDs from the DB and process them
+    # MED-W19: This endpoint previously returned hardcoded fake data, which
+    # silently served fabricated analytics to callers. Replaced with 501 until
+    # the real UUID-v7 temporal query is implemented.
+    from fastapi import HTTPException
 
-    # Placeholder for actual DB logic
-    return {
-        "object_type": object_type,
-        "period": period,
-        "note": "Analytics computed via UUID v1/v7 temporal component",
-        "data": [
-            {"date": "2026-02-01", "count": 10},
-            {"date": "2026-01-31", "count": 15},
-        ],
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Not implemented: /stats/creation is not yet backed by real data",
+    )

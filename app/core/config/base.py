@@ -246,6 +246,12 @@ def _should_allow_development_defaults(missing: Iterable[str] | None = None) -> 
     # where strict secret enforcement is unnecessary overhead for non-sensitive steps.
     is_ci = os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
 
+    # MED-W19: production must never fall back to development defaults regardless
+    # of the CI flag — a misconfigured prod deploy with CI=true would otherwise
+    # silently use insecure generated secrets.
+    if env_name == "production":
+        return False
+
     # STRICT SECURITY: Only allow defaults if we are explicitly in a development environment.
     # If ENVIRONMENT is unset, empty, or "production", we fail securely unless in a CI environment.
     if env_name not in _DEVELOPMENT_ENVIRONMENTS and not is_ci:

@@ -11,7 +11,7 @@ the application to ensure consistent serialization behavior.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 try:
@@ -30,12 +30,30 @@ except ImportError:
     class OrJsonMock:
         OPT_SERIALIZE_NUMPY = 0
         OPT_UTC_Z = 0
-        OPT_NAIVE_UTC = 0
+        # LOW-W19: Keep OPT_NAIVE_UTC as a non-zero sentinel so callers can
+        # detect it via bitwise operations even in the fallback path.
+        OPT_NAIVE_UTC = 1
 
         @staticmethod
         def dumps(obj: Any, default: Any = None, option: Any = None) -> bytes:
-            # Ignores option
-            return json.dumps(obj, default=default).encode("utf-8")
+            # LOW-W19: Basic OPT_NAIVE_UTC handling — when the flag is present,
+            # replace naive datetime objects with their UTC-aware equivalent
+            # before serialization so the fallback path behaves consistently
+            # with real orjson (naive datetimes treated as UTC).
+            naive_utc = bool(option and (option & OrJsonMock.OPT_NAIVE_UTC))
+
+            def _default(o: Any) -> Any:
+                from datetime import datetime
+
+                if naive_utc and isinstance(o, datetime) and o.tzinfo is None:
+                    return o.replace(tzinfo=UTC).isoformat()
+                if default is not None:
+                    return default(o)
+                raise TypeError(
+                    f"Object of type {type(o).__name__} is not JSON serializable"
+                )
+
+            return json.dumps(obj, default=_default).encode("utf-8")
 
         @staticmethod
         def loads(obj: bytes | str) -> Any:

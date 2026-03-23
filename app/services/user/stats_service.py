@@ -144,7 +144,7 @@ class StatsService:
             entry = self._parse_grade_payload(
                 str(notification.body) if notification.body else None,
                 fallback_title=str(notification.title) if notification.title else "",
-                fallback_date=notification.created_at,  # type: ignore[arg-type]
+                fallback_date=notification.created_at,
             )
             if entry:
                 current_entries.append(entry)
@@ -159,7 +159,7 @@ class StatsService:
             entry = self._parse_grade_payload(
                 str(notification.body) if notification.body else None,
                 fallback_title=str(notification.title) if notification.title else "",
-                fallback_date=notification.created_at,  # type: ignore[arg-type]
+                fallback_date=notification.created_at,
             )
             if entry:
                 previous_entries.append(entry)
@@ -231,6 +231,13 @@ class StatsService:
             "events": events_count,
             "hours": round(total_hours, 2),
             "groups": len(unique_groups),
+            # LOW-W19: `trend` is a placeholder value (1 if there are any events,
+            # else 0).  A real trend requires comparing participation counts
+            # against the previous period.  Replace with:
+            #   previous_count = await self.stats_repo.get_participation_count(
+            #       user_id, previous_start, window_start)
+            #   trend = events_count - previous_count
+            # once the previous-period query is implemented in UserStatsRepository.
             "trend": 1 if events_count > 0 else 0,
             "period_key": stats_cache.resolve_period_key(period_key, period_days),
             "recent": recent_items,

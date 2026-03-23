@@ -301,8 +301,15 @@ async def get_challenge(
     session_id: UUID | None = None,
     consume: bool = False,
     locale: str = "en",
+    for_update: bool = False,  # MED-W19: only acquire row lock when actually needed
 ) -> MfaChallenge:
-    stmt = select(MfaChallenge).where(MfaChallenge.token == token).with_for_update()
+    # MED-W19: Apply with_for_update() only when consume=True (or explicitly
+    # requested).  Unconditional SELECT FOR UPDATE on read-only lookups causes
+    # unnecessary lock contention on the MfaChallenge table.
+    _for_update = for_update or consume
+    stmt = select(MfaChallenge).where(MfaChallenge.token == token)
+    if _for_update:
+        stmt = stmt.with_for_update()
     if isinstance(challenge_type, list):
         stmt = stmt.where(MfaChallenge.challenge_type.in_(challenge_type))
     else:

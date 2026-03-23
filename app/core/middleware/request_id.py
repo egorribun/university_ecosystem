@@ -8,6 +8,11 @@ from typing import Any
 
 from fastapi import Request
 
+try:
+    from structlog.contextvars import clear_contextvars
+except ImportError:
+    clear_contextvars = None
+
 from app.core.logging import bind_context
 
 # D-04 (audit 2026-03-08): Correlation ID available to any logger in this process
@@ -72,3 +77,8 @@ class RequestIDMiddleware:
             await self._app(scope, receive, _send_with_id)
         finally:
             request_id_ctx.reset(ctx_token)
+            # LOW-W19: Clear structlog contextvars so that request-scoped
+            # bindings (request_id, user_id, etc.) do not leak into the next
+            # request that reuses this asyncio task/thread from the pool.
+            if clear_contextvars is not None:
+                clear_contextvars()

@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -325,6 +326,10 @@ func encodeImage(dst *image.RGBA, format string) (*bytes.Buffer, string, error) 
 			return nil, "", fmt.Errorf("webp→png transcode: %w", err)
 		}
 	default:
+		// LOW-W19: set outFormat to "jpeg" so the returned format string matches
+		// the actual encoding used.  Without this the caller would get the original
+		// unknown format string back (e.g. "tiff") while the bytes are JPEG.
+		outFormat = "jpeg"
 		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
 			return nil, "", err
 		}
@@ -344,6 +349,14 @@ func getValidatedDimension(options map[string]interface{}, key string, defaultVa
 			val = int(v)
 		case int64:
 			val = int(v)
+		case string:
+			// LOW-W19: gRPC proto map<string,string> options arrive as strings;
+			// parse them rather than returning an error for a valid numeric string.
+			parsed, err := strconv.Atoi(v)
+			if err != nil {
+				return 0, fmt.Errorf("invalid string value for %s: %q", key, v)
+			}
+			val = parsed
 		default:
 			return 0, fmt.Errorf("invalid type for %s", key)
 		}

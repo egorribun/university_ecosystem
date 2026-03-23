@@ -474,7 +474,7 @@ services:
     # SPICEDB_GRPC_PRESHARED_KEY env var (below) is read automatically by SpiceDB.
     environment:
       SPICEDB_DATASTORE_CONN_URI: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
-      SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:-secret}"
+      SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY must be set}"
     command: serve
     # Internal only - accessed by backend services
     expose:

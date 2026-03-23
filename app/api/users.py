@@ -41,6 +41,7 @@ from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.models import models
+from app.models.enums import UserRole
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService
@@ -413,7 +414,7 @@ async def get_users(
     ]
     bg.add_task(batch_log_data_access, db, entries=log_entries, request=request)
 
-    if current_user.role != "admin":
+    if current_user.role != UserRole.ADMIN:
         # Force strict serialization to public schema for non-admins
         return [
             schemas.UserPublicOut.model_validate(u, from_attributes=True) for u in users

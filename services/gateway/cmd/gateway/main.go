@@ -267,9 +267,15 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 13,
+		// FIX-WS-01: WriteTimeout must be 0 (disabled) because this gateway proxies
+		// long-lived WebSocket connections. A non-zero WriteTimeout causes net/http to
+		// close the underlying TCP connection once the deadline fires, immediately
+		// terminating all active WebSocket upgrades. The proxy's own
+		// ResponseHeaderTimeout (30s) already guards against slow upstream headers on
+		// plain HTTP requests; WebSocket frames are handled at the application layer.
+		WriteTimeout:   0,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 13,
 	}
 
 	go func() {

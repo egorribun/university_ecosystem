@@ -1,4 +1,3 @@
-import contextlib
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -169,11 +168,11 @@ class EventService:
             if is_registered and attendance:
                 try:
                     my_qr_token = attendance_tokens.issue_token(attendance)
-                except Exception as exc:
-                    # If token issue fails (missing secret etc),
-                    # just ignore for list view
-                    logger.debug("MFA token issuance failed for attendee: %s", exc)  # nosec B110
-                    pass
+                except (KeyError, ValueError, TypeError) as exc:
+                    # TD-W19-03 (Wave 19): narrowed from bare Exception.
+                    # Token issuance can fail due to missing secret (KeyError),
+                    # invalid input (ValueError), or wrong type (TypeError).
+                    logger.debug("MFA token issuance failed for attendee: %s", exc)
 
             output.append(
                 self.serialize_event(
@@ -206,8 +205,6 @@ class EventService:
         self, data: schemas.EventCreate, user_id: uuid.UUID
     ) -> EventDTO:
         if data.starts_at >= data.ends_at:
-            from app.core.localization import translate
-
             raise ValueError(translate("validation.events.end_after_start"))
 
         obj_data = data.model_dump()
@@ -230,12 +227,10 @@ class EventService:
             new_start = updates.get("starts_at", event.starts_at)
             new_end = updates.get("ends_at", event.ends_at)
             if new_start >= new_end:
-                from app.core.localization import translate
-
                 raise ValueError(translate("validation.events.end_after_start"))
 
         updated_event = await self.repo.update(event_id, updates)
-        assert updated_event is not None  # nosec B101
+        assert updated_event is not None  # nosec B101  # noqa: S101
 
         async with self.uow:
             await self.uow.commit()
@@ -250,23 +245,27 @@ class EventService:
         file_urls = await self.repo.get_event_file_urls(event_id)
         image_url = event.image_url
 
-        from app.utils.files import delete_static_file
-
-        # RZ-003 pattern: Delete from storage BEFORE committing the DB transaction.
-        # prevents orphaned files in case of commit failure/interruption.
-        if image_url:
-            with contextlib.suppress(Exception):
-                await delete_static_file(str(image_url))
-
-        for url in file_urls:
-            with contextlib.suppress(Exception):
-                await delete_static_file(url)
-
-        # Delete records
+        # MED-W19: Delete DB records first, then clean up storage after a
+        # successful commit. This prevents orphaned DB rows when the commit
+        # fails; a failed storage delete is non-fatal (logged only).
         await self.repo.delete_event_files(event_id)
         await self.repo.delete(event_id)
         async with self.uow:
             await self.uow.commit()
+
+        from app.utils.files import delete_static_file
+
+        if image_url:
+            try:
+                await delete_static_file(str(image_url))
+            except Exception:
+                logger.warning("Failed to delete event image: %s", image_url)
+
+        for url in file_urls:
+            try:
+                await delete_static_file(url)
+            except Exception:
+                logger.warning("Failed to delete event file: %s", url)
 
         return True
 
@@ -304,7 +303,7 @@ class EventService:
                 exist = await self.repo.update_attendance(
                     data.event_id, user_id, updates
                 )
-                assert exist is not None  # nosec B101
+                assert exist is not None  # nosec B101  # noqa: S101
                 async with self.uow:
                     await self.uow.commit()
 

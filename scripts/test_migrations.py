@@ -8,7 +8,7 @@ def get_alembic_cmd():
     # Priority 1: Direct 'alembic' script in PATH
     try:
         # Check if alembic exists and is runnable
-        subprocess.run(["alembic", "--version"], capture_output=True, check=True)
+        subprocess.run(["alembic", "--version"], capture_output=True, check=True)  # noqa: S607
         return "alembic"
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
@@ -16,7 +16,9 @@ def get_alembic_cmd():
     # Priority 2: 'uv run alembic' if uv is present
     try:
         subprocess.run(
-            ["uv", "run", "alembic", "--version"], capture_output=True, check=True
+            ["uv", "run", "alembic", "--version"],  # noqa: S607
+            capture_output=True,
+            check=True,
         )
         return "uv run alembic"
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -33,7 +35,7 @@ print(f"INFO: Using Alembic command: {ALEMBIC_BASE_CMD}")
 
 def run_command(cmd, env=None):
     print(f"Executing: {cmd}")
-    result = subprocess.run(cmd, shell=True, env=env)
+    result = subprocess.run(cmd, shell=True, env=env)  # noqa: S602
     if result.returncode != 0:
         print(f"Error: Command failed with exit code {result.returncode}")
         return False

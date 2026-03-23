@@ -11,7 +11,9 @@ Provides two interfaces:
 
 from __future__ import annotations
 
+import asyncio
 import os
+import threading
 from collections.abc import AsyncIterator
 from functools import lru_cache
 from urllib.parse import urlparse
@@ -106,6 +108,22 @@ def get_spicedb_client() -> Client:
 
 
 _global_channel: grpc.aio.Channel | None = None
+# MED-W19: _global_channel_lock must be initialised lazily — asyncio.Lock()
+# created at module-import time binds to the importing thread's event loop and
+# raises "attached to a different loop" in test suites that spin up their own
+# loops.  Lazy init mirrors the pattern used for _registry_lock in
+# circuit_breaker.py.
+_global_channel_lock: asyncio.Lock | None = None
+_global_channel_alloc_lock = threading.Lock()
+
+
+def _get_channel_lock() -> asyncio.Lock:
+    global _global_channel_lock
+    if _global_channel_lock is None:
+        with _global_channel_alloc_lock:
+            if _global_channel_lock is None:
+                _global_channel_lock = asyncio.Lock()  # MED-W19: lazy creation
+    return _global_channel_lock
 
 
 async def get_async_spicedb_channel() -> AsyncIterator[object]:
@@ -117,32 +135,41 @@ async def get_async_spicedb_channel() -> AsyncIterator[object]:
     global _global_channel
     import grpc
 
+    # MED-W19: Acquire the lock only for channel initialisation; release it
+    # *before* yielding so that the lock is never held across the yield point.
+    # Holding a lock across a yield causes all other coroutines waiting on that
+    # lock to stall for the entire duration of the request.
     if _global_channel is None:
-        host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
-        target = f"{host}:{port}"
-        token = settings.spicedb_preshared_key
+        async with _get_channel_lock():
+            if _global_channel is None:
+                host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
+                target = f"{host}:{port}"
+                token = settings.spicedb_preshared_key
 
-        _KEEPALIVE_OPTIONS = [
-            ("grpc.keepalive_time_ms", 10_000),
-            ("grpc.keepalive_timeout_ms", 5_000),
-            ("grpc.keepalive_permit_without_calls", 1),
-            ("grpc.max_reconnect_backoff_ms", 5_000),
-            ("grpc.http2.min_time_between_pings_ms", 10_000),
-        ]
+                _KEEPALIVE_OPTIONS = [
+                    ("grpc.keepalive_time_ms", 10_000),
+                    ("grpc.keepalive_timeout_ms", 5_000),
+                    ("grpc.keepalive_permit_without_calls", 1),
+                    ("grpc.max_reconnect_backoff_ms", 5_000),
+                    ("grpc.http2.min_time_between_pings_ms", 10_000),
+                ]
 
-        if use_ssl:
-            from grpcutil import bearer_token_credentials
+                if use_ssl:
+                    from grpcutil import bearer_token_credentials
 
-            credentials = bearer_token_credentials(token)
-            _global_channel = grpc.aio.secure_channel(
-                target, credentials, options=_KEEPALIVE_OPTIONS
-            )
-        else:
-            _global_channel = grpc.aio.insecure_channel(
-                target, options=_KEEPALIVE_OPTIONS
-            )
+                    credentials = bearer_token_credentials(token)
+                    _global_channel = grpc.aio.secure_channel(
+                        target, credentials, options=_KEEPALIVE_OPTIONS
+                    )
+                else:
+                    _global_channel = grpc.aio.insecure_channel(
+                        target, options=_KEEPALIVE_OPTIONS
+                    )
 
-        logger.debug("SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl)
+                logger.debug(
+                    "SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl
+                )
+        # Lock released before yield — no lock held during request processing.
 
     yield _global_channel
 
@@ -150,7 +177,10 @@ async def get_async_spicedb_channel() -> AsyncIterator[object]:
 async def close_global_spicedb_channel() -> None:
     """Close the global SpiceDB async channel. Must be called during app shutdown."""
     global _global_channel
-    if _global_channel is not None:
-        await _global_channel.close()
-        _global_channel = None
-        logger.debug("SpiceDB async channel closed globally")
+    # MED-W19: Acquire the lock around the close + None assignment to prevent a
+    # concurrent get_async_spicedb_channel() from seeing a half-closed channel.
+    async with _get_channel_lock():
+        if _global_channel is not None:
+            await _global_channel.close()
+            _global_channel = None
+            logger.debug("SpiceDB async channel closed globally")

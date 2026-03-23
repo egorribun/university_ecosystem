@@ -271,6 +271,9 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	}
 	newCall := new(call)
 	newCall.wg.Add(1)
+	// HIGH-W19: defer wg.Done so waiters are always unblocked even if
+	// doRequestWithBreaker panics; explicit call below is removed
+	defer newCall.wg.Done()
 	c.calls[key] = newCall
 	c.callMu.Unlock()
 
@@ -297,7 +300,6 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 
 	// Resolve in-flight call
 	newCall.res = allowed
-	newCall.wg.Done()
 
 	c.callMu.Lock()
 	delete(c.calls, key)

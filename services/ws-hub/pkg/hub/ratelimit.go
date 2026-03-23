@@ -173,11 +173,7 @@ func RealIP(r *http.Request, trustedProxies map[string]struct{}, cidrs []*net.IP
 	return remoteIP
 }
 
-// min is a helper because Go 1.21+ provides it as a builtin,
-// but we keep it explicit for clarity.
-func min(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
-}
+// LOW-W19: custom min() removed — Go 1.21+ provides min() as a builtin that
+// works on all ordered types.  Defining it here shadowed the builtin and would
+// cause a compile error with Go 1.21 toolchains that treat redeclared builtins
+// as errors in some linter configurations.

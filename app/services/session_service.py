@@ -30,7 +30,7 @@ async def register_session_bg(
     try:
         session_backend = await get_session_backend()
         await session_backend.register_session(
-            user_id=str(user_id),  # type: ignore[arg-type]
+            user_id=str(user_id),
             jti=jti,
             expires_at=expires_at,
             metadata={

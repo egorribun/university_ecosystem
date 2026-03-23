@@ -272,8 +272,16 @@ class S3Storage(StorageBackend):
             async with self._build_aioboto3_client() as s3:
                 await s3.head_object(Bucket=self.bucket, Key=key)
             return True
-        except Exception:
-            return False
+        except Exception as exc:
+            # HIGH-W19: only swallow "not found" errors; re-raise everything else
+            # (credentials, network failures, etc.) so callers are not misled.
+            from botocore.exceptions import ClientError
+
+            if isinstance(exc, ClientError):
+                error_code = exc.response.get("Error", {}).get("Code", "")
+                if error_code in ("404", "NoSuchKey"):
+                    return False
+            raise
 
     async def read_file(self, file_url_or_path: str) -> bytes:
         key = self._extract_key(file_url_or_path)

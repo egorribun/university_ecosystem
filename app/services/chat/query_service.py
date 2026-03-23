@@ -124,7 +124,7 @@ class ChatQueryService:
         """Get details for a specific chat."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -161,7 +161,7 @@ class ChatQueryService:
         """Fetch messages for a chat."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101
+        assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -185,6 +185,12 @@ class ChatQueryService:
                 content=msg.content,
                 created_at=msg.created_at,
                 read_status=msg.read_status,
+                # LOW-W19: sender is intentionally omitted here.  The message
+                # list query uses a lightweight projection that does not eagerly
+                # load the full sender relationship in order to avoid N+1 queries.
+                # Caller receives sender_id and can resolve the profile separately
+                # if needed.  If full sender data is required, add a joined-load
+                # to ChatRepository.get_messages() and remove this comment.
                 sender=None,
                 attachments=cast("list[AttachmentResponse]", msg.attachments),
                 sender_presence=presence_map.get(msg.sender_id),

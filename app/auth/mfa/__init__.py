@@ -105,7 +105,9 @@ __all__ = [
     "has_totp_enabled",
     "has_webauthn_enabled",
     "issue_challenge",
-    "mfa_enrollments",
+    # MED-W19: Removed "mfa_enrollments" — this name was never defined or
+    # imported in this package, making it a dangling __all__ entry that raises
+    # AttributeError on wildcard imports.
     "purge_expired_challenges",
     "record_mfa_success",
     "refresh_user_mfa_preferences",

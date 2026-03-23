@@ -124,8 +124,15 @@ class NewsService:
     async def get_news_with_details(
         self, news_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> NewsDTO | None:
-        # Placeholder for complex detail retrieval if needed
-        pass
+        # HIGH-W19: implement instead of returning None (implicit from bare `pass`);
+        # delegate to get_with_interactions to populate like/comment metadata.
+        news = await self.repo.get(news_id)
+        if news is None:
+            return None
+        likes_count, is_liked = await self.repo.get_with_interactions(news_id, user_id)
+        news.likes_count = likes_count  # type: ignore[attr-defined]
+        news.is_liked = is_liked  # type: ignore[attr-defined]
+        return news
 
     async def get_news_item(
         self, news_id: uuid.UUID, user_id: uuid.UUID | None = None
@@ -148,7 +155,7 @@ class NewsService:
         old_image_url = news.image_url
 
         updated_news = await self.repo.update(news_id, updates)
-        assert updated_news is not None  # nosec B101
+        assert updated_news is not None  # nosec B101  # noqa: S101
 
         async with self.uow:
             await self.uow.commit()

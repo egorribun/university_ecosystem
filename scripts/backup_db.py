@@ -26,15 +26,15 @@ def run_backup():
 
     timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
     backup_name = f"backup_{db_name}_{timestamp}.sql"
-    backup_path = os.path.join(os.environ.get("TEMP", "/tmp"), backup_name)
+    backup_path = os.path.join(os.environ.get("TEMP", "/tmp"), backup_name)  # noqa: S108
 
     print(f"Starting backup for {db_name}...")
 
     # 1. Create SQL dump
     try:
         # Use subprocess to run pg_dump
-        subprocess.run(
-            ["pg_dump", "-h", db_host, "-U", db_user, "-f", backup_path, db_name],
+        subprocess.run(  # noqa: S603
+            ["pg_dump", "-h", db_host, "-U", db_user, "-f", backup_path, db_name],  # noqa: S607
             check=True,
             env={**os.environ, "PGPASSWORD": pg_password},
         )
@@ -58,26 +58,20 @@ def run_backup():
     try:
         if shutil.which("mc"):
             print("Using mc to upload...")
-            subprocess.run(
-                [
-                    "mc",
-                    "alias",
-                    "set",
-                    "myminio",
-                    minio_endpoint,
-                    minio_access_key,
-                    minio_secret_key,
-                ],
-                check=True,
-            )
-            subprocess.run(
-                [
+            # LOW-W19: credentials are passed via MC_HOST_<alias> environment variable
+            # so they never appear in process argument lists visible to `ps` / audit logs.
+            # MC_HOST_myminio format: https://<access-key>:<secret-key>@<endpoint>
+            host_url = f"https://{minio_access_key}:{minio_secret_key}@{minio_endpoint}"
+            mc_env = {**os.environ, "MC_HOST_myminio": host_url}
+            subprocess.run(  # noqa: S603
+                [  # noqa: S607
                     "mc",
                     "cp",
                     compressed_path,
                     f"myminio/{minio_bucket}/backups/{os.path.basename(compressed_path)}",
                 ],
                 check=True,
+                env=mc_env,
             )
         else:
             print(

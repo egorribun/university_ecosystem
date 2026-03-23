@@ -58,8 +58,10 @@ class ChatNotificationService:
                 user_ids=other_participants,
                 topic="chat",
                 payload_data={
-                    "chatId": message.chat_id,
-                    "senderId": sender.id,
-                    "messageId": message.id,
+                    # HIGH-W19: wrap UUID fields with str() to avoid JSON
+                    # serialization errors — UUID is not natively JSON-serialisable.
+                    "chatId": str(message.chat_id),
+                    "senderId": str(sender.id),
+                    "messageId": str(message.id),
                 },
             )

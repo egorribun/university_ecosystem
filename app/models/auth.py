@@ -166,7 +166,7 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
             values_callable=lambda x: [m.value for m in x],
         ),
         nullable=False,
-        server_default=ChallengeState.PENDING,
+        server_default="pending",  # MED-W19: was ChallengeState.PENDING (enum object invalid as server_default)
         default=ChallengeState.PENDING,
         index=True,
     )
@@ -222,7 +222,10 @@ class PasswordResetToken(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "password_reset_tokens"
 
     token_hash: Mapped[str] = mapped_column(
-        String, unique=True, index=True, nullable=False
+        String(255),
+        unique=True,
+        index=True,
+        nullable=False,  # LOW-W19: bounded String
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
@@ -246,7 +249,10 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
 
     new_email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(
-        String, unique=True, index=True, nullable=False
+        String(255),
+        unique=True,
+        index=True,
+        nullable=False,  # LOW-W19: bounded String
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
@@ -262,10 +268,12 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
 
     @property
     def is_active(self) -> bool:
-        return bool(
-            not self.used
-            and (self.expires_at is None or self.expires_at > datetime.now(UTC))
-        )
+        # RZ-W19-02: expires_at is non-nullable (Mapped[datetime]), so this branch
+        # is unreachable at the type-checker level. The runtime guard is kept as a
+        # belt-and-suspenders safety check for stale data or future schema changes.
+        if self.expires_at is None:
+            return False  # type: ignore[unreachable]
+        return bool(not self.used and self.expires_at > datetime.now(UTC))
 
 
 class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
@@ -299,7 +307,10 @@ class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "webauthn_credentials"
 
     credential_id: Mapped[str] = mapped_column(
-        String, unique=True, index=True, nullable=False
+        String(1366),
+        unique=True,
+        index=True,
+        nullable=False,  # LOW-W19: bounded String (WebAuthn spec)
     )
     # OZ-1 (audit 2026-02-26): Bound public_key to String(4096). Without a limit
     # an attacker could write multi-MB values during registration, causing OOM on

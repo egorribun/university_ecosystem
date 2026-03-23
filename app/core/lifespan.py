@@ -104,7 +104,12 @@ async def _startup_websocket_and_flags(app: FastAPI) -> None:
 async def _verify_database_readiness() -> None:
     """Stage 3: Connectivity and migration alignment checks."""
     try:
-        await asyncio.wait_for(wait_db(max_attempts=10, base_delay=0.5), timeout=5.0)
+        # LOW-W19: wait_db(max_attempts=10, base_delay=0.5) can take up to
+        # ~30 s (exponential backoff: 0.5+1+2+4+8+... seconds across 10
+        # attempts).  The previous 5 s outer timeout caused wait_db to be
+        # cancelled long before it exhausted its own retry budget, making the
+        # retry config misleading.  Raised to 35 s to give wait_db enough room.
+        await asyncio.wait_for(wait_db(max_attempts=10, base_delay=0.5), timeout=35.0)
     except (TimeoutError, Exception) as exc:
         if settings.environment not in {"development", "local", "testing"}:
             raise
@@ -287,7 +292,7 @@ async def _periodic_scheduler_loop() -> None:
             return False  # normal timeout — continue
 
     # Jitter: spread first execution across 0–60 s
-    jitter = random.uniform(0, 60)  # nosec B311; noqa: S311
+    jitter = random.uniform(0, 60)  # nosec B311  # noqa: S311
     _logger.debug("Periodic scheduler: initial jitter %.1f s", jitter)
     if await _sleep_or_stop(jitter):
         return
@@ -386,12 +391,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # During hot-reload (uvicorn --reload) or test suites where lifespan is exercised
     # multiple times in the same process, calling register_event_listeners() more than
     # once accumulates duplicate handlers — events fire N times for N restarts.
+    # LOW-W19: Use `global` statement instead of globals()[...] assignment, which
+    # is an anti-pattern that bypasses the module's normal name-binding and makes
+    # the mutation invisible to static analysers and type checkers.
+    global _LISTENERS_REGISTERED
     if not _LISTENERS_REGISTERED:
         await register_event_listeners()
         from app.services.event_handlers import configure_event_handlers
 
         configure_event_handlers()
-        globals()["_LISTENERS_REGISTERED"] = True
+        _LISTENERS_REGISTERED = True
     else:
         import logging as _llog
 

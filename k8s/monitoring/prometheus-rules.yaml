@@ -10,7 +10,8 @@ spec:
     - name: application-alerts
       rules:
         - alert: ContainerMemoryHigh
-          expr: container_memory_usage_bytes{namespace="university-ecosystem"} / container_spec_memory_limit_bytes{namespace="university-ecosystem"} > 0.85
+          # HIGH-W19: guard against division by zero for unlimited containers (limit=0)
+          expr: container_memory_usage_bytes{namespace="university-ecosystem"} / (container_spec_memory_limit_bytes{namespace="university-ecosystem"} > 0) > 0.85
           for: 2m
           labels:
             severity: warning
@@ -19,7 +20,8 @@ spec:
             description: "Pod {{ $labels.pod }} is nearing its memory limit."
 
         - alert: OutboxStagnant
-          expr: increase(outbox_events_pending[5m]) > 100
+          # HIGH-W19: increase() is invalid on a gauge; use direct threshold instead
+          expr: outbox_events_pending > 100
           for: 5m
           labels:
             severity: critical

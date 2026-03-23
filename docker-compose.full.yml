@@ -45,8 +45,9 @@ services:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
+    # LOW-W19: bind to loopback only — backend should only be reached via the gateway
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     networks:
       - internal
       - public
@@ -168,6 +169,9 @@ services:
       - "allkeys-lru"
       - "--hz"
       - "20"
+      # LOW-W19: require a password so unauthenticated access is blocked
+      - "--requirepass"
+      - "${REDIS_PASSWORD:-DevRedisPass2024!}"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s

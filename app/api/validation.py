@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, overload
 from fastapi import HTTPException, status
 
 from app.core.localization import translate
+from app.models.enums import UserRole
 
 if TYPE_CHECKING:
     from app.schemas.dtos import UserDTO
@@ -118,7 +119,9 @@ def require_admin(user: User | UserDTO, locale: str) -> None:
     """
     Verify user has admin role, raise 403 if not.
     """
-    if user.role != "admin":
+    # TD-W19-02 (audit 2026-03-24 Wave 19): use UserRole enum constants instead
+    # of hardcoded string literals for role comparison across all validation helpers.
+    if user.role != UserRole.ADMIN:
         raise_forbidden(locale)
 
 
@@ -126,7 +129,7 @@ def require_teacher_or_admin(user: User, locale: str) -> None:
     """
     Verify user has teacher or admin role, raise 403 if not.
     """
-    if user.role not in ("teacher", "admin"):
+    if user.role not in (UserRole.TEACHER, UserRole.ADMIN):
         raise_forbidden(locale)
 
 
@@ -159,7 +162,9 @@ def require_owner_or_admin(
     """
     Verify user is owner of resource or has admin (and optionally teacher) role.
     """
-    allowed_roles = ("admin",) if not allow_teacher else ("admin", "teacher")
+    allowed_roles = (
+        (UserRole.ADMIN,) if not allow_teacher else (UserRole.ADMIN, UserRole.TEACHER)
+    )
 
     if user.role in allowed_roles:
         return

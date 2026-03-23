@@ -1,15 +1,23 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
+from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.localization import translate_lesson_type
+from app.core.localization import (  # LOW-W19: moved from deferred inline import
+    translate,
+    translate_lesson_type,
+)
 from app.cqrs.base import Query, QueryHandler
 from app.deps.cache import BaseCache, format_etag
+from app.repositories.schedule_repository import (
+    ScheduleRepository,  # LOW-W19: moved from deferred inline import
+)
 from app.schemas import schemas
+from app.services import stats_cache  # LOW-W19: moved from deferred inline import
 
 
 @dataclass
@@ -64,9 +72,7 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
                 )
                 return QueryResult(payload=localized, etag=format_etag(cached.etag))
 
-        # Fetch from DB using Repository
-        from app.repositories.schedule_repository import ScheduleRepository
-
+        # Fetch from DB using Repository  # LOW-W19: ScheduleRepository import moved to top-level
         repo = ScheduleRepository(self.db)
 
         rows = await repo.get_by_group(
@@ -93,7 +99,9 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
 
 @dataclass
 class GetStatsQuery(Query):
-    kind: str
+    kind: Literal[
+        "attendance", "grades", "participation"
+    ]  # LOW-W19: constrained from bare str
     user_id: uuid.UUID | str
     period_key: str
     period_days: int
@@ -111,8 +119,6 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
         self.analytics_service = analytics_service
 
     async def handle(self, query: GetStatsQuery) -> QueryResult:
-        from app.services import stats_cache
-
         # 1. Try cache
         if not query.skip_cache and self.cache.enabled:
             cached = await stats_cache.get_cached_stats(
@@ -142,7 +148,10 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
 
         compute_fn = compute_map.get(query.kind)
         if not compute_fn:
-            raise ValueError(f"Unknown stats kind: {query.kind}")
+            # LOW-W19: was ValueError (500); now 400 so the client gets a meaningful error
+            raise HTTPException(
+                status_code=400, detail=f"Unknown stats kind: {query.kind}"
+            )
 
         # They all share the same signature now thanks to AnalyticsService unification
         stats = await compute_fn(
@@ -161,8 +170,7 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
     def _enrich_stats(
         self, stats: dict[str, Any], query: GetStatsQuery
     ) -> dict[str, Any]:
-        from app.core.localization import translate
-
+        # LOW-W19: translate import moved to top-level
         label = translate(
             f"stats.period.{query.period_key}",
             locale=query.locale,

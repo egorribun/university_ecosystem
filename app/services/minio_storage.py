@@ -16,8 +16,8 @@ from datetime import timedelta
 from functools import partial
 from typing import TYPE_CHECKING
 
-from minio import Minio
-from minio.error import S3Error
+from minio import Minio  # type: ignore[import-not-found]
+from minio.error import S3Error  # type: ignore[import-not-found]
 
 from app.core.logging import get_logger
 
@@ -57,7 +57,7 @@ class MinIOClient:
 
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # MED-W19
         try:
             exists = await loop.run_in_executor(
                 _executor,
@@ -97,7 +97,7 @@ class MinIOClient:
         import asyncio
 
         bucket = bucket or self._default_bucket
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # MED-W19
 
         data.seek(0)
         size = data.getbuffer().nbytes
@@ -136,7 +136,7 @@ class MinIOClient:
         import asyncio
 
         bucket = bucket or self._default_bucket
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # MED-W19
 
         url = await loop.run_in_executor(
             _executor,
@@ -148,7 +148,7 @@ class MinIOClient:
             ),
         )
 
-        return url
+        return url  # type: ignore[no-any-return]
 
     async def get_presigned_upload_url(
         self,
@@ -169,7 +169,7 @@ class MinIOClient:
         import asyncio
 
         bucket = bucket or self._default_bucket
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # MED-W19
 
         url = await loop.run_in_executor(
             _executor,
@@ -181,7 +181,7 @@ class MinIOClient:
             ),
         )
 
-        return url
+        return url  # type: ignore[no-any-return]
 
     async def delete_object(
         self,
@@ -197,7 +197,7 @@ class MinIOClient:
         import asyncio
 
         bucket = bucket or self._default_bucket
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # MED-W19
 
         await loop.run_in_executor(
             _executor,
@@ -217,10 +217,27 @@ def get_minio_client() -> MinIOClient:
     if _minio_client is None:
         from app.core.config import settings
 
+        access_key = getattr(settings, "minio_access_key", "minioadmin")
+        secret_key = getattr(settings, "minio_secret_key", "minioadmin")
+
+        # LOW-W19: warn when default MinIO credentials are in use.  The
+        # factory-default "minioadmin"/"minioadmin" credentials are publicly
+        # known and MUST be rotated before deploying to any non-development
+        # environment.  An attacker with network access to the MinIO endpoint
+        # can gain full bucket access if these defaults remain unchanged.
+        _DEFAULT_CRED = "minioadmin"
+        if access_key == _DEFAULT_CRED or secret_key == _DEFAULT_CRED:
+            logger.warning(
+                "MinIO is using default credentials (%s). "
+                "Set MINIO_ACCESS_KEY and MINIO_SECRET_KEY before deploying "
+                "to staging or production.",
+                "minioadmin",
+            )
+
         _minio_client = MinIOClient(
             endpoint=getattr(settings, "minio_endpoint", "minio:9000"),
-            access_key=getattr(settings, "minio_access_key", "minioadmin"),
-            secret_key=getattr(settings, "minio_secret_key", "minioadmin"),
+            access_key=access_key,
+            secret_key=secret_key,
             secure=getattr(settings, "minio_secure", False),
             default_bucket=getattr(settings, "minio_bucket", "uploads"),
         )

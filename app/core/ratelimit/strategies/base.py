@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading  # MED-W19
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
@@ -23,6 +24,10 @@ def _create_redis_pool(url: str) -> Redis[Any]:
 
 _redis_factory: _RedisFactory = _create_redis_pool
 _shared_clients: dict[str, Redis[Any]] = {}
+# MED-W19: Use a module-level threading.Lock for bootstrap to eliminate TOCTOU
+# race where two concurrent callers both see _shared_clients_write_lock is None
+# and each create a separate asyncio.Lock, losing mutual exclusion.
+_shared_clients_bootstrap_lock: threading.Lock = threading.Lock()
 _shared_clients_write_lock: asyncio.Lock | None = None
 
 
@@ -33,8 +38,9 @@ async def get_shared_client(redis_url: str) -> Redis[Any]:
     if client is not None:
         return client
 
-    if _shared_clients_write_lock is None:
-        _shared_clients_write_lock = asyncio.Lock()
+    with _shared_clients_bootstrap_lock:
+        if _shared_clients_write_lock is None:
+            _shared_clients_write_lock = asyncio.Lock()
 
     async with _shared_clients_write_lock:
         client = _shared_clients.get(redis_url)

@@ -303,16 +303,13 @@ async def verify_totp_for_user(
             )
             result = await db.execute(stmt)
             enrollments = list(result.scalars())
-            if not enrollments and user.mfa_default_method == MFA_METHOD_TOTP:
-                legacy_stmt = (
-                    select(MfaTotpEnrollment)
-                    .where(MfaTotpEnrollment.user_id == user.id)
-                    .where(MfaTotpEnrollment.is_active.is_(True))
-                    .where(MfaTotpEnrollment.revoked_at.is_(None))
-                    .where(MfaTotpEnrollment.confirmed_at.is_(None))
-                )
-                legacy_result = await db.execute(legacy_stmt)
-                enrollments = list(legacy_result.scalars())
+            # MED-W19: Removed legacy fallback to unconfirmed enrollments.
+            # Only confirmed enrollments (confirmed_at IS NOT NULL) are valid
+            # for authentication.  Allowing unconfirmed enrollments was a
+            # security regression: a partially-set-up authenticator could be
+            # used to authenticate before the user verified ownership of the
+            # secret, potentially enabling account takeover if the setup flow
+            # was intercepted.
             if not enrollments:
                 span.set_attribute("mfa.result", "no_enrollment")
                 span.set_status(Status(StatusCode.ERROR))

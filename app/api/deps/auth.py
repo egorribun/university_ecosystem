@@ -94,9 +94,15 @@ async def get_current_user(
                 )
                 raise_unauthorized(locale, "errors.auth.credentials_invalid")
         else:
-            _logger.debug(
+            # RZ-W19-08: fail-closed in production when HMAC secret is missing
+            if getattr(settings, "environment", "production") == "production":
+                _logger.critical(
+                    "INTERNAL_HMAC_SECRET not set in production — rejecting gateway-trusted request"
+                )
+                raise_unauthorized(locale, "errors.auth.credentials_invalid")
+            _logger.warning(
                 "INTERNAL_HMAC_SECRET not configured — skipping gateway signature verification "
-                "(set INTERNAL_HMAC_SECRET in production for zero-trust enforcement)"
+                "(acceptable in development only)"
             )
 
         try:

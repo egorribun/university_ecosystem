@@ -46,6 +46,7 @@ from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
+from app.models.enums import UserRole
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
@@ -418,7 +419,7 @@ async def delete_comment(
         await service.delete_comment(
             comment_id,
             user.id,
-            is_admin=(user.role == "admin"),
+            is_admin=(user.role == UserRole.ADMIN),
         )
         return {"ok": True}
     except LookupError:

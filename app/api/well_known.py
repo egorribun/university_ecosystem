@@ -10,6 +10,15 @@ from pydantic import BaseModel
 from app.core.config import Settings, settings
 from app.core.logging import get_logger
 
+
+# LOW-W19: proper named dependency replaces the `Depends(lambda: settings)` antipattern.
+# A named function is introspectable by FastAPI's dependency graph, mockable in tests,
+# and correctly handled by dependency-injection analysis tools.
+def get_settings() -> Settings:
+    """FastAPI dependency — returns the application settings singleton."""
+    return settings
+
+
 router = APIRouter()
 _logger = get_logger(__name__)
 
@@ -63,7 +72,7 @@ def _get_jwk_from_pem(kid: str, pem_content: str, alg: str) -> JWK | None:
 
 
 @router.get("/jwks.json", response_model=JWKS)
-async def get_jwks(s: Settings = Depends(lambda: settings)) -> JWKS:
+async def get_jwks(s: Settings = Depends(get_settings)) -> JWKS:
     """Expose public keys in JWKS format for RS256 token verification.
 
     (MOD-1: audit 2026-02-24)

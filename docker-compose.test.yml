@@ -36,7 +36,7 @@ services:
       CACHE_REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
       NATS_URL: nats://test-nats:4222
-      SECRET_KEY: test_secret_key
+      SECRET_KEY: test_secret_key_for_docker_compose_tests_only_32c  # pragma: allowlist secret
       ALEMBIC_CONFIG: alembic.ini
       # Keep pool small so multiple tests sharing the global engine stay well
       # under PostgreSQL's max_connections=200 limit.
@@ -51,8 +51,9 @@ services:
       - test-net
     volumes:
       - .:/app
+    # LOW-W19: removed stale --ignore=tests/performance (directory has no Python tests)
     command: >
-      sh -c "alembic upgrade head && pytest tests/ -v --tb=short --ignore=tests/performance"
+      sh -c "alembic upgrade head && pytest tests/ -v --tb=short"
 
 networks:
   test-net:

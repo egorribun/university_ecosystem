@@ -21,12 +21,16 @@ from app.models.mixins import UUID7PrimaryKeyMixin
 class Group(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "groups"
 
-    name: Mapped[str | None] = mapped_column(String, index=True)
+    name: Mapped[str | None] = mapped_column(
+        String(512), index=True
+    )  # LOW-W19: bounded String
     course: Mapped[int | None] = mapped_column(Integer)
-    faculty: Mapped[str | None] = mapped_column(String)
+    faculty: Mapped[str | None] = mapped_column(String(256))  # LOW-W19: bounded String
 
+    # PERF-W19-OOM: changed from lazy="selectin" to lazy="noload" — eagerly
+    # loading all users per group on list endpoints risks OOM for large groups.
     users = relationship(
-        "User", back_populates="group", passive_deletes=True, lazy="selectin"
+        "User", back_populates="group", passive_deletes=True, lazy="noload"
     )
 
     def __repr__(self) -> str:
@@ -49,21 +53,39 @@ class Schedule(Base, UUID7PrimaryKeyMixin):
         nullable=True,
         index=True,
     )
-    subject: Mapped[str] = mapped_column(String, nullable=False)
-    teacher: Mapped[str | None] = mapped_column(String)
-    room: Mapped[str | None] = mapped_column(String)
-    weekday: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    subject: Mapped[str] = mapped_column(
+        String(512), nullable=False
+    )  # LOW-W19: bounded String
+    teacher: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
+    room: Mapped[str | None] = mapped_column(String(128))  # LOW-W19: bounded String
+    weekday: Mapped[str] = mapped_column(
+        String(50), index=True, nullable=False
+    )  # LOW-W19: bounded String
     start_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True, nullable=False
     )
     end_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True, nullable=False
     )
-    parity: Mapped[str] = mapped_column(String, default="both", index=True)
-    lesson_type: Mapped[str | None] = mapped_column(String, default=None)
+    parity: Mapped[str] = mapped_column(
+        String(50), default="both", index=True
+    )  # LOW-W19: bounded String
+    lesson_type: Mapped[str | None] = mapped_column(
+        String(50), default=None
+    )  # LOW-W19: bounded String
 
     __table_args__ = (
         CheckConstraint("end_time > start_time", name="ck_schedule_time_order"),
+        # LOW-W19: added CheckConstraint — weekday must be one of the standard English weekday names
+        CheckConstraint(
+            "weekday IN ('monday','tuesday','wednesday','thursday','friday','saturday','sunday')",
+            name="ck_schedule_weekday_valid",
+        ),
+        # LOW-W19: added CheckConstraint — parity must be one of the three accepted values
+        CheckConstraint(
+            "parity IN ('odd','even','both')",
+            name="ck_schedule_parity_valid",
+        ),
         Index("ix_schedule_group_start_time", "group_id", "start_time"),
     )
 

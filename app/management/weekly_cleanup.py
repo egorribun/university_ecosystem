@@ -113,7 +113,7 @@ async def run_weekly_cleanup() -> dict[str, int | None]:
 
 def main() -> None:
     stats = asyncio.run(run_weekly_cleanup())
-    logger.info(f"Weekly cleanup finished: {stats}")
+    logger.info("Weekly cleanup finished: %s", stats)  # LOW-W19: lazy logging
 
 
 if __name__ == "__main__":

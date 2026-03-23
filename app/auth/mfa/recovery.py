@@ -51,7 +51,9 @@ async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
     for code in plain_codes:
         hashed_codes.append(await get_password_hash(code, validate_policy=False))
 
-    for code, hashed in zip(plain_codes, hashed_codes, strict=False):
+    # LOW-W19: strict=True catches any length mismatch between plain_codes and
+    # hashed_codes early rather than silently producing fewer DB rows.
+    for code, hashed in zip(plain_codes, hashed_codes, strict=True):
         db.add(
             RecoveryCode(
                 user_id=user.id,
@@ -82,7 +84,9 @@ async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bo
     result = await db.execute(stmt)
     available_codes = result.scalars().all()
 
-    normalized_code = code.strip().upper()
+    # LOW-W19: remove dashes so users can paste formatted codes (e.g.
+    # "A3F8-B9C2-1E47-D06A") or unformatted codes interchangeably.
+    normalized_code = code.strip().upper().replace("-", "")
 
     matched_record: RecoveryCode | None = None
     for record in available_codes:

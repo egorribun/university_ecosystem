@@ -197,7 +197,7 @@ jobs:
       python-version: ${{ matrix.python-version }}
       coverage-threshold: ${{ matrix.coverage-check && 80 || 0 }}
       run-integration-tests: ${{ matrix.python-version == '3.13' }}
-      parallel-workers: -1 # disable parallel execution for SQLite stability
+      parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
     secrets: inherit
 
   backend-type-check:
@@ -638,7 +638,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Build backend image for scanning
-        run: docker build -t university-ecosystem/backend:${{ github.sha }} -f Dockerfile .
+        # LOW-W19: root Dockerfile does not exist; backend image uses backend.Dockerfile
+        run: docker build -t university-ecosystem/backend:${{ github.sha }} -f backend.Dockerfile .
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0

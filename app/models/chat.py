@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import (
     UUID,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -113,6 +114,15 @@ class Attachment(Base, UUID7PrimaryKeyMixin):
         index=True,
     )
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
+
+    __table_args__ = (
+        # MED-W19: prevent javascript: and other non-http(s) URL schemes.
+        CheckConstraint(
+            "url LIKE 'http://%' OR url LIKE 'https://%'",
+            name="ck_attachment_url_scheme",
+        ),
+    )
+
     # DEBT-01 (RZ-W13): bounded String columns prevent storage-amplification attacks.
     file_type: Mapped[str] = mapped_column(
         String(255), nullable=False

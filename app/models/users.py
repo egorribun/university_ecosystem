@@ -110,7 +110,11 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         lazy="noload",
     )
 
-    group = relationship("Group", back_populates="users", passive_deletes=True)
+    group = (
+        relationship(  # LOW-W19: add lazy="noload" to prevent N+1 on user list loads
+            "Group", back_populates="users", passive_deletes=True, lazy="noload"
+        )
+    )
     # TD-5: lazy="noload" prevents N+1 when loading lists of users.
     # Load explicitly via selectinload(User.stats) in queries that need it.
     stats = relationship(
@@ -168,10 +172,10 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        # selectin fires only when this relationship is included in load options
-        # (e.g. USER_MFA_LOAD_OPTIONS).  USER_AUTH_LOAD_OPTIONS intentionally
-        # omits it so the auth hot-path does not issue extra queries per request.
-        lazy="selectin",
+        # RZ-W19-15: changed from selectin to noload to prevent MissingGreenlet
+        # in async context. Use explicit selectinload() via USER_MFA_LOAD_OPTIONS
+        # when MFA data is actually needed.
+        lazy="noload",
     )
     mfa_challenges = relationship(
         "MfaChallenge",
@@ -199,9 +203,8 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        # Same as totp_enrollments above — selectin fires only when included in
-        # explicit load options, not on every auth request.
-        lazy="selectin",
+        # RZ-W19-15: changed from selectin to noload — same rationale as totp_enrollments
+        lazy="noload",
     )
     recovery_codes = relationship(
         "RecoveryCode",
@@ -254,7 +257,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         *,
         email: str,
         hashed_password: str,
-        role: str = "student",
+        role: UserRole = UserRole.STUDENT,  # LOW-W19: use UserRole enum, not bare str
         is_active: bool = True,
         preferences: "UserPreferences | dict[str, Any] | None" = None,
         profile: "UserProfile | dict[str, Any] | None" = None,
@@ -278,7 +281,8 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     @spotify_is_connected.setter
     def spotify_is_connected(self, value: bool) -> None:
         if not self.spotify:
-            self.spotify = SpotifyIntegration()
+            # LOW-W19: pass user_id so the new SpotifyIntegration is not an orphan
+            self.spotify = SpotifyIntegration(user_id=self.id)
         self.spotify.is_connected = value
 
     @property
@@ -288,7 +292,8 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     @spotify_display_name.setter
     def spotify_display_name(self, value: str | None) -> None:
         if not self.spotify:
-            self.spotify = SpotifyIntegration()
+            # LOW-W19: pass user_id so the new SpotifyIntegration is not an orphan
+            self.spotify = SpotifyIntegration(user_id=self.id)
         self.spotify.display_name = value
 
     def __repr__(self) -> str:
@@ -374,7 +379,7 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "invite_codes"
 
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
-    role: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String(50))  # LOW-W19: bounded String
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(

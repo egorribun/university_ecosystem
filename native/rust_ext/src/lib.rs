@@ -1,4 +1,5 @@
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)] // LOW-W19: expect() panics just like unwrap(); deny it too
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use chrono::{Utc, TimeZone, Datelike, Duration, NaiveDate, Weekday};
@@ -64,18 +65,30 @@ fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleIte
     // rayon's global pool (which defaults to logical CPU count). On a 64-core
     // server this would spawn 64 threads; with Python free-threading (3.13+),
     // concurrent calls could saturate all CPU cores.
+    //
+    // LOW-W19: replaced .expect() with map_err()+? so a rayon build failure
+    // surfaces as a Python RuntimeError instead of an unconditional panic.
+    // OnceLock::get_or_init cannot return an error, so we initialise outside
+    // the closure and cache only successfully-built pools.
     use std::sync::OnceLock;
     static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
-    let pool = POOL.get_or_init(|| {
-        let threads = std::env::var("RUST_EXT_THREADS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(4);
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .expect("Failed to build rayon thread pool")
-    });
+    let pool = match POOL.get() {
+        Some(p) => p,
+        None => {
+            let threads = std::env::var("RUST_EXT_THREADS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(4usize);
+            let built = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+                    format!("Failed to build rayon thread pool: {e}")
+                ))?;
+            // If another thread raced us, discard our pool and use theirs.
+            POOL.get_or_init(|| built)
+        }
+    };
 
     let conflicts = pool.install(|| {
         items
@@ -176,6 +189,14 @@ pub struct PartitionInfo {
 
 #[pyfunction]
 fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<PartitionInfo> {
+    // LOW-W19: reject month_offset values that would cause integer overflow or
+    // produce a nonsensical date (e.g. offset going back before year 1 or
+    // forward beyond year 9999).  Reasonable operational range is ±120 months (10 years).
+    if month_offset < -120 || month_offset > 120 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("month_offset {month_offset} is out of the allowed range [-120, 120]")
+        ));
+    }
     let now = Utc::now();
     let total_months = now.month() as i32 + month_offset;
 
@@ -205,6 +226,11 @@ fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Partiti
 
 #[pyfunction]
 fn is_partition_expired(partition_name: String, table_name: String, retention_days: i64) -> bool {
+    // LOW-W19: a negative retention_days would make the cutoff a future timestamp,
+    // causing every partition to appear un-expired.  Reject it defensively.
+    if retention_days < 0 {
+        return false;
+    }
     let prefix = format!("{}_y", table_name);
     if !partition_name.starts_with(&prefix) {
         return false;

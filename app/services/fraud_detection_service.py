@@ -23,6 +23,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 from app.core.logging import get_logger
 
@@ -84,8 +85,11 @@ class FraudDetectionService:
                 now_ms = int(_time.time() * 1000)
                 zset_key = f"security:high_events:{user_id}"
                 pipe = self._redis.pipeline(transaction=False)
-                # Score = unix-millisecond timestamp, member = unique entry ID.
-                pipe.zadd(zset_key, {str(now_ms): now_ms})
+                # HIGH-W19: use a unique member to avoid two events at the same
+                # millisecond overwriting each other in the sorted set.
+                # Score = unix-millisecond timestamp (used for range queries).
+                member = f"{now_ms}:{uuid4().hex[:8]}"
+                pipe.zadd(zset_key, {member: now_ms})
                 # Keep the set auto-expired 1 hour after last write.
                 pipe.expire(zset_key, _HIGH_SEVERITY_COUNTER_TTL)
                 await cast("Awaitable[Any]", pipe.execute())

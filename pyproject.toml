@@ -228,6 +228,7 @@ module = [
   "clamd",
   "pact.*",
   "elasticsearch.*",
+  "structlog.*",
 ]
 ignore_missing_imports = true
 

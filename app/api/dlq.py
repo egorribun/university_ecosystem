@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from app.api.deps import get_current_admin_user, get_locale
@@ -100,7 +100,9 @@ async def get_dlq_stats(
 )
 async def list_dlq_jobs(
     status: str | None = None,
-    limit: int = 20,
+    limit: int = Query(
+        default=20, ge=1, le=500
+    ),  # MED-W19: cap at 500 to prevent large scans
     db: AsyncSession = Depends(get_read_db),
     locale: str = Depends(get_locale),
     _: models.User = Depends(get_current_admin_user),
@@ -196,6 +198,9 @@ async def retry_dlq_job(
 
     # Reset for retry
     job.status = JobStatus.PENDING.value
+    job.retry_count = (
+        0  # MED-W19: reset counter so the worker gets a clean retry budget
+    )
     job.next_retry_at = datetime.now(UTC)
     job.updated_at = datetime.now(UTC)
 

@@ -192,6 +192,9 @@ class WebAuthnService:
         if not db_credential:
             raise ValueError("Credential not found")
 
+        # HIGH-W19: read UV requirement from config instead of hardcoding False so
+        # deployments can enforce PIN/biometric (FIDO2 Level 2) via settings.
+        _require_uv = getattr(settings, "webauthn_require_uv", True)
         verification = verify_authentication_response(
             credential=response,
             expected_challenge=base64.urlsafe_b64decode(challenge + "=="),
@@ -201,7 +204,7 @@ class WebAuthnService:
                 db_credential.public_key + "=="
             ),
             credential_current_sign_count=int(str(db_credential.sign_count)),
-            require_user_verification=False,
+            require_user_verification=_require_uv,
         )
 
         db_credential.sign_count = verification.new_sign_count

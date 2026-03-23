@@ -15,7 +15,10 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "pip"
-    directory: "/root"
+    # FIX-DEP-01: Was "/root" which is not a valid path in this repository and
+    # caused Dependabot to silently skip all Python dependency updates. The
+    # pyproject.toml lives at the repository root, so the correct directory is "/".
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -40,5 +43,50 @@ updates:
       include: "scope"
     groups:
       github-actions:
+        patterns:
+          - "*"
+  # FIX-DEP-02: Add Dependabot Go module entries for all three Go services.
+  # Without these entries, Go module dependencies (go.mod / go.sum) are never
+  # scanned for outdated or vulnerable packages.
+  - package-ecosystem: "gomod"
+    directory: "/services/ws-hub"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "05:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      go-ws-hub:
+        patterns:
+          - "*"
+  - package-ecosystem: "gomod"
+    directory: "/services/gateway"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "05:30"
+      timezone: "UTC"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      go-gateway:
+        patterns:
+          - "*"
+  - package-ecosystem: "gomod"
+    directory: "/services/file-processor"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      go-file-processor:
         patterns:
           - "*"

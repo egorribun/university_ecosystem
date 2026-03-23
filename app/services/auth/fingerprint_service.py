@@ -70,6 +70,8 @@ class AuthFingerprintService:
                         try:
                             await redis_service.revoke_session(session.jti)
                         except Exception as e:
-                            logger.error(f"Failed to revoke session in Redis: {e}")
+                            logger.error(
+                                "Failed to revoke session in Redis: %s", e
+                            )  # LOW-W19: lazy logging
 
                     raise_forbidden(self.locale, "errors.auth.session_compromised")

@@ -184,6 +184,13 @@ class UserAnalyticsService:
         average = 0.0
         trend = 0.0
 
+        # LOW-W19: Grade data is sourced from the Notification table because a
+        # dedicated grades/scores domain model does not yet exist.  This is a
+        # TEMPORARY approach — notification bodies are unstructured text blobs
+        # and parsing them with _parse_grade_payload() is fragile (format
+        # changes to notification bodies will silently break grade stats).
+        # Once a first-class GradeRecord or CourseScore model is introduced,
+        # replace this query with a direct join against that table.
         res = await self.db.execute(
             select(models.Notification)
             .where(
@@ -203,7 +210,7 @@ class UserAnalyticsService:
             parsed = self._parse_grade_payload(
                 str(notif.body) if notif.body else None,
                 fallback_title=str(notif.title),
-                fallback_date=notif.created_at,  # type: ignore[arg-type]
+                fallback_date=notif.created_at,
             )
             if not parsed:
                 continue

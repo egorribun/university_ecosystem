@@ -58,9 +58,20 @@ def _check_resolved(
         ]
     ],
 ) -> None:
-    """Raise ``ValueError`` if any resolved address falls into a blocked network."""
+    """Raise ``ValueError`` if any resolved address falls into a blocked network.
+
+    RZ-W19-02 (audit 2026-03-24 Wave 19): IP parsing errors are now fail-closed.
+    If ``ipaddress.ip_address()`` raises ``ValueError`` on malformed sockaddr data
+    (e.g., from a custom DNS resolver), the request is rejected rather than allowed.
+    """
     for _, _, _, _, sockaddr in resolved:
-        addr = ipaddress.ip_address(sockaddr[0])
+        try:
+            addr = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            raise ValueError(
+                f"SSRF blocked: {hostname} resolved to unparseable address "
+                f"{sockaddr[0]!r} — fail-closed"
+            ) from None
         if _is_blocked(addr):
             raise ValueError(f"SSRF blocked: {hostname} resolves to internal IP {addr}")
 
@@ -69,6 +80,13 @@ def validate_url_not_internal(url: str) -> None:
     """Raise ``ValueError`` if *url* resolves to a blocked internal network.
 
     Call at service-init time (not per-request) for config-driven base URLs.
+
+    .. warning:: **Do NOT call from async context.**
+        This function calls ``socket.getaddrinfo()`` which is a blocking
+        syscall.  Calling it inside an asyncio coroutine blocks the entire
+        event loop for the duration of the DNS query (potentially hundreds of
+        milliseconds).  Use :func:`validate_url_not_internal_async` for any
+        per-request or async code path instead.  MED-W19
 
     RZ-W17-01: DNS failures are now **fail-closed** (raise ``ValueError``).
     Previously DNS errors silently passed, allowing SSRF when an attacker
@@ -89,7 +107,7 @@ def validate_url_not_internal(url: str) -> None:
         # RZ-W17-01: Fail-closed — DNS failure MUST NOT silently pass.
         raise ValueError(f"SSRF blocked: DNS resolution failed for {hostname}") from exc
 
-    _check_resolved(hostname, resolved)
+    _check_resolved(hostname, resolved)  # type: ignore[arg-type]
 
 
 async def validate_url_not_internal_async(url: str) -> None:
@@ -112,7 +130,7 @@ async def validate_url_not_internal_async(url: str) -> None:
     except socket.gaierror as exc:
         raise ValueError(f"SSRF blocked: DNS resolution failed for {hostname}") from exc
 
-    _check_resolved(hostname, resolved)
+    _check_resolved(hostname, resolved)  # type: ignore[arg-type]
 
 
 def validate_and_resolve(url: str) -> list[tuple[str, int]]:
@@ -144,7 +162,7 @@ def validate_and_resolve(url: str) -> list[tuple[str, int]]:
         addr = ipaddress.ip_address(sockaddr[0])
         if _is_blocked(addr):
             raise ValueError(f"SSRF blocked: {hostname} resolves to internal IP {addr}")
-        safe_addrs.append((str(addr), sockaddr[1]))
+        safe_addrs.append((str(addr), sockaddr[1]))  # type: ignore[arg-type]
 
     if not safe_addrs:
         raise ValueError(f"SSRF blocked: no valid addresses for {hostname}")

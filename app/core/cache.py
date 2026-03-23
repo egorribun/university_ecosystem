@@ -15,6 +15,8 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
 
+import orjson
+
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -182,8 +184,10 @@ class MultiLayerCache:
         # Try L2 if available
         if self._redis is not None:
             try:
-                value = await self._redis.get(key)
-                if value is not None:
+                raw = await self._redis.get(key)
+                if raw is not None:
+                    # PERF-W19-01: deserialize orjson bytes from L2 before returning
+                    value = orjson.loads(raw)
                     # Populate L1 from L2
                     self.l1.set(key, value)
                     return value
@@ -197,7 +201,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("get", 0.0, success=False)
-                except Exception:
+                except Exception:  # noqa: S110  # nosec B110
                     pass  # metrics unavailable — never block cache logic
 
         return None
@@ -212,7 +216,9 @@ class MultiLayerCache:
         # Set in L2 if available
         if self._redis is not None:
             try:
-                await self._redis.setex(key, int(self.l2_ttl), value)
+                # PERF-W19-01: serialize with orjson so Redis stores valid bytes,
+                # not the str() representation of a Python object.
+                await self._redis.setex(key, int(self.l2_ttl), orjson.dumps(value))
             except Exception as e:
                 logger.warning("L2 cache set failed: %s", e)
                 # PERF-14-04 (audit 2026-03-23): Same pattern as get() above.
@@ -220,7 +226,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("set", 0.0, success=False)
-                except Exception:
+                except Exception:  # noqa: S110  # nosec B110
                     pass
 
     async def delete(self, key: str) -> None:

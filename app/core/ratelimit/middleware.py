@@ -194,12 +194,18 @@ class RateLimitMiddleware:
         ip = resolve_client_ip(request)
         return f"ip:{ip}"
 
+    # MED-W19: Paths that are always exempt from rate limiting (health/metrics).
+    _HEALTH_PATHS: frozenset[str] = frozenset({"/", "/healthz", "/ready", "/metrics"})
+
     def _should_skip(self, method: str, path: str) -> bool:
-        if method in {"OPTIONS", "HEAD"}:
+        if method == "OPTIONS":
             return True
-        if path in {"/", "/healthz", "/ready", "/metrics"}:
+        # MED-W19: Only skip HEAD for health/metrics endpoints, not all endpoints.
+        # Previously all HEAD requests bypassed rate limiting, allowing attackers
+        # to probe endpoints at unlimited speed using HEAD to avoid logging.
+        if path in self._HEALTH_PATHS:
             return True
-        return bool(self._is_static_like_path(path) and method == "GET")
+        return bool(self._is_static_like_path(path) and method in {"GET", "HEAD"})
 
     async def _check_limit(
         self, identifier: str, limit: int, window: int

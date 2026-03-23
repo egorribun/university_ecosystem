@@ -40,6 +40,7 @@ from app.api.ws.presence import (
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
 from app.models.chat import Attachment
+from app.models.enums import UserRole
 from app.models.models import Message
 from app.schemas.chat import (
     ChatMaintenanceResult,
@@ -431,12 +432,12 @@ class ChatMaintenanceService:
         assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
-        if user.id not in participant_ids and user.role != "admin":
+        if user.id not in participant_ids and user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         # RACE-02 Fix: DMs are shared state. Unilateral history destruction by a regular
         # participant allows bad actors to delete evidence from the victim's device.
-        if user.role != "admin":
+        if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.history_clear_forbidden_non_admin")
 
         attachment_urls = await self.attachment_service.collect_urls(chat)
@@ -489,12 +490,12 @@ class ChatMaintenanceService:
         assert chat is not None  # nosec B101  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
-        if user.id not in participant_ids and user.role != "admin":
+        if user.id not in participant_ids and user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         # RACE-02 Fix: DMs are shared state. Unilateral deletion by a regular
         # participant allows bad actors to delete evidence from the victim's device.
-        if user.role != "admin":
+        if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.deletion_forbidden_non_admin")
 
         attachment_urls = await self.attachment_service.collect_urls(chat)
@@ -541,12 +542,15 @@ class ChatMaintenanceService:
             await self.repository.delete_chat(chat_id)
             async with self.uow:
                 await self.uow.commit()
-
-            await invalidate_chat_participants_cache(chat_id)
-            await invalidate_presence_audience_cache(*p_ids)
         except Exception:
             await self.uow.rollback()
             raise
+
+        # LOW-W19: cache invalidation moved to after commit so that a failure
+        # in the invalidation calls does not trigger an erroneous rollback of
+        # an already-committed transaction.
+        await invalidate_chat_participants_cache(chat_id)
+        await invalidate_presence_audience_cache(*p_ids)
 
         # R-02 (audit 2026-03-08) / RED-04 (audit 2026-03-14):
         # Best-effort immediate invalidation — fast-path that works when ws-hub

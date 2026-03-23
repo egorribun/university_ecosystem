@@ -134,7 +134,7 @@ class MessageDispatcher:
                         )
 
         elif msg_type == "get_online":
-            if user.role != UserRole.ADMIN.value:
+            if user.role != UserRole.ADMIN:
                 audit_service.log(
                     SecurityEvent.ACCESS_DENIED,
                     user_id=user.id,

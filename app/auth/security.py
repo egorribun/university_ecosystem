@@ -59,7 +59,9 @@ def _container_cpu_count() -> int:
         with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as _f:
             period = int(_f.read().strip())
         if quota > 0 and period > 0:
-            return max(1, quota // period)
+            # LOW-W19: cap at 32 to prevent runaway thread/memory usage on
+            # hosts where cgroups v1 quota is set to an unreasonably high value.
+            return min(max(1, quota // period), 32)
     except (FileNotFoundError, ValueError, OSError):
         pass
     return os.cpu_count() or 2
@@ -187,8 +189,9 @@ def _calculate_lookup_hash(input_data: str) -> str:
 # Same issue as _argon2_semaphore above: the Lock must be created AFTER the
 # worker process forks and its event loop is running. Lazy init on first use
 # is the correct pattern — each worker creates its own Lock independently.
+# LOW-W19: _hibp_client_lock (dead module-level variable) removed; the lock
+# is now created lazily via _get_hibp_client_lock() / _get_hibp_lock_for_loop().
 _hibp_client: httpx.AsyncClient | None = None
-_hibp_client_lock: asyncio.Lock | None = None
 
 
 def _get_hibp_client_lock() -> asyncio.Lock:
@@ -287,7 +290,13 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
     for line in response.text.splitlines():
         hashed_suffix, _, count = line.partition(":")
         if hashed_suffix.upper() == suffix:
-            if int(count.strip() or 0) > 0:
+            # LOW-W19: guard against malformed HIBP response lines where count
+            # is not a valid integer (e.g. empty string after stripping padding).
+            try:
+                hit_count = int(count.strip() or 0)
+            except ValueError:
+                hit_count = 0
+            if hit_count > 0:
                 raise ValueError(
                     translate("errors.auth.password_policy_compromised", locale=locale)
                 )
@@ -568,8 +577,11 @@ def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
             .decode()
         )
         _public_key_cache = new_cache
-
-    return _public_key_cache[cache_key]
+        # LOW-W19: return from new_cache (still in scope) instead of
+        # _public_key_cache to avoid a TOCTOU race where another thread
+        # could swap _public_key_cache between the assignment above and
+        # the return statement outside the lock.
+        return new_cache[cache_key]
 
 
 def decode_token(token: str) -> dict[str, Any] | None:

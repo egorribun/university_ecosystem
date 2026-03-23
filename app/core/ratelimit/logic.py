@@ -31,6 +31,14 @@ async def check_rate_limit(
     redis_url: str | None = None,
 ) -> RateLimitInfo:
     """Check a rate limit for an arbitrary identifier."""
+    # RZ-W19-05 (audit 2026-03-24 Wave 19): validate invariants to prevent
+    # silent misconfiguration (e.g., limit=0 disables protection entirely,
+    # negative window causes Lua script errors in Redis).
+    if limit <= 0:
+        raise ValueError(f"rate limit must be positive, got {limit}")
+    if window_seconds <= 0:
+        raise ValueError(f"rate limit window must be positive, got {window_seconds}")
+
     # RZ-HARDEN: Respect global toggle. Test environments now explicitly enable it if needed.
     if not settings.rate_limit_enabled:
         return RateLimitInfo(allowed=True, remaining=limit, retry_after=0)

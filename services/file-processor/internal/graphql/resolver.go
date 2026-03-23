@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"go.temporal.io/sdk/client"
 )
@@ -137,6 +137,7 @@ type ProcessFileInput struct {
 	Height    *int32
 }
 
+// RZ-W19-17: use UUID instead of nanosecond timestamp to avoid collisions
 func generateID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return fmt.Sprintf("file-process-%s", uuid.New().String())
 }

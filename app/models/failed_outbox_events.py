@@ -26,7 +26,9 @@ class FailedOutboxEvent(Base, UUID7PrimaryKeyMixin):
         UUID(as_uuid=True), nullable=False, index=True
     )
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    aggregate_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(
+        String(128), nullable=False
+    )  # LOW-W19: bounded String (was 50, too tight)
     aggregate_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     error_message: Mapped[str] = mapped_column(Text, nullable=False)

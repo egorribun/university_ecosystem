@@ -328,7 +328,9 @@ func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error
 	}
 
 	if parseErr != nil {
-		h.Logger.WarnContext(ctx, "RS256 JWT validation failed, falling back to HMAC", "err", parseErr)
+		// RZ-W19-03 (audit 2026-03-24 Wave 19): corrected misleading log message.
+		// No HMAC fallback occurs — RS256 failures are terminal (see line 248).
+		h.Logger.WarnContext(ctx, "RS256 JWT validation failed — rejecting token (no HMAC fallback)", "err", parseErr)
 	}
 	return "", fmt.Errorf("invalid RS256 token")
 }

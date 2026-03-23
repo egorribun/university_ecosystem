@@ -227,9 +227,14 @@ def _process_image(
 
         if width and width < w:
             new_h = int(h * (width / w))
-            img = cast(
-                Any, img.resize((width, new_h), resample=_resolve_resample_filter())
-            )
+            # LOW-W19: img.resize() returns a new Image object.  Reassigning
+            # `img` inside a `with` block means the context manager's __exit__
+            # will call .close() on the *new* object, not the original one
+            # opened above — the original is closed here explicitly before the
+            # reassignment to avoid leaking the file handle.
+            _resized = img.resize((width, new_h), resample=_resolve_resample_filter())
+            img.close()
+            img = cast(Any, _resized)
 
         buffer = BytesIO()
         if format_pref == "avif":

@@ -116,7 +116,12 @@ async def receive_csp_report(request: Request) -> Response:
             },
         )
 
-    except Exception:
+    # LOW-W19: narrowed from bare `except Exception` to the concrete error types
+    # that can realistically arise outside the inner json.loads try/except block:
+    # UnicodeDecodeError from body decode, TypeError/AttributeError from unexpected
+    # dict shapes, and OSError from the underlying stream.  Retains the intent of
+    # never propagating errors to the browser while making the guard auditable.
+    except (UnicodeDecodeError, TypeError, AttributeError, OSError, KeyError):
         record_csp_report("error")
         # Silently ignore errors - don't disrupt user experience
         logger.debug("Failed to process CSP report", exc_info=True)

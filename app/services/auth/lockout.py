@@ -101,7 +101,9 @@ class LockoutService:
         lock_until: datetime | None = None
         for threshold, seconds in rules:
             if total >= threshold:
-                attempt_time = self._normalize_timestamp(attempts[-1].attempted_at)
+                # RZ-W19-03: use attempts[0] (most recent) not attempts[-1] (oldest)
+                # after _fetch_recent_attempts reverses the list, [0] is newest
+                attempt_time = self._normalize_timestamp(attempts[0].attempted_at)
                 candidate = attempt_time + timedelta(seconds=seconds)
                 if candidate > now:
                     lock_until = (
@@ -116,7 +118,7 @@ class LockoutService:
         limit = max(self._max_lockout_threshold(), 1)
         attempts = await self._fetch_recent_attempts(email, limit)
         lock_until = self._calculate_lock_until(attempts, datetime.now(UTC))
-        await self.db.commit()
+        # HIGH-W19: read operation must not commit — caller manages transaction lifecycle
         return lock_until
 
     async def register_failed_attempt(

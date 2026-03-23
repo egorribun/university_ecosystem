@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -364,8 +366,14 @@ func parseRSAPublicKey(pemStr string) (*rsa.PublicKey, error) {
 	return rsaPub, nil
 }
 
-// jwtKeyFunc returns a jwt.Keyfunc that accepts both RS256 (if rsaPub is non-nil)
-// and HS256 (if secret is non-empty). RS256 is preferred when both are available.
+// jwtKeyFunc returns a jwt.Keyfunc that selects the verification key based on
+// the token's signing algorithm.
+//
+// FIX-ALG-01: When an RSA public key is configured the deployment intends
+// RS256-only. Accepting HS256 alongside RS256 would allow an attacker who
+// knows (or can guess) the HMAC secret to forge tokens even after an RS256
+// key rotation — a classic algorithm-confusion vulnerability. This matches
+// the ws-hub behaviour (handlers.go) and the gateway keyFunc (auth.go).
 func jwtKeyFunc(secret string, rsaPub *rsa.PublicKey) jwt.Keyfunc {
 	return func(t *jwt.Token) (interface{}, error) {
 		switch t.Method.(type) {
@@ -375,6 +383,11 @@ func jwtKeyFunc(secret string, rsaPub *rsa.PublicKey) jwt.Keyfunc {
 			}
 			return rsaPub, nil
 		case *jwt.SigningMethodHMAC:
+			// FIX-ALG-01: Reject HS256 when RS256 is configured — RS256-only deployments
+			// must not fall back to HMAC, which would open an algorithm-confusion path.
+			if rsaPub != nil {
+				return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
+			}
 			if secret == "" {
 				return nil, fmt.Errorf("HS256 token received but no JWT secret configured")
 			}
@@ -397,6 +410,31 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 			return
 		}
 		tokenStr := authHeader[len(prefix):]
+
+		// FIX-ALG-02: Pre-check the algorithm from the JWT header before calling
+		// jwt.Parse. This prevents algorithm-confusion attacks where a crafted token
+		// header selects a weaker algorithm (e.g. HS256 when RS256 is expected, or
+		// "none"). The check is intentionally done before any cryptographic work so
+		// that downgrade attempts are caught and logged immediately.
+		// Mirrors the pattern used in gateway/middleware/auth.go (RZ-W15-01).
+		if rsaPub != nil {
+			parts := strings.SplitN(tokenStr, ".", 3)
+			if len(parts) == 3 {
+				if headerBytes, decErr := base64.RawURLEncoding.DecodeString(parts[0]); decErr == nil {
+					var hdr struct {
+						Alg string `json:"alg"`
+					}
+					if jsonErr := json.Unmarshal(headerBytes, &hdr); jsonErr == nil && hdr.Alg != "RS256" {
+						log.WarnContext(r.Context(), "GraphQL HTTP JWT algorithm downgrade attempt rejected",
+							"alg", hdr.Alg, "remote", r.RemoteAddr,
+							"event", "jwt_alg_downgrade",
+						)
+						http.Error(w, "Unauthorized", http.StatusUnauthorized)
+						return
+					}
+				}
+			}
+		}
 
 		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
 		token, err := jwt.Parse(tokenStr, jwtKeyFunc(secret, rsaPub))

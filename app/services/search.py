@@ -227,11 +227,16 @@ class SearchService:
             index: Index name
             query: Partial query string
             field: Field to suggest from
-            size: Maximum suggestions
+            size: Maximum suggestions (capped at 20)
 
         Returns:
             List of suggested terms
         """
+        # LOW-W19: cap suggestion count to prevent callers from requesting
+        # arbitrarily large completion payloads, which can exhaust heap memory
+        # in Elasticsearch for high-cardinality completion fields.
+        size = min(size, 20)
+
         result = await self.client.search(
             index=index,
             body={

@@ -54,7 +54,7 @@ def collect_npm_advisory_ids(package_dir: pathlib.Path) -> set[str]:
     cmd = ["npm", "audit", "--audit-level=high", "--json"]
     import os
 
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603
         cmd, cwd=package_dir, capture_output=True, text=True, shell=os.name == "nt"
     )
 
@@ -118,15 +118,12 @@ def check_allowances(
     missing = sorted(found_ids - allowed_ids)
     if missing:
         formatted = "\n".join(f"- {value}" for value in missing)
+        # LOW-W19: format both args into a single string so the message is readable
         raise AuditFailure(
-            (
-                f"{ecosystem} audit found advisories that are not in the allowlist:\n"
-                f"{formatted}\n"
-            ),
-            (
-                "Add a temporary allowlist entry with an owner and expiry if this "
-                "cannot be fixed immediately."
-            ),
+            f"{ecosystem} audit found advisories that are not in the allowlist:\n"
+            f"{formatted}\n"
+            "Add a temporary allowlist entry with an owner and expiry if this "
+            "cannot be fixed immediately."
         )
 
 
@@ -148,7 +145,7 @@ def collect_pip_advisories(requirements: list[str] | None) -> set[str]:
         for req_file in requirements:
             cmd.extend(["-r", req_file])
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
     if result.returncode not in (0, 1):
         raise AuditFailure(f"pip-audit failed: {result.stderr or result.stdout}")
 

@@ -38,6 +38,9 @@ class AppGeneralSettings(BaseAppSettings):
     partition_retention_days: int = 365
     partition_warmup_months: int = 1
     enable_metrics_endpoint: bool = False
+    # MED-W19: opt-in flag for X-Response-Time header; disabled by default to
+    # avoid leaking internal timing information to external clients in production.
+    expose_timing_header: bool = False
     metrics_basic_auth_username: str = ""
     metrics_basic_auth_password: str = ""
     metrics_allowlist: str | list[str] = ""
@@ -53,6 +56,10 @@ class AppGeneralSettings(BaseAppSettings):
     ws_max_connections_per_user: int = 5
     ws_message_rate: float = 5.0
     ws_message_burst: float = 10.0
+    # LOW-W19: moved from os.environ.get() in api/ws/ticket.py to a proper
+    # settings field so it is validated at startup, visible in .env docs, and
+    # mockable in tests via Settings overrides.
+    ws_ticket_ttl_seconds: int = 15
 
     api_v2_prefix: str = "/api/v2"
     # CFG-2 (audit 2026-03): audit_log_secret is defined and validated in

@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -156,12 +157,15 @@ func getEnv(key, defaultValue string) string {
 }
 
 func getEnvFloat(key string, defaultValue float64) float64 {
+	// LOW-W19: use strconv.ParseFloat instead of fmt.Sscan — ParseFloat is
+	// purpose-built for this use-case and rejects trailing garbage (e.g. "1.5x")
+	// that Sscan would silently accept by stopping at the first non-numeric char.
 	valStr := os.Getenv(key)
 	if valStr == "" {
 		return defaultValue
 	}
-	var val float64
-	if _, err := fmt.Sscan(valStr, &val); err != nil {
+	val, err := strconv.ParseFloat(valStr, 64)
+	if err != nil {
 		return defaultValue
 	}
 	return val

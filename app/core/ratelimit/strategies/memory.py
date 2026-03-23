@@ -9,14 +9,21 @@ from app.core.ratelimit.models import RateLimitInfo
 from app.core.ratelimit.utils import compose_identifier
 
 _LOCK_SHARD_COUNT = 256
-_memory_locks: tuple[asyncio.Lock, ...] = tuple(
-    asyncio.Lock() for _ in range(_LOCK_SHARD_COUNT)
-)
+# MED-W19: Lazy-init asyncio.Lock objects instead of creating them at module
+# import time.  asyncio.Lock() must be created inside a running event loop;
+# instantiating them at import time causes DeprecationWarning in Python 3.10+
+# and a RuntimeError in Python 3.12+ when no event loop is running.
+_memory_locks: list[asyncio.Lock | None] = [None] * _LOCK_SHARD_COUNT
 _memory_windows: dict[str, collections.deque[float]] = {}
 
 
 def _shard_lock(key: str) -> asyncio.Lock:
-    return _memory_locks[hash(key) & (_LOCK_SHARD_COUNT - 1)]
+    idx = hash(key) & (_LOCK_SHARD_COUNT - 1)
+    lock = _memory_locks[idx]
+    if lock is None:
+        lock = asyncio.Lock()
+        _memory_locks[idx] = lock
+    return lock
 
 
 class MemorySlidingWindowStrategy:

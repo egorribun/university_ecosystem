@@ -28,7 +28,9 @@ class GraphQLContext(BaseContext):
 
     session: AsyncSession
     loaders: DataLoaderRegistry
-    checker: PermissionChecker
+    checker: (
+        PermissionChecker | None
+    )  # DEBT-W19: can be None for unauthenticated requests
     current_user: User | None = None
 
     @property

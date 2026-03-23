@@ -157,7 +157,13 @@ async def liveness() -> dict[str, str]:
 
 
 @router.get("/healthz", summary="Full Health Check")
-async def healthz() -> JSONResponse:
+async def healthz(
+    # LOW-W19: brief=True omits migration versions, pool internals, and latency
+    # details from the response — use this for public/external health checks to
+    # avoid leaking infrastructure details.  Internal/ops dashboards should use
+    # the default brief=False to retain full diagnostic information.
+    brief: bool = False,
+) -> JSONResponse:
     now = time.monotonic()
     if _health_cache["expires_at"] > now:
         return JSONResponse(
@@ -285,7 +291,7 @@ async def healthz() -> JSONResponse:
     # Add pool health metrics
     pool_metrics = get_pool_health_metrics()
 
-    payload = {
+    full_payload = {
         "status": "ok" if overall_ok else "error",
         **statuses,
         **latencies,
@@ -295,11 +301,30 @@ async def healthz() -> JSONResponse:
     _health_cache.update(
         {
             "expires_at": now + 5.0,
-            "payload": payload,
+            "payload": full_payload,
             "status_code": http_status,
         }
     )
-    return JSONResponse(status_code=http_status, content=payload)
+
+    if brief:
+        # LOW-W19: brief mode omits migration version sets, latency details, and
+        # pool internals to avoid exposing infrastructure information to external
+        # callers.  Only the top-level component statuses and overall status are
+        # returned.
+        _BRIEF_OMIT_KEYS = frozenset(
+            {
+                "db_migrations_current",
+                "db_migrations_expected",
+                "pool",
+            }
+            | {k for k in full_payload if k.endswith("_latency_ms")}
+        )
+        brief_payload = {
+            k: v for k, v in full_payload.items() if k not in _BRIEF_OMIT_KEYS
+        }
+        return JSONResponse(status_code=http_status, content=brief_payload)
+
+    return JSONResponse(status_code=http_status, content=full_payload)
 
 
 @router.get("/ready", summary="Legacy Readiness Check")

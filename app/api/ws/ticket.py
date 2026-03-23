@@ -19,7 +19,6 @@ TTL  : WS_TICKET_TTL_SECONDS (default 15)
 
 from __future__ import annotations
 
-import os
 import secrets
 from typing import Annotated
 
@@ -27,6 +26,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.core.localization import resolve_locale
 from app.core.logging import get_logger
 from app.deps.cache import get_cache_client
@@ -34,10 +34,16 @@ from app.services.auth.token_service import AuthTokenService
 
 logger = get_logger(__name__)
 
-# MOD-W17-06 (Wave 17): Configurable via WS_TICKET_TTL_SECONDS env var.
-# Default 15s. On slow networks (mobile, CDN multi-hop) consider 30-60s.
-# On high-security deployments, keep at 15s or lower.
-_TICKET_TTL_SECONDS: int = int(os.environ.get("WS_TICKET_TTL_SECONDS", "15"))
+
+# LOW-W19: replaced os.environ.get() with settings.ws_ticket_ttl_seconds so the
+# value is validated at startup, visible in .env docs, and overridable in tests
+# via Settings overrides rather than os.environ patches.
+# MOD-W17-06 (Wave 17): configurable; default 15 s.  On slow networks (mobile,
+# CDN multi-hop) consider 30-60 s.  On high-security deployments keep at 15 s.
+def _get_ticket_ttl() -> int:
+    return settings.ws_ticket_ttl_seconds
+
+
 TICKET_KEY_PREFIX: str = "ott:ws:"
 
 _oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -56,11 +62,11 @@ class WsTicketResponse(BaseModel):
     status_code=201,
     summary="Issue a WebSocket upgrade ticket",
     description=(
-        f"Issues a short-lived ({_TICKET_TTL_SECONDS}s), single-use WebSocket upgrade ticket. "
+        "Issues a short-lived, single-use WebSocket upgrade ticket. "
         "The client must be authenticated via HttpOnly cookie or Bearer token. "
         "Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket "
-        f"is consumed atomically on first use and expires after {_TICKET_TTL_SECONDS} seconds "
-        "if unused."
+        "is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds "
+        "if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds)."
     ),
 )
 async def issue_ws_upgrade_ticket(
@@ -82,11 +88,12 @@ async def issue_ws_upgrade_ticket(
     redis_value = f"{user_id}:{jti}"
 
     redis = await get_cache_client()
+    ttl = _get_ticket_ttl()
     await redis.set(
         f"{TICKET_KEY_PREFIX}{ticket}",
         redis_value,
-        ex=_TICKET_TTL_SECONDS,
+        ex=ttl,
     )
 
     logger.debug("Issued WS upgrade ticket for user_id=%s jti=%.8s", user_id, jti)
-    return WsTicketResponse(ticket=ticket, expires_in=_TICKET_TTL_SECONDS)
+    return WsTicketResponse(ticket=ticket, expires_in=ttl)

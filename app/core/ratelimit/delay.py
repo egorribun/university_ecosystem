@@ -14,6 +14,9 @@ PROGRESSIVE_DELAY_TTL: int = 900  # 15 minutes
 
 _delay_memory: dict[str, tuple[int, float]] = {}
 _delay_memory_lock = asyncio.Lock()
+# MED-W19: Track last cleanup time to enable periodic pruning of _delay_memory.
+_delay_memory_last_cleanup: float = 0.0
+_DELAY_MEMORY_CLEANUP_INTERVAL: float = 300.0  # 5 minutes
 
 
 class ProgressiveDelayTracker:
@@ -61,11 +64,23 @@ class ProgressiveDelayTracker:
                 pass
 
         async with _delay_memory_lock:
+            # MED-W19: Periodically prune stale entries to prevent unbounded growth.
+            global _delay_memory_last_cleanup
+            now_ts = time.time()
+            if now_ts - _delay_memory_last_cleanup >= _DELAY_MEMORY_CLEANUP_INTERVAL:
+                cutoff_ts = now_ts - self._max_delay
+                stale_keys = [
+                    k for k, (_, ts) in _delay_memory.items() if ts < cutoff_ts
+                ]
+                for k in stale_keys:
+                    del _delay_memory[k]
+                _delay_memory_last_cleanup = now_ts
+
             count, last_time = _delay_memory.get(key, (0, 0.0))
-            if time.time() - last_time > self._ttl:
+            if now_ts - last_time > self._ttl:
                 count = 0
             count += 1
-            _delay_memory[key] = (count, time.time())
+            _delay_memory[key] = (count, now_ts)
             failures = count
 
         delay = self._calculate_delay(failures)
