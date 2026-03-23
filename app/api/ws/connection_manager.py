@@ -10,6 +10,7 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
+from weakref import WeakValueDictionary
 
 from fastapi import Request, WebSocket
 from starlette.websockets import WebSocketDisconnect
@@ -82,10 +83,18 @@ class ConnectionManager:
         # avoid bypassing Dishka DI.  Falls back to global async_session when
         # no factory is injected (backward compatibility).
         self._session_factory = session_factory
+        # RZ-14-04 (audit 2026-03-23): Changed dict → WeakValueDictionary.
+        # dict[uuid.UUID, asyncio.Lock] accumulated one entry per chat_id for
+        # the entire lifetime of the process — an O(distinct_chats_ever) memory
+        # leak.  WeakValueDictionary automatically evicts entries once no
+        # coroutine holds a reference to the Lock (i.e. no async with is active
+        # for that chat_id).  asyncio.Lock IS weakly-referenceable.
         # PERF-14-03 (audit Wave 14): Per-chat locks for single-flight cache
         # miss coalescing — prevents N concurrent broadcast_to_chat calls from
         # each opening a separate DB session on the same cache miss.
-        self._participant_locks: dict[uuid.UUID, asyncio.Lock] = {}
+        self._participant_locks: WeakValueDictionary[uuid.UUID, asyncio.Lock] = (
+            WeakValueDictionary()
+        )
 
     def _get_lock(self) -> asyncio.Lock:
         return self._lock
@@ -232,7 +241,13 @@ class ConnectionManager:
                 return [uuid.UUID(uid) for uid in entry.payload]
 
         # Single-flight: only one DB query per chat_id at a time.
-        lock = self._participant_locks.setdefault(chat_id, asyncio.Lock())
+        # RZ-14-04: setdefault(key, asyncio.Lock()) always evaluates the default
+        # expression before checking the key — safe with WeakValueDictionary only
+        # if we use the explicit two-step pattern below, which avoids the
+        # double-instantiation race.
+        if chat_id not in self._participant_locks:
+            self._participant_locks[chat_id] = asyncio.Lock()
+        lock = self._participant_locks[chat_id]
         async with lock:
             # Double-check after acquiring lock — another coroutine may have
             # already populated the cache while we were waiting.

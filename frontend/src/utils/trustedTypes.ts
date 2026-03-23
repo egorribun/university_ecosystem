@@ -79,7 +79,15 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
       },
     }) as TrustedTypePolicy
     win.__ttAppPolicy = policy
-  } catch {
+  } catch (err) {
+    // MOD-14-01 (audit 2026-03-23): Log to console.error so Sentry captures it.
+    // A browser extension or CSP misconfiguration that blocks policy creation
+    // would silently degrade script URL enforcement without any visibility.
+    // Mirrors the existing pattern in ensureSanitizePolicy (lines above).
+    console.error(
+      "[TrustedTypes] Failed to create app policy — script URL enforcement may be degraded:",
+      err,
+    )
     win.__ttAppPolicy = false
   }
   return win.__ttAppPolicy || null

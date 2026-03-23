@@ -67,13 +67,24 @@ _SPICEDB_CALL_TIMEOUT_SECONDS: float = 2.0
 #
 # Security trade-off: a role revocation will remain effective in SpiceDB, but
 # an in-progress outage means the stale "allow" result may be served for up to
-# 60 seconds. This is acceptable because:
+# _GRACE_TTL_SECONDS seconds. This is acceptable because:
 #   1. Role changes are rare and deliberate.
 #   2. A 60-second window is far narrower than a typical SpiceDB rollout gap.
 #   3. The alternative (fail-closed) causes full service degradation on ANY
 #      transient network hiccup between the Python backend and SpiceDB.
+#
+# TD-14-04 (audit 2026-03-23): Two-tier TTL policy.
+# _GRACE_TTL_SECONDS applies to DENY (False) results — they are safe to serve
+# stale because denying is fail-closed.
+# _PERMISSION_POSITIVE_TTL_SECONDS applies to ALLOW (True) results — shorter
+# window because serving a stale "allow" after role revocation is the higher-
+# risk scenario.  Fail-closed after positive TTL expires.
 # ---------------------------------------------------------------------------
 _GRACE_TTL_SECONDS: float = 60.0
+# Positive ("allow") results are served for at most 30 seconds during outage.
+# After this window, fail-closed (SpiceDBUnavailableError) — do NOT serve
+# a stale "allow" for an indefinite outage.
+_PERMISSION_POSITIVE_TTL_SECONDS: float = 30.0
 
 # RZ-W13-02: LRU-bounded to prevent unbounded memory growth.
 # At ~200 bytes per entry, 10 000 entries ≈ 2 MB — acceptable overhead.
@@ -240,15 +251,25 @@ class PermissionChecker:
             cached = _permission_cache.get(cache_key)
             if cached is not None:
                 cached_result, cached_at = cached
-                if (time.monotonic() - cached_at) <= _GRACE_TTL_SECONDS:
+                age = time.monotonic() - cached_at
+                # TD-14-04 (audit 2026-03-23): Two-tier TTL.
+                # Positive (allow) results must not be served indefinitely —
+                # if the role was revoked and SpiceDB is down, fail-closed.
+                max_ttl = (
+                    _PERMISSION_POSITIVE_TTL_SECONDS
+                    if cached_result is True
+                    else _GRACE_TTL_SECONDS
+                )
+                if age <= max_ttl:
                     logger.warning(
                         "SpiceDB unavailable — serving cached permission result "
-                        "(%s:%s#%s for %s, age=%.1fs)",
+                        "(%s:%s#%s for %s, age=%.1fs, result=%s)",
                         resource_type,
                         resource_id,
                         permission,
                         user_id,
-                        time.monotonic() - cached_at,
+                        age,
+                        cached_result,
                     )
                     _PERM_CACHE_STALE.inc()  # PERF-14-02: grace-period stale hit
                     return cached_result

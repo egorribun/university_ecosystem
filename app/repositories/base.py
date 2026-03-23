@@ -77,10 +77,17 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
+    # TD-14-02 (audit 2026-03-23): Defence-in-depth cap — the ORM layer must
+    # not trust its callers.  An internal service call with limit=99999 returns
+    # a multi-MB payload and exhausts the connection pool.  Consistent with
+    # _MAX_LIMIT=200 in pagination.py and _MAX_PAGE_SIZE in user_repository.py.
+    _LIST_MAX_LIMIT: int = 200
+
     async def list(
         self, *, skip: int = 0, limit: int = 100, order_by: Any = None
     ) -> Sequence[DTOT]:
-        stmt = select(self.model).offset(skip).limit(limit)
+        capped = min(limit, self._LIST_MAX_LIMIT)
+        stmt = select(self.model).offset(skip).limit(capped)
         if order_by is not None:
             stmt = stmt.order_by(order_by)
         result = await self.db.execute(stmt)

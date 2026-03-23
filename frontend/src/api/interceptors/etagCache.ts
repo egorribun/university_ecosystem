@@ -10,7 +10,12 @@ import { logWarning } from "@/app/logger"
 // Increment VITE_API_SCHEMA_VERSION in .env when making breaking API schema changes.
 const _API_SCHEMA_VERSION = (import.meta.env.VITE_API_SCHEMA_VERSION as string | undefined) ?? "1"
 const ETAG_CACHE_KEY = `ue:etag-cache:v${_API_SCHEMA_VERSION}`
-const MAX_CACHE_ENTRIES = 50
+// PERF-14-01 (audit 2026-03-23): Increased from 50 → 200.
+// A power-user with 10 open chats + feed + schedule + profile needs 17+ URLs.
+// At 50 entries, frequently-accessed ETags were evicted by low-frequency ones,
+// causing unnecessary full-payload responses instead of 304 Not Modified.
+// 200 entries × ~200 bytes ≈ 40 KB in memory — negligible on any modern device.
+const MAX_CACHE_ENTRIES = 200
 
 // RED-02 (audit Wave 11): session epoch prevents cross-session data leakage.
 // Monotonically incremented on each login; captured before async HMAC computation

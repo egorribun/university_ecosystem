@@ -32,7 +32,7 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from fastapi import Query
+from fastapi import HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, Select
 
@@ -156,8 +156,19 @@ def apply_cursor(
             except (ValueError, AttributeError):
                 cursor_val = decode_cursor_as_int(params.after)  # type: ignore[assignment]
             stmt = stmt.where(column > cursor_val)
-        except (ValueError, AttributeError):
-            pass  # Malformed cursor — treat as first page to avoid 500 errors.
+        except (ValueError, AttributeError) as exc:
+            # RZ-14-03 (audit 2026-03-23): Raise HTTP 400 instead of silently
+            # returning the first page.  RFC 9110 §15.5.1 — the cursor is a
+            # client-supplied token; a syntactically invalid value is a Bad Request,
+            # not a fallback signal.  Returning the first page was confusing for
+            # clients: they could not distinguish "no cursor" from "bad cursor".
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "INVALID_CURSOR",
+                    "message": "Pagination cursor is malformed or expired.",
+                },
+            ) from exc
     return stmt.limit(params.limit + 1)
 
 

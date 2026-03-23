@@ -170,6 +170,16 @@ class ChatMessageDispatcher:
         if len(uploads) > int(settings.chat_attachment_max_files):
             raise_validation_error("errors.files.too_many_attachments", locale)
 
+        # TD-14-05 (audit 2026-03-23): Guard total payload size before any
+        # S3 / ClamAV I/O.  Prevents 5 × 15 MB = 75 MB concurrent uploads
+        # that would saturate the scanner and object-storage pipeline.
+        # UploadFile.size is set by FastAPI from the Content-Length of each
+        # multipart part; falls back to 0 if the client did not send it
+        # (the per-file check inside process_upload() enforces the hard cap).
+        total_size = sum(u.size or 0 for u in uploads)
+        if total_size > settings.chat_attachment_max_total_bytes:
+            raise_validation_error("errors.files.total_size_exceeded", locale)
+
         if not content.strip() and not uploads:
             raise_validation_error("errors.chat.empty_message", locale)
 
