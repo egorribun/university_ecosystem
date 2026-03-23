@@ -131,8 +131,11 @@ def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
     This matches the semantics passlib used; callers should rehash matching
     legacy passwords to argon2id on successful login.
 
-    DEPRECATED: Remove once auth_legacy_bcrypt_verifications_total counter
-    stays at 0 for 30+ consecutive days (migration complete, Q3 2026 target).
+    DEPRECATED — hard removal deadline 2026-09-01.
+    Remove once BOTH:
+      • auth_legacy_bcrypt_verifications_total == 0 for 30+ consecutive days, AND
+      • auth_legacy_bcrypt_users_remaining gauge == 0.
+    See removal checklist in app/core/metrics.py (TD-W14-02).
     """
     try:
         from app.core.metrics import record_legacy_bcrypt_verification

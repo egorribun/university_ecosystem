@@ -111,7 +111,8 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client) *hub.Hub {
 	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL, rdb)
 	authClient.StartEviction(ctx)
-	h := hub.NewHub(nc, logger, authClient, cfg)
+	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
+	h := hub.NewHub(nc, logger, authClient, cfg, rdb)
 
 	if cfg.JWKSURL != "" {
 		if err := h.SetupJWKS(ctx, cfg.JWKSURL); err != nil {

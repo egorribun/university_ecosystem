@@ -4,13 +4,16 @@ P0-W5-03 regression guard.
 
 Background
 ----------
-The Python backend stores session revocations in Redis under the key
-``revoked:{session_id}``.  The Go gateway previously checked
-``revoked:jti:{jti}`` — a completely different key — so logouts were never
-seen by the gateway and sessions remained valid until natural expiry.
+Both the Python backend and the Go gateway use ``revoked:jti:{jti}`` as the
+Redis key for session revocations.  On logout the backend writes this key;
+the gateway reads it to refuse subsequent requests.
 
-After the fix the gateway reads the ``sid`` custom claim from the JWT and
-uses ``revoked:{sid}`` to match the Python backend's format.
+History: an earlier version of this guard (P0-W5-03) documented the key as
+``revoked:{session_id}``, which was the format at that point in time.  The
+implementation was later unified on ``revoked:jti:{jti}`` across both services
+(see app/auth/redis_session.py and services/gateway/middleware/auth.go).
+The test behaviour remains unchanged — it validates end-to-end revocation —
+but the key-format comments have been updated to reflect current code.
 
 Running
 -------
@@ -113,7 +116,7 @@ async def test_gateway_accepts_valid_session() -> None:
 async def test_gateway_rejects_revoked_session() -> None:
     """After Python-backend logout, the gateway must return 401.
 
-    This validates P0-W5-03: the Go gateway now reads ``revoked:{sid}``
+    This validates P0-W5-03: the Go gateway reads ``revoked:jti:{jti}``
     which matches the key written by the Python backend on logout.
     """
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -133,8 +136,9 @@ async def test_gateway_rejects_revoked_session() -> None:
 
     assert post_status == 401, (
         f"Gateway accepted a revoked session (status {post_status}). "
-        "Verify that the gateway key format matches the Python backend "
-        "(revoked:{{sid}}, not revoked:jti:{{jti}})."
+        "Verify that both services use the same Redis key format: "
+        "revoked:jti:{{jti}} (see app/auth/redis_session.py and "
+        "services/gateway/middleware/auth.go)."
     )
 
 

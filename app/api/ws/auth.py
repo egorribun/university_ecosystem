@@ -142,6 +142,90 @@ def select_subprotocol(header_value: str | None) -> str | None:
     return None
 
 
+async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
+    """Validate a one-time WS upgrade ticket and return (user, jti).
+
+    RZ-W14-01 (audit 2026-03-23 Wave 14): atomically consumes the ticket via
+    Redis GETDEL so it cannot be replayed.  The ticket was issued by
+    POST /ws/ticket and stores "{user_id}:{jti}" under "ott:ws:{ticket}".
+
+    Returns (None, None) if the ticket is missing, expired, already used,
+    or if the referenced session is invalid.
+    """
+    from app.api.ws.ticket import TICKET_KEY_PREFIX
+
+    try:
+        from app.deps.cache import get_cache_client
+
+        redis = await get_cache_client()
+        # GETDEL: atomic read + delete — prevents replay of the same ticket
+        raw: str | None = await redis.getdel(f"{TICKET_KEY_PREFIX}{ticket}")
+        if not raw:
+            logger.debug("WS ticket not found or already used: %.8s…", ticket)
+            return None, None
+
+        # Format: "{user_id}:{jti}" — split on first colon; UUIDs contain only hyphens
+        sep = raw.index(":")
+        user_id_str = raw[:sep]
+        jti = raw[sep + 1 :]
+
+        if not user_id_str or not jti:
+            logger.warning("WS ticket has malformed payload: %.8s…", ticket)
+            return None, None
+
+    except Exception as exc:
+        logger.warning("WS ticket validation error: %s", exc)
+        return None, None
+
+    # Validate session via direct DB lookup (no JWT decode needed — we already
+    # verified the caller's identity when the ticket was issued).
+    return await _resolve_user_from_ids(user_id_str, jti)
+
+
+async def _resolve_user_from_ids(user_id_str: str, jti: str) -> tuple[User | None, str | None]:
+    """Look up user + validate session directly from user_id + jti.
+
+    Shared by get_user_from_ticket() — avoids re-encoding a fake JWT.
+    """
+    try:
+        async with async_session() as session:
+            user_repo = UserRepository(session)
+            session_repo = SessionRepository(session)
+
+            user = await user_repo.get(uuid.UUID(user_id_str))
+            if not user or not user.is_active:
+                return None, None
+
+            # Fast-path Redis revocation check
+            try:
+                from app.deps.cache import get_cache_client as _gcc
+
+                _redis = await _gcc()
+                if await _redis.exists(f"revoked:jti:{jti}"):
+                    logger.debug("WS ticket JTI %s is revoked (Redis fast-path)", jti)
+                    return None, None
+            except Exception:
+                pass  # fallback to DB revoked_at check below
+
+            active_session = await session_repo.get_by_jti(jti)
+            if not active_session or active_session.user_id != user.id:
+                return None, None
+
+            expires_at = active_session.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= datetime.now(UTC):
+                return None, None
+            if active_session.revoked_at is not None:
+                return None, None
+
+            return cast("User | None", user), jti
+
+    except Exception:
+        logger.exception("WS ticket: unexpected error resolving user")
+        return None, None
+
+
 async def update_last_seen(session_jti: str | None) -> datetime:
     """Persist last_seen_at for a session and return the timestamp used."""
     now = datetime.now(UTC)

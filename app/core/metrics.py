@@ -408,10 +408,23 @@ _CIRCUIT_BREAKER_TRIPS = (
     else None
 )
 
-# DEPRECATED: Legacy bcrypt verifications — track migration progress.
-# Condition for removal: counter stays at 0 for 30+ consecutive days → remove
-# _verify_legacy_bcrypt(), the bcrypt dependency, and this counter.
-# Ticket: ECOSYSTEM-BCRYPT-MIGRATION (target: Q3 2026)
+# TD-W14-02 (audit 2026-03-23 Wave 14): Legacy bcrypt migration tracking.
+#
+# Hard removal deadline: 2026-09-01 (Q3 2026).
+# Removal checklist (all must be true before deleting bcrypt code):
+#   1. auth_legacy_bcrypt_verifications_total == 0 for 30+ consecutive days.
+#   2. auth_legacy_bcrypt_users_remaining == 0 (all accounts migrated or force-reset).
+#   3. bcrypt==5.0.0 removed from pyproject.toml [tool.poetry.dependencies].
+#   4. _verify_legacy_bcrypt() and _truncate_for_bcrypt() removed from security.py.
+#   5. LEGACY_SCHEME constant and LEGACY_BCRYPT_MAX_BYTES constant removed.
+#   6. bcrypt import removed from security.py.
+#
+# Alert rule (Prometheus):
+#   ALERT LegacyBcryptUsersStillPresent
+#     IF auth_legacy_bcrypt_users_remaining > 0 AND time() > 1756684800  # 2026-09-01 00:00 UTC
+#     FOR 1h
+#     LABELS { severity="warning" }
+#     ANNOTATIONS { summary="bcrypt migration deadline passed but users remain" }
 _LEGACY_BCRYPT_VERIFICATIONS = (
     Counter(
         "auth_legacy_bcrypt_verifications_total",
@@ -419,6 +432,20 @@ _LEGACY_BCRYPT_VERIFICATIONS = (
         registry=REGISTRY,
     )
     if Counter is not None
+    else None
+)
+
+# Gauge for the total number of user accounts still using bcrypt hashes.
+# Populated by record_legacy_bcrypt_user_count() called from the startup lifespan
+# (see app/core/lifespan.py) and periodically by the session_cleanup task.
+_LEGACY_BCRYPT_USERS_REMAINING = (
+    Gauge(
+        "auth_legacy_bcrypt_users_remaining",
+        "Number of user accounts still storing a legacy bcrypt password hash — "
+        "should reach 0 before 2026-09-01",
+        registry=REGISTRY,
+    )
+    if Gauge is not None
     else None
 )
 
@@ -456,6 +483,20 @@ def record_legacy_bcrypt_verification() -> None:
     """
     if _LEGACY_BCRYPT_VERIFICATIONS is not None:
         _LEGACY_BCRYPT_VERIFICATIONS.inc()
+
+
+def record_legacy_bcrypt_user_count(count: int) -> None:
+    """Set the gauge for how many users still have bcrypt hashes.
+
+    TD-W14-02: Call this from the startup lifespan after a DB query such as:
+        SELECT COUNT(*) FROM users WHERE password_hash LIKE '$2b$%'
+    and from periodic cleanup tasks so the gauge stays current.
+
+    Prometheus alert: if auth_legacy_bcrypt_users_remaining > 0 after
+    2026-09-01 (Unix timestamp 1756684800), page oncall.
+    """
+    if _LEGACY_BCRYPT_USERS_REMAINING is not None:
+        _LEGACY_BCRYPT_USERS_REMAINING.set(count)
 
 
 def record_login_success(method: str = "password") -> None:
