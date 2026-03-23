@@ -14,8 +14,6 @@ on:
         required: true
         type: string
 
-permissions: read-all
-
 jobs:
   test:
     name: Test Go Service (${{ inputs.service-directory }})

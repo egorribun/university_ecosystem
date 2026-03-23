@@ -28,8 +28,6 @@ on:
                 description: "Whether Node.js cache was hit"
                 value: ${{ jobs.cache.outputs.node-cache-hit }}
 
-permissions: read-all
-
 jobs:
     cache:
         name: Warm Dependency Caches

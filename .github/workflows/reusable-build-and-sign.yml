@@ -35,8 +35,6 @@ on:
         description: "The pushed image digest"
         value: ${{ jobs.build.outputs.digest }}
 
-permissions: read-all
-
 jobs:
   build:
     runs-on: ubuntu-latest

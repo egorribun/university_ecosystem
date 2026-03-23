@@ -25,8 +25,6 @@ on:
         type: boolean
         default: true
 
-permissions: read-all
-
 jobs:
   pip-audit:
     name: Python Dependency Audit
