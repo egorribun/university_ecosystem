@@ -288,6 +288,34 @@ jobs:
           BACKEND_URL: "https://${{ inputs.environment }}.example.com/healthz"
           FRONTEND_URL: "https://${{ inputs.environment }}.example.com/"
 
+      - name: Verify Kyverno policy compliance (MOD-14-02)
+        # MOD-14-02 (audit 2026-03-23): All 5 ClusterPolicies are in Enforce mode
+        # (Wave 13). A Pod that violates a policy fails admission with a cryptic
+        # message; without this step the violation is invisible in the CD summary.
+        # This step waits for all Pods to reach Ready (max 5 min — covers slow
+        # image pulls) then queries PolicyReport for any fail-count > 0.
+        #
+        # NOTE: kubectl must already be configured by the preceding OIDC credentials
+        # step + kubeconfig setup in the Helm deploy step above.
+        run: |
+          echo "Waiting for university-ecosystem Pods to reach Ready state..."
+          kubectl wait --for=condition=Ready pod \
+            -l app.kubernetes.io/part-of=university-ecosystem \
+            -n university-ecosystem \
+            --timeout=300s
+
+          echo "Checking Kyverno PolicyReports for violations..."
+          VIOLATIONS=$(kubectl get policyreport -n university-ecosystem \
+            -o jsonpath='{.items[*].summary.fail}' 2>/dev/null | \
+            tr ' ' '\n' | awk 'NF{s+=$1} END{print s+0}')
+
+          if [ "${VIOLATIONS:-0}" -gt 0 ]; then
+            echo "::error::Kyverno policy violations detected: ${VIOLATIONS} failure(s)"
+            kubectl get policyreport -n university-ecosystem -o yaml
+            exit 1
+          fi
+          echo "Kyverno: 0 policy violations ✓"
+
   rollback:
     name: Rollback capability test
     runs-on: ubuntu-latest

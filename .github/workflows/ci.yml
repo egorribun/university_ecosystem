@@ -385,6 +385,22 @@ jobs:
           uv run alembic -c alembic.ini upgrade head
           uv run alembic -c alembic.ini downgrade base
 
+      - name: Check Alembic schema drift (MOD-14-03)
+        # RZ-14-05 (audit 2026-03-23): alembic check exits 1 if the ORM models
+        # diverge from the live schema — catches missing length constraints,
+        # new columns not backed by migrations, and type mismatches.
+        # Runs after upgrade head so the schema is at the latest revision.
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+        shell: pwsh
+        run: |
+          uv run alembic -c alembic.ini upgrade head
+          uv run alembic -c alembic.ini check || {
+            echo "::error::Alembic schema drift detected — ORM models diverge from migration history. Run 'alembic revision --autogenerate' to inspect the diff."
+            exit 1
+          }
+
   openapi-verify:
     name: Verify OpenAPI Types
     runs-on: ubuntu-latest

@@ -190,6 +190,15 @@ class MultiLayerCache:
                     return value
             except Exception as e:
                 logger.warning("L2 cache get failed: %s", e)
+                # PERF-14-04 (audit 2026-03-23): Increment redis_command_errors_total
+                # so Alertmanager can fire on sustained L2 degradation.
+                # Deferred import avoids circular-import risk (core.metrics imports
+                # core.config which imports core.cache transitively on some paths).
+                try:
+                    from app.core.metrics import record_redis_command
+                    record_redis_command("get", 0.0, success=False)
+                except Exception:
+                    pass  # metrics unavailable — never block cache logic
 
         return None
 
@@ -206,6 +215,12 @@ class MultiLayerCache:
                 await self._redis.setex(key, int(self.l2_ttl), value)
             except Exception as e:
                 logger.warning("L2 cache set failed: %s", e)
+                # PERF-14-04 (audit 2026-03-23): Same pattern as get() above.
+                try:
+                    from app.core.metrics import record_redis_command
+                    record_redis_command("set", 0.0, success=False)
+                except Exception:
+                    pass
 
     async def delete(self, key: str) -> None:
         """Delete from both layers."""

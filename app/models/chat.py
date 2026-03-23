@@ -52,8 +52,16 @@ class Chat(Base, UUID7PrimaryKeyMixin):
         onupdate=utc_now,
     )
 
+    # RZ-14-01 (audit 2026-03-23): Changed lazy="selectin" → lazy="noload".
+    # lazy="selectin" is an *unconditional* load strategy — SQLAlchemy fires a
+    # second SELECT … WHERE chat_id IN (…) for every Chat loaded, even when the
+    # participants collection is never accessed (e.g. feed queries, updated_at
+    # checks).  This produces 2 round-trips for any endpoint that loads Chats.
+    # With lazy="noload" (mirroring Chat.messages on line 58) the decision is
+    # explicit at the call site: query paths that need participants add
+    # .options(selectinload(Chat.participants)) themselves.
     participants = relationship(
-        "User", secondary=chat_participants, backref="chats", lazy="selectin"
+        "User", secondary=chat_participants, backref="chats", lazy="noload"
     )
     messages: Mapped[list["Message"]] = relationship(
         "Message",

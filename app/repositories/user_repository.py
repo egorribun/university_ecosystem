@@ -178,10 +178,21 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         # effectively an N+1 query pattern. The JOIN + contains_eager resolves the
         # filter in a single pass and tells SQLAlchemy the relationship is already
         # loaded so it does not issue a second round-trip.
+        #
+        # RZ-14-02 (audit 2026-03-23): Changed INNER JOIN → LEFT OUTER JOIN.
+        # The previous INNER JOIN silently excluded users whose UserProfile row has
+        # not been created yet (e.g. newly registered accounts before the profile
+        # creation event fires).  LEFT OUTER JOIN + NULL guard preserves the
+        # "no deleted profiles" filter while including profile-less users.
         stmt = (
             select(User)
-            .join(User.profile)
-            .where(UserProfile.status != "deleted")
+            .outerjoin(User.profile)
+            .where(
+                or_(
+                    UserProfile.id.is_(None),       # no profile yet — still include
+                    UserProfile.status != "deleted",
+                )
+            )
             .options(
                 # PERF-001 (audit 2026-03-10): contains_eager() tells SQLAlchemy
                 # that User.profile is already loaded via the explicit JOIN above.

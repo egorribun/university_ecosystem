@@ -68,8 +68,13 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
     last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # TD-14-01 (audit 2026-03-23): Bounded to String(128). token_urlsafe(32)
+    # produces 43 chars; 128 chars gives 3× headroom for future key-format
+    # changes without a new migration.  Prevents storage-amplification if the
+    # generator is ever swapped for a longer output.  Paired migration:
+    # 202603230001_wave14_email_length_constraints.py.
     signing_key: Mapped[str] = mapped_column(
-        String, nullable=False, default=_generate_session_signing_key
+        String(128), nullable=False, default=_generate_session_signing_key
     )
     mfa_required: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, index=True

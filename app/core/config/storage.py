@@ -71,6 +71,11 @@ class StorageSettings(BaseAppSettings):
     )
     chat_attachment_max_size_bytes: int = 15 * 1024 * 1024
     chat_attachment_max_files: int = 5
+    # TD-14-05 (audit 2026-03-23): Total payload guard across all files in one
+    # request.  Without this, a user can upload max_files × max_size_bytes =
+    # 5 × 15 MB = 75 MB per request, stressing ClamAV and MinIO concurrently.
+    # Default: 2× per-file limit to allow reasonable multi-file uploads.
+    chat_attachment_max_total_bytes: int = 30 * 1024 * 1024  # 30 MB
     # RZ-W10-10: Guard against storage DoS — huge message bodies bloat the DB,
     # slow down pagination queries, and can OOM during response serialisation.
     # 10 000 chars ≈ ~6 A4 pages; adjust via CHAT_MAX_MESSAGE_LENGTH env var.

@@ -289,3 +289,72 @@ def clear_dependency_overrides():
     for key in list(app.dependency_overrides.keys()):
         if key not in _permanent_keys:
             del app.dependency_overrides[key]
+
+
+# ---------------------------------------------------------------------------
+# PERF-14-03 (audit 2026-03-23): Reusable N+1 query detection fixture.
+#
+# Usage:
+#   async def test_get_chats_query_count(client, auth_headers, assert_max_queries):
+#       async with assert_max_queries(3):
+#           resp = await client.get("/chats", headers=auth_headers)
+#       assert resp.status_code == 200
+#
+# The fixture attaches a SQLAlchemy before_cursor_execute listener to the
+# synchronous engine underlying the test's AsyncSession and fails the test if
+# more than max_count queries were issued inside the context block.
+#
+# Why listen on the sync engine?  SQLAlchemy fires before_cursor_execute on the
+# sync dialect layer — which all async sessions delegate to internally.  This is
+# the same approach used by the existing _count_queries() helper in
+# test_notifications_service.py and test_event_time_constraints.py, promoted
+# here as a globally-available fixture so every test file can use it without
+# copy-pasting the boilerplate.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def assert_max_queries(db_session):
+    """Return an async context manager that fails if more than N SQL queries are issued.
+
+    Args:
+        db_session: Injected by pytest from tests/fixtures/database/database.py.
+
+    Example::
+
+        async def test_list_users_query_count(client, auth_headers, assert_max_queries):
+            async with assert_max_queries(2):
+                resp = await client.get("/users", headers=auth_headers)
+            assert resp.status_code == 200
+    """
+    from contextlib import asynccontextmanager
+
+    from sqlalchemy import event
+
+    @asynccontextmanager
+    async def _check(max_count: int):
+        queries: list[str] = []
+
+        engine = getattr(db_session, "bind", None)
+        if engine is None:
+            # No engine bound (e.g. pure-unit test without DB) — skip counting.
+            yield queries
+            return
+
+        sync_engine = engine.sync_engine
+
+        def _before_execute(_conn, _cursor, statement, _params, _ctx, _many) -> None:
+            queries.append(statement)
+
+        event.listen(sync_engine, "before_cursor_execute", _before_execute)
+        try:
+            yield queries
+        finally:
+            event.remove(sync_engine, "before_cursor_execute", _before_execute)
+            if len(queries) > max_count:
+                query_list = "\n".join(
+                    f"  [{i + 1}] {q[:300]}" for i, q in enumerate(queries)
+                )
+                pytest.fail(
+                    f"Expected ≤{max_count} SQL queries, got {len(queries)}:\n{query_list}"
+                )
+
+    return _check

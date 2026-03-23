@@ -181,7 +181,18 @@ async def websocket_chat(websocket: WebSocket) -> None:
                     return
 
                 data = orjson.loads(text_data)
-            except (json.JSONDecodeError, ValueError, orjson.JSONDecodeError):
+            except (json.JSONDecodeError, ValueError, orjson.JSONDecodeError) as exc:
+                # MOD-14-04 (audit 2026-03-23): Log malformed frames with a frame preview
+                # so ops can distinguish bugs (e.g. wrong Content-Type) from active
+                # fuzzing probes during incident investigation. The 200-char truncation
+                # prevents log inflation from crafted large payloads.
+                frame_preview = text_data[:200] if isinstance(text_data, str) else "<non-text>"
+                logger.warning(
+                    "Malformed WebSocket frame from user %s: %s — frame preview: %r",
+                    getattr(user, "id", "unknown"),
+                    exc,
+                    frame_preview,
+                )
                 await websocket.send_json({"type": "error", "message": "Invalid JSON"})
                 continue
 
