@@ -1,7 +1,7 @@
 FRONTEND_DIR := $(CURDIR)/frontend
 ENV_FILE ?= $(CURDIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage helm-lint docker-lint sbom-local db-validate pre-commit-all
 
 install: backend-install frontend-install
 
@@ -127,6 +127,43 @@ audit-metrics:
 # Full verification (lint + typecheck + test)
 verify-all: lint backend-typecheck frontend-test backend-test
 	@echo "All verifications passed!"
+
+# MOD-W15-09 (audit 2026-03-23 Wave 15): Developer-facing quality gates
+# that mirror what CI runs, so issues can be caught locally before push.
+
+helm-lint:  ## Lint Helm charts (requires helm)
+	helm lint k8s/backend/ --strict
+	@if [ -d k8s/gateway ]; then helm lint k8s/gateway/ --strict; fi
+	@echo "Helm lint passed."
+
+docker-lint:  ## Lint Dockerfiles with hadolint (requires hadolint)
+	@which hadolint > /dev/null 2>&1 || (echo "Install hadolint: https://github.com/hadolint/hadolint/releases" && exit 1)
+	@find . -name "Dockerfile*" -not -path "*/node_modules/*" -not -path "*/.git/*" \
+		| xargs hadolint --ignore DL3008 --ignore DL3009
+	@echo "Dockerfile lint passed."
+
+sbom-local:  ## Generate SBOM locally and check for HIGH/CRITICAL CVEs (requires syft + grype)
+	@which syft > /dev/null 2>&1 || (echo "Install syft: https://github.com/anchore/syft/releases" && exit 1)
+	@which grype > /dev/null 2>&1 || (echo "Install grype: https://github.com/anchore/grype/releases" && exit 1)
+	syft . -o spdx-json=sbom.spdx.json
+	grype sbom:sbom.spdx.json --fail-on high
+	@echo "SBOM scan passed — no HIGH/CRITICAL CVEs."
+
+db-validate:  ## Validate alembic migrations (up → down -1 → up) against test DB
+	@echo "Running migration round-trip on test database..."
+	DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test_migration \
+		ENVIRONMENT=test SECRET_KEY=ci-local-key \
+		uv run alembic upgrade head
+	DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test_migration \
+		ENVIRONMENT=test SECRET_KEY=ci-local-key \
+		uv run alembic downgrade -1
+	DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test_migration \
+		ENVIRONMENT=test SECRET_KEY=ci-local-key \
+		uv run alembic upgrade head
+	@echo "Migration round-trip complete."
+
+pre-commit-all:  ## Run pre-commit on all files (slow but thorough)
+	pre-commit run --all-files
 
 # Development mode - run backend and frontend
 dev:

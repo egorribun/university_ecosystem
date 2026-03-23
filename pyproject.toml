@@ -119,6 +119,22 @@ strict_equality = true
 show_error_codes = true
 pretty = true
 explicit_package_bases = true
+implicit_reexport = false    # Catches accidental re-exports from __init__.py modules
+warn_no_return = true        # Detects functions with missing return in non-void branches
+exclude = [
+    "alembic/versions/",     # Auto-generated migrations
+    "app/api/generated/",    # Auto-generated OpenAPI client
+]
+
+# TD-W15-01 (audit 2026-03-23 Wave 15): Strict mypy for app/repositories/.
+# This is the DB boundary — most critical layer for type safety.
+# Start with full strict; disable_error_code list should only shrink over time.
+[[tool.mypy.overrides]]
+module = "app.repositories.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+warn_return_any = true
 
 # Per-module overrides for gradual adoption
 [[tool.mypy.overrides]]
@@ -136,18 +152,6 @@ warn_unused_ignores = false
 # redis.asyncio exposes aclose() at runtime but stubs lag behind; suppress until
 # types-redis ships the correct async API surface.
 disable_error_code = ["misc", "attr-defined", "type-arg"]
-
-[[tool.mypy.overrides]]
-# Redis[T] generic type params missing in several infrastructure modules.
-# Tracked: add Redis[Any] annotations across these files in Q3 2026.
-module = [
-  "app.core.ratelimit.strategies.base",
-  "app.services.fraud_detection_service",
-  "app.deps.cache",
-  "app.api.ws.presence",
-  "app.auth.redis_session",
-]
-disable_error_code = ["type-arg"]
 
 
 [[tool.mypy.overrides]]

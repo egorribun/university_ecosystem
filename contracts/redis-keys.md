@@ -91,8 +91,40 @@ shares the Redis instance.
 
 ---
 
+### Idempotency (send_message dedup)
+
+| Key Pattern | Value | TTL | Owner | Consumer |
+|-------------|-------|-----|-------|----------|
+| `idempotency:{method}:{user_id}:{key_hash}` | `{response_body_json}` | 86400s (24h) | Python backend (`app/core/middleware.py`) | Python backend (same module) |
+
+**Field details:**
+- `{method}`: HTTP method + path, e.g., `POST:/api/v1/messages`
+- `{user_id}`: User UUID (prevents cross-user replay)
+- `{key_hash}`: SHA-256 of the `Idempotency-Key` header value (hex, 64 chars)
+
+**Behaviour on cache hit:** Returns `200 OK` with the cached response body; the request handler is not invoked a second time.
+
+> **Security note (Wave 4):** The `user_id` component prevents user A from replaying user B's idempotent request. The SHA-256 hash avoids storing the raw header value in Redis.
+
+---
+
+### Presence
+
+| Key Pattern | Value | TTL | Owner | Consumer |
+|-------------|-------|-----|-------|----------|
+| `presence:{chat_id}` | Sorted Set: `{user_id}` → `last_seen_unix_ms` | 300s rolling | ws-hub (via NATS event) | Python `app/api/ws/presence.py` (`get_presence_audience`) |
+
+**Constraints:**
+- Maximum 500 members per room (`_PRESENCE_AUDIENCE_LIMIT` in `presence.py`).
+- TTL is refreshed on each heartbeat; members with stale scores are evicted server-side.
+
+> **Cross-service invariant (Wave 5):** The ws-hub publishes presence events to NATS; the Python backend updates the Sorted Set and enforces the 500-member cap. Presence data is advisory — authorization always goes through SpiceDB.
+
+---
+
 ## Change Log
 
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-03-23 | Wave 14 audit | Initial document created (MOD-W14-04) |
+| 2026-03-23 | Wave 15 audit | Added Idempotency and Presence key contracts (TD-W15-05) |

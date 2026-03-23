@@ -55,12 +55,61 @@ class WebSocketRateLimiter:
         return False
 
 
-# PERF-04 (audit Wave 13): Cap concurrent fan-out coroutines so that a large
-# presence audience (up to _PRESENCE_AUDIENCE_LIMIT=500) or chat broadcast
-# cannot spike memory or exhaust the Redis connection pool.  The semaphore is
-# module-level so it is shared across all ConnectionManager instances and
-# across both broadcast_to_chat and broadcast_presence call sites.
-_BROADCAST_SEMAPHORE: asyncio.Semaphore = asyncio.Semaphore(100)
+# PERF-W15-02 (audit 2026-03-23 Wave 15): Per-room broadcast semaphores.
+#
+# Previously a single global Semaphore(100) was shared across ALL rooms.
+# A slow room (1000 participants) could occupy all 100 slots, causing
+# Head-of-Line blocking for fast rooms (2 participants).
+#
+# Fix: each chat room gets its own Semaphore(_MAX_CONCURRENT_SENDS_PER_ROOM).
+# A slow room can hold at most 5 slots; all other rooms are unaffected.
+#
+# Presence broadcasts use a separate global semaphore — they are not per-room
+# (audience spans multiple rooms) so per-room isolation does not apply.
+_MAX_CONCURRENT_SENDS_PER_ROOM: int = 5
+_room_semaphores: dict[str, asyncio.Semaphore] = {}
+_room_semaphores_lock: asyncio.Lock | None = None  # Lazy: created inside event loop
+
+# Presence fan-out: separate semaphore, not per-room.
+_PRESENCE_SEMAPHORE: asyncio.Semaphore = asyncio.Semaphore(20)
+
+
+def _get_room_semaphores_lock() -> asyncio.Lock:
+    """Lazy-initialise the room semaphores dict lock (must run inside event loop)."""
+    global _room_semaphores_lock
+    if _room_semaphores_lock is None:
+        _room_semaphores_lock = asyncio.Lock()
+    return _room_semaphores_lock
+
+
+async def _get_room_semaphore(room_key: str) -> asyncio.Semaphore:
+    """Return the per-room semaphore for *room_key*, creating it if needed.
+
+    Uses double-checked locking to avoid acquiring the dict lock on every call.
+    """
+    sem = _room_semaphores.get(room_key)
+    if sem is not None:
+        return sem
+    async with _get_room_semaphores_lock():
+        # Re-check inside the lock — another coroutine may have raced us.
+        sem = _room_semaphores.get(room_key)
+        if sem is None:
+            sem = asyncio.Semaphore(_MAX_CONCURRENT_SENDS_PER_ROOM)
+            _room_semaphores[room_key] = sem
+    return sem
+
+
+async def cleanup_room_semaphores(active_room_keys: set[str]) -> None:
+    """Remove semaphores for rooms with no active connections (GC helper).
+
+    Call this periodically from the app lifespan to prevent unbounded dict growth.
+    Rooms that still have connections retain their semaphore; stale ones are dropped.
+    """
+    stale = set(_room_semaphores) - active_room_keys
+    for key in stale:
+        _room_semaphores.pop(key, None)
+    if stale:
+        logger.debug("Cleaned up %d stale room semaphores", len(stale))
 
 
 class ConnectionManager:
@@ -289,8 +338,10 @@ class ConnectionManager:
             if exclude_user_id is None or p_id != exclude_user_id
         ]
 
+        room_sem = await _get_room_semaphore(str(chat_id))
+
         async def _throttled_send(uid: uuid.UUID) -> int:
-            async with _BROADCAST_SEMAPHORE:
+            async with room_sem:
                 return await self.send_to_user(uid, message)
 
         results = await asyncio.gather(
@@ -346,7 +397,7 @@ class ConnectionManager:
             return 0
 
         async def _throttled_presence_send(uid: uuid.UUID) -> int:
-            async with _BROADCAST_SEMAPHORE:
+            async with _PRESENCE_SEMAPHORE:
                 return await self.send_to_user(uid, payload)
 
         results = await asyncio.gather(

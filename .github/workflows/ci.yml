@@ -251,6 +251,36 @@ jobs:
       go-version: "1.26.x"
     secrets: inherit
 
+  # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
+  # Short 30s CI budget — finds quick panics and crashes.
+  # Crashes are stored in testdata/fuzz/ and replayed on subsequent runs automatically.
+  go-fuzz:
+    name: Go Fuzz Tests (ws-hub)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: services/ws-hub/go.sum
+
+      - name: Run fuzz tests (30s CI budget)
+        run: |
+          cd services/ws-hub
+          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=30s
+          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s
+
+      - name: Upload fuzz corpus on failure
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        if: failure()
+        with:
+          name: fuzz-crash-corpus
+          path: services/ws-hub/testdata/fuzz/
+          retention-days: 30
+
   frontend-tests:
     name: Frontend Tests
     needs: pre-commit-check
@@ -589,6 +619,135 @@ jobs:
             --preset=lighthouse:recommended \
             --budgetsFile=../budget.json
 
+  # MOD-W15-02 (audit 2026-03-23 Wave 15): Trivy Docker image scanning.
+  # Runs on every PR/push. Scans the built backend image for CRITICAL/HIGH CVEs.
+  # Results are uploaded to GitHub Security tab as SARIF (visible in Code Scanning).
+  docker-security-scan:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build backend image for scanning
+        run: docker build -t university-ecosystem/backend:${{ github.sha }} -f Dockerfile .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0
+        with:
+          image-ref: university-ecosystem/backend:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@dd746615b3b9d728a6a37ca2045b68ca76d4f6e7 # v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
+  # Catches broken Helm templates and K8s manifest schema violations before deploy.
+  helm-validate:
+    name: Helm Lint & Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Helm
+        uses: azure/setup-helm@b9e51907a09a8cdc66f4dd4bbd9a596a28a04bde # v4.3.0
+        with:
+          version: "3.17.0"
+
+      - name: Helm lint — backend
+        run: helm lint k8s/backend/ --strict
+
+      - name: Helm lint — gateway (if exists)
+        run: |
+          if [ -d k8s/gateway ]; then
+            helm lint k8s/gateway/ --strict
+          else
+            echo "k8s/gateway not found, skipping"
+          fi
+
+      - name: Helm template — backend dry-run
+        run: |
+          helm template backend k8s/backend/ \
+            --set image.tag=test-sha-${{ github.sha }} \
+            > /tmp/backend-manifests.yaml
+          echo "Helm template rendered successfully ($(wc -l < /tmp/backend-manifests.yaml) lines)"
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar xf /tmp/kubeconform.tar.gz -C /tmp
+          chmod +x /tmp/kubeconform
+
+      - name: Validate manifests with kubeconform
+        run: |
+          cat /tmp/backend-manifests.yaml | \
+            /tmp/kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+  # MOD-W15-04 (audit 2026-03-23 Wave 15): Postgres migration gate.
+  # Validates alembic upgrade head + downgrade -1 + upgrade head round-trip
+  # on a real Postgres instance (not SQLite) to catch migration regressions.
+  db-migration-gate:
+    name: DB Migration Gate (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: pre-commit-check
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_migration
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5433:5432
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: astral-sh/setup-uv@6b9c6063abd0c5d2b1adb8dfd1f81566f60ddb6e # v5.4.0
+        with:
+          version: "0.6.14"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run migration round-trip (up → down -1 → up)
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/test_migration
+          ENVIRONMENT: test
+          SECRET_KEY: test-secret-key-for-ci-migration-gate-only  # pragma: allowlist secret
+        run: |
+          echo "=== Upgrade to HEAD ==="
+          uv run alembic upgrade head
+
+          echo "=== Downgrade -1 ==="
+          uv run alembic downgrade -1
+
+          echo "=== Upgrade back to HEAD ==="
+          uv run alembic upgrade head
+
+          echo "=== Migration round-trip complete ==="
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -606,6 +765,10 @@ jobs:
       - openapi-verify
       - verify-runtime-reqs
       - performance-gate
+      - docker-security-scan
+      - helm-validate
+      - db-migration-gate
+      - go-fuzz
     steps:
       - name: Check all jobs passed
         shell: bash
@@ -621,6 +784,10 @@ jobs:
             "${{ needs.openapi-verify.result }}"
             "${{ needs.verify-runtime-reqs.result }}"
             "${{ needs.performance-gate.result }}"
+            "${{ needs.docker-security-scan.result }}"
+            "${{ needs.helm-validate.result }}"
+            "${{ needs.db-migration-gate.result }}"
+            "${{ needs.go-fuzz.result }}"
           )
 
           failed=false

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,6 +17,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
+
+// PERF-W15-03 (audit 2026-03-23 Wave 15): Rate-limit forced JWKS refreshes.
+// When a kid is not found in the cached JWKS, we trigger an immediate refresh —
+// this handles key rotation without waiting for the 1-hour cache TTL.
+// Rate-limited to once per 30s to prevent amplification under burst traffic
+// (e.g., 10 000 reconnects after a deploy with rotated keys).
+var _lastJWKSForceRefreshUnix atomic.Int64 // unix seconds, zero = never refreshed
+
+const _jwksForceRefreshCooldown = 30 * time.Second
 
 // wsTicketKeyPrefix matches the Python backend's TICKET_KEY_PREFIX in app/api/ws/ticket.py.
 // Both services must use the same prefix — see contracts/redis-keys.md.
@@ -239,6 +249,24 @@ func (h *Hub) ValidateToken(ctx context.Context, tokenStr string, secrets []stri
 	}
 }
 
+// tryForceRefreshJWKS triggers an immediate JWKS refresh when a kid is not
+// found in the cached key set (key rotation scenario).  Rate-limited to once
+// per _jwksForceRefreshCooldown to prevent amplification under burst traffic.
+func (h *Hub) tryForceRefreshJWKS(ctx context.Context) {
+	now := time.Now().Unix()
+	last := _lastJWKSForceRefreshUnix.Load()
+	if now-last < int64(_jwksForceRefreshCooldown.Seconds()) {
+		return // rate-limited — another goroutine refreshed recently
+	}
+	if !_lastJWKSForceRefreshUnix.CompareAndSwap(last, now) {
+		return // another goroutine won the CAS race
+	}
+	h.Logger.InfoContext(ctx, "JWKS: unknown kid — forcing cache refresh", "url", h.jwksURL)
+	if _, err := h.jwksCache.Refresh(ctx, h.jwksURL); err != nil {
+		h.Logger.ErrorContext(ctx, "JWKS force-refresh failed", "err", err)
+	}
+}
+
 func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error) {
 	if h.jwksCache == nil || h.jwksURL == "" {
 		return "", fmt.Errorf("JWKS not configured")
@@ -251,21 +279,37 @@ func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error
 		return "", err
 	}
 
-	token, parseErr := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+	// PERF-W15-03: keyFunc that triggers force-refresh on kid mismatch.
+	// On first parse attempt, if the kid is not found, we refresh and retry once.
+	kidMissed := false
+	keyFunc := func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodRS256 {
 			return nil, fmt.Errorf("unexpected signing method for JWKS: %v", t.Header["alg"])
 		}
 		kid, _ := t.Header["kid"].(string)
 		key, ok := keySet.LookupKeyID(kid)
 		if !ok {
-			return nil, fmt.Errorf("kid %s not found in JWKS", kid)
+			kidMissed = true
+			return nil, fmt.Errorf("kid %q not found in JWKS", kid)
 		}
 		var pubKey interface{}
 		if err := key.Raw(&pubKey); err != nil {
 			return nil, fmt.Errorf("failed to extract raw public key: %w", err)
 		}
 		return pubKey, nil
-	})
+	}
+
+	token, parseErr := jwt.Parse(tokenStr, keyFunc)
+
+	// kid not found → may be a key rotation — refresh and retry once.
+	if kidMissed {
+		h.tryForceRefreshJWKS(ctx)
+		if refreshedSet, getErr := h.jwksCache.Get(ctx, h.jwksURL); getErr == nil {
+			keySet = refreshedSet
+			kidMissed = false
+			token, parseErr = jwt.Parse(tokenStr, keyFunc)
+		}
+	}
 
 	if parseErr == nil && token.Valid {
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {

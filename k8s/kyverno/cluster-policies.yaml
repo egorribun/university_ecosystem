@@ -193,3 +193,108 @@ spec:
             containers:
               - securityContext:
                   readOnlyRootFilesystem: true
+
+
+---
+# Policy 6: Require images from approved registries (MOD-W15-10, Wave 15).
+# Start in Audit mode — validate no violations before switching to Enforce.
+# Approved registries: project registry + ghcr.io for public base images.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Images must be pulled from the approved registry (registry.example.com)
+      or ghcr.io. Prevents supply-chain attacks via untrusted public images.
+    policies.kyverno.io/minversion: "1.6.0"
+spec:
+  validationFailureAction: Audit  # → Enforce after confirming zero violations
+  background: true
+  rules:
+    - name: check-registry
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "Images must be from registry.example.com/* or ghcr.io/*"
+        foreach:
+          - list: request.object.spec.containers
+            pattern:
+              image: "registry.example.com/* | ghcr.io/*"
+
+---
+# Policy 7: Require CPU and memory limits on all containers (MOD-W15-10, Wave 15).
+# Prevents noisy-neighbor OOM; pairs with the HPA resource metrics.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      All containers must specify CPU and memory limits. Prevents OOM-kill cascades
+      and ensures HPA has accurate per-pod resource metrics to scale on.
+    policies.kyverno.io/minversion: "1.6.0"
+spec:
+  validationFailureAction: Audit  # → Enforce after confirming zero violations
+  background: true
+  rules:
+    - name: check-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "CPU and memory limits are required on all containers"
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+
+---
+# Policy 8: Require imagePullPolicy: Always in production (MOD-W15-10, Wave 15).
+# Paired with Policy 6 (restrict-image-registries) and the image-tag :latest
+# ban (Policy 5 / disallow-latest-tag). Ensures K8s always re-validates the
+# image digest against the registry on pod start — prevents stale cached images
+# from running if an image tag is force-pushed (should not happen but defence-in-depth).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-always-pull-policy
+  annotations:
+    policies.kyverno.io/title: Require Always Pull Policy in Production
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      All containers in the university-ecosystem namespace must set
+      imagePullPolicy: Always so Kubernetes re-validates the image on every
+      pod start. Prevents stale cached images from running after a rotation.
+    policies.kyverno.io/minversion: "1.6.0"
+spec:
+  validationFailureAction: Audit  # → Enforce after confirming zero violations
+  background: true
+  rules:
+    - name: check-pull-policy
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "imagePullPolicy must be Always in the university-ecosystem namespace"
+        pattern:
+          spec:
+            containers:
+              - imagePullPolicy: Always

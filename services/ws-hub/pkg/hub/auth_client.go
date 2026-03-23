@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +16,15 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/sony/gobreaker"
 )
+
+// authClientMaxConnsPerHost reads AUTH_CLIENT_MAX_CONNS_PER_HOST from the environment.
+// Defaults to 20 (dev/test); production should set 50 via docker-compose or K8s env.
+func authClientMaxConnsPerHost() int {
+	if v, err := strconv.Atoi(os.Getenv("AUTH_CLIENT_MAX_CONNS_PER_HOST")); err == nil && v > 0 {
+		return v
+	}
+	return 20
+}
 
 // RoomAuthClient verifies that a given user is permitted to join a WebSocket room.
 // WSH-05 (audit 2026-03-08 Wave 5): ctx propagation — callers pass request/shutdown
@@ -89,14 +100,22 @@ func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *Intern
 		// Go's default transport has MaxIdleConnsPerHost=0 (unlimited), which
 		// can accumulate idle sockets to the backend under reconnect storms.
 		// DisableCompression=true eliminates CPU overhead for internal traffic.
+		//
+		// PERF-W15-04 (audit 2026-03-23 Wave 15): MaxConnsPerHost is configurable
+		// via AUTH_CLIENT_MAX_CONNS_PER_HOST env var (default 20, prod 50).
+		// Under burst reconnects (e.g., 10 000 clients reconnecting after deploy)
+		// a fixed 20-conn cap creates a queue at this chokepoint — raise it for
+		// production where the backend can handle the load.
 		httpClient: &http.Client{
 			Timeout: 3 * time.Second,
 			Transport: &http.Transport{
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 10,
-				MaxConnsPerHost:     20,
-				IdleConnTimeout:     60 * time.Second,
-				DisableCompression:  true, // internal API — no benefit from gzip
+				MaxIdleConns:          100,
+				MaxIdleConnsPerHost:   authClientMaxConnsPerHost() / 2,
+				MaxConnsPerHost:       authClientMaxConnsPerHost(),
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   5 * time.Second,
+				ResponseHeaderTimeout: 3 * time.Second,
+				DisableCompression:    true, // internal API — no benefit from gzip
 			},
 		},
 		cache: cache,

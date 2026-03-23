@@ -49,6 +49,20 @@ services:
       - /app/cache:size=256m,nosuid
     cap_drop:
       - ALL
+    # PERF-W15-05 (audit 2026-03-23 Wave 15): Health check enables depends_on
+    # conditions in downstream services (e.g. nginx) and surfaces startup failures
+    # in `docker ps` / `docker compose ps` without needing to tail logs.
+    # Uses Python stdlib urllib so no extra packages needed.
+    healthcheck:
+      test:
+        - "CMD"
+        - "python3"
+        - "-c"
+        - "import urllib.request, sys; urllib.request.urlopen('http://localhost:8000/health/live', timeout=3); sys.exit(0)"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -72,6 +86,15 @@ services:
       - /tmp:size=32m,noexec,nosuid
     cap_drop:
       - ALL
+    # PERF-W15-05: Worker health check via PID 1 liveness (process running = healthy).
+    # Workers don't expose an HTTP endpoint; checking process existence is sufficient.
+    # If the worker's event loop crashes and the process exits, Docker restarts it.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os, sys; sys.exit(0 if os.path.exists('/proc/1/status') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -95,6 +118,13 @@ services:
       - /tmp:size=32m,noexec,nosuid
     cap_drop:
       - ALL
+    # PERF-W15-05: Same PID-liveness pattern as notifications-worker.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os, sys; sys.exit(0 if os.path.exists('/proc/1/status') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     deploy:
       resources:
         limits:

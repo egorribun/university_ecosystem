@@ -164,14 +164,28 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
             logger.debug("WS ticket not found or already used: %.8s…", ticket)
             return None, None
 
-        # Format: "{user_id}:{jti}" — split on first colon; UUIDs contain only hyphens
-        sep = raw.index(":")
+        # Format: "{user_id}:{jti}" — split on first colon; UUIDs contain only hyphens.
+        # RZ-W15-04 (audit 2026-03-23 Wave 15): Use str.find() + explicit bounds checks
+        # instead of str.index() + post-split emptiness check.  Mirrors Go handlers.go:
+        #   sep := strings.Index(raw, ":")
+        #   if sep <= 0 || sep == len(raw)-1 { return "", error }
+        # This makes the three invalid cases explicit instead of relying on exception
+        # control flow from str.index():
+        #   sep == -1  → no colon at all  ("useridonly")
+        #   sep == 0   → empty user_id    (":jti-value")
+        #   sep == last → empty jti       ("user-id:")
+        sep = raw.find(":")
+        if sep <= 0 or sep == len(raw) - 1:
+            logger.warning(
+                "WS ticket has malformed payload (sep=%d len=%d): %.8s…",
+                sep,
+                len(raw),
+                ticket,
+            )
+            return None, None
+
         user_id_str = raw[:sep]
         jti = raw[sep + 1 :]
-
-        if not user_id_str or not jti:
-            logger.warning("WS ticket has malformed payload: %.8s…", ticket)
-            return None, None
 
     except Exception as exc:
         logger.warning("WS ticket validation error: %s", exc)
@@ -206,7 +220,7 @@ async def _resolve_user_from_ids(
                 if await _redis.exists(f"revoked:jti:{jti}"):
                     logger.debug("WS ticket JTI %s is revoked (Redis fast-path)", jti)
                     return None, None
-            except Exception:
+            except Exception:  # noqa: S110  # nosec B110
                 pass  # fallback to DB revoked_at check below
 
             active_session = await session_repo.get_by_jti(jti)

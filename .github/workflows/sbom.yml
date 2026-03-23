@@ -210,29 +210,61 @@ jobs:
         run: go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
 
       - name: Go — osv-scanner CRITICAL/HIGH gate
-        # Exit code 1 = vulnerabilities found; we capture JSON and filter severity.
+        # RZ-W15-02 (audit 2026-03-23 Wave 15): Replaced fragile one-liner with a
+        # robust Python script. Key fixes:
+        #   1. Malformed / missing JSON now fails explicitly (::error:: annotation).
+        #   2. Vulnerabilities with NO CVSS score default to -1 (fail-closed), not 0.
+        #      A missing score means unknown severity — safe default is to block.
+        #   3. All blocked vulns are listed individually in the log for easy triage.
         run: |
           osv-scanner scan --recursive --format json \
             --output go-vuln-gate.json \
-            ./services/ || EXIT=$?
-          if [ "${EXIT:-0}" -ne 0 ]; then
-            python3 -c "
-          import sys, json
-          data = json.load(open('go-vuln-gate.json'))
-          high_critical = [
-              v for result in data.get('results', [])
-              for pkg in result.get('packages', [])
-              for v in pkg.get('vulnerabilities', [])
-              if any(s.get('type','').upper() in ('CVSS_V3','CVSS_V2') and
-                     float(s.get('score', 0)) >= 7.0
-                     for s in v.get('severity', []))
-          ]
-          if high_critical:
-              print(f'::error::osv-scanner: {len(high_critical)} HIGH/CRITICAL Go vulnerabilities found. Review go-vuln.sarif artefact.')
+            ./services/ || true  # non-zero on vulns; gate script handles exit
+
+          python3 << 'PYEOF'
+          import json, sys
+
+          try:
+              with open("go-vuln-gate.json") as f:
+                  data = json.load(f)
+          except (json.JSONDecodeError, FileNotFoundError) as exc:
+              print(f"::error::osv-scanner output missing or malformed: {exc}", flush=True)
               sys.exit(1)
-          print('osv-scanner: no HIGH/CRITICAL Go vulnerabilities (lower severity may exist — review SARIF artefact).')
-          "
-          fi
+
+          def max_cvss(severity_list: list) -> float:
+              """Return max CVSS score, or -1.0 when no CVSS entry exists (fail-closed)."""
+              scores = [
+                  float(s["score"])
+                  for s in severity_list
+                  if s.get("type", "").upper() in ("CVSS_V3", "CVSS_V2") and "score" in s
+              ]
+              return max(scores) if scores else -1.0
+
+          blocked: list[dict] = []
+          for result in data.get("results", []):
+              for pkg in result.get("packages", []):
+                  pkg_name = pkg.get("package", {}).get("name", "unknown")
+                  for vuln in pkg.get("vulnerabilities", []):
+                      score = max_cvss(vuln.get("severity", []))
+                      # score == -1.0  → no CVSS data → unknown → treat as HIGH (fail-closed)
+                      # score >= 7.0   → HIGH (7.0–8.9) or CRITICAL (9.0–10.0)
+                      if score < 0 or score >= 7.0:
+                          blocked.append({
+                              "id": vuln.get("id", "UNKNOWN"),
+                              "pkg": pkg_name,
+                              "score": f"{score:.1f}" if score >= 0 else "no-CVSS",
+                          })
+
+          if blocked:
+              print(f"::error::osv-scanner: {len(blocked)} HIGH/CRITICAL Go vulnerabilities found:", flush=True)
+              for v in blocked:
+                  print(f"  - {v['id']} ({v['pkg']}) CVSS={v['score']}", flush=True)
+              print("Review go-vuln.sarif artefact and add accepted-risk entries to osv-scanner.toml", flush=True)
+              sys.exit(1)
+
+          pkg_count = sum(len(r.get("packages", [])) for r in data.get("results", []))
+          print(f"osv-scanner gate passed. Checked {pkg_count} package(s) — no HIGH/CRITICAL findings.", flush=True)
+          PYEOF
 
       - name: Rust — cargo-audit CRITICAL/HIGH gate
         working-directory: native/rust_ext
