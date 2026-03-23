@@ -62,29 +62,38 @@ _SPICEDB_CALL_TIMEOUT_SECONDS: float = 2.0
 #
 # When SpiceDB becomes temporarily unreachable, returning HTTP 503 for every
 # permission-guarded request causes cascading failures across the application.
+# Two-tier grace-period cache for SpiceDB outages.
+# RZ-W15-05 (audit 2026-03-23 Wave 15): Corrected misleading docstring.
+#
 # The cache stores the last-known result for each (user, resource, permission)
-# tuple and serves it for up to _GRACE_TTL_SECONDS when SpiceDB is down.
+# tuple.  Results are served stale while SpiceDB is unavailable, but for
+# DIFFERENT durations depending on whether the cached result is ALLOW or DENY:
 #
-# Security trade-off: a role revocation will remain effective in SpiceDB, but
-# an in-progress outage means the stale "allow" result may be served for up to
-# _GRACE_TTL_SECONDS seconds. This is acceptable because:
-#   1. Role changes are rare and deliberate.
-#   2. A 60-second window is far narrower than a typical SpiceDB rollout gap.
-#   3. The alternative (fail-closed) causes full service degradation on ANY
-#      transient network hiccup between the Python backend and SpiceDB.
+#   DENY  (False) results → up to _GRACE_TTL_SECONDS        (60 s)
+#   ALLOW (True)  results → up to _PERMISSION_POSITIVE_TTL_SECONDS (30 s)
 #
-# TD-14-04 (audit 2026-03-23): Two-tier TTL policy.
-# _GRACE_TTL_SECONDS applies to DENY (False) results — they are safe to serve
-# stale because denying is fail-closed.
-# _PERMISSION_POSITIVE_TTL_SECONDS applies to ALLOW (True) results — shorter
-# window because serving a stale "allow" after role revocation is the higher-
-# risk scenario.  Fail-closed after positive TTL expires.
+# ⚠️  OPERATIONAL SLA NOTE:
+#   The effective "tolerable SpiceDB downtime without impact" is only 30 seconds
+#   (the ALLOW TTL), NOT 60 seconds.  After 30 s of outage:
+#     - New requests for resources where the cached result is ALLOW will fail
+#       CLOSED with SpiceDBUnavailableError → HTTP 503.
+#     - Requests where the cached result is DENY continue to be denied (safe).
+#   If the runbook says "SpiceDB can be down for 60 s without user impact",
+#   that is INCORRECT.  Update runbooks to reflect the 30 s ALLOW TTL.
+#
+# Security trade-off:
+#   1. DENY stale for 60 s is fail-closed — worst case a user is temporarily
+#      blocked from something they were already denied.
+#   2. ALLOW stale for 30 s is the security-sensitive direction — a revoked
+#      permission could be served for up to 30 s after revocation lands in
+#      SpiceDB. Shorter window limits the exposure window.
+#   3. The alternative (fail-closed on any outage) causes full service
+#      degradation on transient SpiceDB network hiccups.
+#
+# TD-14-04 (audit 2026-03-23): Two-tier TTL policy implemented in check_permission().
 # ---------------------------------------------------------------------------
-_GRACE_TTL_SECONDS: float = 60.0
-# Positive ("allow") results are served for at most 30 seconds during outage.
-# After this window, fail-closed (SpiceDBUnavailableError) — do NOT serve
-# a stale "allow" for an indefinite outage.
-_PERMISSION_POSITIVE_TTL_SECONDS: float = 30.0
+_GRACE_TTL_SECONDS: float = 60.0  # DENY results — safe to serve stale longer
+_PERMISSION_POSITIVE_TTL_SECONDS: float = 30.0  # ALLOW results — fail-closed after 30 s
 
 # RZ-W13-02: LRU-bounded to prevent unbounded memory growth.
 # At ~200 bytes per entry, 10 000 entries ≈ 2 MB — acceptable overhead.

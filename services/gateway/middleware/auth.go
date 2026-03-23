@@ -3,6 +3,8 @@ package middleware
 import (
 	"context"
 	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -256,9 +258,44 @@ func validateIAT(claims *Claims) error {
 	return nil
 }
 
+// extractAlgFromHeader decodes the JWT header without validating the signature
+// and returns the "alg" field.  Reading the algorithm BEFORE calling
+// jwt.ParseWithClaims provides a defense-in-depth check against algorithm-
+// confusion attacks where the token header is crafted to select a weaker alg.
+//
+// RZ-W15-01 (audit 2026-03-23 Wave 15): Added to achieve parity with ws-hub's
+// extractAlgFromHeader (handlers.go, RZ-W14-02).  The golang-jwt WithValidMethods
+// guard fires inside ParseWithClaims — this check fires before parsing so that
+// the downgrade attempt is rejected and logged before any cryptographic work.
+func extractAlgFromHeader(tokenString string) (string, error) {
+	parts := strings.SplitN(tokenString, ".", 3)
+	if len(parts) != 3 {
+		return "", fmt.Errorf("malformed JWT: expected 3 dot-separated parts, got %d", len(parts))
+	}
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return "", fmt.Errorf("malformed JWT header (base64): %w", err)
+	}
+	var header struct {
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil {
+		return "", fmt.Errorf("malformed JWT header (json): %w", err)
+	}
+	if header.Alg == "" {
+		return "", fmt.Errorf("JWT header missing 'alg' field")
+	}
+	return header.Alg, nil
+}
+
 // keyFunc returns the correct verification key based on the token's algorithm.
 // It is the single point of algorithm selection — any alg not explicitly listed
 // is rejected to prevent algorithm-confusion attacks.
+//
+// RZ-W15-01: When rsaPublicKey is configured, HS256 is explicitly rejected here
+// as a second line of defence (the first is extractAlgFromHeader called before
+// ParseWithClaims).  An attacker cannot downgrade to HS256 to forge tokens using
+// the RSA public key as an HMAC secret.
 func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 	switch token.Method.(type) {
 	case *jwt.SigningMethodRSA:
@@ -268,7 +305,13 @@ func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 		}
 		return m.rsaPublicKey, nil
 	case *jwt.SigningMethodHMAC:
-		// HS256 path — legacy symmetric signing.
+		// HS256 path — only allowed when RS256 is NOT configured.
+		// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
+		// alongside RS256 would allow an attacker with knowledge of the HMAC secret
+		// to forge tokens even after the RS256 key is rotated.
+		if m.rsaPublicKey != nil {
+			return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
+		}
 		return m.secret, nil
 	default:
 		return nil, fmt.Errorf("unexpected signing algorithm: %v", token.Header["alg"])
@@ -294,6 +337,23 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 		if tokenString == "" {
 			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "missing authorization header", "https://api.university.edu/probs/unauthorized")
 			return
+		}
+
+		// RZ-W15-01: Pre-parse algorithm check — mirrors ws-hub's extractAlgFromHeader.
+		// Reads the alg claim from the JOSE header before any signature work, so that
+		// an algorithm downgrade attempt is caught and logged early.
+		if m.rsaPublicKey != nil {
+			alg, algErr := extractAlgFromHeader(tokenString)
+			if algErr != nil {
+				AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "malformed token header", "https://api.university.edu/probs/invalid-token")
+				return
+			}
+			if alg != "RS256" {
+				// Log as warning so SOC/SIEM can detect algorithm downgrade probes.
+				fmt.Printf("gateway: algorithm downgrade attempt rejected: alg=%q, remote=%s\n", alg, c.ClientIP())
+				AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token algorithm", "https://api.university.edu/probs/invalid-token")
+				return
+			}
 		}
 
 		// P1-W5-11: Parse with explicit algorithm allowlist — rejects alg=none and
@@ -381,6 +441,19 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 		if tokenString == "" {
 			c.Next()
 			return
+		}
+
+		// RZ-W15-01: Same pre-parse algorithm check as Validate() for optional auth.
+		if m.rsaPublicKey != nil {
+			alg, algErr := extractAlgFromHeader(tokenString)
+			if algErr != nil || alg != "RS256" {
+				// Malformed header or downgrade attempt — treat as unauthenticated.
+				if algErr == nil {
+					fmt.Printf("gateway: algorithm downgrade attempt rejected (optional): alg=%q, remote=%s\n", alg, c.ClientIP())
+				}
+				c.Next()
+				return
+			}
 		}
 
 		parser := jwt.NewParser(

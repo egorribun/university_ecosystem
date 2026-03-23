@@ -40,6 +40,8 @@ services:
       WS_HUB_PORT: "8081"
       NATS_URL: nats://nats:4222
       JWT_SECRET: ${JWT_SECRET:-${SECRET_KEY:?JWT_SECRET or SECRET_KEY must be set in .env file}}
+      # PERF-W15-04: Increase in production to handle burst reconnects (e.g. post-deploy)
+      AUTH_CLIENT_MAX_CONNS_PER_HOST: "50"
     depends_on:
       - nats
     networks:

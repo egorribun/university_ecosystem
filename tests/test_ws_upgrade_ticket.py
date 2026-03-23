@@ -5,26 +5,27 @@ Covers:
 - get_user_from_ticket(): GETDEL semantics, single-use guarantee, invalid/expired tickets
 - WsAuthenticator.authenticate_upgrade(): ticket path, cookie fallback, subprotocol rejection
 """
+
 from __future__ import annotations
 
 import secrets
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.api.ws.ticket import TICKET_KEY_PREFIX, WsTicketResponse
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_active_session(user_id: uuid.UUID, jti: str, revoked: bool = False) -> MagicMock:
+def _make_active_session(
+    user_id: uuid.UUID, jti: str, revoked: bool = False
+) -> MagicMock:
     session = MagicMock()
     session.user_id = user_id
     session.expires_at = datetime.now(UTC) + timedelta(hours=1)
@@ -70,7 +71,10 @@ class TestIssueWsUpgradeTicket:
                 "app.api.ws.ticket.AuthTokenService.validate_payload",
                 return_value=(user_id, jti),
             ),
-            patch("app.api.ws.ticket.get_cache_client", new=AsyncMock(return_value=mock_redis)),
+            patch(
+                "app.api.ws.ticket.get_cache_client",
+                new=AsyncMock(return_value=mock_redis),
+            ),
             patch("app.api.ws.ticket.resolve_locale", return_value="en"),
         ):
             result = await issue_ws_upgrade_ticket(request=mock_request, token=None)
@@ -100,7 +104,10 @@ class TestIssueWsUpgradeTicket:
                 "app.api.ws.ticket.AuthTokenService.validate_payload",
                 return_value=(user_id, jti),
             ),
-            patch("app.api.ws.ticket.get_cache_client", new=AsyncMock(return_value=mock_redis)),
+            patch(
+                "app.api.ws.ticket.get_cache_client",
+                new=AsyncMock(return_value=mock_redis),
+            ),
             patch("app.api.ws.ticket.resolve_locale", return_value="en"),
         ):
             result = await issue_ws_upgrade_ticket(request=mock_request, token=None)
@@ -179,7 +186,10 @@ class TestGetUserFromTicket:
             yield MagicMock()
 
         with (
-            patch("app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)),
+            patch(
+                "app.api.ws.auth.get_cache_client",
+                new=AsyncMock(return_value=mock_redis),
+            ),
             patch("app.api.ws.ticket.TICKET_KEY_PREFIX", TICKET_KEY_PREFIX),
             patch(
                 "app.api.ws.auth.async_session",
@@ -213,7 +223,9 @@ class TestGetUserFromTicket:
         mock_redis = AsyncMock()
         mock_redis.getdel = AsyncMock(return_value=None)
 
-        with patch("app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)):
+        with patch(
+            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+        ):
             result = await get_user_from_ticket(secrets.token_hex(32))
 
         assert result == (None, None)
@@ -230,7 +242,9 @@ class TestGetUserFromTicket:
         mock_redis.exists = AsyncMock(return_value=0)
 
         # First call — we expect it to attempt user resolution; short-circuit on invalid UUID
-        with patch("app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)):
+        with patch(
+            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+        ):
             await get_user_from_ticket(ticket)  # consume
             result = await get_user_from_ticket(ticket)  # replay attempt
 
@@ -244,7 +258,9 @@ class TestGetUserFromTicket:
         mock_redis = AsyncMock()
         mock_redis.getdel = AsyncMock(return_value="nodivider")
 
-        with patch("app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)):
+        with patch(
+            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+        ):
             result = await get_user_from_ticket(secrets.token_hex(32))
 
         assert result == (None, None)
@@ -263,7 +279,9 @@ class TestGetUserFromTicket:
         # Simulate Redis revocation key present
         mock_redis.exists = AsyncMock(return_value=1)
 
-        with patch("app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)):
+        with patch(
+            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+        ):
             result = await get_user_from_ticket(ticket)
 
         assert result == (None, None)
@@ -392,7 +410,9 @@ class TestWsAuthenticatorTicketPath:
 
         ws = self._make_websocket()
         # Simulate a client sending the old-style header
-        ws.headers["sec-websocket-protocol"] = "access_token, eyJhbGciOiJIUzI1NiJ9.test.sig"
+        ws.headers["sec-websocket-protocol"] = (
+            "access_token, eyJhbGciOiJIUzI1NiJ9.test.sig"
+        )
 
         with (
             patch("app.api.ws.authenticator._ALLOWED_WS_ORIGINS", frozenset()),

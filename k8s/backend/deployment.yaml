@@ -27,7 +27,12 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: backend
-          image: university-ecosystem/backend:${IMAGE_TAG:-latest}
+          # RZ-W15-06 (audit 2026-03-23 Wave 15): Removed :latest fallback.
+          # IMAGE_TAG must be explicitly set (commit SHA or semver) in the CD pipeline.
+          # The deploy workflow validates IMAGE_TAG is non-empty before calling kubectl.
+          # Using :latest in production breaks reproducibility and risks pulling an
+          # unstable image when the registry tag is force-pushed.
+          image: university-ecosystem/backend:${IMAGE_TAG}
           ports:
             - containerPort: 8000
               name: http

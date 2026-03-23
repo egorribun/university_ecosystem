@@ -84,7 +84,7 @@ class CacheEntry:
 
         # XFetch formula: refresh if now - (ttl * beta * log(random)) > expiry
         # Simplified: remaining < -beta * ttl * log(random)
-        random_factor = random.random()  # nosec B311
+        random_factor = random.random()  # noqa: S311  # nosec B311
         if random_factor == 0:
             random_factor = 1e-10
 
@@ -200,10 +200,10 @@ class RedisCache(BaseCache):
     def __init__(self, url: str, default_ttl: int) -> None:
         self._url = url
         self._default_ttl = max(int(default_ttl or 0), 0)
-        self._client: Redis | None = None
+        self._client: Redis[Any] | None = None
         self._client_lock = asyncio.Lock()
 
-    async def _get_client(self) -> Redis:
+    async def _get_client(self) -> Redis[Any]:
         if self._client is not None:
             return self._client
         async with self._client_lock:
@@ -219,7 +219,7 @@ class RedisCache(BaseCache):
                     retry_on_timeout=True,
                     max_connections=getattr(settings, "redis_pool_size", 20),
                 )
-        return cast("Redis", self._client)
+        return cast(Redis[Any], self._client)
 
     async def close(self) -> None:
         if self._client is None:
@@ -853,16 +853,16 @@ def set_cache_backend(cache: BaseCache | None) -> None:
     _cache_backend = cache
 
 
-async def get_cache_client() -> Redis:
+async def get_cache_client() -> Redis[Any]:
     """Get the underlying Redis client from the global cache backend.
 
     Used for features not exposed by BaseCache, like distributed locks. (RZ-1)
     """
     cache = get_cache()
     if hasattr(cache, "_get_client"):
-        return cast("Redis", await cast(Any, cache)._get_client())
+        return cast(Redis[Any], await cast(Any, cache)._get_client())
     if hasattr(cache, "l2") and hasattr(cast(Any, cache).l2, "_get_client"):
-        return cast("Redis", await cast(Any, cache.l2)._get_client())
+        return cast(Redis[Any], await cast(Any, cache.l2)._get_client())
     raise RuntimeError(
         f"Cache backend {type(cache)} does not support direct Redis client access."
     )

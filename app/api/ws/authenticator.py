@@ -84,7 +84,11 @@ class WsAuthenticator:
                 else:
                     logger.warning("WS cookie auth failed: invalid cookie")
 
-        return user, session_jti, None  # subprotocol always None — we no longer negotiate it
+        return (
+            user,
+            session_jti,
+            None,
+        )  # subprotocol always None — we no longer negotiate it
 
 
 authenticator = WsAuthenticator()

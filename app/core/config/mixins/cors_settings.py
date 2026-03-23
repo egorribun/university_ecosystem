@@ -58,9 +58,7 @@ class CorsSettingsMixin:
                 or "development"
             ).lower()
             if env not in _DEVELOPMENT_ENVIRONMENTS:
-                import logging
-
-from app.core.logging import get_logger
+                from app.core.logging import get_logger
 
                 logger = get_logger(__name__)
                 logger.warning(

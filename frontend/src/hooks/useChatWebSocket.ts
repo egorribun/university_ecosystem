@@ -65,6 +65,12 @@ export interface UseChatWebSocketOptions {
   onRead?: (chatId: string, messageId: string, userId: string) => void
   onOnlineStatus?: (userId: string, status: boolean) => void
   onPresenceUpdate?: (userId: string, active: boolean, lastSeen: string | null) => void
+  /**
+   * RZ-W15-03 (audit 2026-03-23 Wave 15): Called when the upgrade-ticket fetch
+   * returns 401 or 403, indicating the session has expired or been revoked.
+   * Callers should redirect to /login or trigger a full logout.
+   */
+  onAuthError?: () => void
 }
 
 interface TypingUser {
@@ -118,6 +124,7 @@ export function useChatWebSocket({
   onRead,
   onOnlineStatus,
   onPresenceUpdate,
+  onAuthError,
 }: UseChatWebSocketOptions) {
   const wsStore = useContext(WebSocketStoreContext)
   if (!wsStore) {
@@ -141,6 +148,7 @@ export function useChatWebSocket({
   const onReadRef = useRef(onRead)
   const onOnlineStatusRef = useRef(onOnlineStatus)
   const onPresenceUpdateRef = useRef(onPresenceUpdate)
+  const onAuthErrorRef = useRef(onAuthError)
   const mountedRef = useRef(false)
   const connectRef = useRef<() => void>(() => {})
 
@@ -150,6 +158,7 @@ export function useChatWebSocket({
     onReadRef.current = onRead
     onOnlineStatusRef.current = onOnlineStatus
     onPresenceUpdateRef.current = onPresenceUpdate
+    onAuthErrorRef.current = onAuthError
   })
 
   const cleanup = useCallback(() => {
@@ -187,26 +196,47 @@ export function useChatWebSocket({
     const baseWsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
 
     void (async () => {
-      let wsUrl = baseWsUrl
+      // RZ-W15-03 (audit 2026-03-23 Wave 15): Upgrade tickets are mandatory since
+      // Wave 14 (RZ-W14-01).  ws-hub rejects WS connections without a valid ticket.
+      // Error handling is now explicit:
+      //   • 401 / 403 → session expired or revoked; call onAuthError, do NOT connect.
+      //   • Other non-2xx (5xx, network error) → transient; schedule a backoff reconnect.
+      // The previous "fall through to cookie-auth" comment was incorrect — the server
+      // does NOT accept cookie-only upgrades since Wave 14.
+      let ticket: string
       try {
         const resp = await fetch("/ws/ticket", {
           method: "POST",
-          credentials: "include", // send HttpOnly cookie
+          credentials: "include", // send HttpOnly session cookie
           headers: { "Content-Type": "application/json" },
         })
         if (resp.ok) {
           const data = (await resp.json()) as { ticket: string; expires_in: number }
-          wsUrl = `${baseWsUrl}?ticket=${encodeURIComponent(data.ticket)}`
+          ticket = data.ticket
+        } else if (resp.status === 401 || resp.status === 403) {
+          // Session expired or revoked — do not attempt to connect.
+          logError("[WebSocket] Session invalid (status %s); aborting connection.", resp.status)
+          onAuthErrorRef.current?.()
+          return
         } else {
-          logError("[WebSocket] Failed to fetch upgrade ticket:", resp.status)
-          // Fall through to cookie-auth path — the server still accepts it
+          // Transient server error — schedule backoff reconnect.
+          logError("[WebSocket] Ticket fetch failed (status %s); will retry.", resp.status)
+          const delay = calculateReconnectDelay(reconnectAttemptRef.current)
+          reconnectAttemptRef.current += 1
+          reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
+          return
         }
       } catch (e) {
-        logError("[WebSocket] Ticket fetch error, falling back to cookie auth:", e)
+        // Network error — schedule backoff reconnect.
+        logError("[WebSocket] Ticket fetch network error; will retry.", e)
+        const delay = calculateReconnectDelay(reconnectAttemptRef.current)
+        reconnectAttemptRef.current += 1
+        reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
+        return
       }
 
     try {
-      const ws = new WebSocket(wsUrl)
+      const ws = new WebSocket(`${baseWsUrl}?ticket=${encodeURIComponent(ticket)}`)
       wsRef.current = ws
 
       ws.onopen = () => {

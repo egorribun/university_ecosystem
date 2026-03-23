@@ -189,7 +189,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             .outerjoin(User.profile)
             .where(
                 or_(
-                    UserProfile.id.is_(None),  # no profile yet — still include
+                    UserProfile.id.is_(None),  # type: ignore[attr-defined]  # no profile yet — still include
                     UserProfile.status != "deleted",
                 )
             )

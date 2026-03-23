@@ -15,8 +15,8 @@ from app.api.health import router as health_router
 from app.api.internal import router as internal_api_router
 from app.api.public import router as public_api_router
 from app.api.websocket import router as websocket_router
-from app.api.ws.ticket import router as ws_ticket_router
 from app.api.well_known import router as well_known_router
+from app.api.ws.ticket import router as ws_ticket_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import AppException, app_exception_handler

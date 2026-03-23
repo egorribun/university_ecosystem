@@ -31,7 +31,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-import pytest_asyncio  # noqa: F401  — required for asyncio mode
+import pytest_asyncio
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 
@@ -48,11 +48,15 @@ pytestmark = [
 @pytest_asyncio.fixture
 async def redis_client():
     """Return a connected Redis client using the app's shared cache."""
-    from app.core.cache import get_cache
-    from app.core.cache import RedisCache  # type: ignore[attr-defined]
+    from app.core.cache import (
+        RedisCache,  # type: ignore[attr-defined]
+        get_cache,
+    )
 
     cache = get_cache()
-    assert isinstance(cache, RedisCache), "Integration tests require Redis cache backend"
+    assert isinstance(cache, RedisCache), (
+        "Integration tests require Redis cache backend"
+    )
     client = await cache._get_client()
     yield client
 
@@ -176,7 +180,9 @@ async def test_rate_limit_key_format(redis_client):
     """
     from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 
-    strategy = RedisSlidingWindowStrategy(redis_url=os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0"))
+    strategy = RedisSlidingWindowStrategy(
+        redis_url=os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
+    )
 
     test_key = f"contract-test:{uuid.uuid4()}"
     result = await strategy.check(test_key, limit=100, window_seconds=60)
@@ -197,7 +203,9 @@ async def test_rate_limit_key_format(redis_client):
 @pytest.mark.asyncio
 async def test_mfa_challenge_key_format(redis_client):
     """MFA challenge keys must use the ``mfa:{challenge_type}:{user_id}`` pattern."""
-    from app.auth.mfa.challenge import _build_challenge_key  # type: ignore[attr-defined]
+    from app.auth.mfa.challenge import (
+        _build_challenge_key,  # type: ignore[attr-defined]
+    )
 
     user_id = str(uuid.uuid4())
     challenge_type = "totp-auth"
@@ -207,3 +215,103 @@ async def test_mfa_challenge_key_format(redis_client):
         f"MFA challenge key format must be 'mfa:{{challenge_type}}:{{user_id}}'. "
         f"Got '{key}', expected '{expected}'."
     )
+
+
+# ---------------------------------------------------------------------------
+# Contract: idempotency key format (TD-W15-05 / Wave 15)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_idempotency_key_format(redis_client):
+    """Idempotency keys must follow ``idempotency:{method}:{user_id}:{key_hash}``.
+
+    Cross-service invariant (contracts/redis-keys.md — Idempotency section):
+      - key_hash is SHA-256(idempotency_header_value), hex-encoded, 64 chars
+      - user_id prevents cross-user replay (user A cannot replay user B's request)
+      - TTL must be 86400s (24 hours)
+    """
+    import hashlib
+
+    user_id = str(uuid.uuid4())
+    idempotency_header = f"test-idem-{uuid.uuid4()}"
+    key_hash = hashlib.sha256(idempotency_header.encode()).hexdigest()
+    method = "POST:/api/v1/messages"
+
+    redis_key = f"idempotency:{method}:{user_id}:{key_hash}"
+    cached_response = '{"id":"msg-uuid-test"}'
+
+    try:
+        await redis_client.set(redis_key, cached_response, ex=86400)
+
+        # Verify the key exists and has the correct value.
+        val = await redis_client.get(redis_key)
+        assert val is not None, f"Idempotency key '{redis_key}' must exist after set()"
+        if isinstance(val, bytes):
+            val = val.decode()
+        assert val == cached_response, (
+            f"Idempotency cached value mismatch: got '{val}', expected '{cached_response}'"
+        )
+
+        # Verify the TTL is within the expected 24h window.
+        ttl = await redis_client.ttl(redis_key)
+        assert 86390 <= ttl <= 86400, (
+            f"Idempotency key TTL must be ~86400s (24h). Got TTL={ttl}. "
+            f"See contracts/redis-keys.md — Idempotency section."
+        )
+
+        # Verify key_hash is a valid SHA-256 hex string (64 chars).
+        assert len(key_hash) == 64 and all(c in "0123456789abcdef" for c in key_hash), (
+            f"key_hash must be SHA-256 hex (64 chars). Got: {key_hash!r}"
+        )
+
+    finally:
+        await redis_client.delete(redis_key)
+
+
+# ---------------------------------------------------------------------------
+# Contract: WS upgrade ticket atomicity (TD-W15-05 / Wave 15)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ws_ticket_getdel_atomicity(redis_client):
+    """WebSocket upgrade tickets must be consumed atomically via GETDEL.
+
+    Cross-service invariant (contracts/redis-keys.md — WebSocket Upgrade Tickets):
+      - Key format: ``ott:ws:{ticket}``
+      - Value format: ``{user_id}:{jti}``
+      - First GETDEL returns the value; subsequent GETDELs on the same key return None.
+      - This prevents ticket replay attacks.
+    """
+    from app.api.ws.ticket import TICKET_KEY_PREFIX
+
+    ticket = uuid.uuid4().hex
+    user_id = str(uuid.uuid4())
+    jti = str(uuid.uuid4())
+    value = f"{user_id}:{jti}"
+    key = f"{TICKET_KEY_PREFIX}{ticket}"
+
+    try:
+        await redis_client.set(key, value, ex=15)
+
+        # First GETDEL: must return the value and delete the key atomically.
+        first = await redis_client.getdel(key)
+        assert first is not None, "First GETDEL on a live ticket must return a value"
+        if isinstance(first, bytes):
+            first = first.decode()
+        assert first == value, (
+            f"Ticket payload mismatch: got '{first}', expected '{value}'. "
+            f"Both Python ws-hub and Go ws-hub parse this as '{{user_id}}:{{jti}}'."
+        )
+
+        # Second GETDEL: ticket is already consumed — must return None.
+        second = await redis_client.getdel(key)
+        assert second is None, (
+            "Second GETDEL on an already-consumed ticket must return None. "
+            "If it returns a value, tickets can be replayed — security regression."
+        )
+
+    finally:
+        # In case the test failed before GETDEL consumed the key.
+        await redis_client.delete(key)

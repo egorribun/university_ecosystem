@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from redis.asyncio import Redis
 
 if TYPE_CHECKING:
     pass
 
-type _RedisFactory = Callable[[str], Redis]
+type _RedisFactory = Callable[[str], Redis[Any]]
 
 
-def _create_redis_pool(url: str) -> Redis:
+def _create_redis_pool(url: str) -> Redis[Any]:
     return cast(
-        "Redis",
+        Redis[Any],
         Redis.from_url(
             url, encoding="utf-8", decode_responses=False, health_check_interval=30
         ),
@@ -22,11 +22,11 @@ def _create_redis_pool(url: str) -> Redis:
 
 
 _redis_factory: _RedisFactory = _create_redis_pool
-_shared_clients: dict[str, Redis] = {}
+_shared_clients: dict[str, Redis[Any]] = {}
 _shared_clients_write_lock: asyncio.Lock | None = None
 
 
-async def get_shared_client(redis_url: str) -> Redis:
+async def get_shared_client(redis_url: str) -> Redis[Any]:
     """Return a shared Redis client for *redis_url*."""
     global _shared_clients_write_lock
     client = _shared_clients.get(redis_url)

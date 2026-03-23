@@ -44,7 +44,7 @@ repos:
       - id: mypy
         name: mypy type-check (auth + services)
         args: ["--config-file", "pyproject.toml"]
-        files: ^app/(auth|services/auth|api/deps|core)/
+        files: ^app/(auth|services/auth|api/deps|core|repositories)/
         additional_dependencies:
           - "pydantic>=2"
           - "pydantic-settings"

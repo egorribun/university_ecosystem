@@ -217,6 +217,18 @@ jobs:
           role-to-assume: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
+      # RZ-W15-06: Validate IMAGE_TAG is non-empty before substituting into manifests.
+      # deployment.yaml no longer has a :latest fallback; an empty tag = broken deploy.
+      - name: Validate IMAGE_TAG
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "::error::IMAGE_TAG is empty. The prepare job must output a version."
+            exit 1
+          fi
+          echo "::notice::Deploying image tag: ${IMAGE_TAG}"
+
       - name: Deploy (placeholder)
         id: deploy
         run: |

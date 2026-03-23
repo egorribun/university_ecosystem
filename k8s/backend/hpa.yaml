@@ -30,3 +30,32 @@ spec:
         target:
           type: AverageValue
           averageValue: "100"
+  # PERF-W15-01 (audit 2026-03-23 Wave 15): Explicit scaleUp / scaleDown behavior.
+  #
+  # Without this, HPA uses the default stabilizationWindowSeconds=300 for scale-down
+  # which can cause flapping when traffic oscillates around the target threshold:
+  # the HPA samples fast, scales up in seconds, then waits 5 minutes before scaling
+  # down — but if traffic spikes again in that window, it re-triggers scale-up,
+  # creating a saw-tooth pattern that wastes resources and generates noise.
+  #
+  # Design choices:
+  #   scaleUp:   30 s window  — respond quickly to real load increases
+  #              max +2 pods/30 s — avoid thundering-herd from massive spikes
+  #   scaleDown: 120 s window — require 2 consecutive minutes of low load before
+  #              removing pods; protects against brief traffic troughs
+  #              max -1 pod/60 s — conservative scale-down prevents under-provisioning
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      selectPolicy: Min
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

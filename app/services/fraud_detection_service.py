@@ -49,7 +49,7 @@ class FraudDetectionService:
     so that the Redis connection is reused across requests.
     """
 
-    def __init__(self, redis_client: aioredis.Redis) -> None:
+    def __init__(self, redis_client: aioredis.Redis[Any]) -> None:
         self._redis = redis_client
 
     async def record_event(self, event_data: dict[str, str]) -> None:

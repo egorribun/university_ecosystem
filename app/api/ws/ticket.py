@@ -16,6 +16,7 @@ Key  : ott:ws:{ticket}   — 64-char lowercase hex (32 random bytes via secrets.
 Value: {user_id}:{jti}   — colon-joined UUIDs; split on first ":" to parse
 TTL  : WS_TICKET_TTL_SECONDS (default 15)
 """
+
 from __future__ import annotations
 
 import secrets
@@ -51,12 +52,12 @@ class WsTicketResponse(BaseModel):
     status_code=201,
     summary="Issue a WebSocket upgrade ticket",
     description=(
-        "Issues a short-lived ({ttl}s), single-use WebSocket upgrade ticket. "
+        f"Issues a short-lived ({_TICKET_TTL_SECONDS}s), single-use WebSocket upgrade ticket. "
         "The client must be authenticated via HttpOnly cookie or Bearer token. "
         "Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket "
-        "is consumed atomically on first use and expires after {ttl} seconds "
+        f"is consumed atomically on first use and expires after {_TICKET_TTL_SECONDS} seconds "
         "if unused."
-    ).format(ttl=_TICKET_TTL_SECONDS),
+    ),
 )
 async def issue_ws_upgrade_ticket(
     request: Request,

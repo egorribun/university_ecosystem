@@ -97,13 +97,15 @@ def _validate_positive_float(value: float, *, label: str) -> float:
 
 _logger = get_logger(__name__)
 
-_DEVELOPMENT_ENVIRONMENTS = {
-    "dev",
-    "development",
-    "local",
-    "test",
-    "testing",
-}
+_DEVELOPMENT_ENVIRONMENTS: frozenset[str] = frozenset(
+    {
+        "dev",
+        "development",
+        "local",
+        "test",
+        "testing",
+    }
+)
 
 _DEVELOPMENT_FALLBACKS: dict[str, str] = {
     "database_url": "sqlite+aiosqlite:///./dev.db",
