@@ -72,7 +72,7 @@ jobs:
       # MOD-08: Install Syft for Go-aware SBOM generation.
       # Syft understands go.mod / go.sum and emits accurate component lists.
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@df80a2d718b525f00e28f115998a4497e682ca7f # v0.18.0
+        uses: anchore/sbom-action/download-syft@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
 
       - name: Generate SPDX-JSON SBOM for ${{ matrix.service }}
         run: |
