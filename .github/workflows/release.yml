@@ -35,7 +35,7 @@ jobs:
       - name: Release
         id: semantic
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # CI-02 (audit Wave 10): pin semantic-release version — `npx semantic-release`
         # without a version downloads the latest from npm at runtime, allowing a
         # compromised npm package to exfiltrate RELEASE_TOKEN with repo write access.
