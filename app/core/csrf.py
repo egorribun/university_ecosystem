@@ -256,14 +256,17 @@ class CSRFMiddleware:
         self._cookie_max_age = cookie_max_age
 
         # RZ-003 / RZ-NEW-004 (audit 2026-03-19): Derive bytes key at construction.
+        # RZ-W18-02 (audit 2026-03-23 Wave 18): validate byte length, not char length.
         if csrf_hmac_secret:
-            if len(csrf_hmac_secret) < 32:  # HMAC-SHA256 requires >=32 bytes of entropy
+            secret_bytes = csrf_hmac_secret.encode("utf-8")
+            if len(secret_bytes) < 32:  # HMAC-SHA256 requires >=32 bytes of entropy
                 raise ValueError(
-                    f"CSRF_HMAC_SECRET is too short ({len(csrf_hmac_secret)} chars). "
-                    "Minimum 32 bytes required for HMAC-SHA256 security margin. "
-                    'Generate with: python -c "import secrets; print(secrets.token_hex(32))"'
+                    f"CSRF_HMAC_SECRET is too short ({len(secret_bytes)} bytes after "
+                    "UTF-8 encoding). Minimum 32 bytes required for HMAC-SHA256 "
+                    "security margin. Generate with: "
+                    'python -c "import secrets; print(secrets.token_hex(32))"'
                 )
-            self._hmac_key: bytes = csrf_hmac_secret.encode("utf-8")
+            self._hmac_key: bytes = secret_bytes
             self._signed: bool = True
         else:
             # RZ-NEW-004: Fail-fast in non-development environments.

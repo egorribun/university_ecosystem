@@ -44,7 +44,9 @@ repos:
       - id: mypy
         name: mypy type-check (auth + services)
         args: ["--config-file", "pyproject.toml"]
-        files: ^app/(auth|services/auth|api/deps|core|repositories)/
+        # TD-W18-05 (audit 2026-03-23 Wave 18): expanded scope to cover app/services/,
+        # app/api/, and app/graphql/ — previously only auth+core+repos were strict-checked.
+        files: ^app/(auth|services|api|core|repositories|graphql)/
         additional_dependencies:
           - "pydantic>=2"
           - "pydantic-settings"

@@ -33,6 +33,8 @@ type RateLimiter struct {
 	fallbackCounters map[string]*fallbackEntry
 	fallbackLimit    int   // max requests per fallbackWindowSecs
 	fallbackWindow   int64 // window length in seconds
+	// RZ-W18-03 (audit 2026-03-23 Wave 18): ensure cleanup goroutine starts once.
+	cleanupOnce sync.Once
 }
 
 // NewRateLimiter creates a new rate limiter with Redis backend.
@@ -89,8 +91,40 @@ func (rl *RateLimiter) inMemoryAllow(key string) bool {
 	return entry.count <= int64(rl.fallbackLimit)
 }
 
+// startFallbackCleanup launches a background goroutine that periodically
+// removes expired entries from fallbackCounters, preventing unbounded map growth
+// during sustained Redis outages with rotating client IPs.
+// RZ-W18-03 (audit 2026-03-23 Wave 18): without this, the map grows without bound
+// because inMemoryAllow() only resets entries on access — entries for clients that
+// stop sending requests are never removed.
+func (rl *RateLimiter) startFallbackCleanup(ctx context.Context) {
+	rl.cleanupOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					rl.fallbackMu.Lock()
+					now := time.Now().Unix()
+					for key, entry := range rl.fallbackCounters {
+						if now-entry.windowStart >= rl.fallbackWindow*2 {
+							delete(rl.fallbackCounters, key)
+						}
+					}
+					rl.fallbackMu.Unlock()
+				}
+			}
+		}()
+	})
+}
+
 // Middleware returns a Gin middleware for rate limiting.
 func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
+	// RZ-W18-03: start the fallback map cleanup goroutine.
+	rl.startFallbackCleanup(ctx)
 	return func(c *gin.Context) {
 		// Get client identifier (IP or User ID)
 		key := rl.getClientKey(c)

@@ -254,7 +254,12 @@ export function useChatWebSocket({
       ws.onmessage = (event) => {
         try {
           const validated = parseWsMessage(event.data)
-          if (!validated) return
+          if (!validated) {
+            // MOD-W18-02 (audit 2026-03-23 Wave 18): log invalid frames for
+            // observability. Previously silent drops made attack detection difficult.
+            console.warn("[ws] Invalid frame dropped", { size: (event.data as string).length })
+            return
+          }
 
           switch (validated.type) {
             case "new_message": {
@@ -305,9 +310,14 @@ export function useChatWebSocket({
             }
 
             case "typing": {
+              // PERF-W18-02 (audit 2026-03-23 Wave 18): cap typingUsers map to
+              // prevent unbounded growth under bot spam or malicious burst.
+              const MAX_TYPING_USERS = 100
               setTypingUsers((prev) => {
-                const newMap = new Map(prev)
                 const key = `${validated.chat_id}:${validated.user_id}`
+                // Allow updates to existing keys but reject new keys when at capacity
+                if (prev.size >= MAX_TYPING_USERS && !prev.has(key)) return prev
+                const newMap = new Map(prev)
                 const existing = newMap.get(key)
                 if (existing) clearTimeout(existing.timeout)
 

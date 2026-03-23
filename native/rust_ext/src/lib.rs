@@ -60,17 +60,35 @@ fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleIte
         ));
     }
 
-    // Parallelize conflict detection using rayon
-    let conflicts = items
-        .par_iter()
-        .enumerate()
-        .flat_map_iter(|(i, a)| {
-            items[i + 1..]
-                .iter()
-                .filter(move |b| check_conflict_proto(a, b))
-                .map(move |b| (a.clone(), b.clone()))
-        })
-        .collect();
+    // TD-W18-02 (audit 2026-03-23 Wave 18): use a bounded thread pool instead of
+    // rayon's global pool (which defaults to logical CPU count). On a 64-core
+    // server this would spawn 64 threads; with Python free-threading (3.13+),
+    // concurrent calls could saturate all CPU cores.
+    use std::sync::OnceLock;
+    static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+    let pool = POOL.get_or_init(|| {
+        let threads = std::env::var("RUST_EXT_THREADS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(4);
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .expect("Failed to build rayon thread pool")
+    });
+
+    let conflicts = pool.install(|| {
+        items
+            .par_iter()
+            .enumerate()
+            .flat_map_iter(|(i, a)| {
+                items[i + 1..]
+                    .iter()
+                    .filter(move |b| check_conflict_proto(a, b))
+                    .map(move |b| (a.clone(), b.clone()))
+            })
+            .collect()
+    });
 
     Ok(conflicts)
 }

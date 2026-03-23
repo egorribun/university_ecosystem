@@ -280,7 +280,9 @@ func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error
 
 	keySet, err := h.jwksCache.Get(ctx, h.jwksURL)
 	if err != nil {
-		h.Logger.ErrorContext(ctx, "JWKS fetch failed, falling back to HMAC secrets",
+		// RZ-W18-04 (audit 2026-03-23 Wave 18): no HMAC fallback occurs — this
+		// function returns the error immediately. Log message corrected.
+		h.Logger.ErrorContext(ctx, "JWKS fetch failed — RS256 validation cannot proceed",
 			"jwks_url", h.jwksURL, "err", err)
 		return "", err
 	}

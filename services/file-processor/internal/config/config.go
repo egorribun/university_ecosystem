@@ -17,9 +17,13 @@ type Config struct {
 	MinioSecretKey string `mapstructure:"minio_secret_key"`
 	MinioSecure    bool   `mapstructure:"minio_secure"`
 	GraphQLPort    string `mapstructure:"graphql_port"`
-	JWTSecret      string `mapstructure:"jwt_secret"`
-	SentryDSN      string `mapstructure:"sentry_dsn"`
-	Environment    string `mapstructure:"environment"`
+	JWTSecret string `mapstructure:"jwt_secret"`
+	// TD-W18-01 (audit 2026-03-23 Wave 18): RSA public key PEM for RS256 verification.
+	// When set, both RS256 and HS256 tokens are accepted (RS256 preferred).
+	// This brings file-processor into parity with ws-hub and gateway.
+	RSAPublicKeyPEM string `mapstructure:"rsa_public_key_pem"`
+	SentryDSN       string `mapstructure:"sentry_dsn"`
+	Environment     string `mapstructure:"environment"`
 
 	// OTLPEndpoint is the OpenTelemetry collector gRPC endpoint.
 	// Defaults to jaeger:4317 for local development.
@@ -54,7 +58,8 @@ func Load() (*Config, error) {
 		"minio_access_key": "MINIO_ACCESS_KEY",
 		"minio_secret_key": "MINIO_SECRET_KEY",
 		"minio_secure":     "MINIO_SECURE",
-		"jwt_secret":       "JWT_SECRET",
+		"jwt_secret":          "JWT_SECRET",
+		"rsa_public_key_pem":  "RSA_PUBLIC_KEY_PEM",
 		"sentry_dsn":       "SENTRY_DSN",
 		"environment":      "VITE_ENVIRONMENT",
 		"otlp_endpoint":    "OTLP_ENDPOINT",

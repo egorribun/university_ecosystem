@@ -65,8 +65,18 @@ def run_migrations_online() -> None:
     config_options: dict[str, Any] = {"sqlalchemy.url": url}
     url_obj = make_url(url)
 
+    # RZ-W18-06 (audit 2026-03-23 Wave 18): emit a proper Python warning instead
+    # of a bare print(). Previously the silent skip was easily missed in logs,
+    # leading developers to unknowingly accumulate schema drift.
     if _settings.has_development_fallbacks:
-        print("Skipping Alembic migrations while using development fallback settings.")
+        import warnings
+
+        warnings.warn(
+            "Skipping Alembic migrations: has_development_fallbacks is True. "
+            "Schema drift may cause runtime errors. "
+            "Set DATABASE_URL explicitly to run migrations.",
+            stacklevel=2,
+        )
         return
 
     def run_sync_migrations(connection: SyncConnection) -> None:

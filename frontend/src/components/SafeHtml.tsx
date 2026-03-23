@@ -1,4 +1,4 @@
-import { type ReactNode } from "react"
+import { type ReactNode, useMemo } from "react"
 import { sanitize_rich_text } from "wasm-sanitizer"
 
 interface SafeHtmlProps {
@@ -9,9 +9,20 @@ interface SafeHtmlProps {
 
 /**
  * A "World-Class" component for rendering sanitized HTML with WebAssembly ammonia.
+ *
+ * TD-W18-03 (audit 2026-03-23 Wave 18): wrapped in useMemo + try/catch to handle
+ * the edge case where the WASM module has not yet finished initializing. Previously
+ * the synchronous call during render could throw if init was still in progress.
  */
 export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
-  const sanitized = sanitize_rich_text(html)
+  const sanitized = useMemo(() => {
+    try {
+      return sanitize_rich_text(html)
+    } catch {
+      // WASM module not yet initialized — fall through to fallback.
+      return null
+    }
+  }, [html])
 
   if (!sanitized) return <>{fallback ?? null}</>
 
