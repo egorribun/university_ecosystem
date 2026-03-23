@@ -11,7 +11,18 @@ from uuid import UUID
 
 import pyotp
 from fastapi import status
-from sqlalchemy import and_, case, delete, func, literal, or_, select, update
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import (
+    and_,
+    case,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+    type_coerce,
+    update,
+)
 
 from app.api.validation import raise_http_error
 from app.auth.constants import (
@@ -196,16 +207,23 @@ async def _register_failed_attempt(
                 ),
                 else_=None,
             ),
-            # TD-W5-01: Keep explicit state in sync with locked_at
-            state=case(
-                (
-                    and_(
-                        literal(limit).isnot(None),
-                        MfaChallenge.attempt_count + 1 >= limit,
+            # TD-W5-01: Keep explicit state in sync with locked_at.
+            # type_coerce tells SQLAlchemy the CASE result is an enum, so
+            # PostgreSQL receives ``$N::challenge_state_enum`` instead of bare
+            # text — preventing the "column is of type … but expression is of
+            # type text" error (asyncpg DatatypeMismatchError).
+            state=type_coerce(
+                case(
+                    (
+                        and_(
+                            literal(limit).isnot(None),
+                            MfaChallenge.attempt_count + 1 >= limit,
+                        ),
+                        ChallengeState.LOCKED.value,
                     ),
-                    ChallengeState.LOCKED,
+                    else_=ChallengeState.PENDING.value,
                 ),
-                else_=ChallengeState.PENDING,
+                SAEnum(ChallengeState, name="challenge_state_enum"),
             ),
         )
         .returning(MfaChallenge.attempt_count, MfaChallenge.locked_at)
