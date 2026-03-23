@@ -63,7 +63,7 @@ jobs:
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d7d6bc7f32ac6267af61a8e9daede69b8ea28fa3 # v3.8.2
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
         with:
           cosign-release: v3.0.5
 
@@ -127,7 +127,7 @@ jobs:
 
       - name: Attest SBOM & Build Provenance (SLSA L3)
         # CI-01 (audit Wave 10): SHA-pinned; mutable @v4 tag replaced.
-        uses: actions/attest@1c37f5c34a1878b2dce4fb97bd5e5e7e45b84b06 # v2.1.0
+        uses: actions/attest@63d2e98e267398337e9a17ec68a5c8d936cb9247 # v2.1.0
         with:
           subject-name: ghcr.io/${{ github.repository }}/${{ inputs.image_name }}
           subject-digest: ${{ steps.build.outputs.digest }}

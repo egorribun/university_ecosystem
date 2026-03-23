@@ -115,7 +115,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: ZAP Full Scan
-        uses: zaproxy/action-full-scan@a4db890b35ae30e0fc9af1416ec02b9f4aff13c1 # v0.10.0
+        uses: zaproxy/action-full-scan@d479641f7e99facb91d7738171b3448e3f3c7bba # v0.10.0
         env:
           TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
         with:
