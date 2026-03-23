@@ -1,8 +1,9 @@
 name: Release
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch: {} # manual-only until production release infrastructure is ready
+  # push:
+  #   branches:
+  #     - main
 
 permissions: read-all
 
