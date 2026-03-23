@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -28,6 +25,7 @@ from app.api.deps import get_current_user
 from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
 from app.core.database import get_db, get_read_db
 from app.core.localization import localized_text, resolve_locale, translate
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import (

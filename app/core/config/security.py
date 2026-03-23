@@ -10,12 +10,11 @@ add it to the SecuritySettings inheritance chain here.
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import os
 
 from pydantic import ValidationInfo, field_validator
+
+from app.core.logging import get_logger
 
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,

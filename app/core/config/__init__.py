@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
-
-from app.core.logging import get_logger
 import os
 from functools import cached_property
 
 from pydantic import ValidationInfo, field_validator, model_validator
+
+from app.core.logging import get_logger
 
 from .app_gen import AppGeneralSettings
 from .base import (

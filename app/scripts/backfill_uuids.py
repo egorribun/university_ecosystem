@@ -1,7 +1,5 @@
 import asyncio
 import logging
-
-from app.core.logging import get_logger
 from datetime import UTC
 from typing import Any
 
@@ -9,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.models.auth import (
     ActiveSession,
     EmailChangeToken,

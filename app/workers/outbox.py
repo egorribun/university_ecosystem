@@ -1,13 +1,12 @@
 import asyncio
 import contextlib
-import logging
-
-from app.core.logging import get_logger
 import time
 import traceback
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

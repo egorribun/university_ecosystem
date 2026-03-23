@@ -4,9 +4,6 @@ import base64
 import hashlib
 import hmac
 import json
-import logging
-
-from app.core.logging import get_logger
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -40,6 +37,7 @@ from app.core.container import (
 )
 from app.core.database import get_read_db
 from app.core.localization import resolve_locale
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.models import models

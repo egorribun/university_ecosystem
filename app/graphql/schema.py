@@ -4,9 +4,6 @@ This module creates the Strawberry GraphQL schema and router that can be
 included in the FastAPI application.
 """
 
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -22,6 +19,7 @@ from strawberry.extensions.tracing import OpenTelemetryExtension
 from strawberry.fastapi import GraphQLRouter
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.graphql.context import GraphQLContext
 from app.graphql.dataloaders import DataLoaderRegistry

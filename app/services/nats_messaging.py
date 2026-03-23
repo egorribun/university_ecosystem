@@ -12,15 +12,13 @@ Features:
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import nats
 from nats.js.api import StreamConfig
 
+from app.core.logging import get_logger
 from app.core.orjson_utils import orjson
 
 if TYPE_CHECKING:

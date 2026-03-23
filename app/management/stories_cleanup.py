@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 
 from app.core.logging import get_logger
-
 from app.services.story_cleanup import cleanup_expired_stories
 
 logger = get_logger(__name__)

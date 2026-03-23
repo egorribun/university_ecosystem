@@ -7,9 +7,6 @@ used across the notifications package.
 from __future__ import annotations
 
 import datetime as dt
-import logging
-
-from app.core.logging import get_logger
 import re
 from datetime import UTC
 from html import unescape
@@ -21,6 +18,7 @@ from sqlalchemy import select
 
 from app.core.database import async_session as _async_session
 from app.core.localization import SUPPORTED_LOCALES, translate
+from app.core.logging import get_logger
 from app.models.models import User
 
 if TYPE_CHECKING:

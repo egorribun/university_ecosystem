@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import logging
+from typing import ClassVar
 
 from app.core.logging import get_logger
-from typing import ClassVar
 
 logger = get_logger(__name__)
 

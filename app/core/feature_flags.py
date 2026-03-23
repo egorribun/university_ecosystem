@@ -11,9 +11,6 @@ import asyncio
 import contextlib
 import hashlib
 import json
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import Awaitable
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
@@ -26,6 +23,7 @@ from openfeature.provider import AbstractProvider, Metadata
 from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

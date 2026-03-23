@@ -10,15 +10,13 @@ per-call context; it simply receives the shared singleton channel.
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import AsyncIterator
 
 import grpc.aio
 from dishka import Provider, Scope, provide
 
 from app.auth.rbac import PermissionChecker
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

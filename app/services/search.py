@@ -12,10 +12,9 @@ Features:
 
 from __future__ import annotations
 
-import logging
+from typing import Any
 
 from app.core.logging import get_logger
-from typing import Any
 
 # RZ-W8-02: Hard caps to prevent deep-pagination DoS (O(from+size) in Elasticsearch).
 _MAX_SEARCH_SIZE = 100

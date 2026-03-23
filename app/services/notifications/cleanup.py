@@ -7,9 +7,6 @@ based on retention policies.
 from __future__ import annotations
 
 import datetime as dt
-import logging
-
-from app.core.logging import get_logger
 from datetime import UTC
 from typing import TYPE_CHECKING
 
@@ -17,6 +14,7 @@ from sqlalchemy import delete, or_, select
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
+from app.core.logging import get_logger
 from app.models.models import Notification, NotificationDelivery
 
 if TYPE_CHECKING:

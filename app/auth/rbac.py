@@ -11,9 +11,6 @@ transport layer and makes it trivially testable without FastAPI machinery.
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 import os
 import time
 from collections import OrderedDict
@@ -25,6 +22,7 @@ from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
 )
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

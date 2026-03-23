@@ -1,11 +1,8 @@
-import logging
-
-from app.core.logging import get_logger
-
 from fastapi import UploadFile
 
 from app.api.utils import save_upload
 from app.core.exceptions.domain import EntityNotFound
+from app.core.logging import get_logger
 from app.core.protocols import UserLike, extract_user_id
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import UserDTO

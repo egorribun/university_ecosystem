@@ -8,9 +8,6 @@ pool status, and latency monitoring.
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -18,6 +15,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession

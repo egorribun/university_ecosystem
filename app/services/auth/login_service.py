@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from typing import TYPE_CHECKING, Any
 
 from fastapi import BackgroundTasks, Request, Response
 
 from app.auth import schemas as auth_schemas
 from app.core.localization import resolve_locale
+from app.core.logging import get_logger
 from app.schemas import schemas
 
 if TYPE_CHECKING:

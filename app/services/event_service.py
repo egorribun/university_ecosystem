@@ -1,7 +1,4 @@
 import contextlib
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -11,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import normalize_locale, translate
+from app.core.logging import get_logger
 from app.models.models import Event
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas

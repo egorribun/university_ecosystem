@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app.core import metrics
+from app.core.logging import get_logger
 from app.tasks.notifications import (
     enqueue_event_notification_task,
     enqueue_news_notification_task,

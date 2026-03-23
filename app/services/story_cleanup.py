@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete
 
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.core.observability import get_periodic_task_metrics
 from app.models.models import Story
 

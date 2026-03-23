@@ -4,8 +4,6 @@ import asyncio
 import contextlib
 import json
 import logging
-
-from app.core.logging import get_logger
 import uuid
 from collections.abc import Mapping
 from copy import deepcopy
@@ -25,6 +23,7 @@ from sqlalchemy.orm import selectinload, sessionmaker
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.localization import resolve_locale, translate
+from app.core.logging import get_logger
 from app.core.ratelimit import (
     RateLimitExceeded,
     RateLimitInfo,

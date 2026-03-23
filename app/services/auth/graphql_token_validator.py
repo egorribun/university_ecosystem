@@ -17,15 +17,13 @@ paths enforce identical security guarantees.
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import uuid as _uuid
 
 from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.models.models import ActiveSession, User
 
 logger = get_logger(__name__)

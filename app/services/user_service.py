@@ -1,11 +1,9 @@
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from typing import Any
 
 from fastapi import Request, UploadFile
 
+from app.core.logging import get_logger
 from app.repositories.unit_of_work import UnitOfWork
 
 # Re-exports for backward compatibility with existing tests

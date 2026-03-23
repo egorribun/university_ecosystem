@@ -7,13 +7,12 @@ Provides storage and replay capabilities for events that failed processing.
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from app.core.events import DomainEvent, EventBus

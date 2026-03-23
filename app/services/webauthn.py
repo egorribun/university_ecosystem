@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
-
-from app.core.logging import get_logger
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +21,7 @@ from webauthn.helpers.structs import (
 )
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.models import User, WebAuthnCredential
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.dtos import UserDTO

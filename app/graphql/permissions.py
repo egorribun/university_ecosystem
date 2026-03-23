@@ -22,12 +22,11 @@ Usage::
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from typing import TYPE_CHECKING, Any
 
 from strawberry.permission import BasePermission
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from strawberry.types import Info

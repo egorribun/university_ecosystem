@@ -20,12 +20,11 @@ redis client via __init__ and is registered in the dishka DI container.
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, cast
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     import redis.asyncio as aioredis

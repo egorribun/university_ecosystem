@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -13,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from app.api.schedule import _SCHEDULE_CACHE_TTL_SECONDS
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.deps.cache import BaseCache, CacheEntry, get_cache
 from app.schemas import schemas
 from app.services import stats_cache

@@ -12,12 +12,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

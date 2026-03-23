@@ -11,9 +11,6 @@ Provides two interfaces:
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import os
 from collections.abc import AsyncIterator
 from functools import lru_cache
@@ -23,6 +20,7 @@ import grpc
 from authzed.api.v1 import Client, InsecureClient
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

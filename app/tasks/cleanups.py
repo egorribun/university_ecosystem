@@ -1,8 +1,5 @@
-import logging
-
-from app.core.logging import get_logger
-
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.nats_broker import broker
 from app.services import notification_queue
 from app.services.email_change_cleanup import cleanup_stale_email_change_tokens

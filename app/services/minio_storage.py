@@ -11,9 +11,6 @@ Features:
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from functools import partial
@@ -21,6 +18,8 @@ from typing import TYPE_CHECKING
 
 from minio import Minio
 from minio.error import S3Error
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from io import BytesIO

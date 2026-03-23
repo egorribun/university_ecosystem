@@ -13,9 +13,6 @@ Features:
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 import typing
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -24,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from app.core.logging import get_logger
 from app.repositories.event_repository import get_event_repository
 from app.repositories.news_repository import get_news_repository
 

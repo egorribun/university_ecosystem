@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 
 from app.core.logging import get_logger
-
 from app.core.ratelimit.strategies.memory import _memory_windows, _shard_lock
 
 logger = get_logger(__name__)

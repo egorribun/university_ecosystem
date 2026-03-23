@@ -1,6 +1,4 @@
 import logging
-
-from app.core.logging import get_logger
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -8,7 +6,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
-from app.core.logging import is_logger_enabled
+from app.core.logging import get_logger, is_logger_enabled
 
 logger = get_logger(__name__)
 
