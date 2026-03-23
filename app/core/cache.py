@@ -195,6 +195,7 @@ class MultiLayerCache:
                 # core.config which imports core.cache transitively on some paths).
                 try:
                     from app.core.metrics import record_redis_command
+
                     record_redis_command("get", 0.0, success=False)
                 except Exception:
                     pass  # metrics unavailable — never block cache logic
@@ -217,6 +218,7 @@ class MultiLayerCache:
                 # PERF-14-04 (audit 2026-03-23): Same pattern as get() above.
                 try:
                     from app.core.metrics import record_redis_command
+
                     record_redis_command("set", 0.0, success=False)
                 except Exception:
                     pass

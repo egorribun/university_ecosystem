@@ -82,12 +82,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
     """
     WebSocket endpoint for real-time chat.
 
-    Authentication:
-    - Send JWT in `Sec-WebSocket-Protocol` (e.g. `access_token, <JWT>`), OR
-    - Send `Authorization: Bearer <JWT>` header, OR
-    - Use cookie-based auth (access_token cookie)
-    - Query param `token` can be enabled temporarily via
-      feature flag `websocket_query_param_compat`
+    Authentication (RZ-W14-01 — JWT-in-protocol-header path removed):
+    - Preferred: one-time upgrade ticket via ?ticket=<ott>
+      (obtain via POST /ws/ticket while authenticated via cookie/Bearer)
+    - Fallback: HttpOnly access_token_v2 cookie (cookie-capable browsers)
 
     Message types (from client):\n    - {"type": "ping"} - Keep-alive ping
     - {"type": "typing", "chat_id": "..."} - Typing indicator
@@ -184,7 +182,9 @@ async def websocket_chat(websocket: WebSocket) -> None:
                 # so ops can distinguish bugs (e.g. wrong Content-Type) from active
                 # fuzzing probes during incident investigation. The 200-char truncation
                 # prevents log inflation from crafted large payloads.
-                frame_preview = text_data[:200] if isinstance(text_data, str) else "<non-text>"
+                frame_preview = (
+                    text_data[:200] if isinstance(text_data, str) else "<non-text>"
+                )
                 logger.warning(
                     "Malformed WebSocket frame from user %s: %s — frame preview: %r",
                     getattr(user, "id", "unknown"),

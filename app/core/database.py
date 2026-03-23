@@ -199,16 +199,21 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
             kwargs["pool_size"] = current_settings.database_pool_size
         if current_settings.database_max_overflow is not None:
             kwargs["max_overflow"] = current_settings.database_max_overflow
-        # PERF-01: default to 5 s (fast-fail) instead of SQLAlchemy's 30 s default.
-        # Rationale: pool_size=10 + max_overflow=20 → 30 connections max.  At 30 s
-        # timeout, 30 concurrent blocked requests spend 30×30 = 900 s waiting.
-        # At 5 s they fail quickly, the load-balancer retries, and upstream capacity
-        # is freed instead of held by sleeping Uvicorn workers.
-        # Operators can override via DATABASE_POOL_TIMEOUT env var.
+        # PERF-W14-01 (audit 2026-03-23 Wave 14): raised from 5 s to 30 s.
+        # Rationale: a 5 s timeout was originally chosen for fast-fail under
+        # steady-state overload, but it also fires during planned PostgreSQL
+        # primary failovers (RDS Multi-AZ switchover ~30–60 s, Patroni ~15–30 s).
+        # During failover all requests hit QueuePool.checkout(); at 5 s they all
+        # fail, creating a hard outage window instead of queuing and recovering.
+        # At 30 s, requests queue during the failover and drain cleanly when the
+        # new primary comes up, matching user-visible "retry" behaviour.
+        # Per-statement timeouts (command_timeout=15 s) remain unchanged — they
+        # guard against individual slow queries, which is a separate concern.
+        # Operators can still override via DATABASE_POOL_TIMEOUT env var.
         kwargs["pool_timeout"] = (
             current_settings.database_pool_timeout
             if current_settings.database_pool_timeout is not None
-            else 5.0
+            else 30.0
         )
         # PERF-01: default to 300 s (5 min) to discard connections before TCP
         # firewalls or PgBouncer silently kill idle ones.  pool_pre_ping=True

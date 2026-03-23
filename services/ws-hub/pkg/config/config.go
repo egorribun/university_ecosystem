@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -50,6 +51,10 @@ type Config struct {
 	// BroadcastBufferSize is the size of the global message channel.
 	// sized for NATS burst peaks (default 4096). (TD-5)
 	BroadcastBufferSize int
+	// BroadcastWorkers is the number of goroutines in the broadcast worker pool.
+	// PERF-W14-02 (audit 2026-03-23 Wave 14): previously hard-coded to 4.
+	// Default: 2 × GOMAXPROCS, capped to a reasonable max via WS_BROADCAST_WORKERS.
+	BroadcastWorkers int
 	// InternalSecret is the shared secret used to authenticate internal API calls
 	// from the Python backend (e.g. cache invalidation). Must be set in production.
 	// TD-NEW-07 (audit 2026-03-07)
@@ -97,6 +102,7 @@ func LoadConfig() *Config {
 		JWKSURL:             getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
 		SendBufferSize:      getEnvInt("WS_SEND_BUFFER_SIZE", 256),
 		BroadcastBufferSize: getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
+		BroadcastWorkers:    getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2),
 		InternalSecret:      os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
 		MaxClients:          getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
 		RedisURL:            getEnv("REDIS_URL", "redis:6379"),

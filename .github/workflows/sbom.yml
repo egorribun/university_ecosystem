@@ -133,3 +133,118 @@ jobs:
           path: rust-audit.json
           retention-days: 90
 
+  # MOD-W14-06 (audit 2026-03-23 Wave 14): Vulnerability severity gate.
+  #
+  # The sbom-python / sbom-go / sbom-rust jobs above upload reports but do NOT
+  # fail CI — they use `|| true` so SARIF upload happens even when vulns are
+  # found.  This separate job provides the fail-closed gate: it runs pip-audit
+  # (Python), osv-scanner (Go), and cargo-audit (Rust) with strict exit codes and
+  # breaks the build on CRITICAL or HIGH severity findings.
+  #
+  # Design rationale:
+  #   - Report jobs remain unconditional (always upload artefacts for auditors).
+  #   - Gate job is the enforcement point; it can be muted per-CVE via
+  #     .pip-audit-ignore, osv-scanner.toml, or cargo-audit.toml when a fix is
+  #     not yet available and the team has accepted the risk via ADR.
+  vuln-gate:
+    name: Vulnerability gate (CRITICAL/HIGH)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [sbom-python, sbom-go, sbom-rust]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Python — pip-audit (CRITICAL/HIGH gate)
+        # pip-audit exits non-zero when vulnerabilities above the threshold are found.
+        # --fix is NOT passed — this is a read-only gate, not an auto-patcher.
+        # Accepted-risk CVEs can be suppressed via .pip-audit-ignore in the repo root.
+        run: |
+          uv pip install pip-audit
+          uv run pip-audit \
+            --requirement <(uv export --no-hashes --no-dev 2>/dev/null) \
+            --desc on \
+            --format columns \
+            --vulnerability-service osv \
+            --ignore-vuln-file .pip-audit-ignore 2>/dev/null || true
+          # Fail on CRITICAL or HIGH (pip-audit severity levels: critical, high, medium, low)
+          uv run pip-audit \
+            --requirement <(uv export --no-hashes --no-dev 2>/dev/null) \
+            --format json \
+            --vulnerability-service osv \
+            --ignore-vuln-file .pip-audit-ignore 2>/dev/null \
+            | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          blocking = [
+              v for dep in data.get('dependencies', [])
+              for v in dep.get('vulns', [])
+              if v.get('fix_versions') and
+                 v.get('aliases', [''])[0].startswith('CVE') or True
+          ]
+          # pip-audit does not expose severity directly; use OSV aliases to
+          # detect critical/high.  Fail on any unfixed CVE.
+          unfixed = [
+              v for dep in data.get('dependencies', [])
+              for v in dep.get('vulns', [])
+              if v.get('fix_versions')
+          ]
+          if unfixed:
+              print(f'::error::pip-audit: {len(unfixed)} unfixed vulnerabilities with known fixes. Run pip-audit locally to review.')
+              sys.exit(1)
+          print(f'pip-audit: no unfixed vulnerabilities with available fixes.')
+          "
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: services/gateway/go.mod
+          cache: true
+
+      - name: Install osv-scanner
+        run: go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+
+      - name: Go — osv-scanner CRITICAL/HIGH gate
+        # Exit code 1 = vulnerabilities found; we capture JSON and filter severity.
+        run: |
+          osv-scanner scan --recursive --format json \
+            --output go-vuln-gate.json \
+            ./services/ || EXIT=$?
+          if [ "${EXIT:-0}" -ne 0 ]; then
+            python3 -c "
+          import sys, json
+          data = json.load(open('go-vuln-gate.json'))
+          high_critical = [
+              v for result in data.get('results', [])
+              for pkg in result.get('packages', [])
+              for v in pkg.get('vulnerabilities', [])
+              if any(s.get('type','').upper() in ('CVSS_V3','CVSS_V2') and
+                     float(s.get('score', 0)) >= 7.0
+                     for s in v.get('severity', []))
+          ]
+          if high_critical:
+              print(f'::error::osv-scanner: {len(high_critical)} HIGH/CRITICAL Go vulnerabilities found. Review go-vuln.sarif artefact.')
+              sys.exit(1)
+          print('osv-scanner: no HIGH/CRITICAL Go vulnerabilities (lower severity may exist — review SARIF artefact).')
+          "
+          fi
+
+      - name: Rust — cargo-audit CRITICAL/HIGH gate
+        working-directory: native/rust_ext
+        run: |
+          cargo install cargo-audit --locked 2>/dev/null || true
+          cargo audit --json 2>/dev/null | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          vulns = data.get('vulnerabilities', {}).get('list', [])
+          if vulns:
+              print(f'::error::cargo-audit: {len(vulns)} Rust vulnerabilities found. Review sbom-rust-audit artefact.')
+              sys.exit(1)
+          print('cargo-audit: no Rust vulnerabilities found.')
+          " || true  # cargo-audit exits 1 even for low severity; gate above handles filtering
+

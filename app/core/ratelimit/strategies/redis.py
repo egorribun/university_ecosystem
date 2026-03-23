@@ -7,21 +7,22 @@ from typing import Any, cast
 
 from redis.exceptions import NoScriptError, RedisError, ResponseError
 
+from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
 from app.core.ratelimit.models import RateLimitInfo
 from app.core.ratelimit.strategies.base import get_shared_client
 
 # PERF-14-01: Cache the Lua script SHA1 so subsequent calls use EVALSHA
 # instead of sending the full ~500-byte script on every request.
 # Invalidated (set to None) on NoScriptError so it's reloaded after Redis restart.
+#
+# RZ-W14-04 (audit 2026-03-23 Wave 14): both globals are created eagerly at
+# module level to avoid a lazy-init race condition under Python 3.13
+# free-threading (PEP 703 / PYTHON_GIL=0).  The previous pattern
+#   if _SHA_LOCK is None: _SHA_LOCK = asyncio.Lock()
+# allowed two OS threads to simultaneously see None and create two separate
+# Lock objects, silently defeating the double-checked locking on _RATE_LIMIT_SHA.
 _RATE_LIMIT_SHA: str | None = None
-_SHA_LOCK: asyncio.Lock | None = None  # created lazily to survive event-loop changes
-
-
-def _get_sha_lock() -> asyncio.Lock:
-    global _SHA_LOCK
-    if _SHA_LOCK is None:
-        _SHA_LOCK = asyncio.Lock()
-    return _SHA_LOCK
+_SHA_LOCK: asyncio.Lock = asyncio.Lock()  # eager — safe under free-threading
 
 
 async def _load_script_sha(client: Any) -> str:
@@ -29,7 +30,7 @@ async def _load_script_sha(client: Any) -> str:
     global _RATE_LIMIT_SHA
     if _RATE_LIMIT_SHA is not None:
         return _RATE_LIMIT_SHA
-    async with _get_sha_lock():
+    async with _SHA_LOCK:
         if _RATE_LIMIT_SHA is None:
             _RATE_LIMIT_SHA = await cast(Any, client).script_load(_RATE_LIMIT_SCRIPT)
         return _RATE_LIMIT_SHA
@@ -125,10 +126,20 @@ class RedisSlidingWindowStrategy:
                     raise
             else:
                 raise
-            # Fallback: fixed-window pipeline (Redis Cluster compatibility)
-            return await self._fallback_fixed_window(
-                client, redis_key, window_ms, limit
-            )
+            # RZ-W14-03 (audit 2026-03-23 Wave 14): the previous fallback used a
+            # fixed-window counter (SET NX + INCR), which allows 2× the configured
+            # limit at window boundaries — a well-known burst attack vector.
+            #
+            # Raising RateLimitStorageUnavailable instead lets RateLimitMiddleware
+            # (app/core/ratelimit/middleware.py) fail-closed to a MemorySlidingWindow
+            # strategy at 50% capacity, which preserves sliding-window semantics and
+            # prevents the burst-at-boundary attack.  This is already the correct
+            # behaviour for any other Redis outage; Redis Cluster script rejection
+            # should be treated the same way.
+            raise RateLimitStorageUnavailable(
+                "Redis Cluster does not support Lua scripting (EVAL/EVALSHA); "
+                "falling back to in-process sliding-window strategy."
+            ) from exc
 
         allowed = bool(result[0])
         remaining = max(0, int(result[1]))
@@ -136,18 +147,3 @@ class RedisSlidingWindowStrategy:
         retry_after = math.ceil(retry_after_ms / 1000)
 
         return RateLimitInfo(allowed, remaining, retry_after)
-
-    async def _fallback_fixed_window(
-        self, client: Any, redis_key: str, window_ms: int, limit: int
-    ) -> RateLimitInfo:
-        pipe = client.pipeline(transaction=True)
-        pipe.set(redis_key, 0, px=window_ms, nx=True)
-        pipe.incr(redis_key)
-        pipe.pttl(redis_key)
-        _, current, ttl = await pipe.execute()
-
-        current = int(current)
-        if current > limit:
-            return RateLimitInfo(False, 0, math.ceil(ttl / 1000) if ttl > 0 else 0)
-
-        return RateLimitInfo(True, max(0, limit - current), 0)

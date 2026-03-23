@@ -1,11 +1,8 @@
 from fastapi import WebSocket
 
 from app.api.ws.auth import (
-    extract_bearer_token,
-    extract_token_from_subprotocol,
     get_user_from_cookie,
-    get_user_from_token,
-    select_subprotocol,
+    get_user_from_ticket,
 )
 from app.core.logging import get_logger
 from app.models.models import User
@@ -54,42 +51,40 @@ class WsAuthenticator:
         user = None
         session_jti = None
 
-        auth_header = websocket.headers.get("authorization")
-        protocol_header = websocket.headers.get("sec-websocket-protocol")
-        header_token = extract_bearer_token(auth_header)
-        protocol_token = extract_token_from_subprotocol(protocol_header)
-        selected_subprotocol = select_subprotocol(protocol_header)
+        # RZ-W14-01 (audit 2026-03-23 Wave 14): Sec-WebSocket-Protocol JWT path
+        # permanently removed.  JWTs in protocol headers are written verbatim to
+        # proxy access logs (nginx/Caddy), stored in Grafana Loki / ELK, and
+        # visible in browser devtools — a silent credential leak.
+        #
+        # Supported auth methods (priority order):
+        #   1. One-time upgrade ticket (?ticket=<ott>)  ← new primary path
+        #   2. HttpOnly access_token_v2 cookie          ← fallback for cookie-capable clients
+        #
+        # Authorization: Bearer header and Sec-WebSocket-Protocol are no longer accepted.
 
-        if header_token or protocol_token:
-            logger.info(
-                "Attempting WebSocket token auth from headers (auth=%s, protocol=%s)",
-                bool(header_token),
-                bool(protocol_token),
-            )
-            token_str = str(header_token or protocol_token)
-            user, session_jti = await get_user_from_token(token_str)
+        # 1. One-time upgrade ticket (preferred — no JWT in headers/logs)
+        ticket = websocket.query_params.get("ticket")
+        if ticket:
+            logger.info("Attempting WS ticket auth")
+            user, session_jti = await get_user_from_ticket(ticket)
             if user:
-                logger.info("Token auth successful: user_id=%s", user.id)
+                logger.info("WS ticket auth successful: user_id=%s", user.id)
             else:
-                logger.warning("Token auth failed: invalid token")
+                logger.warning("WS ticket auth failed: invalid or expired ticket")
 
-        # R-07 (audit 2026-03-08): Query param token auth permanently removed.
-        # Tokens in URL parameters are logged by Nginx/Caddy in plaintext, cached
-        # by browsers and proxies, and leak via Referer headers.
-        # Supported auth methods: Authorization: Bearer header, Sec-WebSocket-Protocol
-        # subprotocol token (Go ws-hub), HttpOnly access_token_v2 cookie.
-
+        # 2. HttpOnly cookie fallback (for cookie-capable browser clients that
+        #    have not yet migrated to the ticket flow)
         if not user:
             access_token = websocket.cookies.get("access_token_v2")
             if access_token:
-                logger.info("Attempting cookie auth, access_token present: True")
+                logger.info("Attempting WS cookie auth")
                 user, session_jti = await get_user_from_cookie(access_token)
                 if user:
-                    logger.info("Cookie auth successful: user_id=%s", user.id)
+                    logger.info("WS cookie auth successful: user_id=%s", user.id)
                 else:
-                    logger.warning("Cookie auth failed: invalid cookie")
+                    logger.warning("WS cookie auth failed: invalid cookie")
 
-        return user, session_jti, selected_subprotocol
+        return user, session_jti, None  # subprotocol always None — we no longer negotiate it
 
 
 authenticator = WsAuthenticator()

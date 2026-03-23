@@ -15,6 +15,7 @@ from app.api.health import router as health_router
 from app.api.internal import router as internal_api_router
 from app.api.public import router as public_api_router
 from app.api.websocket import router as websocket_router
+from app.api.ws.ticket import router as ws_ticket_router
 from app.api.well_known import router as well_known_router
 from app.core.config import settings
 from app.core.database import engine
@@ -150,6 +151,7 @@ app.include_router(public_api_router)
 app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)
 app.include_router(websocket_router)
+app.include_router(ws_ticket_router)  # RZ-W14-01: POST /ws/ticket
 app.include_router(graphql_router, prefix="/graphql", include_in_schema=False)
 
 __all__ = ["_ensure_vary_header", "app", "scan_for_malware"]

@@ -174,8 +174,36 @@ export function useChatWebSocket({
       return
     }
 
+    // RZ-W14-01 (audit 2026-03-23 Wave 14): fetch a short-lived upgrade ticket
+    // before opening the WebSocket.  This eliminates the JWT from the URL and
+    // from Sec-WebSocket-Protocol headers (which are written to proxy logs).
+    //
+    // Flow: POST /ws/ticket → { ticket, expires_in: 15 }
+    //       new WebSocket(`${wsUrl}?ticket=${ticket}`)
+    //
+    // The ticket is single-use and expires after 15s — it is consumed atomically
+    // by the server on the first upgrade attempt, preventing replay.
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:"
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
+    const baseWsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
+
+    void (async () => {
+      let wsUrl = baseWsUrl
+      try {
+        const resp = await fetch("/ws/ticket", {
+          method: "POST",
+          credentials: "include", // send HttpOnly cookie
+          headers: { "Content-Type": "application/json" },
+        })
+        if (resp.ok) {
+          const data = (await resp.json()) as { ticket: string; expires_in: number }
+          wsUrl = `${baseWsUrl}?ticket=${encodeURIComponent(data.ticket)}`
+        } else {
+          logError("[WebSocket] Failed to fetch upgrade ticket:", resp.status)
+          // Fall through to cookie-auth path — the server still accepts it
+        }
+      } catch (e) {
+        logError("[WebSocket] Ticket fetch error, falling back to cookie auth:", e)
+      }
 
     try {
       const ws = new WebSocket(wsUrl)
@@ -338,6 +366,7 @@ export function useChatWebSocket({
     } catch (e) {
       logError("[WebSocket] Failed to connect:", e)
     }
+    })()  // end async IIFE — ticket fetch + WS connect
   }, [enabled, cleanup, queryClient, wsStore])
 
   const disconnect = useCallback(() => {

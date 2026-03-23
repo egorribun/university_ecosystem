@@ -15,6 +15,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -56,16 +57,21 @@ type Hub struct {
 	jwksURL         string
 	// maxClients caps the number of concurrently connected WebSocket clients.
 	maxClients int
+	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
+	broadcastWorkers int
 	// internalSecret is the shared secret for local HMAC validation.
 	internalSecret string
 	// msgLimiters is a per-client token-bucket map that limits NATS publish rate.
 	msgLimiters sync.Map // map[clientID string]*rate.Limiter
 	stopOnce    sync.Once
 	jwksMu      sync.Mutex
+	// redisClient is the shared Redis connection used for upgrade ticket validation.
+	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
+	redisClient *goredis.Client
 }
 
 // NewHub creates a new Hub instance.
-func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config) *Hub {
+func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client) *Hub {
 	return &Hub{
 		Clients:    make(map[string]*Client),
 		Rooms:      make(map[string]map[*Client]bool),
@@ -78,8 +84,10 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		// 10 upgrade attempts per 60-second window per IP.
 		UpgradeLimiter: NewWSUpgradeRateLimiter(10, 60),
 		jwksCache:      nil, // Initialised via SetupJWKS()
-		maxClients:     cfg.MaxClients,
-		internalSecret: cfg.InternalSecret,
+		maxClients:       cfg.MaxClients,
+		broadcastWorkers: cfg.BroadcastWorkers,
+		internalSecret:   cfg.InternalSecret,
+		redisClient:      rdb,
 	}
 }
 
@@ -118,20 +126,23 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	return nil
 }
 
-// broadcastWorkers controls how many goroutines process broadcast messages
-// concurrently.  Register/Unregister remain serial (they mutate h.Clients and
-// h.Rooms), but the read-heavy broadcastMessage path is parallelised.
-const broadcastWorkers = 4
-
 // Run starts the hub's main select loop.
 //
 // PERF-14-04 (audit Wave 14): Broadcast messages are dispatched to a worker
 // pool so that JSON marshalling and per-recipient writes do not block the
 // Register/Unregister channels.  broadcastMessage already acquires h.mu.RLock
 // so concurrent broadcasts are safe.
+//
+// PERF-W14-02 (audit 2026-03-23 Wave 14): worker count is now read from
+// h.broadcastWorkers (set from cfg.BroadcastWorkers / WS_BROADCAST_WORKERS
+// env var, default 2×GOMAXPROCS) instead of the hard-coded constant 4.
 func (h *Hub) Run(ctx context.Context) {
+	workers := h.broadcastWorkers
+	if workers <= 0 {
+		workers = 4 // safe minimum
+	}
 	broadcastCh := make(chan *Message, cap(h.Broadcast))
-	for i := 0; i < broadcastWorkers; i++ {
+	for i := 0; i < workers; i++ {
 		go func() {
 			for msg := range broadcastCh {
 				h.broadcastMessage(ctx, msg)
@@ -273,15 +284,24 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 }
 
 // SubscribeToNATS registers NATS subscriptions and stores them for graceful shutdown.
+//
+// TD-W14-08 (audit 2026-03-23 Wave 14): replaced over-broad "chat.>" wildcard
+// with the specific single-level wildcard "chat.*".  The ">" token matches ALL
+// subjects at any depth under "chat." (e.g. chat.admin, chat.audit.*.raw),
+// which could deliver internal or future subjects to client WebSockets
+// unintentionally.  "chat.*" matches exactly one additional token, restricting
+// delivery to the current chat.{room_id} pattern.  Same tightening applied to
+// "notifications.*".  Both are intentional breaking changes if any internal
+// service currently publishes multi-level subjects under these prefixes.
 func (h *Hub) SubscribeToNATS(appCtx context.Context) {
-	chatSub, err := h.Nats.Subscribe("chat.>", h.handleChat(appCtx))
+	chatSub, err := h.Nats.Subscribe("chat.*", h.handleChat(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
 		os.Exit(1)
 	}
 	h.subs = append(h.subs, chatSub)
 
-	notifSub, err := h.Nats.Subscribe("notifications.>", h.handleNotifications(appCtx))
+	notifSub, err := h.Nats.Subscribe("notifications.*", h.handleNotifications(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
 		os.Exit(1)
