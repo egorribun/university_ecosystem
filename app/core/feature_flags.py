@@ -263,24 +263,46 @@ class FeatureFlagService:
             await self._redis.aclose()
 
     async def _listen_for_updates(self) -> None:
-        """Listen for flag updates via Pub/Sub."""
+        """Listen for flag updates via Pub/Sub.
+
+        HIGH-W19: retry loop with exponential backoff so a transient Redis error
+        does not permanently kill the listener.
+        """
         if not self._redis:
             return
 
-        ps = self._redis.pubsub()
-        await ps.subscribe(FEATURE_FLAGS_CHANNEL)
+        # HIGH-W19: exponential backoff state — reset on successful receive
+        _backoff = 1.0
+        _backoff_max = 60.0
 
-        try:
-            async for message in ps.listen():
-                if message["type"] == "message":
-                    name: str = message["data"]
-                    logger.debug("Received update for flag: %s", name)
-                    await self._reload_flag(name)
-        except asyncio.CancelledError:
-            await ps.unsubscribe(FEATURE_FLAGS_CHANNEL)
-            await ps.aclose()  # type: ignore[no-untyped-call]
-        except Exception as e:
-            logger.error("Error in feature flag Pub/Sub listener: %s", e)
+        while True:
+            ps = self._redis.pubsub()
+            try:
+                await ps.subscribe(FEATURE_FLAGS_CHANNEL)
+                async for message in ps.listen():
+                    _backoff = 1.0  # reset backoff on successful message
+                    if message["type"] == "message":
+                        name: str = message["data"]
+                        logger.debug("Received update for flag: %s", name)
+                        await self._reload_flag(name)
+            except asyncio.CancelledError:
+                await ps.unsubscribe(FEATURE_FLAGS_CHANNEL)
+                await ps.aclose()  # type: ignore[no-untyped-call]
+                return
+            except Exception as e:
+                # HIGH-W19: log and retry instead of returning (which would kill
+                # the listener permanently for the lifetime of the process).
+                logger.error(
+                    "Error in feature flag Pub/Sub listener (retrying in %.0fs): %s",
+                    _backoff,
+                    e,
+                )
+                with contextlib.suppress(asyncio.CancelledError):
+                    await asyncio.sleep(_backoff)
+                _backoff = min(_backoff * 2, _backoff_max)
+            finally:
+                with contextlib.suppress(Exception):
+                    await ps.aclose()  # type: ignore[no-untyped-call]
 
     async def _reload_flag(self, name: str) -> None:
         """Reload a specific flag from Redis."""

@@ -52,10 +52,16 @@ def upgrade():
             ),
         )
 
-        # 3. Truncate since mapping is lost (legacy_id is gone)
-        # This is safe for a challenge table in dev/test, and likely unavoidable here.
-        op.execute('TRUNCATE TABLE "mfa_challenges" CASCADE')
-        logger.info("Truncated mfa_challenges due to lost legacy_id mapping")
+        # 3. RZ-W19-06: Clear only orphaned challenges instead of TRUNCATE.
+        # TRUNCATE destroys active MFA sessions — users mid-auth are logged out.
+        op.execute(
+            sa.text("""
+            UPDATE "mfa_challenges"
+            SET shadow_session_id = session_id::uuid
+            WHERE session_id IS NOT NULL
+        """)
+        )
+        logger.info("Migrated mfa_challenges.session_id -> shadow_session_id")
 
         # 4. Swap columns
         op.alter_column(

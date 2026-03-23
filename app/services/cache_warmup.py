@@ -215,31 +215,34 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
         if cached and _is_entry_fresh(cached):
             continue
 
-    from app.repositories.unit_of_work import uow_from_session
-    from app.services.event_service import EventService
-    from app.services.vector_service import VectorService
+        # HIGH-W19: imports moved inside loop so service/vector construction happens
+        # per-iteration; previously these lines were outside the loop causing only
+        # the last locale's cache_key to be populated.
+        from app.repositories.unit_of_work import uow_from_session
+        from app.services.event_service import EventService
+        from app.services.vector_service import VectorService
 
-    uow = uow_from_session(db)
-    # We need a vector service instance, but for warmup of *list* we probably don't
-    # need actual embeddings if the search query is empty. However, EventService
-    # requires it. We can rely on DI container or construct it manually.
-    # Since this is a background task, manual construction is safer/easier.
-    # VectorService needs settings.
+        uow = uow_from_session(db)
+        # We need a vector service instance, but for warmup of *list* we probably don't
+        # need actual embeddings if the search query is empty. However, EventService
+        # requires it. We can rely on DI container or construct it manually.
+        # Since this is a background task, manual construction is safer/easier.
+        # VectorService needs settings.
 
-    vector_service = VectorService(db)
-    service = EventService(uow, vector_service)
+        vector_service = VectorService(db)
+        service = EventService(uow, vector_service)
 
-    payload = await service.get_events(
-        user_id=None,  # System-level warmup
-        search="",
-        type="",
-        location="",
-        is_active=True,
-        locale=locale,
-        limit=20,
-        cursor=None,
-    )
-    await cache.set(cache_key, jsonable_encoder(payload))
+        payload = await service.get_events(
+            user_id=None,  # System-level warmup
+            search="",
+            type="",
+            location="",
+            is_active=True,
+            locale=locale,
+            limit=20,
+            cursor=None,
+        )
+        await cache.set(cache_key, jsonable_encoder(payload))
 
 
 async def warm_cache() -> None:

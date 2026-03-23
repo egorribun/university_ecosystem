@@ -27,23 +27,33 @@ from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "events"
 
-    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    title_en: Mapped[str | None] = mapped_column(String)
+    title: Mapped[str] = mapped_column(
+        String(512), nullable=False, index=True
+    )  # LOW-W19: bounded String
+    title_en: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
     description: Mapped[str | None] = mapped_column(Text)
     description_en: Mapped[str | None] = mapped_column(Text)
-    location: Mapped[str | None] = mapped_column(String)
-    location_en: Mapped[str | None] = mapped_column(String)
-    event_type: Mapped[str | None] = mapped_column(String, index=True)
-    event_type_en: Mapped[str | None] = mapped_column(String)
+    location: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
+    location_en: Mapped[str | None] = mapped_column(
+        String(512)
+    )  # LOW-W19: bounded String
+    event_type: Mapped[str | None] = mapped_column(
+        String(128), index=True
+    )  # LOW-W19: bounded String
+    event_type_en: Mapped[str | None] = mapped_column(
+        String(128)
+    )  # LOW-W19: bounded String
     starts_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
     ends_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
-    created_by: Mapped[uuid.UUID] = mapped_column(
+    # RZ-W19-20: SET NULL instead of CASCADE — events should outlive their creators
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     search_vector: Mapped[Any] = mapped_column(
@@ -66,8 +76,10 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    speaker: Mapped[str | None] = mapped_column(String)
-    image_url: Mapped[str | None] = mapped_column(String)
+    speaker: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
+    image_url: Mapped[str | None] = mapped_column(
+        String(2048)
+    )  # LOW-W19: bounded String
     about: Mapped[str | None] = mapped_column(Text)
     about_en: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[Any] = mapped_column(
@@ -96,7 +108,7 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         passive_deletes=True,
         lazy="selectin",
     )
-    organizer = relationship("User")
+    organizer = relationship("User", lazy="noload")  # DEBT-W19: avoid implicit load
 
     def __repr__(self) -> str:
         return (
@@ -117,8 +129,8 @@ class EventAttendance(Base, EventEmitterMixin, UUID7PrimaryKeyMixin, UserFK):
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
-    qr_secret: Mapped[str] = mapped_column(String)
-    qr_hmac: Mapped[str] = mapped_column(String)
+    qr_secret: Mapped[str] = mapped_column(String(255))  # LOW-W19: bounded String
+    qr_hmac: Mapped[str] = mapped_column(String(255))  # LOW-W19: bounded String
 
     __table_args__ = (
         UniqueConstraint("user_id", "event_id", name="uq_event_attendance_user_event"),
@@ -141,8 +153,10 @@ class EventFile(Base, UUID7PrimaryKeyMixin):
         index=True,
         nullable=False,
     )
-    file_url: Mapped[str] = mapped_column(String)
-    description: Mapped[str | None] = mapped_column(String)
+    file_url: Mapped[str] = mapped_column(String(2048))  # LOW-W19: bounded String
+    description: Mapped[str | None] = mapped_column(
+        String(2048)
+    )  # LOW-W19: bounded String
 
     def __repr__(self) -> str:
         return (

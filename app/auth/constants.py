@@ -7,6 +7,9 @@ MFA_METHOD_RECOVERY_CODE: Final = "recovery_code"
 CHALLENGE_TYPE_TOTP_ENROLL = "totp-enroll"
 CHALLENGE_TYPE_TOTP_VERIFY = "totp-verify"
 CHALLENGE_TYPE_TOTP_AUTH = "totp-auth"
+# LOW-W19: WEBAUTHN_REG/AUTH constants are consumed by app/services/webauthn.py,
+# not by a separate auth submodule.  They live here to keep all MFA method
+# constants co-located and importable from a single place.
 CHALLENGE_TYPE_WEBAUTHN_REG = "webauthn-registration"
 CHALLENGE_TYPE_WEBAUTHN_AUTH = "webauthn-authentication"
 CHALLENGE_TYPE_RECOVERY_CODE = "recovery_code"

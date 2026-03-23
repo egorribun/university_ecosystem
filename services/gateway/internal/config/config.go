@@ -93,6 +93,26 @@ func getEnvInt(key string, defaultValue int) int {
 	return val
 }
 
+// getEnvFloat parses an environment variable as a float64.
+// FIX-FLOAT-01: Uses strconv.ParseFloat instead of fmt.Sscan. fmt.Sscan
+// performs a partial parse — it accepts values like "10abc" and silently
+// returns 10.0, ignoring the trailing garbage. strconv.ParseFloat rejects
+// any input that is not a valid floating-point literal, preventing
+// misconfigured env vars from being silently truncated.
+func getEnvFloat(key string, defaultValue float64) float64 {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultValue
+	}
+	val, err := strconv.ParseFloat(valStr, 64)
+	if err != nil {
+		slog.Warn("invalid float env var, using default",
+			"key", key, "value", valStr, "default", defaultValue)
+		return defaultValue
+	}
+	return val
+}
+
 func getEnvSlice(key string, defaultValue []string) []string {
 	valStr := os.Getenv(key)
 	if valStr == "" {

@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
@@ -15,7 +15,10 @@ def compute_etag(content: bytes | str) -> str:
     """Compute ETag from response content."""
     if isinstance(content, str):
         content = content.encode("utf-8")
-    return hashlib.sha256(content).hexdigest()
+    # LOW-W19: Truncate SHA-256 digest to 32 hex chars (128 bits of entropy).
+    # The full 64-char hex provides no practical collision-resistance benefit
+    # for ETags; 32 chars are more than sufficient and halve header size.
+    return hashlib.sha256(content).hexdigest()[:32]
 
 
 def format_etag(etag: str) -> str:
@@ -29,7 +32,18 @@ def format_etag(etag: str) -> str:
 
 
 def parse_if_none_match(header_value: str | None) -> list[str]:
-    """Parse If-None-Match header into list of ETags."""
+    """Parse If-None-Match header into list of ETags.
+
+    Per RFC 7232 §2.3, If-None-Match uses *weak* comparison: a weak ETag
+    (W/"<opaque-tag>") matches a strong ETag with the same opaque-tag value.
+    We therefore strip the ``W/`` prefix and add the bare opaque value so that
+    ``etag_matches()`` can compare it against the strong ETag we generate.
+
+    LOW-W19: Previous code silently dropped weak ETags whose quoted value was
+    not immediately adjacent to ``W/`` (e.g. ``W/ "abc"``).  The strip() call
+    now handles optional whitespace between ``W/`` and the quoted string, as
+    permitted by RFC 7230 list rules.
+    """
     if not header_value:
         return []
     etags = []
@@ -37,11 +51,14 @@ def parse_if_none_match(header_value: str | None) -> list[str]:
         tag = part.strip()
         if tag == "*":
             etags.append("*")
-        elif tag.startswith("W/"):
-            tag = tag[2:].strip()
-            if tag.startswith('"') and tag.endswith('"'):
-                etags.append(tag[1:-1])
-        elif tag.startswith('"') and tag.endswith('"'):
+        elif tag.upper().startswith("W/"):
+            # LOW-W19: RFC 7232 §2.1 — strip W/ prefix and optional whitespace,
+            # then extract the opaque-tag from the surrounding quotes so it can
+            # be compared with the strong ETag value we produce.
+            inner = tag[2:].strip()
+            if inner.startswith('"') and inner.endswith('"') and len(inner) >= 2:
+                etags.append(inner[1:-1])
+        elif tag.startswith('"') and tag.endswith('"') and len(tag) >= 2:
             etags.append(tag[1:-1])
     return etags
 
@@ -92,16 +109,15 @@ class ETagMiddleware(BaseHTTPMiddleware):
         if "application/json" not in content_type:
             return response
 
+        # PERF-W19-09: skip ETag computation for StreamingResponse to avoid
+        # buffering the entire stream in memory.
+        if isinstance(response, StreamingResponse):
+            return response
+
         # Read response body
         body = b""
         if hasattr(response, "body"):
             body = cast(Any, response).body
-        elif isinstance(response, StreamingResponse):
-            async for chunk in response.body_iterator:
-                if isinstance(chunk, str):
-                    body += chunk.encode()
-                else:
-                    body += chunk
         else:
             return response
 
@@ -163,8 +179,13 @@ def conditional_response(
             headers={"ETag": formatted_etag},
         )
 
-    return JSONResponse(
-        content=orjson.loads(body),
+    # LOW-W19: Return pre-serialised bytes directly instead of passing the
+    # Python object to JSONResponse, which would call json.dumps() a second
+    # time (double serialization).  Using Response with the raw bytes and the
+    # correct media_type avoids the redundant encode/decode round-trip.
+    return Response(
+        content=body,
         status_code=status_code,
+        media_type="application/json",
         headers={"ETag": formatted_etag},
     )

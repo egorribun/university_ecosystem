@@ -126,7 +126,7 @@ spec:
             containers:
               - securityContext:
                   capabilities:
-                    drop: "?*"  # at least one entry; enforce "ALL" via OPA if needed
+                    drop: ["ALL"]
 
 ---
 # Policy 4: Require seccomp profile RuntimeDefault or Localhost.

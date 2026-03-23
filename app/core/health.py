@@ -63,11 +63,15 @@ async def check_database_health(db: AsyncSession) -> DatabaseHealthResult:
         latency_ms = (time.perf_counter() - start_time) * 1000.0
 
         # Get pool stats if available
+        # HIGH-W19: db.get_bind() was removed in SQLAlchemy 2.0; read pool stats
+        # directly from the engine obtained via get_read_engine() instead.
         pool_size = None
         pool_checked_out = None
         try:
-            bind = db.get_bind()
-            pool = getattr(bind, "pool", None)
+            from app.core.database import get_read_engine
+
+            engine = get_read_engine()
+            pool = getattr(engine, "pool", None)
             if pool is not None:
                 pool_size = pool.size()
                 pool_checked_out = pool.checkedout()
@@ -113,8 +117,15 @@ async def check_database_connectivity(
     Returns True if database is reachable, False otherwise.
     """
     try:
-        await db.execute(text("SELECT 1"))
+        # HIGH-W19: enforce the caller-supplied timeout instead of ignoring it
+        await asyncio.wait_for(
+            db.execute(text("SELECT 1")),
+            timeout=timeout_ms / 1000,
+        )
         return True
+    except TimeoutError:
+        logger.warning("Database connectivity check timed out after %.0fms", timeout_ms)
+        return False
     except Exception as e:
         logger.warning("Database connectivity check failed: %s", e)
         return False

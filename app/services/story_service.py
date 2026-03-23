@@ -75,8 +75,8 @@ class StoryService:
         story = await self.repo.get(story_id)
         if not story:
             raise ValueError("story_not_found")
-
-        assert story is not None  # nosec B101
+        # LOW-W19: removed `assert story is not None` — it is dead code because
+        # the `raise` on the line above unconditionally exits when story is falsy.
 
         old_cover = story.cover_url
 
@@ -88,19 +88,23 @@ class StoryService:
             updates["expires_at"] = self.repo._ensure_utc(updates["expires_at"])
 
         updated_story = await self.repo.update(story.id, updates)
-        assert updated_story is not None  # nosec B101
+        assert updated_story is not None  # nosec B101  # noqa: S101
 
-        # Cleanup old cover if changed
+        async with self.uow:
+            await self.uow.commit()
+
+        # LOW-W19: old cover deletion moved to AFTER commit.  Deleting the
+        # file before commit means a subsequent DB rollback would leave the
+        # cover permanently lost.  Deleting after commit is safe — if the
+        # delete_static_file call fails the new cover is already persisted and
+        # the old file can be cleaned up by a scheduled sweep.
         if old_cover and updated_story.cover_url != old_cover:
             try:
                 await delete_static_file(str(old_cover))
             except Exception as exc:
-                # Log but don't fail, similar to API logic
+                # Log but don't fail — stale files are cleaned by scheduled sweep.
                 _logger.debug("Failed to delete old story cover: %s", exc)  # nosec B110
-                pass
 
-        async with self.uow:
-            await self.uow.commit()
         return updated_story
 
     async def delete_story(self, story_id: uuid.UUID) -> bool:

@@ -456,7 +456,7 @@ def _hash_token(token: str) -> str:
                 "TOKEN_HMAC_SECRET must be set explicitly in production/staging. "
                 "Falling back to secret_key couples JWT rotation to token invalidation."
             )
-        # Development/testing only — emit a loud warning so engineers notice.
+        # LOW-W19: Development/testing only — emit a loud warning so engineers notice.
         logger.warning(
             "TOKEN_HMAC_SECRET is unset — falling back to secret_key (DEV/TESTING ONLY). "
             "Set TOKEN_HMAC_SECRET before deploying to staging or production."

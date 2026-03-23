@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, exists, func, select
 
 from app.core.database import Base
 
@@ -59,9 +59,11 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         return self._to_dto(obj) if obj else None
 
     async def get_or_raise(self, id: Any, *, with_for_update: bool = False) -> DTOT:
+        # LOW-W19: do not leak model name or id value into exception message —
+        # both are internal details that must not reach API error responses.
         dto = await self.get(id, with_for_update=with_for_update)
         if dto is None:
-            raise ValueError(f"{self.model.__name__} with id {id} not found")
+            raise ValueError("Resource not found")
         return dto
 
     async def get_by_ids(
@@ -83,6 +85,8 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
     # _MAX_LIMIT=200 in pagination.py and _MAX_PAGE_SIZE in user_repository.py.
     _LIST_MAX_LIMIT: int = 200
 
+    # LOW-W19: OFFSET pagination is O(N) on the database; prefer list_after()
+    # which uses keyset (cursor) pagination for O(log N) performance.
     async def list(
         self, *, skip: int = 0, limit: int = 100, order_by: Any = None
     ) -> Sequence[DTOT]:
@@ -148,12 +152,13 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         return result.scalar() or 0
 
     async def exists(self, id: Any) -> bool:
+        # PERF-W19-05: use EXISTS instead of COUNT(*) — short-circuits at first row
         target_id = self._cast_id(id)
-        stmt = (
-            select(func.count()).where(self.model.id == target_id)  # type: ignore[attr-defined]
+        stmt = select(
+            exists().where(self.model.id == target_id)  # type: ignore[attr-defined]
         )
         result = await self.db.execute(stmt)
-        return (result.scalar() or 0) > 0
+        return bool(result.scalar())
 
     def _cast_id(self, id_val: Any) -> uuid.UUID | Any:
         """Cast a string ID to UUID, raising ValueError on unrecognised formats.
@@ -193,7 +198,7 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         Example::
 
             safe = self._escape_like(user_input)
-            stmt = stmt.where(Column.ilike(f"%{safe}%", escape="\\\\"))
+            stmt = stmt.where(Column.ilike(f"%{safe}%", escape="\\"))  # LOW-W19: single backslash
         """
         # Order matters: escape the escape character first
         for ch in (escape_char, "%", "_"):

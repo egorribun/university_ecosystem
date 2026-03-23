@@ -71,7 +71,20 @@ _room_semaphores: dict[str, asyncio.Semaphore] = {}
 _room_semaphores_lock: asyncio.Lock | None = None  # Lazy: created inside event loop
 
 # Presence fan-out: separate semaphore, not per-room.
-_PRESENCE_SEMAPHORE: asyncio.Semaphore = asyncio.Semaphore(20)
+# LOW-W19: asyncio.Semaphore must be created inside a running event loop.
+# Module-level instantiation breaks when the module is imported outside of an
+# async context (e.g. CLI scripts, pytest collection) on Python 3.10+.
+# Use lazy init: the sentinel is None; _get_presence_semaphore() creates it on
+# first call from inside a running loop (i.e. a live request or test coroutine).
+_PRESENCE_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _get_presence_semaphore() -> asyncio.Semaphore:
+    """Return (or lazily create) the presence fan-out semaphore."""
+    global _PRESENCE_SEMAPHORE
+    if _PRESENCE_SEMAPHORE is None:
+        _PRESENCE_SEMAPHORE = asyncio.Semaphore(20)
+    return _PRESENCE_SEMAPHORE
 
 
 def _get_room_semaphores_lock() -> asyncio.Lock:
@@ -397,7 +410,7 @@ class ConnectionManager:
             return 0
 
         async def _throttled_presence_send(uid: uuid.UUID) -> int:
-            async with _PRESENCE_SEMAPHORE:
+            async with _get_presence_semaphore():
                 return await self.send_to_user(uid, payload)
 
         results = await asyncio.gather(

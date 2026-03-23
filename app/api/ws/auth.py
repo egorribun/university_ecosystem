@@ -155,6 +155,13 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
     from app.api.ws.ticket import TICKET_KEY_PREFIX
 
     try:
+        # RZ-W19-07 (audit 2026-03-24 Wave 19): validate ticket is exactly 64
+        # lowercase hex chars before hitting Redis. Matches Go ws-hub's
+        # validateUpgradeTicket() charset check (Wave 16).
+        if len(ticket) != 64 or not all(c in "0123456789abcdef" for c in ticket):
+            logger.warning("WS ticket rejected: invalid format (len=%d)", len(ticket))
+            return None, None
+
         from app.deps.cache import get_cache_client
 
         redis = await get_cache_client()
@@ -176,11 +183,15 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
         #   sep == last → empty jti       ("user-id:")
         sep = raw.find(":")
         if sep <= 0 or sep == len(raw) - 1:
+            # RZ-W19-04 (audit 2026-03-24 Wave 19): truncate to 4 chars max to
+            # prevent creating an oracle for brute-forcing valid tickets.
+            # Previously %.8s could reveal most of a short ticket.
+            safe_prefix = ticket[:4] if len(ticket) > 4 else "***"
             logger.warning(
-                "WS ticket has malformed payload (sep=%d len=%d): %.8s…",
+                "WS ticket has malformed payload (sep=%d len=%d): %s…",
                 sep,
                 len(raw),
-                ticket,
+                safe_prefix,
             )
             return None, None
 

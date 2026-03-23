@@ -152,7 +152,9 @@ async def invalidate_schedule_cache(group_id: int) -> None:
     cache = get_cache()
     key = schedule_cache_key(group_id)
     await cache.invalidate(key)
-    logger.debug(f"Invalidated schedule cache for group {group_id}")
+    logger.debug(
+        "Invalidated schedule cache for group %s", group_id
+    )  # LOW-W19: lazy logging
 
 
 async def invalidate_user_cache(user_id: int) -> None:
@@ -160,7 +162,7 @@ async def invalidate_user_cache(user_id: int) -> None:
     cache = get_cache()
     key = user_cache_key(user_id)
     await cache.invalidate(key)
-    logger.debug(f"Invalidated user cache for user {user_id}")
+    logger.debug("Invalidated user cache for user %s", user_id)  # LOW-W19: lazy logging
 
 
 async def invalidate_event_cache(event_id: int) -> None:
@@ -170,7 +172,9 @@ async def invalidate_event_cache(event_id: int) -> None:
         event_cache_key(event_id),
         events_list_cache_key(),
     )
-    logger.debug(f"Invalidated event cache for event {event_id}")
+    logger.debug(
+        "Invalidated event cache for event %s", event_id
+    )  # LOW-W19: lazy logging
 
 
 async def invalidate_news_cache(news_id: int) -> None:
@@ -180,7 +184,7 @@ async def invalidate_news_cache(news_id: int) -> None:
         news_cache_key(news_id),
         news_list_cache_key(),
     )
-    logger.debug(f"Invalidated news cache for news {news_id}")
+    logger.debug("Invalidated news cache for news %s", news_id)  # LOW-W19: lazy logging
 
 
 async def invalidate_groups_cache() -> None:
@@ -196,12 +200,18 @@ async def invalidate_all_schedules() -> None:
 
     Note: This requires Redis SCAN which is not ideal for production.
     Consider using a more targeted approach or Redis keyspace notifications.
+
+    LOW-W19: This function is not yet implemented.  Callers should use
+    ``invalidate_by_tag(CacheTag.SCHEDULE)`` (tag-based invalidation via a
+    Redis SET index) or call ``invalidate_schedule_cache(group_id)`` for a
+    specific group.  Implementing a full keyspace SCAN here would introduce
+    O(keyspace) latency spikes in production.
     """
-    get_cache()
-    # For now, we can't easily invalidate all keys with a prefix
-    # This would require SCAN command support in the cache layer
-    logger.warning(
-        "invalidate_all_schedules called but pattern deletion not implemented"
+    # LOW-W19: dead code guard — raise so callers discover the gap at
+    # development/test time rather than silently doing nothing in production.
+    raise NotImplementedError(
+        "invalidate_all_schedules is not implemented. "
+        "Use invalidate_by_tag(CacheTag.SCHEDULE) or invalidate_schedule_cache(group_id) instead."
     )
 
 
@@ -246,7 +256,7 @@ class CacheInvalidator:
         await cache.invalidate(*unique_keys)
         count = len(unique_keys)
         self._keys.clear()
-        logger.debug(f"Invalidated {count} cache keys")
+        logger.debug("Invalidated %s cache keys", count)  # LOW-W19: lazy logging
         return count
 
     async def __aenter__(self) -> CacheInvalidator:

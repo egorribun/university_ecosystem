@@ -23,6 +23,28 @@ class Middleware(Protocol):
     ) -> Any: ...
 
 
+# LOW-W19: DRY — extracted shared middleware chain builder used by both buses.
+# Defined after Middleware Protocol to avoid a forward reference.
+def _build_chain(
+    middleware: Sequence[Middleware],
+    handler: Callable[[Any], Any],
+) -> Callable[[Any], Any]:
+    """Wrap *handler* in the middleware stack, outermost first."""
+    chain: Callable[[Any], Any] = handler
+    for m in reversed(middleware):
+
+        def wrap(
+            current_m: Middleware, next_h: Callable[[Any], Any]
+        ) -> Callable[[Any], Any]:
+            async def _wrapper(msg: Any) -> Any:
+                return await current_m(msg, next_h)
+
+            return _wrapper
+
+        chain = wrap(m, chain)
+    return chain
+
+
 class LoggingMiddleware:
     """Standard middleware for logging CQRS operations."""
 
@@ -33,13 +55,13 @@ class LoggingMiddleware:
     ) -> Any:
         msg_type = "Command" if isinstance(message, Command) else "Query"
         name = type(message).__name__
-        logger.debug(f"Executing {msg_type}: {name}")
+        logger.debug("Executing %s: %s", msg_type, name)  # LOW-W19: lazy logging
         try:
             result = await next_handler(message)
-            logger.debug(f"Finished {msg_type}: {name}")
+            logger.debug("Finished %s: %s", msg_type, name)
             return result
         except Exception as e:
-            logger.error(f"Error executing {msg_type} {name}: {e}", exc_info=True)
+            logger.error("Error executing %s %s: %s", msg_type, name, e, exc_info=True)
             raise
 
 
@@ -72,20 +94,8 @@ class QueryBus:
             handler = await self._container.get(handler_type)
             return await handler.handle(msg)
 
-        # Build middleware chain
-        chain: Callable[[Any], Any] = _handle
-        for m in reversed(self._middleware):
-
-            def wrap(
-                current_m: Middleware, next_h: Callable[[Any], Any]
-            ) -> Callable[[Any], Any]:
-                async def _wrapper(msg: Any) -> Any:
-                    return await current_m(msg, next_h)
-
-                return _wrapper
-
-            chain = wrap(m, chain)
-
+        # LOW-W19: middleware chain construction delegated to shared _build_chain helper
+        chain = _build_chain(self._middleware, _handle)
         return await chain(query)
 
 
@@ -120,18 +130,6 @@ class CommandBus:
             handler = await self._container.get(handler_type)
             return await handler.handle(msg)
 
-        # Build middleware chain
-        chain: Callable[[Any], Any] = _handle
-        for m in reversed(self._middleware):
-
-            def wrap(
-                current_m: Middleware, next_h: Callable[[Any], Any]
-            ) -> Callable[[Any], Any]:
-                async def _wrapper(msg: Any) -> Any:
-                    return await current_m(msg, next_h)
-
-                return _wrapper
-
-            chain = wrap(m, chain)
-
+        # LOW-W19: middleware chain construction delegated to shared _build_chain helper
+        chain = _build_chain(self._middleware, _handle)
         return await chain(command)

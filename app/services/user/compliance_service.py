@@ -193,7 +193,7 @@ class UserComplianceService:
             await self.uow.commit()
         # Refresh to get anonymized email
         updated_user = await self.repo.get(user_identity)
-        assert updated_user is not None  # nosec B101
+        assert updated_user is not None  # nosec B101  # noqa: S101
         return schemas.DataDeletionOut(
             deleted=True, anonymized_email=updated_user.email
         )
@@ -238,6 +238,13 @@ class UserComplianceService:
             }
         )
         try:
+            # LOW-W19: The invite code is marked as used inside
+            # ``repo.create_with_invite()``.  That method sets
+            # ``code_obj.is_used = True`` (and optionally ``used_by``) within
+            # the same DB transaction as the new user row, so the mark-as-used
+            # is atomic with user creation.  Do NOT move this logic here —
+            # marking the code used before the user row is written would allow
+            # a race window where the code is consumed but no user is created.
             db_user = await self.repo.create_with_invite(user_data, code)
             async with self.uow:
                 await self.uow.commit()
@@ -261,14 +268,16 @@ class UserComplianceService:
         request: Request,
         current_user: UserLike,
     ) -> UserDTO:
-        if getattr(current_user, "role", None) != "admin":
+        # RZ-W19-06 (audit 2026-03-24 Wave 19): use UserRole enum instead of
+        # hardcoded string literals for role comparison.
+        if getattr(current_user, "role", None) != UserRole.ADMIN:
             raise PermissionDenied()
 
         if data.invite_code:
             code_obj = await self.repo.get_invite_code(data.invite_code)
             if not code_obj:
                 raise BusinessRuleViolation("errors.users.invalid_invite_code")
-        elif data.role in ["teacher"]:
+        elif data.role in [UserRole.TEACHER]:
             raise BusinessRuleViolation("errors.users.invite_code_required")
 
         if settings.password_hibp_check_enabled:

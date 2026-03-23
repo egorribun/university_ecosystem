@@ -44,8 +44,10 @@ class GeolocationService:
                 # Initialize MaxMind DB from memory buffer
                 self.reader = maxminddb.Reader(buffer, mode=maxminddb.MODE_MEMORY)
             except Exception as e:
-                logger.warning(
-                    f"GeoIP database not found or invalid at {self.db_path}: {e}"
+                logger.warning(  # LOW-W19: lazy logging
+                    "GeoIP database not found or invalid at %s: %s",
+                    self.db_path,
+                    e,
                 )
 
             self._initialized = True
@@ -76,7 +78,9 @@ class GeolocationService:
         except ValueError:
             return LocationInfo()
         except Exception as e:
-            logger.error(f"Error resolving IP {ip_address}: {e}")
+            logger.error(
+                "Error resolving IP %s: %s", ip_address, e
+            )  # LOW-W19: lazy logging
             return LocationInfo()
 
     def close(self) -> None:

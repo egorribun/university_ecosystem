@@ -45,7 +45,9 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
         except asyncio.CancelledError:
             break
         except Exception as e:
-            logger.error(f"Error in memory rate limit cleanup task: {e}")
+            logger.error(
+                "Error in memory rate limit cleanup task: %s", e
+            )  # LOW-W19: lazy logging
 
 
 def start_memory_cleanup_task(interval_seconds: int = 300) -> None:

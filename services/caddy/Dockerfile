@@ -15,7 +15,8 @@ FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064
 RUN apk add --no-cache git
 
 # Install xcaddy — the official Caddy plugin build tool.
-RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+# LOW-W19: pin xcaddy to a specific release tag for supply-chain safety
+RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.4
 
 # Build Caddy with the rate-limit plugin.
 # Pin the plugin to a specific commit tag for supply-chain safety.

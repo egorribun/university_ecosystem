@@ -216,8 +216,32 @@ async def generate_schedule_reminders(
     """Generate schedule reminder notifications for upcoming lessons."""
     now = dt.datetime.now(UTC)
     soon = now + dt.timedelta(minutes=window_minutes)
+    # HIGH-W19: add weekday and week-parity filters so reminders are only sent for
+    # lessons that actually occur today; without this every stored schedule row
+    # whose start_time falls in the window triggers a notification regardless of
+    # whether the lesson recurs on the current day-of-week or week parity.
+    current_weekday_name = now.strftime("%A").lower()  # e.g. "monday"
+    current_weekday_int = now.weekday()  # 0=Monday … 6=Sunday
+    # ISO week number: odd → "odd" / "нечет", even → "even" / "чет"
+    current_week_number = now.isocalendar()[1]
+    current_parity = "odd" if current_week_number % 2 != 0 else "even"
+
+    weekday_filter = (Schedule.weekday == current_weekday_name) | (
+        Schedule.weekday == str(current_weekday_int)
+    )
+    parity_filter = (
+        Schedule.parity.is_(None)
+        | (Schedule.parity == "")
+        | (Schedule.parity == current_parity)
+        | (Schedule.parity == "both")
+    )
     q = select(Schedule).where(
-        and_(Schedule.start_time >= now, Schedule.start_time <= soon)
+        and_(
+            Schedule.start_time >= now,
+            Schedule.start_time <= soon,
+            weekday_filter,
+            parity_filter,
+        )
     )
     schedules = (await db.execute(q)).scalars().all()
     if not schedules:

@@ -25,6 +25,7 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
+from app.models.enums import UserRole
 from app.models.models import PushSubscription, User, UserPushTopic
 from app.schemas.notifications import (
     AdminUserTopicsResponse,
@@ -546,7 +547,7 @@ async def send_test(
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
+    if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -679,7 +680,7 @@ async def admin_get_user_topics(
     user: Annotated[User, Depends(get_current_user)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
+    if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -723,7 +724,7 @@ async def admin_update_user_topics(
     user: Annotated[User, Depends(get_current_user)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
+    if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -773,7 +774,7 @@ async def disable_user_push(
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, int | bool]:
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
+    if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -826,8 +827,15 @@ async def broadcast(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> SendTestResponse:
+    # RZ-W19-18: rate limit broadcast — max 5 per hour to prevent DB/WebPush saturation
+    await enforce_rate_limit(
+        strategy=get_default_strategy(),
+        identifier=f"push:broadcast:{user.id}",
+        limit=5,
+        window_seconds=3600,
+    )
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
+    if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

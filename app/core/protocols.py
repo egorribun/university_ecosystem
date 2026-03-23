@@ -20,7 +20,15 @@ class HasID(Protocol):
 def extract_user_id(user: UserLike) -> uuid.UUID:
     """Safely extracts a UUID from any UserLike object for strict type compliance."""
     if isinstance(user, str):
-        return uuid.UUID(user)
+        # LOW-W19: Wrap uuid.UUID() construction so callers receive a clear
+        # ValueError with context rather than the bare "badly formed hexadecimal
+        # UUID string" message from the uuid module.
+        try:
+            return uuid.UUID(user)
+        except (ValueError, AttributeError) as exc:
+            raise ValueError(
+                f"extract_user_id: {user!r} is not a valid UUID string"
+            ) from exc
     if isinstance(user, uuid.UUID):
         return user
     return user.id

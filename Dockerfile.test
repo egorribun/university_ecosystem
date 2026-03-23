@@ -22,6 +22,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 ENV PATH="/root/.cargo/bin:$PATH"
 
 # Install uv
+# LOW-W19: pin to same version used in CI (reusable-backend-tests uses setup-uv v7.6.0)
+# Use --locked flag on uv sync to enforce lockfile consistency regardless of uv version
 COPY --from=ghcr.io/astral-sh/uv:0.5.21 /uv /uv/bin/uv
 ENV PATH="/uv/bin:$PATH"
 
@@ -34,9 +36,10 @@ COPY crates/pyo3-sanitizer/src crates/pyo3-sanitizer/src
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies into virtualenv (builds Rust extensions via maturin)
+# LOW-W19: --locked enforces lockfile integrity, matching CI behaviour
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cargo/registry \
-    uv sync --frozen
+    uv sync --frozen --locked
 
 COPY . .
 RUN chown -R app:app /app

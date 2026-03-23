@@ -10,6 +10,12 @@ from app.utils.files import _get_storage_backend
 
 router = APIRouter(tags=["images"])
 
+# LOW-W19: moved from inside the handler body to module level so the tuple is
+# constructed once at import time rather than on every image request.
+# TD-W5-05: User-generated content (avatars, uploads) must use a short TTL so
+# GDPR deletion requests are honoured within a reasonable window.
+_USER_CONTENT_PREFIXES = ("avatars/", "users/", "uploads/", "profile/")
+
 
 @router.get(
     "/img/{path:path}",
@@ -72,10 +78,7 @@ async def proxy_image(
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag})
 
-        # TD-W5-05: User-generated content (avatars, uploads) must use a short
-        # TTL so GDPR deletion requests are honoured within a reasonable window.
         # Static/system assets (no user PII) can keep the long immutable TTL.
-        _USER_CONTENT_PREFIXES = ("avatars/", "users/", "uploads/", "profile/")
         is_user_content = normalized_path.startswith(_USER_CONTENT_PREFIXES)
         if is_user_content:
             cache_control = "private, max-age=86400"  # 1 day — GDPR-safe

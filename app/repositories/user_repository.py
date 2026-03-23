@@ -293,6 +293,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         stmt = (
             select(models.ActiveSession)
             .where(models.ActiveSession.user_id == user_id)
+            .where(
+                models.ActiveSession.revoked_at.is_(None)
+            )  # MED-W19: exclude revoked sessions
             .limit(limit)
             .order_by(models.ActiveSession.created_at.desc())
         )
@@ -368,14 +371,17 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
     async def check_email_exists(
         self, email: str, exclude_user_id: uuid.UUID | str | None = None
     ) -> bool:
-        stmt = select(exists().where(func.lower(User.email) == email.lower()))
+        # RZ-W19-13: build the EXISTS subquery with both conditions INSIDE the exists()
+        # Previously, exclude_user_id filter was applied to the outer SELECT (silently dropped)
+        conditions = [func.lower(User.email) == email.lower()]
         if exclude_user_id:
             if isinstance(exclude_user_id, str):
                 try:
                     exclude_user_id = uuid.UUID(exclude_user_id)
                 except ValueError:
                     return False
-            stmt = stmt.where(User.id != exclude_user_id)
+            conditions.append(User.id != exclude_user_id)
+        stmt = select(exists().where(*conditions))
         result = await self.db.execute(stmt)
         return bool(result.scalar())
 

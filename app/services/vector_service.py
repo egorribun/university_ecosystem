@@ -12,6 +12,24 @@ from app.core.ssrf import validate_url_not_internal
 
 logger = get_logger(__name__)
 
+# LOW-W19: metric counter for embedding failures.
+# Tracks the number of times get_embedding() falls back to the zero vector
+# so that observability tooling (Prometheus, Datadog, etc.) can alert when
+# the embedding service is degraded.  Uses a simple in-process counter as a
+# lightweight default; replace with a Prometheus Counter or OTLP metric in
+# environments where a metrics exporter is configured.
+_embedding_failure_count: int = 0
+
+
+def _inc_embedding_failure() -> None:
+    """Increment the embedding-failure counter and log the running total."""
+    global _embedding_failure_count
+    _embedding_failure_count += 1
+    logger.warning(
+        "Embedding fallback to zero vector (total failures this process: %d)",
+        _embedding_failure_count,
+    )
+
 
 class VectorService:
     """Service for handling embeddings and semantic search."""
@@ -48,6 +66,7 @@ class VectorService:
             return cast("list[float]", data["data"][0]["embedding"])
         except Exception:
             logger.exception("Failed to fetch embedding")
+            _inc_embedding_failure()  # LOW-W19: count silent fallbacks
             return [0.0] * settings.embedding_dimensions
 
     async def search_similar_with_scores(
@@ -91,3 +110,11 @@ class VectorService:
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    # MED-W19: expose as async context manager so callers can guarantee the
+    # underlying httpx.AsyncClient is closed even on exception paths.
+    async def __aenter__(self) -> VectorService:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()

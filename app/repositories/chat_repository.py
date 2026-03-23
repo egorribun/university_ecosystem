@@ -40,6 +40,9 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         no explicit cleanup required.  Must be called inside an open
         transaction before any query that touches ``messages``.
         """
+        # HIGH-W19: SET LOCAL is only valid inside an active transaction;
+        # outside one it would silently apply for the rest of the session
+        assert self.db.in_transaction(), "SET LOCAL requires an active transaction"  # noqa: S101
         await self.db.execute(
             text("SET LOCAL app.current_user_id = :uid"),
             {"uid": str(user_id)},
@@ -343,10 +346,14 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         """
         if not message_ids:
             return 0
-        count = len(message_ids)
         stmt = delete(Message).where(Message.id.in_(message_ids))
-        await self.db.execute(stmt)
-        return count
+        result = await self.db.execute(stmt)
+        # LOW-W19: use actual rowcount from the driver rather than input length —
+        # some rows may have been deleted by a concurrent request.
+        rc = getattr(result, "rowcount", 0) or 0
+        if rc < 0:
+            rc = 0
+        return int(rc)
 
     async def delete_chat(self, chat_id: uuid.UUID) -> None:
         """

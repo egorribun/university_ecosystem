@@ -19,7 +19,10 @@ class SessionBackend(ABC):
     @abstractmethod
     async def register_session(
         self,
-        user_id: int,
+        # LOW-W19: user_id is typed int | str because the rest of the codebase
+        # uses UUID strings (str) as primary keys; int is kept for backwards
+        # compatibility with any legacy integer-keyed callers.
+        user_id: int | str,
         jti: str,
         expires_at: datetime,
         metadata: dict[str, Any] | None = None,
@@ -42,7 +45,7 @@ class RedisSessionBackend(SessionBackend):
 
     async def register_session(
         self,
-        user_id: int,
+        user_id: int | str,
         jti: str,
         expires_at: datetime,
         metadata: dict[str, Any] | None = None,
@@ -66,16 +69,30 @@ class RedisSessionBackend(SessionBackend):
 
     async def revoke_session(self, jti: str) -> None:
         key = f"{self._prefix}{jti}"
-        # P0-W5-03: Write the gateway's revocation blocklist key BEFORE deleting the
-        # session, using the session's remaining TTL so the blocklist entry expires
-        # at the same time the JWT would have expired naturally.
-        remaining_ttl = await self._redis.ttl(key)  # -2 = not found, -1 = no TTL
-        await self._redis.delete(key)
-        if remaining_ttl > 0:
-            revoked_key = f"revoked:jti:{jti}"
-            await self._redis.set(revoked_key, "1", ex=remaining_ttl)
+        revoked_key = f"revoked:jti:{jti}"
+        # RZ-W19-12: atomize TTL-read + delete + revoked-key-write via Lua script
+        # to close the TOCTOU race window where a revoked session appears valid.
+        lua_script = """
+        local ttl = redis.call('TTL', KEYS[1])
+        redis.call('DEL', KEYS[1])
+        if ttl > 0 then
+            redis.call('SET', KEYS[2], '1', 'EX', ttl)
+        end
+        return ttl
+        """
+        try:
+            await self._redis.eval(lua_script, 2, key, revoked_key)  # type: ignore[no-untyped-call]
+        except Exception:
+            # Fallback to non-atomic if Lua is unavailable (e.g. Redis Cluster scripting off)
+            remaining_ttl = await self._redis.ttl(key)
+            await self._redis.delete(key)
+            if remaining_ttl > 0:
+                await self._redis.set(revoked_key, "1", ex=remaining_ttl)
         # Notify Gateway to invalidate its L1 cache
-        await self._redis.publish("session:revocations", jti)
+        try:
+            await self._redis.publish("session:revocations", jti)
+        except Exception:
+            logger.warning("Failed to publish session revocation for jti=%s", jti)
 
 
 async def get_session_backend() -> SessionBackend:
@@ -86,10 +103,23 @@ async def get_session_backend() -> SessionBackend:
             return RedisSessionBackend(client)
 
     class NullSessionBackend(SessionBackend):
+        # LOW-W19: tracks whether the first-use warning has been emitted
+        # so we don't flood logs on every is_session_valid call.
+        _warned: bool = False
+
         async def register_session(self, *args: Any, **kwargs: Any) -> None:
             pass
 
         async def is_session_valid(self, jti: str) -> bool:
+            # LOW-W19: NullSessionBackend always returns True, which means
+            # revoked tokens are never rejected.  Warn once so operators know
+            # session validation is effectively disabled in this environment.
+            if not NullSessionBackend._warned:
+                NullSessionBackend._warned = True
+                logger.warning(
+                    "NullSessionBackend in use — is_session_valid always returns True; "
+                    "session revocation is disabled.  Configure a Redis backend in production."
+                )
             return True
 
         async def revoke_session(self, jti: str) -> None:

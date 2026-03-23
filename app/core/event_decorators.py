@@ -98,10 +98,15 @@ def register_decorated_handlers(bus: EventBus) -> int:
         if isinstance(event_type, type):
             # Create a temporary instance to get event_type
             # This works because event_type is a property
+            # LOW-W19: Broaden the except to catch any exception that can arise
+            # from constructing an event class (TypeError for missing required
+            # args, ValueError/AttributeError for badly configured classes, etc.)
+            # so the registration loop never aborts mid-way.
             try:
                 type_str = event_type().event_type
-            except TypeError:
-                # If instantiation requires args, use class name
+            except Exception:
+                # Fall back to the fully-qualified class name so the
+                # subscription is still registered under a deterministic key.
                 type_str = f"{event_type.__module__}.{event_type.__name__}"
         else:
             type_str = event_type

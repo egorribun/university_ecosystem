@@ -26,6 +26,11 @@ def _get_allowed_ws_origins() -> frozenset[str]:
     return frozenset([origin]) if origin else frozenset()
 
 
+# LOW-W19: _ALLOWED_WS_ORIGINS is intentionally computed once at import time.
+# settings.frontend_url is read from the environment before the first request
+# and never changes at runtime, so eager evaluation is safe and avoids the
+# per-request overhead of re-reading the setting.  If dynamic reconfiguration
+# is ever needed, replace this with a lazy call inside authenticate_upgrade().
 _ALLOWED_WS_ORIGINS: frozenset[str] = _get_allowed_ws_origins()
 
 

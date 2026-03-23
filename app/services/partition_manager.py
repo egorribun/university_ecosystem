@@ -39,8 +39,10 @@ async def ensure_partitions_exist() -> None:
                     start_date_iso = info.start_date
                     end_date_iso = info.end_date
 
-                    logger.debug(
-                        f"Ensuring partition {partition_name} exists for table {table}"
+                    logger.debug(  # LOW-W19: lazy logging
+                        "Ensuring partition %s exists for table %s",
+                        partition_name,
+                        table,
                     )
 
                     # RZ-2 Fix (audit 2026-03-12): Safely handle identifiers and literals
@@ -69,7 +71,9 @@ async def ensure_partitions_exist() -> None:
                     )
                     await conn.commit()
                 except Exception as e:
-                    logger.error(f"Failed to create partition: {e}")
+                    logger.error(
+                        "Failed to create partition: %s", e
+                    )  # LOW-W19: lazy logging
 
         # 2. Prune old partitions
         retention_days = settings.partition_retention_days
@@ -92,13 +96,17 @@ async def ensure_partitions_exist() -> None:
                 for p_name in partitions:
                     if rust_ext.is_partition_expired(p_name, table, retention_days):
                         try:
-                            logger.info(f"Pruning old partition {p_name}")
+                            logger.info(
+                                "Pruning old partition %s", p_name
+                            )  # LOW-W19: lazy logging
                             preparer = conn.dialect.identifier_preparer
                             safe_p_name = preparer.quote(p_name)
                             await conn.execute(text(f"DROP TABLE {safe_p_name}"))
                             await conn.commit()
                         except Exception as e:
-                            logger.error(f"Failed to prune partition {p_name}: {e}")
+                            logger.error(
+                                "Failed to prune partition %s: %s", p_name, e
+                            )  # LOW-W19: lazy logging
 
 
 async def start_partition_management_scheduler(
@@ -117,7 +125,9 @@ async def start_partition_management_scheduler(
             try:
                 await ensure_partitions_exist()
             except Exception as e:
-                logger.error(f"Error in partition management: {e}")
+                logger.error(
+                    "Error in partition management: %s", e
+                )  # LOW-W19: lazy logging
             await asyncio.sleep(interval_seconds)
 
     registry.create_task(run_periodically(), name="partition_manager")

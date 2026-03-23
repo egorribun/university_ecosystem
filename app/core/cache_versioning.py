@@ -10,7 +10,7 @@ from typing import Any
 from redis.exceptions import RedisError
 
 from app.core.logging import get_logger
-from app.deps.cache import BaseCache, RedisCache, get_cache
+from app.deps.cache import BaseCache, RedisCache, get_cache, get_cache_client
 
 logger = get_logger(__name__)
 
@@ -20,13 +20,10 @@ class CacheVersionManager:
     """Manages cache versions for list-type endpoints with atomic increments."""
 
     prefix: str
-    _local_version_key: str = "_local_version"
-    _lock_key: str = "_lock"
-
-    # We use a shared dictionary for local state to avoid issues
-    # with @dataclass(frozen=True)
-    # and to maintain state across instances if needed (though usually held globally)
-    _local_state: dict[str, Any] | None = None
+    # MED-W19: Removed dead _local_state field — it was declared but never read
+    # or written anywhere in this class, and the frozen dataclass semantics made
+    # mutation impossible anyway.  Removed _local_version_key and _lock_key
+    # pseudo-constants that were also unused.
 
     def __post_init__(self) -> None:
         pass
@@ -47,7 +44,8 @@ class CacheVersionManager:
 
         if isinstance(cache, RedisCache):
             try:
-                client = await cache._get_client()
+                # MED-W19: use public get_cache_client() instead of private _get_client()
+                client = await get_cache_client()
                 raw = await client.get(self.version_key)
                 if raw is not None:
                     try:
@@ -68,7 +66,8 @@ class CacheVersionManager:
 
         if isinstance(cache, RedisCache):
             try:
-                client = await cache._get_client()
+                # MED-W19: use public get_cache_client() instead of private _get_client()
+                client = await get_cache_client()
                 if hasattr(client, "incr"):
                     await client.incr(self.version_key)
                 else:
@@ -88,7 +87,8 @@ class CacheVersionManager:
 
         if isinstance(cache, RedisCache):
             try:
-                client = await cache._get_client()
+                # MED-W19: use public get_cache_client() instead of private _get_client()
+                client = await get_cache_client()
                 await client.set(self.version_key, "0")
             except (RedisError, OSError):
                 logger.warning("Failed to reset cache version")

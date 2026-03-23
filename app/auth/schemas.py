@@ -70,6 +70,9 @@ class MfaVerifyIn(BaseModel):
         max_length=128,
         pattern=r"^[a-zA-Z0-9_\-]+$",
     )
-    code: str | None = None
+    # LOW-W19: max_length=19 matches the longest valid value (recovery code format
+    # "XXXXX-XXXXX-XXXXX" = 17 chars + 2 dashes). Prevents oversized payloads from
+    # reaching TOTP/recovery-code verification logic.
+    code: str | None = Field(default=None, max_length=19)
     webauthn_response: dict[str, Any] | None = None
     trust_device: bool = False

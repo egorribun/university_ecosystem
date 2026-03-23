@@ -1,9 +1,11 @@
 import asyncio
 import os
+import secrets  # LOW-W19: used for secure fallback password generation
 import sys
+from pathlib import Path
 
-# Add the current directory to sys.path to find the 'app' module
-sys.path.append(os.getcwd())
+# LOW-W19: use script location instead of fragile os.getcwd()
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dishka import Scope, make_async_container
 
@@ -27,7 +29,8 @@ async def create_student():
 
         user_in = schemas.UserCreate(
             email="student@example.com",
-            password="Password123!",  # Meets policy: uppercase, lowercase, digits, symbols
+            # LOW-W19: avoid hardcoded password; read from env or generate a secure random value
+            password=os.environ.get("TEST_PASSWORD", secrets.token_urlsafe(16)),
             full_name="Test Student",
             role=UserRole.STUDENT,
             about="I am a test student user created for verification.",

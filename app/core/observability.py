@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import socket
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager, suppress
@@ -92,6 +93,10 @@ _otel_logger_provider: LoggerProvider | None = None
 _otel_logging_handler: LoggingHandler | None = None
 _notification_queue_metrics: NotificationQueueMetrics | None = None
 _periodic_task_metrics: dict[str, PeriodicTaskMetrics] = {}
+
+# MED-W19: locks to prevent double-init races under concurrent startup
+_otel_lock = threading.Lock()
+_notification_queue_metrics_lock = threading.Lock()
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 _trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
@@ -191,99 +196,114 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
     global _otel_configured, _sqlalchemy_instrumented
     if not settings.enable_otel:
         return None
+    # MED-W19: double-checked locking prevents concurrent threads from both
+    # passing the first guard and registering providers more than once.
     if _otel_configured:
         return cast("TracerProvider | None", trace.get_tracer_provider())
+    with _otel_lock:
+        if _otel_configured:
+            return cast("TracerProvider | None", trace.get_tracer_provider())  # type: ignore[unreachable]
 
-    resource = _create_otel_resource()
+        resource = _create_otel_resource()
 
-    sampler = ParentBased(
-        TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0))
-    )
-    tracer_provider = TracerProvider(resource=resource, sampler=sampler)
+        sampler = ParentBased(
+            TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0))
+        )
+        tracer_provider = TracerProvider(resource=resource, sampler=sampler)
 
-    otlp_headers = _resolve_headers(settings.otel_exporter_otlp_headers)
+        otlp_headers = _resolve_headers(settings.otel_exporter_otlp_headers)
 
-    span_exporter_kwargs: dict[str, Any] = {}
-    if settings.otel_exporter_otlp_endpoint:
-        span_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
-    if otlp_headers:
-        span_exporter_kwargs["headers"] = otlp_headers
-    span_exporter = OTLPSpanExporter(**span_exporter_kwargs)
-    tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
-    trace.set_tracer_provider(tracer_provider)
-
-    # Propagate both trace context and W3C Baggage across service boundaries
-    # (FastAPI → Go gateway → WS-hub). Must be set after the tracer provider.
-    set_global_textmap(
-        CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()])
-    )
-
-    meter_readers = []
-    if settings.enable_otel_metrics:
-        metric_exporter_kwargs: dict[str, Any] = {}
+        span_exporter_kwargs: dict[str, Any] = {}
         if settings.otel_exporter_otlp_endpoint:
-            metric_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
+            span_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
         if otlp_headers:
-            metric_exporter_kwargs["headers"] = otlp_headers
-        metric_exporter = OTLPMetricExporter(**metric_exporter_kwargs)
-        reader = PeriodicExportingMetricReader(metric_exporter)
-        meter_readers.append(reader)
+            span_exporter_kwargs["headers"] = otlp_headers
+        span_exporter = OTLPSpanExporter(**span_exporter_kwargs)
+        tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
+        trace.set_tracer_provider(tracer_provider)
 
-    meter_provider = MeterProvider(resource=resource, metric_readers=meter_readers)
-    metrics.set_meter_provider(meter_provider)
-
-    global _otel_logger_provider, _otel_logging_handler
-
-    if settings.enable_otel_logs:
-        logger_provider = LoggerProvider(resource=resource)
-        log_exporter_kwargs: dict[str, Any] = {}
-        if settings.otel_exporter_otlp_endpoint:
-            log_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
-        if otlp_headers:
-            log_exporter_kwargs["headers"] = otlp_headers
-        log_exporter = OTLPLogExporter(**log_exporter_kwargs)
-        logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-        set_logger_provider(logger_provider)
-        handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
-        logging.getLogger().addHandler(handler)
-        _otel_logger_provider = logger_provider
-        _otel_logging_handler = handler
-
-    if not _sqlalchemy_instrumented:
-        try:
-            SQLAlchemyInstrumentor().instrument(
-                engine=engine.sync_engine,
-                tracer_provider=tracer_provider,
-                enable_metrics=settings.enable_otel_metrics,
-                meter_provider=meter_provider if settings.enable_otel_metrics else None,
-                enable_commenter=True,
-                commenter_options={"opentelemetry_values": True},
+        # Propagate both trace context and W3C Baggage across service boundaries
+        # (FastAPI → Go gateway → WS-hub). Must be set after the tracer provider.
+        set_global_textmap(
+            CompositePropagator(
+                [TraceContextTextMapPropagator(), W3CBaggagePropagator()]
             )
-            _sqlalchemy_instrumented = True
+        )
+
+        meter_readers = []
+        if settings.enable_otel_metrics:
+            metric_exporter_kwargs: dict[str, Any] = {}
+            if settings.otel_exporter_otlp_endpoint:
+                metric_exporter_kwargs["endpoint"] = (
+                    settings.otel_exporter_otlp_endpoint
+                )
+            if otlp_headers:
+                metric_exporter_kwargs["headers"] = otlp_headers
+            metric_exporter = OTLPMetricExporter(**metric_exporter_kwargs)
+            reader = PeriodicExportingMetricReader(metric_exporter)
+            meter_readers.append(reader)
+
+        meter_provider = MeterProvider(resource=resource, metric_readers=meter_readers)
+        metrics.set_meter_provider(meter_provider)
+
+        global _otel_logger_provider, _otel_logging_handler
+
+        if settings.enable_otel_logs:
+            logger_provider = LoggerProvider(resource=resource)
+            log_exporter_kwargs: dict[str, Any] = {}
+            if settings.otel_exporter_otlp_endpoint:
+                log_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
+            if otlp_headers:
+                log_exporter_kwargs["headers"] = otlp_headers
+            log_exporter = OTLPLogExporter(**log_exporter_kwargs)
+            logger_provider.add_log_record_processor(
+                BatchLogRecordProcessor(log_exporter)
+            )
+            set_logger_provider(logger_provider)
+            handler = LoggingHandler(
+                level=logging.NOTSET, logger_provider=logger_provider
+            )
+            logging.getLogger().addHandler(handler)
+            _otel_logger_provider = logger_provider
+            _otel_logging_handler = handler
+
+        if not _sqlalchemy_instrumented:
+            try:
+                SQLAlchemyInstrumentor().instrument(
+                    engine=engine.sync_engine,
+                    tracer_provider=tracer_provider,
+                    enable_metrics=settings.enable_otel_metrics,
+                    meter_provider=meter_provider
+                    if settings.enable_otel_metrics
+                    else None,
+                    enable_commenter=True,
+                    commenter_options={"opentelemetry_values": True},
+                )
+                _sqlalchemy_instrumented = True
+            except RuntimeError:
+                # Already instrumented or engine incompatible
+                _sqlalchemy_instrumented = True
+
+        # Instrument Redis if not already instrumented
+        try:
+            RedisInstrumentor().instrument(
+                tracer_provider=tracer_provider,
+            )
         except RuntimeError:
-            # Already instrumented or engine incompatible
-            _sqlalchemy_instrumented = True
+            # Already instrumented
+            pass
 
-    # Instrument Redis if not already instrumented
-    try:
-        RedisInstrumentor().instrument(
-            tracer_provider=tracer_provider,
-        )
-    except RuntimeError:
-        # Already instrumented
-        pass
+        # Instrument HTTPX if not already instrumented
+        try:
+            HTTPXClientInstrumentor().instrument(
+                tracer_provider=tracer_provider,
+            )
+        except RuntimeError:
+            # Already instrumented
+            pass
 
-    # Instrument HTTPX if not already instrumented
-    try:
-        HTTPXClientInstrumentor().instrument(
-            tracer_provider=tracer_provider,
-        )
-    except RuntimeError:
-        # Already instrumented
-        pass
-
-    _otel_configured = True
-    return tracer_provider
+        _otel_configured = True
+        return tracer_provider
 
 
 def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
@@ -706,21 +726,25 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
     """Return a singleton bundle of Prometheus metrics for the queue."""
 
     global _notification_queue_metrics
+    # MED-W19: double-checked locking prevents concurrent threads from
+    # registering duplicate Prometheus collectors at startup.
     if _notification_queue_metrics is None:
-        if (
-            Gauge is None
-            or Counter is None
-            or Histogram is None
-            or CollectorRegistry is None
-            or REGISTRY is None
-        ):  # pragma: no cover
-            raise RuntimeError(
-                "prometheus-client is required to create notification queue metrics"
-            )
+        with _notification_queue_metrics_lock:
+            if _notification_queue_metrics is None:
+                if (
+                    Gauge is None
+                    or Counter is None
+                    or Histogram is None
+                    or CollectorRegistry is None
+                    or REGISTRY is None
+                ):  # pragma: no cover
+                    raise RuntimeError(
+                        "prometheus-client is required to create notification queue metrics"
+                    )
 
-        _notification_queue_metrics = create_notification_queue_metrics(
-            registry=REGISTRY
-        )
+                _notification_queue_metrics = create_notification_queue_metrics(
+                    registry=REGISTRY
+                )
 
     return _notification_queue_metrics
 

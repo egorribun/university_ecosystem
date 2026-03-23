@@ -92,8 +92,12 @@ async def create_event(
     try:
         record = await events.create_event(data, user_id=user.id)
     except ValueError as exc:
+        # TD-W19-01 (audit 2026-03-24 Wave 19): use localized error key instead of
+        # raw exception message. Previously str(exc) leaked internal error details.
+        logger.warning("Event creation failed: %s", exc)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="errors.events.creation_failed",
         ) from exc
     if request:
         await _increment_events_list_version(getattr(request.app.state, "cache", None))

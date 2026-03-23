@@ -27,16 +27,20 @@ USERS_ID_FK = "users.id"
 class News(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "news"
 
-    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(
+        String(512), nullable=False, index=True
+    )  # LOW-W19: bounded String
     content: Mapped[str] = mapped_column(Text, nullable=False)
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
     )
-    title_en: Mapped[str | None] = mapped_column(String)
+    title_en: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
     content_en: Mapped[str | None] = mapped_column(Text)
-    image_url: Mapped[str | None] = mapped_column(String)
+    image_url: Mapped[str | None] = mapped_column(
+        String(2048)
+    )  # LOW-W19: bounded String
     embedding: Mapped[Any | None] = mapped_column(
         Text().with_variant(Vector(1536), "postgresql"), nullable=True
     )
@@ -56,17 +60,20 @@ class News(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         ),
     )
 
+    # PERF-W19-OOM: changed from lazy="selectin" to lazy="noload" — selectin on
+    # these collections caused O(N) eager loads on list endpoints, risking OOM.
+    # Callers that need likes/comments must explicitly joinedload or selectinload.
     likes = relationship(
         "NewsLike",
         back_populates="news",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="noload",
     )
     comments = relationship(
         "NewsComment",
         back_populates="news",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="noload",
     )
 
     def __repr__(self) -> str:

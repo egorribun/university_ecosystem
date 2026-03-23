@@ -458,7 +458,7 @@ async def mark_read_single(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
-    assert notif is not None  # nosec B101
+    assert notif is not None  # nosec B101  # noqa: S101
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)
@@ -503,7 +503,7 @@ async def delete_notification(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
-    assert notif is not None  # nosec B101
+    assert notif is not None  # nosec B101  # noqa: S101
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)
@@ -532,7 +532,9 @@ async def check_schedule_and_generate(
     request: Request,
     response: Response,
     lookahead_minutes: int = Query(15, ge=1, le=180),
-    db: AsyncDatabaseSession = Depends(get_read_db),
+    db: AsyncDatabaseSession = Depends(
+        get_db
+    ),  # RZ-W19-14: write DB — this endpoint creates notifications
     user: User = Depends(get_current_user),
 ) -> NotificationsListOut:
     locale = resolve_locale(request=request, user=user)

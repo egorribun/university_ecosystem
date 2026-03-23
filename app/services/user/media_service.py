@@ -19,6 +19,12 @@ class UserMediaService:
 
     async def upload_avatar(self, user: UserLike, file: UploadFile) -> UserDTO:
         user_identity = extract_user_id(user)
+        # LOW-W19: _get_orm() and _to_dto() are private repository methods.
+        # UserRepository does not yet expose public equivalents that return ORM
+        # instances with pessimistic locking (with_for_update) while also
+        # producing typed DTOs.  These calls are intentional and should be
+        # replaced once UserRepository.get_orm() / UserRepository.to_dto() are
+        # promoted to the public API.
         db_user = await self.repo._get_orm(user_identity, with_for_update=True)
         if not db_user:
             raise EntityNotFound("User", user_identity)

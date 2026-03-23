@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -143,14 +144,31 @@ func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats
 		}
 	}), "health_live"))
 
+	// LOW-W19: cache the Redis ping result for 5 s so that rapid K8s readiness
+	// probes (default 10 s interval, sometimes 1 s) do not open a new Redis
+	// round-trip on every probe.  NATS and JWKS checks are in-memory and cheap.
+	var (
+		redisCacheMu      sync.Mutex
+		redisCacheErr     error
+		redisCacheUpdated time.Time
+	)
+	const redisCacheTTL = 5 * time.Second
+
 	http.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		checks := map[string]string{}
 		if !nc.IsConnected() {
 			checks["nats"] = "disconnected"
 		}
 		if rdb != nil {
-			if err := rdb.Ping(r.Context()).Err(); err != nil {
-				checks["redis"] = err.Error()
+			redisCacheMu.Lock()
+			if time.Since(redisCacheUpdated) > redisCacheTTL {
+				redisCacheErr = rdb.Ping(r.Context()).Err()
+				redisCacheUpdated = time.Now()
+			}
+			cachedErr := redisCacheErr
+			redisCacheMu.Unlock()
+			if cachedErr != nil {
+				checks["redis"] = cachedErr.Error()
 			}
 		} else {
 			checks["redis"] = "not configured"

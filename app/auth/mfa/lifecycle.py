@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, inspect, select, update  # MED-W19
 
 from app.auth.constants import MFA_METHOD_TOTP, MFA_METHOD_WEBAUTHN
 from app.models.models import (
@@ -64,6 +64,29 @@ def user_has_confirmed_interactive_factor(user: User) -> bool:
     Security-critical sync helper.  Callers must ensure MFA relationship
     collections are loaded first (e.g. via ensure_mfa_relationships_loaded).
     """
+    # MED-W19: Raise an explicit error if the totp_enrollments relationship has
+    # not been loaded.  Previously the function silently returned False when the
+    # collection was an unloaded SQLAlchemy lazy attribute, masking MFA bypass
+    # bugs (a user with TOTP enabled would appear to have no factor).
+    try:
+        insp = inspect(user)
+        loaded_value = insp.attrs["totp_enrollments"].loaded_value
+        # NEVER_SET is the sentinel used by SQLAlchemy when the attribute has
+        # not been populated at all (neither eagerly loaded nor explicitly set).
+        from sqlalchemy.orm.base import NEVER_SET
+
+        if loaded_value is NEVER_SET:
+            raise RuntimeError(
+                f"user_has_confirmed_interactive_factor() called with "
+                f"totp_enrollments not loaded on User(id={user.id}). "
+                f"Load the relationship before calling this function."
+            )
+    except Exception as exc:
+        # Re-raise only our own RuntimeError; ignore inspection errors for
+        # non-ORM objects (e.g. DTOs used in tests).
+        if isinstance(exc, RuntimeError):
+            raise
+
     if getattr(user, "mfa_default_method", None):
         return True
 

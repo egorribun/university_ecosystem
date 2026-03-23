@@ -62,7 +62,17 @@ class SecurityHeadersMiddleware:
 
         request = Request(scope, receive)
         nonce: str | None = None
-        if self._settings.should_inject_csp_nonce:
+        # LOW-W19: Only generate a CSP nonce for paths that can return HTML.
+        # Generating a nonce unconditionally (including for /api/*, /metrics,
+        # WebSocket upgrades, etc.) wastes entropy and CPU on every request
+        # even though non-HTML responses never embed or use the nonce value.
+        path: str = scope.get("path", "")
+        _is_potentially_html = (
+            not path.startswith("/api/")
+            and not path.startswith("/static/")
+            and path not in _CSP_EXEMPT_PATHS
+        )
+        if self._settings.should_inject_csp_nonce and _is_potentially_html:
             nonce = secrets.token_urlsafe(16)
             request.state.csp_nonce = nonce
 
@@ -70,7 +80,7 @@ class SecurityHeadersMiddleware:
         # (health, metrics) and static files. These never return HTML and are called
         # at high frequency. However, we STILL apply base static headers (HSTS, etc.)
         # to ensure they are protected.
-        path: str = scope.get("path", "")
+        # LOW-W19: `path` is already set above (used for the nonce early-return).
         if path in _CSP_EXEMPT_PATHS or path.startswith("/static/"):
             csp_headers = []  # Omit CSP for performance/compatibility
         else:

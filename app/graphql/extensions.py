@@ -6,16 +6,9 @@ resource-exhaustive queries that evade the existing depth and token limits.
 
 from __future__ import annotations
 
-<<<<<<< HEAD
 import asyncio
-import logging
 import time
-
-from app.core.logging import get_logger
 from collections.abc import AsyncGenerator
-=======
-from collections.abc import Iterator
->>>>>>> af995544b494241d7a6556fc039d08ea8cef0e46
 from typing import TYPE_CHECKING
 
 from graphql import GraphQLError
@@ -93,7 +86,7 @@ async def _increment_user_cost(user_id: str, cost: int, window_minute: int) -> i
         pipe.expire(redis_key, 120)
         results = await pipe.execute()
         return int(results[0])
-    except Exception:
+    except Exception:  # noqa: S110  # nosec B110
         # Redis unavailable — fall through to per-process in-memory counter.
         # In multi-instance deployments this under-counts, but it still provides
         # meaningful protection against single-client abuse within a process.
@@ -138,7 +131,7 @@ class QueryCostExtension(SchemaExtension):
     the query, cost analysis is skipped.
     """
 
-    async def on_validate(self) -> AsyncGenerator[None, None]:
+    async def on_validate(self) -> AsyncGenerator[None]:
         yield  # let QueryDepthLimiter, MaxTokensLimiter, and other rules run first
 
         # If prior validators already rejected the query, skip cost analysis.

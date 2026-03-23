@@ -285,6 +285,8 @@ class Query:
         # Fail-closed: return empty list on permission denial or service failure.
         try:
             checker = info.context.checker
+            if checker is None:
+                return []
             current_user = info.context.current_user
             user_id = str(current_user.id) if current_user else "anonymous"
 

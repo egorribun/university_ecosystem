@@ -2,7 +2,7 @@ import uuid as _uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String
+from sqlalchemy import JSON, BigInteger, CheckConstraint, DateTime, Integer, String
 from sqlalchemy import UUID as SAUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,7 +40,9 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
         DateTime(timezone=True), nullable=True, index=True
     )
     error_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    last_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(
+        String(4096), nullable=True
+    )  # MED-W19: unbounded String → String(4096)
 
     # DEBT-01: Per-aggregate causal ordering fields (migration 202603140003).
     # aggregate_id_uuid stores the UUID form of aggregate_id (when the ID is a
@@ -52,6 +54,14 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
         SAUUID(as_uuid=True), nullable=True, index=True, name="aggregate_id_uuid"
     )
     sequence_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    __table_args__ = (
+        # LOW-W19: added CheckConstraint — status must be one of the three outbox lifecycle values
+        CheckConstraint(
+            "status IN ('pending','processed','failed')",
+            name="ck_stored_events_status_valid",
+        ),
+    )
 
     # PERF-03: Partial covering indexes (cannot be expressed in SQLAlchemy
     # mapped_column / Index DSL; created via raw SQL in migration 202603140002):

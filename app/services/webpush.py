@@ -42,11 +42,23 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 logger.setLevel(logging.NOTSET)
 
-_sync_url = make_url(settings.database_url)
-if _sync_url.drivername.endswith("+asyncpg"):
-    _sync_url = _sync_url.set(drivername="postgresql+psycopg")
-elif _sync_url.drivername.endswith("+aiosqlite"):
-    _sync_url = _sync_url.set(drivername="sqlite")
+# HIGH-W19: defer URL computation until first use so that importing this module
+# does not immediately read settings or touch the database driver.
+_sync_url_cache: Any = None
+
+
+def _get_sync_url() -> Any:
+    """Return the synchronous SQLAlchemy URL, computed lazily on first call."""
+    global _sync_url_cache
+    if _sync_url_cache is None:
+        url = make_url(settings.database_url)
+        if url.drivername.endswith("+asyncpg"):
+            url = url.set(drivername="postgresql+psycopg")
+        elif url.drivername.endswith("+aiosqlite"):
+            url = url.set(drivername="sqlite")
+        _sync_url_cache = url
+    return _sync_url_cache
+
 
 _sync_engine: Engine | None = None
 _Session: sessionmaker[Session] | None = None
@@ -65,7 +77,9 @@ def _initialize_sync_resources() -> None:
     global _sync_engine, _Session
     if _Session is not None:
         return
-    engine = create_engine(str(_sync_url), pool_pre_ping=True, future=True)
+    # HIGH-W19: _get_sync_url() resolves the URL lazily so that no engine is
+    # created at module import time (avoids side-effects during test collection).
+    engine = create_engine(str(_get_sync_url()), pool_pre_ping=True, future=True)
     _sync_engine = engine
     _Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 

@@ -15,7 +15,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: outbox-worker-hpa
-  namespace: university
+  namespace: university-ecosystem
   labels:
     app: outbox-worker
     component: event-processing

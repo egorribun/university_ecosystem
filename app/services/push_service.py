@@ -19,6 +19,9 @@ from app.models.models import PushSubscription
 from app.services.push_topics import subscription_supports_topic
 from app.services.webpush import WebPushResult, send_web_push
 
+# LOW-W19: Sentinel UUID for unknown subscription/user in error paths
+_UNKNOWN_UUID = uuid.UUID(int=0)
+
 if TYPE_CHECKING:
     from app.models.models import User
 
@@ -95,9 +98,9 @@ async def deliver_push_to_subscriptions(
             # Note: This is a fallback, ideally we'd pass sub to _deliver_one
             results.append(
                 WebPushResult(
-                    subscription_id=uuid.uuid4(),  # Fallback
+                    subscription_id=_UNKNOWN_UUID,  # LOW-W19: sentinel, not random
                     endpoint="unknown",
-                    user_id=uuid.uuid4(),  # Fallback
+                    user_id=_UNKNOWN_UUID,  # LOW-W19: sentinel, not random
                     status="error",
                     error=str(r),
                 )

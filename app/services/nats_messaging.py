@@ -197,6 +197,7 @@ class NatsService:
         subject: str,
         handler: Callable[[NatsMessage], Coroutine[Any, Any, None]],
         durable: str | None = None,
+        max_deliver: int = 5,
     ) -> None:
         """Subscribe to a JetStream subject with acknowledgment.
 
@@ -205,6 +206,13 @@ class NatsService:
             subject: Subject pattern
             handler: Async function to handle messages
             durable: Durable consumer name for persistence
+            max_deliver: Maximum delivery attempts before a message is considered
+                a dead-letter (poison message).  Defaults to 5.  Without this
+                cap, a handler that always raises will cause NATS to re-deliver
+                indefinitely, starving healthy messages and exhausting resources.
+                LOW-W19: poison-message guard — set max_deliver so that
+                permanently-failing messages are moved to the dead-letter stream
+                after ``max_deliver`` attempts rather than looping forever.
         """
         if not self._js:
             raise RuntimeError("Not connected to NATS")
@@ -221,10 +229,13 @@ class NatsService:
                 logger.error("Handler error: %s", exc)
                 await msg.nak()
 
+        from nats.js.api import ConsumerConfig
+
         sub = await self._js.subscribe(
             subject,
             stream=stream,
             durable=durable,
+            config=ConsumerConfig(max_deliver=max_deliver),
             cb=_wrapper,
         )
         self._subscriptions.append(sub)

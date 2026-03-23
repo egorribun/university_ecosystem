@@ -26,7 +26,7 @@ class AttendanceTokenExpired(AttendanceTokenError):
     """Raised when the token has expired."""
 
 
-TOKEN_PURPOSE = "event_attendance"  # nosec B105
+TOKEN_PURPOSE = "event_attendance"  # nosec B105  # noqa: S105
 
 
 def _server_secret() -> bytes:
@@ -181,6 +181,17 @@ def verify_token(
     calculated = compute_secret_hmac(payload.secret)
     if not hmac.compare_digest(calculated, expected_hmac):
         raise AttendanceTokenInvalid("Token secret is not active")
+    # LOW-W19: Grace-window explanation.
+    # Tokens are issued on quantised TTL boundaries so that all clients
+    # scanning the same QR code within one TTL window receive an identical
+    # token string (enabling server-side caching / deduplication).  However,
+    # this means a token generated at the very end of a window expires
+    # moments later from the verifier's perspective.  To avoid false
+    # "expired" rejections for tokens scanned just as a window rolls over,
+    # verify_token accepts the token for an additional grace period equal to
+    # the full TTL (i.e. up to 2× TTL from issued_at).  This is intentional
+    # and documented — callers must NOT shorten the grace window without
+    # revisiting the QR-refresh rate on the client side.
     ttl_window = max(1, payload.expires_at - payload.issued_at)
     valid_until = payload.expires_at + ttl_window
     moment = now or _now()

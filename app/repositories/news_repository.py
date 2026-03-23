@@ -4,7 +4,6 @@ News repository for news data access operations.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
@@ -53,6 +52,8 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     @cached(cache_instance=news_cache, key_builder=build_news_cache_key)
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
         """Get published news ordered by creation date descending with caching."""
+        # TODO: News model has no is_published column; all news rows are treated as published.
+        # Add a published: Mapped[bool] column to News when drafts are required.
         result = await self.db.execute(
             select(News)
             .options(selectinload(News.author))
@@ -179,9 +180,9 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
             .group_by(models.NewsComment.news_id)
         )
 
-        likes_res, comments_res = await asyncio.gather(
-            self.db.execute(likes_stmt), self.db.execute(comments_stmt)
-        )
+        # RZ-W19-04: AsyncSession is NOT concurrency-safe — sequential queries required
+        likes_res = await self.db.execute(likes_stmt)
+        comments_res = await self.db.execute(comments_stmt)
 
         likes_map = {row[0]: row[1] for row in likes_res.all()}
         comments_map = {row[0]: row[1] for row in comments_res.all()}
@@ -212,7 +213,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     async def get_with_interactions(
         self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
     ) -> tuple[int, bool]:
-        import asyncio
 
         likes_stmt = select(func.count(models.NewsLike.id)).where(
             models.NewsLike.news_id == news_id
@@ -228,9 +228,9 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
             else select(func.false())
         )
 
-        likes_result, is_liked_result = await asyncio.gather(
-            self.db.execute(likes_stmt), self.db.execute(is_liked_stmt)
-        )
+        # RZ-W19-04: AsyncSession is NOT concurrency-safe — sequential queries required
+        likes_result = await self.db.execute(likes_stmt)
+        is_liked_result = await self.db.execute(is_liked_stmt)
 
         likes_count = likes_result.scalar() or 0
         is_liked = is_liked_result.scalar() or False
@@ -321,12 +321,10 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
             models.NewsComment.news_id == news_id
         )
 
-        # Run all independent queries in a single round-trip
-        likes_res, comments_res, total_res = await asyncio.gather(
-            self.db.execute(likes_stmt),
-            self.db.execute(comments_stmt),
-            self.db.execute(total_comments_stmt),
-        )
+        # RZ-W19-04: AsyncSession is NOT concurrency-safe — sequential queries required
+        likes_res = await self.db.execute(likes_stmt)
+        comments_res = await self.db.execute(comments_stmt)
+        total_res = await self.db.execute(total_comments_stmt)
 
         likes_count = likes_res.scalar() or 0
         total_comments = total_res.scalar() or 0

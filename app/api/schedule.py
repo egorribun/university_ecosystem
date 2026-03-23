@@ -25,6 +25,7 @@ from app.cqrs.commands.schedule import (
 )
 from app.cqrs.queries import GetScheduleQuery
 from app.models import models
+from app.models.enums import UserRole
 from app.schemas import schemas
 
 
@@ -130,7 +131,7 @@ async def update_schedule(
             schedule_id=id,
             data=data,
             actor_id=user.id,
-            actor_role=user.role or "student",
+            actor_role=UserRole(user.role) if user.role else UserRole.STUDENT,
         )
         updated = await command_bus.execute(command)
     except PermissionError:

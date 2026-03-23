@@ -28,6 +28,7 @@ Design notes:
 from __future__ import annotations
 
 import base64
+import binascii  # MED-W19: needed to catch base64 decode errors in apply_cursor
 import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
@@ -153,10 +154,14 @@ def apply_cursor(
             # Try UUID first, fall back to integer for non-UUID primary keys.
             try:
                 cursor_val = decode_cursor_as_uuid(params.after)
-            except (ValueError, AttributeError):
+            except (
+                ValueError,
+                AttributeError,
+                binascii.Error,
+            ):  # MED-W19: binascii.Error escapes (ValueError, AttributeError)
                 cursor_val = decode_cursor_as_int(params.after)  # type: ignore[assignment]
             stmt = stmt.where(column > cursor_val)
-        except (ValueError, AttributeError) as exc:
+        except (ValueError, AttributeError, binascii.Error) as exc:  # MED-W19
             # RZ-14-03 (audit 2026-03-23): Raise HTTP 400 instead of silently
             # returning the first page.  RFC 9110 §15.5.1 — the cursor is a
             # client-supplied token; a syntactically invalid value is a Bad Request,

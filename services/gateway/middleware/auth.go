@@ -314,8 +314,17 @@ func (m *JWTMiddleware) checkSessionInRedis(ctx context.Context, key string) (bo
 //   - shouldDeny: if true, fail-secure (503); if false, fail-open (continue)
 //   - err: any error that occurred
 func (m *JWTMiddleware) verifySession(ctx context.Context, sessionID string, failSecure bool) (isValid bool, shouldDeny bool, err error) {
-	if m.redis == nil || sessionID == "" {
+	if m.redis == nil {
 		return true, false, nil
+	}
+	// FIX-JTI-01: A token with no JTI (jti / claims.ID) cannot be correlated with
+	// a Redis session entry, so it must be treated as invalid rather than valid.
+	// Previously this branch returned (true, false, nil) — i.e. "valid, no deny" —
+	// which allowed JTI-less tokens to bypass session revocation checks entirely.
+	if sessionID == "" {
+		slog.Warn("JWT missing jti claim — rejecting token",
+			"event", "jwt_missing_jti")
+		return false, false, nil
 	}
 
 	// Match Python backend's revocation key format: revoked:jti:{jti}

@@ -73,7 +73,9 @@ class RedisSessionService:
             )
             await cast("Awaitable[Any]", client.expire(key, self.ttl_seconds))
         except (RedisError, OSError) as e:
-            logger.warning(f"Failed to cache session {jti} in Redis: {e}")
+            logger.warning(
+                "Failed to cache session %s in Redis: %s", jti, e
+            )  # LOW-W19: lazy logging
 
     async def get_session(self, jti: str) -> RedisSessionData | None:
         """Retrieve session data from Redis.

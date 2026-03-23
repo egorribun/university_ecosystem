@@ -534,6 +534,9 @@ _engine: AsyncEngine | None = None
 _async_session: async_sessionmaker[AsyncSession] | None = None
 _read_replica_engine: AsyncEngine | None = None
 _read_session_factory: async_sessionmaker[AsyncSession] | None = None
+# PERF-W19-07: threading lock to prevent concurrent engine creation
+# (init_database is sync; asyncio.Lock cannot be awaited here)
+_init_lock = threading.Lock()
 
 # ── Public module-level proxies ──────────────────────────────────────────────
 # These proxies allow direct imports (from app.core.database import engine) to
@@ -566,30 +569,34 @@ def init_database(current_settings: Settings | None = None) -> None:
     """
     global _engine, _async_session, _read_replica_engine, _read_session_factory
 
-    # Skip re-initialisation if the engine is already set and no explicit
-    # override settings were provided.  In production the lifespan runs exactly
-    # once, so this guard is a no-op there.  In tests the session-scoped
-    # fixtures initialise the engine first; subsequent lifespan calls are safe
-    # to skip because they share the same Settings singleton.
+    # PERF-W19-07: fast-path check before acquiring the lock to avoid
+    # unnecessary contention on the common (already-initialised) code path.
     if _engine is not None and current_settings is None:
         return
 
-    s = current_settings or settings
-    _engine, _async_session, _read_replica_engine = create_session_factory(s)
+    with _init_lock:
+        # Re-check inside the lock (double-checked locking) so that a second
+        # concurrent caller that passed the fast-path does not create a second
+        # engine after the first caller already finished initialisation.
+        if _engine is not None and current_settings is None:
+            return
 
-    _read_session_factory = async_sessionmaker(
-        _read_replica_engine if _read_replica_engine is not None else _engine,
-        expire_on_commit=False,
-        class_=AsyncSession,
-    )
+        s = current_settings or settings
+        _engine, _async_session, _read_replica_engine = create_session_factory(s)
 
-    logger.info(
-        "Database initialised: %s (replica: %s)",
-        s.database_url,
-        s.database_read_replica_url
-        if getattr(s, "database_read_replica_url", None)
-        else "none",
-    )
+        _read_session_factory = async_sessionmaker(
+            _read_replica_engine if _read_replica_engine is not None else _engine,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+
+        logger.info(
+            "Database initialised: %s (replica: %s)",
+            s.database_url,
+            s.database_read_replica_url
+            if getattr(s, "database_read_replica_url", None)
+            else "none",
+        )
 
 
 def get_read_engine() -> AsyncEngine:
@@ -651,7 +658,7 @@ async def wait_db(
             if attempt < max_attempts:
                 # Full jitter: sleep in [0, min(max_delay, base * 2^attempt)]
                 cap = min(max_delay, base_delay * (2**attempt))
-                sleep_time = random.uniform(0, cap)  # nosec B311 — not crypto use
+                sleep_time = random.uniform(0, cap)  # nosec B311 — not crypto use  # noqa: S311
                 await asyncio.sleep(sleep_time)
     if last_exc is not None:
         raise RuntimeError(

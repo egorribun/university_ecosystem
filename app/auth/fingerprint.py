@@ -250,6 +250,21 @@ class SuspiciousActivityDetector:
         )
 
         with self._lock:
+            # MED-W19: Remove stale _user_index entry for the event being evicted
+            # from the ring buffer before appending the new one.  When deque is at
+            # capacity, appendleft evicts the oldest event; we must mirror that
+            # removal in the per-user index to prevent unbounded index growth.
+            if len(self._events) == self._MAX_EVENTS:
+                evicted = self._events[0]
+                uid = evicted.user_id
+                user_list = self._user_index.get(uid)
+                if user_list:
+                    try:
+                        user_list.remove(evicted)
+                    except ValueError:
+                        pass
+                    if not user_list:
+                        del self._user_index[uid]
             self._events.append(event)
             self._user_index[user_id].append(event)
 
@@ -292,6 +307,18 @@ class SuspiciousActivityDetector:
         logger.info("Rapid IP change detected", extra=event.to_log_record())
 
         with self._lock:
+            # MED-W19: Mirror ring-buffer eviction in _user_index (check_rapid_location_change).
+            if len(self._events) == self._MAX_EVENTS:
+                evicted = self._events[0]
+                uid = evicted.user_id
+                user_list = self._user_index.get(uid)
+                if user_list:
+                    try:
+                        user_list.remove(evicted)
+                    except ValueError:
+                        pass
+                    if not user_list:
+                        del self._user_index[uid]
             self._events.append(event)
             self._user_index[user_id].append(event)
 

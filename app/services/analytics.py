@@ -67,7 +67,7 @@ class AnalyticsService:
             return {"total": 0, "by_date": [], "top_liked": []}
 
         # Process with Polars in thread pool
-        stats = await asyncio.get_event_loop().run_in_executor(
+        stats = await asyncio.get_running_loop().run_in_executor(  # MED-W19
             _executor,
             partial(self._compute_news_stats, rows, columns),
         )
@@ -130,7 +130,7 @@ class AnalyticsService:
         if not rows:
             return {"total": 0, "by_location": [], "popular": []}
 
-        stats = await asyncio.get_event_loop().run_in_executor(
+        stats = await asyncio.get_running_loop().run_in_executor(  # MED-W19
             _executor,
             partial(self._compute_events_stats, rows, columns),
         )
@@ -219,4 +219,9 @@ def get_analytics_service() -> AnalyticsService:
     return AnalyticsService()
 
 
-__all__ = ["AnalyticsService", "get_analytics_service"]
+async def shutdown() -> None:  # MED-W19: clean up thread pool to prevent resource leak
+    """Shutdown the shared Polars thread pool executor."""
+    _executor.shutdown(wait=False)
+
+
+__all__ = ["AnalyticsService", "get_analytics_service", "shutdown"]

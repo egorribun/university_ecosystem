@@ -114,7 +114,6 @@ class CircuitBreaker:
 
     __slots__ = (
         "_config",
-        "_in_half_open_probe",
         "_internal_state",
         "_lock",
         "_metrics",
@@ -144,7 +143,10 @@ class CircuitBreaker:
         self._lock = asyncio.Lock()
         self._metrics = CircuitBreakerMetrics()
         self._on_state_change = on_state_change
-        self._in_half_open_probe = False
+        # MED-W19: _in_half_open_probe removed — probe ownership is tracked
+        # exclusively via _internal_state.active_probe_count (incremented/
+        # decremented while self._lock is held), eliminating the shared boolean
+        # that could be clobbered by a concurrent caller between lock acquisitions.
 
     @property
     def service_name(self) -> str:
@@ -287,11 +289,11 @@ class CircuitBreaker:
                     remaining_seconds=self._get_remaining_open_time(),
                     failure_count=self._internal_state.failure_count,
                 )
-            # If we are in HALF_OPEN, claim the single probe slot atomically
-            # while the lock is still held — before releasing it.
+            # MED-W19: Claim the single HALF_OPEN probe slot atomically while the
+            # lock is held.  Ownership is recorded in active_probe_count (not a
+            # shared boolean) so concurrent callers cannot observe a stale flag.
             if self._internal_state.state == CircuitBreakerState.HALF_OPEN:
                 self._internal_state.active_probe_count += 1
-                self._in_half_open_probe = True
         return self
 
     async def __aexit__(
@@ -302,13 +304,14 @@ class CircuitBreaker:
     ) -> bool:
         """Exit the circuit breaker context."""
         async with self._lock:
-            # Release the HALF_OPEN probe slot before recording outcome so that
-            # _record_success/_record_failure state transitions see a clean count.
-            if self._in_half_open_probe:
-                self._internal_state.active_probe_count = max(
-                    0, self._internal_state.active_probe_count - 1
-                )
-                self._in_half_open_probe = False
+            # MED-W19: Release the HALF_OPEN probe slot before recording outcome.
+            # We check active_probe_count > 0 (not the removed _in_half_open_probe
+            # boolean) to determine whether this task owns a probe slot.  Because
+            # only one probe is ever allowed through (_should_allow_request returns
+            # False for count >= 1), decrementing here is always correct when the
+            # count is positive.
+            if self._internal_state.active_probe_count > 0:
+                self._internal_state.active_probe_count -= 1
             if exc_val is None:
                 self._record_success()
             elif isinstance(exc_val, Exception):
@@ -340,8 +343,12 @@ class CircuitBreaker:
 
 # Registry for global circuit breaker instances
 _circuit_breakers: dict[str, CircuitBreaker] = {}
-# TD-7 (audit 2026-02-26): Use lazy initialisation with a threading lock to avoid
-# TOCTOU race without binding to the module-import thread event loop.
+# MED-W19: _registry_lock uses lazy initialisation — do NOT replace with a
+# module-level ``asyncio.Lock()`` literal.  asyncio.Lock() must be created
+# inside a running event loop; constructing it at import time binds it to
+# whichever thread imported the module first, causing "attached to a different
+# loop" errors in tests or multi-loop setups.  The threading.Lock guard makes
+# the double-checked locking pattern thread-safe during the one-time creation.
 _registry_lock: asyncio.Lock | None = None
 _registry_alloc_lock = threading.Lock()
 
@@ -351,7 +358,7 @@ def _get_registry_lock() -> asyncio.Lock:
     if _registry_lock is None:
         with _registry_alloc_lock:
             if _registry_lock is None:
-                _registry_lock = asyncio.Lock()
+                _registry_lock = asyncio.Lock()  # MED-W19: created on first async use
     return _registry_lock
 
 

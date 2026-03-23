@@ -107,7 +107,9 @@ async def get_user_id_map(session: AsyncSession) -> dict[Any, Any]:
 async def backfill_own_uuids(session: AsyncSession) -> None:
     """Populate uuid_id for all records in targeted tables."""
     for model, ts_field in TABLES_OWN_ID:
-        logger.info(f"Backfilling own UUIDs for {model.__tablename__}...")
+        logger.info(
+            "Backfilling own UUIDs for %s...", model.__tablename__
+        )  # LOW-W19: lazy logging
 
         count = 0
         total_processed = 0
@@ -140,7 +142,9 @@ async def backfill_own_uuids(session: AsyncSession) -> None:
             total_processed += count
             count = 0
 
-        logger.info(f"  Processed {total_processed} records for {model.__tablename__}")
+        logger.info(
+            "  Processed %s records for %s", total_processed, model.__tablename__
+        )  # LOW-W19: lazy logging
 
 
 async def backfill_foreign_uuids(
@@ -148,7 +152,9 @@ async def backfill_foreign_uuids(
 ) -> None:
     """Populate shadow FK columns using the user map."""
     for model, legacy_col, shadow_col in TABLES_USER_FK:
-        logger.info(f"Backfilling FKs for {model.__tablename__}.{shadow_col}...")
+        logger.info(
+            "Backfilling FKs for %s.%s...", model.__tablename__, shadow_col
+        )  # LOW-W19: lazy logging
 
         total_processed = 0
         skipped = 0
@@ -180,8 +186,11 @@ async def backfill_foreign_uuids(
 
             await session.commit()
         await session.commit()
-        logger.info(
-            f"  Linked {total_processed} records ({skipped} skipped) for {model.__tablename__}"
+        logger.info(  # LOW-W19: lazy logging
+            "  Linked %s records (%s skipped) for %s",
+            total_processed,
+            skipped,
+            model.__tablename__,
         )
 
 
@@ -199,7 +208,7 @@ async def main() -> None:
 
             logger.info("Backfill complete!")
         except Exception as e:
-            logger.error(f"Backfill failed: {e}")
+            logger.error("Backfill failed: %s", e)  # LOW-W19: lazy logging
             await session.rollback()
 
 

@@ -81,6 +81,9 @@ class AuthRepository(
             target.expires_at = expires_at
             target.used = False
             target.created_at = datetime.now(UTC)
+            # HIGH-W19: flush recycled token mutations so DB sees the changes
+            # within this transaction, matching the create path below
+            await self.db.flush()
             return self._to_dto(target)
 
         # Create new token

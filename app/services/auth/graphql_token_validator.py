@@ -87,7 +87,6 @@ class GraphQLTokenValidator:
         except Exception as exc:
             # Redis unavailable → fall through to authoritative DB check.
             logger.debug("GraphQL token check fallback to DB: %s", exc)  # nosec B110
-            pass
         return True
 
     async def _load_db_session(self, jti: str) -> ActiveSession | None:

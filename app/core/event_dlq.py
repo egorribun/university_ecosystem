@@ -74,6 +74,14 @@ class DeadLetterQueue:
             max_size: Maximum number of events to store. Oldest events
                       are dropped when limit is reached.
         """
+        # MED-W19: This DLQ is purely in-memory.  All queued events are lost on
+        # process restart (deployment, crash, OOM kill).  For production
+        # durability, persist failed events to a database or a NATS stream.
+        logger.warning(
+            "DeadLetterQueue is using in-memory storage — all events will be "
+            "lost on process restart.  Consider a persistent backend for "
+            "production use.",
+        )
         self._queue: deque[FailedEvent] = deque(maxlen=max_size)
         self._lock = asyncio.Lock()
         self._max_size = max_size
@@ -160,6 +168,12 @@ class DeadLetterQueue:
         Returns:
             True if event was found and removed, False otherwise.
         """
+        # MED-W19: deque deletion is O(n) — both the linear scan and the
+        # subsequent element shift.  For high-volume DLQs, replace self._queue
+        # with a dict[str, FailedEvent] keyed on event_id to achieve O(1)
+        # removal.  The deque is retained here to preserve insertion-ordered
+        # iteration for replay(), but a dict preserves insertion order in
+        # Python ≥ 3.7 and is a safe drop-in replacement.
         async with self._lock:
             for i, failed in enumerate(self._queue):
                 if failed.event.event_id == event_id:

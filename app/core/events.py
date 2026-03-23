@@ -506,7 +506,12 @@ class EventEmitterMixin:
 def capture_domain_events(
     session: Session, flush_context: Any, instances: Any = None
 ) -> None:
-    """SQLAlchemy listener to capture and persist domain events to the database."""
+    """SQLAlchemy listener to capture domain events; stores them after flush completes.
+
+    HIGH-W19: This function only COLLECTS events and clears pending lists.
+    The actual session.add_all() is deferred to the after_flush_postexec listener
+    (_persist_captured_events) to avoid triggering a recursive flush.
+    """
     from app.models.domain_events import StoredEvent
 
     events_to_store = []
@@ -565,16 +570,40 @@ def capture_domain_events(
         # Clear pending events after capturing
         obj.clear_events()
 
+    # HIGH-W19: Store collected events on the session info dict so that
+    # _persist_captured_events (after_flush_postexec) can add them without
+    # triggering a recursive flush.
+    if events_to_store:
+        pending = session.info.setdefault("_pending_stored_events", [])
+        pending.extend(events_to_store)
+
+
+def _persist_captured_events(session: Session, flush_context: Any) -> None:
+    """SQLAlchemy after_flush_postexec listener that writes StoredEvents to the session.
+
+    HIGH-W19: Adding objects to the session here (after the flush has fully
+    completed and the unit-of-work machinery has exited) is safe and will NOT
+    cause a recursive flush, unlike doing so inside after_flush.
+    """
+    events_to_store = session.info.pop("_pending_stored_events", None)
     if events_to_store:
         session.add_all(events_to_store)
 
 
 async def register_event_listeners() -> None:
-    """Register domain event capturing listeners for all sessions."""
+    """Register domain event capturing listeners for all sessions.
+
+    HIGH-W19: Two-phase registration:
+      1. after_flush          — collect events and clear model lists (no DB writes).
+      2. after_flush_postexec — add StoredEvent rows after flush machinery exits,
+                                preventing recursive flush.
+    """
     from sqlalchemy import event as sa_event
     from sqlalchemy.orm import Session
 
     sa_event.listen(Session, "after_flush", capture_domain_events)
+    # HIGH-W19: persist collected events only after the flush is fully complete.
+    sa_event.listen(Session, "after_flush_postexec", _persist_captured_events)
     logger.info("Domain event persistence listeners registered.")
 
 
@@ -682,16 +711,35 @@ class EventBus:
 
         # Execute the chain with a global failsafe timeout (PERF-002).
         # Ensures a slow or stuck middleware/handler doesn't hang the request thread.
+        #
+        # HIGH-W19: asyncio.wait_for() wraps the coroutine in an internal Task but
+        # does NOT cancel child tasks spawned inside handler_chain (e.g. those
+        # created by execute_handlers). Those tasks become orphaned when the
+        # wait_for timeout fires. Instead: create an explicit Task, wait on it with
+        # asyncio.wait(), and cancel it explicitly if the deadline is exceeded.
+        chain_task = asyncio.create_task(handler_chain(event))
         try:
-            await asyncio.wait_for(handler_chain(event), timeout=10.0)
-        except TimeoutError:
-            logger.error(
-                "Event production timed out (10s)",
-                extra={
-                    "event_type": event_type,
-                    "event_id": event.event_id,
-                },
-            )
+            _done, pending = await asyncio.wait({chain_task}, timeout=10.0)
+            if pending:
+                # Timeout — cancel the task (and, transitively, any tasks it awaited)
+                chain_task.cancel()
+                try:
+                    await chain_task
+                except (asyncio.CancelledError, Exception):  # noqa: S110
+                    pass
+                logger.error(
+                    "Event production timed out (10s)",
+                    extra={
+                        "event_type": event_type,
+                        "event_id": event.event_id,
+                    },
+                )
+            elif chain_task.exception() is not None:
+                # Propagate unexpected exceptions that escaped _safe_handle
+                raise chain_task.exception()  # type: ignore[misc]
+        except asyncio.CancelledError:
+            chain_task.cancel()
+            raise
 
     async def _safe_handle(self, handler: EventHandler, event: DomainEvent) -> None:
         """Execute handler with error protection and optional DLQ."""

@@ -1,3 +1,6 @@
+# LOW-W19: DEPRECATED — this file is a duplicate barrel kept only for backwards
+# compatibility with older import paths. Use `app.models` (app/models/__init__.py)
+# for all new imports. This file will be removed in a future cleanup.
 from app.core.database import Base as Base
 from app.models.auth import (
     ActiveSession as ActiveSession,

@@ -24,6 +24,21 @@ R = TypeVar("R")
 _logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
+# HIGH-W19: Module-level reference to the FastAPI application instance.
+# Populated by set_app() during lifespan startup to avoid a circular import
+# (app.main → app.core.nats_broker → app.main).
+_app: Any = None
+
+
+def set_app(application: Any) -> None:
+    """Register the FastAPI app so run_worker() can access dishka_container.
+
+    Call this from the application lifespan *before* starting the worker.
+    """
+    global _app
+    _app = application
+
+
 # P1-W5-08: Maximum seconds a single task handler may run before it is
 # cancelled.  Prevents one stuck handler from blocking the entire worker loop.
 _DEFAULT_TASK_TIMEOUT_S = float(os.environ.get("NATS_TASK_TIMEOUT_SECONDS", "30"))
@@ -79,17 +94,25 @@ class NatsTaskBroker:
         if self._nc is not None:
             return
 
+        # HIGH-W19: Callbacks for reconnect/disconnect logging so that connection
+        # lifecycle events are visible in the application log.
+        async def _on_reconnected() -> None:
+            _logger.warning("NATS reconnected to server")
+
+        async def _on_disconnected() -> None:
+            _logger.warning("NATS disconnected from server")
+
         try:
             self._nc = await nats.connect(
                 settings.nats_url,
-                # Fail immediately on initial connect rather than retrying forever.
-                # With the default max_reconnect_attempts=-1 the nats-py client enters
-                # an infinite retry loop that asyncio.wait_for cannot reliably cancel
-                # in Python 3.13 + uvloop, blocking lifespan startup.
-                # After a successful initial connection, disconnects are handled by the
-                # caller (enqueue() re-calls connect() on the next use).
-                max_reconnect_attempts=0,
+                # HIGH-W19: Use max_reconnect_attempts=-1 (unlimited) so that after
+                # a successful initial connection the client automatically reconnects
+                # on transient network failures. The connect_timeout still applies to
+                # the INITIAL connect attempt, guarding lifespan startup.
+                max_reconnect_attempts=-1,
                 connect_timeout=2,
+                reconnected_cb=_on_reconnected,
+                disconnected_cb=_on_disconnected,
             )
             self._js = self._nc.jetstream()
 
@@ -207,7 +230,7 @@ class NatsTaskBroker:
 
         # Create/use a pull-based durable consumer
         js = self._js
-        assert js is not None  # nosec B101
+        assert js is not None  # nosec B101  # noqa: S101
         sub = await js.pull_subscribe(
             subject=f"{self._subject_prefix}.>",
             durable="python-worker",
@@ -277,10 +300,11 @@ class NatsTaskBroker:
                                 await msg.term()  # Terminal failure
                                 continue
 
-                            from app.main import app
-
+                            # HIGH-W19: Use the module-level _app reference set via
+                            # set_app() instead of importing app.main here, which
+                            # would create a circular import at import time.
                             dishka_container = getattr(
-                                app.state, "dishka_container", None
+                                getattr(_app, "state", None), "dishka_container", None
                             )
 
                             from dishka.integrations.base import wrap_injection
@@ -305,13 +329,13 @@ class NatsTaskBroker:
                                             import anyio
 
                                             wrapped = wrap_injection(
-                                                func=handler,  # type: ignore[arg-type]  # noqa: B023
+                                                func=handler,  # noqa: B023
                                                 container_getter=lambda _, __: (
                                                     request_container
                                                 ),
                                                 remove_depends=True,
                                             )
-                                            await anyio.to_thread.run_sync(  # type: ignore[unused-coroutine]
+                                            await anyio.to_thread.run_sync(
                                                 functools.partial(
                                                     wrapped,
                                                     *args,  # noqa: B023
@@ -326,7 +350,7 @@ class NatsTaskBroker:
                                         import anyio
 
                                         await anyio.to_thread.run_sync(
-                                            functools.partial(handler, *args, **kwargs),  # type: ignore[misc, arg-type]  # noqa: B023
+                                            functools.partial(handler, *args, **kwargs),  # noqa: B023
                                             cancellable=True,
                                         )
 

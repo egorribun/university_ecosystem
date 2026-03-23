@@ -78,6 +78,13 @@ class ChatCreationService:
             raise RuntimeError(
                 "ChatCreationService requires a Redis-backed cache for distributed locks."
             )
+        # LOW-W19: _get_client() is a private method on the internal Redis-backed
+        # cache implementation.  There is no public API for obtaining the raw
+        # redis.asyncio.Redis client from BaseCache at this time.  This access
+        # is intentional and guarded by the hasattr check above.  Track
+        # https://github.com/egorribun/university_ecosystem/issues/XXX to expose
+        # a public `get_redis_client()` method on BaseCache so this can be
+        # replaced with a stable API call.
         cache_client = await cache_obj._get_client()
 
         if not user.id or not participant_id:

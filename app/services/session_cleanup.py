@@ -41,10 +41,13 @@ async def delete_sessions_matching(
 ) -> int:
     """Delete sessions (and their MFA challenges) matching *whereclause*."""
 
-    bind = db.get_bind()
-    dialect = bind.dialect
+    # MED-W19: db.get_bind() was removed in SQLAlchemy 2.0; detect dialect from
+    # the database URL string instead (same approach used in app/core/health.py).
+    from app.core.config import settings
 
-    if dialect.name == "sqlite":
+    _is_sqlite = "sqlite" in settings.database_url.lower()
+
+    if _is_sqlite:
         subquery = select(ActiveSession.id).where(whereclause)  # type: ignore[arg-type]
         challenge_delete_stmt = delete(MfaChallenge).where(
             MfaChallenge.session_id.in_(subquery)
@@ -59,10 +62,9 @@ async def delete_sessions_matching(
     await db.execute(challenge_delete_stmt)
 
     delete_stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
-    supports_returning = bool(getattr(dialect, "delete_returning", False))
-    supports_rowcount_returning = bool(
-        getattr(dialect, "supports_sane_rowcount_returning", False)
-    )
+    # MED-W19: SQLite does not support RETURNING on DELETE; PostgreSQL does.
+    supports_returning = not _is_sqlite
+    supports_rowcount_returning = not _is_sqlite
     if supports_returning:
         delete_stmt = delete_stmt.returning(ActiveSession.id)  # type: ignore[assignment]
         delete_result = await db.execute(delete_stmt)
@@ -126,7 +128,7 @@ async def cleanup_expired_sessions(
         ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
     )
 
-    assert db is not None  # nosec B101
+    assert db is not None  # nosec B101  # noqa: S101
     deleted = await delete_sessions_matching(db=db, whereclause=expiry_condition)
     await db.commit()
     if deleted:

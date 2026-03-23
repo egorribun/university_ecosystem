@@ -29,18 +29,22 @@ from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "notifications"
 
-    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    title_en: Mapped[str | None] = mapped_column(String)
+    title: Mapped[str] = mapped_column(
+        String(512), nullable=False, index=True
+    )  # LOW-W19: bounded String
+    title_en: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
     body: Mapped[str | None] = mapped_column(Text)
     body_en: Mapped[str | None] = mapped_column(Text)
-    type: Mapped[str | None] = mapped_column(String, index=True)
-    url: Mapped[str | None] = mapped_column(String)
+    type: Mapped[str | None] = mapped_column(
+        String(128), index=True
+    )  # LOW-W19: bounded String
+    url: Mapped[str | None] = mapped_column(String(2048))  # LOW-W19: bounded String
     dedupe_key: Mapped[str | None] = mapped_column(String(255), index=True)
     read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    created_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(  # MED-W19: was Mapped[DateTime]
         DateTime(timezone=True),
         server_default=func.now(),
         index=True,
@@ -122,7 +126,8 @@ class NotificationQueueJob(Base, UUID7PrimaryKeyMixin):
     )
 
     def __repr__(self) -> str:
-        return f"record_id={self.record_id})>"
+        # LOW-W19: fixed missing opening bracket and class name in format string
+        return f"<NotificationQueueJob(kind='{self.kind}', record_id={self.record_id})>"
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)
@@ -136,11 +141,16 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
         UUID(as_uuid=True),
         index=True,
     )
-    notification_created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+    notification_created_at: Mapped[datetime] = (
+        mapped_column(  # MED-W19: was Mapped[DateTime]
+            DateTime(timezone=True), nullable=False
+        )
     )
     channel: Mapped[str] = mapped_column(
-        String, nullable=False, default="inapp", index=True
+        String(50),
+        nullable=False,
+        default="inapp",
+        index=True,  # LOW-W19: bounded String
     )
     # DEBT-03: subscription_id records which push subscription received this delivery.
     # NULL = in-app notification or skipped-no-subscription rows.
@@ -150,9 +160,12 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
         index=True,
     )
     status: Mapped[str] = mapped_column(
-        String, nullable=False, default="delivered", index=True
+        String(50),
+        nullable=False,
+        default="delivered",
+        index=True,  # LOW-W19: bounded String
     )
-    attempted_at: Mapped[DateTime] = mapped_column(
+    attempted_at: Mapped[datetime] = mapped_column(  # MED-W19: was Mapped[DateTime]
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
@@ -194,7 +207,10 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
     )
 
     def __repr__(self) -> str:
-        return f"channel='{self.channel}', status='{self.status}')>"
+        # LOW-W19: fixed missing opening bracket and class name in format string
+        return (
+            f"<NotificationDelivery(channel='{self.channel}', status='{self.status}')>"
+        )
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)

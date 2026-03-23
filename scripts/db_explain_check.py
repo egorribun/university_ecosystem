@@ -40,7 +40,10 @@ async def check_seq_scans(engine, tables: list[str]) -> bool:
                 else:
                     logger.info(f"✓ {table} uses proper indexing.")
             except Exception as e:
+                # LOW-W19: treat EXPLAIN failure as a conservative positive to avoid
+                # silently bypassing the seq-scan gate on a broken query/table.
                 logger.warning(f"Could not execute EXPLAIN on {table}: {e}")
+                has_seq_scan = True
 
     return has_seq_scan
 

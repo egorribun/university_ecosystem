@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from app.cqrs.base import Command, CommandHandler
 from app.deps.cache import BaseCache
+from app.models.enums import UserRole
 from app.schemas import schemas
 from app.schemas.dtos import ScheduleDTO
 from app.services.schedule_service import ScheduleService
@@ -36,7 +37,7 @@ class UpdateScheduleCommand(Command):
     # SEC-BE-01 (audit Wave 10): actor fields for ownership enforcement.
     # actor_id=None only accepted when actor_role == "admin".
     actor_id: uuid.UUID | None = None
-    actor_role: str = "student"
+    actor_role: UserRole = UserRole.STUDENT
 
 
 class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
@@ -51,7 +52,7 @@ class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
 
         # SEC-BE-01: non-admins may only update schedules they created.
         # Schedules with creator_id=None (legacy rows) are admin-only.
-        if command.actor_role != "admin":
+        if command.actor_role != UserRole.ADMIN:
             if sched.creator_id is None or sched.creator_id != command.actor_id:
                 raise PermissionError("Not the owner of this schedule")
 
@@ -68,6 +69,9 @@ class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
 @dataclass
 class DeleteScheduleCommand(Command):
     schedule_id: uuid.UUID
+    # RZ-W19-11: add actor fields for authorization (was missing entirely)
+    actor_id: uuid.UUID | None = None
+    actor_role: UserRole = UserRole.STUDENT
 
 
 class DeleteScheduleHandler(CommandHandler[DeleteScheduleCommand, bool]):
@@ -79,6 +83,11 @@ class DeleteScheduleHandler(CommandHandler[DeleteScheduleCommand, bool]):
         sched = await self.service.get_by_id(command.schedule_id)
         if not sched:
             return False
+
+        # RZ-W19-11: enforce ownership — non-admins can only delete their own schedules
+        if command.actor_role != UserRole.ADMIN:
+            if sched.creator_id is None or sched.creator_id != command.actor_id:
+                raise PermissionError("Not authorized to delete this schedule")
 
         group_id = sched.group_id
         deleted = await self.service.delete_schedule(command.schedule_id)

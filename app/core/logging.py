@@ -47,6 +47,21 @@ def add_otel_context(
     return event_dict
 
 
+def _add_service_context(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Add static service context fields to every log record.
+
+    MED-W19: Replaces the lambda-with-side-effect pattern.  Using a named
+    function avoids the ``expr.update(...) or expr`` idiom which is
+    non-obvious, harder to test, and cannot be inspected by structlog's
+    processor introspection tools.
+    """
+    event_dict["service"] = "backend"
+    event_dict["environment"] = getattr(settings, "environment", "production")
+    return event_dict
+
+
 def configure_logging(
     *,
     level: int = logging.INFO,
@@ -76,16 +91,8 @@ def configure_logging(
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.processors.EventRenamer("message"),
-        # Add service context to every log record
-        lambda _, __, event_dict: (
-            event_dict.update(
-                {
-                    "service": "backend",
-                    "environment": getattr(settings, "environment", "production"),
-                }
-            )
-            or event_dict
-        ),
+        # MED-W19: named processor instead of lambda with side-effect
+        _add_service_context,
     ]
 
     processors: list[Any]

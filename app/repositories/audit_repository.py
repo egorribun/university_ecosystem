@@ -58,6 +58,8 @@ class AuditRepository(
         offset: int = 0,
     ) -> Sequence[DataAccessLogDTO]:
         """List logs with filters."""
+        # HIGH-W19: cap limit to prevent unbounded result sets
+        limit = min(limit, 1000)
         stmt = select(DataAccessLog)
         if actor_id:
             stmt = stmt.where(DataAccessLog.actor_user_id == actor_id)
@@ -76,6 +78,8 @@ class AuditRepository(
         """Batch create audit logs."""
         logs = [DataAccessLog(**e) for e in entries]
         self.db.add_all(logs)
+        # HIGH-W19: flush so rows are visible within the current transaction
+        await self.db.flush()
 
 
 def get_audit_repository(db: AsyncDatabaseSession) -> AuditRepository:

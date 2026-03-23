@@ -7,6 +7,7 @@ Provides middleware for automatic retry of failed event handlers.
 from __future__ import annotations
 
 import asyncio
+import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -90,9 +91,18 @@ class RetryMiddleware:
         )
 
     def _calculate_delay(self, attempt: int) -> float:
-        """Calculate delay for the given attempt number."""
+        """Calculate delay for the given attempt number.
+
+        LOW-W19: Apply ±25% random jitter to the exponential backoff value so
+        that multiple concurrent handlers retrying the same event do not all
+        wake up at the same instant and create a thundering-herd against the
+        downstream dependency.
+        """
         delay = self.config.base_delay * (self.config.exponential_base**attempt)
-        return min(delay, self.config.max_delay)
+        capped = min(delay, self.config.max_delay)
+        # Jitter: uniform random in [0.75 * capped, 1.25 * capped]
+        jitter_factor = random.uniform(0.75, 1.25)  # nosec B311  # noqa: S311
+        return capped * jitter_factor
 
     def _is_retryable(self, error: Exception) -> bool:
         """Check if the exception is retryable."""

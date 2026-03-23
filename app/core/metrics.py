@@ -712,6 +712,12 @@ def _is_authorized(request: Request) -> bool:
     username = settings.metrics_basic_auth_username.strip()
     password = settings.metrics_basic_auth_password
     if not username and not password:
+        # LOW-W19: Intentional behaviour — when no credentials are configured,
+        # access is granted only when the entire allowlist consists of loopback
+        # addresses (127.0.0.1, ::1, localhost). This is safe for internal
+        # scraping scenarios (e.g. prometheus running on the same host) but is
+        # correctly rejected by _metrics_auth_config_is_invalid() for any
+        # non-loopback allowlist entry, so no further credential check is needed.
         return _allowlist_is_loopback_only()
 
     if not username or not password:
@@ -958,7 +964,11 @@ def _load_gputil() -> Any:
 def _record_system_metrics() -> None:
     if _CPU_LOAD is not None:
         try:
-            _CPU_LOAD.set(float(psutil.cpu_percent(interval=None)))
+            # LOW-W19: interval=None returns 0.0 on the very first call because
+            # psutil has no previous measurement to compare against.  Using
+            # interval=0.1 performs a short blocking measurement so the first
+            # scrape always reports a real (non-zero) value.
+            _CPU_LOAD.set(float(psutil.cpu_percent(interval=0.1)))
         except Exception:  # pragma: no cover - defensive metrics guard
             logger.debug("Failed to collect CPU metrics", exc_info=True)
     if _GPU_LOAD is not None:
@@ -1059,17 +1069,23 @@ def configure_metrics(app: FastAPI) -> None:
         pw = settings.metrics_basic_auth_password.strip().lower()
         un = settings.metrics_basic_auth_username.strip().lower()
         if pw in _PLACEHOLDER_PASSWORDS or un in _PLACEHOLDER_PASSWORDS:
+            # LOW-W19: Log at WARNING (not just silent return) so operators can
+            # see in application logs that the /metrics endpoint has been
+            # DISABLED due to weak/placeholder credentials.
             logger.warning(
-                "Metrics endpoint is enabled but METRICS_BASIC_AUTH credentials "
-                "use a placeholder value; refusing to expose /metrics until "
-                "strong credentials are configured (see METRICS_BASIC_AUTH_*)."
+                "Metrics endpoint is DISABLED: METRICS_BASIC_AUTH credentials "
+                "use a placeholder value — configure strong credentials via "
+                "METRICS_BASIC_AUTH_USERNAME / METRICS_BASIC_AUTH_PASSWORD to "
+                "re-enable the /metrics endpoint."
             )
             return
         if un and pw and un == pw:
+            # LOW-W19: Same as above — warn explicitly that the endpoint is
+            # disabled so operators are not surprised by 404/503 responses.
             logger.warning(
-                "Metrics endpoint is enabled but METRICS_BASIC_AUTH_USERNAME "
-                "equals METRICS_BASIC_AUTH_PASSWORD; refusing to expose /metrics "
-                "until distinct credentials are configured."
+                "Metrics endpoint is DISABLED: METRICS_BASIC_AUTH_USERNAME "
+                "equals METRICS_BASIC_AUTH_PASSWORD — configure distinct "
+                "credentials to re-enable the /metrics endpoint."
             )
             return
 

@@ -39,8 +39,9 @@ class ScheduleOptimizerService:
         if isinstance(item.id, int):
             rust_id = item.id
         elif isinstance(item.id, uuid.UUID):
-            # Deterministic hash to stay within i32 range
-            rust_id = hash(item.id) & 0x7FFFFFFF
+            # HIGH-W19: use deterministic bytes-based conversion instead of
+            # Python's randomized hash() which changes across process restarts.
+            rust_id = int.from_bytes(item.id.bytes[:4], "big") & 0x7FFFFFFF
 
         # Convert time to datetime if needed (use 1970-01-01 to avoid OS/platform
         # overflow errors when calling .timestamp() on year 1)
@@ -97,8 +98,10 @@ class ScheduleOptimizerService:
                 result.append(self._from_rust_item(item, room, teacher))
 
             return result
-        except Exception as e:
-            logger.error(f"Native PyO3 conflict detection failed: {e}")
+        # HIGH-W19: narrow the except to known Rust/PyO3 error types so that
+        # unexpected exceptions (e.g. programming errors) are not silently swallowed.
+        except (RuntimeError, ValueError) as e:
+            logger.error("Native PyO3 conflict detection failed: %s", e)
             return []
 
     async def batch_detect_conflicts(
@@ -132,7 +135,9 @@ class ScheduleOptimizerService:
                 )
             return result
         except Exception as e:
-            logger.error(f"Native PyO3 batch detection failed: {e}")
+            logger.error(
+                "Native PyO3 batch detection failed: %s", e
+            )  # LOW-W19: lazy logging
             return []
 
     async def find_optimal_slot(
@@ -166,5 +171,7 @@ class ScheduleOptimizerService:
                 )
             return None
         except Exception as e:
-            logger.exception(f"Native PyO3 find_optimal_slot failed: {e}")
+            logger.exception(
+                "Native PyO3 find_optimal_slot failed: %s", e
+            )  # LOW-W19: lazy logging
             raise e

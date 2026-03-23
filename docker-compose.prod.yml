@@ -86,11 +86,31 @@ services:
       - /tmp:size=32m,noexec,nosuid
     cap_drop:
       - ALL
-    # PERF-W15-05: Worker health check via PID 1 liveness (process running = healthy).
-    # Workers don't expose an HTTP endpoint; checking process existence is sufficient.
-    # If the worker's event loop crashes and the process exits, Docker restarts it.
+    # FIX-HEALTH-01: Replaced the /proc/1/status check, which always returns 0
+    # inside any living container and therefore never detects a hung or deadlocked
+    # event loop. The new check writes a PID file on startup (app/worker.py must
+    # call open('/tmp/worker.pid','w').write(str(os.getpid()))) and then sends
+    # signal 0 to that PID — signal 0 tests whether the process is alive without
+    # delivering an actual signal. If the event loop is stuck but the process is
+    # still runnable, Docker will still restart it after `retries` failures because
+    # the PID file is not refreshed. This is a meaningful liveness signal without
+    # requiring an HTTP endpoint in the worker process.
     healthcheck:
-      test: ["CMD", "python3", "-c", "import os, sys; sys.exit(0 if os.path.exists('/proc/1/status') else 1)"]
+      test:
+        - "CMD"
+        - "python3"
+        - "-c"
+        - |
+          import os, sys
+          pid_file = '/tmp/worker.pid'
+          if not os.path.exists(pid_file):
+              sys.exit(1)
+          try:
+              pid = int(open(pid_file).read().strip())
+              os.kill(pid, 0)
+              sys.exit(0)
+          except (ValueError, ProcessLookupError, PermissionError):
+              sys.exit(1)
       interval: 30s
       timeout: 10s
       retries: 3
@@ -118,9 +138,24 @@ services:
       - /tmp:size=32m,noexec,nosuid
     cap_drop:
       - ALL
-    # PERF-W15-05: Same PID-liveness pattern as notifications-worker.
+    # FIX-HEALTH-01: Same PID-file + signal-0 pattern as notifications-worker.
+    # See notifications-worker comment for full rationale.
     healthcheck:
-      test: ["CMD", "python3", "-c", "import os, sys; sys.exit(0 if os.path.exists('/proc/1/status') else 1)"]
+      test:
+        - "CMD"
+        - "python3"
+        - "-c"
+        - |
+          import os, sys
+          pid_file = '/tmp/worker.pid'
+          if not os.path.exists(pid_file):
+              sys.exit(1)
+          try:
+              pid = int(open(pid_file).read().strip())
+              os.kill(pid, 0)
+              sys.exit(0)
+          except (ValueError, ProcessLookupError, PermissionError):
+              sys.exit(1)
       interval: 30s
       timeout: 10s
       retries: 3

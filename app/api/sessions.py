@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, Request, status
 
 from app.api.deps import get_current_user, get_session_service, require_fresh_mfa
 from app.api.validation import (
-    ensure_exists,
     raise_http_error,
     require_admin,
     require_owner_or_admin,
@@ -67,7 +66,7 @@ async def _resolve_target_user(
         raise_http_error(
             status.HTTP_404_NOT_FOUND, "errors.auth.user_not_found", locale
         )
-    ensure_exists(target, "users", locale)
+    # MED-W19: ensure_exists removed — unreachable after raise_http_error above.
     return target.id, target
 
 
@@ -112,12 +111,16 @@ async def revoke_session(
         raise_http_error(
             status.HTTP_404_NOT_FOUND, "errors.auth.session_not_found", locale
         )
-    ensure_exists(session, "sessions", locale)
+    # MED-W19: ensure_exists removed — unreachable after raise_http_error above.
     require_owner_or_admin(current_user, locale, owner_id=session.user_id)
 
     revoked_session = await session_service.revoke_session_by_id(session_id)
-    if not revoked_session:
-        raise ValueError("Unreachable")
+    # LOW-W19: removed dead `raise ValueError("Unreachable")` — revoke_session_by_id
+    # always returns a session at this point (session existence is verified above).
+    if revoked_session is None:
+        raise_http_error(
+            status.HTTP_404_NOT_FOUND, "errors.auth.session_not_found", locale
+        )
 
     current_jti = _extract_jti(request)
     payload = schemas.ActiveSessionOut.model_validate(revoked_session).model_copy(

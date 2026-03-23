@@ -46,7 +46,12 @@ func (c *Client) ReadPump() {
 	defer func() {
 		c.cancel()
 		c.Hub.msgLimiters.Delete(c.ID)
-		c.Hub.Unregister <- c
+		// RZ-W19-16: use select to avoid goroutine leak if Run() has already exited
+		select {
+		case c.Hub.Unregister <- c:
+		case <-c.Hub.ctx.Done():
+			c.closeOnce.Do(func() { close(c.Send) })
+		}
 		if err := c.Conn.Close(); err != nil {
 			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close websocket connection", "client_id", c.ID, "err", err)
 		}

@@ -4,7 +4,7 @@ import csv
 import io
 import json
 import uuid
-from collections.abc import Iterable
+from collections.abc import AsyncIterable, Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -50,7 +50,7 @@ async def log_data_access(
         resource_id=resource_id,
         action=action,
         context=context or {},
-        ip_address=request.client.host if request.client else None,
+        ip_address=request.client.host if request.client else "unknown",  # MED-W19
         user_agent=request.headers.get("user-agent"),
         created_at=created_at,
     )
@@ -64,7 +64,9 @@ async def log_data_access(
             "resource_id": resource_id,
             "action": action,
             "context": context or {},
-            "ip_address": request.client.host if request.client else None,
+            "ip_address": request.client.host
+            if request.client
+            else "unknown",  # MED-W19
             "user_agent": request.headers.get("user-agent"),
             "created_at": created_at,
             "signature": signature,
@@ -89,7 +91,7 @@ async def batch_log_data_access(
     from app.utils.audit import calculate_log_signature
 
     log_entries = []
-    ip_address = request.client.host if request.client else None
+    ip_address = request.client.host if request.client else "unknown"  # MED-W19
     user_agent = request.headers.get("user-agent")
 
     for entry in entries:
@@ -144,7 +146,7 @@ async def cleanup_access_logs(
         async with async_session() as session:
             return await cleanup_access_logs(db=session, retention_days=retention)
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
-    assert db is not None  # nosec B101
+    assert db is not None  # nosec B101  # noqa: S101
     repo = AuditRepository(db)
     count = await repo.prune_logs(cutoff)
     return count
@@ -207,9 +209,6 @@ def serialize_access_logs_csv(entries: Iterable[DataAccessLogDTO]) -> str:
             ]
         )
     return buffer.getvalue()
-
-
-from collections.abc import AsyncIterable
 
 
 async def export_access_logs_stream(

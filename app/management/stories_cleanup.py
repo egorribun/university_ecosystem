@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 def main() -> None:
     removed = asyncio.run(cleanup_expired_stories())
-    logger.info(f"Removed {removed} expired stories")
+    logger.info("Removed %s expired stories", removed)  # LOW-W19: lazy logging
 
 
 if __name__ == "__main__":

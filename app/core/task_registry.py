@@ -66,8 +66,19 @@ class TaskRegistry:
             return
         for task in list(self._tasks):
             task.cancel()
-        await asyncio.wait_for(
-            asyncio.gather(*self._tasks, return_exceptions=True),
-            timeout=timeout,
-        )
+        # LOW-W19: Catch TimeoutError so a slow task cannot prevent the rest of
+        # the shutdown sequence from running.  Any tasks still running after the
+        # timeout have already been cancelled; the gather result is discarded.
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self._tasks, return_exceptions=True),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            _logger.warning(
+                "TaskRegistry.shutdown: %d task(s) did not finish within %.1fs; "
+                "forcing teardown.",
+                len(self._tasks),
+                timeout,
+            )
         self._tasks.clear()
