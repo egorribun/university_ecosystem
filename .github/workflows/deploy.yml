@@ -141,7 +141,7 @@ jobs:
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "ws-hub"
-      context: "services/ws-hub"
+      context: "."
       file: "services/ws-hub/Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/ws-hub:${{ needs.prepare.outputs.version }}
@@ -160,7 +160,7 @@ jobs:
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "gateway"
-      context: "services/gateway"
+      context: "."
       file: "services/gateway/Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/gateway:${{ needs.prepare.outputs.version }}
@@ -179,7 +179,7 @@ jobs:
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "file-processor"
-      context: "services/file-processor"
+      context: "."
       file: "services/file-processor/Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/file-processor:${{ needs.prepare.outputs.version }}
