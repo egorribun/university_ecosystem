@@ -150,6 +150,10 @@ func (h *Hub) Run(ctx context.Context) {
 		}()
 	}
 
+	// PERF-W17-03: Sample broadcast queue depth every 5s for Prometheus.
+	queueDepthTicker := time.NewTicker(5 * time.Second)
+	defer queueDepthTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -172,6 +176,9 @@ func (h *Hub) Run(ctx context.Context) {
 					"type", msg.Type,
 					"room", msg.Room)
 			}
+
+		case <-queueDepthTicker.C:
+			BroadcastQueueDepth.Set(float64(len(broadcastCh)))
 		}
 	}
 }
@@ -534,6 +541,14 @@ func (h *Hub) Stop() {
 		}
 		h.jwksMu.Unlock()
 	})
+}
+
+// HasJWKSCache reports whether the JWKS cache has been initialised.
+// MOD-W17-05: Used by the readiness health endpoint to detect degraded state.
+func (h *Hub) HasJWKSCache() bool {
+	h.jwksMu.Lock()
+	defer h.jwksMu.Unlock()
+	return h.jwksCache != nil
 }
 
 // AuthorizeRoomJoin verifies that userID is a participant of the given room.

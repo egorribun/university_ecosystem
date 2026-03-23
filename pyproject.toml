@@ -406,9 +406,11 @@ reportDuplicateImport = true
 
 [tool.bandit]
 # Bandit static analysis security scanner.
-# Runs via pre-commit on app/ (excluding tests/).
-targets = ["app"]
-exclude_dirs = ["tests", "alembic"]
+# TD-W17-05 (Wave 17): tests/ no longer excluded — test code can contain
+# security anti-patterns (hardcoded credentials, shell=True, pickle) that
+# leak to production via copy-paste. Intentional fixtures use # nosec.
+targets = ["app", "tests"]
+exclude_dirs = ["alembic"]
 skips = [
   # B101: assert — acceptable in non-production guard code.
   "B101",

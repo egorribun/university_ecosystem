@@ -6,6 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
@@ -77,6 +80,11 @@ var (
 		Name: "gateway_redis_errors_total",
 		Help: "Total number of Redis errors during session verification",
 	})
+	// RZ-W17-02: Track revocation listener disconnects for alerting.
+	revocationListenerDisconnects = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "gateway_revocation_listener_disconnects_total",
+		Help: "Total number of Redis pubsub disconnects in revocation listener",
+	})
 	metricsRegistered sync.Once
 )
 
@@ -103,7 +111,7 @@ func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
 // the given PEM-encoded RSA public key alongside HS256 tokens.
 func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig) *JWTMiddleware {
 	metricsRegistered.Do(func() {
-		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors)
+		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors, revocationListenerDisconnects)
 	})
 
 	// Create LRU cache with eviction callback for observability
@@ -134,41 +142,134 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 	return m
 }
 
+// WarmL1Cache pre-populates the L1 cache by scanning Redis for currently
+// revoked JTIs. This avoids the cold-start penalty after a deploy where every
+// request would require a Redis round-trip until the L1 TTL fills naturally.
+//
+// PERF-W17-02 (Wave 17): Bounded to 10,000 keys and 5s timeout to prevent
+// startup stalls. If Redis is unavailable, warmup is silently skipped.
+func (m *JWTMiddleware) WarmL1Cache(ctx context.Context) {
+	if m.redis == nil {
+		return
+	}
+	warmCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	const maxWarmupKeys = 10000
+	var cursor uint64
+	var count int
+
+	for count < maxWarmupKeys {
+		keys, nextCursor, err := m.redis.Scan(warmCtx, cursor, "revoked:jti:*", 500).Result()
+		if err != nil {
+			slog.Warn("L1 cache warmup: Redis scan failed, skipping",
+				"err", err, "warmed", count)
+			return
+		}
+		for _, key := range keys {
+			m.l1cache.Add(key, cacheEntry{exists: true})
+			count++
+			if count >= maxWarmupKeys {
+				break
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+	slog.Info("L1 cache warmed from Redis", "entries", count)
+}
+
 // ListenForRevocations starts a background goroutine to listen for session revocations.
+//
+// RZ-W17-02 (Wave 17): Replaced select/case <-ch pattern with for-range loop.
+// The old pattern spun on nil when Redis disconnected (channel closed), causing
+// silent revocation blindness — revoked sessions stayed valid for the L1 TTL.
+// Now: on disconnect, purge L1 cache (fail-safe) and reconnect with jittered
+// exponential backoff.
 func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 	if m.redis == nil {
 		return
 	}
 
-	pubsub := m.redis.Subscribe(ctx, "session:revocations")
-	ch := pubsub.Channel()
-
 	go func() {
 		defer func() {
-			if err := pubsub.Close(); err != nil {
-				fmt.Printf("Warning: Failed to close Redis pubsub in revocation listener: %v\n", err)
-			}
 			if r := recover(); r != nil {
-				fmt.Printf("CRITICAL: Panic in Redis revocation listener avoided gateway crash: %v\n", r)
+				slog.Error("panic in Redis revocation listener recovered",
+					"panic", r, "event", "revocation_listener_panic")
 			}
 		}()
+
+		const (
+			baseDelay = 1 * time.Second
+			maxDelay  = 30 * time.Second
+		)
+		attempt := 0
+
 		for {
+			if ctx.Err() != nil {
+				return
+			}
+
+			m.listenOnce(ctx)
+
+			// Channel closed — Redis disconnected.
+			revocationListenerDisconnects.Inc()
+			// RZ-W17-02: Purge L1 cache so every check hits Redis directly.
+			// This is fail-safe: if Redis is down, checkSessionInRedis returns
+			// an error and failSecure logic kicks in (503 for Validate, unauth
+			// for Optional).
+			m.l1cache.Purge()
+
+			attempt++
+			delay := time.Duration(math.Min(
+				float64(baseDelay)*math.Pow(2, float64(attempt-1)),
+				float64(maxDelay),
+			))
+			// Jitter: 75%-125% of computed delay.
+			jitter := 0.75 + rand.Float64()*0.5
+			delay = time.Duration(float64(delay) * jitter)
+
+			slog.Error("Redis pubsub disconnected — revocation listener lost, reconnecting",
+				"attempt", attempt, "backoff", delay.String(),
+				"event", "revocation_listener_disconnect")
+
 			select {
 			case <-ctx.Done():
 				return
-			case msg := <-ch:
-				if msg == nil {
-					continue
-				}
-				// RZ-01 (audit 2026-03-04): Key format MUST match verifySession which stores
-				// and checks under "revoked:jti:{jti}". Using "session:{jti}" here meant that
-				// revocation pub/sub events never purged the correct L1 key → revoked sessions
-				// could still pass the edge-layer check for the entire 30 s cache TTL.
-				key := fmt.Sprintf("revoked:jti:%s", msg.Payload)
-				m.l1cache.Remove(key)
+			case <-time.After(delay):
 			}
 		}
 	}()
+}
+
+// listenOnce subscribes to revocation events and processes them until the
+// channel closes or context is cancelled. Returns normally on disconnect.
+func (m *JWTMiddleware) listenOnce(ctx context.Context) {
+	pubsub := m.redis.Subscribe(ctx, "session:revocations")
+	defer func() {
+		if err := pubsub.Close(); err != nil {
+			slog.Warn("failed to close Redis pubsub in revocation listener",
+				"err", err, "event", "pubsub_close_error")
+		}
+	}()
+
+	ch := pubsub.Channel()
+	// RZ-W17-02: for-range detects channel closure natively.
+	// When Redis disconnects, ch is closed, the loop exits, and the caller
+	// handles reconnection.
+	for msg := range ch {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		// RZ-01 (audit 2026-03-04): Key format MUST match verifySession which stores
+		// and checks under "revoked:jti:{jti}".
+		key := fmt.Sprintf("revoked:jti:%s", msg.Payload)
+		m.l1cache.Remove(key)
+	}
 }
 
 // checkL1Cache checks if a session exists in the L1 cache
@@ -349,8 +450,9 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 				return
 			}
 			if alg != "RS256" {
-				// Log as warning so SOC/SIEM can detect algorithm downgrade probes.
-				fmt.Printf("gateway: algorithm downgrade attempt rejected: alg=%q, remote=%s\n", alg, c.ClientIP())
+				// TD-W17-01: Structured logging for SOC/SIEM algorithm downgrade detection.
+				slog.Warn("algorithm downgrade attempt rejected",
+					"alg", alg, "remote", c.ClientIP(), "event", "jwt_alg_downgrade")
 				AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token algorithm", "https://api.university.edu/probs/invalid-token")
 				return
 			}
@@ -454,7 +556,8 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 			if algErr != nil || alg != "RS256" {
 				// Malformed header or downgrade attempt — treat as unauthenticated.
 				if algErr == nil {
-					fmt.Printf("gateway: algorithm downgrade attempt rejected (optional): alg=%q, remote=%s\n", alg, c.ClientIP())
+					slog.Warn("algorithm downgrade attempt rejected (optional)",
+						"alg", alg, "remote", c.ClientIP(), "event", "jwt_alg_downgrade")
 				}
 				c.Next()
 				return

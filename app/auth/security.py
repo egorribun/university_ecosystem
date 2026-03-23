@@ -124,7 +124,10 @@ argon2_hasher = PasswordHasher(
 )
 
 
-def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
+def _verify_legacy_bcrypt(  # noqa: S106  # lgtm[py/weak-cryptographic-algorithm]
+    plain_password: str,
+    hashed_password: str,
+) -> bool:
     """Verify a bcrypt hash using the native bcrypt package.
 
     bcrypt silently truncates inputs at 72 bytes (the historical behaviour).
@@ -136,6 +139,8 @@ def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
       • auth_legacy_bcrypt_verifications_total == 0 for 30+ consecutive days, AND
       • auth_legacy_bcrypt_users_remaining gauge == 0.
     See removal checklist in app/core/metrics.py (TD-W14-02).
+
+    RZ-W17-04: CodeQL inline suppression (lgtm) replaces blanket file exclusion.
     """
     try:
         from app.core.metrics import record_legacy_bcrypt_verification

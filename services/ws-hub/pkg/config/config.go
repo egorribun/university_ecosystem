@@ -67,6 +67,9 @@ type Config struct {
 	// TD-W16-03: Configurable per-client message rate limit (previously hardcoded 10/s, burst 20).
 	ClientMsgRateLimit float64
 	ClientMsgRateBurst int
+	// MOD-W17-06: Configurable WS upgrade ticket TTL (default 15s).
+	// Must match the Python backend's WS_TICKET_TTL_SECONDS.
+	TicketTTLSeconds int
 	// Redis connection parameters for L2 caching (PERF-006).
 	RedisURL      string
 	RedisPassword string
@@ -110,6 +113,7 @@ func LoadConfig() *Config {
 		MaxClients:          getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
 		ClientMsgRateLimit:  getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
 		ClientMsgRateBurst:  getEnvInt("WS_CLIENT_MSG_BURST", 20),
+		TicketTTLSeconds:    getEnvInt("WS_TICKET_TTL_SECONDS", 15),
 		RedisURL:            getEnv("REDIS_URL", "redis:6379"),
 		RedisPassword:       getEnv("REDIS_PASSWORD", ""),
 		RedisDB:             getEnvInt("REDIS_DB", 0),

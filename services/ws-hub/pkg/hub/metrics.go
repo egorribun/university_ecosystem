@@ -45,4 +45,12 @@ var (
 		Name: "ws_hub_broadcast_drops_total",
 		Help: "Messages dropped due to full broadcast channel or worker pool.",
 	})
+
+	// PERF-W17-03: BroadcastQueueDepth exposes the current number of pending
+	// messages in the broadcast worker channel. Operators can alert on
+	// sustained high depth to detect approaching saturation BEFORE drops begin.
+	BroadcastQueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "ws_hub_broadcast_queue_depth",
+		Help: "Current number of pending messages in the broadcast worker channel.",
+	})
 )

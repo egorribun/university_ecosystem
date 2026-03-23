@@ -158,7 +158,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 //
 //	Key  : "ott:ws:{ticket}"
 //	Value: "{user_id}:{jti}"  (colon-joined UUIDs)
-//	TTL  : 15 seconds
+//	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
 //
 // GETDEL makes the ticket single-use: if two concurrent upgrade requests race
 // with the same ticket, only the first succeeds.

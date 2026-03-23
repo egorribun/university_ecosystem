@@ -19,6 +19,7 @@ TTL  : WS_TICKET_TTL_SECONDS (default 15)
 
 from __future__ import annotations
 
+import os
 import secrets
 from typing import Annotated
 
@@ -33,7 +34,10 @@ from app.services.auth.token_service import AuthTokenService
 
 logger = get_logger(__name__)
 
-_TICKET_TTL_SECONDS: int = 15
+# MOD-W17-06 (Wave 17): Configurable via WS_TICKET_TTL_SECONDS env var.
+# Default 15s. On slow networks (mobile, CDN multi-hop) consider 30-60s.
+# On high-security deployments, keep at 15s or lower.
+_TICKET_TTL_SECONDS: int = int(os.environ.get("WS_TICKET_TTL_SECONDS", "15"))
 TICKET_KEY_PREFIX: str = "ott:ws:"
 
 _oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)

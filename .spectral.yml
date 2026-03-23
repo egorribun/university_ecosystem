@@ -31,10 +31,11 @@ rules:
   # All schema properties that carry PII should be marked with x-pii: true.
   # This enables downstream tooling (data lineage, access control docs) to
   # identify fields that require special handling under GDPR/FERPA.
-  # Severity info so it doesn't block the build — data governance is advisory.
+  # RZ-W17-06 (Wave 17): Raised from info → warn so PII exposure surfaces
+  # as CI warnings in PR reviews, not silently ignored.
   pii-field-marker:
     description: "Fields named *email*, *phone*, *password* should be marked x-pii: true"
-    severity: info
+    severity: warn
     given: "$.components.schemas.*..properties[email,phone,password_hash]"
     then:
       field: x-pii

@@ -87,10 +87,14 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      # MOD-W17-04 (Wave 17): Use commit SHA as the image tag for idempotent,
+      # content-addressable builds. Previously used SHA+timestamp which produced
+      # different tags on retry, making rollbacks ambiguous and breaking SLSA
+      # Level 2 provenance requirements.
       - name: Generate version tag
         id: version
         run: |
-          VERSION="${{ github.sha }}-$(date +%Y%m%d%H%M%S)"
+          VERSION="${{ github.sha }}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build-backend:

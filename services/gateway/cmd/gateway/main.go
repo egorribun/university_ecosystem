@@ -14,15 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	"log/slog"
+
 	"github.com/gin-contrib/cors"
-	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/extra/redisprometheus/v9"
 	"github.com/redis/go-redis/v9"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/getsentry/sentry-go"
 	sentrygin "github.com/getsentry/sentry-go/gin"
@@ -47,20 +46,16 @@ import (
 
 func main() {
 	// 1. Initialize Logger
+	// TD-W17-02 (Wave 17): Migrated from uber-go/zap to log/slog, matching
+	// ws-hub and file-processor. Eliminates the EINVAL-on-Sync workaround
+	// and unifies structured logging across all three Go services.
 	logger := initLogger()
-	// TD-14-05 (audit Wave 14): zap.Logger.Sync() calls fsync on stdout/stderr
-	// which always returns EINVAL on Linux in container environments.  Suppress
-	// the expected error to avoid noisy shutdown logs.  This becomes a non-issue
-	// after the planned slog migration (MOD-14-04).
-	defer func() { _ = logger.Sync() }()
+	slog.SetDefault(logger)
 
 	// 2. Load Configuration
 	cfg, err := config.Load()
 	if err != nil {
-		// RZ-14-03 (audit Wave 14): zap.Fatal calls os.Exit(1) internally,
-		// bypassing all deferred functions (tracer flush, gRPC close, Sentry).
-		// Use Error + os.Exit(1) so deferred cleanup runs first.
-		logger.Error("Failed to load configuration", zap.Error(err))
+		logger.Error("Failed to load configuration", "err", err)
 		os.Exit(1)
 	}
 
@@ -73,11 +68,11 @@ func main() {
 
 	tp, err := initTracer(ctx, cfg)
 	if err != nil {
-		logger.Error("OpenTelemetry initialization failed", zap.Error(err))
+		logger.Error("OpenTelemetry initialization failed", "err", err)
 	} else {
 		defer func() {
 			if err := tp.Shutdown(ctx); err != nil {
-				logger.Error("Failed to shutdown tracer provider", zap.Error(err))
+				logger.Error("Failed to shutdown tracer provider", "err", err)
 			}
 		}()
 		logger.Info("OpenTelemetry initialized")
@@ -87,7 +82,7 @@ func main() {
 	grpcConn, fileClient := initGRPC(cfg, logger)
 	defer func() {
 		if err := grpcConn.Close(); err != nil {
-			logger.Error("Failed to close gRPC connection", zap.Error(err))
+			logger.Error("Failed to close gRPC connection", "err", err)
 		}
 	}()
 
@@ -98,24 +93,20 @@ func main() {
 	runServer(cfg, router, logger)
 }
 
-func initLogger() *zap.Logger {
-	encoderConfig := zap.NewProductionEncoderConfig()
-	encoderConfig.TimeKey = "timestamp"
-	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	encoderConfig.MessageKey = "message"
-
-	zapConfig := zap.NewProductionConfig()
-	zapConfig.EncoderConfig = encoderConfig
-
-	logger, err := zapConfig.Build(zap.Fields(zap.String("service", "gateway")))
-	if err != nil {
-		// If logger fails to build, we can only panic with standard fmt
-		panic(fmt.Sprintf("failed to build logger: %v", err))
-	}
-	return logger
+func initLogger() *slog.Logger {
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				a.Value = slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano))
+			}
+			return a
+		},
+	})
+	return slog.New(handler).With("service", "gateway")
 }
 
-func initSentry(cfg *config.Config, logger *zap.Logger) {
+func initSentry(cfg *config.Config, logger *slog.Logger) {
 	if cfg.SentryDSN == "" {
 		return
 	}
@@ -126,13 +117,13 @@ func initSentry(cfg *config.Config, logger *zap.Logger) {
 		TracesSampleRate: 1.0,
 	})
 	if err != nil {
-		logger.Error("Sentry initialization failed", zap.Error(err))
+		logger.Error("Sentry initialization failed", "err", err)
 		return
 	}
-	logger.Info("Sentry initialized", zap.String("environment", cfg.Environment))
+	logger.Info("Sentry initialized", "environment", cfg.Environment)
 }
 
-func initGRPC(cfg *config.Config, logger *zap.Logger) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
+func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
 	var grpcCreds grpc.DialOption
 	if cfg.GrpcUseTLS {
 		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
@@ -142,26 +133,27 @@ func initGRPC(cfg *config.Config, logger *zap.Logger) (*grpc.ClientConn, pb.File
 
 	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds)
 	if err != nil {
-		logger.Error("Failed to initialize File Processor gRPC transport", zap.Error(err))
+		logger.Error("Failed to initialize File Processor gRPC transport", "err", err)
 		os.Exit(1)
 	}
-	logger.Info("Connected to File Processor gRPC", zap.String("addr", cfg.FileProcessorAddr))
+	logger.Info("Connected to File Processor gRPC", "addr", cfg.FileProcessorAddr)
 
 	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn)
 }
 
-func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, ctx context.Context) *gin.Engine {
+func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, ctx context.Context) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
 	// FIX 1.4: Security Hardening: Explicitly trust only internal networks and local proxies.
 	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}); err != nil {
-		logger.Error("Failed to set trusted proxies", zap.Error(err))
+		logger.Error("Failed to set trusted proxies", "err", err)
 	}
 
+	// TD-W17-02: Replace ginzap with gin.Recovery + otelgin.
+	// gin.Recovery provides panic recovery; otelgin provides trace-correlated
+	// request logging via OpenTelemetry. This eliminates the uber-go/zap dependency.
 	router.Use(gin.Recovery())
-	router.Use(ginzap.Ginzap(logger, time.RFC3339, true))
-	router.Use(ginzap.RecoveryWithZap(logger, true))
 
 	if cfg.SentryDSN != "" {
 		router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
@@ -180,7 +172,7 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 	// Proxy configuration
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
-		logger.Error("Invalid backend URL", zap.Error(err), zap.String("url", cfg.BackendURL))
+		logger.Error("Invalid backend URL", "err", err, "url", cfg.BackendURL)
 		os.Exit(1)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
@@ -196,7 +188,7 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 		TLSHandshakeTimeout:   10 * time.Second,
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		logger.Error("Proxy error", zap.Error(err), zap.String("path", r.URL.Path))
+		logger.Error("Proxy error", "err", err, "path", r.URL.Path)
 		w.WriteHeader(http.StatusBadGateway)
 	}
 
@@ -204,13 +196,13 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 	rateLimiter, err := middleware.NewRateLimiter(ctx, cfg.RedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
 	var redisClient *redis.Client
 	if err != nil {
-		logger.Warn("Rate limiter not available, continuing without", zap.Error(err))
+		logger.Warn("Rate limiter not available, continuing without", "err", err)
 	} else {
 		router.Use(rateLimiter.Middleware(ctx))
 		redisClient = rateLimiter.GetClient()
 		collector := redisprometheus.NewCollector("gateway", "redis", redisClient)
 		if err := prometheus.Register(collector); err != nil {
-			logger.Warn("Failed to register Redis metrics collector", zap.Error(err))
+			logger.Warn("Failed to register Redis metrics collector", "err", err)
 		}
 	}
 
@@ -229,6 +221,8 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 		os.Exit(1)
 	}
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
+	// PERF-W17-02: Pre-populate L1 cache from Redis to avoid cold-start thundering herd.
+	jwtMiddleware.WarmL1Cache(ctx)
 	jwtMiddleware.ListenForRevocations(ctx)
 
 	internalSecret := []byte(cfg.InternalHMACSecret)
@@ -266,7 +260,7 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 	return router
 }
 
-func runServer(cfg *config.Config, router *gin.Engine, logger *zap.Logger) {
+func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 	addr := ":" + cfg.Port
 	srv := &http.Server{
 		Addr:              addr,
@@ -279,9 +273,9 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *zap.Logger) {
 	}
 
 	go func() {
-		logger.Info("Starting API Gateway", zap.String("addr", addr), zap.String("backend", cfg.BackendURL))
+		logger.Info("Starting API Gateway", "addr", addr, "backend", cfg.BackendURL)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("Failed to start server", zap.Error(err))
+			logger.Error("Failed to start server", "err", err)
 			os.Exit(1)
 		}
 	}()
@@ -296,7 +290,7 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *zap.Logger) {
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("Server forced to shutdown", zap.Error(err))
+		logger.Error("Server forced to shutdown", "err", err)
 	}
 
 	logger.Info("Server exiting")

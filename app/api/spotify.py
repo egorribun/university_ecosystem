@@ -51,9 +51,17 @@ _spotify_circuit_breaker = CircuitBreaker(
 # PERF-002 (audit 2026-03-04): shared HTTP client across requests prevents
 # per-request TCP handshake and TLS negotiation overhead.  HTTP/2 multiplexing
 # allows multiple concurrent Spotify API calls over a single connection.
+# PERF-W17-04 (Wave 17): Explicit pool limits prevent unbounded connections
+# to Spotify API. httpx defaults to max_connections=100, which is excessive
+# for a single third-party API and risks overwhelming Spotify's rate limits.
 _spotify_http_client = httpx.AsyncClient(
     http2=True,
-    timeout=httpx.Timeout(10.0),
+    timeout=httpx.Timeout(10.0, connect=5.0),
+    limits=httpx.Limits(
+        max_connections=20,
+        max_keepalive_connections=10,
+        keepalive_expiry=30,
+    ),
 )
 
 

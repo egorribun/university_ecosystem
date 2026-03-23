@@ -60,7 +60,7 @@ func main() {
 	}
 
 	h := setupHub(ctx, cfg, logger, nc, rdb)
-	setupHandlers(h, cfg, logger)
+	setupHandlers(h, cfg, logger, nc, rdb)
 	runServer(cfg, logger, h)
 }
 
@@ -128,13 +128,53 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	return h
 }
 
-func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger) {
+func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client) {
 	http.Handle("/ws", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebSocket(w, r, cfg)
 	}), "websocket_upgrade"))
 
+	// MOD-W17-05 (Wave 17): Separated liveness from readiness.
+	// /health/live — always returns 200 if the process is running (K8s liveness).
+	// /health/ready — checks NATS, Redis, and JWKS (K8s readiness).
+	// /health — backward-compatible alias for /health/live.
+	http.Handle("/health/live", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "alive"}); err != nil {
+			logger.ErrorContext(r.Context(), "Failed to encode liveness response", "err", err)
+		}
+	}), "health_live"))
+
+	http.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checks := map[string]string{}
+		if !nc.IsConnected() {
+			checks["nats"] = "disconnected"
+		}
+		if rdb != nil {
+			if err := rdb.Ping(r.Context()).Err(); err != nil {
+				checks["redis"] = err.Error()
+			}
+		} else {
+			checks["redis"] = "not configured"
+		}
+		if !h.HasJWKSCache() {
+			checks["jwks"] = "not initialized"
+		}
+		if len(checks) > 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "degraded", "checks": checks,
+			}); err != nil {
+				logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
+			}
+			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
+			logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
+		}
+	}), "health_ready"))
+
+	// Backward-compatible /health (alias for /health/live).
 	http.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "healthy"}); err != nil {
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
 			logger.ErrorContext(r.Context(), "Failed to encode health check response", "err", err)
 		}
 	}), "health_check"))

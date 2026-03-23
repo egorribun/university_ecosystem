@@ -20,11 +20,18 @@ jobs:
             - name: "Checkout Repository"
               uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+            # MOD-W17-01 (Wave 17): Switched from deny-list to positive allow-list.
+            # A deny-list of 2 licenses misses SSPL, BSL, EUPL, and other
+            # copyleft/source-available licenses increasingly common in 2026.
             - name: Dependency Review
               uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
               with:
                   fail-on-severity: high
-                  deny-licenses: GPL-3.0, AGPL-3.0
+                  allow-licenses: >-
+                    MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD,
+                    Unlicense, CC0-1.0, BlueOak-1.0.0, PSF-2.0, MPL-2.0,
+                    Python-2.0, Artistic-2.0, Zlib, BSL-1.0
+                  deny-licenses: GPL-3.0, AGPL-3.0, SSPL-1.0, BSL-1.1, EUPL-1.2
                   comment-summary-in-pr: always
                   warn-only: false
                   vulnerability-check: true
