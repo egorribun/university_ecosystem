@@ -48,8 +48,8 @@ jobs:
       - name: Attest Python SBOM
         uses: actions/attest-sbom@f19ab44411e02574a74181cec8eb584319d0f779 # v2.1.0
         with:
-          subject-name: sbom-python
           subject-path: sbom-python.spdx.json
+          sbom-path: sbom-python.spdx.json
 
       - name: Upload Python SBOM artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
