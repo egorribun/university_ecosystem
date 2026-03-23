@@ -1,0 +1,301 @@
+"""Comprehensive tests for app/services/chat/query_service.py.
+
+Covers: get_chats, get_chat_details, get_messages — validation,
+presence enrichment, pagination, and edge cases.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.schemas.chat import PresenceStatus
+from app.services.chat.query_service import ChatQueryService
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _mock_user(role: str = "student") -> MagicMock:
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.email = "test@example.com"
+    user.role = role
+    return user
+
+
+def _mock_chat(*participant_ids: uuid.UUID):
+    chat = MagicMock()
+    chat.id = uuid.uuid4()
+    chat.created_at = datetime.now(UTC)
+    chat.updated_at = datetime.now(UTC)
+    participants = []
+    for pid in participant_ids:
+        p = MagicMock()
+        p.id = pid
+        p.email = f"user-{pid.hex[:6]}@example.com"
+        p.full_name = f"User {pid.hex[:6]}"
+        p.avatar_url = None
+        p.is_active = True
+        participants.append(p)
+    chat.participants = participants
+    return chat
+
+
+def _mock_message(chat_id: uuid.UUID, sender_id: uuid.UUID):
+    msg = MagicMock()
+    msg.id = uuid.uuid4()
+    msg.chat_id = chat_id
+    msg.sender_id = sender_id
+    msg.content = "Test message"
+    msg.created_at = datetime.now(UTC)
+    msg.read_status = False
+    msg.sender = None
+    msg.attachments = []
+    return msg
+
+
+# ---------------------------------------------------------------------------
+# get_chats
+# ---------------------------------------------------------------------------
+
+
+class TestGetChats:
+    @pytest.mark.asyncio
+    async def test_empty_chats(self):
+        repo = MagicMock()
+        repo.get_chats_for_user = AsyncMock(return_value=([], False, None))
+        repo.get_last_messages = AsyncMock(return_value={})
+
+        session = AsyncMock()
+        svc = ChatQueryService(session, repo)
+        user = _mock_user()
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_chats(user, None, 20)
+
+        assert result.items == []
+        assert result.has_more is False
+
+    @pytest.mark.asyncio
+    async def test_with_chats_and_messages(self):
+        from app.schemas.chat import MessageResponse
+
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        msg_id = uuid.uuid4()
+
+        row = (chat, 2, msg_id)  # (chat, unread_count, last_message_id)
+        repo = MagicMock()
+        repo.get_chats_for_user = AsyncMock(return_value=([row], False, None))
+
+        last_msg = MessageResponse(
+            id=msg_id,
+            chat_id=chat.id,
+            sender_id=user.id,
+            content="Last",
+            created_at=datetime.now(UTC),
+            read_status=False,
+            sender=None,
+            attachments=[],
+        )
+        repo.get_last_messages = AsyncMock(return_value={msg_id: last_msg})
+
+        session = AsyncMock()
+        svc = ChatQueryService(session, repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={user.id: PresenceStatus(active=True)},
+        ):
+            result = await svc.get_chats(user, None, 20)
+
+        assert len(result.items) == 1
+        assert result.items[0].unread_count == 2
+
+    @pytest.mark.asyncio
+    async def test_with_no_last_message(self):
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        row = (chat, 0, None)  # no last message
+
+        repo = MagicMock()
+        repo.get_chats_for_user = AsyncMock(return_value=([row], False, None))
+        repo.get_last_messages = AsyncMock(return_value={})
+
+        session = AsyncMock()
+        svc = ChatQueryService(session, repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={user.id: PresenceStatus(active=False)},
+        ):
+            result = await svc.get_chats(user, None, 20)
+
+        assert len(result.items) == 1
+        assert result.items[0].last_message is None
+
+
+# ---------------------------------------------------------------------------
+# get_chat_details
+# ---------------------------------------------------------------------------
+
+
+class TestGetChatDetails:
+    @pytest.mark.asyncio
+    async def test_success(self):
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_unread_count = AsyncMock(return_value=3)
+        repo.get_last_message = AsyncMock(return_value=None)
+
+        session = AsyncMock()
+        svc = ChatQueryService(session, repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={user.id: PresenceStatus(active=True)},
+        ):
+            result = await svc.get_chat_details(chat.id, user, "en")
+
+        assert result.id == chat.id
+        assert result.unread_count == 3
+
+    @pytest.mark.asyncio
+    async def test_not_found(self):
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=None)
+
+        svc = ChatQueryService(AsyncMock(), repo)
+        user = _mock_user()
+
+        with pytest.raises(Exception):  # noqa: B017
+            await svc.get_chat_details(uuid.uuid4(), user, "en")
+
+    @pytest.mark.asyncio
+    async def test_not_participant(self):
+        user = _mock_user()
+        other = _mock_user()
+        chat = _mock_chat(other.id)  # user is NOT participant
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+
+        svc = ChatQueryService(AsyncMock(), repo)
+
+        with pytest.raises(Exception):  # noqa: B017
+            await svc.get_chat_details(chat.id, user, "en")
+
+
+# ---------------------------------------------------------------------------
+# get_messages
+# ---------------------------------------------------------------------------
+
+
+class TestGetMessages:
+    @pytest.mark.asyncio
+    async def test_success(self):
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        msg = _mock_message(chat.id, user.id)
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_messages = AsyncMock(return_value=([msg], False, None))
+
+        session = AsyncMock()
+        svc = ChatQueryService(session, repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={user.id: PresenceStatus(active=True)},
+        ):
+            result = await svc.get_messages(chat.id, user, None, 20, "en")
+
+        assert len(result.items) == 1
+        assert result.has_more is False
+
+    @pytest.mark.asyncio
+    async def test_empty_messages(self):
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_messages = AsyncMock(return_value=([], False, None))
+
+        session = AsyncMock()
+        svc = ChatQueryService(session, repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_messages(chat.id, user, None, 20, "en")
+
+        assert result.items == []
+
+    @pytest.mark.asyncio
+    async def test_not_participant(self):
+        user = _mock_user()
+        other = _mock_user()
+        chat = _mock_chat(other.id)
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+
+        svc = ChatQueryService(AsyncMock(), repo)
+
+        with pytest.raises(Exception):  # noqa: B017
+            await svc.get_messages(chat.id, user, None, 20, "en")
+
+    @pytest.mark.asyncio
+    async def test_chat_not_found(self):
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=None)
+
+        svc = ChatQueryService(AsyncMock(), repo)
+        user = _mock_user()
+
+        with pytest.raises(Exception):  # noqa: B017
+            await svc.get_messages(uuid.uuid4(), user, None, 20, "en")
+
+    @pytest.mark.asyncio
+    async def test_with_pagination(self):
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        msgs = [_mock_message(chat.id, user.id) for _ in range(3)]
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_messages = AsyncMock(return_value=(msgs, True, "cursor-abc"))
+
+        session = AsyncMock()
+        svc = ChatQueryService(session, repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={user.id: PresenceStatus()},
+        ):
+            result = await svc.get_messages(chat.id, user, None, 3, "en")
+
+        assert len(result.items) == 3
+        assert result.has_more is True
+        assert result.next_cursor == "cursor-abc"

@@ -36,11 +36,11 @@ else:
     os.environ["DATABASE_URL"] = os.environ.get(
         "DATABASE_URL", "sqlite+aiosqlite:///./test.db"
     )
-os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"
+os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"  # noqa: S105
 os.environ["ALGORITHM"] = "HS256"
-os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
+os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"  # noqa: S105
 os.environ["STATIC_DIR"] = "app/test-static"
-os.environ["SPOTIFY_TOKEN_SECRET"] = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
+os.environ["SPOTIFY_TOKEN_SECRET"] = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="  # noqa: S105
 os.environ["CACHE_ENABLED"] = "false"
 os.environ["ENABLE_OTEL"] = "false"
 os.environ["SESSION_STORAGE_BACKEND"] = "redis"
@@ -49,7 +49,7 @@ os.environ["RATE_LIMIT_STORAGE_URI"] = "redis://localhost"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["RATE_LIMIT_NEWS"] = "5/minute"
 os.environ["RATE_LIMIT_AUTH_REGISTER"] = "4/minute"
-os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"
+os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"  # noqa: S105
 os.environ["IMGPROXY_KEY"] = ""
 os.environ["IMGPROXY_SALT"] = ""
 
@@ -61,6 +61,8 @@ pytest_plugins = [
     "tests.fixtures.infrastructure.infrastructure",
     "tests.fixtures.auth.auth_fixtures",
     "tests.fixtures.services.service_fixtures",
+    "tests.fixtures.services.notification_fixtures",
+    "tests.fixtures.services.websocket_fixtures",
 ]
 
 

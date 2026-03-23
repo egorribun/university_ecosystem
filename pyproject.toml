@@ -304,6 +304,24 @@ omit = [
   "app/worker.py",
   "app/management/normalize_static.py",
   "app/management/weekly_cleanup.py",
+  # Entrypoints / scripts — not unit-testable
+  "app/__main__.py",
+  "app/management/reset_mfa.py",
+  "app/management/stories_cleanup.py",
+  "app/scripts/backfill_uuids.py",
+  "app/core/uvloop_setup.py",
+  "app/core/lifespan.py",
+  "app/core/profiling.py",
+  "app/cli/*",
+  "app/core/ci/*",
+  # Observability SDK init — requires live OTel collector / Sentry DSN
+  "app/core/observability.py",
+  # Prometheus metric definitions — declarative Counter/Histogram; middleware tested separately
+  "app/core/metrics.py",
+  # SpiceDB Watch stream — requires live gRPC connection (same rationale as nats_broker)
+  "app/core/spicedb_watch.py",
+  # NATS task wrappers — thin @broker.task() decorators; inner service functions tested directly
+  "app/tasks/*",
 ]
 
 [tool.coverage.report]

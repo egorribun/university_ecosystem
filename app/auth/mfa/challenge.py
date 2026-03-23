@@ -196,16 +196,24 @@ async def _register_failed_attempt(
                 ),
                 else_=None,
             ),
-            # TD-W5-01: Keep explicit state in sync with locked_at
+            # TD-W5-01: Keep explicit state in sync with locked_at.
+            # PostgreSQL requires explicit CAST for enum-typed columns in
+            # CASE expressions — bare text/varchar is rejected with
+            # "column is of type challenge_state_enum but expression is of
+            # type text" (asyncpg DatatypeMismatchError).
+            # Using literal().cast(column.type) emits proper
+            # CAST('locked' AS challenge_state_enum) in the generated SQL.
             state=case(
                 (
                     and_(
                         literal(limit).isnot(None),
                         MfaChallenge.attempt_count + 1 >= limit,
                     ),
-                    ChallengeState.LOCKED,
+                    literal(ChallengeState.LOCKED.value).cast(MfaChallenge.state.type),
                 ),
-                else_=ChallengeState.PENDING,
+                else_=literal(ChallengeState.PENDING.value).cast(
+                    MfaChallenge.state.type
+                ),
             ),
         )
         .returning(MfaChallenge.attempt_count, MfaChallenge.locked_at)
