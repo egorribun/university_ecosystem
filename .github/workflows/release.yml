@@ -4,6 +4,8 @@ on:
     branches:
       - main
 
+permissions: read-all
+
 jobs:
   release:
     name: Release
@@ -44,6 +46,12 @@ jobs:
   build:
     name: Build & Sign Releases
     needs: [release]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
     strategy:
       matrix:
         include:

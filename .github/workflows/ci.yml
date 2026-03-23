@@ -8,11 +8,7 @@ on:
 
 # Least-privilege defaults — individual jobs extend as needed.
 # Prevents Poisoned Pipeline Execution (PPE) from fork PRs (OWASP CI/CD C-PPE-1).
-permissions:
-  contents: read
-  pull-requests: write
-  security-events: write
-  actions: read
+permissions: read-all
 
 concurrency:
   group: ci-matrix-${{ github.ref }}
@@ -267,6 +263,10 @@ jobs:
   security-audit:
     name: Security Audit
     needs: pre-commit-check
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     uses: ./.github/workflows/reusable-security-audit.yml
     with:
       python-version: "3.13"

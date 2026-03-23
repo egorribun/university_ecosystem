@@ -9,20 +9,21 @@ on:
   # Allow manual trigger for ad-hoc scoring
   workflow_dispatch:
 
-permissions:
-  # Required for publishing SARIF results to the Security tab
-  security-events: write
-  # Required for OIDC token exchange with Scorecard API
-  id-token: write
-  # Scorecard reads repository contents (no write access needed)
-  contents: read
-  # Required for actions/checkout
-  actions: read
+permissions: read-all
 
 jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    permissions:
+      # Required for publishing SARIF results to the Security tab
+      security-events: write
+      # Required for OIDC token exchange with Scorecard API
+      id-token: write
+      # Scorecard reads repository contents
+      contents: read
+      # Required for actions/checkout
+      actions: read
     steps:
       - name: "Checkout code"
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.2.2

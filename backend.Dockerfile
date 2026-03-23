@@ -2,10 +2,10 @@
 
 # Rust toolchain stage — provides a known-good Cargo/rustc for maturin builds.
 # Rust 1.85 is the first stable release supporting edition 2024 and Cargo.lock v4.
-FROM rust:1.85-slim-bookworm AS rust-toolchain
+FROM rust:1.85-slim-bookworm@sha256:9f841bbe9e7d8e37ceb96ed907265a3a0df7f44e3737d0b100e7907a679acb36 AS rust-toolchain
 
 # Stage 1: Builder
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.13-slim-bookworm@sha256:01f42367a0a94ad4bc17111776fd66e3500c1d87c15bbd6055b7371d39c124fb AS builder
 
 # Pin uv to an exact version for reproducible builds.
 # Use 0.10.8 for proven stability in current scan environments.
@@ -52,7 +52,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm@sha256:01f42367a0a94ad4bc17111776fd66e3500c1d87c15bbd6055b7371d39c124fb AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

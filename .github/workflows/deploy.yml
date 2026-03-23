@@ -20,6 +20,8 @@ concurrency:
   group: deploy-${{ github.event.inputs.environment }}
   cancel-in-progress: false
 
+permissions: read-all
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -94,6 +96,12 @@ jobs:
   build-backend:
     name: Build Backend
     needs: [prepare]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "backend"
@@ -106,6 +114,12 @@ jobs:
   build-frontend:
     name: Build Frontend
     needs: [prepare]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "frontend"
@@ -118,6 +132,12 @@ jobs:
   build-ws-hub:
     name: Build WS Hub
     needs: [prepare]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "ws-hub"
@@ -131,6 +151,12 @@ jobs:
   build-gateway:
     name: Build Gateway
     needs: [prepare]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "gateway"
@@ -144,6 +170,12 @@ jobs:
   build-file-processor:
     name: Build File Processor
     needs: [prepare]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "file-processor"
