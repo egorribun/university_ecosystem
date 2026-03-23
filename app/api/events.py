@@ -1,4 +1,3 @@
-import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -41,6 +40,7 @@ from app.core.config import settings
 from app.core.container import get_notification_service, get_vector_service
 from app.core.database import get_db, get_read_db
 from app.core.localization import normalize_locale, resolve_locale
+from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
@@ -51,7 +51,7 @@ from app.services.file_scanner import scan_for_malware
 from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file, save_attachment
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/events", tags=["events"])

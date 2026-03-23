@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
 import time
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
@@ -31,6 +30,7 @@ from app.auth.mfa.challenge import (
     issue_challenge,
 )
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 from app.services.session_cleanup import revoke_sessions_matching
 
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 _tracer = trace.get_tracer(__name__)
 
 _TOTP_SECRET_LENGTH = 32

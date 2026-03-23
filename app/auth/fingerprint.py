@@ -18,10 +18,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from app.core.logging import get_logger
+
 if TYPE_CHECKING:
     from fastapi import Request
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

@@ -8,13 +8,13 @@ enabling concurrent delivery via asyncio.gather + Semaphore.
 from __future__ import annotations
 
 import asyncio
-import logging
 import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from fastapi.concurrency import run_in_threadpool
 
+from app.core.logging import get_logger
 from app.models.models import PushSubscription
 from app.services.push_topics import subscription_supports_topic
 from app.services.webpush import WebPushResult, send_web_push
@@ -22,7 +22,7 @@ from app.services.webpush import WebPushResult, send_web_push
 if TYPE_CHECKING:
     from app.models.models import User
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def _deliver_to_subscription(

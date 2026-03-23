@@ -7,8 +7,6 @@ These handlers are registered with the EventBus during application startup.
 
 from __future__ import annotations
 
-import logging
-
 from app.core.container import get_vector_service
 from app.core.database import async_session
 from app.core.events import (
@@ -26,9 +24,10 @@ from app.core.events import (
     UserLoggedIn,
     event_bus,
 )
+from app.core.logging import get_logger
 from app.models import models
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def log_all_events(event: DomainEvent) -> None:

@@ -12,17 +12,18 @@ States:
 from __future__ import annotations
 
 import asyncio
-import logging
 import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from app.core.logging import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CircuitBreakerState(Enum):

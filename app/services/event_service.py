@@ -1,5 +1,4 @@
 import contextlib
-import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -9,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import normalize_locale, translate
+from app.core.logging import get_logger
 from app.models.models import Event
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
@@ -17,7 +17,7 @@ from app.services import attendance_tokens, stats_cache
 from app.services.vector_service import VectorService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _localized_event_field(

@@ -7,16 +7,17 @@ Provides middleware for automatic retry of failed event handlers.
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from app.core.events import DomainEvent
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EventRetryExhausted(Exception):

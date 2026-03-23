@@ -1,7 +1,7 @@
 import contextlib
-import logging
 import uuid
 
+from app.core.logging import get_logger
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import (
@@ -12,7 +12,7 @@ from app.schemas.dtos import (
 )
 from app.services.vector_service import VectorService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NewsService:

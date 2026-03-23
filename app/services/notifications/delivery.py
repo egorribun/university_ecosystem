@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
-import logging
 import uuid
 import uuid as _uuid_mod
 from collections import defaultdict
@@ -21,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core import metrics
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.models import (
     Notification,
     NotificationDelivery,
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _is_push_configured() -> bool:

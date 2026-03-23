@@ -4,7 +4,6 @@ import asyncio
 import base64
 import hmac
 import importlib.util
-import logging
 import time
 from ipaddress import ip_address, ip_network
 from typing import TYPE_CHECKING, Any, cast
@@ -17,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
 from app.core.database import engine
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -603,7 +603,7 @@ _PLACEHOLDER_PASSWORDS: frozenset[str] = frozenset(
     }
 )
 _LOOPBACK_HOSTNAMES = {"localhost"}
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):

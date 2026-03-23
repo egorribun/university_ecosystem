@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import logging
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -9,9 +8,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.core.config import Settings, settings
+from app.core.logging import get_logger
 
 router = APIRouter()
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class JWK(BaseModel):

@@ -6,9 +6,9 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
-from app.core.logging import is_logger_enabled
+from app.core.logging import get_logger, is_logger_enabled
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _log_event(

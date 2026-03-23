@@ -82,16 +82,40 @@ const isAbortError = (error: unknown) => {
   return false
 }
 
+// TD-14-04 (audit Wave 14): Extracted — was hardcoded as 2000 in three places.
+const DEFAULT_RETRY_AFTER_MS = 2000
+
 const getRetryDelay = (headers: Record<string, unknown> | undefined) => {
-  if (!headers) return 2000
+  if (!headers) return DEFAULT_RETRY_AFTER_MS
   const header = headers["retry-after"] ?? headers["Retry-After"]
-  if (typeof header !== "string") return 2000
+  if (typeof header !== "string") return DEFAULT_RETRY_AFTER_MS
   const numeric = Number.parseFloat(header)
-  return Number.isFinite(numeric) ? Math.max(0, numeric * 1000) : 2000
+  return Number.isFinite(numeric) ? Math.max(0, numeric * 1000) : DEFAULT_RETRY_AFTER_MS
 }
+
+// PERF-14-05 (audit Wave 14): Client-side mutation deduplication.
+// TanStack Query deduplicates queries but not mutations.  If a user double-clicks
+// before UI debounce fires, two identical POST requests go out.  The backend
+// idempotency key handles this server-side, but the duplicate still wastes bandwidth.
+// We suppress the duplicate on the client by tracking in-flight Idempotency-Keys.
+const _inflightIdempotencyKeys = new Set<string>()
 
 api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
+
+  // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
+  if (config.method && ["post", "put", "patch", "delete"].includes(config.method)) {
+    const idempotencyKey =
+      config.headers instanceof AxiosHeaders
+        ? (config.headers.get("Idempotency-Key") as string | undefined)
+        : undefined
+    if (idempotencyKey && _inflightIdempotencyKeys.has(idempotencyKey)) {
+      return Promise.reject(new axios.Cancel("Duplicate mutation suppressed (client-side dedup)"))
+    }
+    if (idempotencyKey) {
+      _inflightIdempotencyKeys.add(idempotencyKey)
+    }
+  }
 
   // Guard the bypass flag: only allowlisted URLs may skip the rate-limit queue.
   if (candidate.skipRateLimitQueue) {
@@ -128,9 +152,20 @@ api.interceptors.request.use(async (config) => {
   return config
 })
 
+// PERF-14-05: Helper to clean up in-flight idempotency key tracking.
+const _cleanupIdempotencyKey = (config: ApiRequestConfig | undefined) => {
+  if (!config?.headers) return
+  const key =
+    config.headers instanceof AxiosHeaders
+      ? (config.headers.get("Idempotency-Key") as string | undefined)
+      : undefined
+  if (key) _inflightIdempotencyKeys.delete(key)
+}
+
 api.interceptors.response.use(
   async (response) => {
     const config = response.config as ApiRequestConfig | undefined
+    _cleanupIdempotencyKey(config)
     if (config?.etagCacheKey) {
       await handleEtagResponse(response, config.etagCacheKey)
     }
@@ -141,6 +176,7 @@ api.interceptors.response.use(
   },
   async (error) => {
     const config = error?.config as ApiRequestConfig | undefined
+    _cleanupIdempotencyKey(config)
     // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
 

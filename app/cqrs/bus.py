@@ -1,16 +1,16 @@
-import logging
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol, TypeVar
 
 from dishka import AsyncContainer
 
+from app.core.logging import get_logger
 from app.cqrs.base import Command, CommandHandler, Query, QueryHandler
 
 TQuery = TypeVar("TQuery", bound=Query)
 TResult = TypeVar("TResult")
 TCommand = TypeVar("TCommand", bound=Command)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Middleware(Protocol):

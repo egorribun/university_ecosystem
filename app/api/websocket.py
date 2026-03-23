@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -40,9 +39,10 @@ from app.api.ws.presence import (
 from app.api.ws.serializers import serialize_message
 from app.core import metrics
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.chat import Message
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
 # ── Route-handler helpers (still needed here) ──────────────────────────────

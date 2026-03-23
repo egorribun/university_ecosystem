@@ -7,20 +7,23 @@ Single responsibility: connection lifecycle and per-connection rate limiting.
 from __future__ import annotations
 
 import asyncio
-import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Request, WebSocket
+from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import settings
-from app.core.database import async_session
+from app.core.logging import get_logger
 from app.core.metrics import record_presence_event, record_presence_throttled
 from app.deps.cache import get_cache, versioned_key
 from app.repositories.chat_repository import ChatRepository
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+logger = get_logger(__name__)
 
 
 class WebSocketRateLimiter:
@@ -64,7 +67,10 @@ class ConnectionManager:
 
     MAX_CONNECTIONS_PER_USER: int = 5
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession] | None = None,
+    ) -> None:
         self.active_connections: dict[uuid.UUID, set[WebSocket]] = {}
         self.connection_users: dict[WebSocket, uuid.UUID] = {}
         self.rate_limiters: dict[WebSocket, WebSocketRateLimiter] = {}
@@ -72,9 +78,31 @@ class ConnectionManager:
         # PERF-4 (audit 2026-03-05): Eagerly initialised asyncio.Lock — always safe
         # because ConnectionManager is instantiated inside lifespan startup.
         self._lock: asyncio.Lock = asyncio.Lock()
+        # RZ-14-05 (audit Wave 14): Inject session factory via constructor to
+        # avoid bypassing Dishka DI.  Falls back to global async_session when
+        # no factory is injected (backward compatibility).
+        self._session_factory = session_factory
+        # PERF-14-03 (audit Wave 14): Per-chat locks for single-flight cache
+        # miss coalescing — prevents N concurrent broadcast_to_chat calls from
+        # each opening a separate DB session on the same cache miss.
+        self._participant_locks: dict[uuid.UUID, asyncio.Lock] = {}
 
     def _get_lock(self) -> asyncio.Lock:
         return self._lock
+
+    # TD-14-03 (audit Wave 14): Extracted shared disconnect logic.  Both
+    # disconnect() and send_to_user() dead-connection cleanup used identical
+    # code.  This method MUST be called while self._lock is held.
+    def _remove_connection_locked(self, websocket: WebSocket) -> uuid.UUID | None:
+        """Remove a single connection.  Caller MUST hold ``self._lock``."""
+        self.rate_limiters.pop(websocket, None)
+        user_id = self.connection_users.pop(websocket, None)
+        if user_id is not None and user_id in self.active_connections:
+            self.active_connections[user_id].discard(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+                self._last_presence_sent_at.pop(user_id, None)
+        return user_id
 
     async def connect(
         self,
@@ -89,18 +117,19 @@ class ConnectionManager:
         The limit check and registration happen inside a single lock acquisition
         to prevent races (OZ-2: audit 2026-02-26).
         """
-        limit = getattr(
-            settings, "ws_max_connections_per_user", self.MAX_CONNECTIONS_PER_USER
-        )
+        # TD-14-02 (audit Wave 14): Use explicit Settings fields instead of
+        # getattr(..., default).  The fields are declared in base.py with
+        # their defaults so IDE autocompletion and type-checking work.
+        limit = settings.ws_max_connections_per_user
         async with self._get_lock():
             current_conns = self.active_connections.get(user_id, set())
             if len(current_conns) >= limit:
                 await websocket.close(code=1008, reason="Connection limit exceeded")
                 logger.warning(
-                    "WS connection limit reached for user %s (%d/%d) — rejected",
-                    user_id,
-                    len(current_conns),
-                    limit,
+                    "ws_connection_limit_reached",
+                    user_id=str(user_id),
+                    current=len(current_conns),
+                    limit=limit,
                 )
                 return False
 
@@ -111,11 +140,11 @@ class ConnectionManager:
             self.active_connections.setdefault(user_id, set()).add(websocket)
             self.connection_users[websocket] = user_id
 
-            rate = getattr(settings, "ws_message_rate", 5.0)
-            burst = getattr(settings, "ws_message_burst", 10.0)
+            rate = settings.ws_message_rate
+            burst = settings.ws_message_burst
             self.rate_limiters[websocket] = WebSocketRateLimiter(rate, burst)
 
-        logger.info("WebSocket connected: user_id=%s", user_id)
+        logger.info("ws_connected", user_id=str(user_id))
         return True
 
     async def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
@@ -125,14 +154,9 @@ class ConnectionManager:
         prevent the per-user cap from being bypassed by a race condition.
         """
         async with self._get_lock():
-            self.rate_limiters.pop(websocket, None)
-            user_id = self.connection_users.pop(websocket, None)
-            if user_id is not None and user_id in self.active_connections:
-                self.active_connections[user_id].discard(websocket)
-                if not self.active_connections[user_id]:
-                    del self.active_connections[user_id]
-                    self._last_presence_sent_at.pop(user_id, None)
-                logger.info("WebSocket disconnected: user_id=%s", user_id)
+            user_id = self._remove_connection_locked(websocket)
+            if user_id is not None:
+                logger.info("ws_disconnected", user_id=str(user_id))
             return user_id
 
     def check_rate_limit(self, websocket: WebSocket) -> bool:
@@ -150,43 +174,55 @@ class ConnectionManager:
         )
 
     async def send_to_user(self, user_id: uuid.UUID, message: dict[str, Any]) -> int:
-        """Send a message to all connections of a user. Returns successful send count."""
-        if user_id not in self.active_connections:
+        """Send a message to all connections of a user. Returns successful send count.
+
+        PERF-14-01 (audit Wave 14): Reduced from two lock acquisitions to one
+        in the common path (no dead connections).  Copy-on-read snapshot avoids
+        holding the lock during async I/O.
+        """
+        async with self._get_lock():
+            connections_snapshot = list(self.active_connections.get(user_id, set()))
+
+        if not connections_snapshot:
             return 0
 
         sent = 0
         dead_connections: list[WebSocket] = []
 
-        async with self._get_lock():
-            connections_snapshot = set(self.active_connections.get(user_id, set()))
-
         for connection in connections_snapshot:
             try:
                 await connection.send_json(message)
                 sent += 1
-            except Exception as exc:
-                logger.warning("Failed to send to user %s: %s", user_id, exc)
+            # TD-14-06 (audit Wave 14): Narrow exception types.  The previous
+            # bare ``except Exception`` swallowed unexpected errors silently.
+            except (WebSocketDisconnect, RuntimeError, ConnectionError) as exc:
+                logger.warning("ws_send_failed", user_id=str(user_id), err=str(exc))
                 dead_connections.append(connection)
 
         # PERF-5: Batch dead-connection cleanup inside a single lock acquisition.
         if dead_connections:
             async with self._get_lock():
                 for conn in dead_connections:
-                    self.rate_limiters.pop(conn, None)
-                    uid = self.connection_users.pop(conn, None)
-                    if uid is not None and uid in self.active_connections:
-                        self.active_connections[uid].discard(conn)
-                        if not self.active_connections[uid]:
-                            del self.active_connections[uid]
-                            self._last_presence_sent_at.pop(uid, None)
-                        logger.info("WebSocket batch-disconnected: user_id=%s", uid)
+                    uid = self._remove_connection_locked(conn)
+                    if uid is not None:
+                        logger.info("ws_batch_disconnected", user_id=str(uid))
 
         return sent
 
     async def _get_chat_participants_cached(
         self, chat_id: uuid.UUID
     ) -> list[uuid.UUID]:
-        """Fetch participant IDs for a chat, using Redis cache if available."""
+        """Fetch participant IDs for a chat, using Redis cache if available.
+
+        PERF-14-03 (audit Wave 14): Per-chat asyncio.Lock implements a
+        single-flight pattern — when the cache TTL expires, only one concurrent
+        caller hits the DB; the others wait and then read the freshly cached
+        result.
+
+        RZ-14-05 (audit Wave 14): Uses the injected ``_session_factory`` rather
+        than the module-level ``async_session`` import, aligning with Dishka DI
+        conventions and enabling test-double injection.
+        """
         cache = get_cache()
         cache_key = versioned_key(f"chat:{chat_id}:participants")
 
@@ -195,12 +231,28 @@ class ConnectionManager:
             if entry:
                 return [uuid.UUID(uid) for uid in entry.payload]
 
-        async with async_session() as session:
-            repo = ChatRepository(session)
-            participants = await repo.get_participants(chat_id)
+        # Single-flight: only one DB query per chat_id at a time.
+        lock = self._participant_locks.setdefault(chat_id, asyncio.Lock())
+        async with lock:
+            # Double-check after acquiring lock — another coroutine may have
+            # already populated the cache while we were waiting.
+            if cache.enabled:
+                entry = await cache.get(cache_key)
+                if entry:
+                    return [uuid.UUID(uid) for uid in entry.payload]
 
-        if cache.enabled:
-            await cache.set(cache_key, participants, ttl=3600)
+            factory = self._session_factory
+            if factory is None:
+                from app.core.database import async_session
+
+                factory = async_session
+
+            async with factory() as session:
+                repo = ChatRepository(session)
+                participants = await repo.get_participants(chat_id)
+
+            if cache.enabled:
+                await cache.set(cache_key, participants, ttl=3600)
 
         return participants
 

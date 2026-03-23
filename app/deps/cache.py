@@ -4,12 +4,13 @@ import asyncio
 import fnmatch
 import hashlib
 import inspect
-import logging
 import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from functools import wraps
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
+
+from app.core.logging import get_logger
 
 try:
     import orjson
@@ -42,7 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(slots=True)

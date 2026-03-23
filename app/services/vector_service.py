@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import httpx
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class VectorService:

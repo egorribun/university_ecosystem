@@ -24,6 +24,7 @@ from app.auth.constants import (
     MFA_METHOD_WEBAUTHN,
 )
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.ratelimit import (
     RateLimitExceeded,
     enforce_rate_limit,
@@ -35,7 +36,7 @@ from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, Us
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 audit_logger = logging.getLogger("app.users.audit")
 
 # Re-export so callers that do ``from app.auth.mfa import CHALLENGE_TYPE_TOTP_AUTH`` work.

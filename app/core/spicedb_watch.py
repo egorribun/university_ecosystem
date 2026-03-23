@@ -27,17 +27,17 @@ Fault tolerance
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from typing import TYPE_CHECKING
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.spicedb import _parse_endpoint
 
 if TYPE_CHECKING:
     pass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Reconnect back-off parameters
 _MIN_BACKOFF_S: float = 1.0

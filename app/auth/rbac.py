@@ -11,7 +11,6 @@ transport layer and makes it trivially testable without FastAPI machinery.
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import time
 from collections import OrderedDict
@@ -23,8 +22,9 @@ from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
 )
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # MOD-14-04 (audit 2026-03-18): Circuit breaker for SpiceDB gRPC calls.
 # After failure_threshold=3 consecutive failures, the circuit opens and

@@ -1,4 +1,3 @@
-import logging
 import uuid
 from typing import Any
 
@@ -13,6 +12,7 @@ from app.core.exceptions.domain import (
     EntityNotFound,
     PermissionDenied,
 )
+from app.core.logging import get_logger
 from app.core.protocols import UserLike, extract_user_id
 from app.models.enums import UserRole
 from app.repositories.unit_of_work import UnitOfWork
@@ -22,7 +22,7 @@ from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.data_access import log_data_access
 from app.services.user.logic import anonymize_user_data
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserComplianceService:

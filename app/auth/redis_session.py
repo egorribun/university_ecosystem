@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import json
-import logging
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.deps.cache import RedisCache, get_cache
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SessionBackend(ABC):

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.models.auth import (
     ActiveSession,
     EmailChangeToken,
@@ -32,7 +33,7 @@ from app.models.users import InviteCode, User
 from app.utils.uuid_v7 import generate_uuid7
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Config for tables that just need their own UUID populated
 TABLES_OWN_ID = [

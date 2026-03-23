@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
 import secrets
 import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
@@ -20,6 +19,7 @@ from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import get_cache_client
 from app.models.models import ActiveSession, User
@@ -34,7 +34,7 @@ from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 

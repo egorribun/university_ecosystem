@@ -14,10 +14,11 @@ providing the strongest isomorphism guarantee.
 
 from __future__ import annotations
 
-import logging
 from enum import Enum, auto
 
-_logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+_logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Backend resolution — prefer native PyO3 extension, fall back to nh3.

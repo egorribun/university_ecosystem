@@ -10,15 +10,15 @@ per-call context; it simply receives the shared singleton channel.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterator
 
 import grpc.aio
 from dishka import Provider, Scope, provide
 
 from app.auth.rbac import PermissionChecker
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SpiceDBProvider(Provider):

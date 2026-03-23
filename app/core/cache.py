@@ -9,14 +9,15 @@ Provides a two-tier caching strategy:
 from __future__ import annotations
 
 import functools
-import logging
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

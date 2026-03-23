@@ -12,10 +12,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import logging
 import uuid
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -30,7 +31,7 @@ from app.core.database import async_session
 from app.deps.cache import get_cache, versioned_key
 from app.repositories.chat_repository import ChatRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 

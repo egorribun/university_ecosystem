@@ -5,7 +5,6 @@ from app.core.uvloop_setup import configure_uvloop
 
 configure_uvloop()
 
-import logging
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -26,6 +25,7 @@ from app.core.exceptions.handlers import (
     http_exception_handler,
 )
 from app.core.lifespan import lifespan
+from app.core.logging import get_logger
 from app.core.metrics import configure_metrics
 from app.core.middleware import (
     _ensure_vary_header,
@@ -135,7 +135,7 @@ static_dir = settings.static_dir_path
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 @app.get("/", response_class=JSONResponse, summary="Root")

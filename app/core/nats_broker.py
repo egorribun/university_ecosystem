@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import functools
 import json
-import logging
 import os
 import uuid
 from collections.abc import Awaitable, Callable
@@ -17,11 +16,12 @@ from opentelemetry.trace import SpanKind
 from pydantic import BaseModel, ValidationError, field_validator
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 # P1-W5-08: Maximum seconds a single task handler may run before it is

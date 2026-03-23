@@ -6,6 +6,8 @@ from functools import cached_property
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
+from app.core.logging import get_logger
+
 from .app_gen import AppGeneralSettings
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
@@ -25,7 +27,7 @@ from .observability import ObservabilitySettings
 from .security import SecuritySettings
 from .storage import StorageSettings
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class Settings(

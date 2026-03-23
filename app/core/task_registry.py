@@ -15,11 +15,12 @@ This module provides ``TaskRegistry`` which:
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Coroutine
 from typing import Any
 
-_logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+_logger = get_logger(__name__)
 
 
 class TaskRegistry:

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from fastapi import BackgroundTasks, Request, Response
 
 from app.auth import schemas as auth_schemas
 from app.core.localization import resolve_locale
+from app.core.logging import get_logger
 from app.schemas import schemas
 
 if TYPE_CHECKING:
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from app.services.auth.login_session_manager import LoginSessionManager
     from app.services.auth.mfa_coordinator import MfaCoordinator
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LoginService:

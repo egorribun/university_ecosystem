@@ -6,7 +6,6 @@ resource-exhaustive queries that evade the existing depth and token limits.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
@@ -15,10 +14,12 @@ from graphql.language.ast import FieldNode
 from graphql.language.visitor import Visitor, visit
 from strawberry.extensions import SchemaExtension
 
+from app.core.logging import get_logger
+
 if TYPE_CHECKING:
     from graphql.language.ast import DocumentNode
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Cost table — fields whose resolution is O(N) or triggers nested queries.

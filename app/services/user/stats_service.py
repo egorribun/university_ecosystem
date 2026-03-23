@@ -1,16 +1,16 @@
 import json
-import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.core.logging import get_logger
 from app.deps.cache import BaseCache
 from app.repositories.user_stats_repository import UserStatsRepository
 from app.services import stats_cache
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GradePayload(BaseModel):

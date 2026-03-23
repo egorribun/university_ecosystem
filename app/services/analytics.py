@@ -13,7 +13,6 @@ Features:
 from __future__ import annotations
 
 import asyncio
-import logging
 import typing
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from app.core.logging import get_logger
 from app.repositories.event_repository import get_event_repository
 from app.repositories.news_repository import get_news_repository
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Thread pool for CPU-bound Polars operations

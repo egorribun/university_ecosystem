@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.logging import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -93,7 +95,7 @@ def _validate_positive_float(value: float, *, label: str) -> float:
     return value
 
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 _DEVELOPMENT_ENVIRONMENTS = {
     "dev",

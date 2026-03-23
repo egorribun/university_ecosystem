@@ -10,14 +10,17 @@ from starlette.responses import Response
 
 
 def _ensure_vary_header(response: Response, header_name: str) -> None:
+    # PERF-14-02 (audit Wave 14): Use a set for O(1) membership check instead
+    # of the previous list + linear scan.  Called 1-3 times per response with
+    # CORS, so the micro-optimisation accumulates across all HTTP traffic.
     existing = response.headers.get("Vary")
     if not existing:
         response.headers["Vary"] = header_name
         return
-    values = [value.strip() for value in existing.split(",") if value.strip()]
+    values = {v.strip() for v in existing.split(",")}
     if header_name not in values:
-        values.append(header_name)
-        response.headers["Vary"] = ", ".join(values)
+        values.add(header_name)
+        response.headers["Vary"] = ", ".join(sorted(values))
 
 
 async def http_response_hardening(

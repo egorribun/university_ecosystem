@@ -1,14 +1,14 @@
 import contextlib
-import logging
 import uuid
 
 from app.core.localization import localized_text, normalize_locale
+from app.core.logging import get_logger
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO
 from app.utils.files import delete_static_file
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class StoryService:

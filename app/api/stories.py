@@ -1,4 +1,3 @@
-import logging
 import uuid
 from typing import Any
 
@@ -27,6 +26,7 @@ from app.core.localization import (
     SUPPORTED_LOCALES,
     resolve_locale,
 )
+from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import get_cache
 from app.models import models
@@ -34,7 +34,7 @@ from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.story_service import StoryService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/stories", tags=["stories"])

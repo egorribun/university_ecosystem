@@ -6,13 +6,14 @@ automatic fallback to Pillow for Windows or when pyvips is not installed.
 
 from __future__ import annotations
 
-import logging
 from io import BytesIO
 from typing import Any, cast
 
 from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from app.core.logging import get_logger
 
 # Try to use pyvips for 10x faster processing
 # Catch ImportError (not installed) and OSError (libvips missing at runtime)
@@ -22,7 +23,7 @@ except (ImportError, OSError):
     VIPS_AVAILABLE = False
     optimize_image_vips = None  # type: ignore[assignment]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
     from PIL.Image import Resampling

@@ -6,16 +6,16 @@ and logs them for security monitoring.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Request, Response, status
 from fastapi.params import Depends
 
+from app.core.logging import get_logger
 from app.core.metrics import record_csp_report
 from app.core.ratelimit import sensitive_route_limit
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/csp-report", tags=["security"])
 

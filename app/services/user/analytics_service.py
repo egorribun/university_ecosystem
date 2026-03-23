@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import BaseCache
 from app.models import models
 from app.services import stats_cache
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserAnalyticsService:

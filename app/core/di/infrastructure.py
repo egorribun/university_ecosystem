@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterator
 from typing import Any, cast
 
@@ -10,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.fingerprint import SuspiciousActivityDetector
 from app.auth.redis_session import SessionBackend
+from app.core.logging import get_logger
 from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import BaseCache, get_cache
@@ -23,7 +23,7 @@ from app.services.fraud_detection_service import FraudDetectionService
 from app.services.geolocation import GeolocationService
 from app.workers.outbox import OutboxWorker
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class InfrastructureProvider(Provider):

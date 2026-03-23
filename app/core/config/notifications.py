@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import logging
 from functools import cached_property
 from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator
+
+from app.core.logging import get_logger
 
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
@@ -13,7 +14,7 @@ from .base import (
     _validate_positive_int,
 )
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 def _validate_webpush_subject(value: str) -> str:

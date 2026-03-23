@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import secrets
 from contextlib import suppress
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from sqlalchemy import delete, or_, select
 
 from app.auth.redis_session import get_session_backend
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.core.observability import get_periodic_task_metrics
 from app.models.models import ActiveSession, MfaChallenge
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _METRICS = get_periodic_task_metrics("session_cleanup")

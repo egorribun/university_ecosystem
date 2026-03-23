@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Awaitable
 from datetime import UTC, datetime
 from typing import Any, TypedDict, cast
@@ -8,9 +7,10 @@ from redis.exceptions import RedisError
 
 from app.auth.fingerprint import SessionFingerprint
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.ratelimit import get_shared_client as _get_shared_client
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RedisSessionData(TypedDict):

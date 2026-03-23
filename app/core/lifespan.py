@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import random
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -11,6 +10,7 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.database import Base, engine, init_database, wait_db
 from app.core.events import register_event_listeners
+from app.core.logging import get_logger
 from app.core.observability import shutdown_observability
 from app.deps.cache import shutdown_cache
 from app.services import notification_queue, webpush
@@ -22,7 +22,7 @@ from app.services.partition_manager import (
 from app.tasks.cleanups import setup_periodic_cleanups
 from app.workers.outbox import OutboxWorker
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 _LISTENERS_REGISTERED: bool = False
 

@@ -10,6 +10,7 @@ from fastapi import BackgroundTasks, Request, status
 
 from app.auth.security import verify_and_update_password
 from app.core import metrics
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from app.repositories.unit_of_work import UnitOfWork
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from app.services.auth.login_session_manager import LoginSessionManager
     from app.services.user.profile_service import UserProfileService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CredentialValidator:

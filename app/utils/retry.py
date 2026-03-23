@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import logging
 import random
 from typing import TYPE_CHECKING, Any
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RetryExhausted(Exception):

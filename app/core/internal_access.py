@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import secrets
 from typing import TYPE_CHECKING, Any
 
@@ -8,12 +7,14 @@ from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
+from app.core.logging import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Sequence
 
     from starlette.requests import Request
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class InternalAccessMiddleware(BaseHTTPMiddleware):

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,6 +9,7 @@ from typing import TYPE_CHECKING
 from app.auth.mfa import purge_expired_challenges
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.core.observability import get_periodic_task_metrics
 
 if TYPE_CHECKING:
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _METRICS = get_periodic_task_metrics("mfa_challenge_cleanup")

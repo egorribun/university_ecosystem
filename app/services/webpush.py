@@ -23,6 +23,7 @@ from sqlalchemy.orm import selectinload, sessionmaker
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.localization import resolve_locale, translate
+from app.core.logging import get_logger
 from app.core.ratelimit import (
     RateLimitExceeded,
     RateLimitInfo,
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 logger.setLevel(logging.NOTSET)
 
 _sync_url = make_url(settings.database_url)

@@ -6,15 +6,34 @@ that entry so the user cannot continue sending WebSocket messages during the
 remaining TTL window.
 
 Usage example (in ChatService.remove_participant):
-    await WsHubClient(settings).invalidate_cache(user_id=str(user_id), room_id=str(chat_id))
+    await invalidate_ws_hub_cache(user_id=str(user_id), room_id=str(chat_id))
 """
 
 from __future__ import annotations
 
-import logging
+import asyncio
+import hashlib
+import hmac
+import json
+import time
 import uuid
 
-logger = logging.getLogger(__name__)
+from prometheus_client import Counter
+
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# RZ-14-04 (audit Wave 14): Prometheus counter for failed NATS invalidation
+# publishes.  Enables alerting when cache-invalidation failures spike — the
+# ws-hub would otherwise silently serve stale auth data for up to 60s.
+_INVALIDATION_FAILURES = Counter(
+    "ws_hub_invalidation_failures_total",
+    "Failed NATS cache invalidation publishes (after retry)",
+)
+
+_MAX_PUBLISH_ATTEMPTS = 2
+_RETRY_BACKOFF_SECONDS = 0.1
 
 
 class WsHubClient:
@@ -38,20 +57,25 @@ class WsHubClient:
         user_id: str | uuid.UUID,
         room_id: str | uuid.UUID,
     ) -> None:
-        """Publish an signed invalidation event to NATS JetStream.
+        """Publish a signed invalidation event to NATS JetStream.
 
         Events are published to 'cache.invalidate' subject. The ws-hub
         subscribes to this subject and verifies the signature using the
         shared InternalSecret.
-        """
-        import hashlib
-        import hmac
-        import json
 
+        RZ-14-04 (audit Wave 14): One retry with 100ms backoff covers transient
+        NATS hiccups.  On final failure a Prometheus counter is incremented and
+        the error is logged at ERROR level (not WARNING) so it surfaces in
+        error-rate dashboards.
+        """
         payload_content = {
             "user_id": str(user_id),
             "room_id": str(room_id),
-            "timestamp": uuid.uuid1().time,  # record order
+            # RZ-14-02 (audit Wave 14): Replaced uuid.uuid1().time with
+            # time.time_ns().  uuid1 leaks the host MAC address in its node
+            # field; time_ns() provides equivalent nanosecond ordering without
+            # the privacy risk or the overhead of MAC resolution.
+            "timestamp": time.time_ns(),
         }
 
         # TD-NEW-07: Sign the payload to prevent unauthorized cache flushes.
@@ -70,20 +94,39 @@ class WsHubClient:
             "signature": signature,
         }
 
-        try:
-            # We don't await the full persistence if we want maximum speed,
-            # but nats_broker.publish is async and we should await it for safety.
-            await self._broker.publish("cache.invalidate", full_payload)
-        except Exception:
-            logger.warning(
-                "Failed to publish ws-hub cache invalidation to NATS for user_id=%s room_id=%s",
-                user_id,
-                room_id,
-                exc_info=True,
-            )
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_PUBLISH_ATTEMPTS):
+            try:
+                await self._broker.publish("cache.invalidate", full_payload)
+                return
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _MAX_PUBLISH_ATTEMPTS - 1:
+                    await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
+
+        # All attempts exhausted — record the failure for alerting.
+        _INVALIDATION_FAILURES.inc()
+        logger.error(
+            "ws_hub_invalidation_failed",
+            user_id=str(user_id),
+            room_id=str(room_id),
+            attempts=_MAX_PUBLISH_ATTEMPTS,
+            exc_info=last_exc,
+        )
 
 
-_client = WsHubClient()
+# RZ-14-01 (audit Wave 14): Lazy singleton.  The previous code instantiated
+# WsHubClient() at module import time, which triggered `settings` and `broker`
+# resolution before the application lifespan had completed.  This caused
+# AttributeError or stale config in test fixtures and CLI startup paths.
+_client: WsHubClient | None = None
+
+
+def _get_client() -> WsHubClient:
+    global _client
+    if _client is None:
+        _client = WsHubClient()
+    return _client
 
 
 async def invalidate_ws_hub_cache(
@@ -91,4 +134,4 @@ async def invalidate_ws_hub_cache(
     room_id: str | uuid.UUID,
 ) -> None:
     """Module-level convenience wrapper around the shared WsHubClient."""
-    await _client.invalidate_cache(user_id=user_id, room_id=room_id)
+    await _get_client().invalidate_cache(user_id=user_id, room_id=room_id)

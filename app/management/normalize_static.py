@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import update
 
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.models.models import User
 from app.utils.files import normalize_filename_prefix
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _STATIC_SUBDIRS = ("avatars", "covers")
 

@@ -6,13 +6,13 @@ news, events, schedule, and other data.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import strawberry
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from app.core.logging import get_logger
 from app.graphql.context import GraphQLContext
 from app.graphql.types import (
     EventsConnection,
@@ -25,7 +25,7 @@ from app.graphql.types import (
 )
 from app.models import Event, News, User
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _user_to_type(user: User, show_email: bool = False) -> UserType:

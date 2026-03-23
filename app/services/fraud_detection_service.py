@@ -20,15 +20,16 @@ redis client via __init__ and is registered in the dishka DI container.
 
 from __future__ import annotations
 
-import logging
 import uuid
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, cast
 
+from app.core.logging import get_logger
+
 if TYPE_CHECKING:
     import redis.asyncio as aioredis
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Maximum number of entries kept in the Redis Stream.
 # ~500 bytes per entry × 50 000 = ~25 MB ceiling.
