@@ -182,7 +182,9 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
     return await _resolve_user_from_ids(user_id_str, jti)
 
 
-async def _resolve_user_from_ids(user_id_str: str, jti: str) -> tuple[User | None, str | None]:
+async def _resolve_user_from_ids(
+    user_id_str: str, jti: str
+) -> tuple[User | None, str | None]:
     """Look up user + validate session directly from user_id + jti.
 
     Shared by get_user_from_ticket() — avoids re-encoding a fake JWT.

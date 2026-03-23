@@ -31,7 +31,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-import pytest_asyncio  # noqa: F401  — required for asyncio mode
+import pytest_asyncio
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 
@@ -48,11 +48,15 @@ pytestmark = [
 @pytest_asyncio.fixture
 async def redis_client():
     """Return a connected Redis client using the app's shared cache."""
-    from app.core.cache import get_cache
-    from app.core.cache import RedisCache  # type: ignore[attr-defined]
+    from app.core.cache import (
+        RedisCache,  # type: ignore[attr-defined]
+        get_cache,
+    )
 
     cache = get_cache()
-    assert isinstance(cache, RedisCache), "Integration tests require Redis cache backend"
+    assert isinstance(cache, RedisCache), (
+        "Integration tests require Redis cache backend"
+    )
     client = await cache._get_client()
     yield client
 
@@ -176,7 +180,9 @@ async def test_rate_limit_key_format(redis_client):
     """
     from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 
-    strategy = RedisSlidingWindowStrategy(redis_url=os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0"))
+    strategy = RedisSlidingWindowStrategy(
+        redis_url=os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
+    )
 
     test_key = f"contract-test:{uuid.uuid4()}"
     result = await strategy.check(test_key, limit=100, window_seconds=60)
@@ -197,7 +203,9 @@ async def test_rate_limit_key_format(redis_client):
 @pytest.mark.asyncio
 async def test_mfa_challenge_key_format(redis_client):
     """MFA challenge keys must use the ``mfa:{challenge_type}:{user_id}`` pattern."""
-    from app.auth.mfa.challenge import _build_challenge_key  # type: ignore[attr-defined]
+    from app.auth.mfa.challenge import (
+        _build_challenge_key,  # type: ignore[attr-defined]
+    )
 
     user_id = str(uuid.uuid4())
     challenge_type = "totp-auth"
