@@ -124,7 +124,7 @@ argon2_hasher = PasswordHasher(
 )
 
 
-def _verify_legacy_bcrypt(  # noqa: S106  # lgtm[py/weak-cryptographic-algorithm]
+def _verify_legacy_bcrypt(  # lgtm[py/weak-cryptographic-algorithm]
     plain_password: str,
     hashed_password: str,
 ) -> bool:

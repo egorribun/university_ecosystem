@@ -123,9 +123,7 @@ class TestAsyncSSRFValidation:
     async def test_dns_failure_is_fail_closed(self) -> None:
         import socket
 
-        with patch(
-            "app.core.ssrf.asyncio.get_running_loop"
-        ) as mock_loop:
+        with patch("app.core.ssrf.asyncio.get_running_loop") as mock_loop:
             mock_loop.return_value.getaddrinfo = _make_async_raiser(
                 socket.gaierror("DNS failed")
             )
@@ -142,6 +140,8 @@ class TestAsyncSSRFValidation:
 
 def _make_async_raiser(exc: Exception):
     """Create an async callable that raises *exc*."""
+
     async def _raise(*args, **kwargs):
         raise exc
+
     return _raise

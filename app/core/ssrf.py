@@ -33,22 +33,30 @@ def _is_blocked(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return any(addr in net for net in _BLOCKED_NETWORKS)
 
 
-def _check_ip_literal(hostname: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+def _check_ip_literal(
+    hostname: str,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     """Return the parsed IP if *hostname* is an IP literal, else ``None``."""
     try:
         addr = ipaddress.ip_address(hostname)
     except ValueError:
         return None
     if _is_blocked(addr):
-        raise ValueError(
-            f"SSRF blocked: {hostname} is in a private/reserved network"
-        )
+        raise ValueError(f"SSRF blocked: {hostname} is in a private/reserved network")
     return addr
 
 
 def _check_resolved(
     hostname: str,
-    resolved: list[tuple[socket.AddressFamily, int, int, str, tuple[str, int] | tuple[str, int, int, int]]],
+    resolved: list[
+        tuple[
+            socket.AddressFamily,
+            int,
+            int,
+            str,
+            tuple[str, int] | tuple[str, int, int, int],
+        ]
+    ],
 ) -> None:
     """Raise ``ValueError`` if any resolved address falls into a blocked network."""
     for _, _, _, _, sockaddr in resolved:
@@ -79,9 +87,7 @@ def validate_url_not_internal(url: str) -> None:
         resolved = socket.getaddrinfo(hostname, None)
     except socket.gaierror as exc:
         # RZ-W17-01: Fail-closed — DNS failure MUST NOT silently pass.
-        raise ValueError(
-            f"SSRF blocked: DNS resolution failed for {hostname}"
-        ) from exc
+        raise ValueError(f"SSRF blocked: DNS resolution failed for {hostname}") from exc
 
     _check_resolved(hostname, resolved)
 
@@ -104,9 +110,7 @@ async def validate_url_not_internal_async(url: str) -> None:
     try:
         resolved = await loop.getaddrinfo(hostname, None)
     except socket.gaierror as exc:
-        raise ValueError(
-            f"SSRF blocked: DNS resolution failed for {hostname}"
-        ) from exc
+        raise ValueError(f"SSRF blocked: DNS resolution failed for {hostname}") from exc
 
     _check_resolved(hostname, resolved)
 
@@ -133,9 +137,7 @@ def validate_and_resolve(url: str) -> list[tuple[str, int]]:
     try:
         resolved = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
     except socket.gaierror as exc:
-        raise ValueError(
-            f"SSRF blocked: DNS resolution failed for {hostname}"
-        ) from exc
+        raise ValueError(f"SSRF blocked: DNS resolution failed for {hostname}") from exc
 
     safe_addrs: list[tuple[str, int]] = []
     for _, _, _, _, sockaddr in resolved:
