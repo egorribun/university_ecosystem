@@ -2,15 +2,16 @@ name: Auto-merge dependabot patches
 
 on: pull_request
 
-permissions:
-  pull-requests: write
-  contents: write
+permissions: read-all
 
 jobs:
   auto-merge:
     name: Auto Merge Dependabot Patches
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.2.2
       - name: Fetch PR details

@@ -12,6 +12,8 @@ on:
       - "app/**"
       - "pyproject.toml"
 
+permissions: read-all
+
 jobs:
   generate:
     runs-on: ubuntu-latest

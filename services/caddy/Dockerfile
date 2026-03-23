@@ -10,7 +10,7 @@ ARG CADDY_VERSION=2.9.1
 ARG GO_VERSION=1.24
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM golang:${GO_VERSION}-alpine AS builder
+FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS builder
 
 RUN apk add --no-cache git
 
@@ -23,6 +23,6 @@ RUN xcaddy build v${CADDY_VERSION} \
     --with github.com/mholt/caddy-ratelimit
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM caddy:${CADDY_VERSION}-alpine
+FROM caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
 
 COPY --from=builder /root/caddy /usr/bin/caddy

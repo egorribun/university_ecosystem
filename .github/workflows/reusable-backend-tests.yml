@@ -44,6 +44,8 @@ on:
                 required: false
                 description: "Application secret key"
 
+permissions: read-all
+
 jobs:
     unit-tests:
         name: Unit Tests (${{ inputs.test-group-name }})
