@@ -11,18 +11,7 @@ from uuid import UUID
 
 import pyotp
 from fastapi import status
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import (
-    and_,
-    case,
-    delete,
-    func,
-    literal,
-    or_,
-    select,
-    type_coerce,
-    update,
-)
+from sqlalchemy import and_, case, delete, func, literal, or_, select, update
 
 from app.api.validation import raise_http_error
 from app.auth.constants import (
@@ -208,22 +197,23 @@ async def _register_failed_attempt(
                 else_=None,
             ),
             # TD-W5-01: Keep explicit state in sync with locked_at.
-            # type_coerce tells SQLAlchemy the CASE result is an enum, so
-            # PostgreSQL receives ``$N::challenge_state_enum`` instead of bare
-            # text — preventing the "column is of type … but expression is of
-            # type text" error (asyncpg DatatypeMismatchError).
-            state=type_coerce(
-                case(
-                    (
-                        and_(
-                            literal(limit).isnot(None),
-                            MfaChallenge.attempt_count + 1 >= limit,
-                        ),
-                        ChallengeState.LOCKED.value,
+            # PostgreSQL requires explicit CAST for enum-typed columns in
+            # CASE expressions — bare text/varchar is rejected with
+            # "column is of type challenge_state_enum but expression is of
+            # type text" (asyncpg DatatypeMismatchError).
+            # Using literal().cast(column.type) emits proper
+            # CAST('locked' AS challenge_state_enum) in the generated SQL.
+            state=case(
+                (
+                    and_(
+                        literal(limit).isnot(None),
+                        MfaChallenge.attempt_count + 1 >= limit,
                     ),
-                    else_=ChallengeState.PENDING.value,
+                    literal(ChallengeState.LOCKED.value).cast(MfaChallenge.state.type),
                 ),
-                SAEnum(ChallengeState, name="challenge_state_enum"),
+                else_=literal(ChallengeState.PENDING.value).cast(
+                    MfaChallenge.state.type
+                ),
             ),
         )
         .returning(MfaChallenge.attempt_count, MfaChallenge.locked_at)
