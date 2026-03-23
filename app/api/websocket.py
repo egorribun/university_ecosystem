@@ -182,7 +182,9 @@ async def websocket_chat(websocket: WebSocket) -> None:
                 # so ops can distinguish bugs (e.g. wrong Content-Type) from active
                 # fuzzing probes during incident investigation. The 200-char truncation
                 # prevents log inflation from crafted large payloads.
-                frame_preview = text_data[:200] if isinstance(text_data, str) else "<non-text>"
+                frame_preview = (
+                    text_data[:200] if isinstance(text_data, str) else "<non-text>"
+                )
                 logger.warning(
                     "Malformed WebSocket frame from user %s: %s — frame preview: %r",
                     getattr(user, "id", "unknown"),
