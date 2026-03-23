@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
     from app.services.audit_service import AuditService
     from app.services.session_service import SessionService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LoginSessionManager:

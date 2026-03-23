@@ -1,5 +1,7 @@
 import logging
 
+from app.core.logging import get_logger
+
 from fastapi import WebSocket
 
 from app.api.ws.auth import (
@@ -12,7 +14,7 @@ from app.api.ws.auth import (
 from app.models.models import User
 from app.schemas.dtos import UserDTO
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_allowed_ws_origins() -> frozenset[str]:

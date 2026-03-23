@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -22,7 +24,7 @@ from app.models.models import (
 )
 from app.services.data_access import cleanup_access_logs
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _METRICS = get_periodic_task_metrics("privacy_cleanup")
 

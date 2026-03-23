@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -51,7 +53,7 @@ from app.services.file_scanner import scan_for_malware
 from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file, save_attachment
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/events", tags=["events"])

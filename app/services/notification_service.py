@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from typing import TYPE_CHECKING
 
@@ -12,7 +14,7 @@ if TYPE_CHECKING:
 from app.services import notification_queue
 from app.services.notifications.delivery import create_notifications_for_users
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NotificationService:

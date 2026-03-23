@@ -60,7 +60,9 @@ class CorsSettingsMixin:
             if env not in _DEVELOPMENT_ENVIRONMENTS:
                 import logging
 
-                logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+                logger = get_logger(__name__)
                 logger.warning(
                     "INTERNAL_AUTH_TOKEN is not set in %s environment. "
                     "Internal API routes are vulnerable to IP spoofing.",

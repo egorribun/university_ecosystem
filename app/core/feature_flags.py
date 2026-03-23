@@ -12,6 +12,8 @@ import contextlib
 import hashlib
 import json
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import Awaitable
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
@@ -25,7 +27,7 @@ from redis.asyncio import Redis
 
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 FEATURE_FLAGS_KEY = "feature_flags"
 FEATURE_FLAGS_CHANNEL = "feature_flags_updates"

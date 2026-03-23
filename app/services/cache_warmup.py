@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -18,7 +20,7 @@ from app.services import stats_cache
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _is_entry_fresh(entry: CacheEntry) -> bool:

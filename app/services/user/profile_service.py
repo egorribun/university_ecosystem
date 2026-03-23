@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from typing import TYPE_CHECKING, cast
 
@@ -21,7 +23,7 @@ from app.services.user.logic import update_user_attributes
 if TYPE_CHECKING:
     from app.models.models import User
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserProfileService:

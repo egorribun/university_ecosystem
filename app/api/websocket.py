@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -42,7 +44,7 @@ from app.core import metrics
 from app.core.config import settings
 from app.models.chat import Message
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
 # ── Route-handler helpers (still needed here) ──────────────────────────────

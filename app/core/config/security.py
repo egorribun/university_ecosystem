@@ -11,6 +11,8 @@ add it to the SecuritySettings inheritance chain here.
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import os
 
 from pydantic import ValidationInfo, field_validator
@@ -29,7 +31,7 @@ from .mixins import (
     RateLimitSettingsMixin,
 )
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 # CFG-2 (audit 2026-03): Placeholder detection for AUDIT_LOG_SECRET.
 # Defined at module level (not inside the Pydantic model) so it's a plain

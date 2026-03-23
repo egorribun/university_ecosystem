@@ -1,5 +1,7 @@
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from datetime import UTC
 from typing import Any
 
@@ -32,7 +34,7 @@ from app.models.users import InviteCode, User
 from app.utils.uuid_v7 import generate_uuid7
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Config for tables that just need their own UUID populated
 TABLES_OWN_ID = [

@@ -7,6 +7,8 @@ configure_uvloop()
 
 import logging
 
+from app.core.logging import get_logger
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -135,7 +137,7 @@ static_dir = settings.static_dir_path
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 @app.get("/", response_class=JSONResponse, summary="Root")

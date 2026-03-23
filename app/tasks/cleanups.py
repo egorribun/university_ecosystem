@@ -1,5 +1,7 @@
 import logging
 
+from app.core.logging import get_logger
+
 from app.core.config import settings
 from app.core.nats_broker import broker
 from app.services import notification_queue
@@ -92,5 +94,5 @@ async def setup_periodic_cleanups() -> None:
     (MOD-3: Audit 2026-02-24)
     Periodic tasks are now managed by the application lifespan scheduler.
     """
-    _logger = logging.getLogger(__name__)
+    _logger = get_logger(__name__)
     _logger.info("NATS periodic cleanups initialised")

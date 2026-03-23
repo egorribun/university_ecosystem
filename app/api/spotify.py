@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -33,7 +35,7 @@ from app.core.protocols import AsyncDatabaseSession
 from app.models.models import SpotifyIntegration, User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/spotify", tags=["spotify"])
 

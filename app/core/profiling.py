@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import os
 from typing import Protocol, runtime_checkable
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 @runtime_checkable

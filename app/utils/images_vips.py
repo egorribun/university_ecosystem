@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import logging
 
+from app.core.logging import get_logger
+
 import pyvips
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Try to import pyvips, but don't fail if unavailable
 # Catch both ImportError (pyvips not installed) and OSError (libvips not found)

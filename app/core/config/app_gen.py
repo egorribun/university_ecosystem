@@ -47,6 +47,13 @@ class AppGeneralSettings(BaseAppSettings):
     presence_pubsub_enabled: bool = False
     presence_pubsub_channel: str = "presence_updates"
 
+    # TD-14-02 (audit Wave 14): WebSocket connection settings.  Previously
+    # accessed via getattr(settings, ..., default) in connection_manager.py,
+    # which hid them from IDE autocomplete, type-checking, and .env docs.
+    ws_max_connections_per_user: int = 5
+    ws_message_rate: float = 5.0
+    ws_message_burst: float = 10.0
+
     api_v2_prefix: str = "/api/v2"
     # CFG-2 (audit 2026-03): audit_log_secret is defined and validated in
     # SecuritySettings (with a proper field_validator).  The duplicate here was

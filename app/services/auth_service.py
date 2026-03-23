@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+
+from app.core.logging import get_logger
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -44,7 +46,7 @@ from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 # _UserT is used for functions that return the same type as passed in
 _UserT = TypeVar("_UserT", bound=UserLike)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AuthService:

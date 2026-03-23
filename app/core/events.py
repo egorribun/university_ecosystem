@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+
+from app.core.logging import get_logger
 from abc import ABC
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
 
     from app.core.event_dlq import DeadLetterQueue
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 EventHandler = Callable[["DomainEvent"], Coroutine[Any, Any, None]]
 EventMiddleware = Callable[

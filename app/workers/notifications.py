@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import signal
 from contextlib import suppress
 from typing import TYPE_CHECKING
@@ -23,7 +25,7 @@ from app.services.notifications import generate_schedule_reminders
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = [
     "NotificationsScheduler",

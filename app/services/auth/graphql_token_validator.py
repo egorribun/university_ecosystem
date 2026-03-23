@@ -18,6 +18,8 @@ paths enforce identical security guarantees.
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import uuid as _uuid
 
 from fastapi import Request
@@ -26,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import ActiveSession, User
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GraphQLTokenValidator:

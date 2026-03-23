@@ -7,6 +7,8 @@ Single responsibility: authenticate WebSocket upgrade requests.
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
@@ -20,7 +22,7 @@ from app.schemas.dtos import UserDTO
 if TYPE_CHECKING:
     pass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:
     import jwt as _jwt_lib

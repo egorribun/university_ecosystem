@@ -12,6 +12,8 @@ Provides two interfaces:
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import os
 from collections.abc import AsyncIterator
 from functools import lru_cache
@@ -22,7 +24,7 @@ from authzed.api.v1 import Client, InsecureClient
 
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _parse_endpoint(raw_endpoint: str) -> tuple[str, int, bool]:

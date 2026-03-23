@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import functools
 import logging
+
+from app.core.logging import get_logger
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

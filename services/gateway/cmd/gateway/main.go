@@ -48,17 +48,20 @@ import (
 func main() {
 	// 1. Initialize Logger
 	logger := initLogger()
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			// FP-P2-03: Stdout fallback if zap sync fails
-			fmt.Printf("Warning: failed to sync logger: %v\n", err)
-		}
-	}()
+	// TD-14-05 (audit Wave 14): zap.Logger.Sync() calls fsync on stdout/stderr
+	// which always returns EINVAL on Linux in container environments.  Suppress
+	// the expected error to avoid noisy shutdown logs.  This becomes a non-issue
+	// after the planned slog migration (MOD-14-04).
+	defer func() { _ = logger.Sync() }()
 
 	// 2. Load Configuration
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Fatal("Failed to load configuration", zap.Error(err))
+		// RZ-14-03 (audit Wave 14): zap.Fatal calls os.Exit(1) internally,
+		// bypassing all deferred functions (tracer flush, gRPC close, Sentry).
+		// Use Error + os.Exit(1) so deferred cleanup runs first.
+		logger.Error("Failed to load configuration", zap.Error(err))
+		os.Exit(1)
 	}
 
 	// 3. Initialize Sentry
@@ -139,7 +142,8 @@ func initGRPC(cfg *config.Config, logger *zap.Logger) (*grpc.ClientConn, pb.File
 
 	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds)
 	if err != nil {
-		logger.Fatal("Failed to initialize File Processor gRPC transport", zap.Error(err))
+		logger.Error("Failed to initialize File Processor gRPC transport", zap.Error(err))
+		os.Exit(1)
 	}
 	logger.Info("Connected to File Processor gRPC", zap.String("addr", cfg.FileProcessorAddr))
 
@@ -176,7 +180,8 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 	// Proxy configuration
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
-		logger.Fatal("Invalid backend URL", zap.Error(err), zap.String("url", cfg.BackendURL))
+		logger.Error("Invalid backend URL", zap.Error(err), zap.String("url", cfg.BackendURL))
+		os.Exit(1)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
 	proxy.Transport = &http.Transport{
@@ -220,7 +225,8 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, grpcConn *grpc.ClientCo
 
 	// JWT
 	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
-		logger.Fatal("JWT_SECRET must be set and at least 32 characters.")
+		logger.Error("JWT_SECRET must be set and at least 32 characters.")
+		os.Exit(1)
 	}
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
 	jwtMiddleware.ListenForRevocations(ctx)
@@ -275,7 +281,8 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *zap.Logger) {
 	go func() {
 		logger.Info("Starting API Gateway", zap.String("addr", addr), zap.String("backend", cfg.BackendURL))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to start server", zap.Error(err))
+			logger.Error("Failed to start server", zap.Error(err))
+			os.Exit(1)
 		}
 	}()
 

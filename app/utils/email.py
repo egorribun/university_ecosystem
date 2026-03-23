@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -8,7 +10,7 @@ from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 from app.core.logging import is_logger_enabled
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _log_event(

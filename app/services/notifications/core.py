@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+
+from app.core.logging import get_logger
 import re
 from datetime import UTC
 from html import unescape
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Backwards compatibility for tests that patch async_session on this module.
 async_session = _async_session

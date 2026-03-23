@@ -1,6 +1,8 @@
 import asyncio
 import contextlib
 import logging
+
+from app.core.logging import get_logger
 import time
 import traceback
 from datetime import UTC, datetime
@@ -20,7 +22,7 @@ from app.core.database import async_session
 from app.core.events import EventMetadata, event_bus
 from app.models.domain_events import StoredEvent
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 # ── MOD-04 (audit 2026-03-14): Prometheus metrics for outbox observability ─────

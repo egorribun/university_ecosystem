@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -16,7 +18,7 @@ if TYPE_CHECKING:
     import uuid
     from collections.abc import Awaitable, Callable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Global metrics instance for testing/monitoring
 _queue_metrics: Any | None = None

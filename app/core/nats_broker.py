@@ -4,6 +4,8 @@ import asyncio
 import functools
 import json
 import logging
+
+from app.core.logging import get_logger
 import os
 import uuid
 from collections.abc import Awaitable, Callable
@@ -21,7 +23,7 @@ from app.core.config import settings
 P = ParamSpec("P")
 R = TypeVar("R")
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 # P1-W5-08: Maximum seconds a single task handler may run before it is

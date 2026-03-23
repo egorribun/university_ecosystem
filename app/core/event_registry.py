@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+
+from app.core.logging import get_logger
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.core.events import DomainEvent
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Registry maps event_type string (class __name__) → concrete class.
 _REGISTRY: dict[str, type[DomainEvent]] = {}

@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -34,7 +36,7 @@ from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.story_service import StoryService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/stories", tags=["stories"])

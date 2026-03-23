@@ -118,12 +118,32 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	return nil
 }
 
+// broadcastWorkers controls how many goroutines process broadcast messages
+// concurrently.  Register/Unregister remain serial (they mutate h.Clients and
+// h.Rooms), but the read-heavy broadcastMessage path is parallelised.
+const broadcastWorkers = 4
+
 // Run starts the hub's main select loop.
+//
+// PERF-14-04 (audit Wave 14): Broadcast messages are dispatched to a worker
+// pool so that JSON marshalling and per-recipient writes do not block the
+// Register/Unregister channels.  broadcastMessage already acquires h.mu.RLock
+// so concurrent broadcasts are safe.
 func (h *Hub) Run(ctx context.Context) {
+	broadcastCh := make(chan *Message, cap(h.Broadcast))
+	for i := 0; i < broadcastWorkers; i++ {
+		go func() {
+			for msg := range broadcastCh {
+				h.broadcastMessage(ctx, msg)
+			}
+		}()
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			h.Logger.InfoContext(ctx, "Hub.Run: context cancelled, stopping loop")
+			close(broadcastCh)
 			return
 
 		case client := <-h.Register:
@@ -133,7 +153,13 @@ func (h *Hub) Run(ctx context.Context) {
 			h.handleUnregister(ctx, client)
 
 		case msg := <-h.Broadcast:
-			h.broadcastMessage(ctx, msg)
+			select {
+			case broadcastCh <- msg:
+			default:
+				h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
+					"type", msg.Type,
+					"room", msg.Room)
+			}
 		}
 	}
 }

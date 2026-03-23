@@ -1,5 +1,7 @@
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from dataclasses import dataclass
 from typing import Any
 
@@ -8,7 +10,7 @@ import maxminddb
 
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+
+from app.core.logging import get_logger
 import time
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
@@ -39,7 +41,7 @@ if TYPE_CHECKING:
 
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 _tracer = trace.get_tracer(__name__)
 
 _TOTP_SECRET_LENGTH = 32

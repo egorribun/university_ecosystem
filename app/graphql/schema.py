@@ -5,6 +5,8 @@ included in the FastAPI application.
 """
 
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -25,7 +27,7 @@ from app.graphql.context import GraphQLContext
 from app.graphql.dataloaders import DataLoaderRegistry
 from app.graphql.queries import Query
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @inject

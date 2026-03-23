@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -38,7 +40,7 @@ from app.services.notifications import (
 )
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 

@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol, TypeVar
 
@@ -10,7 +12,7 @@ TQuery = TypeVar("TQuery", bound=Query)
 TResult = TypeVar("TResult")
 TCommand = TypeVar("TCommand", bound=Command)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Middleware(Protocol):

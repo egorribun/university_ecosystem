@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+
+from app.core.logging import get_logger
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,7 +14,7 @@ from redis.exceptions import RedisError
 
 from app.deps.cache import BaseCache, RedisCache, get_cache
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)

@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +20,7 @@ from app.core.config import settings
 if TYPE_CHECKING:
     from fastapi import Request
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def extract_request_fingerprint(request: Request) -> str:

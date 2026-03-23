@@ -6,6 +6,8 @@ import base64
 import hashlib
 import hmac
 import logging
+
+from app.core.logging import get_logger
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -18,7 +20,7 @@ from app.models.models import TrustedDevice, User
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _utcnow() -> datetime:

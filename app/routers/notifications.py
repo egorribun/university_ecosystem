@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -50,7 +52,7 @@ from app.services.push_topics import (
 )
 from app.services.webpush import WebPushResult, send_web_push
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/push", tags=["push"])
 

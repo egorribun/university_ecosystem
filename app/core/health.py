@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -20,7 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HealthStatus(StrEnum):

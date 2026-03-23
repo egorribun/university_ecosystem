@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+
+from app.core.logging import get_logger
 import secrets
 import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
@@ -34,7 +36,7 @@ from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
 from app.services.auth.token_service import AuthTokenService
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 

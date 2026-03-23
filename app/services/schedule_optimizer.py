@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime, time
 from typing import Any
@@ -6,7 +8,7 @@ from typing import Any
 import rust_ext
 from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ScheduleItemInternal(BaseModel):

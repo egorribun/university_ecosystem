@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import logging
+
+from app.core.logging import get_logger
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, cast
@@ -42,7 +44,7 @@ try:
 except ImportError:
     pass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Redis cache TTL for transformed images (7 days)
 _CACHE_TTL = 7 * 24 * 60 * 60

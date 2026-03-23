@@ -7,6 +7,8 @@ Repository Pattern to separate data access from API layer.
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
@@ -16,7 +18,7 @@ from app.schemas.dtos.analytics import HealthStatsDTO
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class HealthRepository:

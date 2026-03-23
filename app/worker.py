@@ -5,6 +5,8 @@
 import asyncio
 import logging
 
+from app.core.logging import get_logger
+
 import app.tasks.cleanups
 
 # Import tasks to ensure they are registered with the broker
@@ -12,7 +14,7 @@ import app.tasks.email
 import app.tasks.notifications  # noqa: F401
 from app.core.nats_broker import broker
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def main() -> None:

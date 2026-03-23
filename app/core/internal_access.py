@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import secrets
 from typing import TYPE_CHECKING, Any
 
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class InternalAccessMiddleware(BaseHTTPMiddleware):

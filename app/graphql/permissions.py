@@ -23,6 +23,8 @@ Usage::
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from typing import TYPE_CHECKING, Any
 
 from strawberry.permission import BasePermission
@@ -32,7 +34,7 @@ if TYPE_CHECKING:
 
     from app.graphql.context import GraphQLContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class IsAuthenticated(BasePermission):

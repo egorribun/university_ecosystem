@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -15,7 +17,7 @@ from app.services.user.compliance_service import UserComplianceService
 from app.services.user.media_service import UserMediaService
 from app.services.user.profile_service import UserProfileService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserService:

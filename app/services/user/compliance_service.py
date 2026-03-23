@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -22,7 +24,7 @@ from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.data_access import log_data_access
 from app.services.user.logic import anonymize_user_data
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserComplianceService:

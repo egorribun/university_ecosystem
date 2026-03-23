@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import AsyncIterator
 
 from dishka import Provider, Scope, provide
 
 from app.services.search import SearchService
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class SearchProvider(Provider):

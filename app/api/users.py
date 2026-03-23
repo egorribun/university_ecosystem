@@ -5,6 +5,8 @@ import hashlib
 import hmac
 import json
 import logging
+
+from app.core.logging import get_logger
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -59,7 +61,7 @@ from app.services.user.profile_service import UserProfileService
 # Export for test compatibility
 __all__ = ["create_notifications_for_users"]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 password_router = APIRouter(prefix="/password", tags=["password"])

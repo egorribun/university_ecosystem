@@ -1,5 +1,7 @@
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import random
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -22,7 +24,7 @@ from app.services.partition_manager import (
 from app.tasks.cleanups import setup_periodic_cleanups
 from app.workers.outbox import OutboxWorker
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 _LISTENERS_REGISTERED: bool = False
 

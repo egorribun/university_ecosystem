@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -51,7 +53,7 @@ from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/news", tags=["news"])

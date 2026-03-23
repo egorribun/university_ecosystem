@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 import os
 from functools import cached_property
 
@@ -25,7 +27,7 @@ from .observability import ObservabilitySettings
 from .security import SecuritySettings
 from .storage import StorageSettings
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class Settings(

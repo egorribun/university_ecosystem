@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -16,7 +18,7 @@ from app.models.models import ActiveSession
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import ActiveSessionDTO
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def register_session_bg(

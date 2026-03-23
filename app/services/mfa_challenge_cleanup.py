@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,7 +19,7 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _METRICS = get_periodic_task_metrics("mfa_challenge_cleanup")

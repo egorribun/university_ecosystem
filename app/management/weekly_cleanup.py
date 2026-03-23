@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -18,7 +20,7 @@ from app.models.models import PushSubscription, User
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 STALE_SUBSCRIPTION_DAYS = 180
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NoReturn
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
     from app.services.auth.login_session_manager import LoginSessionManager
     from app.services.user.profile_service import UserProfileService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CredentialValidator:

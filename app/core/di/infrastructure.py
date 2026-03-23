@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import AsyncIterator
 from typing import Any, cast
 
@@ -23,7 +25,7 @@ from app.services.fraud_detection_service import FraudDetectionService
 from app.services.geolocation import GeolocationService
 from app.workers.outbox import OutboxWorker
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 class InfrastructureProvider(Provider):

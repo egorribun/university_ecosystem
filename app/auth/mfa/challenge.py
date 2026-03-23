@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import MutableMapping
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -35,7 +37,7 @@ from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, Us
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 audit_logger = logging.getLogger("app.users.audit")
 
 # Re-export so callers that do ``from app.auth.mfa import CHALLENGE_TYPE_TOTP_AUTH`` work.

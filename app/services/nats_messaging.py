@@ -13,6 +13,8 @@ Features:
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
     from nats.aio.client import Client as NatsClient
     from nats.js import JetStreamContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

@@ -4,6 +4,8 @@ import asyncio
 import contextlib
 import json
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from collections.abc import Mapping
 from copy import deepcopy
@@ -38,7 +40,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 logger.setLevel(logging.NOTSET)
 
 _sync_url = make_url(settings.database_url)

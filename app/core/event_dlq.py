@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -16,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from app.core.events import DomainEvent, EventBus
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

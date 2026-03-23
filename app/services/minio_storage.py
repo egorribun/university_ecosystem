@@ -12,6 +12,8 @@ Features:
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from functools import partial
@@ -23,7 +25,7 @@ from minio.error import S3Error
 if TYPE_CHECKING:
     from io import BytesIO
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Thread pool for blocking MinIO operations
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="minio")

@@ -5,6 +5,8 @@ import fnmatch
 import hashlib
 import inspect
 import logging
+
+from app.core.logging import get_logger
 import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -42,7 +44,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(slots=True)

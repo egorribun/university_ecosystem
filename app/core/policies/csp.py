@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from typing import ClassVar
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ContentSecurityPolicy:

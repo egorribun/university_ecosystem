@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
@@ -22,7 +24,7 @@ from app.services.webpush import WebPushResult, send_web_push
 if TYPE_CHECKING:
     from app.models.models import User
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def _deliver_to_subscription(

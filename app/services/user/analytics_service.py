@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -13,7 +15,7 @@ from app.deps.cache import BaseCache
 from app.models import models
 from app.services import stats_cache
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserAnalyticsService:

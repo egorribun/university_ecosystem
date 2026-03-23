@@ -1,4 +1,6 @@
 import logging
+
+from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -11,7 +13,7 @@ from app.models.enums import UserRole
 from app.repositories.chat_repository import ChatRepository
 from app.services.audit_service import SecurityEvent, audit_service
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MessageDispatcher:

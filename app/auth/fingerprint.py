@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+
+from app.core.logging import get_logger
 import threading
 import uuid
 from collections import defaultdict
@@ -21,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastapi import Request
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

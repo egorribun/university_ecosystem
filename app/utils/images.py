@@ -7,6 +7,8 @@ automatic fallback to Pillow for Windows or when pyvips is not installed.
 from __future__ import annotations
 
 import logging
+
+from app.core.logging import get_logger
 from io import BytesIO
 from typing import Any, cast
 
@@ -22,7 +24,7 @@ except (ImportError, OSError):
     VIPS_AVAILABLE = False
     optimize_image_vips = None  # type: ignore[assignment]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
     from PIL.Image import Resampling

@@ -1,5 +1,7 @@
 import contextlib
 import logging
+
+from app.core.logging import get_logger
 import uuid
 
 from app.repositories.unit_of_work import UnitOfWork
@@ -12,7 +14,7 @@ from app.schemas.dtos import (
 )
 from app.services.vector_service import VectorService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NewsService:

@@ -1,5 +1,7 @@
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -7,7 +9,7 @@ from sqlalchemy import text
 
 from app.core.database import engine
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 PARTITIONED_TABLES = [
     ("notifications", "created_at"),

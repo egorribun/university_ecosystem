@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 from typing import TYPE_CHECKING
 
 from sqlalchemy import update
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _STATIC_SUBDIRS = ("avatars", "covers")
 

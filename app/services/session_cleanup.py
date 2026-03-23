@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from app.core.logging import get_logger
 import secrets
 from contextlib import suppress
 from dataclasses import dataclass
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _METRICS = get_periodic_task_metrics("session_cleanup")
