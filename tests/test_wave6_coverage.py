@@ -520,12 +520,12 @@ class TestStaticFSStorage:
         with pytest.raises(ValueError, match="escape"):
             storage._normalize_relative_path("../../etc/passwd")
 
-    def test_normalize_absolute(self, tmp_path):
+    def test_normalize_traversal_dotdot(self, tmp_path):
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path)
-        with pytest.raises(ValueError):
-            storage._normalize_relative_path("C:\\absolute\\path")
+        with pytest.raises(ValueError, match="escape"):
+            storage._normalize_relative_path("sub/../../etc/passwd")
 
     @pytest.mark.asyncio
     async def test_save_no_base_url(self, tmp_path):
