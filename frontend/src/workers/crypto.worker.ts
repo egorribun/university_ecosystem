@@ -7,7 +7,7 @@ import init, {
   pbkdf2_derive,
   scrypt_derive,
   hmac_sha256_sign,
-} from "../../rust-crypto/pkg/rust_crypto.js"
+} from "../../rust-crypto/pkg/uni_wasm_crypto.js"
 
 let wasmInitPromise: Promise<unknown> | null = null
 

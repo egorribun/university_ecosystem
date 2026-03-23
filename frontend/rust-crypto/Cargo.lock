@@ -187,7 +187,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-crypto"
+name = "uni-wasm-crypto"
 version = "0.1.0"
 dependencies = [
  "getrandom",
