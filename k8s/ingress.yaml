@@ -8,6 +8,11 @@ metadata:
     # RZ-08: proxy-body-size MUST match ContentSizeLimitMiddleware.max_bytes in
     # app/core/middleware.py (currently 50 MB). Update both together.
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # MOD-W16-02: L7 rate limiting at ingress level — drops burst traffic before
+    # it reaches backend rate-limit middleware. Values tuned for production load.
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: nginx

@@ -217,6 +217,11 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 		_, execErr := c.ExecuteWorkflow(wfCtx, opt, workflow.FileProcessingWorkflow, job)
 		if execErr != nil {
 			logger.ErrorContext(ctx, "Failed to execute workflow from NATS", "err", execErr)
+			// RZ-W16-02: Nak so JetStream redelivers immediately instead of
+			// waiting for AckWait timeout (which can be minutes).
+			if nakErr := msg.Nak(); nakErr != nil {
+				logger.ErrorContext(ctx, "Failed to Nak NATS message after workflow failure", "err", nakErr)
+			}
 			return
 		}
 
@@ -273,7 +278,8 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, c client.Client
 	}
 
 	var schemaOpts []graphql.SchemaOpt
-	if cfg.Environment == "production" {
+	// TD-W16-02: Disable introspection in staging too — prevents schema leakage.
+	if cfg.Environment == "production" || cfg.Environment == "staging" {
 		schemaOpts = append(schemaOpts, graphql.RestrictIntrospection(func(ctx context.Context) bool {
 			return false
 		}))

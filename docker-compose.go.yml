@@ -13,7 +13,7 @@ services:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/3
-      JWT_SECRET: ${JWT_SECRET:-${SECRET_KEY:?JWT_SECRET or SECRET_KEY must be set in .env file}}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be explicitly set in .env (TD-W16-01)}
     depends_on:
       backend:
         condition: service_healthy
@@ -39,7 +39,7 @@ services:
     environment:
       WS_HUB_PORT: "8081"
       NATS_URL: nats://nats:4222
-      JWT_SECRET: ${JWT_SECRET:-${SECRET_KEY:?JWT_SECRET or SECRET_KEY must be set in .env file}}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be explicitly set in .env (TD-W16-01)}
       # PERF-W15-04: Increase in production to handle burst reconnects (e.g. post-deploy)
       AUTH_CLIENT_MAX_CONNS_PER_HOST: "50"
     depends_on:

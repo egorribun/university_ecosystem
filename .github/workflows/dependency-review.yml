@@ -30,7 +30,6 @@ jobs:
                   vulnerability-check: true
                   license-check: true
                   config-file: .github/dependency-review-config.yml
-              continue-on-error: true
 
             - name: Upload dependency review report
               if: always()

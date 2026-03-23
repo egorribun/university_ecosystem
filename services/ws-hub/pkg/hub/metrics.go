@@ -37,4 +37,12 @@ var (
 		Name: "ws_hub_cache_invalidations_total",
 		Help: "Total number of successful auth-cache invalidations.",
 	})
+
+	// PERF-W16-01: BroadcastDropsTotal counts messages dropped because the
+	// broadcast worker pool or channel was full. Sustained non-zero values
+	// indicate the hub cannot keep up with incoming message volume.
+	BroadcastDropsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_broadcast_drops_total",
+		Help: "Messages dropped due to full broadcast channel or worker pool.",
+	})
 )

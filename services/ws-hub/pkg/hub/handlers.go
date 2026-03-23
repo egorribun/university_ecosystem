@@ -170,6 +170,12 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 		// tickets are always 64-char hex strings (secrets.token_hex(32))
 		return "", fmt.Errorf("invalid ticket length: %d", len(ticket))
 	}
+	// RZ-W16-06: Validate hex charset — tickets are secrets.token_hex(32) = 64 lowercase hex chars.
+	for _, c := range ticket {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return "", fmt.Errorf("invalid ticket charset")
+		}
+	}
 
 	key := wsTicketKeyPrefix + ticket
 	raw, err := h.redisClient.GetDel(ctx, key).Result()

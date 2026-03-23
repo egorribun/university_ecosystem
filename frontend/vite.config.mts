@@ -88,7 +88,8 @@ const withStrictCspNonce = (): PluginOption => ({
   name: "strict-csp-nonce",
   enforce: "post",
   transformIndexHtml(html) {
-    return html.replace(/<script\b(?![^>]*\bnonce=)[^>]*>/gi, (tag) => {
+    // PERF-W16-02: Added dotAll (s) flag to handle multiline script attributes.
+    return html.replace(/<script\b(?![^>]*\bnonce=)[^>]*>/gis, (tag) => {
       const insertion = tag.indexOf("<script") + "<script".length
       const before = tag.slice(0, insertion)
       const after = tag.slice(insertion)

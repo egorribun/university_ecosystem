@@ -358,8 +358,13 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 
 		// P1-W5-11: Parse with explicit algorithm allowlist — rejects alg=none and
 		// any other algorithm not in the list before signature verification occurs.
+		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
+		validMethods := []string{"RS256", "HS256"}
+		if m.rsaPublicKey != nil {
+			validMethods = []string{"RS256"}
+		}
 		parser := jwt.NewParser(
-			jwt.WithValidMethods([]string{"RS256", "HS256"}),
+			jwt.WithValidMethods(validMethods),
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 		)
@@ -456,8 +461,13 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 			}
 		}
 
+		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
+		optValidMethods := []string{"RS256", "HS256"}
+		if m.rsaPublicKey != nil {
+			optValidMethods = []string{"RS256"}
+		}
 		parser := jwt.NewParser(
-			jwt.WithValidMethods([]string{"RS256", "HS256"}),
+			jwt.WithValidMethods(optValidMethods),
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 		)

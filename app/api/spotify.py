@@ -218,20 +218,20 @@ async def _ensure_access_token(
         raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
     try:
         async with _spotify_circuit_breaker:
-            async with httpx.AsyncClient(timeout=15) as client:
-                r = await client.post(
-                    "https://accounts.spotify.com/api/token",
-                    data={
-                        "grant_type": "refresh_token",
-                        "refresh_token": refresh_token,
-                    },
-                    headers={
-                        "Authorization": "Basic "
-                        + _b64(
-                            f"{settings.spotify_client_id}:{settings.spotify_client_secret}"
-                        )
-                    },
-                )
+            # TD-W16-07: Reuse module-level HTTP/2 client instead of per-request creation.
+            r = await _spotify_http_client.post(
+                "https://accounts.spotify.com/api/token",
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+                headers={
+                    "Authorization": "Basic "
+                    + _b64(
+                        f"{settings.spotify_client_id}:{settings.spotify_client_secret}"
+                    )
+                },
+            )
     except CircuitBreakerOpenError as exc:
         logger.warning(
             "Spotify circuit breaker open, using fallback",
@@ -319,21 +319,21 @@ async def spotify_callback(
     locale = resolve_locale(request=request, user=user)
     try:
         async with _spotify_circuit_breaker:
-            async with httpx.AsyncClient(timeout=15) as client:
-                r = await client.post(
-                    "https://accounts.spotify.com/api/token",
-                    data={
-                        "grant_type": "authorization_code",
-                        "code": code,
-                        "redirect_uri": settings.spotify_redirect_uri,
-                    },
-                    headers={
-                        "Authorization": "Basic "
-                        + _b64(
-                            f"{settings.spotify_client_id}:{settings.spotify_client_secret}"
-                        )
-                    },
-                )
+            # TD-W16-07: Reuse module-level HTTP/2 client.
+            r = await _spotify_http_client.post(
+                "https://accounts.spotify.com/api/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": settings.spotify_redirect_uri,
+                },
+                headers={
+                    "Authorization": "Basic "
+                    + _b64(
+                        f"{settings.spotify_client_id}:{settings.spotify_client_secret}"
+                    )
+                },
+            )
     except CircuitBreakerOpenError:
         raise_http_error(503, "errors.spotify.service_unavailable", locale)
     if r.status_code != 200:
@@ -349,11 +349,11 @@ async def spotify_callback(
     )
     try:
         async with _spotify_circuit_breaker:
-            async with httpx.AsyncClient(timeout=15) as client:
-                me = await client.get(
-                    "https://api.spotify.com/v1/me",
-                    headers={"Authorization": f"Bearer {user.spotify.access_token}"},
-                )
+            # TD-W16-07: Reuse module-level HTTP/2 client.
+            me = await _spotify_http_client.get(
+                "https://api.spotify.com/v1/me",
+                headers={"Authorization": f"Bearer {user.spotify.access_token}"},
+            )
     except CircuitBreakerOpenError:
         me = None
     if me is not None and me.status_code == 200:
@@ -383,11 +383,11 @@ async def now_playing(
     async def _request(access_token: str) -> httpx.Response | None:
         try:
             async with _spotify_circuit_breaker:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    return await client.get(
-                        "https://api.spotify.com/v1/me/player/currently-playing",
-                        headers={"Authorization": f"Bearer {access_token}"},
-                    )
+                # TD-W16-07: Reuse module-level HTTP/2 client.
+                return await _spotify_http_client.get(
+                    "https://api.spotify.com/v1/me/player/currently-playing",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
         except CircuitBreakerOpenError:
             return None
         return None
@@ -499,14 +499,14 @@ async def list_playlists(
     if not token:
         raise_unauthorized(locale, "errors.spotify.reconnect_required")
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(
-            "https://api.spotify.com/v1/me/playlists",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        if r.status_code != 200:
-            raise_http_error(r.status_code, "errors.spotify.api_error", locale)
-        return r.json()
+    # TD-W16-07: Reuse module-level HTTP/2 client.
+    r = await _spotify_http_client.get(
+        "https://api.spotify.com/v1/me/playlists",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if r.status_code != 200:
+        raise_http_error(r.status_code, "errors.spotify.api_error", locale)
+    return r.json()
 
 
 @router.post("/sync-playlists")

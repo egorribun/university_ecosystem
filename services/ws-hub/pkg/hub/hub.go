@@ -167,6 +167,7 @@ func (h *Hub) Run(ctx context.Context) {
 			select {
 			case broadcastCh <- msg:
 			default:
+				BroadcastDropsTotal.Inc()
 				h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
 					"type", msg.Type,
 					"room", msg.Room)
@@ -355,6 +356,7 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 		select {
 		case h.Broadcast <- &wsMsg:
 		default:
+			BroadcastDropsTotal.Inc()
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS chat message",
 				"subject", msg.Subject)
 		}
@@ -399,6 +401,7 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 		select {
 		case h.Broadcast <- &wsMsg:
 		default:
+			BroadcastDropsTotal.Inc()
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
 				"subject", msg.Subject)
 		}
