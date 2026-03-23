@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           # Only need templates directory, not full history
           sparse-checkout: |
@@ -76,7 +76,7 @@ jobs:
             || true  # Don't fail the workflow — findings are uploaded as SARIF
 
       - name: Upload results to GitHub Security
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
         if: always()
         with:
           sarif_file: nuclei-results.sarif
@@ -108,14 +108,14 @@ jobs:
 
     steps:
       - name: Checkout repository (ZAP rules config)
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           sparse-checkout: |
             .zap
           sparse-checkout-cone-mode: false
 
       - name: ZAP Full Scan
-        uses: zaproxy/action-full-scan@d479641f7e99facb91d7738171b3448e3f3c7bba # v0.10.0
+        uses: zaproxy/action-full-scan@d2a07475d467566c9a3e3c700f31f47724aa1060 # v0.10.0
         env:
           TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
         with:
@@ -128,7 +128,7 @@ jobs:
           artifact_name: zap-results-${{ github.run_id }}
 
       - name: Upload ZAP SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
         if: always()
         with:
           sarif_file: zap-results.sarif
