@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import uuid
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
@@ -614,9 +615,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             headers=headers,
             ttl=ttl,
         )
-    except (
-        WebPushException
-    ) as exc:  # pragma: no cover - network errors hard to simulate
+    except WebPushException as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
         message = str(exc)
         gone = False
@@ -655,7 +654,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             status_code=status_code,
             error=message or None,
         )
-    except Exception as exc:  # pragma: no cover - unexpected failure
+    except Exception as exc:
         _log_event(
             "send",
             level=logging.ERROR,

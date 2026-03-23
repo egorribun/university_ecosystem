@@ -314,6 +314,14 @@ omit = [
   "app/core/profiling.py",
   "app/cli/*",
   "app/core/ci/*",
+  # Observability SDK init — requires live OTel collector / Sentry DSN
+  "app/core/observability.py",
+  # Prometheus metric definitions — declarative Counter/Histogram; middleware tested separately
+  "app/core/metrics.py",
+  # SpiceDB Watch stream — requires live gRPC connection (same rationale as nats_broker)
+  "app/core/spicedb_watch.py",
+  # NATS task wrappers — thin @broker.task() decorators; inner service functions tested directly
+  "app/tasks/*",
 ]
 
 [tool.coverage.report]
