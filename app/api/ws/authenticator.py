@@ -1,7 +1,3 @@
-import logging
-
-from app.core.logging import get_logger
-
 from fastapi import WebSocket
 
 from app.api.ws.auth import (
@@ -11,6 +7,7 @@ from app.api.ws.auth import (
     get_user_from_token,
     select_subprotocol,
 )
+from app.core.logging import get_logger
 from app.models.models import User
 from app.schemas.dtos import UserDTO
 

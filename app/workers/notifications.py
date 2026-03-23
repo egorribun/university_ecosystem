@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 import signal
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from app.core.config import settings
 from app.core.database import async_session, wait_db
+from app.core.logging import get_logger
 from app.core.observability import (
     WorkerMetrics,
     configure_worker_observability,

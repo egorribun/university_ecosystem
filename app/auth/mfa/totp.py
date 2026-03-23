@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
-
-from app.core.logging import get_logger
 import time
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
@@ -33,6 +30,7 @@ from app.auth.mfa.challenge import (
     issue_challenge,
 )
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 from app.services.session_cleanup import revoke_sessions_matching
 

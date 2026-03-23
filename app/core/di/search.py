@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import AsyncIterator
 
 from dishka import Provider, Scope, provide
 
+from app.core.logging import get_logger
 from app.services.search import SearchService
 
 _logger = get_logger(__name__)

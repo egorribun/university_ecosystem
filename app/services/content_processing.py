@@ -14,10 +14,9 @@ providing the strongest isomorphism guarantee.
 
 from __future__ import annotations
 
-import logging
+from enum import Enum, auto
 
 from app.core.logging import get_logger
-from enum import Enum, auto
 
 _logger = get_logger(__name__)
 

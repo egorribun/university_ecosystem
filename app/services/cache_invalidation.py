@@ -7,12 +7,10 @@ different domains (schedule, users, events, news, etc.)
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from enum import StrEnum
 from typing import Any
 
+from app.core.logging import get_logger
 from app.deps.cache import get_cache
 
 logger = get_logger(__name__)

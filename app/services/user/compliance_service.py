@@ -1,6 +1,3 @@
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -15,6 +12,7 @@ from app.core.exceptions.domain import (
     EntityNotFound,
     PermissionDenied,
 )
+from app.core.logging import get_logger
 from app.core.protocols import UserLike, extract_user_id
 from app.models.enums import UserRole
 from app.repositories.unit_of_work import UnitOfWork

@@ -6,14 +6,12 @@ Single responsibility: authenticate WebSocket upgrade requests.
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.models.models import User
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository

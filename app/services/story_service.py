@@ -1,10 +1,8 @@
 import contextlib
-import logging
-
-from app.core.logging import get_logger
 import uuid
 
 from app.core.localization import localized_text, normalize_locale
+from app.core.logging import get_logger
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO

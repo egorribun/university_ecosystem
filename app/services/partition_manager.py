@@ -1,13 +1,11 @@
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import Callable, Coroutine
 from typing import Any
 
 from sqlalchemy import text
 
 from app.core.database import engine
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

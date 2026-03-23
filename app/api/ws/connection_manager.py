@@ -259,6 +259,7 @@ class ConnectionManager:
             factory = self._session_factory
             if factory is None:
                 from app.core.database import async_session
+
                 factory = async_session
 
             async with factory() as session:

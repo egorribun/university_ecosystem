@@ -1,11 +1,9 @@
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol, TypeVar
 
 from dishka import AsyncContainer
 
+from app.core.logging import get_logger
 from app.cqrs.base import Command, CommandHandler, Query, QueryHandler
 
 TQuery = TypeVar("TQuery", bound=Query)

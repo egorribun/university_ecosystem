@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -44,6 +41,7 @@ from app.core.localization import (
     SUPPORTED_LOCALES,
     resolve_locale,
 )
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache

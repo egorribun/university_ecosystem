@@ -123,7 +123,7 @@ _client: WsHubClient | None = None
 
 
 def _get_client() -> WsHubClient:
-    global _client  # noqa: PLW0603
+    global _client
     if _client is None:
         _client = WsHubClient()
     return _client

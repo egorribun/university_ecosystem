@@ -1,6 +1,3 @@
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -29,6 +26,7 @@ from app.core.localization import (
     SUPPORTED_LOCALES,
     resolve_locale,
 )
+from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import get_cache
 from app.models import models

@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-
-from app.core.logging import get_logger
 import time
 from dataclasses import dataclass
 from typing import IO, TYPE_CHECKING, Any, cast
@@ -20,6 +18,7 @@ from app.core.circuit_breaker import (
     CircuitBreakerOpenError,
 )
 from app.core.config import settings
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

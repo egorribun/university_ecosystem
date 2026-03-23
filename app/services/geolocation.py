@@ -1,7 +1,4 @@
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +6,7 @@ import aiofiles
 import maxminddb
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

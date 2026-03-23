@@ -91,7 +91,9 @@ def _configure_rate_limiting(app: FastAPI, settings: Settings) -> None:
     endpoint_limits = []
     for pattern, limit_str in limit_map.items():
         if limit_str:
-            limit_val, window_val = parse_rate_limit(limit_str, fallback=_DEFAULT_RATE_LIMIT_FALLBACK)
+            limit_val, window_val = parse_rate_limit(
+                limit_str, fallback=_DEFAULT_RATE_LIMIT_FALLBACK
+            )
             if limit_val is not None:
                 endpoint_limits.append(
                     EndpointRateLimit(pattern, limit_val, window_val)

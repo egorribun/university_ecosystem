@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import base64
-import logging
-
-from app.core.logging import get_logger
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -11,6 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.core.config import Settings, settings
+from app.core.logging import get_logger
 
 router = APIRouter()
 _logger = get_logger(__name__)

@@ -1,12 +1,11 @@
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from datetime import UTC, datetime, time
 from typing import Any
 
 import rust_ext
 from pydantic import BaseModel
+
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

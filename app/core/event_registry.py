@@ -17,10 +17,9 @@ This module provides a safe alternative:
 from __future__ import annotations
 
 import dataclasses
-import logging
+from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
-from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.core.events import DomainEvent

@@ -1,6 +1,3 @@
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from typing import Any
 
@@ -9,6 +6,7 @@ from fastapi import WebSocket
 from app.api.ws.auth import update_last_seen
 from app.api.ws.presence import PRESENCE_SOURCE_PING
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.models.enums import UserRole
 from app.repositories.chat_repository import ChatRepository
 from app.services.audit_service import SecurityEvent, audit_service

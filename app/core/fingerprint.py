@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from fastapi import Request

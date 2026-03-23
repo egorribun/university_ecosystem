@@ -5,9 +5,6 @@ from app.core.uvloop_setup import configure_uvloop
 
 configure_uvloop()
 
-import logging
-
-from app.core.logging import get_logger
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -28,6 +25,7 @@ from app.core.exceptions.handlers import (
     http_exception_handler,
 )
 from app.core.lifespan import lifespan
+from app.core.logging import get_logger
 from app.core.metrics import configure_metrics
 from app.core.middleware import (
     _ensure_vary_header,

@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from typing import TYPE_CHECKING, cast
 
@@ -11,6 +8,7 @@ from fastapi import Request
 from app.auth import mfa
 from app.core.exceptions.domain import EntityNotFound, PermissionDenied
 from app.core.localization import resolve_locale, translate
+from app.core.logging import get_logger
 from app.core.protocols import UserLike, extract_user_id
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas

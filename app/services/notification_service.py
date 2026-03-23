@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import uuid
 from typing import TYPE_CHECKING
 
 from fastapi import BackgroundTasks
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession

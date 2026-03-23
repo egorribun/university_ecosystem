@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -12,6 +9,7 @@ from app.auth.fingerprint import SessionFingerprint, extract_fingerprint
 from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.logging import get_logger
 from app.models.models import User
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.schemas import schemas

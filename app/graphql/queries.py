@@ -6,15 +6,13 @@ news, events, schedule, and other data.
 
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 from typing import Any
 
 import strawberry
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from app.core.logging import get_logger
 from app.graphql.context import GraphQLContext
 from app.graphql.types import (
     EventsConnection,

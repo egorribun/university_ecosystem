@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -14,6 +11,7 @@ from fastapi import BackgroundTasks
 
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.models import ActiveSession
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import ActiveSessionDTO

@@ -1,7 +1,4 @@
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 import mimetypes
 import re
 import secrets
@@ -12,6 +9,7 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.core.localization import translate
+from app.core.logging import get_logger
 from app.services.file_scanner import scan_for_malware
 from app.services.storage import StaticFSStorage, StorageBackend, get_storage_backend
 from app.utils.images import optimize_image

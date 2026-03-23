@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-
-from app.core.logging import get_logger
 from collections.abc import MutableMapping
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -26,6 +24,7 @@ from app.auth.constants import (
     MFA_METHOD_WEBAUTHN,
 )
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.ratelimit import (
     RateLimitExceeded,
     enforce_rate_limit,

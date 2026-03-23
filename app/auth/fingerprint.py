@@ -11,14 +11,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
-
-from app.core.logging import get_logger
 import threading
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from fastapi import Request

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import logging
-
-from app.core.logging import get_logger
 import secrets
 from typing import TYPE_CHECKING, Any
 
 from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Sequence

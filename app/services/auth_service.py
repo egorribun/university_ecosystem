@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-
-from app.core.logging import get_logger
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -13,6 +11,8 @@ from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import inspect
 from sqlalchemy.orm import exc as orm_exc
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession

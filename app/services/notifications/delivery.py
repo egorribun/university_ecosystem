@@ -8,9 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
-import logging
-
-from app.core.logging import get_logger
 import uuid
 import uuid as _uuid_mod
 from collections import defaultdict
@@ -23,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core import metrics
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.models.models import (
     Notification,
     NotificationDelivery,

@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import logging
-
-from app.core.logging import get_logger
 from functools import lru_cache
 from typing import Any
 
@@ -14,6 +11,7 @@ from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy.types import Text, TypeDecorator
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
 _logger = get_logger(__name__)
 

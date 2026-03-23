@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-
-from app.core.logging import get_logger
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
+
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from app.core.config import Settings
