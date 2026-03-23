@@ -212,7 +212,10 @@ metadata:
       or ghcr.io. Prevents supply-chain attacks via untrusted public images.
     policies.kyverno.io/minversion: "1.6.0"
 spec:
-  validationFailureAction: Audit  # → Enforce after confirming zero violations
+  # MOD-W18-01 (audit 2026-03-23 Wave 18): promoted from Audit to Enforce.
+  # Policies 1–5 enforced since Wave 13; policies 6–8 now follow after
+  # confirming zero violations in production via policyreport.
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-registry
@@ -244,7 +247,8 @@ metadata:
       and ensures HPA has accurate per-pod resource metrics to scale on.
     policies.kyverno.io/minversion: "1.6.0"
 spec:
-  validationFailureAction: Audit  # → Enforce after confirming zero violations
+  # MOD-W18-01 (audit 2026-03-23 Wave 18): promoted from Audit to Enforce.
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-limits
@@ -283,7 +287,8 @@ metadata:
       pod start. Prevents stale cached images from running after a rotation.
     policies.kyverno.io/minversion: "1.6.0"
 spec:
-  validationFailureAction: Audit  # → Enforce after confirming zero violations
+  # MOD-W18-01 (audit 2026-03-23 Wave 18): promoted from Audit to Enforce.
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-pull-policy

@@ -1,22 +1,20 @@
 name: "Custom CodeQL config"
 
-# Suppress path-injection alerts for files with proper sanitization
-# The image_proxy.py file has comprehensive path sanitization:
-# 1. _sanitize_path_input() blocks "..", null bytes, absolute paths
-# 2. _validate_path_within_base() ensures paths stay within base_dir
-# These alerts are false positives as the data flow includes sanitization
-
-paths-ignore:
-  # Temporarily ignore image_proxy - has manual sanitization that CodeQL doesn't recognize
-  # Security review: 2024-12-26 - confirmed sanitization is adequate
-  # - root/app/services/image_proxy.py
+# RZ-W17-04/05 (Wave 17): Scoped exclusions to specific reviewed files only.
+# Previously, py/path-injection was blanket-excluded via tag filter (disabled
+# ALL path injection detection project-wide), and py/weak-cryptographic-algorithm
+# was excluded for the entire app/auth/security.py file.
+#
+# Now:
+# - py/path-injection: scoped to image_proxy.py only (reviewed 2024-12-26,
+#   _sanitize_path_input blocks "..", null bytes, absolute paths;
+#   _validate_path_within_base ensures paths stay within base_dir).
+# - py/weak-cryptographic-algorithm: removed here; inline lgtm suppression
+#   added to the specific bcrypt function in security.py instead.
 
 query-filters:
-  # Exclude path-injection queries for files that have been manually reviewed
+  # Suppress path-injection for image_proxy only (has manual sanitization).
   - exclude:
       id: py/path-injection
-      tags contain: security
-  - exclude:
-      id: py/weak-cryptographic-algorithm
       path:
-        - app/auth/security.py
+        - app/services/image_proxy.py

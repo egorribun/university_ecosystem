@@ -64,6 +64,12 @@ type Config struct {
 	// RZ-F-07 (audit 2026-03-07): without a cap, Hub.Clients grows without bound
 	// allowing a single source to exhaust file descriptors and goroutine stacks.
 	MaxClients int
+	// TD-W16-03: Configurable per-client message rate limit (previously hardcoded 10/s, burst 20).
+	ClientMsgRateLimit float64
+	ClientMsgRateBurst int
+	// MOD-W17-06: Configurable WS upgrade ticket TTL (default 15s).
+	// Must match the Python backend's WS_TICKET_TTL_SECONDS.
+	TicketTTLSeconds int
 	// Redis connection parameters for L2 caching (PERF-006).
 	RedisURL      string
 	RedisPassword string
@@ -105,6 +111,9 @@ func LoadConfig() *Config {
 		BroadcastWorkers:    getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2),
 		InternalSecret:      os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
 		MaxClients:          getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		ClientMsgRateLimit:  getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
+		ClientMsgRateBurst:  getEnvInt("WS_CLIENT_MSG_BURST", 20),
+		TicketTTLSeconds:    getEnvInt("WS_TICKET_TTL_SECONDS", 15),
 		RedisURL:            getEnv("REDIS_URL", "redis:6379"),
 		RedisPassword:       getEnv("REDIS_PASSWORD", ""),
 		RedisDB:             getEnvInt("REDIS_DB", 0),
@@ -144,6 +153,18 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getEnvFloat(key string, defaultValue float64) float64 {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultValue
+	}
+	var val float64
+	if _, err := fmt.Sscan(valStr, &val); err != nil {
+		return defaultValue
+	}
+	return val
 }
 
 func getEnvInt(key string, defaultValue int) int {

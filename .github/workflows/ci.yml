@@ -164,7 +164,9 @@ jobs:
         # is the safe replacement.  This gate prevents future re-introduction.
         shell: bash
         run: |
-          result=$(grep -r "import pickle\|from pickle\|pickle\.loads\|pickle\.dumps" app/ --include="*.py" || true)
+          # TD-W18-04 (audit 2026-03-23 Wave 18): exclude comments to prevent false
+          # positives (e.g. "# Do NOT import pickle" triggered the old gate).
+          result=$(grep -rn "import pickle\|from pickle\|pickle\.loads\|pickle\.dumps" app/ --include="*.py" | grep -v '^\s*#' | grep -v '# nosec' || true)
           if [ -n "$result" ]; then
             echo "::error::pickle usage detected in app/ — replace with Pydantic model_validate_json / model_dump_json (see RED-01 in Wave 13 audit)"
             echo "$result"
@@ -267,11 +269,13 @@ jobs:
           go-version: "1.26.x"
           cache-dependency-path: services/ws-hub/go.sum
 
-      - name: Run fuzz tests (30s CI budget)
+      # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
+      # meaningful coverage of JSON parsing and WebSocket message validation.
+      - name: Run fuzz tests (120s CI budget)
         run: |
           cd services/ws-hub
-          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=30s
-          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s
+          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=120s
+          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=120s
 
       - name: Upload fuzz corpus on failure
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
@@ -748,6 +752,41 @@ jobs:
 
           echo "=== Migration round-trip complete ==="
 
+  # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
+  # Runs lightweight Python consumer contract tests (no Go/FFI needed).
+  # The full Go provider verification continues in contract-tests.yml.
+  contract-tests:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run contract tests (consumer-side)
+        run: |
+          uv run pytest tests/contracts/ -v \
+            --tb=short \
+            -p no:cacheprovider \
+            -k "not integration"
+        env:
+          PACT_DO_NOT_TRACK: "true"
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -769,6 +808,7 @@ jobs:
       - helm-validate
       - db-migration-gate
       - go-fuzz
+      - contract-tests
     steps:
       - name: Check all jobs passed
         shell: bash
@@ -788,6 +828,7 @@ jobs:
             "${{ needs.helm-validate.result }}"
             "${{ needs.db-migration-gate.result }}"
             "${{ needs.go-fuzz.result }}"
+            "${{ needs.contract-tests.result }}"
           )
 
           failed=false

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
+from app.core.ssrf import validate_url_not_internal
 
 logger = get_logger(__name__)
 
@@ -17,6 +18,8 @@ class VectorService:
 
     def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
+        # RZ-W16-08: Block SSRF via configurable base URL.
+        validate_url_not_internal(settings.embedding_api_base)
         self._client = httpx.AsyncClient(
             base_url=settings.embedding_api_base,
             headers={"Authorization": f"Bearer {settings.embedding_api_key}"}

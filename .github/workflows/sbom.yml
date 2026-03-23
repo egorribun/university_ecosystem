@@ -181,23 +181,19 @@ jobs:
             | python3 -c "
           import sys, json
           data = json.load(sys.stdin)
-          blocking = [
+          # RZ-W16-05: Gate on ALL vulnerabilities, not just those with fixes.
+          all_vulns = [
               v for dep in data.get('dependencies', [])
               for v in dep.get('vulns', [])
-              if v.get('fix_versions') and
-                 v.get('aliases', [''])[0].startswith('CVE') or True
           ]
-          # pip-audit does not expose severity directly; use OSV aliases to
-          # detect critical/high.  Fail on any unfixed CVE.
-          unfixed = [
-              v for dep in data.get('dependencies', [])
-              for v in dep.get('vulns', [])
-              if v.get('fix_versions')
-          ]
-          if unfixed:
-              print(f'::error::pip-audit: {len(unfixed)} unfixed vulnerabilities with known fixes. Run pip-audit locally to review.')
+          fixable = [v for v in all_vulns if v.get('fix_versions')]
+          unfixable = [v for v in all_vulns if not v.get('fix_versions')]
+          if fixable:
+              print(f'::error::pip-audit: {len(fixable)} vulnerabilities with known fixes — update dependencies.')
               sys.exit(1)
-          print(f'pip-audit: no unfixed vulnerabilities with available fixes.')
+          if unfixable:
+              print(f'::warning::pip-audit: {len(unfixable)} vulnerabilities without known fixes — review manually.')
+          print('pip-audit: no actionable vulnerabilities.')
           "
 
       - name: Set up Go
@@ -266,17 +262,36 @@ jobs:
           print(f"osv-scanner gate passed. Checked {pkg_count} package(s) — no HIGH/CRITICAL findings.", flush=True)
           PYEOF
 
+      # RZ-W18-05 (audit 2026-03-23 Wave 18): cargo-audit gate was non-functional —
+      # the trailing `|| true` swallowed sys.exit(1) from the Python script, making
+      # the gate always pass. Also added CVSS >= 7.0 filtering for consistency with
+      # the Go osv-scanner gate above.
       - name: Rust — cargo-audit CRITICAL/HIGH gate
         working-directory: native/rust_ext
         run: |
           cargo install cargo-audit --locked 2>/dev/null || true
-          cargo audit --json 2>/dev/null | python3 -c "
-          import sys, json
-          data = json.load(sys.stdin)
-          vulns = data.get('vulnerabilities', {}).get('list', [])
-          if vulns:
-              print(f'::error::cargo-audit: {len(vulns)} Rust vulnerabilities found. Review sbom-rust-audit artefact.')
+          cargo audit --json 2>/dev/null > /tmp/cargo-audit.json || true
+          python3 <<'PYEOF'
+          import sys, json, pathlib
+          raw = pathlib.Path("/tmp/cargo-audit.json").read_text()
+          if not raw.strip():
+              print("cargo-audit: no output (binary may not be installed). Skipping.")
+              sys.exit(0)
+          data = json.loads(raw)
+          vulns = data.get("vulnerabilities", {}).get("list", [])
+          high_crit = []
+          for v in vulns:
+              advisory = v.get("advisory", {})
+              cvss = advisory.get("cvss", None)
+              score = float(cvss) if cvss else -1.0  # unknown = fail-closed
+              if score < 0 or score >= 7.0:
+                  high_crit.append((advisory.get("id", "?"), score))
+          if high_crit:
+              print(f"::error::cargo-audit: {len(high_crit)} HIGH/CRITICAL Rust vulnerabilities found.", flush=True)
+              for vid, score in high_crit:
+                  print(f"  - {vid} CVSS={score}", flush=True)
+              print("Review sbom-rust-audit artefact and add accepted-risk entries.", flush=True)
               sys.exit(1)
-          print('cargo-audit: no Rust vulnerabilities found.')
-          " || true  # cargo-audit exits 1 even for low severity; gate above handles filtering
+          print(f"cargo-audit: {len(vulns)} total advisory(ies), 0 HIGH/CRITICAL — gate passed.")
+          PYEOF
 

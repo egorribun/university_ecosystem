@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -85,7 +86,8 @@ func getEnvInt(key string, defaultValue int) int {
 	}
 	val, err := strconv.Atoi(valStr)
 	if err != nil {
-		fmt.Printf("Warning: Invalid integer for %s: %s. Using default: %d\n", key, valStr, defaultValue)
+		slog.Warn("invalid integer env var, using default",
+			"key", key, "value", valStr, "default", defaultValue)
 		return defaultValue
 	}
 	return val

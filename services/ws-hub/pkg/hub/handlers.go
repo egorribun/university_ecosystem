@@ -158,7 +158,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 //
 //	Key  : "ott:ws:{ticket}"
 //	Value: "{user_id}:{jti}"  (colon-joined UUIDs)
-//	TTL  : 15 seconds
+//	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
 //
 // GETDEL makes the ticket single-use: if two concurrent upgrade requests race
 // with the same ticket, only the first succeeds.
@@ -169,6 +169,12 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 	if len(ticket) != 64 {
 		// tickets are always 64-char hex strings (secrets.token_hex(32))
 		return "", fmt.Errorf("invalid ticket length: %d", len(ticket))
+	}
+	// RZ-W16-06: Validate hex charset — tickets are secrets.token_hex(32) = 64 lowercase hex chars.
+	for _, c := range ticket {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return "", fmt.Errorf("invalid ticket charset")
+		}
 	}
 
 	key := wsTicketKeyPrefix + ticket
@@ -274,7 +280,9 @@ func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error
 
 	keySet, err := h.jwksCache.Get(ctx, h.jwksURL)
 	if err != nil {
-		h.Logger.ErrorContext(ctx, "JWKS fetch failed, falling back to HMAC secrets",
+		// RZ-W18-04 (audit 2026-03-23 Wave 18): no HMAC fallback occurs — this
+		// function returns the error immediately. Log message corrected.
+		h.Logger.ErrorContext(ctx, "JWKS fetch failed — RS256 validation cannot proceed",
 			"jwks_url", h.jwksURL, "err", err)
 		return "", err
 	}

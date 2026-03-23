@@ -78,13 +78,91 @@ networkPolicy:
       "app.kubernetes.io/name": ingress-nginx
 
 # Infrastructure (Dependencies)
-# In a real chart, these would be subcharts (bitnami/redis, etc.)
-# For now, we define simple deployment values or assume external
+# PERF-W18-03 / Wave 18.1: bitnami subcharts with explicit resource limits.
+# Run `helm dependency update` after modifying.
 postgres:
-  enabled: true
+  enabled: true  # External — managed by CloudNativePG or external RDS
+
+# bitnami/redis subchart configuration.
+# Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
   enabled: true
+  architecture: standalone  # standalone for dev; replication for prod
+  auth:
+    enabled: true
+    existingSecret: "redis-credentials"
+    existingSecretPasswordKey: "redis-password"
+  master:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    persistence:
+      enabled: true
+      size: 8Gi
+    # Pod security hardening (matches our Kyverno Enforce policies)
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+  # Redis configuration matching docker-compose.yml valkey settings.
+  commonConfiguration: |-
+    maxmemory 1536mb
+    maxmemory-policy allkeys-lru
+    save ""
+    appendonly no
+  metrics:
+    enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+# bitnami/nats subchart configuration.
+# Docs: https://github.com/bitnami/charts/tree/main/bitnami/nats
+nats:
+  enabled: true
+  resourceType: statefulset
+  replicaCount: 1  # standalone for dev; 3 for prod cluster
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nats:
+    jetstream:
+      enabled: true
+      memStorage:
+        enabled: true
+        size: 256Mi
+      fileStorage:
+        enabled: true
+        size: 2Gi
+  # Pod security hardening
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
 minio:
-  enabled: true
+  enabled: true  # External — managed separately
 temporal:
-  enabled: true
+  enabled: true  # External — managed separately

@@ -121,9 +121,9 @@ export const createTrustedScriptURL = (value: string): string | TrustedScriptURL
   const win = window as TrustedTypesWindow
   const policy = ensureAppPolicy(win)
   if (!policy) return value
-  try {
-    return policy.createScriptURL(value)
-  } catch {
-    return value
-  }
+  // RZ-W17-03 (Wave 17): Let TypeError propagate — loading a blocked script
+  // MUST fail. The previous catch block silently returned the raw untrusted
+  // URL, bypassing the entire Trusted Types protection.
+  // Callers that need graceful degradation should catch at the call site.
+  return policy.createScriptURL(value)
 }

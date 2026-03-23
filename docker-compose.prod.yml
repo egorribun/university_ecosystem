@@ -194,7 +194,7 @@ services:
     security_opt:
       - no-new-privileges
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
       interval: 10s
       timeout: 5s
       retries: 5

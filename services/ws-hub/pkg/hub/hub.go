@@ -63,7 +63,11 @@ type Hub struct {
 	internalSecret string
 	// msgLimiters is a per-client token-bucket map that limits NATS publish rate.
 	msgLimiters sync.Map // map[clientID string]*rate.Limiter
-	stopOnce    sync.Once
+	// RZ-W18-01 (audit 2026-03-23 Wave 18): per-client message rate limit fields.
+	// Previously accessed via c.Hub.Config which did not exist on the Hub struct.
+	clientMsgRateLimit float64
+	clientMsgRateBurst int
+	stopOnce           sync.Once
 	jwksMu      sync.Mutex
 	// redisClient is the shared Redis connection used for upgrade ticket validation.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
@@ -86,8 +90,10 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		jwksCache:      nil, // Initialised via SetupJWKS()
 		maxClients:       cfg.MaxClients,
 		broadcastWorkers: cfg.BroadcastWorkers,
-		internalSecret:   cfg.InternalSecret,
-		redisClient:      rdb,
+		internalSecret:     cfg.InternalSecret,
+		clientMsgRateLimit: cfg.ClientMsgRateLimit,
+		clientMsgRateBurst: cfg.ClientMsgRateBurst,
+		redisClient:        rdb,
 	}
 }
 
@@ -150,6 +156,10 @@ func (h *Hub) Run(ctx context.Context) {
 		}()
 	}
 
+	// PERF-W17-03: Sample broadcast queue depth every 5s for Prometheus.
+	queueDepthTicker := time.NewTicker(5 * time.Second)
+	defer queueDepthTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -167,10 +177,14 @@ func (h *Hub) Run(ctx context.Context) {
 			select {
 			case broadcastCh <- msg:
 			default:
+				BroadcastDropsTotal.Inc()
 				h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
 					"type", msg.Type,
 					"room", msg.Room)
 			}
+
+		case <-queueDepthTicker.C:
+			BroadcastQueueDepth.Set(float64(len(broadcastCh)))
 		}
 	}
 }
@@ -355,8 +369,15 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 		select {
 		case h.Broadcast <- &wsMsg:
 		default:
+			BroadcastDropsTotal.Inc()
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS chat message",
 				"subject", msg.Subject)
+			// PERF-W18-01 (audit 2026-03-23 Wave 18): if this is a JetStream message
+			// (identifiable by a non-empty Reply subject used for ack protocol),
+			// Nak it so JetStream can redeliver after the backoff period.
+			if msg.Reply != "" {
+				_ = msg.Nak()
+			}
 		}
 	}
 }
@@ -399,8 +420,13 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 		select {
 		case h.Broadcast <- &wsMsg:
 		default:
+			BroadcastDropsTotal.Inc()
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
 				"subject", msg.Subject)
+			// PERF-W18-01: Nak JetStream messages for redelivery.
+			if msg.Reply != "" {
+				_ = msg.Nak()
+			}
 		}
 	}
 }
@@ -531,6 +557,14 @@ func (h *Hub) Stop() {
 		}
 		h.jwksMu.Unlock()
 	})
+}
+
+// HasJWKSCache reports whether the JWKS cache has been initialised.
+// MOD-W17-05: Used by the readiness health endpoint to detect degraded state.
+func (h *Hub) HasJWKSCache() bool {
+	h.jwksMu.Lock()
+	defer h.jwksMu.Unlock()
+	return h.jwksCache != nil
 }
 
 // AuthorizeRoomJoin verifies that userID is a participant of the given room.

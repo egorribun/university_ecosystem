@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -68,6 +71,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// TD-W18-01 (audit 2026-03-23 Wave 18): parse RSA public key for RS256 support.
+	var rsaPublicKey *rsa.PublicKey
+	if cfg.RSAPublicKeyPEM != "" {
+		rsaPublicKey, err = parseRSAPublicKey(cfg.RSAPublicKeyPEM)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
+			os.Exit(1)
+		}
+		logger.InfoContext(ctx, "RS256 token verification enabled")
+	}
 	initSentry(ctx, cfg, logger)
 
 	tp, err := initTracer(ctx, cfg, logger)
@@ -98,8 +111,8 @@ func main() {
 
 	startNatsSubscriber(ctx, cfg, c, logger)
 
-	grpcSrv := setupGRPCServer(ctx, cfg, c, logger)
-	graphqlSrv := setupGraphQLServer(ctx, cfg, c, logger)
+	grpcSrv := setupGRPCServer(ctx, cfg, rsaPublicKey, c, logger)
+	graphqlSrv := setupGraphQLServer(ctx, cfg, rsaPublicKey, c, logger)
 
 	runServers(ctx, grpcSrv, graphqlSrv, cfg, logger)
 }
@@ -217,6 +230,11 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 		_, execErr := c.ExecuteWorkflow(wfCtx, opt, workflow.FileProcessingWorkflow, job)
 		if execErr != nil {
 			logger.ErrorContext(ctx, "Failed to execute workflow from NATS", "err", execErr)
+			// RZ-W16-02: Nak so JetStream redelivers immediately instead of
+			// waiting for AckWait timeout (which can be minutes).
+			if nakErr := msg.Nak(); nakErr != nil {
+				logger.ErrorContext(ctx, "Failed to Nak NATS message after workflow failure", "err", nakErr)
+			}
 			return
 		}
 
@@ -235,16 +253,16 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 	}()
 }
 
-func setupGRPCServer(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) *grpc.Server {
+func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *grpc.Server {
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainStreamInterceptor(
 			grpc_prometheus.StreamServerInterceptor,
-			auth.StreamServerInterceptor(authFunc(cfg.JWTSecret, logger)),
+			auth.StreamServerInterceptor(authFunc(cfg.JWTSecret, rsaPub, logger)),
 		),
 		grpc.ChainUnaryInterceptor(
 			grpc_prometheus.UnaryServerInterceptor,
-			auth.UnaryServerInterceptor(authFunc(cfg.JWTSecret, logger)),
+			auth.UnaryServerInterceptor(authFunc(cfg.JWTSecret, rsaPub, logger)),
 		),
 	)
 
@@ -260,7 +278,7 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, c client.Client, l
 	return grpcServer
 }
 
-func setupGraphQLServer(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) *http.Server {
+func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *http.Server {
 	s, err := os.ReadFile("schema.graphql")
 	if err != nil {
 		logger.ErrorContext(ctx, "schema.graphql not found", "err", err)
@@ -273,7 +291,8 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, c client.Client
 	}
 
 	var schemaOpts []graphql.SchemaOpt
-	if cfg.Environment == "production" {
+	// TD-W16-02: Disable introspection in staging too — prevents schema leakage.
+	if cfg.Environment == "production" || cfg.Environment == "staging" {
 		schemaOpts = append(schemaOpts, graphql.RestrictIntrospection(func(ctx context.Context) bool {
 			return false
 		}))
@@ -281,7 +300,7 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, c client.Client
 
 	schema := graphql.MustParseSchema(string(s), resolver, schemaOpts...)
 	mux := http.NewServeMux()
-	graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, logger, &relay.Handler{Schema: schema})
+	graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, rsaPub, logger, &relay.Handler{Schema: schema})
 	mux.Handle("/graphql", graphqlHandler)
 	mux.Handle("/metrics", promhttp.Handler())
 
@@ -326,7 +345,47 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 	}
 }
 
-func httpJWTMiddleware(secret string, log *slog.Logger, next http.Handler) http.Handler {
+// parseRSAPublicKey parses a PEM-encoded RSA public key.
+// TD-W18-01 (audit 2026-03-23 Wave 18): enables RS256 token verification
+// for parity with ws-hub and gateway services.
+func parseRSAPublicKey(pemStr string) (*rsa.PublicKey, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block found in RSA_PUBLIC_KEY_PEM")
+	}
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse RSA public key: %w", err)
+	}
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("RSA_PUBLIC_KEY_PEM is not an RSA key (got %T)", pub)
+	}
+	return rsaPub, nil
+}
+
+// jwtKeyFunc returns a jwt.Keyfunc that accepts both RS256 (if rsaPub is non-nil)
+// and HS256 (if secret is non-empty). RS256 is preferred when both are available.
+func jwtKeyFunc(secret string, rsaPub *rsa.PublicKey) jwt.Keyfunc {
+	return func(t *jwt.Token) (interface{}, error) {
+		switch t.Method.(type) {
+		case *jwt.SigningMethodRSA:
+			if rsaPub == nil {
+				return nil, fmt.Errorf("RS256 token received but no RSA public key configured")
+			}
+			return rsaPub, nil
+		case *jwt.SigningMethodHMAC:
+			if secret == "" {
+				return nil, fmt.Errorf("HS256 token received but no JWT secret configured")
+			}
+			return []byte(secret), nil
+		default:
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+	}
+}
+
+func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		const prefix = "Bearer "
@@ -339,12 +398,8 @@ func httpJWTMiddleware(secret string, log *slog.Logger, next http.Handler) http.
 		}
 		tokenStr := authHeader[len(prefix):]
 
-		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, status.Errorf(codes.Unauthenticated, "invalid token")
-			}
-			return []byte(secret), nil
-		})
+		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
+		token, err := jwt.Parse(tokenStr, jwtKeyFunc(secret, rsaPub))
 		if err != nil || !token.Valid {
 			log.WarnContext(r.Context(), "GraphQL HTTP JWT validation failed",
 				"remote", r.RemoteAddr,
@@ -368,19 +423,15 @@ func httpJWTMiddleware(secret string, log *slog.Logger, next http.Handler) http.
 	})
 }
 
-func authFunc(secret string, logger *slog.Logger) auth.AuthFunc {
+func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.AuthFunc {
 	return func(ctx context.Context) (context.Context, error) {
 		tokenStr, err := auth.AuthFromMD(ctx, "bearer")
 		if err != nil {
 			return nil, err
 		}
 
-		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, status.Errorf(codes.Unauthenticated, "invalid signing method")
-			}
-			return []byte(secret), nil
-		})
+		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
+		token, err := jwt.Parse(tokenStr, jwtKeyFunc(secret, rsaPub))
 
 		if err != nil {
 			logger.WarnContext(ctx, "gRPC auth failed", "err", err)

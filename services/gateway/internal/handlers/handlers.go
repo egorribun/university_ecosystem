@@ -10,10 +10,11 @@ import (
 	"regexp"
 	"time"
 
+	"log/slog"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -92,7 +93,7 @@ func HealthHandler(c *gin.Context) {
 }
 
 // FileProcessSyncHandler proximales a synchronous file processing request to the file-processor service over gRPC.
-func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
+func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// GW-P2-02 (audit Wave 10): removed TOCTOU gRPC state pre-check.
 		// grpcConn.GetState() is advisory — the state can transition from Ready
@@ -140,34 +141,34 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 			// triggers upstream-timeout alerts and retries, 500 triggers error-rate alerts.
 			switch status.Code(err) {
 			case codes.DeadlineExceeded:
-				logger.Warn("gRPC upstream timeout", zap.Error(err))
+				logger.Warn("gRPC upstream timeout", "err", err)
 				c.JSON(http.StatusGatewayTimeout, gin.H{"error": "upstream_timeout"})
 			case codes.Unavailable:
-				logger.Warn("gRPC upstream unavailable", zap.Error(err))
+				logger.Warn("gRPC upstream unavailable", "err", err)
 				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream_unavailable"})
 			case codes.PermissionDenied, codes.Unauthenticated:
-				logger.Warn("gRPC permission denied", zap.Error(err))
+				logger.Warn("gRPC permission denied", "err", err)
 				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			case codes.ResourceExhausted:
-				logger.Warn("gRPC resource exhausted", zap.Error(err))
+				logger.Warn("gRPC resource exhausted", "err", err)
 				c.JSON(http.StatusTooManyRequests, gin.H{"error": "too_many_requests"})
 			case codes.InvalidArgument:
-				logger.Warn("gRPC invalid argument", zap.Error(err))
+				logger.Warn("gRPC invalid argument", "err", err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_argument"})
 			case codes.NotFound:
-				logger.Warn("gRPC resource not found", zap.Error(err))
+				logger.Warn("gRPC resource not found", "err", err)
 				c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
 			case codes.AlreadyExists:
-				logger.Warn("gRPC resource already exists", zap.Error(err))
+				logger.Warn("gRPC resource already exists", "err", err)
 				c.JSON(http.StatusConflict, gin.H{"error": "already_exists"})
 			case codes.Unimplemented:
-				logger.Warn("gRPC method unimplemented", zap.Error(err))
+				logger.Warn("gRPC method unimplemented", "err", err)
 				c.JSON(http.StatusNotImplemented, gin.H{"error": "unimplemented"})
 			case codes.OK, codes.Canceled, codes.Unknown, codes.FailedPrecondition, codes.Aborted, codes.OutOfRange, codes.Internal, codes.DataLoss:
 				// Fallthrough to default handler for uncommon/unexpected codes
 				fallthrough
 			default:
-				logger.Error("gRPC call failed", zap.Error(err))
+				logger.Error("gRPC call failed", "err", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "processing_failed"})
 			}
 			return

@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 use pyo3::prelude::*;
 use rayon::prelude::*;
-use chrono::{Utc, TimeZone, Datelike, Duration};
+use chrono::{Utc, TimeZone, Datelike, Duration, NaiveDate, Weekday};
 
 #[pyclass]
 #[derive(Clone, Debug)]
@@ -60,35 +60,66 @@ fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleIte
         ));
     }
 
-    // Parallelize conflict detection using rayon
-    let conflicts = items
-        .par_iter()
-        .enumerate()
-        .flat_map_iter(|(i, a)| {
-            items[i + 1..]
-                .iter()
-                .filter(move |b| check_conflict_proto(a, b))
-                .map(move |b| (a.clone(), b.clone()))
-        })
-        .collect();
+    // TD-W18-02 (audit 2026-03-23 Wave 18): use a bounded thread pool instead of
+    // rayon's global pool (which defaults to logical CPU count). On a 64-core
+    // server this would spawn 64 threads; with Python free-threading (3.13+),
+    // concurrent calls could saturate all CPU cores.
+    use std::sync::OnceLock;
+    static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+    let pool = POOL.get_or_init(|| {
+        let threads = std::env::var("RUST_EXT_THREADS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(4);
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .expect("Failed to build rayon thread pool")
+    });
+
+    let conflicts = pool.install(|| {
+        items
+            .par_iter()
+            .enumerate()
+            .flat_map_iter(|(i, a)| {
+                items[i + 1..]
+                    .iter()
+                    .filter(move |b| check_conflict_proto(a, b))
+                    .map(move |b| (a.clone(), b.clone()))
+            })
+            .collect()
+    });
 
     Ok(conflicts)
 }
 
 #[pyfunction]
 #[pyo3(signature = (duration_minutes, existing_schedule, available_blocks))]
+/// TD-W17-03 (Wave 17): Fixed to use the actual next occurrence of the
+/// requested weekday instead of always using Jan 1. Previously, timestamps
+/// were semantically wrong — conflict detection worked by coincidence (string
+/// comparison of weekday + time overlap), but any caller using start_time/
+/// end_time as real dates would get incorrect results.
 fn find_optimal_slot(
     duration_minutes: u32,
     existing_schedule: Vec<ScheduleItem>,
     available_blocks: Vec<(String, Vec<u32>)>,
 ) -> Option<ScheduleItem> {
-    for (day, hours) in available_blocks {
-        for hour in hours {
-            let now = Utc::now();
-            let current_year = now.year();
+    let today = Utc::now().date_naive();
 
-            // Construct time for the current year
-            let start_date_time = Utc.with_ymd_and_hms(current_year, 1, 1, hour, 0, 0).single();
+    for (day, hours) in available_blocks {
+        // TD-W17-03: Resolve the actual next date matching this weekday.
+        let target_wd = match parse_weekday(&day) {
+            Some(wd) => wd,
+            None => continue, // Skip unparseable weekday names.
+        };
+        let target_date = next_weekday(today, target_wd);
+
+        for hour in hours {
+            let start_date_time = target_date
+                .and_hms_opt(hour, 0, 0)
+                .map(|ndt| Utc.from_utc_datetime(&ndt));
+
             if let Some(start_dt) = start_date_time {
                 let end_dt = start_dt + Duration::minutes(duration_minutes as i64);
 
@@ -107,6 +138,29 @@ fn find_optimal_slot(
         }
     }
     None
+}
+
+/// Find the next date (today or later) that falls on the given weekday.
+fn next_weekday(from: NaiveDate, target: Weekday) -> NaiveDate {
+    let current = from.weekday().num_days_from_monday();
+    let target_num = target.num_days_from_monday();
+    let days_ahead = (target_num as i64 - current as i64 + 7) % 7;
+    // If today is the target weekday, use today (days_ahead == 0).
+    from + Duration::days(days_ahead)
+}
+
+/// Parse a weekday string (case-insensitive) into a chrono Weekday.
+fn parse_weekday(s: &str) -> Option<Weekday> {
+    match s.to_lowercase().as_str() {
+        "monday" | "mon" => Some(Weekday::Mon),
+        "tuesday" | "tue" => Some(Weekday::Tue),
+        "wednesday" | "wed" => Some(Weekday::Wed),
+        "thursday" | "thu" => Some(Weekday::Thu),
+        "friday" | "fri" => Some(Weekday::Fri),
+        "saturday" | "sat" => Some(Weekday::Sat),
+        "sunday" | "sun" => Some(Weekday::Sun),
+        _ => None,
+    }
 }
 
 #[pyclass]
@@ -161,8 +215,17 @@ fn is_partition_expired(partition_name: String, table_name: String, retention_da
         return false;
     }
 
-    let p_year: i32 = parts[0].parse().unwrap_or(0);
-    let p_month: u32 = parts[1].parse().unwrap_or(0);
+    // TD-W17-04 (Wave 17): Explicit error handling instead of unwrap_or(0).
+    // The previous pattern hid parse errors; a future refactor removing the
+    // guard below would silently treat malformed partitions as valid.
+    let p_year: i32 = match parts[0].parse() {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let p_month: u32 = match parts[1].parse() {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
 
     if p_year == 0 || p_month == 0 || p_month > 12 {
         return false;

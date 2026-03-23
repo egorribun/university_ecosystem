@@ -118,8 +118,9 @@ func (c *Client) handleLeave(msg Message) {
 }
 
 func (c *Client) handleMessage(msg Message, data []byte) {
+	// TD-W16-03 / RZ-W18-01: Use configurable rate limit fields copied to Hub struct.
 	raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
-		rate.NewLimiter(rate.Limit(10), 20))
+		rate.NewLimiter(rate.Limit(c.Hub.clientMsgRateLimit), c.Hub.clientMsgRateBurst))
 	if !raw.(*rate.Limiter).Allow() {
 		c.Hub.Logger.WarnContext(c.ctx, "Client message rate limit exceeded — notifying client",
 			"client_id", c.ID,
