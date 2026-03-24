@@ -116,7 +116,7 @@ redis:
   # Redis configuration matching docker-compose.yml valkey settings.
   commonConfiguration: |-
     maxmemory 1536mb
-    maxmemory-policy allkeys-lru
+    maxmemory-policy volatile-lru
     save ""
     appendonly no
   metrics:

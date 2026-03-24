@@ -46,3 +46,37 @@ spec:
           annotations:
             summary: "ws-hub Memory > 512MB"
             description: "WebSocket hub is consuming excessive memory."
+
+        # PERF-21-02 (audit 2026-03-25 Wave 21): DB connection pool saturation.
+        # Pool exhaustion causes request timeouts without early warning.  This
+        # alert fires when utilization exceeds 80% for 5 minutes, giving ops
+        # time to scale up or investigate before requests start queueing.
+        - alert: DatabasePoolSaturation
+          expr: university_db_pool_active / university_db_pool_size > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "DB connection pool at {{ $value | humanizePercentage }} capacity"
+            description: "Backend database connection pool is nearing exhaustion. Consider increasing pool_size or investigating slow queries."
+
+        - alert: DatabasePoolExhausted
+          expr: university_db_pool_active >= university_db_pool_size
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "DB connection pool fully exhausted"
+            description: "All database connections are in use. New requests will queue or timeout."
+
+        # PERF-21-02: Valkey eviction monitoring (relates to RZ-21-02).
+        # A spike in evictions may indicate the volatile-lru policy is under
+        # memory pressure — potential precursor to security-key loss.
+        - alert: ValkeyEvictionSpike
+          expr: rate(evicted_keys_total{job="valkey"}[5m]) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Valkey evicting {{ $value | humanize }} keys/sec"
+            description: "High eviction rate may indicate memory pressure. Check if security-critical keys are being evicted."

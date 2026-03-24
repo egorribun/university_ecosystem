@@ -39,23 +39,47 @@ export const createQueryClient = () =>
 
 export const queryClient = createQueryClient()
 
-// FE-02 (audit 2026-03-08 Wave 5): Limit IDB persist size to 50 MB.
+// FE-02 (audit 2026-03-08 Wave 5): Limit IDB persist size.
 // Without a guard, a large query cache (many chats + long event lists) triggers
 // a QuotaExceededError that propagates as an unhandled rejection and crashes the
 // app silently. Graceful degradation: skip persist when too large, clear when
 // the quota is already exhausted.
-const MAX_IDB_PERSIST_BYTES = 50 * 1024 * 1024 // 50 MB
+//
+// PERF-21-01 (audit 2026-03-25 Wave 21): Reduced default from 50 MB to 20 MB.
+// 50 MB is aggressive for mobile devices with limited storage. The responsive
+// helper uses navigator.storage.estimate() to pick a device-appropriate limit.
+const DEFAULT_IDB_QUOTA_BYTES = 20 * 1024 * 1024 // 20 MB
+const MAX_IDB_QUOTA_BYTES = 50 * 1024 * 1024 // 50 MB cap
+
+let _resolvedQuota: number | null = null
+
+async function getIdbQuotaBytes(): Promise<number> {
+  if (_resolvedQuota !== null) return _resolvedQuota
+  try {
+    const estimate = await navigator.storage?.estimate?.()
+    if (estimate?.quota && estimate.quota > 0) {
+      // Use at most 5% of available storage, capped at 50 MB
+      _resolvedQuota = Math.min(Math.floor(estimate.quota * 0.05), MAX_IDB_QUOTA_BYTES)
+      return _resolvedQuota
+    }
+  } catch {
+    // Storage API unavailable (SSR, older browsers, etc.)
+  }
+  _resolvedQuota = DEFAULT_IDB_QUOTA_BYTES
+  return _resolvedQuota
+}
 
 export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
   return {
     persistClient: async (client: PersistedClient) => {
       try {
         const serialized = JSON.stringify(client)
-        if (serialized.length > MAX_IDB_PERSIST_BYTES) {
+        const quota = await getIdbQuotaBytes()
+        if (serialized.length > quota) {
           // Length in JS is UTF-16 code units ≈ bytes for ASCII-heavy JSON.
           if (import.meta.env.DEV) {
             console.warn(
-              `[IDBPersister] Cache too large (${(serialized.length / 1024 / 1024).toFixed(1)} MB) — skipping IDB persist`
+              `[IDBPersister] Cache too large (${(serialized.length / 1024 / 1024).toFixed(1)} MB, quota ${(quota / 1024 / 1024).toFixed(0)} MB) — skipping IDB persist`
             )
           }
           return

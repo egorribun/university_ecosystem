@@ -329,6 +329,22 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 	}
 	h.subs = append(h.subs, invSub)
 
+	// RZ-21-05 (audit 2026-03-25 Wave 21): Pre-warm JWKS cache on key rotation.
+	// The Python backend publishes to "keys.rotated" before issuing tokens with
+	// a new kid.  This eliminates the 30 s force-refresh cooldown window where
+	// valid tokens could be rejected during key rotation.
+	// Non-fatal: if the subscription fails, the existing force-refresh-on-kid-miss
+	// mechanism still works (just with the 30 s cooldown).
+	jwksSub, err := h.Nats.Subscribe("keys.rotated", func(msg *nats.Msg) {
+		h.Logger.InfoContext(appCtx, "JWKS rotation event received — pre-warming cache")
+		h.tryForceRefreshJWKS(appCtx)
+	})
+	if err != nil {
+		h.Logger.WarnContext(appCtx, "NATS keys.rotated subscription failed — falling back to on-demand refresh", "err", err)
+	} else {
+		h.subs = append(h.subs, jwksSub)
+	}
+
 	h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
 }
 
