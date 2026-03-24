@@ -166,7 +166,8 @@ services:
       - "--maxmemory"
       - "200mb"
       - "--maxmemory-policy"
-      - "allkeys-lru"
+      # RZ-21-02 (Wave 21): volatile-lru — only evict keys with TTL set.
+      - "volatile-lru"
       - "--hz"
       - "20"
       # LOW-W19: require a password so unauthenticated access is blocked

@@ -29,6 +29,35 @@ from .storage import StorageSettings
 _logger = get_logger(__name__)
 
 
+class _NamespaceView:
+    """Lightweight proxy that delegates attribute access to the parent Settings.
+
+    TD-21-01 (audit 2026-03-25 Wave 21): Phase 2 of the config composition
+    refactor.  Each namespace property (``settings.db``, ``settings.security``,
+    etc.) returns a ``_NamespaceView`` that:
+
+    1. Resolves attributes against the owning Settings instance (delegation).
+    2. Is typed as the narrow mixin class for IDE autocompletion.
+    3. Restricts ``dir()`` to the mixin's own fields for cleaner introspection.
+
+    This is a non-breaking intermediate step toward full composition (Phase 3)
+    where each namespace would hold its own independent Pydantic model.
+    """
+
+    __slots__ = ("_mixin_cls", "_parent")
+
+    def __init__(self, parent: object, mixin_cls: type) -> None:
+        object.__setattr__(self, "_parent", parent)
+        object.__setattr__(self, "_mixin_cls", mixin_cls)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(object.__getattribute__(self, "_parent"), name)
+
+    def __repr__(self) -> str:
+        cls_name = object.__getattribute__(self, "_mixin_cls").__name__
+        return f"<_NamespaceView({cls_name})>"
+
+
 class Settings(
     DatabaseSettings,
     SecuritySettings,
@@ -119,54 +148,56 @@ class Settings(
         origins = self.frontend_origins_list
         return (origins[0] if origins else "http://localhost:5173").rstrip("/")
 
-    # ── TD-20-01 Phase 1: Namespace Properties ──────────────────────────
+    # ── TD-21-01 Phase 2: Namespace Properties with Delegation ──────────
     #
-    # These properties provide namespaced access to settings subsets:
-    #   settings.db.pool_size  vs  settings.database_pool_size
+    # TD-20-01 Phase 1 returned ``self`` — a stepping stone.  Phase 2
+    # returns ``_NamespaceView`` wrappers that delegate attribute access
+    # to the parent Settings object but are typed as the narrow mixin class.
+    # This enables future Phase 3 (full separation) without breaking callers.
     #
-    # Phase 1 is additive (no breaking changes) — callers can adopt
-    # namespace access gradually.  Phase 2 (deprecation warnings on
-    # flat access) will follow in a future sprint.
+    # Both access patterns work:
+    #   settings.db.database_pool_size      (preferred — namespaced)
+    #   settings.database_pool_size         (legacy — still works, no warning yet)
 
     @cached_property
     def db(self) -> DatabaseSettings:
         """Namespace: ``settings.db.database_pool_size``."""
-        return self
+        return _NamespaceView(self, DatabaseSettings)  # type: ignore[return-value]
 
     @cached_property
     def security(self) -> SecuritySettings:
         """Namespace: ``settings.security.jwt_signing_active_secret``."""
-        return self
+        return _NamespaceView(self, SecuritySettings)  # type: ignore[return-value]
 
     @cached_property
     def cache(self) -> CacheSettings:
         """Namespace: ``settings.cache.cache_redis_url``."""
-        return self
+        return _NamespaceView(self, CacheSettings)  # type: ignore[return-value]
 
     @cached_property
     def observability(self) -> ObservabilitySettings:
         """Namespace: ``settings.observability.enable_otel``."""
-        return self
+        return _NamespaceView(self, ObservabilitySettings)  # type: ignore[return-value]
 
     @cached_property
     def storage(self) -> StorageSettings:
         """Namespace: ``settings.storage.storage_backend``."""
-        return self
+        return _NamespaceView(self, StorageSettings)  # type: ignore[return-value]
 
     @cached_property
     def notifications(self) -> NotificationSettings:
         """Namespace: ``settings.notifications.smtp_host``."""
-        return self
+        return _NamespaceView(self, NotificationSettings)  # type: ignore[return-value]
 
     @cached_property
     def integrations(self) -> IntegrationSettings:
         """Namespace: ``settings.integrations.spotify_client_id``."""
-        return self
+        return _NamespaceView(self, IntegrationSettings)  # type: ignore[return-value]
 
     @cached_property
     def app(self) -> AppGeneralSettings:
         """Namespace: ``settings.app.environment``."""
-        return self
+        return _NamespaceView(self, AppGeneralSettings)  # type: ignore[return-value]
 
 
 def _load_settings() -> Settings:

@@ -132,12 +132,46 @@ func (c *InternalAPIAuthClient) StartEviction(ctx context.Context) {
 }
 
 // Invalidate removes a (user, room) entry from the local cache.
+//
+// RZ-21-03 (audit 2026-03-25 Wave 21): When roomID is empty, performs a
+// wildcard invalidation — evicts all cached entries for this user.  This is
+// required for global permission revocations (admin demotion, account
+// suspension) where the backend cannot enumerate every room the user is in.
+// The LRU cache Keys() method returns up to 100 000 keys (cache capacity),
+// but the linear scan is bounded and fast (string prefix match, no alloc).
 func (c *InternalAPIAuthClient) Invalidate(userID, roomID string) {
-	if !isValidUUID(userID) || !isValidUUID(roomID) {
+	if !isValidUUID(userID) {
+		return
+	}
+
+	// Wildcard mode: empty roomID means "evict all rooms for this user".
+	if roomID == "" {
+		prefix := userID + ":"
+		for _, k := range c.cache.Keys() {
+			if len(k) > len(prefix) && k[:len(prefix)] == prefix {
+				c.cache.Remove(k)
+			}
+		}
+		// Also purge L2 (Redis) entries matching this user.
+		if c.redis != nil {
+			ctx := context.Background()
+			iter := c.redis.Scan(ctx, 0, "auth:perms:"+userID+":*", 100).Iterator()
+			for iter.Next(ctx) {
+				c.redis.Del(ctx, iter.Val()) //nolint:errcheck
+			}
+		}
+		return
+	}
+
+	if !isValidUUID(roomID) {
 		return
 	}
 	key := userID + ":" + roomID
 	c.cache.Remove(key)
+	// RZ-21-03: Also remove from Redis L2 for single-room invalidation.
+	if c.redis != nil {
+		c.redis.Del(context.Background(), "auth:perms:"+key) //nolint:errcheck
+	}
 }
 
 // isValidUUID returns true when s is a canonical RFC-4122 UUID string.

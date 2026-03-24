@@ -6,80 +6,81 @@
  * A malicious or malformed server frame could inject arbitrary data into
  * the TanStack Query cache (XSS vector, corrupted UI state).
  *
- * MOD-W5-02 (audit 2026-03-13): Migrated from valibot to Zod v4.
- * Zod v4's discriminatedUnion builds an O(1) lookup map by discriminant value
- * vs valibot variant's O(n) linear scan. Bundle: 7.9 KB vs ~12 KB.
+ * TD-21-03 (audit 2026-03-25 Wave 21): Migrated from Zod v4 to Valibot to
+ * standardise on a single validation library across the frontend.  Valibot's
+ * variant() uses a discriminator key for O(1) dispatch (same as Zod's
+ * discriminatedUnion) and is fully tree-shakeable (~6 KB vs Zod's ~12 KB).
  *
  * All incoming frames MUST pass parseWsMessage before touching the query cache
  * or calling callbacks.
  */
-import { z } from "zod"
+import * as v from "valibot"
 
 // ── Leaf field schemas ────────────────────────────────────────────────────────
 
-const UuidString = z.string().uuid()
-const NonEmptyString = z.string().min(1).max(4096)
+const UuidString = v.pipe(v.string(), v.uuid())
+const NonEmptyString = v.pipe(v.string(), v.minLength(1), v.maxLength(4096))
 
 // Mirrors the backend Message schema — only the fields the FE actually uses.
-const MessageSchema = z.object({
+const MessageSchema = v.object({
   id: UuidString,
   chat_id: UuidString,
   sender_id: UuidString,
-  content: z.string().max(32_768),
+  content: v.pipe(v.string(), v.maxLength(32_768)),
   created_at: NonEmptyString,
-  read_status: z.boolean(),
+  read_status: v.boolean(),
   // Optional attachment list — just validate shape, not individual entries
-  attachments: z.array(z.record(z.string(), z.unknown())).optional(),
-  sender: z.record(z.string(), z.unknown()).optional(),
+  attachments: v.optional(v.array(v.record(v.string(), v.unknown()))),
+  sender: v.optional(v.record(v.string(), v.unknown())),
 })
 
-export type ParsedMessage = z.infer<typeof MessageSchema>
+export type ParsedMessage = v.InferOutput<typeof MessageSchema>
 
 // ── Per-type variant schemas ──────────────────────────────────────────────────
 
-const PongSchema = z.object({ type: z.literal("pong") })
+const PongSchema = v.object({ type: v.literal("pong") })
 
-const ErrorSchema = z.object({
-  type: z.literal("error"),
-  detail: z.string().max(1024).optional(),
+const ErrorSchema = v.object({
+  type: v.literal("error"),
+  detail: v.optional(v.pipe(v.string(), v.maxLength(1024))),
 })
 
-const NewMessageSchema = z.object({
-  type: z.literal("new_message"),
+const NewMessageSchema = v.object({
+  type: v.literal("new_message"),
   chat_id: UuidString,
   message: MessageSchema,
 })
 
-const TypingSchema = z.object({
-  type: z.literal("typing"),
+const TypingSchema = v.object({
+  type: v.literal("typing"),
   chat_id: UuidString,
   user_id: UuidString,
-  user_name: z.string().min(1).max(256),
+  user_name: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
 })
 
-const ReadSchema = z.object({
-  type: z.literal("read"),
+const ReadSchema = v.object({
+  type: v.literal("read"),
   chat_id: UuidString,
   message_id: UuidString,
   user_id: UuidString,
 })
 
-const OnlineSchema = z.object({
-  type: z.literal("online"),
+const OnlineSchema = v.object({
+  type: v.literal("online"),
   user_id: UuidString,
-  status: z.boolean(),
+  status: v.boolean(),
 })
 
-const PresenceSchema = z.object({
-  type: z.literal("presence"),
+const PresenceSchema = v.object({
+  type: v.literal("presence"),
   user_id: UuidString,
-  active: z.boolean(),
-  last_seen: z.string().nullable(),
+  active: v.boolean(),
+  last_seen: v.nullable(v.string()),
 })
 
 // ── Discriminated union of all valid server→client frames ─────────────────────
 
-export const WsServerMessageSchema = z.discriminatedUnion("type", [
+export const WsServerMessageSchema = v.variant("type", [
   PongSchema,
   ErrorSchema,
   NewMessageSchema,
@@ -89,7 +90,7 @@ export const WsServerMessageSchema = z.discriminatedUnion("type", [
   PresenceSchema,
 ])
 
-export type WsServerMessage = z.infer<typeof WsServerMessageSchema>
+export type WsServerMessage = v.InferOutput<typeof WsServerMessageSchema>
 
 /**
  * Parse a raw WebSocket frame. Returns the typed message on success, or null
@@ -102,9 +103,9 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   } catch {
     return null
   }
-  const result = WsServerMessageSchema.safeParse(parsed)
+  const result = v.safeParse(WsServerMessageSchema, parsed)
   if (!result.success) {
     return null
   }
-  return result.data
+  return result.output
 }

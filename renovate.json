@@ -1,0 +1,70 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "MOD-21-05 (audit 2026-03-25 Wave 21): Automated dependency update pipeline",
+  "extends": [
+    "config:recommended",
+    "docker:enableMajor",
+    ":semanticCommits",
+    ":automergeMinor",
+    "schedule:weekends"
+  ],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "platformAutomerge": true,
+  "packageRules": [
+    {
+      "description": "Auto-merge patch updates within existing version bounds",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Auto-merge security updates regardless of bump type",
+      "matchCategories": ["security"],
+      "automerge": true,
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "description": "Group Go module updates together",
+      "matchManagers": ["gomod"],
+      "groupName": "go-modules",
+      "groupSlug": "go-modules"
+    },
+    {
+      "description": "Group Python dependency updates",
+      "matchManagers": ["pip_requirements", "pep621"],
+      "groupName": "python-deps",
+      "groupSlug": "python-deps"
+    },
+    {
+      "description": "Group frontend dependency updates (non-major)",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "frontend-deps",
+      "groupSlug": "frontend-deps"
+    },
+    {
+      "description": "Pin Docker digests for reproducible builds",
+      "matchManagers": ["dockerfile"],
+      "pinDigests": true
+    },
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "automerge": true
+    },
+    {
+      "description": "Major updates require manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "breaking-change"]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  }
+}

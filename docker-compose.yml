@@ -286,7 +286,14 @@ services:
     image: valkey/valkey:8-alpine
     # DEBT-02 (audit 2026-03-06): Without eviction policy, OOM kills rate limiter,
     # session cache, and CSRF tokens simultaneously → thundering herd on Postgres.
-    # allkeys-lru evicts least-recently-used from all keyspace (optimal for cache).
+    # RZ-21-02 (audit 2026-03-25 Wave 21): Changed from allkeys-lru to volatile-lru.
+    # allkeys-lru can evict security-critical keys (rate limiter counters, CSRF tokens,
+    # session revocation flags, WS upgrade tickets) under memory pressure — silently
+    # bypassing security controls.  volatile-lru only evicts keys that have a TTL set,
+    # preserving any keys without explicit TTL.  All cache keys in this system already
+    # have TTLs (session 60s, ETag 300s, CSRF 2h, rate limiter windows auto-expire),
+    # so volatile-lru provides the same cache behaviour while protecting against edge
+    # cases where a key's TTL is accidentally omitted.
     command:
       - valkey-server
       - --requirepass
@@ -294,7 +301,7 @@ services:
       - --maxmemory
       - "200mb"
       - --maxmemory-policy
-      - allkeys-lru
+      - volatile-lru
       - --save
       - "60 1000"
       - --appendonly

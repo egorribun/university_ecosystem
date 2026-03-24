@@ -8,7 +8,9 @@ from functools import cache, partial
 from typing import Any
 from uuid import UUID, uuid4
 
-import bcrypt
+# TD-21-04 (Wave 21): bcrypt import removed — legacy hashes no longer verified.
+# The bcrypt package remains in pyproject.toml [dependency-groups.dev] for test
+# compatibility but is no longer imported in production code.
 import httpx
 import jwt
 from argon2 import PasswordHasher, Type
@@ -51,7 +53,7 @@ def _container_cpu_count() -> int:
         sched = getattr(os, "sched_getaffinity", None)
         if sched:
             return len(sched(0))  # Linux cgroups v2 — most accurate
-    except (AttributeError, NotImplementedError):
+    except AttributeError, NotImplementedError:
         pass
     try:  # Fallback for cgroups v1 (Docker legacy)
         with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:
@@ -62,7 +64,7 @@ def _container_cpu_count() -> int:
             # LOW-W19: cap at 32 to prevent runaway thread/memory usage on
             # hosts where cgroups v1 quota is set to an unreasonably high value.
             return min(max(1, quota // period), 32)
-    except (FileNotFoundError, ValueError, OSError):
+    except FileNotFoundError, ValueError, OSError:
         pass
     return os.cpu_count() or 2
 
@@ -126,23 +128,21 @@ argon2_hasher = PasswordHasher(
 )
 
 
-def _verify_legacy_bcrypt(  # lgtm[py/weak-cryptographic-algorithm]
+def _verify_legacy_bcrypt(
     plain_password: str,
     hashed_password: str,
 ) -> bool:
-    """Verify a bcrypt hash using the native bcrypt package.
+    """Reject legacy bcrypt hashes with a warning — migration period ended.
 
-    bcrypt silently truncates inputs at 72 bytes (the historical behaviour).
-    This matches the semantics passlib used; callers should rehash matching
-    legacy passwords to argon2id on successful login.
+    TD-21-04 (audit 2026-03-25 Wave 21): bcrypt verification removed.
+    Previously deprecated with hard removal deadline 2026-09-01.  Removed
+    early as part of Wave 21 audit — all remaining bcrypt users must reset
+    their passwords.  The function signature is retained to avoid changing
+    callers; it always returns False and logs a warning.
 
-    DEPRECATED — hard removal deadline 2026-09-01.
-    Remove once BOTH:
-      • auth_legacy_bcrypt_verifications_total == 0 for 30+ consecutive days, AND
-      • auth_legacy_bcrypt_users_remaining gauge == 0.
-    See removal checklist in app/core/metrics.py (TD-W14-02).
-
-    RZ-W17-04: CodeQL inline suppression (lgtm) replaces blanket file exclusion.
+    The Prometheus counter auth_legacy_bcrypt_verifications_total continues to
+    track attempts so operators can monitor how many users are affected and
+    trigger password-reset campaigns.
     """
     try:
         from app.core.metrics import record_legacy_bcrypt_verification
@@ -150,16 +150,11 @@ def _verify_legacy_bcrypt(  # lgtm[py/weak-cryptographic-algorithm]
         record_legacy_bcrypt_verification()
     except Exception as exc:
         _logger.debug("Legacy bcrypt metrics recording failed: %s", exc)  # nosec B110
-        pass  # Metrics must never break auth
-    try:
-        password_bytes = plain_password.encode("utf-8")[:LEGACY_BCRYPT_MAX_BYTES]
-        return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
-    except Exception as exc:
-        _logger.warning(
-            "Legacy bcrypt verification failed",
-            error_type=type(exc).__name__,
-        )
-        return False
+    _logger.warning(
+        "bcrypt_hash_rejected: Legacy bcrypt hashes are no longer accepted. "
+        "The user must reset their password to migrate to argon2id.",
+    )
+    return False
 
 
 def _format_password_class_labels(class_names: list[str], *, locale: str | None) -> str:
@@ -443,10 +438,11 @@ def verify_and_update_password_sync(
             return False, None
         except Exception as exc:
             # Unexpected error from argon2 (e.g. malformed hash format).
-            # Log and fall through to passlib for graceful degradation.
+            # TD-21-04 (Wave 21): Falls through to _verify_legacy_bcrypt which
+            # now always returns False — forcing the user to reset their password.
             _logger.warning(
                 "argon2 native verify_and_update raised unexpected error, "
-                "falling back to passlib: %s",
+                "falling through to legacy check (always rejects): %s",
                 type(exc).__name__,
             )
 

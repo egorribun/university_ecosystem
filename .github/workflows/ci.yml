@@ -311,6 +311,33 @@ jobs:
       node-version: "22"
     secrets: inherit
 
+  # MOD-21-04 (audit 2026-03-25 Wave 21): Generate Software Bill of Materials
+  # for supply chain security compliance (CycloneDX/SPDX).  Uploads as a build
+  # artifact so downstream tools (Dependabot, Grype, etc.) can consume it.
+  sbom-generate:
+    name: SBOM Generation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pre-commit-check
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          output-file: sbom.spdx.json
+          format: spdx-json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+          retention-days: 90
+
   alembic-migrations:
     name: Alembic Migrations
     runs-on: ubuntu-latest

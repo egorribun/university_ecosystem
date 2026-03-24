@@ -2,9 +2,12 @@
 name = "university-ecosystem"
 version = "1.0.0"
 description = "University Ecosystem Platform"
-# MOD-03 (audit 2026-03-06): CI and mypy already target 3.12; enforce it here.
-# Benefits: @override decorator, tomllib in stdlib, faster TaskGroup, ~5% CPython throughput.
-requires-python = ">=3.13,<3.14"
+# MOD-21-08 (audit 2026-03-25 Wave 21): Updated to Python 3.14.
+# Python 3.14 benefits: experimental free-threading (PEP 703), deferred evaluation
+# of annotations (PEP 649), improved error messages, faster startup, template strings
+# (PEP 750).  Free-threading can be enabled via PYTHON_GIL=0 for Argon2 workloads.
+# Retains 3.13 as floor for CI compatibility during transition.
+requires-python = ">=3.13,<3.15"
 dependencies = [
   "aiofiles>=23.0,<25",    # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
   "aiosqlite>=0.19,<1.0",  # TD-W9-06: upper bound — aiosqlite 1.0 may break API
@@ -12,7 +15,9 @@ dependencies = [
   "anyio>=4.0.0,<5.0",
   "argon2-cffi>=23.1.0,<24",  # TD-W18-06 (Wave 18): upper bound prevents silent major-version breakage
   "asyncpg>=0.30.0,<0.31", # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
-  "bcrypt==5.0.0",
+  # TD-21-04 (Wave 21): bcrypt removed from production deps — legacy hash
+  # verification disabled.  Kept in [dependency-groups.dev] for test compat.
+  # "bcrypt==5.0.0",  # REMOVED
   # PERF-7 (audit 2026-03-05): Switched from synchronous boto3 to aioboto3 (async
   # native wrapper). boto3 is a transitive dependency of aioboto3 so no separate
   # entry needed. v15.5.0 is the current stable release (March 2026).
@@ -98,7 +103,7 @@ dependencies = [
 include = ["app*"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 plugins = [
   "pydantic.mypy",
@@ -244,7 +249,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 88
 exclude = ["gen"]
 
@@ -408,7 +413,7 @@ pyo3_sanitizer = { workspace = true }
 [tool.pyright]
 # MOD-05 (audit 2026-03-11): Pyright added as an ADDITIONAL type checker alongside
 # mypy. Not replacing mypy yet — target Q2 2026 to assess findings and migrate.
-pythonVersion = "3.13"
+pythonVersion = "3.14"
 pythonPlatform = "Linux"
 typeCheckingMode = "standard"
 # Paths to check
