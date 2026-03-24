@@ -38,7 +38,8 @@ async def register_session_bg(
                 "user_agent": user_agent,
             },
         )
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError):
+        # RZ-20-04: Narrowed — Redis session registration is fire-and-forget.
         logger.warning(
             "Failed to register session in Redis (background)",
             exc_info=True,

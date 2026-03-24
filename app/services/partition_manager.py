@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -8,6 +9,10 @@ from app.core.database import engine
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# RZ-20-05 (audit 2026-03-24): Whitelist for partition/table identifiers.
+# Prevents DDL injection through crafted names returned by rust_ext.
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
 PARTITIONED_TABLES = [
     ("notifications", "created_at"),
@@ -45,32 +50,49 @@ async def ensure_partitions_exist() -> None:
                         table,
                     )
 
-                    # RZ-2 Fix (audit 2026-03-12): Safely handle identifiers and literals
+                    # RZ-20-05 (audit 2026-03-24): Defence-in-depth for DDL identifiers.
+                    # 1. Whitelist-validate names from rust_ext before quoting.
+                    # 2. Use identifier_preparer.quote() for dialect-safe quoting.
+                    # 3. Use text() bind parameters for date literals (CWE-89).
+                    if not _SAFE_IDENTIFIER_RE.match(partition_name):
+                        logger.error(
+                            "Partition name %r failed identifier validation — skipping",
+                            partition_name,
+                        )
+                        continue
+                    if not _SAFE_IDENTIFIER_RE.match(table):
+                        logger.error(
+                            "Table name %r failed identifier validation — skipping",
+                            table,
+                        )
+                        continue
+
                     preparer = conn.dialect.identifier_preparer
                     safe_partition = preparer.quote(partition_name)
                     safe_table = preparer.quote(table)
 
-                    # Strict validation to prevent State Date Injection
+                    # Strict ISO-8601 validation to prevent date injection.
                     from datetime import datetime
 
                     datetime.fromisoformat(str(start_date_iso).replace("Z", "+00:00"))
                     datetime.fromisoformat(str(end_date_iso).replace("Z", "+00:00"))
 
-                    safe_start = str(start_date_iso).replace("'", "''")
-                    safe_end = str(end_date_iso).replace("'", "''")
-
+                    # RZ-20-05: Use text() bind parameters for date literals
+                    # instead of manual replace("'", "''") escaping.
                     await conn.execute(
                         text(
-                            f"""
-                        CREATE TABLE IF NOT EXISTS {safe_partition}
-                        PARTITION OF {safe_table}
-                        FOR VALUES FROM ('{safe_start}')
-                        TO ('{safe_end}');
-                    """
-                        )
+                            f"CREATE TABLE IF NOT EXISTS {safe_partition} "
+                            f"PARTITION OF {safe_table} "
+                            f"FOR VALUES FROM (:start_val) TO (:end_val)"
+                        ),
+                        {
+                            "start_val": str(start_date_iso),
+                            "end_val": str(end_date_iso),
+                        },
                     )
                     await conn.commit()
-                except Exception as e:
+                except (OSError, ConnectionError) as e:
+                    # RZ-20-04: Narrowed — partition DDL errors.
                     logger.error(
                         "Failed to create partition: %s", e
                     )  # LOW-W19: lazy logging
@@ -95,6 +117,14 @@ async def ensure_partitions_exist() -> None:
 
                 for p_name in partitions:
                     if rust_ext.is_partition_expired(p_name, table, retention_days):
+                        # RZ-20-05: Validate partition name from pg_class before DDL.
+                        if not _SAFE_IDENTIFIER_RE.match(p_name):
+                            logger.error(
+                                "Partition name %r from pg_class failed validation — "
+                                "skipping DROP to prevent DDL injection",
+                                p_name,
+                            )
+                            continue
                         try:
                             logger.info(
                                 "Pruning old partition %s", p_name
@@ -103,7 +133,8 @@ async def ensure_partitions_exist() -> None:
                             safe_p_name = preparer.quote(p_name)
                             await conn.execute(text(f"DROP TABLE {safe_p_name}"))
                             await conn.commit()
-                        except Exception as e:
+                        except (OSError, ConnectionError) as e:
+                            # RZ-20-04: Narrowed — partition DDL errors.
                             logger.error(
                                 "Failed to prune partition %s: %s", p_name, e
                             )  # LOW-W19: lazy logging
@@ -124,7 +155,8 @@ async def start_partition_management_scheduler(
         while True:
             try:
                 await ensure_partitions_exist()
-            except Exception as e:
+            except (OSError, ConnectionError) as e:
+                # RZ-20-04: Narrowed — partition scheduler catches infra errors only.
                 logger.error(
                     "Error in partition management: %s", e
                 )  # LOW-W19: lazy logging

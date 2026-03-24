@@ -11,7 +11,8 @@ interface ContactListProps {
   onSelect: (id: string) => void
 }
 
-export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, onSelect }) => {
+// PERF-20-04: memo() prevents re-render when parent sidebar state changes.
+export const ContactList: React.FC<ContactListProps> = React.memo(({ contacts, selectedId, onSelect }) => {
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)">
       <LayoutGroup>
@@ -97,4 +98,4 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
       </LayoutGroup>
     </div>
   )
-}
+})

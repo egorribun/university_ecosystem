@@ -75,7 +75,8 @@ async def get_transformed_image(
             # Safe deserialization via msgspec — no code execution risk.
             data, mime = _cache_decode(cached_payload)
             return data, mime
-    except Exception as exc:
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        # RZ-20-04: Narrowed from bare Exception — Redis unavailability.
         logger.warning("Redis cache read failed for %s: %s", path, exc)
     # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes'
     # method in the protocol,
@@ -91,7 +92,8 @@ async def get_transformed_image(
 
     try:
         source_bytes = await _fetch_source_bytes(backend, path)
-    except Exception as exc:
+    except (FileNotFoundError, OSError, ConnectionError) as exc:
+        # RZ-20-04: Narrowed — storage backend I/O errors.
         logger.error("Failed to fetch source image %s: %s", path, exc)
         raise ValueError(f"Could not load image: {path}") from exc
 
@@ -111,12 +113,14 @@ async def get_transformed_image(
             redis_client = await get_cache_client()
             payload = _cache_encode(transformed_data, mime)
             await redis_client.setex(redis_key, _CACHE_TTL, payload)
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            # RZ-20-04: Narrowed — Redis write failure is non-fatal.
             logger.warning("Redis cache write failed for %s: %s", path, exc)
 
         return transformed_data, mime
 
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
+        # RZ-20-04: Narrowed — PIL/image transformation errors.
         logger.error("Failed to transform image %s: %s", path, exc)
         return source_bytes, _guess_mime(path)
 
@@ -177,7 +181,8 @@ def _sanitize_path_input(path: str) -> str:
     # Step 3: Normalize via PurePosixPath (handles ., .., redundant slashes)
     try:
         normalized = PurePosixPath(decoded)
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
+        # RZ-20-04: Narrowed — PurePosixPath parsing errors.
         raise ValueError(f"Invalid path: {exc}") from exc
 
     # Step 4: Reject paths that contain `..` components.
@@ -241,8 +246,8 @@ def _process_image(
             try:
                 img.save(buffer, format="AVIF", quality=60)
                 return buffer.getvalue(), "image/avif"
-            except Exception:
-                # Fallback to webp if avif encoding fails (e.g. plugin missing)
+            except (OSError, ValueError):
+                # RZ-20-04: Narrowed — AVIF plugin missing or encoding error.
                 logger.warning("AVIF encoding failed, falling back to WebP")
                 format_pref = "webp"
 

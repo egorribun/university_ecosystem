@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from functools import cached_property
 
@@ -119,6 +118,55 @@ class Settings(
                 return str(candidate).rstrip("/")
         origins = self.frontend_origins_list
         return (origins[0] if origins else "http://localhost:5173").rstrip("/")
+
+    # ── TD-20-01 Phase 1: Namespace Properties ──────────────────────────
+    #
+    # These properties provide namespaced access to settings subsets:
+    #   settings.db.pool_size  vs  settings.database_pool_size
+    #
+    # Phase 1 is additive (no breaking changes) — callers can adopt
+    # namespace access gradually.  Phase 2 (deprecation warnings on
+    # flat access) will follow in a future sprint.
+
+    @cached_property
+    def db(self) -> DatabaseSettings:
+        """Namespace: ``settings.db.database_pool_size``."""
+        return self
+
+    @cached_property
+    def security(self) -> SecuritySettings:
+        """Namespace: ``settings.security.jwt_signing_active_secret``."""
+        return self
+
+    @cached_property
+    def cache(self) -> CacheSettings:
+        """Namespace: ``settings.cache.cache_redis_url``."""
+        return self
+
+    @cached_property
+    def observability(self) -> ObservabilitySettings:
+        """Namespace: ``settings.observability.enable_otel``."""
+        return self
+
+    @cached_property
+    def storage(self) -> StorageSettings:
+        """Namespace: ``settings.storage.storage_backend``."""
+        return self
+
+    @cached_property
+    def notifications(self) -> NotificationSettings:
+        """Namespace: ``settings.notifications.smtp_host``."""
+        return self
+
+    @cached_property
+    def integrations(self) -> IntegrationSettings:
+        """Namespace: ``settings.integrations.spotify_client_id``."""
+        return self
+
+    @cached_property
+    def app(self) -> AppGeneralSettings:
+        """Namespace: ``settings.app.environment``."""
+        return self
 
 
 def _load_settings() -> Settings:

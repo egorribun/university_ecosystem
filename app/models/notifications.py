@@ -59,12 +59,14 @@ class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
         {"postgresql_partition_by": "RANGE (created_at)"},
     )
 
-    user = relationship("User", back_populates="notifications")
+    # TD-20-05 (audit 2026-03-24): Explicit noload prevents N+1.
+    user = relationship("User", back_populates="notifications", lazy="noload")
     deliveries = relationship(
         "NotificationDelivery",
         back_populates="notification",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
 
     def __init__(self, **kwargs: Any) -> None:
@@ -178,7 +180,9 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
     status_code: Mapped[int | None] = mapped_column(Integer)
     detail: Mapped[str | None] = mapped_column(Text)
 
-    notification = relationship("Notification", back_populates="deliveries")
+    notification = relationship(
+        "Notification", back_populates="deliveries", lazy="noload"
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(
@@ -235,7 +239,7 @@ class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     )
     topics: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
 
-    user = relationship("User", back_populates="push_subscriptions")
+    user = relationship("User", back_populates="push_subscriptions", lazy="noload")
 
     def __repr__(self) -> str:
         return (
@@ -265,7 +269,7 @@ class UserPushTopic(Base):
         onupdate=func.now(),
     )
 
-    user = relationship("User", back_populates="push_topic_preferences")
+    user = relationship("User", back_populates="push_topic_preferences", lazy="noload")
 
     def __repr__(self) -> str:
         return f"<UserPushTopic(user_id={self.user_id}, topics={self.topics})>"

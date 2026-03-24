@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import os
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 
-from .base import BaseAppSettings
+from .base import BaseAppSettings, _load_file_secret
 
 # Mirrors _DEVELOPMENT_ENVIRONMENTS from base.py to avoid a circular import.
 _DEV_ENVS: frozenset[str] = frozenset(
@@ -46,6 +46,29 @@ class IntegrationSettings(BaseAppSettings):
     # Default empty string falls back to plain BLAKE2b for backward-compat.
     # Must be set in production via IDEMPOTENCY_HMAC_SECRET env var.
     idempotency_hmac_secret: str = ""
+
+    # RZ-20-02 (audit 2026-03-24): Support Docker Secrets / Kubernetes Secrets
+    # via the *_FILE convention.  This keeps plaintext secrets out of environment
+    # variables (visible in `docker inspect` and `/proc/*/environ`).
+    @field_validator("spotify_client_secret", mode="before")
+    @classmethod
+    def _load_spotify_secret(cls, v: str | None) -> str | None:
+        return _load_file_secret("SPOTIFY_CLIENT_SECRET_FILE", v)
+
+    @field_validator("spicedb_preshared_key", mode="before")
+    @classmethod
+    def _load_spicedb_key(cls, v: str | None) -> str | None:
+        return _load_file_secret("SPICEDB_PRESHARED_KEY_FILE", v)
+
+    @field_validator("elasticsearch_password", mode="before")
+    @classmethod
+    def _load_es_password(cls, v: str | None) -> str | None:
+        return _load_file_secret("ELASTICSEARCH_PASSWORD_FILE", v)
+
+    @field_validator("ws_hub_internal_secret", mode="before")
+    @classmethod
+    def _load_ws_hub_secret(cls, v: str | None) -> str | None:
+        return _load_file_secret("WS_HUB_INTERNAL_SECRET_FILE", v)
 
     @model_validator(mode="after")
     def _enforce_production_secrets(self) -> IntegrationSettings:

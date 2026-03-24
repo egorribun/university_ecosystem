@@ -107,7 +107,8 @@ async def start_password_reset_cleanup_scheduler(
                         run.observe_deleted(deleted)
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # pragma: no cover - defensive logging
+                except (OSError, ConnectionError):  # pragma: no cover
+                    # RZ-20-04: Narrowed — DB/network errors only.
                     logger.exception("Failed to cleanup password reset tokens")
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react"
+import { memo, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { motion } from "framer-motion"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -37,7 +37,9 @@ const LIST_HEIGHT = 208
 /** Approximate row height used by the virtualizer for initial layout */
 const ITEM_ESTIMATE_SIZE = 44
 
-export function RecentActivityGrid({
+// PERF-20-04 (audit 2026-03-24): memo() prevents re-renders when parent
+// Dashboard re-renders but stats props haven't changed.
+export const RecentActivityGrid = memo(function RecentActivityGrid({
   attendance,
   grades,
   participation,
@@ -315,4 +317,4 @@ export function RecentActivityGrid({
       </CardShell>
     </div>
   )
-}
+})

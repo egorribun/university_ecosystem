@@ -20,6 +20,7 @@ from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
     BaseAppSettings,
     _coerce_str_list,
+    _load_file_secret,
     _validate_non_empty,
 )
 from .mixins import (
@@ -150,6 +151,12 @@ class SecuritySettings(
                     "AUDIT_LOG_SECRET entries must be at least 32 characters long"
                 )
         return ",".join(secrets)
+
+    # RZ-20-02 (audit 2026-03-24): Docker/K8s Secrets support.
+    @field_validator("internal_hmac_secret", mode="before")
+    @classmethod
+    def _load_hmac_secret_file(cls, v: str | None) -> str | None:
+        return _load_file_secret("INTERNAL_HMAC_SECRET_FILE", v)
 
     @field_validator("internal_hmac_secret")
     @classmethod

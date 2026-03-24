@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { ColumnDef } from "@tanstack/react-table"
+// PERF-20-05 (audit 2026-03-24): Debounce text filters.
+import { useDebounced } from "@/hooks/useDebounced"
 
 import api from "@/api/client"
 import Layout from "@/components/Layout"
@@ -36,6 +38,8 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [filters, setFilters] = useState<UserFilters>({ full_name: "", group_id: "", role: "" })
+  // PERF-20-05: Debounce text filter to prevent API spam on every keystroke.
+  const debouncedFilters = useDebounced(filters, 350)
   const { user: userContext } = useAuth()
   const { t } = useTranslation("admin")
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
@@ -52,12 +56,12 @@ export default function AdminUsers() {
 
   const fetchUsers = useCallback(async () => {
     const queryParameters: Record<string, string> = {}
-    if (filters.full_name) queryParameters.full_name = filters.full_name
-    if (filters.group_id) queryParameters.group_id = filters.group_id
-    if (filters.role) queryParameters.role = filters.role
+    if (debouncedFilters.full_name) queryParameters.full_name = debouncedFilters.full_name
+    if (debouncedFilters.group_id) queryParameters.group_id = debouncedFilters.group_id
+    if (debouncedFilters.role) queryParameters.role = debouncedFilters.role
     const response = await api.get<AdminUser[]>("/users", { params: queryParameters })
     setUsers(Array.isArray(response.data) ? response.data : [])
-  }, [filters])
+  }, [debouncedFilters])
 
   const fetchGroups = useCallback(async () => {
     const response = await api.get<Group[]>("/groups")

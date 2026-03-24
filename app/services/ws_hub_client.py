@@ -99,7 +99,8 @@ class WsHubClient:
             try:
                 await self._broker.publish("cache.invalidate", full_payload)
                 return
-            except Exception as exc:
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                # RZ-20-04: Narrowed — NATS publish retry catches infra errors.
                 last_exc = exc
                 if attempt < _MAX_PUBLISH_ATTEMPTS - 1:
                     await asyncio.sleep(_RETRY_BACKOFF_SECONDS)

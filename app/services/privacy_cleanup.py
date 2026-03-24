@@ -127,7 +127,8 @@ async def start_privacy_cleanup_scheduler(
                     logger.info("Privacy cleanup run completed: %s", deleted)
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # pragma: no cover - defensive
+                except (OSError, ConnectionError):  # pragma: no cover
+                    # RZ-20-04: Narrowed — DB/network errors only.
                     logger.exception("Failed to run privacy cleanup")
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:

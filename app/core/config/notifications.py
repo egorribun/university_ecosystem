@@ -11,6 +11,7 @@ from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
     BaseAppSettings,
     _coerce_str_list,
+    _load_file_secret,
     _validate_positive_int,
 )
 
@@ -82,6 +83,17 @@ class NotificationSettings(BaseAppSettings):
     # Outbox worker tuning (PERF-04)
     outbox_poll_interval_seconds: float = 5.0
     outbox_batch_size: int = 20
+
+    # RZ-20-02 (audit 2026-03-24): Docker Secrets / K8s Secrets support.
+    @field_validator("vapid_private_key", mode="before")
+    @classmethod
+    def _load_vapid_key(cls, v: str | None) -> str | None:
+        return _load_file_secret("VAPID_PRIVATE_KEY_FILE", v)
+
+    @field_validator("smtp_password", mode="before")
+    @classmethod
+    def _load_smtp_password(cls, v: str | None) -> str | None:
+        return _load_file_secret("SMTP_PASSWORD_FILE", v)
 
     @field_validator("smtp_security", mode="before")
     @classmethod

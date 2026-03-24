@@ -9,6 +9,7 @@ Provides a two-tier caching strategy:
 from __future__ import annotations
 
 import functools
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine
@@ -55,6 +56,11 @@ class LRUCache[T]:
         self._default_ttl = default_ttl
         self._hits = 0
         self._misses = 0
+        # MOD-20-01 (audit 2026-03-24): threading.Lock protects _hits/_misses
+        # and _cache mutations against PEP 703 free-threading.  `+= 1` is NOT
+        # atomic under free-threading — two threads can read the same value,
+        # increment locally, and write back, losing one increment.
+        self._lock = threading.Lock()
 
     def get(self, key: str) -> T | None:
         """
@@ -62,21 +68,22 @@ class LRUCache[T]:
 
         Returns None if not found or expired.
         """
-        entry = self._cache.get(key)
+        with self._lock:
+            entry = self._cache.get(key)
 
-        if entry is None:
-            self._misses += 1
-            return None
+            if entry is None:
+                self._misses += 1
+                return None
 
-        if entry.is_expired():
-            del self._cache[key]
-            self._misses += 1
-            return None
+            if entry.is_expired():
+                del self._cache[key]
+                self._misses += 1
+                return None
 
-        # Move to end (most recently used)
-        self._cache.move_to_end(key)
-        self._hits += 1
-        return entry.value
+            # Move to end (most recently used)
+            self._cache.move_to_end(key)
+            self._hits += 1
+            return entry.value
 
     def set(self, key: str, value: T, ttl: float | None = None) -> None:
         """
@@ -90,22 +97,24 @@ class LRUCache[T]:
         ttl = ttl if ttl is not None else self._default_ttl
         expires_at = time.time() + ttl
 
-        # Update or insert
-        if key in self._cache:
-            self._cache.move_to_end(key)
-        else:
-            # Evict oldest if at capacity
-            while len(self._cache) >= self._max_size:
-                self._cache.popitem(last=False)
+        with self._lock:
+            # Update or insert
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            else:
+                # Evict oldest if at capacity
+                while len(self._cache) >= self._max_size:
+                    self._cache.popitem(last=False)
 
-        self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
+            self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
 
     def delete(self, key: str) -> bool:
         """Delete key from cache."""
-        if key in self._cache:
-            del self._cache[key]
-            return True
-        return False
+        with self._lock:
+            if key in self._cache:
+                del self._cache[key]
+                return True
+            return False
 
     def clear(self) -> None:
         """Clear all entries."""

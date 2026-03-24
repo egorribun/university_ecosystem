@@ -122,7 +122,8 @@ def cleanup() -> None:
     if engine is not None:
         try:
             engine.dispose()
-        except Exception:  # pragma: no cover - defensive logging
+        except (OSError, ConnectionError):  # pragma: no cover
+            # RZ-20-04: Narrowed — engine dispose during shutdown.
             logger.exception("Failed to dispose webpush engine")
 
 
@@ -669,7 +670,8 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             status_code=status_code,
             error=message or None,
         )
-    except Exception as exc:
+    except (ConnectionError, TimeoutError, OSError, ValueError) as exc:
+        # RZ-20-04: Narrowed — WebPush send errors (HTTP/crypto/network).
         _log_event(
             "send",
             level=logging.ERROR,
@@ -871,11 +873,15 @@ async def broadcast_to_topic(
         )
         return []
     await _ensure_async_sessionmaker()
+    # PERF-20-01 (audit 2026-03-24): Added safety limit for topic broadcasts.
+    # Popular topics (e.g. "news") could match thousands of subscriptions.
+    _BROADCAST_LIMIT = 10_000
     async with async_session() as session:
         result = await session.execute(
             select(PushSubscription)
             .options(selectinload(PushSubscription.user))
             .where(PushSubscription.topics.contains([normalized_topic]))
+            .limit(_BROADCAST_LIMIT)
         )
         subscriptions = result.scalars().all()
     if not subscriptions:

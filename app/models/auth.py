@@ -92,12 +92,14 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
         String(64), index=True
     )  # SHA-256 hex digest
 
-    user = relationship("User", back_populates="sessions")
+    # TD-20-05 (audit 2026-03-24): Explicit noload on all back-references.
+    user = relationship("User", back_populates="sessions", lazy="noload")
     challenges = relationship(
         "MfaChallenge",
         back_populates="session",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
     )
 
 
@@ -127,7 +129,7 @@ class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=True
     )
 
-    user = relationship("User", back_populates="totp_enrollments")
+    user = relationship("User", back_populates="totp_enrollments", lazy="noload")
 
     __table_args__ = (Index("ix_mfa_totp_enrollments_active", "user_id", "is_active"),)
 
@@ -171,8 +173,8 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
         index=True,
     )
 
-    user = relationship("User", back_populates="mfa_challenges")
-    session = relationship("ActiveSession", back_populates="challenges")
+    user = relationship("User", back_populates="mfa_challenges", lazy="noload")
+    session = relationship("ActiveSession", back_populates="challenges", lazy="noload")
 
     __table_args__ = (
         Index("ix_mfa_challenges_user_expires", "user_id", "expires_at"),
@@ -237,7 +239,7 @@ class PasswordResetToken(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
-    user = relationship("User")
+    user = relationship("User", lazy="noload")
 
     @staticmethod
     def issue_token() -> str:
@@ -264,7 +266,7 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
-    user = relationship("User", back_populates="email_change_tokens")
+    user = relationship("User", back_populates="email_change_tokens", lazy="noload")
 
     @property
     def is_active(self) -> bool:
@@ -300,7 +302,7 @@ class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
         nullable=False,
     )
 
-    user = relationship("User", back_populates="trusted_devices")
+    user = relationship("User", back_populates="trusted_devices", lazy="noload")
 
 
 class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
@@ -332,7 +334,7 @@ class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
     backing_up: Mapped[bool] = mapped_column(Boolean, default=False)
     backup_state: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    user = relationship("User", back_populates="webauthn_credentials")
+    user = relationship("User", back_populates="webauthn_credentials", lazy="noload")
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)
@@ -357,7 +359,7 @@ class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=True
     )
 
-    user = relationship("User", back_populates="recovery_codes")
+    user = relationship("User", back_populates="recovery_codes", lazy="noload")
 
 
 class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
@@ -387,4 +389,4 @@ class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
         kwargs.pop("_allow_system_managed_assignment", False)
         super().__init__(**kwargs)
 
-    user = relationship("User", back_populates="login_history")
+    user = relationship("User", back_populates="login_history", lazy="noload")

@@ -69,7 +69,8 @@ class AuthFingerprintService:
                     if redis_service:
                         try:
                             await redis_service.revoke_session(session.jti)
-                        except Exception as e:
+                        except (ConnectionError, TimeoutError, OSError) as e:
+                            # RZ-20-04: Narrowed — Redis revocation is best-effort.
                             logger.error(
                                 "Failed to revoke session in Redis: %s", e
                             )  # LOW-W19: lazy logging

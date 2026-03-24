@@ -64,7 +64,8 @@ class VectorService:
             from typing import cast
 
             return cast("list[float]", data["data"][0]["embedding"])
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError, ValueError):
+            # RZ-20-04: Narrowed — HTTP/parse errors for embedding API.
             logger.exception("Failed to fetch embedding")
             _inc_embedding_failure()  # LOW-W19: count silent fallbacks
             return [0.0] * settings.embedding_dimensions
