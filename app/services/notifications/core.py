@@ -153,17 +153,36 @@ def _build_delivery_row(
     return row
 
 
+_MAX_BROADCAST_RECIPIENTS: int = 50_000
+
+
 async def _fetch_active_user_ids(
     db: AsyncDatabaseSession, *, exclude: Sequence[uuid.UUID] | None = None
 ) -> list[uuid.UUID]:
-    """Fetch IDs of all active users, optionally excluding some."""
+    """Fetch IDs of all active users, optionally excluding some.
+
+    PERF-20-01 (audit 2026-03-24): Added safety limit of 50 000 to prevent
+    multi-hundred-MB result sets on large universities.  If the limit is hit,
+    a warning is logged — callers should implement chunked processing.
+    """
     stmt = select(User.id).where(User.is_active.is_(True))
     if exclude:
         excluded = {uid for uid in exclude if uid is not None}
         if excluded:
             stmt = stmt.where(User.id.notin_(excluded))
+    stmt = stmt.limit(_MAX_BROADCAST_RECIPIENTS)
     rows = await db.execute(stmt)
-    return list(rows.scalars().all())
+    result = list(rows.scalars().all())
+    if len(result) >= _MAX_BROADCAST_RECIPIENTS:
+        from app.core.logging import get_logger
+
+        get_logger(__name__).warning(
+            "PERF-20-01: _fetch_active_user_ids hit safety limit of %d — "
+            "implement chunked broadcast for %d+ user campuses",
+            _MAX_BROADCAST_RECIPIENTS,
+            _MAX_BROADCAST_RECIPIENTS,
+        )
+    return result
 
 
 def _ensure_aware(value: dt.datetime | None) -> dt.datetime:

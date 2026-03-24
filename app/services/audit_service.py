@@ -325,10 +325,10 @@ def auditable(
                 auditor.log(event, request=request, user_id=user_id, **log_kwargs)
 
                 return result
-            except Exception as e:
-                # Log FAILURE if needed? Usually we only log successful security actions
-                # or explicit access denials.
-                raise e
+            except Exception:
+                # RZ-20-04: KEEP broad — audit decorator must not alter exception
+                # propagation. Re-raises unconditionally.
+                raise
 
         return wrapper  # type: ignore[return-value]
 

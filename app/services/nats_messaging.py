@@ -116,8 +116,8 @@ class NatsService:
                 )
             )
             logger.info("Created/updated stream: %s", name)
-        except Exception as exc:
-            # Stream might already exist with different config
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            # RZ-20-04: Narrowed — NATS stream setup is idempotent.
             logger.warning("Stream setup issue: %s", exc)
 
     async def publish(
@@ -226,6 +226,9 @@ class NatsService:
                 await handler(wrapped)
                 await msg.ack()
             except Exception as exc:
+                # RZ-20-04: KEEP broad catch — handlers are user-defined callbacks;
+                # any unhandled exception must nak() the message, never crash the
+                # subscription loop. Logged at ERROR for Sentry pickup.
                 logger.error("Handler error: %s", exc)
                 await msg.nak()
 

@@ -1,18 +1,14 @@
-"""
-Configuration package for modular settings.
+"""Legacy configuration package — DEPRECATED.
 
-This package provides organized configuration modules that can be
-composed together or used independently of the main config.py.
-
-Usage:
-    from app.config.database import DatabaseSettings
-    from app.config.security import SecuritySettings
-    from app.config.notifications import NotificationsSettings
+TD-20-03 (audit 2026-03-24): This module duplicated app.core.config and was
+never imported from application code.  It now re-exports from the canonical
+location for backward compatibility.  New code should import directly from
+``app.core.config``.
 """
 
-from app.config.database import DatabaseSettings
-from app.config.notifications import NotificationsSettings
-from app.config.security import SecuritySettings
+from app.core.config.database import DatabaseSettings
+from app.core.config.notifications import NotificationSettings as NotificationsSettings
+from app.core.config.security import SecuritySettings
 
 __all__ = [
     "DatabaseSettings",

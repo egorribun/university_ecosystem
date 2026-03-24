@@ -197,7 +197,8 @@ class S3Storage(StorageBackend):
         try:
             async with self._build_aioboto3_client() as s3:
                 await s3.put_object(**args)
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):
+            # RZ-20-04: Narrowed — S3/MinIO upload failures are infra issues.
             logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
             raise
         return f"{self.base_url}/{key}"
@@ -259,7 +260,8 @@ class S3Storage(StorageBackend):
         try:
             async with self._build_aioboto3_client() as s3:
                 await s3.delete_object(Bucket=self.bucket, Key=key)
-        except Exception:  # pragma: no cover - depends on aioboto3 internals
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover
+            # RZ-20-04: Narrowed — S3 delete is best-effort (fire-and-forget).
             logger.warning(
                 "Failed to delete %s from bucket %s", key, self.bucket, exc_info=True
             )
@@ -273,8 +275,11 @@ class S3Storage(StorageBackend):
                 await s3.head_object(Bucket=self.bucket, Key=key)
             return True
         except Exception as exc:
-            # HIGH-W19: only swallow "not found" errors; re-raise everything else
-            # (credentials, network failures, etc.) so callers are not misled.
+            # HIGH-W19 + RZ-20-04: Only swallow S3 "not found" (404/NoSuchKey);
+            # re-raise everything else (credentials, network, programming errors).
+            # We keep `except Exception` here intentionally because botocore may
+            # raise non-ClientError types (EndpointConnectionError, etc.) that
+            # must propagate — the isinstance check ensures ONLY 404 is swallowed.
             from botocore.exceptions import ClientError
 
             if isinstance(exc, ClientError):
@@ -292,7 +297,9 @@ class S3Storage(StorageBackend):
                 response = await s3.get_object(Bucket=self.bucket, Key=key)
                 async with response["Body"] as stream:
                     return cast(bytes, await stream.read())
-        except Exception as exc:
+        except (FileNotFoundError, OSError, ConnectionError) as exc:
+            # RZ-20-04: Narrowed — S3 read errors. Converts to FileNotFoundError
+            # for uniform caller interface.
             logger.error("Failed to read %s from bucket %s: %s", key, self.bucket, exc)
             raise FileNotFoundError(f"S3 file not found: {file_url_or_path}") from exc
 

@@ -1,8 +1,12 @@
 # CI Pipeline - Refactored to use Reusable Workflows
 name: "CI - Matrix Expansion"
 
+# MOD-20-03 (audit 2026-03-24): Added branch filter to prevent CI from running
+# on every push to every branch.  Previously, each push to ANY branch triggered
+# 20+ workflows.  Path-level filtering is done within individual jobs below.
 on:
   push:
+    branches: [main, develop, "release/**"]
   pull_request:
   workflow_dispatch:
 

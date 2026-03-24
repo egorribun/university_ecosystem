@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading as _threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -20,7 +21,11 @@ logger = get_logger(__name__)
 
 # Global metrics instance for testing/monitoring
 _queue_metrics: Any | None = None
+# MOD-20-01 (audit 2026-03-24): Protected by threading.Lock for PEP 703
+# free-threading safety.  Multiple async workers can append/clear
+# concurrently — without a lock this causes data corruption.
 _testing_failed_records: list[EnqueueFailure] = []
+_testing_lock = _threading.Lock()
 
 
 @dataclass(slots=True)
@@ -104,7 +109,8 @@ async def record_enqueue_failure(
         source,
         error,
     )
-    _testing_failed_records.append(EnqueueFailure(job, str(error), source))
+    with _testing_lock:
+        _testing_failed_records.append(EnqueueFailure(job, str(error), source))
     metrics.record_notification_failed(
         notification_type=job.kind, reason="enqueue_failure"
     )
@@ -122,10 +128,11 @@ async def wait_for_all_jobs(timeout: float = 1.0) -> None:
 
 async def reset_testing_state() -> None:
     """Reset testing state."""
-    _testing_failed_records.clear()
-    pass
+    with _testing_lock:
+        _testing_failed_records.clear()
 
 
 async def get_failed_enqueue_records() -> list[EnqueueFailure]:
     """Get failed enqueue records for testing."""
-    return list(_testing_failed_records)
+    with _testing_lock:
+        return list(_testing_failed_records)

@@ -94,10 +94,12 @@ class FraudDetectionService:
                 pipe.expire(zset_key, _HIGH_SEVERITY_COUNTER_TTL)
                 await cast("Awaitable[Any]", pipe.execute())
 
-        except Exception:
-            # Security events must never crash application code.
-            # Log at ERROR but do not propagate.
-            logger.exception("FraudDetectionService: failed to record event")
+        except (ConnectionError, TimeoutError, OSError):
+            # RZ-20-04 (audit 2026-03-24): Narrowed from bare Exception to
+            # connection-failure family.  Security events must never crash the
+            # request pipeline, but logic bugs (TypeError from malformed
+            # event_data) should propagate and be caught by Sentry.
+            logger.exception("FraudDetectionService: failed to record event to Redis")
 
     async def get_recent_events(
         self,
@@ -132,8 +134,9 @@ class FraudDetectionService:
                     _STREAM_KEY, max="+", min=min_id, count=fetch_count
                 ),
             )
-        except Exception:
-            logger.exception("FraudDetectionService: failed to read events")
+        except (ConnectionError, TimeoutError, OSError):
+            # RZ-20-04: Narrowed — Redis stream read failure.
+            logger.exception("FraudDetectionService: failed to read events from Redis")
             return []
 
         results: list[dict[str, str]] = []
@@ -172,7 +175,8 @@ class FraudDetectionService:
                 "Awaitable[Any]", self._redis.zcount(zset_key, since_ms, now_ms)
             )
             return int(count)
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):
+            # RZ-20-04: Narrowed — Redis sorted set query failure.
             logger.exception("FraudDetectionService: failed to read high_count (zset)")
             # Graceful degradation: fall back to stream scan so we don't
             # silently allow fraudulent accounts on Redis errors.

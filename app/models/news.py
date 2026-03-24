@@ -48,7 +48,8 @@ class News(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
-    author = relationship("User")
+    # TD-20-05 (audit 2026-03-24): Explicit noload prevents N+1 on list endpoints.
+    author = relationship("User", lazy="noload")
 
     __table_args__ = (
         Index(
@@ -96,8 +97,9 @@ class NewsLike(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
-    news = relationship("News", back_populates="likes")
-    user = relationship("User")
+    # TD-20-05: noload on back-references — load explicitly when needed.
+    news = relationship("News", back_populates="likes", lazy="noload")
+    user = relationship("User", lazy="noload")
 
     def __repr__(self) -> str:
         return (
@@ -119,8 +121,9 @@ class NewsComment(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
-    news = relationship("News", back_populates="comments")
-    user = relationship("User")
+    # TD-20-05: noload on back-references — load explicitly when needed.
+    news = relationship("News", back_populates="comments", lazy="noload")
+    user = relationship("User", lazy="noload")
 
     def __repr__(self) -> str:
         return (

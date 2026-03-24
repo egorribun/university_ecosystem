@@ -117,7 +117,9 @@ async def start_email_change_cleanup_scheduler(
                         run.observe_deleted(cleaned)
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # pragma: no cover - defensive logging
+                except (OSError, ConnectionError):  # pragma: no cover
+                    # RZ-20-04 (audit 2026-03-24): Narrowed — DB/network errors only.
+                    # Logic bugs (TypeError, KeyError) now propagate to Sentry.
                     logger.exception("Failed to cleanup email change tokens")
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:

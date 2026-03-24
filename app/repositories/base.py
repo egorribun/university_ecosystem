@@ -58,6 +58,16 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         obj = await self._get_orm(id, with_for_update=with_for_update)
         return self._to_dto(obj) if obj else None
 
+    async def get_orm_for_update(self, id: Any) -> T | None:
+        """Get the ORM object with a row-level lock for safe mutation.
+
+        TD-20-04 (audit 2026-03-24): Public interface for services that need to
+        mutate the ORM object directly (e.g. profile updates, media uploads).
+        Replaces direct calls to the private ``_get_orm(with_for_update=True)``
+        which leaked the repository's internal API into the service layer.
+        """
+        return await self._get_orm(id, with_for_update=True)
+
     async def get_or_raise(self, id: Any, *, with_for_update: bool = False) -> DTOT:
         # LOW-W19: do not leak model name or id value into exception message —
         # both are internal details that must not reach API error responses.

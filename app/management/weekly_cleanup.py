@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 STALE_SUBSCRIPTION_DAYS = 180
+
+# RZ-20-01 (audit 2026-03-24): Whitelist-validate database identifiers before
+# embedding them in DDL.  PostgreSQL identifiers are max 63 bytes, ASCII
+# alphanumeric + underscore.  Any name that doesn't match is either malicious
+# or an edge-case that should not be REINDEXed without manual intervention.
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
 
 async def _delete_orphaned_subscriptions(session: AsyncSession) -> int:
@@ -85,10 +92,24 @@ async def _reindex_database() -> None:
     if not database_name:
         logger.warning("Skipping database reindex: database name is empty")
         return
-    quoted_db_name = database_name.replace('"', '""')
+
+    # RZ-20-01 (audit 2026-03-24): Whitelist-validate the identifier instead of
+    # relying on manual escaping (replace('"', '""')).  DDL statements cannot use
+    # bind parameters, so the only safe approach is strict validation followed by
+    # dialect-aware quoting via identifier_preparer.quote().
+    if not _SAFE_IDENTIFIER_RE.match(database_name):
+        logger.error(
+            "weekly_cleanup.reindex_skipped: database name %r failed identifier validation — "
+            "refusing to embed in DDL to prevent injection (CWE-89)",
+            database_name,
+        )
+        return
+
     async with engine.connect() as conn:
+        preparer = conn.dialect.identifier_preparer
+        safe_name = preparer.quote(database_name)
         await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
-            text(f'REINDEX DATABASE "{quoted_db_name}"')
+            text(f"REINDEX DATABASE {safe_name}")
         )
     logger.info("weekly_cleanup.reindex_completed", extra={"database": database_name})
 

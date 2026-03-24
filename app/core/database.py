@@ -180,15 +180,10 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
         # PERF-009 (audit 2026-03-04): Optimize Postgres pool efficiency and safety
         # PERF-01 (audit 2026-03-14): Fast-fail pool defaults — see comment below.
         kwargs["connect_args"] = {
-            # MOD-14-06 (audit 2026-03-18): PgBouncer transaction pooling mode
-            # requires statement_cache_size=0 because prepared statements are
-            # connection-scoped, but PgBouncer reuses server connections across
-            # different clients.  A non-zero cache causes asyncpg to issue
-            # PREPARE on a connection that PgBouncer may route to a different
-            # backend next time, resulting in "prepared statement does not exist"
-            # errors.  Set to 0 to force asyncpg to use extended-query protocol
-            # without server-side prepared statement caching.
-            "statement_cache_size": 0,
+            # RZ-20-06 (audit 2026-03-24): Now configurable via DATABASE_STATEMENT_CACHE_SIZE.
+            # Default 0 for PgBouncer compatibility; set to 1024 (asyncpg default)
+            # for direct PostgreSQL connections to avoid ~10-20% parsing overhead.
+            "statement_cache_size": current_settings.database_statement_cache_size,
             # PERF-01: reduced from 30 s → 15 s. Hard per-statement PG timeout so a
             # runaway query does not block the asyncpg connection for half a minute.
             "command_timeout": 15.0,
@@ -210,20 +205,12 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
         # Per-statement timeouts (command_timeout=15 s) remain unchanged — they
         # guard against individual slow queries, which is a separate concern.
         # Operators can still override via DATABASE_POOL_TIMEOUT env var.
-        kwargs["pool_timeout"] = (
-            current_settings.database_pool_timeout
-            if current_settings.database_pool_timeout is not None
-            else 30.0
-        )
-        # PERF-01: default to 300 s (5 min) to discard connections before TCP
-        # firewalls or PgBouncer silently kill idle ones.  pool_pre_ping=True
-        # still catches dead connections at checkout; pool_recycle prevents the
-        # cost of discovering them.  Operators can override via DATABASE_POOL_RECYCLE.
-        kwargs["pool_recycle"] = (
-            current_settings.database_pool_recycle
-            if current_settings.database_pool_recycle is not None
-            else 300
-        )
+        # PERF-20-02 (audit 2026-03-24): Removed dead-code None-check fallbacks.
+        # Both fields are typed ``int``/``float`` with Pydantic defaults — they
+        # are never None.  The stale ``else 300`` / ``else 30.0`` branches were
+        # unreachable and inconsistent with the config default of 540 / 30.0.
+        kwargs["pool_timeout"] = current_settings.database_pool_timeout
+        kwargs["pool_recycle"] = current_settings.database_pool_recycle
     return kwargs
 
 
@@ -243,7 +230,12 @@ def _log_slow_query(
     statement: str, elapsed_ms: float, threshold_ms: float, executemany: bool
 ) -> None:
     """Consolidated slow query warning logger. (TD-001)"""
-    truncated_statement = statement[:500] + "..." if len(statement) > 500 else statement
+    # PERF-20-03 (audit 2026-03-24): Increased from 500 → 1500 chars.
+    # Complex JOINs with 3+ selectinload() produce 800-1200 char statements;
+    # 500 chars truncated the critical WHERE clause needed for diagnosis.
+    truncated_statement = (
+        statement[:1500] + "..." if len(statement) > 1500 else statement
+    )
     slow_query_logger.warning(
         "Slow query detected: %.2fms",
         elapsed_ms,

@@ -8,6 +8,8 @@ import type { User } from "@/types/User"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { TextField } from "@/components/ui"
+// PERF-20-05 (audit 2026-03-24): Debounce search to prevent API spam.
+import { useDebounced } from "@/hooks/useDebounced"
 
 interface NewChatModalProps {
   open: boolean
@@ -21,15 +23,17 @@ const MIN_SEARCH_LENGTH = 1
 export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSelect }) => {
   const { t } = useTranslation(["messenger", "common"])
   const [search, setSearch] = useState("")
+  // PERF-20-05: Debounce 300ms to prevent API call on every keystroke.
+  const debouncedSearch = useDebounced(search, 300)
 
   const { data: users = [], isLoading } = useQuery({
-    queryKey: ["users", search],
+    queryKey: ["users", debouncedSearch],
     queryFn: async () => {
-      if (!search) return []
-      const response = await client.get<User[]>(`/users?limit=${USERS_PAGE_LIMIT}&search=${search}`)
+      if (!debouncedSearch) return []
+      const response = await client.get<User[]>(`/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`)
       return response.data
     },
-    enabled: open && search.length > MIN_SEARCH_LENGTH,
+    enabled: open && debouncedSearch.length > MIN_SEARCH_LENGTH,
   })
 
   return (

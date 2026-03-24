@@ -13,15 +13,63 @@ from .base import (
 )
 
 
+def _cgroup_aware_cpu_count() -> int:
+    """Return cgroup-aware CPU count for container environments.
+
+    RZ-20-03 (audit 2026-03-24): ``os.cpu_count()`` returns the **host** CPU
+    count inside containers.  On a 32-core host with a 2-CPU container limit
+    the old formula produced ``pool_size = 65`` and ``max_overflow = 128``,
+    easily exhausting PostgreSQL's ``max_connections`` (default 100).
+
+    Detection order:
+    1. ``os.sched_getaffinity(0)`` — cgroups v2 (modern Docker/K8s).
+    2. ``/sys/fs/cgroup/cpu/cpu.cfs_quota_us`` — cgroups v1 (legacy Docker).
+    3. ``os.cpu_count()`` — bare-metal fallback.
+
+    This mirrors ``app.auth.security._container_cpu_count()`` (used for Argon2
+    parallelism).  The logic is duplicated here to avoid a cross-module import
+    from the auth layer into the config layer, which would create a circular
+    dependency (config → auth → config).
+    """
+    try:
+        sched = getattr(os, "sched_getaffinity", None)
+        if sched:
+            return len(sched(0))
+    except (AttributeError, NotImplementedError):
+        pass
+    try:
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
+            quota = int(f.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
+            period = int(f.read().strip())
+        if quota > 0 and period > 0:
+            return min(max(1, quota // period), 32)
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return os.cpu_count() or 2
+
+
+_CPU_COUNT: int = _cgroup_aware_cpu_count()
+
+
 class DatabaseSettings(BaseAppSettings):
     database_url: str
     database_read_replica_url: str | None = None  # Optional read replica URL
 
-    # Auto-tuning pool size based on CPU cores if not explicitly set
-    # Formula: (CPU_COUNT * 2) + 1
-    database_pool_size: int = (os.cpu_count() or 1) * 2 + 1
-    database_max_overflow: int = (os.cpu_count() or 1) * 4
+    # RZ-20-03 (audit 2026-03-24): Use cgroup-aware CPU count instead of
+    # os.cpu_count() which returns the HOST core count inside containers.
+    # Formula: (CPU_COUNT * 2) + 1 — standard for I/O-bound web workers.
+    database_pool_size: int = _CPU_COUNT * 2 + 1
+    database_max_overflow: int = _CPU_COUNT * 4
     database_pool_timeout: float = 30.0
+
+    # RZ-20-06 (audit 2026-03-24): Configurable asyncpg statement cache.
+    # Set to 0 when using PgBouncer/Odyssey in transaction pooling mode
+    # (prepared statements are connection-scoped; PgBouncer reuses server
+    # connections across clients causing "prepared statement does not exist").
+    # Set to 1024 (asyncpg default) for direct PostgreSQL connections to
+    # avoid ~10-20% parsing overhead on every query.
+    database_statement_cache_size: int = 0
     # PERF-W9-05: Reduced from 1800 (30 min) to 540 (9 min).
     # Most managed PostgreSQL providers (RDS, Cloud SQL, Supabase) close idle
     # connections after ~10 minutes.  With a 30-min recycle, low-traffic periods

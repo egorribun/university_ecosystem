@@ -98,9 +98,9 @@ class ScheduleOptimizerService:
                 result.append(self._from_rust_item(item, room, teacher))
 
             return result
-        # HIGH-W19: narrow the except to known Rust/PyO3 error types so that
-        # unexpected exceptions (e.g. programming errors) are not silently swallowed.
-        except (RuntimeError, ValueError) as e:
+        # HIGH-W19 + RZ-20-04: narrow to Rust/PyO3 error types — consistent
+        # with batch_detect_conflicts and find_optimal_slot handlers.
+        except (RuntimeError, ImportError, OSError) as e:
             logger.error("Native PyO3 conflict detection failed: %s", e)
             return []
 
@@ -134,7 +134,8 @@ class ScheduleOptimizerService:
                     )
                 )
             return result
-        except Exception as e:
+        except (RuntimeError, ImportError, OSError) as e:
+            # RZ-20-04: Narrowed — Rust/PyO3 binding failures.
             logger.error(
                 "Native PyO3 batch detection failed: %s", e
             )  # LOW-W19: lazy logging
@@ -170,8 +171,9 @@ class ScheduleOptimizerService:
                     suggested_rust, original_room="Auto", original_teacher="Auto"
                 )
             return None
-        except Exception as e:
+        except (RuntimeError, ImportError, OSError) as e:
+            # RZ-20-04: Narrowed — Rust/PyO3 binding failures.
             logger.exception(
                 "Native PyO3 find_optimal_slot failed: %s", e
             )  # LOW-W19: lazy logging
-            raise e
+            raise

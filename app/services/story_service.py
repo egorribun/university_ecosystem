@@ -101,8 +101,8 @@ class StoryService:
         if old_cover and updated_story.cover_url != old_cover:
             try:
                 await delete_static_file(str(old_cover))
-            except Exception as exc:
-                # Log but don't fail — stale files are cleaned by scheduled sweep.
+            except (FileNotFoundError, OSError) as exc:
+                # RZ-20-04: Narrowed — stale files are cleaned by scheduled sweep.
                 _logger.debug("Failed to delete old story cover: %s", exc)  # nosec B110
 
         return updated_story

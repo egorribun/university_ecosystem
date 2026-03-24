@@ -33,7 +33,8 @@ class NotificationService:
                 event_id,
                 locale=locale,
             )
-        except Exception as exc:
+        except (RuntimeError, OSError) as exc:
+            # RZ-20-04: Narrowed — enqueue errors (queue full, I/O).
             await notification_queue.record_enqueue_failure(
                 job,
                 error=exc,
@@ -53,7 +54,8 @@ class NotificationService:
                 news_id,
                 locale=locale,
             )
-        except Exception:
+        except (RuntimeError, OSError):
+            # RZ-20-04: Narrowed — enqueue errors (queue full, I/O).
             logger.exception(
                 "Failed to enqueue news notification", extra={"news_id": news_id}
             )
