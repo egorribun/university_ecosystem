@@ -9,12 +9,12 @@ description = "University Ecosystem Platform"
 # Retains 3.13 as floor for CI compatibility during transition.
 requires-python = ">=3.13,<3.15"
 dependencies = [
-  "aiofiles>=23.0,<25",    # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
+  "aiofiles>=23.0,<26",    # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
   "aiosqlite>=0.19,<1.0",  # TD-W9-06: upper bound — aiosqlite 1.0 may break API
   "alembic>=1.13,<2.0",
   "anyio>=4.0.0,<5.0",
-  "argon2-cffi>=23.1.0,<24",  # TD-W18-06 (Wave 18): upper bound prevents silent major-version breakage
-  "asyncpg>=0.30.0,<0.31", # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
+  "argon2-cffi>=23.1.0,<26",  # TD-W18-06 (Wave 18): upper bound prevents silent major-version breakage
+  "asyncpg>=0.30.0,<0.32", # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
   # TD-21-04 (Wave 21): bcrypt removed from production deps — legacy hash
   # verification disabled.  Kept in [dependency-groups.dev] for test compat.
   # "bcrypt==5.0.0",  # REMOVED
@@ -27,7 +27,7 @@ dependencies = [
   "cryptography>=46.0.5",                             # TD-06 (audit 2026-03-15): updated to fix CVE-2026-26007
   "defusedxml>=0.7.1",
   "diskcache>=5.6.0",
-  "elasticsearch[async]>=8.0,<9.0.0",
+  "elasticsearch[async]>=8.0,<10.0.0",
   "email-validator>=2.0,<3",  # TD-W18-06 (Wave 18): upper bound prevents silent major-version breakage
   "fastapi>=0.135.1,<0.136",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
   "filelock>=3.20.3",
@@ -74,11 +74,11 @@ dependencies = [
   "python-multipart>=0.0.22",
   "pyvips>=2.2 ; sys_platform != 'win32'",
   "pywebpush>=1.9",
-  "redis>=5,<6",
+  "redis>=5,<8",
   "sentry-sdk[opentelemetry]>=2,<3",
   "sqlalchemy[asyncio]>=2.0.48,<3",
-  "starlette>=0.40,<1.0",                             # MOD-W10-01: upper bound; starlette 1.0 will be a breaking release
-  "strawberry-graphql[fastapi]>=0.282.0,<0.283.0",    # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
+  "starlette>=0.40,<2.0",                             # MOD-W10-01: upper bound; starlette 1.0 will be a breaking release
+  "strawberry-graphql[fastapi]>=0.282.0,<0.313.0",    # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
   "structlog>=24.0",
   "typer>=0.12.0",
   "urllib3>=2.6.3,<2.7",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
@@ -371,7 +371,7 @@ dev = [
   "fakeredis>=2",
   "hypothesis>=6.112",
   "maturin>=1.7,<2",
-  "mypy>=1.14.0,<1.15",
+  "mypy>=1.14.0,<1.20",
   "pyright>=1.1.400",
   "pre-commit>=3.8",
   "bandit[toml]>=1.9.4",
