@@ -101,8 +101,11 @@ class ScheduleOptimizerService:
         # HIGH-W19 + RZ-20-04: narrow to Rust/PyO3 error types — consistent
         # with batch_detect_conflicts and find_optimal_slot handlers.
         except (RuntimeError, ImportError, OSError) as e:
+            # RZ-33-13: Re-raise instead of returning empty — an empty list is
+            # indistinguishable from "no conflicts", which lets the caller create
+            # a conflicting schedule entry.  Callers must handle the exception.
             logger.error("Native PyO3 conflict detection failed: %s", e)
-            return []
+            raise RuntimeError("Schedule conflict detection unavailable") from e
 
     async def batch_detect_conflicts(
         self, items: list[ScheduleItemInternal]
@@ -135,11 +138,11 @@ class ScheduleOptimizerService:
                 )
             return result
         except (RuntimeError, ImportError, OSError) as e:
-            # RZ-20-04: Narrowed — Rust/PyO3 binding failures.
+            # RZ-33-13: Re-raise — empty list is indistinguishable from "no conflicts".
             logger.error(
                 "Native PyO3 batch detection failed: %s", e
             )  # LOW-W19: lazy logging
-            return []
+            raise RuntimeError("Schedule batch conflict detection unavailable") from e
 
     async def find_optimal_slot(
         self,

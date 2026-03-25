@@ -66,6 +66,7 @@ class RedisCircuitBreaker:
         self._failure_count = 0
         self._last_failure_time = 0.0
         self._current_recovery_timeout = recovery_timeout
+        self._half_open_probe_sent = False  # RZ-33-11: single-probe gate
         self._lock = threading.Lock()
 
         circuit_state_gauge.set(CircuitState.CLOSED)
@@ -85,7 +86,12 @@ class RedisCircuitBreaker:
             if self._state == CircuitState.CLOSED:
                 return True
             if self._state == CircuitState.HALF_OPEN:
-                return True  # probe request
+                # RZ-33-11: Allow only one probe — subsequent callers wait for
+                # the probe result instead of all proceeding simultaneously.
+                if not self._half_open_probe_sent:
+                    self._half_open_probe_sent = True
+                    return True  # single probe request
+                return False  # another probe already in-flight
             return False  # OPEN → use fallback
 
     def record_success(self) -> None:
@@ -94,6 +100,7 @@ class RedisCircuitBreaker:
             if self._state in (CircuitState.HALF_OPEN, CircuitState.OPEN):
                 self._transition(CircuitState.CLOSED)
                 self._failure_count = 0
+                self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
                 self._current_recovery_timeout = self._base_recovery_timeout
             elif self._state == CircuitState.CLOSED:
                 self._failure_count = 0
@@ -106,6 +113,7 @@ class RedisCircuitBreaker:
 
             if self._state == CircuitState.HALF_OPEN:
                 # Probe failed — reopen with doubled timeout
+                self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
                 self._current_recovery_timeout = min(
                     self._current_recovery_timeout * 2,
                     self._max_recovery_timeout,

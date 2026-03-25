@@ -68,7 +68,9 @@ class ProgressiveDelayTracker:
             global _delay_memory_last_cleanup
             now_ts = time.time()
             if now_ts - _delay_memory_last_cleanup >= _DELAY_MEMORY_CLEANUP_INTERVAL:
-                cutoff_ts = now_ts - self._max_delay
+                cutoff_ts = (
+                    now_ts - self._ttl
+                )  # RZ-33-10: use TTL (900s), not max_delay (30s)
                 stale_keys = [
                     k for k, (_, ts) in _delay_memory.items() if ts < cutoff_ts
                 ]

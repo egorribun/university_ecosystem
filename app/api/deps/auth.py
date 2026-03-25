@@ -197,7 +197,7 @@ async def get_current_user(
     # 4. Security Lifecycle Validation
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
-    assert session is not None  # nosec B101  # noqa: S101
+    assert session is not None  # noqa: S101
 
     security_service = AuthSecurityService(db, locale)
     security_service.validate_session_expiry(session)

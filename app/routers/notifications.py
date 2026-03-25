@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +48,7 @@ from app.services.push_topics import (
     sort_topics,
     synchronize_user_topics,
 )
-from app.services.webpush import WebPushResult, send_web_push
+from app.services.webpush import WebPushResult
 
 logger = get_logger(__name__)
 
@@ -74,12 +73,6 @@ def _serialize_subscription(subscription: PushSubscription) -> PushSubscriptionO
         "topics": topics,
     }
     return PushSubscriptionOut.model_validate(data)
-
-
-async def _deliver_to_subscription(
-    subscription: PushSubscription, payload: dict[str, Any]
-) -> WebPushResult:
-    return await run_in_threadpool(send_web_push, subscription, payload)
 
 
 def _aggregate_results(
@@ -827,14 +820,9 @@ async def broadcast(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> SendTestResponse:
-    # RZ-W19-18: rate limit broadcast — max 5 per hour to prevent DB/WebPush saturation
-    await enforce_rate_limit(
-        strategy=get_default_strategy(),
-        identifier=f"push:broadcast:{user.id}",
-        limit=5,
-        window_seconds=3600,
-    )
     locale = resolve_locale(request=request, user=user)
+    # RZ-33-18: Auth check BEFORE rate limit — prevents unauthenticated users
+    # from exhausting the admin's rate-limit budget.
     if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -843,6 +831,14 @@ async def broadcast(
                 "message": translate("errors.forbidden", locale=locale),
             },
         )
+
+    # RZ-W19-18: rate limit broadcast — max 5 per hour to prevent DB/WebPush saturation
+    await enforce_rate_limit(
+        strategy=get_default_strategy(),
+        identifier=f"push:broadcast:{user.id}",
+        limit=5,
+        window_seconds=3600,
+    )
 
     topic = normalize_topic(data.topic)
     payload = data.model_dump(exclude_none=True)

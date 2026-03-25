@@ -147,15 +147,12 @@ class NewsService:
             raise ValueError("news_not_found")
 
         updates = data.model_dump(exclude_unset=True)
-        if "title_en" in updates:
-            updates["title_en"] = updates.get("title_en")
-        if "content_en" in updates:
-            updates["content_en"] = updates.get("content_en")
+        # RZ-33-12: removed no-op self-assignments (updates[k] = updates.get(k))
 
         old_image_url = news.image_url
 
         updated_news = await self.repo.update(news_id, updates)
-        assert updated_news is not None  # nosec B101  # noqa: S101
+        assert updated_news is not None  # noqa: S101
 
         async with self.uow:
             await self.uow.commit()
@@ -163,7 +160,7 @@ class NewsService:
         from app.utils.files import delete_static_file
 
         if old_image_url and updated_news.image_url != old_image_url:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
                 await delete_static_file(str(old_image_url))
 
         return updated_news
@@ -184,7 +181,7 @@ class NewsService:
         from app.utils.files import delete_static_file
 
         if image_url:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
                 await delete_static_file(str(image_url))
         return True
 

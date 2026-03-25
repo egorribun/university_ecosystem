@@ -318,7 +318,7 @@ class UserPreferences(Base):
     dnd_end: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    user = relationship("User", back_populates="preferences")
+    user = relationship("User", back_populates="preferences", lazy="noload")  # RZ-33-06
 
     def __repr__(self) -> str:
         return f"<UserPreferences(user_id={self.user_id}, dnd={self.dnd_enabled})>"
@@ -347,7 +347,7 @@ class UserProfile(Base):
     position: Mapped[str | None] = mapped_column(String(256), nullable=True)
     department: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
-    user = relationship("User", back_populates="profile")
+    user = relationship("User", back_populates="profile", lazy="noload")  # RZ-33-06
 
     def __repr__(self) -> str:
         return f"<UserProfile(user_id={self.user_id})>"
@@ -369,7 +369,9 @@ class EducationPath(Base):
     program: Mapped[str | None] = mapped_column(String(512), nullable=True)
     record_book_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    user = relationship("User", back_populates="education_path")
+    user = relationship(
+        "User", back_populates="education_path", lazy="noload"
+    )  # RZ-33-06
 
     def __repr__(self) -> str:
         return f"<EducationPath(user_id={self.user_id}, program='{self.program}')>"
@@ -437,7 +439,7 @@ class UserStats(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    user = relationship("User", back_populates="stats")
+    user = relationship("User", back_populates="stats", lazy="noload")  # RZ-33-06
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)

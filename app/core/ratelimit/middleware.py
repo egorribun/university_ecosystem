@@ -209,7 +209,9 @@ class RateLimitMiddleware:
                 token_digest = hashlib.sha256(token.encode()).hexdigest()
                 return f"token:{token_digest}"
 
-        cookie = request.cookies.get("access_token")
+        cookie = request.cookies.get(
+            "access_token_v2"
+        )  # RZ-33-04: match canonical cookie name
         if cookie:
             cookie_digest = hashlib.sha256(cookie.encode()).hexdigest()
             return f"cookie:{cookie_digest}"

@@ -31,9 +31,6 @@ ARGON2_MEMORY_COST_KIB = 32768
 ARGON2_TIME_COST = 3
 ARGON2_PARALLELISM = 4
 
-DEFAULT_SCHEME = "argon2"
-LEGACY_SCHEME = "bcrypt"
-
 _logger = get_logger(__name__)
 
 

@@ -74,7 +74,7 @@ def map_user_orm_to_dict(user: Any) -> dict[str, Any]:
     )
 
     # Computed/Other
-    out["spotify_connected"] = getattr(user, "spotify_connected", False)
+    out["spotify_connected"] = getattr(user, "spotify_is_connected", False)  # RZ-33-16
     out["spotify_display_name"] = (
         user.spotify.display_name
         if getattr(user, "spotify", None) and user.spotify.is_connected

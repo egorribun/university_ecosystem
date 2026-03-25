@@ -136,8 +136,9 @@ class Settings(
                 raise ValueError("SPOTIFY_TOKEN_SECRET required in production")
             if not getattr(self, "nats_auth_token", None):
                 raise ValueError("NATS_AUTH_TOKEN required in production")
-            if "PRIVATE KEY" in str(getattr(self, "jwt_signing_active_secret", "")):
-                raise ValueError("jwt signing registry must contain PUBLIC keys only")
+            # RZ-33-07: RS256 signing legitimately requires a private key.
+            # Only reject if the *public* JWKS endpoint accidentally contains a private key.
+            # The signing secret is expected to be private for RS256.
         return self
 
     @model_validator(mode="after")

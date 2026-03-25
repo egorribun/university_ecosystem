@@ -143,7 +143,9 @@ class _LegacyFeatureFlagsBridge:
             "not runtime updates.  Flag: %s",
             name,
         )
-        return {"name": name, "enabled": enabled or _KNOWN_FLAGS.get(name, False)}
+        # RZ-33-09: use ternary — `or` returns default when enabled is explicitly False.
+        resolved = enabled if enabled is not None else _KNOWN_FLAGS.get(name, False)
+        return {"name": name, "enabled": resolved}
 
     def to_dict(self) -> dict[str, Any]:
         return {

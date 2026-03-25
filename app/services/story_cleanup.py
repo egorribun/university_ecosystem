@@ -46,7 +46,7 @@ async def cleanup_expired_stories(
         async with async_session() as session:
             return await cleanup_expired_stories(db=session, now=now)
 
-    assert db is not None  # nosec B101  # noqa: S101
+    assert db is not None  # noqa: S101
     stmt = delete(Story).where(Story.expires_at <= now)
     result = await db.execute(stmt.execution_options(synchronize_session=False))
     await db.commit()

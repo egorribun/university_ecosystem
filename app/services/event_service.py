@@ -230,7 +230,7 @@ class EventService:
                 raise ValueError(translate("validation.events.end_after_start"))
 
         updated_event = await self.repo.update(event_id, updates)
-        assert updated_event is not None  # nosec B101  # noqa: S101
+        assert updated_event is not None  # noqa: S101
 
         async with self.uow:
             await self.uow.commit()
@@ -305,7 +305,7 @@ class EventService:
                 exist = await self.repo.update_attendance(
                     data.event_id, user_id, updates
                 )
-                assert exist is not None  # nosec B101  # noqa: S101
+                assert exist is not None  # noqa: S101
                 async with self.uow:
                     await self.uow.commit()
 

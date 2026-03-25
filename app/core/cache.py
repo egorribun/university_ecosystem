@@ -127,7 +127,10 @@ class LRUCache[T]:
 
     def clear(self) -> None:
         """Clear all entries."""
-        self._cache.clear()
+        with (
+            self._lock
+        ):  # RZ-33-03: acquire lock — prevent data race under free-threading
+            self._cache.clear()
 
     def invalidate_prefix(self, prefix: str) -> int:
         """
@@ -135,10 +138,13 @@ class LRUCache[T]:
 
         Returns number of keys invalidated.
         """
-        keys_to_delete = [k for k in self._cache if k.startswith(prefix)]
-        for key in keys_to_delete:
-            del self._cache[key]
-        return len(keys_to_delete)
+        with (
+            self._lock
+        ):  # RZ-33-03: acquire lock — prevent data race under free-threading
+            keys_to_delete = [k for k in self._cache if k.startswith(prefix)]
+            for key in keys_to_delete:
+                del self._cache[key]
+            return len(keys_to_delete)
 
     @property
     def size(self) -> int:
@@ -223,7 +229,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("get", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
+                except Exception:  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
                     pass  # metrics unavailable — never block cache logic
 
         return None
@@ -252,7 +258,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("set", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
+                except Exception:  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
                     pass
 
     async def delete(self, key: str) -> None:

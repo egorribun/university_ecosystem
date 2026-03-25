@@ -185,7 +185,7 @@ def force_reset(
             from app.core.metrics import record_legacy_bcrypt_user_count
 
             record_legacy_bcrypt_user_count(0)
-        except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard — best-effort in CLI context (reviewed TD-27-04)
+        except Exception:  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: metrics guard — best-effort in CLI context (reviewed TD-27-04)
             pass
 
     asyncio.run(_run())

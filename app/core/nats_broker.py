@@ -233,7 +233,7 @@ class NatsTaskBroker:
 
         # Create/use a pull-based durable consumer
         js = self._js
-        assert js is not None  # nosec B101  # noqa: S101
+        assert js is not None  # noqa: S101
         sub = await js.pull_subscribe(
             subject=f"{self._subject_prefix}.>",
             durable="python-worker",

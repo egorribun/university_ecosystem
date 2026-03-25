@@ -31,7 +31,7 @@ except ImportError:
         def dumps(v: Any, default: Any = None, _option: int | None = None) -> bytes:
             return json.dumps(v, default=default, sort_keys=True).encode("utf-8")
 
-    orjson = OrJsonCompat()  # type: ignore
+    orjson = OrJsonCompat()  # type: ignore[assignment]
 from fastapi.encoders import jsonable_encoder
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
