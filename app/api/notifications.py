@@ -74,7 +74,7 @@ def _parse_datetime(value: Any) -> datetime | None:
             numeric /= 1000.0
         try:
             return datetime.fromtimestamp(numeric, UTC)
-        except OverflowError, OSError, ValueError:  # RZ-28-01
+        except (OverflowError, OSError, ValueError):  # RZ-28-01
             return None
 
     if isinstance(value, str):
@@ -93,7 +93,7 @@ def _parse_datetime(value: Any) -> datetime | None:
                 numeric /= 1000.0
             try:
                 return datetime.fromtimestamp(numeric, UTC)
-            except OverflowError, OSError, ValueError:  # RZ-28-01
+            except (OverflowError, OSError, ValueError):  # RZ-28-01
                 return None
         else:
             return (
@@ -148,7 +148,7 @@ def _coerce_int(value: Any, default: int = 0) -> int:
     except ValueError:
         try:
             return int(float(text))
-        except TypeError, ValueError:  # RZ-28-01
+        except (TypeError, ValueError):  # RZ-28-01
             return default
 
 
@@ -391,7 +391,7 @@ async def list_notifications(
         # cause type confusion or unexpected DB cast behaviour.
         try:
             uuid.UUID(str(cursor_id))
-        except ValueError, AttributeError:  # RZ-28-01
+        except (ValueError, AttributeError):  # RZ-28-01
             raise_validation_error("errors.notifications.bad_cursor", locale)
         cursor_info = (_ensure_utc(cursor_dt), cursor_id)
 

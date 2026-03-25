@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.4
+    rev: v0.14.14  # TD-29-03: pinned — v0.15.4 strips except-clause parens (SyntaxError on Python 3)
     hooks:
       - id: ruff
         name: ruff check

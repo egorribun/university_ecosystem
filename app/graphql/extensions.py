@@ -93,7 +93,7 @@ async def _increment_user_cost(user_id: str, cost: int, window_minute: int) -> i
         pipe.expire(redis_key, 120)
         results = await pipe.execute()
         return int(results[0])
-    except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-28-01 + PERF-25-01 + RZ-22-01
+    except (ConnectionError, TimeoutError, OSError):  # nosec B110  # RZ-28-01 + PERF-25-01 + RZ-22-01
         # PERF-25-01: Structured log so operators detect degraded cost tracking.
         logger.warning(
             "GraphQL cost tracking falling back to per-process counter",

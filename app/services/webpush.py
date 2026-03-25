@@ -127,7 +127,7 @@ def cleanup() -> None:
     if engine is not None:
         try:
             engine.dispose()
-        except OSError, ConnectionError:  # pragma: no cover  # RZ-28-01
+        except (OSError, ConnectionError):  # pragma: no cover  # RZ-28-01
             # RZ-20-04: Narrowed — engine dispose during shutdown.
             logger.exception("Failed to dispose webpush engine")
 
@@ -218,7 +218,7 @@ def _current_local_time(user: User | None = None) -> time:
             if candidate:
                 try:
                     tz = ZoneInfo(candidate)
-                except ZoneInfoNotFoundError, ValueError:  # RZ-28-01
+                except (ZoneInfoNotFoundError, ValueError):  # RZ-28-01
                     tz = UTC
     now = datetime.now(tz)
     current = now.timetz()
@@ -321,7 +321,7 @@ def _normalize_payload(
         if key == "ttl":
             try:
                 meta[key] = int(value)
-            except TypeError, ValueError:  # RZ-28-01
+            except (TypeError, ValueError):  # RZ-28-01
                 continue
         else:
             meta[key] = value
@@ -355,7 +355,7 @@ def _normalize_payload(
             if key == "ttl":
                 try:
                     meta[key] = int(value)
-                except TypeError, ValueError:  # RZ-28-01
+                except (TypeError, ValueError):  # RZ-28-01
                     continue
             else:
                 meta[key] = value
@@ -380,7 +380,7 @@ def _normalize_payload(
     if "timestamp" in payload_options:
         try:
             payload_options["timestamp"] = int(payload_options["timestamp"])
-        except TypeError, ValueError:  # RZ-28-01
+        except (TypeError, ValueError):  # RZ-28-01
             payload_options.pop("timestamp", None)
     if "body" not in payload_options:
         payload_options["body"] = ""
@@ -425,7 +425,7 @@ def _resolve_ttl(meta: Mapping[str, Any]) -> int:
     elif raw_ttl is not None:
         try:
             ttl_value = int(raw_ttl)
-        except TypeError, ValueError:  # RZ-28-01
+        except (TypeError, ValueError):  # RZ-28-01
             ttl_value = None
     if ttl_value is not None and ttl_value > 0:
         return ttl_value
@@ -600,7 +600,7 @@ def build_payload(
         if key == "ttl":
             try:
                 meta[key] = int(value)
-            except TypeError, ValueError:  # RZ-28-01
+            except (TypeError, ValueError):  # RZ-28-01
                 continue
         else:
             meta[key] = value
