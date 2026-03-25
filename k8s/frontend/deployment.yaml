@@ -18,6 +18,9 @@ spec:
         app.kubernetes.io/component: web
     spec:
       automountServiceAccountToken: false
+      securityContext:                    # TD-28-01: match backend seccompProfile
+        seccompProfile:
+          type: RuntimeDefault
       # MOD-06 (audit 2026-03-15 Wave 7): Graceful shutdown for nginx.
       # nginx stops accepting new connections on SIGTERM; preStop sleep
       # allows in-flight connections to drain from the load balancer.

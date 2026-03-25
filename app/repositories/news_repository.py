@@ -213,7 +213,6 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     async def get_with_interactions(
         self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
     ) -> tuple[int, bool]:
-
         likes_stmt = select(func.count(models.NewsLike.id)).where(
             models.NewsLike.news_id == news_id
         )

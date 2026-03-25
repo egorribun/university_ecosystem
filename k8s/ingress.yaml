@@ -20,6 +20,7 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
+    # TD-28-03: Replace with actual domain or Helm .Values.ingress.hosts
     - hosts:
         - university.example.com
         - api.university.example.com

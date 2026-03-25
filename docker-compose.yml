@@ -29,6 +29,7 @@ services:
     environment:
       # Set ACME_EMAIL and PUBLIC_HOSTNAME in .env for production TLS.
       # In local dev (no real domain) Caddy issues a self-signed certificate.
+      # TD-28-04: Required for production — Caddy will fail cert issuance without valid email
       ACME_EMAIL: ${ACME_EMAIL:-}
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-}
     deploy:

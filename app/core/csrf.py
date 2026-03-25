@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import secrets
 from typing import TYPE_CHECKING
 
@@ -81,6 +82,9 @@ _TOKEN_SEPARATOR = "."  # nosec B105  # noqa: S105
 # CSRF tokens and cannot cross-forge requests for each other.
 _ANON_NONCE_COOKIE_NAME = "_csrf_anon_nonce"
 _ANON_NONCE_HEX_LEN = 32  # secrets.token_hex(16) → 32 lowercase hex chars
+_ANON_NONCE_RE = re.compile(
+    r"^[0-9a-f]{32}$"
+)  # RZ-28-02: compiled regex for uniform-time validation
 _ANON_NONCE_MAX_AGE = 3600  # 1 hour — matches typical pre-login session lifetime
 # State key to carry a newly-generated nonce from _extract_session_id to
 # send_with_csrf_cookie so the cookie can be set in the same response.
@@ -177,12 +181,10 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
         # Validate: must be exactly _ANON_NONCE_HEX_LEN lowercase hex chars.
         # RZ-27-06: Always call token_hex to normalize timing regardless of
         # cookie validity. Discarded when the cookie is valid.
+        # RZ-28-02: Replaced short-circuit boolean chain with compiled regex
+        # fullmatch for more uniform validation timing.
         fresh_nonce = secrets.token_hex(16)
-        if (
-            not anon_nonce
-            or len(anon_nonce) != _ANON_NONCE_HEX_LEN
-            or not all(c in "0123456789abcdef" for c in anon_nonce)
-        ):
+        if not (anon_nonce and _ANON_NONCE_RE.fullmatch(anon_nonce)):
             # Generate a fresh nonce and store it in request.state so that
             # send_with_csrf_cookie can include the Set-Cookie in the response.
             anon_nonce = fresh_nonce
