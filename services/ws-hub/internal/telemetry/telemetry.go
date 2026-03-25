@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
@@ -70,5 +71,13 @@ func InitTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 		sdktrace.WithSampler(sampler),
 	)
 	otel.SetTracerProvider(tp)
+	// MOD-31-02: Register composite propagator so W3C Baggage headers propagate
+	// alongside TraceContext across service boundaries (user_id, request_id).
+	otel.SetTextMapPropagator(
+		propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		),
+	)
 	return tp, nil
 }

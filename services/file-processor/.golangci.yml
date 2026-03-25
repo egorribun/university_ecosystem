@@ -1,0 +1,15 @@
+# MOD-31-01: golangci-lint config for file-processor.
+# `exhaustive` catches unchecked enum additions that silently fall through switch
+# statements. `gosec` catches common Go security anti-patterns.
+linters:
+  enable:
+    - exhaustive
+    - govet
+    - errcheck
+    - staticcheck
+    - gosec
+  disable:
+    - depguard  # not needed — deps managed via go.mod
+linters-settings:
+  exhaustive:
+    default-signifies-exhaustive: true

@@ -150,9 +150,21 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 	// published to NATS but silently dropped at broadcast fan-out.
 	const maxIncomingBytes = 60 * 1024 // match maxBroadcastBytes in hub.go
 	if len(data) > maxIncomingBytes {
-		c.Hub.Logger.WarnContext(c.ctx, "Incoming message exceeds size limit",
+		c.Hub.Logger.WarnContext(c.ctx, "Incoming message exceeds size limit, notifying client",
 			"client_id", c.ID, "size_bytes", len(data), "limit_bytes", maxIncomingBytes)
 		IncomingDropsTotal.Inc()
+		// RZ-31-02: Notify client so it can display a user-visible error.
+		// Follows the same pattern as rate-limit notification below (lines 166-171).
+		if notice, err := json.Marshal(map[string]string{
+			"type":   "error",
+			"code":   "message_too_large",
+			"detail": "message exceeds 60 KB limit",
+		}); err == nil {
+			select {
+			case c.Send <- notice:
+			default: // Send buffer full — client already overwhelmed.
+			}
+		}
 		return
 	}
 

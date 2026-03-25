@@ -5,7 +5,7 @@ global:
 
 # Backend Service (Python/FastAPI)
 backend:
-  replicaCount: 1
+  replicaCount: 2
   image:
     repository: university-backend
     pullPolicy: IfNotPresent
@@ -13,14 +13,44 @@ backend:
   service:
     type: ClusterIP
     port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: 1500m
+      memory: 1536Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
   env:
     DATABASE_URL: ""  # RZ-26-02: MUST be provided via --set or ExternalSecret. Never commit credentials.
-    # Using internal redis service
     CACHE_REDIS_URL: "redis://redis:6379/0"
+
+# Frontend Service (nginx)
+frontend:
+  replicaCount: 2
+  image:
+    repository: university-frontend
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
 
 # Gateway Service (Go)
 gateway:
-  replicaCount: 1
+  replicaCount: 2
   image:
     repository: university-gateway
     pullPolicy: IfNotPresent
@@ -29,6 +59,13 @@ gateway:
     type: NodePort
     port: 8080
     nodePort: 30080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
   config:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     rateLimitRps: 100
@@ -43,6 +80,13 @@ fileProcessor:
   service:
     type: ClusterIP
     port: 50051
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 # Rust Optimizer
 rustOptimizer:
@@ -54,6 +98,42 @@ rustOptimizer:
   service:
     type: ClusterIP
     port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Ingress (MOD-30-04: fully parameterized)
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.3"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: university.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+    - host: api.university.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: backend
+  tls:
+    - secretName: university-ecosystem-tls  # pragma: allowlist secret
+      hosts:
+        - university.example.com
+        - api.university.example.com
 
 # Network Policy ingress-controller selector.
 # DEBT-07 (RZ-W13): parametrized so the chart works with any ingress controller

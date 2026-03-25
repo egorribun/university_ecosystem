@@ -46,6 +46,24 @@
 - Bundle budget: main JS chunk must be <500 KB (enforced in CI via bundle-analysis job, MOD-23-06)
 - L1 cache metrics: `cache_l1_hits_total`, `cache_l1_misses_total` Prometheus counters (TD-30-05)
 - CI: `relationship(` without `lazy=` rejected by MOD-30-01 gate — use `# noload-exempt: <reason>` for exceptions
+- Gateway: startup errors use channel-based propagation, not `os.Exit` — defers always execute (RZ-31-01)
+- Gateway gRPC: 30s default per-RPC timeout via service config (RZ-31-05)
+- ws-hub: oversized messages (>60 KB) send `message_too_large` error frame to client (RZ-31-02)
+- ws-hub: `maxClients` pre-check in HandleWebSocket before upgrade (TD-31-05)
+- Frontend `waitForRateLimitWindow`: accepts optional `AbortSignal` (RZ-31-04)
+- Frontend idempotency dedup: cross-tab sync via `BroadcastChannel("ecosystem.idempotency.dedup")` (TD-31-04)
+- K8s ingress: `${FRONTEND_HOST}`, `${API_HOST}`, `${TLS_SECRET_NAME}` — use envsubst before `kubectl apply` (TD-31-02)
+- K8s secret-store: `${VAULT_URL}` — set via envsubst (TD-31-03)
+- Go services: `.golangci.yml` with `exhaustive` linter — catches unchecked enum switch cases (MOD-31-01)
+- OTEL: all Go services register composite propagator (TraceContext + Baggage) (MOD-31-02)
+- Rate limit: `RedisCircuitBreaker` in `app/core/ratelimit/circuit_breaker.py` — 3-state machine with exponential backoff (PERF-30-01)
+- Gateway L1 cache: XFetch probabilistic refresh via `shouldRefreshProbabilistic()` — prevents stampede (PERF-31-02)
+- Gateway JWKS: `StartJWKSRefresher(ctx, endpoint, interval, logger)` — background polling + atomic key swap (MOD-W17-03)
+- Gateway JWKS config: `JWKS_ENDPOINT` (empty=disabled), `JWKS_REFRESH_INTERVAL` (default 300s)
+- Helm chart: `charts/university-ecosystem/values.yaml` fully parameterized — frontend, ingress (TLS), resources, autoscaling (MOD-30-04)
+- ADR-012: Centralized logging — Grafana Loki + Fluent Bit (MOD-W16-03)
+- ADR-013: Secret rotation — three-tier strategy, dual-key JWT window (MOD-W16-07)
+- ChatService DI: fully migrated to Dishka narrow services — no monolithic wrapper (TD-30-01 verified Wave 32)
 
 ## Gotchas
 - Glob `**/alembic/versions/*.py` may not find files on Windows; use `**/*alembic*/**/*.py`
@@ -112,8 +130,21 @@
 - NATS retry: exponential backoff with jitter on `cache.invalidate` publish (TD-30-06)
 - Kyverno: Policy 9 `disallow-latest-tag` rejects empty/latest image tags (MOD-30-02)
 - Dockerfile.test: Rust toolchain from `rust:1.85-slim-bookworm` image, not curl|sh (MOD-30-05)
+- Gateway: no `os.Exit` in goroutines — use channel-based error propagation (RZ-31-01)
+- ws-hub handleMessage: oversized messages notify client with `message_too_large` error frame (RZ-31-02)
+- Frontend localStorage: always wrap in try-catch for Safari private browsing (RZ-31-03)
+- Frontend `waitForRateLimitWindow(signal?)`: AbortSignal cancels 429 retry wait (RZ-31-04)
+- Gateway gRPC: `WithDefaultServiceConfig` 30s timeout on all RPCs (RZ-31-05)
+- K8s backend: pod anti-affinity (hostname) + topologySpreadConstraints (zone) (TD-31-01, PERF-31-01)
+- K8s ingress/secret-store: envsubst variables, not hard-coded domains/URLs (TD-31-02, TD-31-03)
+- Frontend: BroadcastChannel cross-tab idempotency key sync (TD-31-04)
+- ws-hub HandleWebSocket: maxClients pre-check before upgrade (TD-31-05)
+- Go services: `.golangci.yml` with exhaustive + gosec linters (MOD-31-01)
+- Go services OTEL: composite propagator (TraceContext + Baggage) registered (MOD-31-02)
 
 ## Audit Trail
+- Wave 32: 7 deferred items closed, 20 files, +534/-48 — ChatService DI verified (TD-30-01), Redis circuit breaker (PERF-30-01), L1 XFetch jitter (PERF-31-02), Helm chart complete (MOD-30-04), JWKS hot-reload (MOD-W17-03), ADR-012 centralized logging (MOD-W16-03), ADR-013 secret rotation (MOD-W16-07) — full report in `TOTAL_AUDIT_WAVE32.md`
+- Wave 31: 13 issues (5 dropped after validation), 14 files, +165/-17 — gateway os.Exit fix (RZ-31-01), WS message notification (RZ-31-02), Safari localStorage (RZ-31-03), AbortSignal propagation (RZ-31-04), gRPC timeout (RZ-31-05), pod anti-affinity (TD-31-01), ingress envsubst (TD-31-02), Vault URL param (TD-31-03), BroadcastChannel dedup (TD-31-04), maxClients pre-check (TD-31-05), topology spread (PERF-31-01), golangci-lint exhaustive (MOD-31-01), OTEL baggage (MOD-31-02) — full report in `TOTAL_AUDIT_WAVE31.md`
 - Wave 30: 22 issues (6 FP/already done, 6 deferred), 8 files — free-threading singleton (RZ-30-01), symlink path traversal (RZ-30-02), PII regex tightening (RZ-30-03/04), ruff pin (RZ-30-05), cache Prometheus metrics (TD-30-05), NATS backoff (TD-30-06), CI lazy=noload gate (MOD-30-01), Kyverno image tag policy (MOD-30-02), Dockerfile.test Rust pin (MOD-30-05) — full report in `TOTAL_AUDIT_WAVE30.md`
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
 - Wave 20: 22 issues, 53 files, +1724/-206 — full report in `TOTAL_AUDIT_2026.md`

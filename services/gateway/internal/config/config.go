@@ -34,6 +34,12 @@ type Config struct {
 	// X-Internal-Signature to reject requests that bypass the gateway.
 	// Optional in dev; required in production for full zero-trust enforcement.
 	InternalHMACSecret string
+	// MOD-W17-03: JWKS hot-reload configuration.
+	// When JWKSEndpoint is non-empty, the gateway periodically fetches the JWKS
+	// from this URL and atomically swaps the RSA public key for RS256 verification.
+	// JWKSPublicKeyPEM is still used as the initial/fallback key.
+	JWKSEndpoint        string
+	JWKSRefreshInterval int // seconds between JWKS fetches (default: 300 = 5 min)
 }
 
 // Load loads the configuration from environment variables
@@ -58,6 +64,9 @@ func Load() (*Config, error) {
 		GrpcUseTLS: os.Getenv("GRPC_USE_TLS") != "false",
 		// RZ-14-05: optional in dev, required in production.
 		InternalHMACSecret: os.Getenv("INTERNAL_HMAC_SECRET"),
+		// MOD-W17-03: JWKS hot-reload. Set JWKS_ENDPOINT to enable.
+		JWKSEndpoint:        os.Getenv("JWKS_ENDPOINT"),
+		JWKSRefreshInterval: getEnvInt("JWKS_REFRESH_INTERVAL", 300),
 	}
 
 	if cfg.JWTSecret == "" {

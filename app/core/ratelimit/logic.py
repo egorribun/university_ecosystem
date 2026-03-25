@@ -6,6 +6,7 @@ import logging
 from redis.exceptions import RedisError
 
 from app.core.config import settings
+from app.core.ratelimit.circuit_breaker import get_circuit_breaker
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.exceptions import RateLimitExceeded
 from app.core.ratelimit.models import RateLimitInfo
@@ -45,18 +46,30 @@ async def check_rate_limit(
 
     key = compose_identifier(namespace, identifier)
     if redis_url and redis_url.lower().startswith(("redis://", "rediss://")):
+        cb = get_circuit_breaker()
         strategy = _get_redis_strategy(redis_url)
-        try:
-            return await strategy.check(key, limit, window_seconds)
-        except (RedisError, OSError) as exc:
-            _log.warning(
-                "rate_limit_storage_unavailable_fallback",
-                extra={"identifier": identifier, "error": str(exc)},
+
+        if cb.allow_request():
+            try:
+                result = await strategy.check(key, limit, window_seconds)
+                cb.record_success()
+                return result
+            except (RedisError, OSError) as exc:
+                cb.record_failure()
+                _log.warning(
+                    "rate_limit_storage_unavailable_fallback",
+                    extra={"identifier": identifier, "error": str(exc)},
+                )
+        else:
+            _log.debug(
+                "rate_limit_circuit_open_fallback",
+                extra={"identifier": identifier, "state": cb.state.name},
             )
-            # RZ-HARDEN: Fail-closed with stricter (50%) local limit
-            fallback_limit = max(limit // 2, 1)
-            fallback_strategy = MemorySlidingWindowStrategy("fallback")
-            return await fallback_strategy.check(key, fallback_limit, window_seconds)
+
+        # PERF-30-01: Circuit open or Redis failure — fail-closed with 50% local limit.
+        fallback_limit = max(limit // 2, 1)
+        fallback_strategy = MemorySlidingWindowStrategy("fallback")
+        return await fallback_strategy.check(key, fallback_limit, window_seconds)
 
     # Non-distributed mode: in-memory is only acceptable when Redis is not configured.
     _log.warning("rate_limit_memory_mode", extra={"reason": "no redis_url configured"})
@@ -83,18 +96,30 @@ async def enforce_rate_limit(
     if not settings.rate_limit_enabled:
         return RateLimitInfo(allowed=True, remaining=limit, retry_after=0)
 
-    try:
-        info = await strategy.check(
-            key=identifier,
-            limit=limit,
-            window_seconds=window_seconds,
-        )
-    except RedisError as exc:
-        _log.warning(
-            "rate_limit_storage_unavailable_fallback",
-            extra={"identifier": identifier, "error": str(exc)},
-        )
-        # RZ-HARDEN: Fail-closed with stricter (50%) local limit
+    cb = get_circuit_breaker()
+
+    if cb.allow_request():
+        try:
+            info = await strategy.check(
+                key=identifier,
+                limit=limit,
+                window_seconds=window_seconds,
+            )
+            cb.record_success()
+        except (RedisError, OSError) as exc:
+            cb.record_failure()
+            _log.warning(
+                "rate_limit_storage_unavailable_fallback",
+                extra={"identifier": identifier, "error": str(exc)},
+            )
+            # PERF-30-01: Circuit breaker recorded failure — use 50% fallback.
+            fallback_limit = max(limit // 2, 1)
+            fallback_strategy = MemorySlidingWindowStrategy("fallback")
+            info = await fallback_strategy.check(
+                key=identifier, limit=fallback_limit, window_seconds=window_seconds
+            )
+    else:
+        # PERF-30-01: Circuit open — skip Redis entirely, use fallback.
         fallback_limit = max(limit // 2, 1)
         fallback_strategy = MemorySlidingWindowStrategy("fallback")
         info = await fallback_strategy.check(

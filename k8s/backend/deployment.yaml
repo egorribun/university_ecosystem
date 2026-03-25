@@ -21,6 +21,27 @@ spec:
       # Prevents SSRF to kubernetes.default.svc via mounted JWT token.
       serviceAccountName: backend
       automountServiceAccountToken: false
+      # TD-31-01: Spread replicas across nodes so a single node failure doesn't
+      # take out 100% of backend capacity. "preferred" keeps single-node dev clusters
+      # functional — the scheduler tries to spread but won't block deployment.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: backend
+                topologyKey: kubernetes.io/hostname
+      # PERF-31-01: Spread replicas across availability zones where possible.
+      # ScheduleAnyway is a soft constraint for single-zone clusters.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
       # MOD-06 (audit 2026-03-15 Wave 7): Allow in-flight requests to complete
       # within the grace period before SIGKILL.  preStop sleep gives kube-proxy
       # time to propagate the endpoint removal to all nodes (~2-5 s lag).
