@@ -27,7 +27,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
-          image: university-ecosystem/frontend:${IMAGE_TAG}
+          image: registry.example.com/frontend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries
           ports:
             - containerPort: 8080  # TD-26-01: match nginx-unprivileged default port
               name: http

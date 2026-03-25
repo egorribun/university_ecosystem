@@ -4,7 +4,7 @@
 services:
   # Grafana Tempo - Distributed tracing backend
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.7.1
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     ports:
       - "3200:3200"   # Tempo API
@@ -19,7 +19,7 @@ services:
 
   # Grafana Loki - Log aggregation
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.4.1
     command: ["-config.file=/etc/loki/loki.yaml"]
     ports:
       - "3100:3100"
@@ -32,7 +32,7 @@ services:
 
   # Promtail - Log collector for Loki
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:3.4.1
     command: ["-config.file=/etc/promtail/promtail.yaml"]
     volumes:
       - ./infrastructure/observability/promtail.yaml:/etc/promtail/promtail.yaml:ro
@@ -46,7 +46,7 @@ services:
 
   # Pyroscope - Continuous profiling
   pyroscope:
-    image: grafana/pyroscope:latest
+    image: grafana/pyroscope:1.11.0
     ports:
       - "4040:4040"
     volumes:
@@ -57,7 +57,7 @@ services:
 
   # Grafana - Unified dashboards
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.5.1
     ports:
       - "3000:3000"
     environment:
@@ -80,7 +80,7 @@ services:
 
   # Prometheus - Metrics (extend existing if present)
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.1.0
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=15d"

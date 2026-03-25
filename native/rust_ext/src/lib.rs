@@ -198,10 +198,13 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
         ));
     }
     let now = Utc::now();
-    let total_months = now.month() as i32 + month_offset;
-
-    let target_year = now.year() + (total_months - 1) / 12;
-    let target_month = ((total_months - 1) % 12 + 1) as u32;
+    // RZ-33-24: Use div_euclid/rem_euclid for correct negative month_offset
+    // arithmetic.  Rust's `/` and `%` truncate toward zero, which produces
+    // wrong results when total_months is zero or negative (e.g., January with
+    // month_offset=-1 should yield December of the previous year, not month 0).
+    let zero_indexed = now.month() as i32 - 1 + month_offset;
+    let target_year = now.year() + zero_indexed.div_euclid(12);
+    let target_month = (zero_indexed.rem_euclid(12) + 1) as u32;
 
     let start_date = Utc.with_ymd_and_hms(target_year, target_month, 1, 0, 0, 0)
         .single()

@@ -9,7 +9,7 @@ backend:
   image:
     repository: university-backend
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
     port: 8000
@@ -36,7 +36,7 @@ frontend:
   image:
     repository: university-frontend
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
     port: 8080
@@ -54,7 +54,7 @@ gateway:
   image:
     repository: university-gateway
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: NodePort
     port: 8080
@@ -76,7 +76,7 @@ fileProcessor:
   image:
     repository: university-file-processor
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
     port: 50051
@@ -94,7 +94,7 @@ rustOptimizer:
   image:
     repository: university-rust-optimizer
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
     port: 8080

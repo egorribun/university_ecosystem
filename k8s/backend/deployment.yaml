@@ -53,7 +53,7 @@ spec:
           # The deploy workflow validates IMAGE_TAG is non-empty before calling kubectl.
           # Using :latest in production breaks reproducibility and risks pulling an
           # unstable image when the registry tag is force-pushed.
-          image: university-ecosystem/backend:${IMAGE_TAG}
+          image: registry.example.com/backend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries
           ports:
             - containerPort: 8000
               name: http
