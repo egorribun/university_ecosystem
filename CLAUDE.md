@@ -93,6 +93,11 @@
 - GraphQL context: only exact `SecurityError` demotes to anonymous; subclasses fail-closed (TD-27-01)
 - React Compiler: only keep `memo()` for custom `areEqual` comparators (PERF-27-02)
 - CI: Python 2 except gate regex fixed — no `grep -v` pipes (MOD-27-01)
+- Wave 27 except syntax: used `except A, B:` (Python 2) instead of `except (A, B):` — Wave 28 fixed all 43 remaining violations across 21 files (RZ-28-01)
+- CSRF anonymous nonce: validated via compiled regex `_ANON_NONCE_RE` for uniform timing (RZ-28-02)
+- Renovate: single `renovate.json` at root (TD-28-02) — `.github/renovate.json` deleted, rules merged
+- Frontend K8s: `seccompProfile: RuntimeDefault` at pod level (TD-28-01, was missing)
+- Pre-commit: `no-python2-except` hook catches `except A, B:` locally before CI (MOD-28-01)
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
@@ -102,6 +107,7 @@
 - Wave 23: 21 issues, 28 files, +614/-112 — full report in `TOTAL_AUDIT_WAVE23.md`
 - Wave 24: 20 issues (1 false positive reverted), 15 files, +451/-27 — full report in `TOTAL_AUDIT_WAVE24.md`
 - Wave 25: 20 issues, ~30 files, +452/-53 — full report in `TOTAL_AUDIT_WAVE25.md`
+- Wave 28: 8 issues, ~25 files — Python 2 except syntax fixed (43 violations, 21 files — RZ-28-01, fixes Wave 27 regression), K8s seccompProfile (TD-28-01), Renovate consolidation (TD-28-02), CSRF timing (RZ-28-02) — full report in `TOTAL_AUDIT_WAVE28.md`
 - Wave 27: 18 issues, ~35 files, +300/-100 — full report in `TOTAL_AUDIT_WAVE27.md`
 - Wave 26: 16 issues (1 FP dropped), ~30 files, +166/-79 — full report in `TOTAL_AUDIT_WAVE26.md`
 - Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
@@ -117,8 +123,9 @@
 - K8s: outbox-worker PDB in `k8s/outbox-worker/pdb.yaml`; frontend NetworkPolicy tightened to gateway+DNS egress only
 - Wave 23 modernization: OTEL metrics bridge, useSuspenseQuery pattern, asyncio.TaskGroup, adaptive debounce, bundle CI budget
 - Wave 23 typing: mypy strict for chat services (5 files) + webpush — fixed Python 2 exception syntax bug in command_service.py
-- Wave 27: Python 2 except syntax actually fixed (44 occurrences tuple-formed); ws-hub incoming 60 KB limit (RZ-27-02); rate-limit fail-closed on double failure (RZ-27-03); file-processor path traversal at gRPC boundary (RZ-27-04); CSRF timing normalization (RZ-27-06); GraphQL SecurityError subclass escalation guard (TD-27-01); React.memo() removed from 17 components for React Compiler (PERF-27-02); CI except gate regex fixed (MOD-27-01)
+- Wave 27: Python 2 except syntax **introduced** (not fixed — see Wave 28 RZ-28-01); ws-hub incoming 60 KB limit (RZ-27-02); rate-limit fail-closed on double failure (RZ-27-03); file-processor path traversal at gRPC boundary (RZ-27-04); CSRF timing normalization (RZ-27-06); GraphQL SecurityError subclass escalation guard (TD-27-01); React.memo() removed from 17 components for React Compiler (PERF-27-02); CI except gate regex fixed (MOD-27-01)
 - Wave 27 reviews: 140 RZ-22-01-JUSTIFIED tags revalidated (TD-27-04); pool metrics docstrings (TD-27-02); SSRF error disambiguation (TD-27-03); GraphQL depth comment skip (PERF-27-01); rate-limit fallback metric (PERF-27-03)
 - Wave 26: Python 2 except syntax fully fixed (44 occurrences, 21 files); Helm secrets hardened; Go services input validation + goroutine lifecycle; K8s port mismatch; frontend WS AbortController + TOCTOU guards
 - Wave 26 CI: Go coverage threshold (60%); Python 2 except gate regex strengthened (MOD-26-02)
+- Wave 28: Python 2 except syntax corrected (43 occurrences, 21 files — Wave 27 introduced the bug); CSRF anonymous nonce timing hardened via compiled regex (RZ-28-02); frontend K8s seccompProfile added (TD-28-01); Renovate configs consolidated (TD-28-02); pre-commit hook for except syntax (MOD-28-01)
 - Backend audit status: **production-ready** — further audits recommended after new features, major dep updates, or quarterly

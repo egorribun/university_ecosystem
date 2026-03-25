@@ -301,6 +301,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = [
   "error::DeprecationWarning",                # our code: treat as errors
+  # TD-28-05: passlib removed in Wave 21 (TD-21-04) — filter kept for test compat
   "ignore::DeprecationWarning:passlib",       # passlib/bcrypt upstream noise
   "ignore::DeprecationWarning:pkg_resources", # setuptools legacy noise
   "ignore::PendingDeprecationWarning",        # third-party pending removals
