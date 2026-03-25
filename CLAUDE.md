@@ -44,6 +44,8 @@
 - OTEL Metrics: bridge via `PrometheusMetricReader` in `configure_metrics()` — new metrics use OTEL API, legacy use prometheus_client (MOD-23-05)
 - Suspense queries: `useSuspenseMyEventsQuery` for components inside `<Suspense>` — do NOT use for offline-fallback hooks (MOD-23-02)
 - Bundle budget: main JS chunk must be <500 KB (enforced in CI via bundle-analysis job, MOD-23-06)
+- L1 cache metrics: `cache_l1_hits_total`, `cache_l1_misses_total` Prometheus counters (TD-30-05)
+- CI: `relationship(` without `lazy=` rejected by MOD-30-01 gate — use `# noload-exempt: <reason>` for exceptions
 
 ## Gotchas
 - Glob `**/alembic/versions/*.py` may not find files on Windows; use `**/*alembic*/**/*.py`
@@ -103,8 +105,16 @@
 - PII redaction: `_redact_pii` structlog processor strips email/phone from log events (RZ-29-02)
 - Settings: `_validate_dependent_settings()` cross-checks cache_backend→redis_url, pool size, replica URL (TD-29-02)
 - Cache invalidation: `@invalidates_cache(CacheTag.EVENT)` decorator for automatic tag-based invalidation (PERF-29-01)
+- WsHubClient singleton: `threading.Lock` double-checked locking for free-threading safety (RZ-30-01)
+- StaticFSStorage: `_validate_resolved_path()` rejects symlinks + verifies `is_relative_to(base_dir)` (RZ-30-02)
+- PII regex: email requires ≥2-char TLD; phone has negative lookahead/lookbehind for digits/dots (RZ-30-03/04)
+- Ruff: dev dep pinned `>=0.14.14,<0.15` — v0.15.x strips except parens (RZ-30-05)
+- NATS retry: exponential backoff with jitter on `cache.invalidate` publish (TD-30-06)
+- Kyverno: Policy 9 `disallow-latest-tag` rejects empty/latest image tags (MOD-30-02)
+- Dockerfile.test: Rust toolchain from `rust:1.85-slim-bookworm` image, not curl|sh (MOD-30-05)
 
 ## Audit Trail
+- Wave 30: 22 issues (6 FP/already done, 6 deferred), 8 files — free-threading singleton (RZ-30-01), symlink path traversal (RZ-30-02), PII regex tightening (RZ-30-03/04), ruff pin (RZ-30-05), cache Prometheus metrics (TD-30-05), NATS backoff (TD-30-06), CI lazy=noload gate (MOD-30-01), Kyverno image tag policy (MOD-30-02), Dockerfile.test Rust pin (MOD-30-05) — full report in `TOTAL_AUDIT_WAVE30.md`
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
 - Wave 20: 22 issues, 53 files, +1724/-206 — full report in `TOTAL_AUDIT_2026.md`
 - Wave 21: 21 issues, 24 files, +1694/-528 — full report in `TOTAL_AUDIT_WAVE21.md`

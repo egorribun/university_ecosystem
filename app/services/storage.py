@@ -63,6 +63,28 @@ class StaticFSStorage(StorageBackend):
             raise ValueError("Relative path must not escape base directory")
         return candidate
 
+    def _validate_resolved_path(self, target: Path) -> None:
+        """RZ-30-02: Reject symlinks and ensure resolved path stays within base_dir.
+
+        Defense-in-depth against ZipSlip-style attacks where a symlink inside
+        the upload directory points to an arbitrary filesystem location.
+        ``_normalize_relative_path`` guards against ``..`` components but cannot
+        detect symlinks — this method resolves the real path and verifies it.
+        """
+        try:
+            resolved = target.resolve(strict=False)
+        except OSError as exc:
+            raise ValueError(f"Cannot resolve path: {exc}") from exc
+        base_resolved = self.base_dir.resolve()
+        if not resolved.is_relative_to(base_resolved):
+            raise ValueError("Resolved path escapes base directory")
+        # Walk each component to catch symlinks before the final target exists.
+        current = self.base_dir
+        for part in target.relative_to(self.base_dir).parts:
+            current = current / part
+            if current.exists() and current.is_symlink():
+                raise ValueError(f"Symlink detected in path at {current.name}")
+
     async def save_file(
         self,
         relative_path: str,
@@ -74,6 +96,7 @@ class StaticFSStorage(StorageBackend):
         del content_type, cache_control  # unused for filesystem storage
         normalized = self._normalize_relative_path(relative_path)
         target = self.base_dir / normalized
+        self._validate_resolved_path(target)  # RZ-30-02
         await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
         await asyncio.to_thread(target.write_bytes, data)
         relative_str = normalized.as_posix()
@@ -111,7 +134,9 @@ class StaticFSStorage(StorageBackend):
         relative = self._extract_relative_path(file_url)
         if relative is None:
             return
-        await asyncio.to_thread(self._unlink_ignore_missing, self.base_dir / relative)
+        target = self.base_dir / relative
+        self._validate_resolved_path(target)  # RZ-30-02
+        await asyncio.to_thread(self._unlink_ignore_missing, target)
 
     async def exists(self, file_url_or_path: str) -> bool:
         relative = self._extract_relative_path(file_url_or_path)
@@ -119,6 +144,7 @@ class StaticFSStorage(StorageBackend):
             # Fallback for raw paths
             relative = Path(file_url_or_path.lstrip("/"))
         target = self.base_dir / relative
+        self._validate_resolved_path(target)  # RZ-30-02
         return await asyncio.to_thread(target.exists)
 
     async def read_file(self, file_url_or_path: str) -> bytes:
@@ -127,6 +153,7 @@ class StaticFSStorage(StorageBackend):
             # Fallback for raw paths
             relative = Path(file_url_or_path.lstrip("/"))
         target = self.base_dir / relative
+        self._validate_resolved_path(target)  # RZ-30-02
         if not await asyncio.to_thread(target.exists):
             raise FileNotFoundError(f"File not found: {file_url_or_path}")
         return await asyncio.to_thread(target.read_bytes)

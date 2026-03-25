@@ -37,8 +37,22 @@ _configured = False
 # This is a defense-in-depth measure; application code should avoid logging
 # PII in the first place, but this processor catches accidental leaks.
 # ---------------------------------------------------------------------------
-_EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
-_PHONE_RE = re.compile(r"\+?\d[\d\s\-()]{7,}\d")
+# RZ-30-03: Tighter email regex — require ≥2-char TLD, word boundaries.
+# Prevents false positives on `redis@10.0.0.1`, `user@host`, version strings.
+_EMAIL_RE = re.compile(
+    r"\b[a-zA-Z0-9_.+-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z]{2,})+\b"
+)
+# RZ-30-04: Anchored phone regex — negative lookbehind/lookahead reject
+# timestamps (2026-03-25), IPs (192.168.1.1), and version-like sequences.
+_PHONE_RE = re.compile(
+    r"(?<![.\d])"  # no preceding dot/digit
+    r"(?:\+\d{1,3}[\s-]?)?"  # optional country code
+    r"\(?\d{2,4}\)?[\s.-]?"  # area code
+    r"\d{3,4}[\s.-]?"  # first group
+    r"\d{2,4}"  # second group
+    r"(?![.\d])"  # no trailing dot/digit
+)
 _PII_FIELD_NAMES = frozenset(
     {
         "email",

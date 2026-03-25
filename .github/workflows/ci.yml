@@ -193,6 +193,26 @@ jobs:
           fi
           echo "OK: no Python 2 except syntax found"
 
+      - name: "MOD-30-01: Enforce lazy=noload on SQLAlchemy relationships"
+        run: |
+          # All relationships in app/models/ must have explicit lazy= parameter
+          # to prevent N+1 queries.  See CLAUDE.md: "ALL relationships must have
+          # explicit lazy=\"noload\"".  Use '# noload-exempt: <reason>' for
+          # justified exceptions (e.g., lazy="joined" for 1:1).
+          violations=$(grep -rn 'relationship(' app/models/ \
+            | grep -v 'lazy=' \
+            | grep -v '# noload-exempt' \
+            | grep -v '__pycache__' || true)
+          if [ -n "$violations" ]; then
+            echo "::error::Relationships without explicit lazy= found (MOD-30-01):"
+            echo "$violations"
+            echo ""
+            echo "All relationships MUST have lazy=\"noload\" (see CLAUDE.md)."
+            echo "Add '# noload-exempt: <reason>' for justified exceptions."
+            exit 1
+          fi
+          echo "OK: all relationships have explicit lazy= parameter"
+
       - name: Validate docker compose configuration
         shell: pwsh
         run: |

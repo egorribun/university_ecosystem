@@ -17,8 +17,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import orjson
+from prometheus_client import Counter
 
 from app.core.logging import get_logger
+
+# TD-30-05: Prometheus counters for L1 cache observability.
+# Thread-safe by design (atomic inc), feed Grafana dashboards directly.
+_L1_CACHE_HITS = Counter("cache_l1_hits_total", "L1 in-memory cache hits")
+_L1_CACHE_MISSES = Counter("cache_l1_misses_total", "L1 in-memory cache misses")
 
 logger = get_logger(__name__)
 
@@ -73,16 +79,19 @@ class LRUCache[T]:
 
             if entry is None:
                 self._misses += 1
+                _L1_CACHE_MISSES.inc()  # TD-30-05
                 return None
 
             if entry.is_expired():
                 del self._cache[key]
                 self._misses += 1
+                _L1_CACHE_MISSES.inc()  # TD-30-05
                 return None
 
             # Move to end (most recently used)
             self._cache.move_to_end(key)
             self._hits += 1
+            _L1_CACHE_HITS.inc()  # TD-30-05
             return entry.value
 
     def set(self, key: str, value: T, ttl: float | None = None) -> None:
