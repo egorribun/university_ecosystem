@@ -101,9 +101,9 @@ class RedisSlidingWindowStrategy:
             )
             result = cast(list[Any], eval_result)
         except NoScriptError:
-            # Script was flushed (SCRIPT FLUSH or server restart) — reload and retry.
-            global _RATE_LIMIT_SHA
-            _RATE_LIMIT_SHA = None
+            # RZ-25-04: Invalidate under lock to prevent TOCTOU race with _load_script_sha.
+            async with _SHA_LOCK:
+                _RATE_LIMIT_SHA = None
             eval_result = await cast(Any, client).eval(
                 _RATE_LIMIT_SCRIPT,
                 1,

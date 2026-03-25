@@ -33,12 +33,12 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65534
+        runAsUser: 65532  # TD-25-04: match distroless nonroot UID
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: flagd
-          image: ghcr.io/open-feature/flagd:v0.10.1
+          image: ghcr.io/open-feature/flagd:v0.10.1@sha256:placeholder  # TD-25-05: SHA-pin per RZ-22-03; replace with real digest
           args:
             - start
             - --uri

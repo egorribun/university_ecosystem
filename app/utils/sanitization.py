@@ -190,7 +190,7 @@ def sanitize_path(path: str, base_dir: str | Path) -> Path | None:
         if base in user_path.parents or user_path == base:
             return user_path
         return None
-    except ValueError, OSError:
+    except ValueError, OSError:  # RZ-25-01
         return None
 
 
@@ -277,7 +277,10 @@ def sanitize_url(
             return None
 
         return url
-    except ValueError, UnicodeError:  # RZ-22-01: narrowed — URL parsing errors
+    except (
+        ValueError,
+        UnicodeError,
+    ):  # RZ-25-01 + RZ-22-01: narrowed — URL parsing errors
         return None
 
 

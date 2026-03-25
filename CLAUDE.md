@@ -72,6 +72,10 @@
 - File-processor GraphQL: depth limit (10) + timeout (30s) middleware required (RZ-24-05, added Wave 24)
 - React Compiler "infer" mode: do NOT use React.memo() — compiler handles memoization (PERF-24-02)
 - Argon2 concurrency: capped at 4 concurrent hashes per worker (PERF-24-04) — 128 MiB peak
+- NullSessionBackend: fails closed in production since Wave 25 (RZ-25-02) — only dev/test/local allowed
+- GraphQL persisted query manifest: loaded under `_manifest_lock` (RZ-25-05) — thread-safe double-checked locking
+- CI: Python 2 except syntax gate (MOD-25-01) — prevents `except A, B:` regression
+- Frontend K8s: NetworkPolicy ingress port 80 (not 8080), nginx emptyDir volumes required (Wave 25)
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
@@ -80,6 +84,7 @@
 - Wave 22: 21 issues, 86 files, ~+1200/-300 — full report in `TOTAL_AUDIT_WAVE22.md`
 - Wave 23: 21 issues, 28 files, +614/-112 — full report in `TOTAL_AUDIT_WAVE23.md`
 - Wave 24: 20 issues (1 false positive reverted), 15 files, +451/-27 — full report in `TOTAL_AUDIT_WAVE24.md`
+- Wave 25: 20 issues, ~30 files, +452/-53 — full report in `TOTAL_AUDIT_WAVE25.md`
 - Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
 - Renovate Bot configured (`renovate.json`) — crypto packages manual-review-only (Wave 22)
 - SBOM generation (Syft/SPDX) added to CI pipeline; actions SHA-pinned (Wave 22)

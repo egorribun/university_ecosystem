@@ -1,0 +1,24 @@
+# TD-25-02 (audit 2026-03-25 Wave 25): HorizontalPodAutoscaler for frontend.
+# Backend has HPA; frontend was missing one, risking capacity during enrollment spikes.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: university-ecosystem
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/component: web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

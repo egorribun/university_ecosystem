@@ -59,7 +59,10 @@ def _locale_from_accept_language(header_value: Any) -> str | None:
         return None
     try:
         header = str(header_value)
-    except TypeError, ValueError:  # RZ-22-01: narrowed — str conversion errors
+    except (
+        TypeError,
+        ValueError,
+    ):  # RZ-25-01 + RZ-22-01: narrowed — str conversion errors
         return None
     candidates: list[tuple[float, str]] = []
     for part in header.split(","):
