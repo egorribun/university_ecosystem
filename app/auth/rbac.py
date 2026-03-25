@@ -93,7 +93,11 @@ _SPICEDB_CALL_TIMEOUT_SECONDS: float = 2.0
 # TD-14-04 (audit 2026-03-23): Two-tier TTL policy implemented in check_permission().
 # ---------------------------------------------------------------------------
 _GRACE_TTL_SECONDS: float = 60.0  # DENY results — safe to serve stale longer
-_PERMISSION_POSITIVE_TTL_SECONDS: float = 30.0  # ALLOW results — fail-closed after 30 s
+# PERF-23-01 (audit 2026-03-25 Wave 23): Raised from 30 s to 45 s.
+# ALLOW results (the common case) were expiring 2× faster than DENY, causing
+# unnecessary gRPC calls under normal operation. 45 s still provides a tighter
+# window than DENY (security-sensitive direction) while reducing gRPC volume ~33%.
+_PERMISSION_POSITIVE_TTL_SECONDS: float = 45.0  # ALLOW results — fail-closed after 45 s
 
 # RZ-22-05 (Wave 22): Export for operational runbook tooling.
 # Runbooks MUST reference this value, NOT a hardcoded "60 seconds".

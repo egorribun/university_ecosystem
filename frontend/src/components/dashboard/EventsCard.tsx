@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
+import { memo, useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
 import { motion } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -20,7 +20,9 @@ interface EventsCardProps {
   "data-pop"?: string
 }
 
-export function EventsCard({ className, style, ...props }: EventsCardProps) {
+// TD-23-02 (audit 2026-03-25 Wave 23): Wrap in React.memo to prevent re-render
+// when parent Dashboard state changes (e.g. schedule tab switch, news reload).
+export const EventsCard = memo(function EventsCard({ className, style, ...props }: EventsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
   const { language } = useLanguage()
@@ -258,4 +260,4 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
       />
     </Card>
   )
-}
+})

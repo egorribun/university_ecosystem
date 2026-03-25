@@ -177,22 +177,39 @@ export function AppRoutes() {
       <Route path="/map" element={<PrivateRoute>{wrap(<MapPage />)}</PrivateRoute>} />
       <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
       <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
-      <Route path="/messenger" element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>} />
-      <Route
-        path="/messenger/:chatId"
-        element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>}
-      />
-      <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
-      <Route
-        path="/admin/notifications"
-        element={<AdminRoute>{wrap(<AdminNotifications />)}</AdminRoute>}
-      />
-      <Route path="/admin/stories" element={<AdminRoute>{wrap(<StoriesAdmin />)}</AdminRoute>} />
-      <Route
-        path="/admin/feature-flags"
-        element={<AdminRoute>{wrap(<AdminFeatureFlags />)}</AdminRoute>}
-      />
-      <Route path="/admin/audit" element={<AdminRoute>{wrap(<AdminAudit />)}</AdminRoute>} />
+      {/* TD-23-01 (audit 2026-03-25 Wave 23): Messenger is a long-lived page
+          where users don't navigate away on crash. Isolate it with its own
+          error boundary so a render panic doesn't require a full page reload. */}
+      <Route path="/messenger" element={
+        <PrivateRoute>
+          <PageErrorBoundary key="messenger">
+            {wrap(<Messenger />)}
+          </PageErrorBoundary>
+        </PrivateRoute>
+      } />
+      <Route path="/messenger/:chatId" element={
+        <PrivateRoute>
+          <PageErrorBoundary key="messenger">
+            {wrap(<Messenger />)}
+          </PageErrorBoundary>
+        </PrivateRoute>
+      } />
+      {/* TD-23-01: Admin pages handle sensitive operations; isolate crash scope */}
+      <Route path="/admin/users" element={
+        <AdminRoute><PageErrorBoundary key="admin">{wrap(<AdminUsers />)}</PageErrorBoundary></AdminRoute>
+      } />
+      <Route path="/admin/notifications" element={
+        <AdminRoute><PageErrorBoundary key="admin">{wrap(<AdminNotifications />)}</PageErrorBoundary></AdminRoute>
+      } />
+      <Route path="/admin/stories" element={
+        <AdminRoute><PageErrorBoundary key="admin">{wrap(<StoriesAdmin />)}</PageErrorBoundary></AdminRoute>
+      } />
+      <Route path="/admin/feature-flags" element={
+        <AdminRoute><PageErrorBoundary key="admin">{wrap(<AdminFeatureFlags />)}</PageErrorBoundary></AdminRoute>
+      } />
+      <Route path="/admin/audit" element={
+        <AdminRoute><PageErrorBoundary key="admin">{wrap(<AdminAudit />)}</PageErrorBoundary></AdminRoute>
+      } />
       <Route path="*" element={<Navigate to="/dashboard" />} />
     </Routes>
   )

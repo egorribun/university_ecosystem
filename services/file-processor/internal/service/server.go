@@ -19,15 +19,51 @@ type Server struct {
 	TemporalClient client.Client
 }
 
+// RZ-23-04 (audit 2026-03-25 Wave 23): Validate inputs before persisting to
+// Temporal workflow history. Without validation, invalid/malicious payloads are
+// retried 5 times before DLQ, wasting Temporal storage and compute. The Options
+// map is bounded to prevent DoS via bloated workflow history.
+var allowedFileTypes = map[string]bool{
+	"image_resize":    true,
+	"image_compress":  true,
+	"pdf_preview":     true,
+	"video_transcode": true,
+}
+
+const (
+	maxOptionsCount   = 10
+	maxOptionKeyLen   = 64
+	maxOptionValueLen = 1024
+)
+
 // ProcessFile is the gRPC method to start a file processing job.
 func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
+	// RZ-23-04: Input validation gate — reject invalid requests before Temporal
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is required")
+	}
+	if !allowedFileTypes[req.Type] {
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported file type: %q", req.Type)
+	}
+	if req.SourceKey == "" || req.DestKey == "" {
+		return nil, status.Error(codes.InvalidArgument, "source_key and dest_key are required")
+	}
+	if len(req.Options) > maxOptionsCount {
+		return nil, status.Errorf(codes.InvalidArgument, "options count %d exceeds limit of %d", len(req.Options), maxOptionsCount)
+	}
+	for k, v := range req.Options {
+		if len(k) > maxOptionKeyLen || len(v) > maxOptionValueLen {
+			return nil, status.Error(codes.InvalidArgument, "option key/value exceeds size limit")
+		}
+	}
+
 	// Create common job from proto
 	job := workflow.ProcessJob{
 		ID:        req.Id,
 		Type:      req.Type,
 		SourceKey: req.SourceKey,
 		DestKey:   req.DestKey,
-		Options:   make(map[string]interface{}),
+		Options:   make(map[string]interface{}, len(req.Options)),
 	}
 	for k, v := range req.Options {
 		job.Options[k] = v

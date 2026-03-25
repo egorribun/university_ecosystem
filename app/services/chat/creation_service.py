@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast  # TD-23-04 (audit 2026-03-25 Wave 23)
 
 if TYPE_CHECKING:
     from app.models.models import User
@@ -66,8 +66,6 @@ class ChatCreationService:
         participant = await self.repository.get_user(participant_id)
         ensure_exists(participant, "users", locale)
         assert participant is not None  # nosec B101  # noqa: S101
-
-        from typing import Any
 
         # TD-W10-01: use the injected cache to obtain the underlying Redis client
         # so that locks can be acquired without a hidden module-level import.
@@ -132,7 +130,7 @@ class ChatCreationService:
                 with contextlib.suppress(Exception):
                     await lock.release()
 
-        participant_ids = [p.id for p in new_chat.participants]
+        participant_ids: list[uuid.UUID] = [p.id for p in new_chat.participants]
         await invalidate_chat_participants_cache(new_chat.id)
         await invalidate_presence_audience_cache(*participant_ids)
 

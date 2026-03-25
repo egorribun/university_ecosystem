@@ -126,6 +126,14 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 	// RZ-W18-03: start the fallback map cleanup goroutine.
 	rl.startFallbackCleanup(ctx)
 	return func(c *gin.Context) {
+		// PERF-23-02 (audit 2026-03-25 Wave 23): Exempt health/readiness probes
+		// from rate limiting. During Redis outage the 3 req/60s fallback would
+		// block Kubernetes liveness probes → pod restarts → cascading failure.
+		if isHealthPath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+
 		// Get client identifier (IP or User ID)
 		key := rl.getClientKey(c)
 
@@ -173,6 +181,12 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// isHealthPath returns true for Kubernetes probe and monitoring paths that must
+// bypass rate limiting to prevent cascading failures during Redis outages.
+func isHealthPath(path string) bool {
+	return path == "/health" || path == "/readiness" || path == "/metrics"
 }
 
 // getClientKey returns a unique key for rate limiting based on IP or user.

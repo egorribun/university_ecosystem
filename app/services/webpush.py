@@ -11,13 +11,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from hashlib import sha256
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    cast,
+)
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import create_engine, delete, select, update
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.orm import selectinload, sessionmaker
 
 from app.core.config import settings
@@ -35,7 +40,7 @@ from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 
 if TYPE_CHECKING:
-    import uuid
+    from collections.abc import Awaitable
 
     from sqlalchemy.orm import Session
 
@@ -44,10 +49,10 @@ logger.setLevel(logging.NOTSET)
 
 # HIGH-W19: defer URL computation until first use so that importing this module
 # does not immediately read settings or touch the database driver.
-_sync_url_cache: Any = None
+_sync_url_cache: URL | None = None
 
 
-def _get_sync_url() -> Any:
+def _get_sync_url() -> URL:
     """Return the synchronous SQLAlchemy URL, computed lazily on first call."""
     global _sync_url_cache
     if _sync_url_cache is None:
@@ -122,7 +127,7 @@ def cleanup() -> None:
     if engine is not None:
         try:
             engine.dispose()
-        except (OSError, ConnectionError):  # pragma: no cover
+        except OSError, ConnectionError:  # pragma: no cover
             # RZ-20-04: Narrowed — engine dispose during shutdown.
             logger.exception("Failed to dispose webpush engine")
 
@@ -203,7 +208,7 @@ def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
         root_logger.log(level, "webpush.%s", event, extra={**extra})
 
 
-def _current_local_time(user: Any | None = None) -> time:
+def _current_local_time(user: User | None = None) -> time:
     tz: Any = UTC
     if user is not None:
         preferences = getattr(user, "preferences", None)
@@ -213,7 +218,7 @@ def _current_local_time(user: Any | None = None) -> time:
             if candidate:
                 try:
                     tz = ZoneInfo(candidate)
-                except (ZoneInfoNotFoundError, ValueError):
+                except ZoneInfoNotFoundError, ValueError:
                     tz = UTC
     now = datetime.now(tz)
     current = now.timetz()
@@ -222,7 +227,7 @@ def _current_local_time(user: Any | None = None) -> time:
     return current
 
 
-def _is_user_in_quiet_hours(user: Any | None, *, now_time: time | None = None) -> bool:
+def _is_user_in_quiet_hours(user: User | None, *, now_time: time | None = None) -> bool:
     preferences = getattr(user, "preferences", None) if user else None
     if not preferences or not getattr(preferences, "dnd_enabled", False):
         return False
@@ -316,7 +321,7 @@ def _normalize_payload(
         if key == "ttl":
             try:
                 meta[key] = int(value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
         else:
             meta[key] = value
@@ -350,7 +355,7 @@ def _normalize_payload(
             if key == "ttl":
                 try:
                     meta[key] = int(value)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     continue
             else:
                 meta[key] = value
@@ -375,7 +380,7 @@ def _normalize_payload(
     if "timestamp" in payload_options:
         try:
             payload_options["timestamp"] = int(payload_options["timestamp"])
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             payload_options.pop("timestamp", None)
     if "body" not in payload_options:
         payload_options["body"] = ""
@@ -420,7 +425,7 @@ def _resolve_ttl(meta: Mapping[str, Any]) -> int:
     elif raw_ttl is not None:
         try:
             ttl_value = int(raw_ttl)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             ttl_value = None
     if ttl_value is not None and ttl_value > 0:
         return ttl_value
@@ -469,7 +474,7 @@ def _prepare_delivery_payload(
     payload: Mapping[str, Any] | None,
     *,
     topic: str | None,
-    user: Any | None,
+    user: User | None,
 ) -> dict[str, Any]:
     resolved_locale = resolve_locale(user=user)
     normalized, meta = _normalize_payload(payload, locale=resolved_locale)
@@ -595,7 +600,7 @@ def build_payload(
         if key == "ttl":
             try:
                 meta[key] = int(value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
         else:
             meta[key] = value
@@ -809,7 +814,7 @@ async def send_to_user(
             status="no_subscriptions",
         )
         return []
-    tasks = []
+    tasks: list[Awaitable[WebPushResult]] = []
     for sub in subscriptions:
         if not subscription_supports_topic(sub, effective_topic):
             continue
@@ -828,12 +833,14 @@ async def send_to_user(
         )
         return []
 
-    async def _bounded_send_dispatch(task: Any) -> Any:
+    async def _bounded_send_dispatch(task: Awaitable[WebPushResult]) -> WebPushResult:
         async with _PUSH_DELIVERY_SEMAPHORE:
             return await task
 
-    results = await asyncio.gather(*(_bounded_send_dispatch(t) for t in tasks))
-    await process_push_results(list(results))
+    results: list[WebPushResult] = await asyncio.gather(
+        *(_bounded_send_dispatch(t) for t in tasks)
+    )
+    await process_push_results(results)
 
     _log_event(
         "dispatch",
@@ -891,7 +898,7 @@ async def broadcast_to_topic(
             status="no_subscribers",
         )
         return []
-    tasks = []
+    tasks: list[Awaitable[WebPushResult]] = []
     for sub in subscriptions:
         prepared = _prepare_delivery_payload(
             payload,
@@ -900,12 +907,14 @@ async def broadcast_to_topic(
         )
         tasks.append(_send_push_async(sub, prepared))
 
-    async def _bounded_send_broadcast(task: Any) -> Any:
+    async def _bounded_send_broadcast(task: Awaitable[WebPushResult]) -> WebPushResult:
         async with _PUSH_DELIVERY_SEMAPHORE:
             return await task
 
-    results = await asyncio.gather(*(_bounded_send_broadcast(t) for t in tasks))
-    await process_push_results(list(results))
+    results: list[WebPushResult] = await asyncio.gather(
+        *(_bounded_send_broadcast(t) for t in tasks)
+    )
+    await process_push_results(results)
 
     _log_event(
         "broadcast",

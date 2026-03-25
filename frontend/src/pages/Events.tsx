@@ -39,7 +39,8 @@ const ANIMATION_DELAYS = {
   grid: "260ms",
 }
 
-const DEBOUNCE_MS = 350
+// PERF-23-04: use "search" strategy (200ms) for snappier search-as-you-type
+const DEBOUNCE_STRATEGY = "search" as const
 
 const Events = () => {
   const { user } = useAuth()
@@ -83,9 +84,9 @@ const Events = () => {
   // Tab indicator animation
   const tabContainerRef = useRef<HTMLDivElement>(null)
 
-  const dSearch = useDebounced(search, DEBOUNCE_MS)
-  const dType = useDebounced(type, DEBOUNCE_MS)
-  const dLocation = useDebounced(location, DEBOUNCE_MS)
+  const dSearch = useDebounced(search, DEBOUNCE_STRATEGY)
+  const dType = useDebounced(type, DEBOUNCE_STRATEGY)
+  const dLocation = useDebounced(location, DEBOUNCE_STRATEGY)
 
   const eventsListFilters = useMemo(() => {
     const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : null

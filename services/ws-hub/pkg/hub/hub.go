@@ -158,8 +158,15 @@ func (h *Hub) Run(ctx context.Context) {
 		workers = 4 // safe minimum
 	}
 	broadcastCh := make(chan *Message, cap(h.Broadcast))
+	// RZ-23-07 (audit 2026-03-25 Wave 23): Track broadcast worker goroutines
+	// with WaitGroup so shutdown can verify all workers drained.
+	var broadcastWg sync.WaitGroup
 	for i := 0; i < workers; i++ {
+		broadcastWg.Add(1)
+		ActiveGoroutines.Inc()
 		go func() {
+			defer broadcastWg.Done()
+			defer ActiveGoroutines.Dec()
 			for msg := range broadcastCh {
 				h.broadcastMessage(ctx, msg)
 			}
@@ -175,6 +182,7 @@ func (h *Hub) Run(ctx context.Context) {
 		case <-ctx.Done():
 			h.Logger.InfoContext(ctx, "Hub.Run: context cancelled, stopping loop")
 			close(broadcastCh)
+			broadcastWg.Wait() // RZ-23-07: ensure all broadcast workers drained before return
 			return
 
 		case client := <-h.Register:
@@ -267,14 +275,33 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 		return
 	}
 
+	// RZ-23-05 (audit 2026-03-25 Wave 23): Drop oversized broadcasts that would
+	// exceed clients' ReadLimit (64 KB). Without this guard, recipients' ReadPump
+	// closes the connection with CloseMessageTooBig. 4 KB headroom accounts for
+	// WebSocket framing overhead.
+	const maxBroadcastBytes = 60 * 1024 // 60 KB
+	if len(data) > maxBroadcastBytes {
+		h.Logger.WarnContext(bctx, "Broadcast message exceeds size limit, dropping",
+			"size_bytes", len(data),
+			"limit_bytes", maxBroadcastBytes,
+			"type", msg.Type,
+			"room", msg.Room)
+		BroadcastDropsTotal.Inc()
+		span.SetAttributes(attribute.Bool("dropped.oversized", true))
+		return
+	}
+
 	type recipient struct {
 		client      *Client
 		evictOnFull bool
 	}
 
+	// MOD-23-03 (audit 2026-03-25 Wave 23): Collect recipients under read-lock,
+	// then fan-out writes lock-free. Go 1.24 range-over-map is stable for sets.
 	h.mu.RLock()
 	var recipients []recipient
-	if msg.Room != "" {
+	switch {
+	case msg.Room != "":
 		if clients, ok := h.Rooms[msg.Room]; ok {
 			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
 			recipients = make([]recipient, 0, len(clients))
@@ -282,13 +309,12 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 				recipients = append(recipients, recipient{client: c})
 			}
 		}
-	} else if msg.To != "" {
+	case msg.To != "":
 		if c, ok := h.Clients[msg.To]; ok {
 			span.SetAttributes(attribute.Int("recipient.count", 1))
-			recipients = make([]recipient, 0, 1)
-			recipients = append(recipients, recipient{client: c})
+			recipients = []recipient{{client: c}}
 		}
-	} else {
+	default:
 		span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
 		recipients = make([]recipient, 0, len(h.Clients))
 		for _, c := range h.Clients {

@@ -39,7 +39,7 @@ export default function AdminUsers() {
   const [groups, setGroups] = useState<Group[]>([])
   const [filters, setFilters] = useState<UserFilters>({ full_name: "", group_id: "", role: "" })
   // PERF-20-05: Debounce text filter to prevent API spam on every keystroke.
-  const debouncedFilters = useDebounced(filters, 350)
+  const debouncedFilters = useDebounced(filters, "validation") // PERF-23-04: admin filters use validation preset (350ms)
   const { user: userContext } = useAuth()
   const { t } = useTranslation("admin")
   const [userToDelete, setUserToDelete] = useState<string | null>(null)

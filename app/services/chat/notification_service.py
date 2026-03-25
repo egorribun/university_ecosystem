@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING  # TD-23-04 (audit 2026-03-25 Wave 23)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -19,7 +19,7 @@ from app.services.notifications import create_notifications_for_users
 class ChatNotificationService:
     """Handles real-time and push notifications for chat events. (TD-1)"""
 
-    def __init__(self, session: AsyncDatabaseSession):
+    def __init__(self, session: AsyncDatabaseSession) -> None:
         self.session = session
 
     async def notify_new_message(

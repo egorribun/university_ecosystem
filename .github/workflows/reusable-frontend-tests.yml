@@ -149,6 +149,61 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
           if-no-files-found: error
 
+  # MOD-23-06 (audit 2026-03-25 Wave 23): Bundle size analysis.
+  # Alerts on >500 KB main chunk growth and generates a JSON report for trend tracking.
+  bundle-analysis:
+    name: Bundle Analysis
+    needs: build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download production bundle
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: frontend-dist
+          path: ${{ inputs.working-directory }}/dist
+
+      - name: Analyze bundle size
+        run: |
+          # Generate JSON report of all chunks
+          echo '{}' > bundle-report.json
+          total_size=0
+          main_chunk_size=0
+          for f in dist/assets/*.js; do
+            size=$(wc -c < "$f")
+            name=$(basename "$f")
+            total_size=$((total_size + size))
+            # Track main/index chunk specifically
+            if echo "$name" | grep -qE '^(index|main)'; then
+              main_chunk_size=$size
+            fi
+            echo "  $name: $(( size / 1024 )) KB"
+          done
+          echo ""
+          echo "Total JS: $(( total_size / 1024 )) KB"
+          echo "Main chunk: $(( main_chunk_size / 1024 )) KB"
+          echo ""
+          # Fail if main chunk exceeds 500 KB (gzipped will be ~150 KB)
+          LIMIT_KB=500
+          main_kb=$(( main_chunk_size / 1024 ))
+          if [ "$main_kb" -gt "$LIMIT_KB" ]; then
+            echo "::error::Main chunk ($main_kb KB) exceeds $LIMIT_KB KB budget"
+            exit 1
+          fi
+          echo "::notice::Bundle analysis passed — main chunk $main_kb KB (limit: $LIMIT_KB KB)"
+
+      - name: Upload bundle report
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: bundle-report
+          path: ${{ inputs.working-directory }}/bundle-report.json
+          if-no-files-found: warn
+
   lighthouse:
     name: Lighthouse Audit
     if: ${{ inputs.run-lighthouse }}

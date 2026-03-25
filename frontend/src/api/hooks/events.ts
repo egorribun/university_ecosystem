@@ -2,12 +2,14 @@ import {
   useInfiniteQuery,
   useQuery,
   useQueryClient,
+  useSuspenseQuery,
   type InfiniteData,
   type QueryClient,
   type UseInfiniteQueryOptions,
   type UseInfiniteQueryResult,
   type UseQueryOptions,
   type UseQueryResult,
+  type UseSuspenseQueryResult,
 } from "@tanstack/react-query"
 import { useMemo } from "react"
 
@@ -356,6 +358,61 @@ export const useMyEventsQuery = (
       return Array.isArray(response.data) ? (response.data as Event[]) : []
     },
     ...rest,
+  })
+
+  return {
+    ...query,
+    queryKey,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MOD-23-02 (audit 2026-03-25 Wave 23): Suspense-compatible event query.
+//
+// Use inside a <Suspense> boundary when offline fallback and conditional
+// fetching (enabled) are NOT needed.  `data` is guaranteed defined — no
+// loading/error states to handle in the component.
+//
+// NOTE: useSuspenseQuery does NOT support `enabled`, `placeholderData`, or
+// `throwOnError`.  If you need offline fallback, use useMyEventsQuery instead.
+// ---------------------------------------------------------------------------
+
+type MySuspenseEventsParams = {
+  language: string
+  userId: string
+}
+
+export type UseSuspenseMyEventsResult = UseSuspenseQueryResult<Event[], Error> & {
+  queryKey: MyEventsQueryKey
+}
+
+export const useSuspenseMyEventsQuery = (
+  params: MySuspenseEventsParams
+): UseSuspenseMyEventsResult => {
+  const queryClient = useQueryClient()
+  const normalized = normalizeMyEventsParams(params)
+  const queryKey: MyEventsQueryKey = ["events", "my", normalized]
+
+  const query = useSuspenseQuery<Event[], Error, Event[], MyEventsQueryKey>({
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const etagKey = createMyEventsEtagKey(normalized)
+      const config = {
+        signal,
+        validateStatus: (status: number) => status >= 200 && status < 400,
+        etagCacheKey: etagKey,
+      }
+
+      const response = await myEventsApiV1EventsMyGet(
+        config as Parameters<typeof myEventsApiV1EventsMyGet>[0]
+      )
+
+      if (response.status === 304) {
+        return queryClient.getQueryData<Event[]>(queryKey) ?? []
+      }
+
+      return Array.isArray(response.data) ? (response.data as Event[]) : []
+    },
   })
 
   return {

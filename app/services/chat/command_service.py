@@ -11,7 +11,12 @@ import asyncio
 import hashlib
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+    cast,
+)
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
@@ -80,9 +85,11 @@ if TYPE_CHECKING:
 class AttachmentProcessorProtocol(Protocol):
     async def process_upload(
         self, upload: UploadFile, chat_id: uuid.UUID, *, locale: str | None
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, str | int]: ...
     async def cleanup_files(self, urls: list[str]) -> None: ...
-    async def collect_urls(self, chat: Any) -> list[str]: ...
+    async def collect_urls(
+        self, chat: Any
+    ) -> list[str]: ...  # Any: accepts Chat or ChatDTO
 
 
 class ChatMessageDispatcher:
@@ -97,7 +104,7 @@ class ChatMessageDispatcher:
         uow: UnitOfWork,
         attachment_service: AttachmentProcessorProtocol,
         notification_service: ChatNotificationService,
-    ):
+    ) -> None:
         self.uow = uow
         self.repository = uow.chats
         self.session = uow.session
@@ -232,22 +239,25 @@ class ChatMessageDispatcher:
             if uploads:
                 sem = asyncio.Semaphore(3)
 
-                async def _upload_task(upload: UploadFile) -> dict[str, Any]:
+                # MOD-23-04 (audit 2026-03-25 Wave 23): structured concurrency via TaskGroup
+                # — if any upload fails the remaining uploads are cancelled immediately,
+                # which is the correct all-or-nothing semantic for Phase 1 (no partial
+                # attachment sets).  Replaces gather(return_exceptions=True) + manual
+                # error inspection loop.
+                async def _upload_task(upload: UploadFile) -> None:
                     async with sem, asyncio.timeout(_UPLOAD_TIMEOUT_SECONDS):
-                        return await self.attachment_service.process_upload(
+                        res = await self.attachment_service.process_upload(
                             upload, chat_id, locale=locale
                         )
+                        saved_urls.append(str(res["url"]))
+                        processed_attachments.append(res)
 
-                results = await asyncio.gather(
-                    *[_upload_task(u) for u in uploads], return_exceptions=True
-                )
-                for res in results:
-                    if isinstance(res, TimeoutError):
-                        raise_validation_error("errors.files.upload_timeout", locale)
-                    if isinstance(res, BaseException):
-                        raise res
-                    saved_urls.append(str(res["url"]))
-                    processed_attachments.append(res)
+                try:
+                    async with asyncio.TaskGroup() as tg:
+                        for u in uploads:
+                            tg.create_task(_upload_task(u))
+                except* TimeoutError:
+                    raise_validation_error("errors.files.upload_timeout", locale)
 
         except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleans up partial uploads then re-raises
             # Phase 1 failure: clean up any partial uploads and release slot.
@@ -404,7 +414,7 @@ class ChatMaintenanceService:
         self,
         uow: UnitOfWork,
         attachment_service: AttachmentProcessorProtocol,
-    ):
+    ) -> None:
         self.uow = uow
         self.repository = uow.chats
         self.attachment_service = attachment_service

@@ -96,17 +96,22 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
     )
+    # RZ-23-01 (audit 2026-03-25 Wave 23): Changed lazy="selectin" → lazy="noload".
+    # lazy="selectin" fires unconditional secondary SELECTs on every Event load,
+    # even when .files/.attendance are never accessed (list pages, calendar views).
+    # With lazy="noload" the decision is explicit: query paths that need these
+    # collections add .options(selectinload(Event.files)) themselves.
     files = relationship(
         "EventFile",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="noload",
     )
     attendance = relationship(
         "EventAttendance",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="noload",
     )
     organizer = relationship("User", lazy="noload")  # DEBT-W19: avoid implicit load
 
