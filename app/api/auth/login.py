@@ -154,7 +154,7 @@ async def login_passkey_verify(
             str(payload_dict.get("options", {}).get("challenge", "")),
             payload.webauthn_response,
         )
-    except Exception as e:
+    except Exception as e:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts WebAuthn errors to HTTP 400
         # TD-03 (audit 2026-03-15 Wave 7): log only the exception type, not str(e),
         # because WebAuthn error strings may contain challenge bytes or credential IDs.
         logger.warning(
@@ -326,7 +326,7 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover  # RZ-22-01-JUSTIFIED: convert-to-domain — converts registration errors to HTTP 400
         await db.rollback()
         message = translate("errors.users.create_failed", locale=locale)
         raise HTTPException(

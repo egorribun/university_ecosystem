@@ -63,7 +63,7 @@ func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*Rate
 		rps:              rps,
 		burst:            burst,
 		fallbackCounters: make(map[string]*fallbackEntry),
-		fallbackLimit:    10,
+		fallbackLimit:    3, // RZ-22-06: conservative per-instance limit (N instances × 3 = 9 effective, prevents brute-force during Redis outage)
 		fallbackWindow:   60,
 	}, nil
 }

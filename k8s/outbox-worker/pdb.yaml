@@ -1,0 +1,16 @@
+# MOD-22-07 (audit 2026-03-25 Wave 22): Pod Disruption Budget for outbox-worker.
+# Ensures at least 1 replica remains available during voluntary disruptions
+# (node drains, cluster upgrades) to prevent event processing gaps.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: outbox-worker-pdb
+  namespace: university-ecosystem
+  labels:
+    app.kubernetes.io/name: outbox-worker
+    app.kubernetes.io/component: event-processing
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: outbox-worker

@@ -303,7 +303,7 @@ async def confirm_webauthn_registration(
             payload.response,
             label=payload.label,
         )
-    except Exception as e:
+    except Exception as e:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts WebAuthn errors to HTTP 400
         logger.warning(
             "Passkey registration verification failed for user %s: %s",
             user.id,

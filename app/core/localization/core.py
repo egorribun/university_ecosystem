@@ -59,7 +59,7 @@ def _locale_from_accept_language(header_value: Any) -> str | None:
         return None
     try:
         header = str(header_value)
-    except Exception:
+    except TypeError, ValueError:  # RZ-22-01: narrowed — str conversion errors
         return None
     candidates: list[tuple[float, str]] = []
     for part in header.split(","):
@@ -105,7 +105,11 @@ def resolve_locale(
             for key in _QUERY_PARAM_KEYS:
                 try:
                     raw = params.get(key)
-                except Exception:
+                except (
+                    AttributeError,
+                    TypeError,
+                    KeyError,
+                ):  # RZ-22-01: narrowed — query param access errors
                     raw = None
                 normalized = _normalize_locale(raw)
                 if normalized:

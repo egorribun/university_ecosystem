@@ -17,7 +17,7 @@ async def list_feature_flags(
     _: models.User = Depends(get_current_admin_user),
 ) -> list[dict[str, Any]]:
     """List all registered feature flags."""
-    return [flag.to_dict() for flag in feature_flags.list_flags()]
+    return feature_flags.list_flags()
 
 
 @router.patch("/{name}", response_model=schemas.FeatureFlagOut)
@@ -34,14 +34,8 @@ async def update_feature_flag(
     if not update_data:
         raise_validation_error("errors.invalid_input", locale)
 
-    success = await feature_flags.update(name, **update_data)
-    if not success:
+    result = await feature_flags.update(name, **update_data)
+    if not result:
         raise_not_found("feature_flag", locale, resource_id=name)
 
-    # Return updated flag
-    all_flags = feature_flags.list_flags()
-    updated_flag = next((f for f in all_flags if f.name == name), None)
-    if not updated_flag:
-        raise_not_found("feature_flag", locale, resource_id=name)
-
-    return updated_flag.to_dict()
+    return result

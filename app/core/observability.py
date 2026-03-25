@@ -47,7 +47,7 @@ try:
         Histogram,
         generate_latest,
     )
-except Exception:  # pragma: no cover - optional dependency guard
+except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
     CollectorRegistry: Any = None  # type: ignore[no-redef]
     Counter: Any = None  # type: ignore[no-redef]
@@ -72,9 +72,11 @@ try:
         from sentry_sdk.integrations.opentelemetry import (
             SentrySpanProcessor,
         )
-    except Exception:
+    except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — SentrySpanProcessor may not be available
         SentrySpanProcessor: Any = None  # type: ignore[no-redef]
-except Exception:
+except (
+    Exception
+):  # RZ-22-01-JUSTIFIED: optional dependency — sentry_sdk may not be installed
     sentry_init: Any = None  # type: ignore[no-redef]
     FastApiIntegration: Any = None  # type: ignore[no-redef]
     LoggingIntegration: Any = None  # type: ignore[no-redef]
@@ -495,7 +497,7 @@ class PeriodicTaskRun:
 def _coerce_deleted_value(value: Any) -> int:
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
     return number if number > 0 else 0
 
@@ -517,7 +519,7 @@ class PeriodicTaskMetrics:
             yield run
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — records metrics then re-raises
             elapsed = max(time.perf_counter() - start, 0.0)
             self.errors_total.inc()
             self.duration_seconds.observe(elapsed)

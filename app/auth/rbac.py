@@ -95,6 +95,10 @@ _SPICEDB_CALL_TIMEOUT_SECONDS: float = 2.0
 _GRACE_TTL_SECONDS: float = 60.0  # DENY results — safe to serve stale longer
 _PERMISSION_POSITIVE_TTL_SECONDS: float = 30.0  # ALLOW results — fail-closed after 30 s
 
+# RZ-22-05 (Wave 22): Export for operational runbook tooling.
+# Runbooks MUST reference this value, NOT a hardcoded "60 seconds".
+SPICEDB_MAX_TOLERABLE_DOWNTIME_SECONDS: float = _PERMISSION_POSITIVE_TTL_SECONDS
+
 # RZ-W13-02: LRU-bounded to prevent unbounded memory growth.
 # At ~200 bytes per entry, 10 000 entries ≈ 2 MB — acceptable overhead.
 _PERMISSION_CACHE_MAX_SIZE: int = 10_000
@@ -245,7 +249,7 @@ class PermissionChecker:
             # grpc/authzed not installed — treat as unavailable rather than silently
             # denying. Callers with SpiceDB enabled should always have grpc.
             raise SpiceDBUnavailableError("grpc is not installed") from exc
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — SpiceDB fallback to grace-period cache
             logger.error(
                 "SpiceDB async permission check failed (%s:%s#%s for %s): %s",
                 resource_type,

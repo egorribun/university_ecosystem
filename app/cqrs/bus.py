@@ -60,7 +60,9 @@ class LoggingMiddleware:
             result = await next_handler(message)
             logger.debug("Finished %s: %s", msg_type, name)
             return result
-        except Exception as e:
+        except (
+            Exception
+        ) as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises
             logger.error("Error executing %s %s: %s", msg_type, name, e, exc_info=True)
             raise
 

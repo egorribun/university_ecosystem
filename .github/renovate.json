@@ -36,7 +36,7 @@
       "groupName": "Frontend patch updates"
     },
     {
-      "description": "Auto-merge security patch updates for cryptographic Python packages",
+      "description": "RZ-22-02: Security-critical Python packages — manual review required. Auto-merge disabled to prevent supply-chain attacks via compromised patch releases (xz-utils attack vector).",
       "matchManagers": ["uv"],
       "matchUpdateTypes": ["patch"],
       "matchPackageNames": [
@@ -48,10 +48,8 @@
         "webauthn",
         "python-jose"
       ],
-      "automerge": true,
-      "automergeType": "pr",
-      "automergeStrategy": "squash",
-      "labels": ["security", "automerge"]
+      "automerge": false,
+      "labels": ["security", "manual-review-required"]
     },
     {
       "description": "Group all other Python dependency updates (manual review)",

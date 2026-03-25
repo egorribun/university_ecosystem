@@ -84,7 +84,7 @@ class RateLimitMiddleware:
             # Compatibility shim: call an internal method that tests might monkeypatch.
             # In regular operation, this just proxies to the strategy.
             info = await self._check_limit(identifier, path_limit, path_window)
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — falls back to stricter in-memory limiter
             # HIGH-05 (audit 2026-03-11): Fail-CLOSED with in-memory fallback.
             # Previous fail-open behavior allowed rate limit bypass if Redis was down.
             # We now switch to a local memory strategy with stricter limits (50%).

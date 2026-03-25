@@ -21,12 +21,19 @@ jobs:
             const pr = context.payload.pull_request;
             // Regex: only patch-level bumps (e.g., bump pkg from 1.2.3 to 1.2.4)
             if (/bump .+ from \d+\.\d+\.\d+ to \d+\.\d+\.\d+$/.test(pr.title)) {
-              console.log("Auto-merging Dependabot patch PR #" + pr.number);
-              await github.rest.pulls.merge({
-                ...context.repo,
-                pull_number: pr.number,
-                merge_method: 'squash'
-              });
+              // RZ-22-01: Use enableAutoMerge instead of direct merge.
+              // enableAutoMerge gates on branch protection required status checks,
+              // preventing merge before CI (tests, security audit, lint) passes.
+              // The previous github.rest.pulls.merge() bypassed all checks.
+              console.log("Enabling auto-merge for Dependabot patch PR #" + pr.number);
+              await github.graphql(`
+                mutation($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: SQUASH
+                  }) { clientMutationId }
+                }
+              `, { pullRequestId: pr.node_id });
             } else {
               console.log("PR #" + pr.number + " is not a patch bump. Skipping auto-merge.");
             }

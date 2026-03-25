@@ -180,7 +180,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for user %s", user.id)
-    except Exception:
+    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — WebSocket loop must not crash without cleanup
         # Unexpected error in the WebSocket loop: log at ERROR so Sentry captures
         # the full traceback. The connection is cleaned up regardless.
         logger.exception("WebSocket unexpectedly closed for user %s", user.id)
@@ -189,7 +189,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
         await manager.disconnect(websocket)
         try:
             last_seen = await _update_last_seen(session_jti)
-        except Exception:
+        except (
+            OSError,
+            ConnectionError,
+        ):  # RZ-22-01: narrowed — DB/network errors during last_seen update
             last_seen = datetime.now(UTC)
         await manager.broadcast_presence(
             user.id,

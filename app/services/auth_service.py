@@ -484,7 +484,7 @@ async def attach_pending_email(
             # Expected: object is detached from its session (e.g. in a background
             # task).  Fall through to the DB query path below.
             pass
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises with context for error monitoring
             # RZ-09 (audit 2026-03-04): An unexpected error in inspect() is a
             # programming defect, not an operational condition that should be
             # silently swallowed. Logging-and-continuing caused the caller to

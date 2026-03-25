@@ -103,7 +103,9 @@ async def ensure_mfa_relationships_loaded(
 
     try:
         state = inspect(user)
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: optional dependency — inspect() fails for non-ORM objects
         # Not a SQLAlchemy model (e.g. DTO), just return as-is
         return user
 
@@ -119,7 +121,7 @@ async def ensure_mfa_relationships_loaded(
     # Mark as loaded to avoid redundant inspect() calls on subsequent invocations.
     try:
         object.__setattr__(user, "_mfa_loaded", True)
-    except (TypeError, AttributeError):
+    except TypeError, AttributeError:
         pass  # DTO with frozen config — skip silently, overhead is minimal
 
     return user

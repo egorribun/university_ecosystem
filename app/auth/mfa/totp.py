@@ -442,7 +442,7 @@ async def verify_totp_for_user(
             span.set_attribute("mfa.result", "invalid_code")
             span.set_status(Status(StatusCode.ERROR))
             raise_validation_error("errors.mfa.invalid_code", locale or "en")
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — sets OTEL error status then re-raises
             # Ensure ERROR status is set for any unexpected exception that wasn't
             # already handled above (e.g. DB errors, unexpected library exceptions).
             span.set_status(Status(StatusCode.ERROR))

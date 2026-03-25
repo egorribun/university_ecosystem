@@ -35,7 +35,7 @@ impl ScheduleItem {
 }
 
 // Helper for conflict detection
-fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
+pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
     if a.weekday != b.weekday { return false; }
     if a.parity != "both" && b.parity != "both" && a.parity != b.parity { return false; }
     a.start_time < b.end_time && b.start_time < a.end_time
@@ -163,7 +163,7 @@ fn next_weekday(from: NaiveDate, target: Weekday) -> NaiveDate {
 }
 
 /// Parse a weekday string (case-insensitive) into a chrono Weekday.
-fn parse_weekday(s: &str) -> Option<Weekday> {
+pub fn parse_weekday(s: &str) -> Option<Weekday> {
     match s.to_lowercase().as_str() {
         "monday" | "mon" => Some(Weekday::Mon),
         "tuesday" | "tue" => Some(Weekday::Tue),
@@ -188,7 +188,7 @@ pub struct PartitionInfo {
 }
 
 #[pyfunction]
-fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<PartitionInfo> {
+pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<PartitionInfo> {
     // LOW-W19: reject month_offset values that would cause integer overflow or
     // produce a nonsensical date (e.g. offset going back before year 1 or
     // forward beyond year 9999).  Reasonable operational range is ±120 months (10 years).
@@ -225,7 +225,7 @@ fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Partiti
 }
 
 #[pyfunction]
-fn is_partition_expired(partition_name: String, table_name: String, retention_days: i64) -> bool {
+pub fn is_partition_expired(partition_name: String, table_name: String, retention_days: i64) -> bool {
     // LOW-W19: a negative retention_days would make the cutoff a future timestamp,
     // causing every partition to appear un-expired.  Reject it defensively.
     if retention_days < 0 {
@@ -275,7 +275,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
 #[pyfunction]
-fn verify_audit_signature(signing_keys: Vec<String>, log_data: String, signature: String) -> PyResult<bool> {
+pub fn verify_audit_signature(signing_keys: Vec<String>, log_data: String, signature: String) -> PyResult<bool> {
     let sig_bytes = match hex::decode(&signature) {
         Ok(b) => b,
         Err(_) => return Ok(false),
@@ -306,4 +306,141 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // PERF-05: expose limit so Python callers can validate before calling into Rust.
     m.add("MAX_CONFLICT_ITEMS", MAX_CONFLICT_ITEMS)?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// MOD-22-06 (audit 2026-03-25 Wave 22): Panic boundary tests for PyO3 FFI.
+// Ensures edge cases in partition management, expiry checks, and HMAC
+// verification return errors or safe defaults — never panic across the FFI.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- get_partition_info boundary tests --
+
+    #[test]
+    fn partition_info_boundary_minus_120() {
+        // Minimum allowed offset — should succeed.
+        let result = get_partition_info("audit_logs".to_string(), -120);
+        assert!(result.is_ok(), "month_offset=-120 should be within range");
+    }
+
+    #[test]
+    fn partition_info_boundary_plus_120() {
+        // Maximum allowed offset — should succeed.
+        let result = get_partition_info("audit_logs".to_string(), 120);
+        assert!(result.is_ok(), "month_offset=120 should be within range");
+    }
+
+    #[test]
+    fn partition_info_out_of_range_minus_121() {
+        // One past the minimum — should return an error, not panic.
+        let result = get_partition_info("audit_logs".to_string(), -121);
+        assert!(result.is_err(), "month_offset=-121 should be rejected");
+    }
+
+    #[test]
+    fn partition_info_out_of_range_plus_121() {
+        // One past the maximum — should return an error, not panic.
+        let result = get_partition_info("audit_logs".to_string(), 121);
+        assert!(result.is_err(), "month_offset=121 should be rejected");
+    }
+
+    #[test]
+    fn partition_info_zero_offset() {
+        let result = get_partition_info("events".to_string(), 0);
+        assert!(result.is_ok());
+        let info = result.ok().unwrap();
+        assert!(info.name.starts_with("events_y"));
+    }
+
+    // -- is_partition_expired edge cases --
+
+    #[test]
+    fn expired_empty_partition_name() {
+        // Empty name cannot match the expected prefix — returns false.
+        assert!(!is_partition_expired("".to_string(), "tbl".to_string(), 90));
+    }
+
+    #[test]
+    fn expired_malformed_no_month_separator() {
+        // Missing 'm' separator → malformed → false.
+        assert!(!is_partition_expired("tbl_y2025".to_string(), "tbl".to_string(), 90));
+    }
+
+    #[test]
+    fn expired_malformed_non_numeric_year() {
+        assert!(!is_partition_expired("tbl_yABCDm01".to_string(), "tbl".to_string(), 90));
+    }
+
+    #[test]
+    fn expired_malformed_non_numeric_month() {
+        assert!(!is_partition_expired("tbl_y2025mXX".to_string(), "tbl".to_string(), 90));
+    }
+
+    #[test]
+    fn expired_month_zero() {
+        // Month 0 is invalid — returns false.
+        assert!(!is_partition_expired("tbl_y2025m00".to_string(), "tbl".to_string(), 90));
+    }
+
+    #[test]
+    fn expired_month_13() {
+        // Month 13 is invalid — returns false.
+        assert!(!is_partition_expired("tbl_y2025m13".to_string(), "tbl".to_string(), 90));
+    }
+
+    #[test]
+    fn expired_negative_retention() {
+        // Negative retention_days → defensively returns false.
+        assert!(!is_partition_expired("tbl_y2020m01".to_string(), "tbl".to_string(), -1));
+    }
+
+    // -- verify_audit_signature edge cases --
+
+    #[test]
+    fn signature_empty_keys_list() {
+        // No keys → no match → false (not an error).
+        let result = verify_audit_signature(vec![], "data".to_string(), "aabb".to_string());
+        assert!(result.is_ok());
+        assert!(!result.ok().unwrap());
+    }
+
+    #[test]
+    fn signature_empty_data() {
+        // Empty data is valid input — HMAC of empty string is well-defined.
+        let result = verify_audit_signature(
+            vec!["key".to_string()],
+            "".to_string(),
+            "aabb".to_string(),
+        );
+        assert!(result.is_ok());
+        // The signature won't match, but it must not panic.
+        assert!(!result.ok().unwrap());
+    }
+
+    #[test]
+    fn signature_invalid_hex() {
+        // Non-hex signature string → graceful false return.
+        let result = verify_audit_signature(
+            vec!["key".to_string()],
+            "data".to_string(),
+            "not-valid-hex!!".to_string(),
+        );
+        assert!(result.is_ok());
+        assert!(!result.ok().unwrap());
+    }
+
+    #[test]
+    fn signature_empty_signature() {
+        // Empty signature string → hex::decode("") returns empty vec → verify fails.
+        let result = verify_audit_signature(
+            vec!["key".to_string()],
+            "data".to_string(),
+            "".to_string(),
+        );
+        assert!(result.is_ok());
+        assert!(!result.ok().unwrap());
+    }
 }

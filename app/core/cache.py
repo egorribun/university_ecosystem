@@ -200,7 +200,11 @@ class MultiLayerCache:
                     # Populate L1 from L2
                     self.l1.set(key, value)
                     return value
-            except Exception as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ) as e:  # RZ-22-01: narrowed — Redis errors
                 logger.warning("L2 cache get failed: %s", e)
                 # PERF-14-04 (audit 2026-03-23): Increment redis_command_errors_total
                 # so Alertmanager can fire on sustained L2 degradation.
@@ -210,7 +214,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("get", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110
+                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard
                     pass  # metrics unavailable — never block cache logic
 
         return None
@@ -228,14 +232,18 @@ class MultiLayerCache:
                 # PERF-W19-01: serialize with orjson so Redis stores valid bytes,
                 # not the str() representation of a Python object.
                 await self._redis.setex(key, int(self.l2_ttl), orjson.dumps(value))
-            except Exception as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ) as e:  # RZ-22-01: narrowed — Redis errors
                 logger.warning("L2 cache set failed: %s", e)
                 # PERF-14-04 (audit 2026-03-23): Same pattern as get() above.
                 try:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("set", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110
+                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard
                     pass
 
     async def delete(self, key: str) -> None:
@@ -244,7 +252,11 @@ class MultiLayerCache:
         if self._redis is not None:
             try:
                 await self._redis.delete(key)
-            except Exception as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ) as e:  # RZ-22-01: narrowed — Redis errors
                 logger.warning("L2 cache delete failed: %s", e)
 
     async def invalidate_prefix(self, prefix: str) -> int:
@@ -269,7 +281,11 @@ class MultiLayerCache:
                         count += len(keys)
                     if cursor == 0:
                         break
-            except Exception as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ) as e:  # RZ-22-01: narrowed — Redis errors
                 logger.warning("L2 cache prefix invalidation failed: %s", e)
 
         return count

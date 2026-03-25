@@ -117,7 +117,9 @@ async def record_enqueue_failure(
     if _queue_metrics:
         try:
             _queue_metrics.enqueue_failures_total.labels(kind=job.kind).inc()
-        except Exception:
+        except (
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: metrics guard — best-effort metric recording
             logger.warning("Failed to record metric for enqueue failure", exc_info=True)
 
 

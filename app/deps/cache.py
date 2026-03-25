@@ -235,7 +235,7 @@ class RedisCache(BaseCache):
                 if inspect.isawaitable(res):
                     await res
             success = True
-        except (RedisError, OSError, AttributeError):
+        except RedisError, OSError, AttributeError:
             logger.debug("Failed to close Redis client", exc_info=True)
         finally:
             record_redis_command(
@@ -270,7 +270,7 @@ class RedisCache(BaseCache):
             logger.debug("Invalid cache payload for key %s, dropping", key)
             await self.invalidate(key)
             return None
-        except (RedisError, OSError):
+        except RedisError, OSError:
             logger.warning("Redis cache get failed for key %s", key, exc_info=True)
             return None
         finally:
@@ -300,7 +300,7 @@ class RedisCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except (RedisError, OSError):
+        except RedisError, OSError:
             logger.warning("Redis cache set failed for key %s", key, exc_info=True)
         finally:
             record_redis_command(
@@ -347,7 +347,7 @@ class RedisCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except (RedisError, OSError):
+        except RedisError, OSError:
             logger.warning(
                 "Redis cache invalidate failed for keys %s", filtered, exc_info=True
             )
@@ -405,7 +405,7 @@ class RedisClusterCache(BaseCache):
                 await client.aclose()
             elif hasattr(client, "close"):
                 await client.close()
-        except (RedisError, OSError, AttributeError):
+        except RedisError, OSError, AttributeError:
             logger.debug("Failed to close Redis cluster client", exc_info=True)
 
     async def get(self, key: str) -> CacheEntry | None:
@@ -424,7 +424,7 @@ class RedisClusterCache(BaseCache):
         except orjson.JSONDecodeError:
             logger.debug("Invalid cache payload in cluster for key %s", key)
             return None
-        except (RedisError, OSError):
+        except RedisError, OSError:
             logger.warning("Redis cluster get failed for key %s", key, exc_info=True)
             return None
 
@@ -447,7 +447,7 @@ class RedisClusterCache(BaseCache):
                 await client.set(key, envelope, ex=effective_ttl)
             else:
                 await client.set(key, envelope)
-        except (RedisError, OSError):
+        except RedisError, OSError:
             logger.warning("Redis cluster set failed for key %s", key, exc_info=True)
         return CacheEntry(
             etag=etag,
@@ -463,7 +463,7 @@ class RedisClusterCache(BaseCache):
         try:
             client = await self._get_client()
             await client.delete(*filtered)
-        except (RedisError, OSError):
+        except RedisError, OSError:
             logger.warning(
                 "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
             )
@@ -515,7 +515,7 @@ class NatsKVCache(BaseCache):
                 stored_at=float(parsed.get("stored_at") or time_module.time()),
                 ttl_seconds=float(parsed.get("ttl_seconds") or 0.0),
             )
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NATS KV get failures return None (cache miss)
             # nats.js.errors.KeyNotFoundError is common on cache miss if bucket exists
             # but key doesn't.
             logger.debug("NATS KV get failed for key %s: %s", key, exc)
@@ -537,7 +537,10 @@ class NatsKVCache(BaseCache):
         try:
             kv = await self._get_kv()
             await kv.put(key, envelope)
-        except Exception as exc:
+        except (
+            OSError,
+            ConnectionError,
+        ) as exc:  # RZ-22-01: narrowed — NATS KV write errors
             logger.warning("NATS KV set failed for key %s: %s", key, exc)
         return CacheEntry(
             etag=etag,
@@ -563,7 +566,10 @@ class NatsKVCache(BaseCache):
                             await kv.delete(k)
                 else:
                     await kv.delete(key)
-        except Exception as exc:
+        except (
+            OSError,
+            ConnectionError,
+        ) as exc:  # RZ-22-01: narrowed — NATS KV invalidation errors
             logger.warning("NATS KV invalidate failed: %s", exc)
 
     async def close(self) -> None:

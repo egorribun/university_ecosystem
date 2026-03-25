@@ -1,6 +1,7 @@
 # TD-07 (audit 2026-03-06): NetworkPolicy for frontend pods.
+# MOD-22-08 (audit 2026-03-25 Wave 22): Added gateway egress rule.
 # Without this policy, frontend pods can initiate arbitrary egress connections.
-# This policy restricts ingress to ingress-nginx and egress to kube-dns only.
+# This policy restricts ingress to ingress-nginx and egress to gateway + kube-dns only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,8 +24,19 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    # Allow DNS resolution (required for all pods)
-    - to: []
+    # MOD-22-08: Allow egress to the gateway service (API proxy)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow DNS resolution (kube-system, required for all pods)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
           port: 53
