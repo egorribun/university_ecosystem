@@ -635,7 +635,10 @@ async def check_replication_lag() -> float | None:
             )
             row = result.one_or_none()
             return float(row[0]) if row and row[0] is not None else 0.0
-    except OSError, ConnectionError:  # RZ-22-01: narrowed — DB/network errors
+    except (
+        OSError,
+        ConnectionError,
+    ):  # RZ-25-01 + RZ-22-01: narrowed — DB/network errors
         logger.warning("Failed to check replication lag", exc_info=True)
         return None
 

@@ -87,11 +87,15 @@ class RedisSessionBackend(SessionBackend):
             TimeoutError,
             OSError,
         ):  # RZ-22-01: narrowed — Redis errors
-            # Fallback to non-atomic if Lua is unavailable (e.g. Redis Cluster scripting off)
+            # RZ-25-06: Use pipeline to minimize TOCTOU window when Lua unavailable.
             remaining_ttl = await self._redis.ttl(key)
-            await self._redis.delete(key)
             if remaining_ttl > 0:
-                await self._redis.set(revoked_key, "1", ex=remaining_ttl)
+                pipe = self._redis.pipeline(transaction=True)
+                pipe.delete(key)
+                pipe.set(revoked_key, "1", ex=remaining_ttl)
+                await pipe.execute()
+            else:
+                await self._redis.delete(key)
         # Notify Gateway to invalidate its L1 cache
         try:
             await self._redis.publish("session:revocations", jti)
@@ -109,6 +113,14 @@ async def get_session_backend() -> SessionBackend:
         if isinstance(cache, RedisCache):
             client = await cache._get_client()
             return RedisSessionBackend(client)
+        # RZ-25-02: Fail-closed in production — NullSessionBackend bypasses revocation.
+        _env = getattr(settings, "environment", "production").lower()
+        if _env not in {"development", "local", "testing", "test"}:
+            raise RuntimeError(
+                "Session storage backend is 'redis' but Redis cache is unavailable. "
+                "NullSessionBackend would bypass session revocation — refusing to start. "
+                "Check REDIS_URL configuration."
+            )
 
     class NullSessionBackend(SessionBackend):
         # LOW-W19: tracks whether the first-use warning has been emitted

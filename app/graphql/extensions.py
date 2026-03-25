@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import threading
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -92,11 +93,12 @@ async def _increment_user_cost(user_id: str, cost: int, window_minute: int) -> i
         pipe.expire(redis_key, 120)
         results = await pipe.execute()
         return int(results[0])
-    except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-22-01: narrowed — Redis errors
-        # Redis unavailable — fall through to per-process in-memory counter.
-        # In multi-instance deployments this under-counts, but it still provides
-        # meaningful protection against single-client abuse within a process.
-        pass
+    except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-25-01 + PERF-25-01 + RZ-22-01
+        # PERF-25-01: Structured log so operators detect degraded cost tracking.
+        logger.warning(
+            "GraphQL cost tracking falling back to per-process counter",
+            extra={"user_id": user_id, "cost": cost},
+        )
 
     async with _user_cost_lock:
         stored_cost, stored_minute = _user_cost_memory.get(user_id, (0, window_minute))
@@ -233,6 +235,7 @@ class RequestTimeoutExtension(SchemaExtension):
 _MANIFEST_PATH = Path(__file__).resolve().parent / "query-manifest.json"
 
 _query_allowlist: dict[str, str] | None = None
+_manifest_lock = threading.Lock()  # RZ-25-05: protect lazy manifest load
 
 
 def _load_manifest() -> dict[str, str]:
@@ -240,20 +243,29 @@ def _load_manifest() -> dict[str, str]:
     global _query_allowlist
     if _query_allowlist is not None:
         return _query_allowlist
-    if _MANIFEST_PATH.exists():
-        try:
-            _query_allowlist = json.loads(_MANIFEST_PATH.read_text("utf-8"))
-            logger.info(
-                "Loaded %d persisted queries from %s",
-                len(_query_allowlist),
-                _MANIFEST_PATH,
-            )
-        except OSError, ValueError, KeyError:  # RZ-22-01: narrowed — JSON/file errors
-            logger.warning("Failed to load query manifest — persisted queries disabled")
+    with _manifest_lock:  # RZ-25-05: double-checked locking to prevent concurrent loads
+        if _query_allowlist is not None:
+            return _query_allowlist  # type: ignore[unreachable]  # RZ-25-05: concurrent double-check
+        if _MANIFEST_PATH.exists():
+            try:
+                _query_allowlist = json.loads(_MANIFEST_PATH.read_text("utf-8"))
+                logger.info(
+                    "Loaded %d persisted queries from %s",
+                    len(_query_allowlist),
+                    _MANIFEST_PATH,
+                )
+            except (
+                OSError,
+                ValueError,
+                KeyError,
+            ):  # RZ-25-01 + RZ-22-01: narrowed — JSON/file errors
+                logger.warning(
+                    "Failed to load query manifest — persisted queries disabled"
+                )
+                _query_allowlist = {}
+        else:
             _query_allowlist = {}
-    else:
-        _query_allowlist = {}
-    return _query_allowlist
+        return _query_allowlist
 
 
 def _hash_query(query: str) -> str:

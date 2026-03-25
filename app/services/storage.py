@@ -197,7 +197,7 @@ class S3Storage(StorageBackend):
         try:
             async with self._build_aioboto3_client() as s3:
                 await s3.put_object(**args)
-        except ConnectionError, TimeoutError, OSError:
+        except ConnectionError, TimeoutError, OSError:  # RZ-25-01
             # RZ-20-04: Narrowed — S3/MinIO upload failures are infra issues.
             logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
             raise
@@ -260,7 +260,7 @@ class S3Storage(StorageBackend):
         try:
             async with self._build_aioboto3_client() as s3:
                 await s3.delete_object(Bucket=self.bucket, Key=key)
-        except ConnectionError, TimeoutError, OSError:  # pragma: no cover
+        except ConnectionError, TimeoutError, OSError:  # pragma: no cover  # RZ-25-01
             # RZ-20-04: Narrowed — S3 delete is best-effort (fire-and-forget).
             logger.warning(
                 "Failed to delete %s from bucket %s", key, self.bucket, exc_info=True

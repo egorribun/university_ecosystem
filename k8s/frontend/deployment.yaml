@@ -55,13 +55,28 @@ spec:
             capabilities:
               drop:
                 - ALL
+          volumeMounts:  # TD-25-01: nginx requires writable dirs with readOnlyRootFilesystem
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
               cpu: 200m
-              memory: 128Mi
+              memory: 256Mi  # TD-25-03: raised from 128Mi — nginx gzip needs headroom
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Mi
 ---
 apiVersion: v1
 kind: Service

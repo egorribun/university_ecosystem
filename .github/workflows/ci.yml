@@ -178,6 +178,20 @@ jobs:
           fi
           echo "OK: no pickle usage found in app/"
 
+      - name: "Enforce Python 3 except tuple syntax (RZ-25-01 / MOD-25-01)"
+        # MOD-25-01 (audit 2026-03-25 Wave 25): Python 2 `except A, B:` syntax
+        # catches only A and binds to name B — the 2nd/3rd types are silently
+        # ignored.  Correct form: `except (A, B):`.  This gate prevents regression.
+        shell: bash
+        run: |
+          result=$(grep -rn --include='*.py' -E 'except [A-Za-z]+, [A-Z]' app/ tests/ | grep -v '^\s*#' || true)
+          if [ -n "$result" ]; then
+            echo "::error::Python 2 except syntax detected. Use tuple form: except (A, B):"
+            echo "$result"
+            exit 1
+          fi
+          echo "OK: no Python 2 except syntax found"
+
       - name: Validate docker compose configuration
         shell: pwsh
         run: |

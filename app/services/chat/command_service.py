@@ -150,7 +150,7 @@ class ChatMessageDispatcher:
                 try:
                     _hit = _json.loads(_cached)
                     _msg_id = uuid.UUID(_hit["message_id"])
-                except ValueError, KeyError, TypeError:
+                except ValueError, KeyError, TypeError:  # RZ-25-01
                     # Legacy entry: full JSON from before BE-02 — fall through to
                     # re-send path (idempotency protection degraded, not broken).
                     pass
