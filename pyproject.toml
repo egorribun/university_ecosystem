@@ -286,6 +286,9 @@ ignore = [
 "app/core/config/mixins/rate_limit_settings.py" = ["S105"]  # rate_limit names
 "app/services/audit_service.py" = ["S105"]  # AuditEvent enum values
 "app/core/exceptions/handlers.py" = ["S101"]  # assert isinstance() guard
+"app/cli/tests.py" = ["S603"]  # MOD-29-01: subprocess with hardcoded cmd list (not user input)
+"app/schemas/schemas.py" = ["S105"]  # MOD-29-01: token_type="bearer" is not a password
+"app/utils/retry.py" = ["S311"]  # MOD-29-01: random.random() for jitter, not crypto
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

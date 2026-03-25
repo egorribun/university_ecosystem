@@ -259,10 +259,10 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         hashed_password: str,
         role: UserRole = UserRole.STUDENT,  # LOW-W19: use UserRole enum, not bare str
         is_active: bool = True,
-        preferences: "UserPreferences | dict[str, Any] | None" = None,
-        profile: "UserProfile | dict[str, Any] | None" = None,
-        education_path: "EducationPath | dict[str, Any] | None" = None,
-    ) -> "User":
+        preferences: UserPreferences | dict[str, Any] | None = None,
+        profile: UserProfile | dict[str, Any] | None = None,
+        education_path: EducationPath | dict[str, Any] | None = None,
+    ) -> User:
         """Factory method with explicit types over dynamic __init__ kwargs."""
         return cls(
             email=email,
