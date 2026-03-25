@@ -22,7 +22,7 @@ spec:
               kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
-          port: 80  # RZ-25-03: match containerPort in deployment.yaml
+          port: 8080  # TD-26-01: match nginx-unprivileged containerPort (was 80 — RZ-25-03)
   egress:
     # MOD-22-08: Allow egress to the gateway service (API proxy)
     - to:

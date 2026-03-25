@@ -48,6 +48,11 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 	if req.SourceKey == "" || req.DestKey == "" {
 		return nil, status.Error(codes.InvalidArgument, "source_key and dest_key are required")
 	}
+	// RZ-26-04: bound key lengths to prevent Temporal workflow history bloat
+	const maxKeyLen = 1024
+	if len(req.SourceKey) > maxKeyLen || len(req.DestKey) > maxKeyLen {
+		return nil, status.Errorf(codes.InvalidArgument, "source_key/dest_key exceeds %d bytes", maxKeyLen)
+	}
 	if len(req.Options) > maxOptionsCount {
 		return nil, status.Errorf(codes.InvalidArgument, "options count %d exceeds limit of %d", len(req.Options), maxOptionsCount)
 	}

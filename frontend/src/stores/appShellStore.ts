@@ -102,15 +102,16 @@ export const useMobileDrawerOpen = () => useAppShellStore((state) => state.mobil
 
 export const useThemeMode = () => useAppShellStore((state) => state.themeMode)
 
-export const useAppShellActions = () =>
-  useAppShellStore(
-    useShallow((state) => ({
-      toggleSidebar: state.toggleSidebar,
-      setSidebarCollapsed: state.setSidebarCollapsed,
-      openMobileDrawer: state.openMobileDrawer,
-      closeMobileDrawer: state.closeMobileDrawer,
-      toggleMobileDrawer: state.toggleMobileDrawer,
-      setThemeMode: state.setThemeMode,
-      cycleThemeMode: state.cycleThemeMode,
-    }))
-  )
+// PERF-26-01: extract selector to module scope — inline closures caused useShallow
+// to detect a "change" every render because function refs were re-wrapped in a new object.
+const actionsSelector = (state: AppShellState) => ({
+  toggleSidebar: state.toggleSidebar,
+  setSidebarCollapsed: state.setSidebarCollapsed,
+  openMobileDrawer: state.openMobileDrawer,
+  closeMobileDrawer: state.closeMobileDrawer,
+  toggleMobileDrawer: state.toggleMobileDrawer,
+  setThemeMode: state.setThemeMode,
+  cycleThemeMode: state.cycleThemeMode,
+})
+
+export const useAppShellActions = () => useAppShellStore(useShallow(actionsSelector))

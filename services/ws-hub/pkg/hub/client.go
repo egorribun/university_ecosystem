@@ -181,6 +181,10 @@ func (c *Client) WritePump() {
 				return
 			}
 
+		case <-c.ctx.Done():
+			// RZ-26-08: context cancelled (ReadPump exited) — stop immediately
+			return
+
 		case <-ticker.C:
 			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
 				c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline for ping", "err", err)

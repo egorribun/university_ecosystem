@@ -160,7 +160,7 @@ async def check_spicedb_health(timeout_s: float = 2.0) -> tuple[str, float]:
                 timeout=timeout_s,
             )
             status = "ok"
-        except TimeoutError, grpc.RpcError:  # RZ-25-01 + TD-25-06
+        except TimeoutError, grpc.RpcError:  # RZ-26-01 + TD-25-06
             status = "error"
 
         latency_ms = (time.perf_counter() - start) * 1000.0

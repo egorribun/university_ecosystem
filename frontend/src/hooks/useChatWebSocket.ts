@@ -204,11 +204,15 @@ export function useChatWebSocket({
       // The previous "fall through to cookie-auth" comment was incorrect — the server
       // does NOT accept cookie-only upgrades since Wave 14.
       let ticket: string
+      // TD-26-02: AbortController for cleanup on unmount; TD-26-03: 5s timeout
+      const ticketController = new AbortController()
+      const ticketTimeout = setTimeout(() => ticketController.abort(), 5000)
       try {
         const resp = await fetch("/ws/ticket", {
           method: "POST",
           credentials: "include", // send HttpOnly session cookie
           headers: { "Content-Type": "application/json" },
+          signal: ticketController.signal, // TD-26-02
         })
         if (resp.ok) {
           const data = (await resp.json()) as { ticket: string; expires_in: number }
@@ -227,12 +231,14 @@ export function useChatWebSocket({
           return
         }
       } catch (e) {
-        // Network error — schedule backoff reconnect.
+        // Network error or abort — schedule backoff reconnect.
         logError("[WebSocket] Ticket fetch network error; will retry.", e)
         const delay = calculateReconnectDelay(reconnectAttemptRef.current)
         reconnectAttemptRef.current += 1
         reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
         return
+      } finally {
+        clearTimeout(ticketTimeout) // TD-26-03: clean up timeout
       }
 
     try {
@@ -310,13 +316,19 @@ export function useChatWebSocket({
             }
 
             case "typing": {
-              // PERF-W18-02 (audit 2026-03-23 Wave 18): cap typingUsers map to
-              // prevent unbounded growth under bot spam or malicious burst.
-              const MAX_TYPING_USERS = 100
+              // PERF-26-02: per-chat cap replaces global 100 cap (was PERF-W18-02).
+              // Global cap starved low-activity chats when many chats were active.
+              const MAX_TYPING_PER_CHAT = 20
               setTypingUsers((prev) => {
                 const key = `${validated.chat_id}:${validated.user_id}`
-                // Allow updates to existing keys but reject new keys when at capacity
-                if (prev.size >= MAX_TYPING_USERS && !prev.has(key)) return prev
+                // Allow updates to existing keys but reject new keys when at per-chat capacity
+                if (!prev.has(key)) {
+                  let chatCount = 0
+                  for (const k of prev.keys()) {
+                    if (k.startsWith(`${validated.chat_id}:`)) chatCount++
+                  }
+                  if (chatCount >= MAX_TYPING_PER_CHAT) return prev
+                }
                 const newMap = new Map(prev)
                 const existing = newMap.get(key)
                 if (existing) clearTimeout(existing.timeout)
@@ -438,7 +450,9 @@ export function useChatWebSocket({
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing) return
     lastSentRef.current.set(key, now)
-    wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
+    try { // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
+      wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
+    } catch { /* WS closed between readyState check and send — safe to ignore */ }
   }, [])
 
   const sendRead = useCallback((chatId: string, messageId: string) => {
@@ -447,7 +461,9 @@ export function useChatWebSocket({
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read) return
     lastSentRef.current.set(key, now)
-    wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
+    try { // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
+      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
+    } catch { /* WS closed between readyState check and send — safe to ignore */ }
   }, [])
 
   const getTypingUsersForChat = useCallback(

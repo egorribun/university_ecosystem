@@ -184,7 +184,8 @@ jobs:
         # ignored.  Correct form: `except (A, B):`.  This gate prevents regression.
         shell: bash
         run: |
-          result=$(grep -rn --include='*.py' -E 'except [A-Za-z]+, [A-Z]' app/ tests/ | grep -v '^\s*#' || true)
+          # MOD-26-02: strengthened regex — old pattern missed multi-exception and lowercase bindings
+          result=$(grep -rn --include='*.py' -P 'except\s+[A-Za-z_][\w.]*\s*,\s*[A-Za-z_]' app/ tests/ | grep -v '^\s*#' | grep -v 'except (' || true)
           if [ -n "$result" ]; then
             echo "::error::Python 2 except syntax detected. Use tuple form: except (A, B):"
             echo "$result"
