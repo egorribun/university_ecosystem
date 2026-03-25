@@ -33,12 +33,15 @@
 - Settings: use `@cached_property` namespace accessors (settings.db, settings.security, etc.)
   - Phase 2 (Wave 21): accessors return `_NamespaceView` proxies, not `self`
 - Frontend validation: **Valibot only** (Zod removed in Wave 21)
-- Frontend debounce: `useDebounced` from `@/hooks/useDebounced` (300-350ms)
+- Frontend debounce: `useDebounced` from `@/hooks/useDebounced` — strategy presets: `"search"` (200ms), `"default"` (300ms), `"validation"` (350ms) (PERF-23-04, Wave 23)
 - Frontend memo: `React.memo()` on list/grid/dashboard components
 - GraphQL: 5 defense layers — QueryDepthLimiter, MaxTokensLimiter, QueryCostExtension, RequestTimeoutExtension, PersistedQueryExtension (prod only)
 - Feature flags: `from app.core.feature_flags import is_enabled` (async) or `is_enabled_sync`
 - Password hashing: Argon2id only — **bcrypt verification removed** (TD-21-04, Wave 21)
 - Valkey eviction: `volatile-lru` (changed from allkeys-lru in Wave 21 — RZ-21-02)
+- OTEL Metrics: bridge via `PrometheusMetricReader` in `configure_metrics()` — new metrics use OTEL API, legacy use prometheus_client (MOD-23-05)
+- Suspense queries: `useSuspenseMyEventsQuery` for components inside `<Suspense>` — do NOT use for offline-fallback hooks (MOD-23-02)
+- Bundle budget: main JS chunk must be <500 KB (enforced in CI via bundle-analysis job, MOD-23-06)
 
 ## Gotchas
 - Glob `**/alembic/versions/*.py` may not find files on Windows; use `**/*alembic*/**/*.py`
@@ -57,15 +60,19 @@
 - Renovate: crypto packages (cryptography, pyjwt, argon2-cffi, etc.) require manual review (RZ-22-02)
 - CI actions: ALL must be SHA-pinned (RZ-22-03); no mutable version tags
 - ExternalSecret refreshInterval: `1m` (reduced from 5m in Wave 22 — TD-22-04)
-- SpiceDB max tolerable downtime: 30s (not 60s) — see `SPICEDB_MAX_TOLERABLE_DOWNTIME_SECONDS`
+- SpiceDB max tolerable downtime: 45s (raised from 30s in Wave 23 — PERF-23-01) — see `SPICEDB_MAX_TOLERABLE_DOWNTIME_SECONDS`
 - Rust Cargo.toml: exact version pins for security-critical deps (TD-22-02)
-- Gateway rate limit fallback: 3 req/60s per instance (reduced from 10 in Wave 22 — RZ-22-06)
+- Gateway rate limit fallback: 3 req/60s per instance (reduced from 10 in Wave 22 — RZ-22-06); health probes exempt (PERF-23-02)
+- ws-hub broadcast: messages >60 KB dropped before fan-out to prevent CloseMessageTooBig (RZ-23-05)
+- ws-hub goroutines: tracked via WaitGroup + `ws_hub_active_goroutines` gauge (RZ-23-07)
+- File processor: gRPC inputs validated before Temporal workflow start; Options map bounded to 10 entries (RZ-23-04)
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
 - Wave 20: 22 issues, 53 files, +1724/-206 — full report in `TOTAL_AUDIT_2026.md`
 - Wave 21: 21 issues, 24 files, +1694/-528 — full report in `TOTAL_AUDIT_WAVE21.md`
 - Wave 22: 21 issues, 86 files, ~+1200/-300 — full report in `TOTAL_AUDIT_WAVE22.md`
+- Wave 23: 21 issues, 12 files, ~+180/-30 — full report in `TOTAL_AUDIT_WAVE23.md`
 - Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
 - Renovate Bot configured (`renovate.json`) — crypto packages manual-review-only (Wave 22)
 - SBOM generation (Syft/SPDX) added to CI pipeline; actions SHA-pinned (Wave 22)

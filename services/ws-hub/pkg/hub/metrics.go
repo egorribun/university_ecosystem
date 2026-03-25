@@ -53,4 +53,12 @@ var (
 		Name: "ws_hub_broadcast_queue_depth",
 		Help: "Current number of pending messages in the broadcast worker channel.",
 	})
+
+	// RZ-23-07 (audit 2026-03-25 Wave 23): Track active goroutines managed by
+	// the hub. Sustained growth indicates goroutine leaks; operators can alert
+	// on active_goroutines > expected_workers + active_connections.
+	ActiveGoroutines = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "ws_hub_active_goroutines",
+		Help: "Number of active goroutines managed by the hub (broadcast workers, NATS handlers).",
+	})
 )

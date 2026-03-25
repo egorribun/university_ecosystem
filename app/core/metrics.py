@@ -1095,6 +1095,38 @@ def configure_metrics(app: FastAPI) -> None:
             )
             return
 
+    # MOD-23-05 (audit 2026-03-25 Wave 23): OTEL Metrics bridge.
+    # Initializes OpenTelemetry MeterProvider with PrometheusMetricReader so that
+    # new metrics written via the OTEL API are automatically exposed on the same
+    # /metrics endpoint alongside existing prometheus_client metrics. This enables
+    # incremental migration: legacy metrics stay untouched, new code uses OTEL API.
+    try:
+        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+        from opentelemetry.metrics import set_meter_provider
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.resources import Resource
+
+        _otel_resource = Resource.create({"service.name": "university-backend"})
+        _otel_reader = PrometheusMetricReader()
+        _otel_provider = MeterProvider(
+            resource=_otel_resource, metric_readers=[_otel_reader]
+        )
+        set_meter_provider(_otel_provider)
+        logger.info(
+            "OTEL Metrics bridge initialized — new metrics use OTEL API, exposed via /metrics"
+        )
+    except ImportError:
+        logger.debug(
+            "opentelemetry-exporter-prometheus not installed — OTEL metrics bridge skipped"
+        )
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: metrics guard — OTEL init must not crash the app
+        logger.warning(
+            "OTEL Metrics bridge initialization failed — falling back to prometheus_client only",
+            exc_info=True,
+        )
+
     app.add_middleware(PrometheusRequestMetricsMiddleware)
     try:
         from app.core.observability import get_notification_queue_metrics

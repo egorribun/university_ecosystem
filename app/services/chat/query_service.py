@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast  # TD-23-04 (audit 2026-03-25 Wave 23)
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
@@ -30,7 +30,9 @@ from app.schemas.chat import (
 class ChatQueryService:
     """Handles read-only operations for chats and messages. (TD-1)"""
 
-    def __init__(self, session: AsyncDatabaseSession, repository: ChatRepository):
+    def __init__(
+        self, session: AsyncDatabaseSession, repository: ChatRepository
+    ) -> None:
         self.session = session
         self.repository = repository
 
@@ -64,7 +66,7 @@ class ChatQueryService:
         ]
         last_messages_map = await self.repository.get_last_messages(last_message_ids)
 
-        pre_responses = []
+        pre_responses: list[ChatResponse] = []
         for chat_id, data in chat_data_map.items():
             chat = data["chat"]
             last_message = last_messages_map.get(data["last_message_id"])
@@ -82,7 +84,7 @@ class ChatQueryService:
 
         presence_map = await build_presence_map(participant_ids, db=self.session)
 
-        enriched_chats = []
+        enriched_chats: list[ChatResponse] = []
         for chat_resp in pre_responses:
             l_msg = chat_resp.last_message
             if l_msg is not None:
@@ -98,7 +100,7 @@ class ChatQueryService:
                     sender_presence=presence_map.get(l_msg.sender_id),
                 )
 
-            participant_status = {}
+            participant_status: dict[uuid.UUID, PresenceStatus] = {}
             for p_item in chat_resp.participants:
                 participant_status[p_item.id] = presence_map.get(
                     p_item.id, PresenceStatus()

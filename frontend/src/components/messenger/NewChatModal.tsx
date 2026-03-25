@@ -23,8 +23,8 @@ const MIN_SEARCH_LENGTH = 1
 export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSelect }) => {
   const { t } = useTranslation(["messenger", "common"])
   const [search, setSearch] = useState("")
-  // PERF-20-05: Debounce 300ms to prevent API call on every keystroke.
-  const debouncedSearch = useDebounced(search, 300)
+  // PERF-20-05: Debounce to prevent API call on every keystroke.
+  const debouncedSearch = useDebounced(search, "default") // PERF-23-04: messenger search uses default preset (300ms)
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["users", debouncedSearch],

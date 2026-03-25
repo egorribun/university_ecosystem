@@ -110,6 +110,7 @@ func (c *Client) handleJoin(msg Message) {
 		return
 	}
 	if !c.Hub.AuthorizeRoomJoin(c.ctx, c.UserID, msg.Room) {
+		AuthFailuresTotal.WithLabelValues("room_join_denied").Inc() // RZ-23-06: wire existing metric
 		c.Hub.Logger.WarnContext(c.ctx, "Unauthorized room join rejected",
 			"user", c.UserID,
 			"room", msg.Room)

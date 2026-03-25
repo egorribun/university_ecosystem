@@ -47,5 +47,9 @@ class DataAccessLog(Base, UUID7PrimaryKeyMixin):
     )
     signature: Mapped[str | None] = mapped_column(String(512))
 
-    actor = relationship("User", foreign_keys=[actor_user_id])
-    subject = relationship("User", foreign_keys=[subject_user_id])
+    # RZ-23-02 (audit 2026-03-25 Wave 23): Added lazy="noload" — was missing entirely.
+    # SQLAlchemy defaults to lazy="select" (N+1). On a RANGE-partitioned audit table
+    # this fires cross-partition queries per row. Use selectinload() at call site
+    # if relationship traversal is ever needed.
+    actor = relationship("User", foreign_keys=[actor_user_id], lazy="noload")
+    subject = relationship("User", foreign_keys=[subject_user_id], lazy="noload")

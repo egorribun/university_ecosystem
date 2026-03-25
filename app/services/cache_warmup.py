@@ -71,7 +71,9 @@ async def _warm_schedule(cache: BaseCache, db: AsyncSession) -> None:
         _warm_schedule_group(cache, db, str(group_id), ttl_seconds=ttl)
         for group_id in settings.cache_warmup_group_ids
     ]
-    await asyncio.gather(*tasks)
+    # MOD-23-04 (audit 2026-03-25 Wave 23): return_exceptions=True — cache warmup
+    # is best-effort; one group failure must not prevent others from warming.
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _period_days_from_key(period_key: str) -> int | None:
@@ -133,7 +135,9 @@ async def _warm_stats_for_user(
             skip_cache=skip_cache,
         ),
     ]
-    await asyncio.gather(*tasks)
+    # MOD-23-04 (audit 2026-03-25 Wave 23): return_exceptions=True — individual
+    # stat warmup failure must not block sibling stats.
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _warm_stats(cache: BaseCache, db: AsyncSession) -> None:
@@ -145,7 +149,9 @@ async def _warm_stats(cache: BaseCache, db: AsyncSession) -> None:
             tasks.append(
                 _warm_stats_for_user(cache, db, str(u_id), period_key, skip_cache=False)
             )
-    await asyncio.gather(*tasks)
+    # MOD-23-04 (audit 2026-03-25 Wave 23): return_exceptions=True — individual
+    # user/period warmup failure must not block remaining warmups.
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
@@ -263,6 +269,6 @@ async def warm_cache() -> None:
                 _warm_news(cache, db),
                 _warm_events(cache, db),
             )
-        except (ConnectionError, TimeoutError, OSError):
+        except ConnectionError, TimeoutError, OSError:
             # RZ-20-04: Narrowed — cache warmup is best-effort.
             logger.exception("Cache warmup failed")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING  # TD-23-04 (audit 2026-03-25 Wave 23)
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
@@ -35,10 +35,10 @@ class ChatAttachmentService:
 
     async def process_upload(
         self, upload: UploadFile, chat_id: uuid.UUID, *, locale: str | None
-    ) -> dict[str, object]:
+    ) -> dict[str, str | int]:
         """Save a single attachment and return its metadata."""
         await scan_for_malware(upload, locale=locale, size_bytes=upload.size)
-        meta = await save_attachment(
+        meta: str | dict[str, object] = await save_attachment(
             upload,
             "chat_uploads",
             f"chat_{chat_id}",

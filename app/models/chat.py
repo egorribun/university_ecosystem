@@ -64,7 +64,7 @@ class Chat(Base, UUID7PrimaryKeyMixin):
     participants = relationship(
         "User", secondary=chat_participants, backref="chats", lazy="noload"
     )
-    messages: Mapped[list["Message"]] = relationship(
+    messages: Mapped[list[Message]] = relationship(
         "Message",
         back_populates="chat",
         cascade="all, delete-orphan",
@@ -90,11 +90,14 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     read_status: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
-    chat: Mapped["Chat"] = relationship(
-        "Chat", back_populates="messages", lazy="joined"
-    )
-    sender = relationship("User", lazy="joined")
-    attachments: Mapped[list["Attachment"]] = relationship(
+    # RZ-23-03 (audit 2026-03-25 Wave 23): Changed lazy="joined" → lazy="noload".
+    # lazy="joined" fires unconditional JOINs on every Message load. On bulk
+    # message fetches (50-msg pagination), this adds 2 JOINs where the parent
+    # context (chat_id, sender_id) is already known as FK columns.
+    # Repository already uses selectinload(Message.sender) at all call sites.
+    chat: Mapped[Chat] = relationship("Chat", back_populates="messages", lazy="noload")
+    sender = relationship("User", lazy="noload")
+    attachments: Mapped[list[Attachment]] = relationship(
         "Attachment",
         back_populates="message",
         cascade="all, delete-orphan",
@@ -134,6 +137,7 @@ class Attachment(Base, UUID7PrimaryKeyMixin):
     )
 
     # Relationships
-    message: Mapped["Message"] = relationship(
-        "Message", back_populates="attachments", lazy="joined"
+    # RZ-23-03 (audit 2026-03-25 Wave 23): Changed lazy="joined" → lazy="noload".
+    message: Mapped[Message] = relationship(
+        "Message", back_populates="attachments", lazy="noload"
     )
