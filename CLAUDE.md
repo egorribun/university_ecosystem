@@ -72,7 +72,7 @@
 - Wave 20: 22 issues, 53 files, +1724/-206 — full report in `TOTAL_AUDIT_2026.md`
 - Wave 21: 21 issues, 24 files, +1694/-528 — full report in `TOTAL_AUDIT_WAVE21.md`
 - Wave 22: 21 issues, 86 files, ~+1200/-300 — full report in `TOTAL_AUDIT_WAVE22.md`
-- Wave 23: 21 issues, 12 files, ~+180/-30 — full report in `TOTAL_AUDIT_WAVE23.md`
+- Wave 23: 21 issues, 28 files, +614/-112 — full report in `TOTAL_AUDIT_WAVE23.md`
 - Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
 - Renovate Bot configured (`renovate.json`) — crypto packages manual-review-only (Wave 22)
 - SBOM generation (Syft/SPDX) added to CI pipeline; actions SHA-pinned (Wave 22)
@@ -84,4 +84,6 @@
 - Rust `crate-type` includes `"rlib"` alongside `"cdylib"` for fuzz/test support
 - Rust PyO3 panic boundary tests in `native/rust_ext/src/lib.rs` `#[cfg(test)]` module (13 tests)
 - K8s: outbox-worker PDB in `k8s/outbox-worker/pdb.yaml`; frontend NetworkPolicy tightened to gateway+DNS egress only
+- Wave 23 modernization: OTEL metrics bridge, useSuspenseQuery pattern, asyncio.TaskGroup, adaptive debounce, bundle CI budget
+- Wave 23 typing: mypy strict for chat services (5 files) + webpush — fixed Python 2 exception syntax bug in command_service.py
 - Backend audit status: **production-ready** — further audits recommended after new features, major dep updates, or quarterly
