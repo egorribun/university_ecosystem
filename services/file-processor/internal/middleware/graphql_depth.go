@@ -25,11 +25,18 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 			return
 		}
 
-		// Parse the request body to extract the query
+		// RZ-33-22: Read the full body once, extract only the "query" field for
+		// depth estimation, then pass the original body through unchanged.
+		// Previous code used DisallowUnknownFields (rejected valid requests with
+		// "variables") and re-encoded only the Query field (dropped variables).
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, `{"errors":[{"message":"invalid request body"}]}`, http.StatusBadRequest)
+			return
+		}
+
 		var req graphqlRequest
-		decoder := json.NewDecoder(r.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&req); err != nil {
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
 			http.Error(w, `{"errors":[{"message":"invalid request body"}]}`, http.StatusBadRequest)
 			return
 		}
@@ -42,10 +49,10 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 			return
 		}
 
-		// Re-encode body for downstream handler since we consumed it
-		body, _ := json.Marshal(req)
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		r.ContentLength = int64(len(body))
+		// Restore the original body for the downstream handler — preserves
+		// variables, operationName, and extensions that were in the request.
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		r.ContentLength = int64(len(bodyBytes))
 
 		next.ServeHTTP(w, r)
 	})

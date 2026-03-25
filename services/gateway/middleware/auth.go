@@ -64,7 +64,7 @@ type cacheEntry struct {
 // JWTMiddleware validates JWT tokens (HS256 and RS256).
 type JWTMiddleware struct {
 	secret       []byte
-	rsaPublicKey *rsa.PublicKey // non-nil when RS256/JWKS is configured
+	rsaPublicKey atomic.Pointer[rsa.PublicKey] // RZ-33-19: atomic for JWKS hot-reload safety
 	redis        *redis.Client
 	l1cache      *expirable.LRU[string, cacheEntry]
 	l1TTL        time.Duration // PERF-31-02: TTL for XFetch jitter calculation
@@ -149,7 +149,7 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 			// safer than silently allowing HS256-only mode when RS256 was intended.
 			panic(fmt.Sprintf("gateway: failed to parse JWKS_PUBLIC_KEY_PEM: %v", err))
 		}
-		m.rsaPublicKey = pubKey
+		m.rsaPublicKey.Store(pubKey)
 	}
 
 	return m
@@ -183,11 +183,7 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 		prometheus.MustRegister(jwksRefreshes, jwksRefreshErrors, jwksKeyRotations)
 	})
 
-	// Store the initial key in an atomic pointer for lock-free hot-path reads.
-	var keyPtr atomic.Pointer[rsa.PublicKey]
-	if m.rsaPublicKey != nil {
-		keyPtr.Store(m.rsaPublicKey)
-	}
+	// RZ-33-19: rsaPublicKey is already atomic.Pointer on the struct — no local copy needed.
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	backoff := interval
@@ -218,11 +214,10 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 					ticker.Reset(interval)
 				}
 
-				// Atomic swap — the hot path reads via keyPtr.Load().
-				old := keyPtr.Load()
+				// Atomic swap — RZ-33-19: hot path reads via m.rsaPublicKey.Load().
+				old := m.rsaPublicKey.Load()
 				if old == nil || !old.Equal(newKey) {
-					keyPtr.Store(newKey)
-					m.rsaPublicKey = newKey
+					m.rsaPublicKey.Store(newKey)
 					jwksKeyRotations.Inc()
 					logger.Info("JWKS key rotated successfully")
 				}
@@ -611,16 +606,16 @@ func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 	switch token.Method.(type) {
 	case *jwt.SigningMethodRSA:
 		// RS256 path — requires a configured public key.
-		if m.rsaPublicKey == nil {
+		if m.rsaPublicKey.Load() == nil {
 			return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
 		}
-		return m.rsaPublicKey, nil
+		return m.rsaPublicKey.Load(), nil
 	case *jwt.SigningMethodHMAC:
 		// HS256 path — only allowed when RS256 is NOT configured.
 		// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
 		// alongside RS256 would allow an attacker with knowledge of the HMAC secret
 		// to forge tokens even after the RS256 key is rotated.
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
 		}
 		return m.secret, nil
@@ -653,7 +648,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 		// RZ-W15-01: Pre-parse algorithm check — mirrors ws-hub's extractAlgFromHeader.
 		// Reads the alg claim from the JOSE header before any signature work, so that
 		// an algorithm downgrade attempt is caught and logged early.
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			alg, algErr := extractAlgFromHeader(tokenString)
 			if algErr != nil {
 				AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "malformed token header", "https://api.university.edu/probs/invalid-token")
@@ -672,7 +667,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 		// any other algorithm not in the list before signature verification occurs.
 		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
 		validMethods := []string{"RS256", "HS256"}
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			validMethods = []string{"RS256"}
 		}
 		parser := jwt.NewParser(
@@ -761,7 +756,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 		}
 
 		// RZ-W15-01: Same pre-parse algorithm check as Validate() for optional auth.
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			alg, algErr := extractAlgFromHeader(tokenString)
 			if algErr != nil || alg != "RS256" {
 				// Malformed header or downgrade attempt — treat as unauthenticated.
@@ -776,7 +771,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 
 		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
 		optValidMethods := []string{"RS256", "HS256"}
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			optValidMethods = []string{"RS256"}
 		}
 		parser := jwt.NewParser(
