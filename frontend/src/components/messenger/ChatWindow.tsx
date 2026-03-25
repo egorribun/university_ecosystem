@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, memo } from "react"
+import React, { useRef, useEffect } from "react"
 import { motion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import { File, Check, CheckCheck } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -12,7 +12,8 @@ interface ChatWindowProps {
   messages: Message[]
 }
 
-export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
@@ -166,6 +167,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
       </div>
     </div>
   )
-})
+}
 
 ChatWindow.displayName = "ChatWindow"

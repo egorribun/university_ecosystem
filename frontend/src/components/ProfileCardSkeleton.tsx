@@ -1,4 +1,3 @@
-import { memo } from "react"
 import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ProfileCardSkeletonProps {
@@ -69,4 +68,5 @@ export function ProfileCardSkeleton({
   )
 }
 
-export default memo(ProfileCardSkeleton)
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export default ProfileCardSkeleton

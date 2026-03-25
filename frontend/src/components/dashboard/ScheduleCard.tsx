@@ -1,4 +1,4 @@
-import { memo, useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
+import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -17,8 +17,8 @@ interface ScheduleCardProps {
   "data-pop"?: string
 }
 
-// PERF-20-04: memo() — receives complex locale/schedule computation props.
-export const ScheduleCard = memo(function ScheduleCard({
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export function ScheduleCard({
   userRole,
   userGroupId,
   time,
@@ -270,4 +270,4 @@ export const ScheduleCard = memo(function ScheduleCard({
       />
     </Card>
   )
-})
+}

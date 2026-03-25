@@ -61,4 +61,16 @@ var (
 		Name: "ws_hub_active_goroutines",
 		Help: "Number of active goroutines managed by the hub (broadcast workers, NATS handlers).",
 	})
+
+	// RZ-27-02: Incoming messages dropped due to exceeding the size limit.
+	IncomingDropsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_incoming_drops_total",
+		Help: "Total incoming messages dropped due to size limit (RZ-27-02)",
+	})
+
+	// RZ-27-05: Unknown WS message types received — protocol drift detection.
+	UnknownMsgTypeTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_unknown_msg_type_total",
+		Help: "Unknown WS message types received (RZ-27-05)",
+	})
 )

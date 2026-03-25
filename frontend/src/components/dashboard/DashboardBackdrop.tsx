@@ -1,4 +1,4 @@
-import { useMemo, memo } from "react"
+import { useMemo } from "react"
 
 interface DashboardBackdropProps {
   isNarrow: boolean
@@ -49,4 +49,5 @@ function DashboardBackdropComponent({ isNarrow, prefersReducedMotion }: Dashboar
   )
 }
 
-export const DashboardBackdrop = memo(DashboardBackdropComponent)
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export const DashboardBackdrop = DashboardBackdropComponent

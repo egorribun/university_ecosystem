@@ -32,7 +32,7 @@ def configure_uvloop() -> bool:
     except ImportError:
         logger.debug("uvloop not installed, using default asyncio loop")
         return False
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — uvloop configuration failure is non-fatal
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — uvloop configuration failure is non-fatal (reviewed TD-27-04)
         logger.warning("Failed to configure uvloop: %s", exc)
         return False
 
@@ -47,5 +47,5 @@ def get_loop_implementation() -> str:
 
         loop = asyncio.get_event_loop_policy()
         return type(loop).__name__
-    except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — loop detection failure returns "unknown"
+    except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — loop detection failure returns "unknown" (reviewed TD-27-04)
         return "unknown"

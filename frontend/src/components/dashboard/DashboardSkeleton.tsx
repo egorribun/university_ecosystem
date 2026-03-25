@@ -1,4 +1,3 @@
-import { memo } from "react"
 import { Skeleton, Card } from "@/components/ui"
 
 /**
@@ -83,4 +82,5 @@ export function DashboardSkeleton() {
   )
 }
 
-export default memo(DashboardSkeleton)
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export default DashboardSkeleton

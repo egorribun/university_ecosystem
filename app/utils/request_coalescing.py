@@ -88,7 +88,7 @@ def coalesce_requests(
                     result = await func(*args, **kwargs)
                     future.set_result(result)
                     return result
-                except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — propagates to coalesced waiters then re-raises
+                except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — propagates to coalesced waiters then re-raises (reviewed TD-27-04)
                     future.set_exception(exc)
                     raise
                 finally:
@@ -147,7 +147,7 @@ class RequestCoalescer:
                 result = await func()
                 future.set_result(result)
                 return result
-            except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — propagates to coalesced waiters then re-raises
+            except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — propagates to coalesced waiters then re-raises (reviewed TD-27-04)
                 future.set_exception(exc)
                 raise
             finally:

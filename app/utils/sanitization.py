@@ -116,7 +116,7 @@ def sanitize_rich_text(html_content: str) -> str:
             # nh3 automatically adds rel="noopener noreferrer" to every <a> tag.
             link_rel="noopener noreferrer",
         )
-    except Exception as e:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts nh3 errors to HTTPException
+    except Exception as e:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts nh3 errors to HTTPException (reviewed TD-27-04)
         import structlog
         from fastapi import HTTPException
 
@@ -190,7 +190,7 @@ def sanitize_path(path: str, base_dir: str | Path) -> Path | None:
         if base in user_path.parents or user_path == base:
             return user_path
         return None
-    except ValueError, OSError:  # RZ-26-01
+    except ValueError, OSError:  # RZ-27-01
         return None
 
 

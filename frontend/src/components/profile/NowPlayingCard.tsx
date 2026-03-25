@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -8,7 +8,8 @@ import type { NowPlaying } from "@/types/spotify"
 
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
-export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export function NowPlayingCard({ data }: { data: NowPlaying }) {
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const reduced = useReducedMotion()
   const duration = data.duration_ms ?? 0
@@ -264,6 +265,6 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       </motion.div>
     </a>
   )
-})
+}
 
 export default NowPlayingCard

@@ -180,7 +180,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for user %s", user.id)
-    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — WebSocket loop must not crash without cleanup
+    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — WebSocket loop must not crash without cleanup (reviewed TD-27-04)
         # Unexpected error in the WebSocket loop: log at ERROR so Sentry captures
         # the full traceback. The connection is cleaned up regardless.
         logger.exception("WebSocket unexpectedly closed for user %s", user.id)

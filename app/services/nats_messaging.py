@@ -225,9 +225,7 @@ class NatsService:
             try:
                 await handler(wrapped)
                 await msg.ack()
-            except (
-                Exception
-            ) as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NAKs message for retry
+            except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NAKs message for retry (reviewed TD-27-04)
                 # RZ-20-04: KEEP broad catch — handlers are user-defined callbacks;
                 # any unhandled exception must nak() the message, never crash the
                 # subscription loop. Logged at ERROR for Sentry pickup.

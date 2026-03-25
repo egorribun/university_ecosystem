@@ -34,7 +34,7 @@ class HealthRepository:
         try:
             await self._connection.execute(text("SELECT 1"))
             return True
-        except Exception:  # RZ-22-01-JUSTIFIED: health probe — connectivity check returns False on any error
+        except Exception:  # RZ-22-01-JUSTIFIED: health probe — connectivity check returns False on any error (reviewed TD-27-04)
             return False
 
     async def check_notification_queue_accessible(self) -> bool:
@@ -48,7 +48,7 @@ class HealthRepository:
                 text("SELECT 1 FROM notification_queue_jobs")
             )
             return True
-        except Exception:  # RZ-22-01-JUSTIFIED: health probe — notification queue check returns False on any error
+        except Exception:  # RZ-22-01-JUSTIFIED: health probe — notification queue check returns False on any error (reviewed TD-27-04)
             return False
 
     async def get_table_count(self, table_name: str) -> int | None:
@@ -77,7 +77,7 @@ class HealthRepository:
             row = result.fetchone()
             if row is not None and row[0] >= 0:
                 return int(row[0])
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: health probe — fast count falls back to slower COUNT(*)
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: health probe — fast count falls back to slower COUNT(*) (reviewed TD-27-04)
             _logger.debug("Fast table count check failed: %s", exc)  # nosec B110
             pass
 
@@ -91,9 +91,7 @@ class HealthRepository:
             result = await self._connection.execute(query)
             row = result.fetchone()
             return int(row[0]) if row is not None else 0
-        except (
-            Exception
-        ):  # RZ-22-01-JUSTIFIED: health probe — table count returns None on any error
+        except Exception:  # RZ-22-01-JUSTIFIED: health probe — table count returns None on any error (reviewed TD-27-04)
             return None
 
     async def get_connection_stats(self) -> HealthStatsDTO:
@@ -123,7 +121,7 @@ class HealthRepository:
                         row[3] / (row[3] + row[4]) if (row[3] + row[4]) > 0 else 1.0
                     ),
                 )
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: health probe — connection stats returns defaults on error
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: health probe — connection stats returns defaults on error (reviewed TD-27-04)
             _logger.debug("Database connection stats probe failed: %s", exc)  # nosec B110
             pass
         return HealthStatsDTO(

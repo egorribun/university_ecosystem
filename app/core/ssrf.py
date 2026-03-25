@@ -68,9 +68,11 @@ def _check_resolved(
         try:
             addr = ipaddress.ip_address(sockaddr[0])
         except ValueError:
+            # TD-27-03: Distinguish DNS resolver malformat from blocked IP
             raise ValueError(
-                f"SSRF blocked: {hostname} resolved to unparseable address "
-                f"{sockaddr[0]!r} — fail-closed"
+                f"SSRF blocked: {hostname} resolved to address {sockaddr[0]!r} "
+                f"which is not a valid IP (possible DNS resolver misconfiguration) "
+                f"— fail-closed per RZ-W19-02"
             ) from None
         if _is_blocked(addr):
             raise ValueError(f"SSRF blocked: {hostname} resolves to internal IP {addr}")

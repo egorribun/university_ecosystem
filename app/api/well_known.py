@@ -66,7 +66,7 @@ def _get_jwk_from_pem(kid: str, pem_content: str, alg: str) -> JWK | None:
             n=_to_base64url(n_bytes),
             e=_to_base64url(e_bytes),
         )
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — JWK generation failure returns None (skips key)
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — JWK generation failure returns None (skips key) (reviewed TD-27-04)
         _logger.warning("Failed to generate JWK for kid %s: %s", kid, exc)
         return None
 

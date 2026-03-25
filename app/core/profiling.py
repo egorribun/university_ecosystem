@@ -52,7 +52,7 @@ class PyroscopeProfiler:
                 "Pyroscope is enabled but the 'pyroscope-io' package is not installed. "
                 "Profiling will be disabled."
             )
-        except Exception as e:  # RZ-22-01-JUSTIFIED: optional dependency — Pyroscope init failure is non-fatal
+        except Exception as e:  # RZ-22-01-JUSTIFIED: optional dependency — Pyroscope init failure is non-fatal (reviewed TD-27-04)
             _logger.error("Failed to initialize Pyroscope: %s", e)
 
 

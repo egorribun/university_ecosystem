@@ -214,7 +214,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("get", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard
+                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
                     pass  # metrics unavailable — never block cache logic
 
         return None
@@ -243,7 +243,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("set", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard
+                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
                     pass
 
     async def delete(self, key: str) -> None:

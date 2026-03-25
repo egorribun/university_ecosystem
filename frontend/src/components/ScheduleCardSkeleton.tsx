@@ -1,4 +1,3 @@
-import { memo } from "react"
 import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ScheduleCardSkeletonProps {
@@ -60,4 +59,5 @@ export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCard
   )
 }
 
-export default memo(ScheduleCardSkeleton)
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export default ScheduleCardSkeleton

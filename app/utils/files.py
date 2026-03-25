@@ -146,7 +146,7 @@ def detect_mime_type(data: bytes) -> str | None:
 
             _magic_module = _magic_import
             detector = _magic_import.Magic(mime=True)
-        except Exception:  # pragma: no cover - ImportError or OSError on missing DLL  # RZ-22-01-JUSTIFIED: optional dependency — libmagic may not be installed
+        except Exception:  # pragma: no cover - ImportError or OSError on missing DLL  # RZ-22-01-JUSTIFIED: optional dependency — libmagic may not be installed (reviewed TD-27-04)
             logger.warning("Failed to initialize libmagic MIME detector", exc_info=True)
             detector = None
         _magic_mime_detector = detector
@@ -163,10 +163,10 @@ def detect_mime_type(data: bytes) -> str | None:
                     if _magic_module is not None
                     else None
                 )
-            except Exception:  # pragma: no cover - depends on runtime env  # RZ-22-01-JUSTIFIED: optional dependency — libmagic API varies by version
+            except Exception:  # pragma: no cover - depends on runtime env  # RZ-22-01-JUSTIFIED: optional dependency — libmagic API varies by version (reviewed TD-27-04)
                 logger.warning("libmagic failed to detect MIME type", exc_info=True)
                 result = None
-        except Exception:  # pragma: no cover - depends on runtime env  # RZ-22-01-JUSTIFIED: optional dependency — libmagic may raise various errors
+        except Exception:  # pragma: no cover - depends on runtime env  # RZ-22-01-JUSTIFIED: optional dependency — libmagic may raise various errors (reviewed TD-27-04)
             logger.warning("libmagic failed to detect MIME type", exc_info=True)
             result = None
         if isinstance(result, bytes):
@@ -391,12 +391,12 @@ async def save_attachment(
 
     try:
         limit = int(max_size_bytes if max_size_bytes is not None else 0)
-    except TypeError, ValueError:  # RZ-26-01
+    except TypeError, ValueError:  # RZ-27-01
         limit = 0
     if limit <= 0:
         try:
             limit = int(settings.event_file_max_size_bytes)
-        except TypeError, ValueError:  # RZ-26-01
+        except TypeError, ValueError:  # RZ-27-01
             limit = 0
     if limit <= 0:
         limit = 1

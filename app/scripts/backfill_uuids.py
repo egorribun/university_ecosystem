@@ -207,9 +207,7 @@ async def main() -> None:
             await backfill_foreign_uuids(session, user_map)
 
             logger.info("Backfill complete!")
-        except (
-            Exception
-        ) as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback then log
+        except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback then log (reviewed TD-27-04)
             logger.error("Backfill failed: %s", e)  # LOW-W19: lazy logging
             await session.rollback()
 

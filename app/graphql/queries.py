@@ -124,7 +124,7 @@ class Query:
 
                 try:
                     last_id = _uuid.UUID(last_id_str)
-                except ValueError, AttributeError:  # RZ-26-01
+                except ValueError, AttributeError:  # RZ-27-01
                     last_id = None
                 if last_id is not None:
                     stmt = stmt.where(
@@ -172,7 +172,7 @@ class Query:
 
         try:
             uid = UUID(str(id))
-        except ValueError, TypeError:  # RZ-26-01
+        except ValueError, TypeError:  # RZ-27-01
             return None
 
         result = await info.context.session.execute(
@@ -229,7 +229,7 @@ class Query:
 
                 try:
                     last_id = _uuid.UUID(last_id_str)
-                except ValueError, AttributeError:  # RZ-26-01
+                except ValueError, AttributeError:  # RZ-27-01
                     last_id = None
                 if last_id is not None:
                     query = query.where(
@@ -277,7 +277,7 @@ class Query:
 
         try:
             uid = UUID(str(group_id))
-        except ValueError, TypeError:  # RZ-26-01
+        except ValueError, TypeError:  # RZ-27-01
             return []
 
         # RZ-GQL-AUTH: Enforce ReBAC for group schedules.
@@ -297,7 +297,7 @@ class Query:
                 user_id=user_id,
             ):
                 return []
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — denies access on ReBAC check failure
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — denies access on ReBAC check failure (reviewed TD-27-04)
             # P1: Log auth degradation but don't leak schedule data.
             logger.warning("GraphQL ReBAC check failed for group %s: %s", uid, exc)
             return []

@@ -7,7 +7,8 @@ import uuid
 from typing import TYPE_CHECKING
 
 from fastapi import Request
-from starlette.responses import Response
+from prometheus_client import Counter
+from starlette.responses import JSONResponse, Response
 
 from app.core.exceptions.handlers import asgi_json_problem
 from app.core.localization import resolve_locale
@@ -21,6 +22,12 @@ if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger("app.security.ratelimit")
+
+_rate_limit_fallback_total = Counter(
+    "rate_limit_fallback_total",
+    "Times rate limiter fell back from primary strategy (PERF-27-03)",
+    ["reason"],
+)
 
 
 class RateLimitMiddleware:
@@ -84,7 +91,7 @@ class RateLimitMiddleware:
             # Compatibility shim: call an internal method that tests might monkeypatch.
             # In regular operation, this just proxies to the strategy.
             info = await self._check_limit(identifier, path_limit, path_window)
-        except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — falls back to stricter in-memory limiter
+        except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — falls back to stricter in-memory limiter (reviewed TD-27-04)
             # HIGH-05 (audit 2026-03-11): Fail-CLOSED with in-memory fallback.
             # Previous fail-open behavior allowed rate limit bypass if Redis was down.
             # We now switch to a local memory strategy with stricter limits (50%).
@@ -92,6 +99,9 @@ class RateLimitMiddleware:
                 logger.warning(
                     "Redis rate limiting unavailable, falling back to in-memory (fail-closed)"
                 )
+                _rate_limit_fallback_total.labels(
+                    reason="redis_unavailable"
+                ).inc()  # PERF-27-03
                 # Stricter local limit to prevent resource exhaustion during Redis outage
                 fallback_limit = max(path_limit // 2, 1)
                 fallback_strategy = MemorySlidingWindowStrategy(
@@ -107,9 +117,22 @@ class RateLimitMiddleware:
                         path,
                     )
             else:
-                # If even memory strategy fails, we have no choice but to fail open or 503.
-                # Since this is rare, we fail open for now to maintain availability.
-                await self._app(scope, receive, send)
+                # RZ-27-03: Double-failure path (Redis + memory). Fail-closed with
+                # 503 to prevent rate-limit bypass. Log at ERROR for alerting.
+                logger.error(
+                    "Rate limiting fully unavailable (Redis + memory fallback failed) "
+                    "— failing closed with 503",
+                    extra={"identifier": identifier, "path": path},
+                )
+                _rate_limit_fallback_total.labels(
+                    reason="double_failure"
+                ).inc()  # PERF-27-03
+                response = JSONResponse(
+                    {"detail": "Service temporarily unavailable"},
+                    status_code=503,
+                    headers={"Retry-After": "30"},
+                )
+                await response(scope, receive, send)
                 return
 
         if not info.allowed:
