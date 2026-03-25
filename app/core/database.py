@@ -86,33 +86,29 @@ class PoolHealthMetrics:
 
     @property
     def active_connections(self) -> int:
-        with self._lock:
-            return self._active_connections
+        return (
+            self._active_connections
+        )  # PERF-24-01: lock-free read (stale OK for metrics)
 
     @property
     def peak_active_connections(self) -> int:
-        with self._lock:
-            return self._peak_active_connections
+        return self._peak_active_connections  # PERF-24-01: lock-free read
 
     @property
     def total_checkouts(self) -> int:
-        with self._lock:
-            return self._total_checkouts
+        return self._total_checkouts  # PERF-24-01: lock-free read
 
     @property
     def total_checkins(self) -> int:
-        with self._lock:
-            return self._total_checkins
+        return self._total_checkins  # PERF-24-01: lock-free read
 
     @property
     def total_invalidations(self) -> int:
-        with self._lock:
-            return self._total_invalidations
+        return self._total_invalidations  # PERF-24-01: lock-free read
 
     @property
     def failed_checkouts(self) -> int:
-        with self._lock:
-            return self._failed_checkouts
+        return self._failed_checkouts  # PERF-24-01: lock-free read
 
     def record_checkout(self) -> None:
         # TD-NEW-006 (audit 2026-03-19): Use lock for all counters.
@@ -184,6 +180,8 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
             # Default 0 for PgBouncer compatibility; set to 1024 (asyncpg default)
             # for direct PostgreSQL connections to avoid ~10-20% parsing overhead.
             "statement_cache_size": current_settings.database_statement_cache_size,
+            # TD-24-02: Consider auto-detecting PgBouncer at startup to set cache to 1024
+            # for direct PostgreSQL connections (10-20% parsing overhead reduction).
             # PERF-01: reduced from 30 s → 15 s. Hard per-statement PG timeout so a
             # runaway query does not block the asyncpg connection for half a minute.
             "command_timeout": 15.0,
@@ -265,6 +263,8 @@ def _after_cursor_execute(
     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
     _query_start_time.set(None)
 
+    # TD-24-07: Future — split into READ (200ms) and WRITE (500ms) thresholds
+    # for better OLTP monitoring granularity.
     threshold = getattr(settings, "slow_query_threshold_ms", 500.0)
     if elapsed_ms >= threshold:
         _log_slow_query(statement, elapsed_ms, threshold, executemany)
@@ -614,6 +614,30 @@ async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:
     # Use the pre-allocated read_session_factory for efficiency
     async with read_session_factory() as session:
         yield session
+
+
+async def check_replication_lag() -> float | None:
+    """Query the read-replica replication lag in bytes.
+
+    TD-24-01: Exposes replication lag for monitoring. Returns None if no
+    read replica is configured or if the query fails.
+    """
+    if _read_replica_engine is None:
+        return None
+    try:
+        async with _read_replica_engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT pg_wal_lsn_diff("
+                    "  pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()"
+                    ") AS lag_bytes"
+                )
+            )
+            row = result.one_or_none()
+            return float(row[0]) if row and row[0] is not None else 0.0
+    except OSError, ConnectionError:  # RZ-22-01: narrowed — DB/network errors
+        logger.warning("Failed to check replication lag", exc_info=True)
+        return None
 
 
 async def wait_db(

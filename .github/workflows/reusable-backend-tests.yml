@@ -39,6 +39,12 @@ on:
                 required: false
                 type: boolean
                 default: false
+            # MOD-24-03: Support free-threading CI variant (PEP 703).
+            python-gil:
+                description: "PYTHON_GIL value ('1' = default GIL, '0' = free-threading). Only effective on Python 3.14+."
+                required: false
+                type: string
+                default: "1"
         secrets:
             SECRET_KEY:
                 required: false
@@ -52,6 +58,7 @@ jobs:
             SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
             ENVIRONMENT: testing
             OTEL_SDK_DISABLED: "true"
+            PYTHON_GIL: ${{ inputs.python-gil }}  # MOD-24-03: free-threading support
         services:
             redis:
                 image: redis:7-alpine

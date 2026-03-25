@@ -51,6 +51,7 @@ import (
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/file-processor/internal/config"
 	gql "github.com/university-ecosystem/file-processor/internal/graphql"
+	"github.com/university-ecosystem/file-processor/internal/middleware"
 	"github.com/university-ecosystem/file-processor/internal/service"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 )
@@ -302,7 +303,13 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 
 	schema := graphql.MustParseSchema(string(s), resolver, schemaOpts...)
 	mux := http.NewServeMux()
-	graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, rsaPub, logger, &relay.Handler{Schema: schema})
+	graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, rsaPub, logger,
+		middleware.MaxQueryDepthMiddleware(10,
+			middleware.RequestTimeoutMiddleware(30*time.Second,
+				&relay.Handler{Schema: schema},
+			),
+		),
+	)
 	mux.Handle("/graphql", graphqlHandler)
 	mux.Handle("/metrics", promhttp.Handler())
 

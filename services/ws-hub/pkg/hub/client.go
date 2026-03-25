@@ -158,6 +158,7 @@ func (c *Client) WritePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
+		c.Hub.msgLimiters.Delete(c.ID) // TD-24-05: clean limiter on WritePump exit too
 		if err := c.Conn.Close(); err != nil {
 			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close websocket connection In WritePump", "err", err)
 		}

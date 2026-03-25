@@ -1,4 +1,3 @@
-import React from "react"
 import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/SmartImage"
@@ -11,8 +10,9 @@ interface ContactListProps {
   onSelect: (id: string) => void
 }
 
-// PERF-20-04: memo() prevents re-render when parent sidebar state changes.
-export const ContactList: React.FC<ContactListProps> = React.memo(({ contacts, selectedId, onSelect }) => {
+// PERF-24-02: Removed React.memo() — React Compiler "infer" mode handles
+// memoization automatically. Manual memo() caused redundant double-wrapping.
+export function ContactList({ contacts, selectedId, onSelect }: ContactListProps) {
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)">
       <LayoutGroup>
@@ -98,4 +98,4 @@ export const ContactList: React.FC<ContactListProps> = React.memo(({ contacts, s
       </LayoutGroup>
     </div>
   )
-})
+}
