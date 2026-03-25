@@ -29,11 +29,13 @@
   - SMTP: `(OSError, smtplib.SMTPException)`
   - Keep broad `except Exception` only for: re-raise-after-cleanup, convert-to-domain, handler-nak, fail-closed auth
   - ALL broad catches must be tagged: `# RZ-22-01-JUSTIFIED: <reason>` (Wave 22 completed: 147 justified, 29 narrowed)
+  - Python 2 except syntax: always use `except (A, B):` tuple form, NEVER `except A, B:` (convention enforced since Wave 23)
 - Models: ALL relationships must have explicit `lazy="noload"` — prevent N+1
 - Settings: use `@cached_property` namespace accessors (settings.db, settings.security, etc.)
   - Phase 2 (Wave 21): accessors return `_NamespaceView` proxies, not `self`
 - Frontend validation: **Valibot only** (Zod removed in Wave 21)
 - Frontend debounce: `useDebounced` from `@/hooks/useDebounced` — strategy presets: `"search"` (200ms), `"default"` (300ms), `"validation"` (350ms) (PERF-23-04, Wave 23)
+- Frontend sanitization fallback: SafeHtml strips HTML tags on WASM failure — never renders nothing (RZ-24-04)
 - Frontend memo: `React.memo()` on list/grid/dashboard components
 - GraphQL: 5 defense layers — QueryDepthLimiter, MaxTokensLimiter, QueryCostExtension, RequestTimeoutExtension, PersistedQueryExtension (prod only)
 - Feature flags: `from app.core.feature_flags import is_enabled` (async) or `is_enabled_sync`
@@ -66,13 +68,18 @@
 - ws-hub broadcast: messages >60 KB dropped before fan-out to prevent CloseMessageTooBig (RZ-23-05)
 - ws-hub goroutines: tracked via WaitGroup + `ws_hub_active_goroutines` gauge (RZ-23-07)
 - File processor: gRPC inputs validated before Temporal workflow start; Options map bounded to 10 entries (RZ-23-04)
+- ws-hub Hub struct: `ctx` field required for goroutine lifecycle management (RZ-24-02, added Wave 24)
+- File-processor GraphQL: depth limit (10) + timeout (30s) middleware required (RZ-24-05, added Wave 24)
+- React Compiler "infer" mode: do NOT use React.memo() — compiler handles memoization (PERF-24-02)
+- Argon2 concurrency: capped at 4 concurrent hashes per worker (PERF-24-04) — 128 MiB peak
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
 - Wave 20: 22 issues, 53 files, +1724/-206 — full report in `TOTAL_AUDIT_2026.md`
 - Wave 21: 21 issues, 24 files, +1694/-528 — full report in `TOTAL_AUDIT_WAVE21.md`
 - Wave 22: 21 issues, 86 files, ~+1200/-300 — full report in `TOTAL_AUDIT_WAVE22.md`
-- Wave 23: 21 issues, 12 files, ~+180/-30 — full report in `TOTAL_AUDIT_WAVE23.md`
+- Wave 23: 21 issues, 28 files, +614/-112 — full report in `TOTAL_AUDIT_WAVE23.md`
+- Wave 24: 20 issues (1 false positive reverted), 15 files, +451/-27 — full report in `TOTAL_AUDIT_WAVE24.md`
 - Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
 - Renovate Bot configured (`renovate.json`) — crypto packages manual-review-only (Wave 22)
 - SBOM generation (Syft/SPDX) added to CI pipeline; actions SHA-pinned (Wave 22)
@@ -84,4 +91,6 @@
 - Rust `crate-type` includes `"rlib"` alongside `"cdylib"` for fuzz/test support
 - Rust PyO3 panic boundary tests in `native/rust_ext/src/lib.rs` `#[cfg(test)]` module (13 tests)
 - K8s: outbox-worker PDB in `k8s/outbox-worker/pdb.yaml`; frontend NetworkPolicy tightened to gateway+DNS egress only
+- Wave 23 modernization: OTEL metrics bridge, useSuspenseQuery pattern, asyncio.TaskGroup, adaptive debounce, bundle CI budget
+- Wave 23 typing: mypy strict for chat services (5 files) + webpush — fixed Python 2 exception syntax bug in command_service.py
 - Backend audit status: **production-ready** — further audits recommended after new features, major dep updates, or quarterly

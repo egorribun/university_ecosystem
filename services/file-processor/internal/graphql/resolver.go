@@ -67,6 +67,11 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 		return nil, fmt.Errorf("invalid destination key: %v", err)
 	}
 
+	// RZ-24-06: Bound options map to 10 entries (parity with gRPC path — RZ-23-04).
+	if len(options) > 10 {
+		return nil, fmt.Errorf("options map exceeds maximum of 10 entries")
+	}
+
 	job := workflow.ProcessJob{
 		ID:        generateID(),
 		Type:      args.Input.Type,

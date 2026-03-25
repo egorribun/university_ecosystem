@@ -77,6 +77,10 @@ type Hub struct {
 	// Previously accessed via c.Hub.Config which did not exist on the Hub struct.
 	clientMsgRateLimit float64
 	clientMsgRateBurst int
+	// ctx is the lifecycle context for the Hub, cancelled when Run() exits.
+	// Used by ReadPump/WritePump goroutines to detect hub shutdown (RZ-24-02).
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 	stopOnce           sync.Once
 	jwksMu      sync.Mutex
 	// redisClient is the shared Redis connection used for upgrade ticket validation.
@@ -153,6 +157,9 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 // h.broadcastWorkers (set from cfg.BroadcastWorkers / WS_BROADCAST_WORKERS
 // env var, default 2×GOMAXPROCS) instead of the hard-coded constant 4.
 func (h *Hub) Run(ctx context.Context) {
+	h.ctx, h.ctxCancel = context.WithCancel(ctx)
+	defer h.ctxCancel()
+
 	workers := h.broadcastWorkers
 	if workers <= 0 {
 		workers = 4 // safe minimum
@@ -328,7 +335,14 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 			MessagesDeliveredTotal.Inc()
 		} else if r.evictOnFull {
 			h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
-			go func(c *Client) { h.Unregister <- c }(r.client)
+			go func(c *Client) {
+				select {
+				case h.Unregister <- c:
+				case <-h.ctx.Done():
+					// RZ-24-03: Hub shutting down; close client directly.
+					c.closeOnce.Do(func() { close(c.Send) })
+				}
+			}(r.client)
 		}
 	}
 }

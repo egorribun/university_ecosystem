@@ -185,23 +185,34 @@ jobs:
           docker compose -f docker-compose.yml config
 
   backend-tests:
-    name: Backend Tests (Python ${{ matrix.python-version }})
+    name: "Backend Tests (${{ matrix.name }})"
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
         include:
           - python-version: "3.13"
+            name: "Python 3.13"
             coverage-check: true
+            run-integration: true
+            free-threading: false
+          # MOD-24-03: Free-threading CI variant — unit tests only, GIL disabled.
+          # Validates that the backend test suite passes under PEP 703 free-threading
+          # mode (PYTHON_GIL=0) to prepare for GIL-optional Python 3.14+.
+          - python-version: "3.14"
+            name: "Python 3.14 (free-threading)"
+            coverage-check: false
+            run-integration: false
+            free-threading: true
     needs: pre-commit-check
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
-      test-group-name: All-Py${{ matrix.python-version }}
+      test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
       python-version: ${{ matrix.python-version }}
       coverage-threshold: ${{ matrix.coverage-check && 80 || 0 }}
-      run-integration-tests: ${{ matrix.python-version == '3.13' }}
+      run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
+      python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
     secrets: inherit
 
   backend-type-check:

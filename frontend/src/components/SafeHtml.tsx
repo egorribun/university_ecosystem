@@ -24,7 +24,12 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
     }
   }, [html])
 
-  if (!sanitized) return <>{fallback ?? null}</>
+  if (!sanitized) {
+    if (fallback != null) return <>{fallback}</>
+    // RZ-24-04: text-only fallback — strip HTML tags rather than render nothing.
+    const textOnly = html.replace(/<[^>]*>/g, "")
+    return <span className={className}>{textOnly}</span>
+  }
 
   return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} />
 }
