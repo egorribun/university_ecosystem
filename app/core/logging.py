@@ -15,6 +15,7 @@ Key features:
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +29,54 @@ if TYPE_CHECKING:
 
 # Module-level flag to prevent double configuration
 _configured = False
+
+
+# ---------------------------------------------------------------------------
+# RZ-29-02: PII redaction processor — strips emails, phones, and sensitive
+# field values from structured log events before they reach the renderer.
+# This is a defense-in-depth measure; application code should avoid logging
+# PII in the first place, but this processor catches accidental leaks.
+# ---------------------------------------------------------------------------
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
+_PHONE_RE = re.compile(r"\+?\d[\d\s\-()]{7,}\d")
+_PII_FIELD_NAMES = frozenset(
+    {
+        "email",
+        "phone",
+        "phone_number",
+        "ssn",
+        "password",
+        "secret",
+        "credit_card",
+        "card_number",
+        "passport",
+        "token",
+    }
+)
+_PII_REPLACEMENT = "[REDACTED]"
+
+
+def _redact_pii(
+    logger: Any,
+    method_name: str,
+    event_dict: dict[str, Any],
+) -> dict[str, Any]:
+    """Redact PII from log event dicts.
+
+    - Field-level: keys matching _PII_FIELD_NAMES are replaced entirely.
+    - Value-level: email/phone patterns in string values are masked.
+    """
+    for key in list(event_dict):
+        if key in _PII_FIELD_NAMES:
+            event_dict[key] = _PII_REPLACEMENT
+            continue
+        value = event_dict[key]
+        if isinstance(value, str) and len(value) > 5:
+            value = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
+            value = _PHONE_RE.sub(_PII_REPLACEMENT, value)
+            if value != event_dict[key]:
+                event_dict[key] = value
+    return event_dict
 
 
 def add_otel_context(
@@ -83,6 +132,7 @@ def configure_logging(
         # Pulls bound variables from structlog.contextvars into the event_dict.
         # This is where request_id, user_id, etc. are injected.
         structlog.contextvars.merge_contextvars,
+        _redact_pii,  # RZ-29-02: strip PII before any renderer sees the data
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         add_otel_context,

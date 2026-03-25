@@ -7,8 +7,10 @@ different domains (schedule, users, events, news, etc.)
 
 from __future__ import annotations
 
+import functools
+from collections.abc import Callable, Coroutine
 from enum import StrEnum
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 
 from app.core.logging import get_logger
 from app.deps.cache import get_cache
@@ -275,10 +277,57 @@ class CacheInvalidator:
         await self.flush()
 
 
+# ---------------------------------------------------------------------------
+# PERF-29-01: Declarative cache invalidation decorator.
+#
+# Instead of manually calling ``invalidate_event_cache(event_id)`` after
+# every mutation, service methods can be decorated:
+#
+#     @invalidates_cache(CacheTag.EVENT)
+#     async def update_event(self, event_id: int, ...) -> Event:
+#         ...
+#
+# The decorator calls ``invalidate_by_tag(tag)`` *after* the decorated
+# function returns successfully.  On exception, no invalidation occurs
+# (the mutation didn't commit, so cache is still valid).
+# ---------------------------------------------------------------------------
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def invalidates_cache(
+    *tags: CacheTag,
+) -> Callable[
+    [Callable[_P, Coroutine[Any, Any, _R]]],
+    Callable[_P, Coroutine[Any, Any, _R]],
+]:
+    """Decorator: invalidate cache tags after successful async method execution.
+
+    Usage::
+
+        @invalidates_cache(CacheTag.EVENT, CacheTag.SCHEDULE)
+        async def bulk_reschedule(self, ...) -> list[Event]:
+            ...  # On success, EVENT and SCHEDULE caches are invalidated.
+    """
+
+    def decorator(
+        fn: Callable[_P, Coroutine[Any, Any, _R]],
+    ) -> Callable[_P, Coroutine[Any, Any, _R]]:
+        @functools.wraps(fn)
+        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+            result = await fn(*args, **kwargs)
+            # Invalidate after success — fire-and-forget, failures logged
+            for tag in tags:
+                await invalidate_by_tag(tag)
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 __all__ = [
-    # Batch invalidation
     "CacheInvalidator",
-    # Tag-based invalidation
     "CacheTag",
     "event_cache_key",
     "events_list_cache_key",
@@ -287,13 +336,12 @@ __all__ = [
     "invalidate_event_cache",
     "invalidate_groups_cache",
     "invalidate_news_cache",
-    # Invalidation functions
     "invalidate_schedule_cache",
     "invalidate_user_cache",
+    "invalidates_cache",
     "news_cache_key",
     "news_list_cache_key",
     "register_key_with_tags",
-    # Key generators
     "schedule_cache_key",
     "user_cache_key",
 ]

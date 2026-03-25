@@ -356,6 +356,7 @@ omit = [
 
 [tool.coverage.report]
 show_missing = true
+fail_under = 80  # TD-29-01: enforce locally too (CI already gates via --cov-fail-under=80)
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",

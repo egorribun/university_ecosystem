@@ -98,6 +98,11 @@
 - Renovate: single `renovate.json` at root (TD-28-02) — `.github/renovate.json` deleted, rules merged
 - Frontend K8s: `seccompProfile: RuntimeDefault` at pod level (TD-28-01, was missing)
 - Pre-commit: `no-python2-except` hook catches `except A, B:` locally before CI (MOD-28-01)
+- Coverage: `fail_under = 80` in `[tool.coverage.report]` (TD-29-01) — local pytest now gates coverage
+- S3Storage: `asyncio.timeout()` guards on save/delete/read/exists (RZ-29-01)
+- PII redaction: `_redact_pii` structlog processor strips email/phone from log events (RZ-29-02)
+- Settings: `_validate_dependent_settings()` cross-checks cache_backend→redis_url, pool size, replica URL (TD-29-02)
+- Cache invalidation: `@invalidates_cache(CacheTag.EVENT)` decorator for automatic tag-based invalidation (PERF-29-01)
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
@@ -107,6 +112,7 @@
 - Wave 23: 21 issues, 28 files, +614/-112 — full report in `TOTAL_AUDIT_WAVE23.md`
 - Wave 24: 20 issues (1 false positive reverted), 15 files, +451/-27 — full report in `TOTAL_AUDIT_WAVE24.md`
 - Wave 25: 20 issues, ~30 files, +452/-53 — full report in `TOTAL_AUDIT_WAVE25.md`
+- Wave 29: 5 issues, ~6 files — coverage threshold (TD-29-01), S3 timeout guards (RZ-29-01), PII redaction (RZ-29-02), settings validation (TD-29-02), cache invalidation decorator (PERF-29-01) — full report in `TOTAL_AUDIT_WAVE29.md`
 - Wave 28: 8 issues, ~25 files — Python 2 except syntax fixed (43 violations, 21 files — RZ-28-01, fixes Wave 27 regression), K8s seccompProfile (TD-28-01), Renovate consolidation (TD-28-02), CSRF timing (RZ-28-02) — full report in `TOTAL_AUDIT_WAVE28.md`
 - Wave 27: 18 issues, ~35 files, +300/-100 — full report in `TOTAL_AUDIT_WAVE27.md`
 - Wave 26: 16 issues (1 FP dropped), ~30 files, +166/-79 — full report in `TOTAL_AUDIT_WAVE26.md`

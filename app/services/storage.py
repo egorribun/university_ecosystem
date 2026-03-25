@@ -11,6 +11,12 @@ from urllib.parse import urlparse
 
 from app.core.logging import get_logger
 
+# RZ-29-01: Business-level timeout guards for S3 operations.
+# DB already has command_timeout=15s (asyncpg), but aioboto3 HTTP calls
+# can hang indefinitely on network issues without an explicit deadline.
+_S3_WRITE_TIMEOUT: float = 30.0  # seconds — upload/put
+_S3_READ_TIMEOUT: float = 15.0  # seconds — get/head/delete
+
 if TYPE_CHECKING:
     from app.core.config import Settings
 
@@ -195,8 +201,9 @@ class S3Storage(StorageBackend):
         if cache_control:
             args["CacheControl"] = cache_control
         try:
-            async with self._build_aioboto3_client() as s3:
-                await s3.put_object(**args)
+            async with asyncio.timeout(_S3_WRITE_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    await s3.put_object(**args)
         except ConnectionError, TimeoutError, OSError:  # RZ-28-01
             # RZ-20-04: Narrowed — S3/MinIO upload failures are infra issues.
             logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
@@ -258,8 +265,9 @@ class S3Storage(StorageBackend):
         if not key:
             return
         try:
-            async with self._build_aioboto3_client() as s3:
-                await s3.delete_object(Bucket=self.bucket, Key=key)
+            async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    await s3.delete_object(Bucket=self.bucket, Key=key)
         except ConnectionError, TimeoutError, OSError:  # pragma: no cover  # RZ-28-01
             # RZ-20-04: Narrowed — S3 delete is best-effort (fire-and-forget).
             logger.warning(
@@ -271,8 +279,9 @@ class S3Storage(StorageBackend):
         if not key:
             key = file_url_or_path.lstrip("/")
         try:
-            async with self._build_aioboto3_client() as s3:
-                await s3.head_object(Bucket=self.bucket, Key=key)
+            async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    await s3.head_object(Bucket=self.bucket, Key=key)
             return True
         except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — only swallows 404, re-raises others (reviewed TD-27-04)
             # HIGH-W19 + RZ-20-04: Only swallow S3 "not found" (404/NoSuchKey);
@@ -293,10 +302,11 @@ class S3Storage(StorageBackend):
         if not key:
             key = file_url_or_path.lstrip("/")
         try:
-            async with self._build_aioboto3_client() as s3:
-                response = await s3.get_object(Bucket=self.bucket, Key=key)
-                async with response["Body"] as stream:
-                    return cast(bytes, await stream.read())
+            async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    response = await s3.get_object(Bucket=self.bucket, Key=key)
+                    async with response["Body"] as stream:
+                        return cast(bytes, await stream.read())
         except (FileNotFoundError, OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — S3 read errors. Converts to FileNotFoundError
             # for uniform caller interface.
