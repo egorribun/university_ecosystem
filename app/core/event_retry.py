@@ -136,7 +136,7 @@ class RetryMiddleware:
                 await next_handler(event)
                 return  # Success, exit
 
-            except Exception as e:
+            except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — retry logic catches all errors to decide retry vs re-raise
                 last_error = e
 
                 # Check if this exception type should be retried

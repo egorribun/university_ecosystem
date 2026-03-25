@@ -83,7 +83,7 @@ def optimize_image_vips(
 
         return bytes(buffer), "image/webp"
 
-    except Exception as exc:
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts pyvips errors to ValueError
         logger.warning("pyvips processing failed: %s", exc)
         raise ValueError(f"Failed to process image with pyvips: {exc}") from exc
 

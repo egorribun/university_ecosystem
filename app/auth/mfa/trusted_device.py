@@ -94,7 +94,9 @@ async def verify_trusted_device_token(
 
     try:
         token_hash = _base64url_encode(hashlib.sha256(token.encode("utf-8")).digest())
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: fail-closed auth — hash failure returns False
         return False
 
     stmt = (

@@ -249,7 +249,7 @@ class UserComplianceService:
             async with self.uow:
                 await self.uow.commit()
             return db_user
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps errors into BusinessRuleViolation
             # Diamond Standard: Use structured logging with exc_info instead of direct traceback print.
             # Prevents PII leakage to stdout/stderr and enables log aggregation.
             logger.error(

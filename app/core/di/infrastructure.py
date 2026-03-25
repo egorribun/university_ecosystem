@@ -53,7 +53,11 @@ class InfrastructureProvider(Provider):
             try:
                 await asyncio.wait_for(global_broker.connect(), timeout=5.0)
                 _logger.info("Dishka: NatsTaskBroker connected (Scope.APP)")
-            except Exception as exc:
+            except (
+                OSError,
+                ConnectionError,
+                TimeoutError,
+            ) as exc:  # RZ-22-01: narrowed — NATS connection errors
                 _logger.warning("Dishka: NATS connection failed (%s).", exc)
         yield global_broker
         await global_broker.close()

@@ -103,6 +103,6 @@ def get_progressive_delay_tracker() -> ProgressiveDelayTracker:
             if settings.rate_limit_storage_backend == "redis"
             else None
         )
-    except Exception:
+    except AttributeError, TypeError:  # RZ-22-01: narrowed — settings access errors
         redis_url = None
     return ProgressiveDelayTracker(redis_url=redis_url)

@@ -202,7 +202,7 @@ class CircuitBreaker:
         if self._on_state_change:
             try:
                 self._on_state_change(self._service_name, old_state, new_state)
-            except Exception:
+            except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — callback failure must not crash circuit breaker
                 logger.warning(
                     "Circuit breaker state change callback failed",
                     exc_info=True,

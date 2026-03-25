@@ -151,5 +151,5 @@ def extract_user_id_for_ratelimit(request: Request) -> str | None:
         payload = decode_token(token)
         sub = payload.get("sub") if payload else None
         return str(sub) if sub else None
-    except Exception:
+    except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — token decode failure returns None (anonymous)
         return None

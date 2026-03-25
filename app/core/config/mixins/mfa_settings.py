@@ -38,10 +38,15 @@ class MfaSettingsMixin:
     password_hibp_check_enabled: bool = False
     password_hibp_api_url: str = "https://api.pwnedpasswords.com/range"
     password_hibp_timeout_seconds: int = 5
-    # RZ-2: When True, password operations succeed even if HIBP API is unreachable.
-    # Default False (fail-closed) for maximum security. Set to True only in
-    # environments where availability SLAs outweigh the security risk of skipping
-    # the compromised-password check during an outage.
+    # RZ-2 / RZ-22-07 (Wave 22): When True, password operations succeed even
+    # if HIBP API is unreachable. Default False (fail-closed).
+    #
+    # SECURITY IMPLICATIONS (RZ-22-07):
+    #   - Users can register/change passwords without breach checking.
+    #   - Acceptable ONLY when: (1) availability SLA > security policy, AND
+    #     (2) Prometheus alert ``hibp_check_failures_total`` fires within 5 min.
+    #   - MUST be paired with compensating control: daily batch HIBP re-check
+    #     of all passwords changed during fail-open windows.
     password_hibp_fail_open: bool = False
 
     auth_dummy_hash: str = (

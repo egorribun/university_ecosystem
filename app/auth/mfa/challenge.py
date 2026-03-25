@@ -87,7 +87,7 @@ def _extract_attempt_limit(
         return None
     try:
         resolved = int(limit)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if resolved <= 0:
         return None
@@ -498,7 +498,7 @@ async def consume_challenge(
                 challenge_str,
                 provided_webauthn_response,
             )
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — registers failed attempt then raises HTTP error
             await _register_failed_attempt(
                 db,
                 challenge,

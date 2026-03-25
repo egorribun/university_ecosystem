@@ -38,6 +38,16 @@ type Message struct {
 	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
 }
 
+// LOCK HIERARCHY — RZ-22-04 (Wave 22 audit)
+//
+// Acquire locks in this exact order to prevent deadlock:
+//   1. Hub.mu    (sync.RWMutex) — guards Clients and Rooms maps
+//   2. Client.mu (sync.Mutex)   — guards per-client Rooms set
+//
+// NEVER acquire Hub.mu while holding Client.mu. Any code path that needs
+// both locks MUST acquire Hub.mu first, then Client.mu.
+// Violation will cause deadlock under concurrent JoinRoom/LeaveRoom/Unregister.
+
 // Hub maintains the set of active clients and broadcasts messages.
 type Hub struct {
 	Clients    map[string]*Client
@@ -390,9 +400,11 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 				"subject", msg.Subject)
 			// PERF-W18-01 (audit 2026-03-23 Wave 18): if this is a JetStream message
 			// (identifiable by a non-empty Reply subject used for ack protocol),
-			// Nak it so JetStream can redeliver after the backoff period.
+			// PERF-22-01 (Wave 22): NakWithDelay prevents redelivery storm.
+			// Immediate Nak causes amplification when the worker pool is
+			// saturated — 5-second backoff breaks the feedback loop.
 			if msg.Reply != "" {
-				_ = msg.Nak()
+				_ = msg.NakWithDelay(5 * time.Second)
 			}
 		}
 	}
@@ -439,9 +451,9 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 			BroadcastDropsTotal.Inc()
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
 				"subject", msg.Subject)
-			// PERF-W18-01: Nak JetStream messages for redelivery.
+			// PERF-W18-01 / PERF-22-01: NakWithDelay to prevent redelivery storm.
 			if msg.Reply != "" {
-				_ = msg.Nak()
+				_ = msg.NakWithDelay(5 * time.Second)
 			}
 		}
 	}

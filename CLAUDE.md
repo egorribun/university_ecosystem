@@ -21,12 +21,14 @@
 ## Code Conventions
 - Commit style: `feat(waveXX): description` with `Co-Authored-By` trailer
 - Branch: `egorribun`
-- Exception handling: narrowed to specific types with `# RZ-20-04` audit comments
+- Exception handling: narrowed to specific types with `# RZ-20-04` / `# RZ-22-01` audit comments
   - DB/network: `(OSError, ConnectionError)`
   - File ops: `(FileNotFoundError, OSError)`
   - Redis: `(ConnectionError, TimeoutError, OSError)`
   - PyO3/Rust: `(RuntimeError, ImportError, OSError)`
+  - SMTP: `(OSError, smtplib.SMTPException)`
   - Keep broad `except Exception` only for: re-raise-after-cleanup, convert-to-domain, handler-nak, fail-closed auth
+  - ALL broad catches must be tagged: `# RZ-22-01-JUSTIFIED: <reason>` (Wave 22 completed: 147 justified, 29 narrowed)
 - Models: ALL relationships must have explicit `lazy="noload"` — prevent N+1
 - Settings: use `@cached_property` namespace accessors (settings.db, settings.security, etc.)
   - Phase 2 (Wave 21): accessors return `_NamespaceView` proxies, not `self`
@@ -50,12 +52,29 @@
 - Backend Dockerfile uses `python:3.14-slim-bookworm` (both builder and runtime stages)
 - ws-hub auth cache: empty `room_id` in NATS `cache.invalidate` triggers wildcard eviction (RZ-21-03)
 - ws-hub subscribes to `keys.rotated` NATS subject for JWKS pre-warming (RZ-21-05)
+- ws-hub lock hierarchy: Hub.mu → Client.mu (never reverse) — documented RZ-22-04
+- ws-hub broadcast: `NakWithDelay(5s)` prevents redelivery storm (PERF-22-01)
+- Renovate: crypto packages (cryptography, pyjwt, argon2-cffi, etc.) require manual review (RZ-22-02)
+- CI actions: ALL must be SHA-pinned (RZ-22-03); no mutable version tags
+- ExternalSecret refreshInterval: `1m` (reduced from 5m in Wave 22 — TD-22-04)
+- SpiceDB max tolerable downtime: 30s (not 60s) — see `SPICEDB_MAX_TOLERABLE_DOWNTIME_SECONDS`
+- Rust Cargo.toml: exact version pins for security-critical deps (TD-22-02)
+- Gateway rate limit fallback: 3 req/60s per instance (reduced from 10 in Wave 22 — RZ-22-06)
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
 - Wave 20: 22 issues, 53 files, +1724/-206 — full report in `TOTAL_AUDIT_2026.md`
 - Wave 21: 21 issues, 24 files, +1694/-528 — full report in `TOTAL_AUDIT_WAVE21.md`
-- Remaining `except Exception` in services — each documented and justified
-- Renovate Bot configured (`renovate.json`) for automated dependency updates
-- SBOM generation (Syft/SPDX) added to CI pipeline
+- Wave 22: 21 issues, 86 files, ~+1200/-300 — full report in `TOTAL_AUDIT_WAVE22.md`
+- Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
+- Renovate Bot configured (`renovate.json`) — crypto packages manual-review-only (Wave 22)
+- SBOM generation (Syft/SPDX) added to CI pipeline; actions SHA-pinned (Wave 22)
 - Property-based tests (Hypothesis) in `tests/test_property_based.py`
+- Crypto rotation tests in `tests/test_crypto_rotation.py` (Wave 22)
+- Concurrency tests in `tests/test_concurrency.py` (Wave 22)
+- GraphQL adversarial tests in `tests/test_graphql_security.py` (Wave 22)
+- Rust fuzz targets implemented in `native/rust_ext/fuzz/` (Wave 22) — non-PyO3 functions only (extension-module incompatible with cargo-fuzz GIL)
+- Rust `crate-type` includes `"rlib"` alongside `"cdylib"` for fuzz/test support
+- Rust PyO3 panic boundary tests in `native/rust_ext/src/lib.rs` `#[cfg(test)]` module (13 tests)
+- K8s: outbox-worker PDB in `k8s/outbox-worker/pdb.yaml`; frontend NetworkPolicy tightened to gateway+DNS egress only
+- Backend audit status: **production-ready** — further audits recommended after new features, major dep updates, or quarterly

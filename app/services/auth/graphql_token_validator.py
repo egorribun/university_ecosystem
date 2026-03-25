@@ -143,7 +143,9 @@ class GraphQLTokenValidator:
             redis_svc = RedisSessionService()
             await fp_svc.validate_fingerprint(user, session, self._session, redis_svc)
             return True
-        except Exception:
+        except (
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: fail-closed auth — fingerprint mismatch denies session
             # RZ-20-04: KEEP broad — raise_forbidden() raises HTTPException which
             # is the EXPECTED signal for fingerprint mismatch. We must catch all
             # exceptions here because the fingerprint service may raise HTTP 403

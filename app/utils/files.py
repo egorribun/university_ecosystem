@@ -146,7 +146,7 @@ def detect_mime_type(data: bytes) -> str | None:
 
             _magic_module = _magic_import
             detector = _magic_import.Magic(mime=True)
-        except Exception:  # pragma: no cover - ImportError or OSError on missing DLL
+        except Exception:  # pragma: no cover - ImportError or OSError on missing DLL  # RZ-22-01-JUSTIFIED: optional dependency — libmagic may not be installed
             logger.warning("Failed to initialize libmagic MIME detector", exc_info=True)
             detector = None
         _magic_mime_detector = detector
@@ -163,10 +163,10 @@ def detect_mime_type(data: bytes) -> str | None:
                     if _magic_module is not None
                     else None
                 )
-            except Exception:  # pragma: no cover - depends on runtime env
+            except Exception:  # pragma: no cover - depends on runtime env  # RZ-22-01-JUSTIFIED: optional dependency — libmagic API varies by version
                 logger.warning("libmagic failed to detect MIME type", exc_info=True)
                 result = None
-        except Exception:  # pragma: no cover - depends on runtime env
+        except Exception:  # pragma: no cover - depends on runtime env  # RZ-22-01-JUSTIFIED: optional dependency — libmagic may raise various errors
             logger.warning("libmagic failed to detect MIME type", exc_info=True)
             result = None
         if isinstance(result, bytes):
@@ -265,9 +265,15 @@ async def _quarantine_payload(
             data,
             content_type="application/octet-stream",
         )
-    except Exception:
+    except (
+        OSError,
+        ConnectionError,
+    ) as exc:  # RZ-22-01: narrowed — file/network storage errors
         logger.warning(
-            "Failed to store quarantined payload", exc_info=True, extra=metadata
+            "Failed to store quarantined payload: %s",
+            exc,
+            exc_info=True,
+            extra=metadata,
         )
 
 
@@ -385,12 +391,12 @@ async def save_attachment(
 
     try:
         limit = int(max_size_bytes if max_size_bytes is not None else 0)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         limit = 0
     if limit <= 0:
         try:
             limit = int(settings.event_file_max_size_bytes)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             limit = 0
     if limit <= 0:
         limit = 1

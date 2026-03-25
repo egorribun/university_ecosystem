@@ -67,7 +67,7 @@ class NotificationsScheduler:
                     created = await self.run_once()
                 except asyncio.CancelledError:
                     raise
-                except Exception:
+                except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — top-level worker loop must not crash on any error
                     consecutive_failures += 1
                     backoff_seconds = min(
                         self.poll_seconds * (2 ** min(consecutive_failures, 5)),

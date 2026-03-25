@@ -148,7 +148,7 @@ async def start_permission_watch() -> None:
         except asyncio.CancelledError:
             logger.info("SpiceDB Watch: task cancelled, stopping")
             return
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — reconnect loop must survive any stream error
             logger.warning(
                 "SpiceDB Watch: stream error (%s) — reconnecting in %.0fs",
                 exc,

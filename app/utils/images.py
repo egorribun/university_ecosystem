@@ -19,7 +19,7 @@ from app.core.logging import get_logger
 # Catch ImportError (not installed) and OSError (libvips missing at runtime)
 try:
     from app.utils.images_vips import VIPS_AVAILABLE, optimize_image_vips
-except (ImportError, OSError):
+except ImportError, OSError:
     VIPS_AVAILABLE = False
     optimize_image_vips = None  # type: ignore[assignment]
 
@@ -109,7 +109,7 @@ def optimize_image(
                 max_height=max_h,
                 quality=85,
             )
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — pyvips failure falls back to Pillow
             logger.warning("pyvips failed, falling back to Pillow: %s", exc)
 
     # Pillow fallback

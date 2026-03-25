@@ -135,7 +135,7 @@ async def _verify_database_readiness() -> None:
                         raise RuntimeError(
                             f"DB schema mismatch — current={_current!r}, head={_head!r}."
                         )
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs, degrades in dev
             if settings.environment not in {"development", "local", "testing"}:
                 raise
             _logger.warning("Migration head check skipped/failed: %s", exc)
@@ -153,7 +153,10 @@ async def _handle_schema_and_extensions() -> None:
             if conn.dialect.name == "postgresql":
                 try:
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                except Exception as e:
+                except (
+                    OSError,
+                    ConnectionError,
+                ) as e:  # RZ-22-01: narrowed — DB extension creation errors
                     _logger.warning("pgvector unavailable: %s", e)
                     runtime_flags.disable("semantic_search_enabled")
             else:
@@ -166,7 +169,9 @@ async def _handle_schema_and_extensions() -> None:
                             column.computed = None
 
             await conn.run_sync(Base.metadata.create_all)
-    except Exception as exc:
+    except (
+        Exception
+    ) as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs
         if settings.environment not in {"development", "local", "testing"}:
             raise
         _logger.warning("Auto-schema failed: %s", exc)
@@ -189,7 +194,9 @@ async def _validate_di_container(app: FastAPI) -> None:
     for svc_type in critical_app_services:
         try:
             await container.get(svc_type)
-        except Exception as exc:
+        except (
+            Exception
+        ) as exc:  # RZ-22-01-JUSTIFIED: health probe — DI smoke-test collects failures
             failures.append(f"{svc_type.__name__}: {exc}")
 
     if failures:
@@ -243,7 +250,7 @@ async def _startup_background_workers(app: FastAPI) -> None:
             app.state.partition_stopper = await start_partition_management_scheduler(
                 settings.partition_management_interval_seconds
             )
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — partition init failure is non-fatal
             _logger.warning("Partition init failed: %s", exc)
 
 
@@ -275,7 +282,7 @@ async def _periodic_scheduler_loop() -> None:
         try:
             async with asyncio.timeout(300):
                 await task.kick()
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — cleanup task failure must not crash scheduler
             task_name = type(task).__name__
             _logger.exception("Cleanup failed for %s", task_name)
             # MOD-W10-08: Increment Prometheus counter for Grafana alerting.
@@ -369,7 +376,9 @@ async def _prewarm_jwt_public_key_cache() -> None:
                     kid,
                     secret,
                 )
-            except Exception as exc:
+            except (
+                Exception
+            ) as exc:  # RZ-22-01-JUSTIFIED: handler-nak — pre-warm failure is non-fatal
                 # Pre-warm failure is non-fatal — cache fills on first real request
                 _logger.warning("JWT key pre-warm failed for kid=%r: %s", kid, exc)
 
@@ -418,12 +427,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     if settings.environment != "testing":
         try:
             await warm_cache()
-        except Exception as exc:
+        except (
+            Exception
+        ) as exc:  # RZ-22-01-JUSTIFIED: handler-nak — warm cache failure is non-fatal
             _logger.warning("Warm cache failed: %s", exc)
 
     try:
         await _prewarm_jwt_public_key_cache()
-    except Exception as exc:
+    except (
+        Exception
+    ) as exc:  # RZ-22-01-JUSTIFIED: handler-nak — JWT pre-warm failure is non-fatal
         _logger.warning("JWT public key pre-warm failed: %s", exc)
 
     try:
@@ -467,7 +480,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     if hasattr(app.state, "partition_stopper") and app.state.partition_stopper:
         await app.state.partition_stopper()
 
-    await feature_flags.shutdown()
+    await feature_flags.close()
     await stop_memory_cleanup_task()
 
     from app.core.spicedb import close_global_spicedb_channel

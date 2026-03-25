@@ -116,7 +116,7 @@ def sanitize_rich_text(html_content: str) -> str:
             # nh3 automatically adds rel="noopener noreferrer" to every <a> tag.
             link_rel="noopener noreferrer",
         )
-    except Exception as e:
+    except Exception as e:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts nh3 errors to HTTPException
         import structlog
         from fastapi import HTTPException
 
@@ -190,7 +190,7 @@ def sanitize_path(path: str, base_dir: str | Path) -> Path | None:
         if base in user_path.parents or user_path == base:
             return user_path
         return None
-    except (ValueError, OSError):
+    except ValueError, OSError:
         return None
 
 
@@ -277,7 +277,7 @@ def sanitize_url(
             return None
 
         return url
-    except Exception:
+    except ValueError, UnicodeError:  # RZ-22-01: narrowed — URL parsing errors
         return None
 
 
@@ -321,7 +321,10 @@ def sanitize_optional_text(value: Any) -> str | None:
     if isinstance(value, bytes | bytearray):
         try:
             decoded = value.decode("utf-8")
-        except Exception:
+        except (
+            UnicodeDecodeError,
+            ValueError,
+        ):  # RZ-22-01: narrowed — bytes decode errors
             decoded = value.decode("utf-8", "ignore")
         return decoded if decoded.strip() else None
     if isinstance(value, str):

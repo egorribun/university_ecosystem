@@ -104,7 +104,7 @@ def register_decorated_handlers(bus: EventBus) -> int:
             # so the registration loop never aborts mid-way.
             try:
                 type_str = event_type().event_type
-            except Exception:
+            except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — falls back to class name for registration
                 # Fall back to the fully-qualified class name so the
                 # subscription is still registered under a deterministic key.
                 type_str = f"{event_type.__module__}.{event_type.__name__}"

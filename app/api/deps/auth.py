@@ -127,7 +127,11 @@ async def get_current_user(
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
     except HTTPException:
         raise
-    except Exception as exc:
+    except (
+        ConnectionError,
+        TimeoutError,
+        OSError,
+    ) as exc:  # RZ-22-01: narrowed — Redis errors
         # Redis unavailable: fall through to DB revoked_at check below
         _logger.debug("Redis revoked-jti check failed: %s", exc)  # nosec B110
         pass
@@ -154,7 +158,7 @@ async def get_current_user(
         if cached_sid:
             try:
                 session = await db.get(ActiveSession, _uuid_mod.UUID(cached_sid))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 session = None
         if not session or session.revoked_at:
             # session_id missing/stale in old cache entries — fall through to DB

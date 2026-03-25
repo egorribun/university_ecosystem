@@ -139,7 +139,11 @@ class PresencePubSub:
 
             try:
                 self._redis = await get_cache_client()
-            except Exception as exc:
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ) as exc:  # RZ-22-01: narrowed — Redis connection errors
                 logger.warning(
                     "Failed to share Redis client for presence pub/sub: %s", exc
                 )
@@ -192,7 +196,11 @@ class PresencePubSub:
             if ps:
                 await ps.unsubscribe(settings.presence_pubsub_channel)
                 await ps.close()
-        except Exception as exc:
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+        ) as exc:  # RZ-22-01: narrowed — Redis pub/sub errors
             logger.error("Presence Pub/Sub listener error: %s", exc)
 
 
@@ -214,7 +222,7 @@ async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
         if not raw_user_id:
             return
         user_id = uuid.UUID(str(raw_user_id))
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         logger.warning("presence pubsub: invalid user_id in payload")
         return
 

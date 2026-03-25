@@ -82,7 +82,11 @@ class RedisSessionBackend(SessionBackend):
         """
         try:
             await self._redis.eval(lua_script, 2, key, revoked_key)  # type: ignore[no-untyped-call]
-        except Exception:
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+        ):  # RZ-22-01: narrowed — Redis errors
             # Fallback to non-atomic if Lua is unavailable (e.g. Redis Cluster scripting off)
             remaining_ttl = await self._redis.ttl(key)
             await self._redis.delete(key)
@@ -91,7 +95,11 @@ class RedisSessionBackend(SessionBackend):
         # Notify Gateway to invalidate its L1 cache
         try:
             await self._redis.publish("session:revocations", jti)
-        except Exception:
+        except (
+            ConnectionError,
+            TimeoutError,
+            OSError,
+        ):  # RZ-22-01: narrowed — Redis pub/sub errors
             logger.warning("Failed to publish session revocation for jti=%s", jti)
 
 

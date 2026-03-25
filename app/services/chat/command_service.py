@@ -143,7 +143,7 @@ class ChatMessageDispatcher:
                 try:
                     _hit = _json.loads(_cached)
                     _msg_id = uuid.UUID(_hit["message_id"])
-                except (ValueError, KeyError, TypeError):
+                except ValueError, KeyError, TypeError:
                     # Legacy entry: full JSON from before BE-02 — fall through to
                     # re-send path (idempotency protection degraded, not broken).
                     pass
@@ -249,7 +249,7 @@ class ChatMessageDispatcher:
                     saved_urls.append(str(res["url"]))
                     processed_attachments.append(res)
 
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleans up partial uploads then re-raises
             # Phase 1 failure: clean up any partial uploads and release slot.
             if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
@@ -319,7 +319,7 @@ class ChatMessageDispatcher:
             async with self.uow:
                 await self.uow.commit()
 
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleans up uploaded files then re-raises
             # RACE-BE-01: Phase 2 failed — clean up already-uploaded files and
             # release the idempotency slot so the next retry can re-upload fresh
             # copies rather than re-using orphaned S3 objects.
@@ -470,7 +470,9 @@ class ChatMaintenanceService:
 
             async with self.uow:
                 await self.uow.commit()
-        except Exception:
+        except (
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback then re-raise
             await self.uow.rollback()
             raise
 
@@ -542,7 +544,9 @@ class ChatMaintenanceService:
             await self.repository.delete_chat(chat_id)
             async with self.uow:
                 await self.uow.commit()
-        except Exception:
+        except (
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback then re-raise
             await self.uow.rollback()
             raise
 

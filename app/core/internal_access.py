@@ -100,7 +100,10 @@ class InternalAccessMiddleware:
             return False
         try:
             provided = provided_bytes.decode("latin-1")
-        except Exception:
+        except (
+            UnicodeDecodeError,
+            ValueError,
+        ):  # RZ-22-01: narrowed — bytes decode errors
             return False
         return secrets.compare_digest(provided, self.header_token)
 

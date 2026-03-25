@@ -271,13 +271,15 @@ async def upload_event_file(
     db.add(ef)
     try:
         await db.commit()
-    except Exception:
+    except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback and cleanup file then re-raise
         await db.rollback()
         await delete_static_file(str(url))
         raise
     try:
         await db.refresh(ef)
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleanup file then re-raise
         await delete_static_file(str(url))
         raise
     return ef
@@ -346,7 +348,7 @@ async def upload_event_image(
             file, "tmp/event_images", f"event_{event_id}", locale=locale
         )
         return {"url": url}
-    except Exception:
+    except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleanup uploaded file then re-raise
         if url:
             with suppress(Exception):
                 await delete_static_file(str(url))

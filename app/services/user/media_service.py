@@ -41,7 +41,7 @@ class UserMediaService:
             async with self.uow:
                 await self.uow.commit()
             return self.repo._to_dto(db_user)
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback and cleanup file then re-raise
             await self.uow.rollback()
             await delete_static_file(file_url)
             raise
@@ -64,7 +64,7 @@ class UserMediaService:
             async with self.uow:
                 await self.uow.commit()
             return self.repo._to_dto(db_user)
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback and cleanup file then re-raise
             await self.uow.rollback()
             await delete_static_file(file_url)
             raise

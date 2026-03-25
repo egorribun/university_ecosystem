@@ -75,7 +75,9 @@ async def check_database_health(db: AsyncSession) -> DatabaseHealthResult:
             if pool is not None:
                 pool_size = pool.size()
                 pool_checked_out = pool.checkedout()
-        except Exception as e:
+        except (
+            Exception
+        ) as e:  # RZ-22-01-JUSTIFIED: health probe — pool stats are optional
             logger.debug("Failed to fetch pool stats: %s", e)
 
         # Determine status based on latency
@@ -126,7 +128,7 @@ async def check_database_connectivity(
     except TimeoutError:
         logger.warning("Database connectivity check timed out after %.0fms", timeout_ms)
         return False
-    except Exception as e:
+    except Exception as e:  # RZ-22-01-JUSTIFIED: health probe — reports connectivity failure for any error
         logger.warning("Database connectivity check failed: %s", e)
         return False
 
@@ -158,12 +160,14 @@ async def check_spicedb_health(timeout_s: float = 2.0) -> tuple[str, float]:
                 timeout=timeout_s,
             )
             status = "ok"
-        except (TimeoutError, grpc.RpcError):
+        except TimeoutError, grpc.RpcError:
             status = "error"
 
         latency_ms = (time.perf_counter() - start) * 1000.0
         return status, latency_ms
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: health probe — SpiceDB probe reports error for any failure
         latency_ms = (time.perf_counter() - start) * 1000.0
         return "error", latency_ms
 

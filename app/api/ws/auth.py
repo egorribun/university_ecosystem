@@ -59,7 +59,11 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
                         "WebSocket: JTI %s is revoked (Redis fast-path)", session_jti
                     )
                     return None, None
-            except Exception as redis_exc:
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ) as redis_exc:  # RZ-22-01: narrowed — Redis errors
                 logger.debug(
                     "WebSocket: Redis JTI check failed, falling through to DB: %s",
                     redis_exc,
@@ -92,7 +96,9 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
     except _JWT_DECODE_ERRORS as exc:
         logger.debug("WebSocket token validation: invalid JWT — %s", type(exc).__name__)
         return None, None
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: fail-closed auth — returns None on unexpected failure
         logger.exception(
             "WebSocket token validation: unexpected infrastructure failure"
         )
@@ -198,7 +204,7 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
         user_id_str = raw[:sep]
         jti = raw[sep + 1 :]
 
-    except Exception as exc:
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — ticket validation failure returns None
         logger.warning("WS ticket validation error: %s", exc)
         return None, None
 
@@ -231,7 +237,7 @@ async def _resolve_user_from_ids(
                 if await _redis.exists(f"revoked:jti:{jti}"):
                     logger.debug("WS ticket JTI %s is revoked (Redis fast-path)", jti)
                     return None, None
-            except Exception:  # noqa: S110  # nosec B110
+            except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-22-01: narrowed — Redis errors
                 pass  # fallback to DB revoked_at check below
 
             active_session = await session_repo.get_by_jti(jti)
@@ -248,7 +254,9 @@ async def _resolve_user_from_ids(
 
             return cast("User | None", user), jti
 
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: fail-closed auth — user resolution failure returns None
         logger.exception("WS ticket: unexpected error resolving user")
         return None, None
 

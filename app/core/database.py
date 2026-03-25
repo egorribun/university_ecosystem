@@ -637,7 +637,7 @@ async def wait_db(
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return
-        except Exception as exc:  # pragma: no cover - defensive logging
+        except Exception as exc:  # pragma: no cover - defensive logging  # RZ-22-01-JUSTIFIED: health probe — DB wait retries on any error
             last_exc = exc
             log_func = logger.error if attempt == max_attempts else logger.warning
             log_func(

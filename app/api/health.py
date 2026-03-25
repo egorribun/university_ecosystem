@@ -86,7 +86,7 @@ async def _lightweight_storage_probe(backend: Any) -> str | None:
     try:
         exists = await backend.exists("/")
         return "ok" if exists else "error"
-    except Exception:
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure
         return "error"
 
 
@@ -94,11 +94,15 @@ async def _write_delete_storage_probe(backend: Any) -> str:
     probe_name = f"healthz/{uuid.uuid4().hex}.txt"
     try:
         probe_url = await backend.save_file(probe_name, b"", content_type="text/plain")
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: health probe — write probe returns "error" on any failure
         return "error"
     try:
         await backend.delete_file(probe_url)
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: health probe — delete probe returns "error" on any failure
         return "error"
     return "ok"
 
@@ -132,7 +136,7 @@ async def _probe_storage() -> tuple[str, float]:
             lightweight_status = await _lightweight_storage_probe(backend)
             if lightweight_status is not None:
                 _status = lightweight_status
-    except Exception:
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure
         _status = "error"
     elapsed = time.perf_counter() - start
     latency_seconds = max(elapsed, 0.0)
@@ -171,57 +175,71 @@ async def healthz(
             content=_health_cache["payload"],
         )
 
+    # PERF-22-02 (audit 2026-03-25 Wave 22): Per-subsystem timeout (5 s) so a
+    # single slow probe (e.g. hung DB) cannot block the entire health check
+    # and cause cascading readiness failures in the K8s cluster.
+    _PROBE_TIMEOUT_SECONDS: float = 5.0
+
     statuses: dict[str, Any] = {}
     latencies: dict[str, float] = {}
 
     db_status = "ok"
     db_start = time.perf_counter()
     try:
-        async with engine.connect() as conn:
-            # 1. Connectivity check
-            await conn.execute(text("SELECT 1"))
+        async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):
+            async with engine.connect() as conn:
+                # 1. Connectivity check
+                await conn.execute(text("SELECT 1"))
 
-            # 2. Migrations check
-            try:
-                (
-                    migrations_current,
-                    current_versions,
-                    expected_versions,
-                ) = await migrations_are_current(conn=conn)
-                if not migrations_current:
-                    # Drift is always an error for the migration status itself
-                    statuses["db_migrations"] = "error"
-                    statuses["db_migrations_current"] = sorted(current_versions)
-                    statuses["db_migrations_expected"] = sorted(expected_versions)
+                # 2. Migrations check
+                try:
+                    (
+                        migrations_current,
+                        current_versions,
+                        expected_versions,
+                    ) = await migrations_are_current(conn=conn)
+                    if not migrations_current:
+                        # Drift is always an error for the migration status itself
+                        statuses["db_migrations"] = "error"
+                        statuses["db_migrations_current"] = sorted(current_versions)
+                        statuses["db_migrations_expected"] = sorted(expected_versions)
 
-                    # But only trigger a global 503 if NOT in testing environment
-                    # (In tests, we often auto-create schema without migrations)
+                        # But only trigger a global 503 if NOT in testing environment
+                        # (In tests, we often auto-create schema without migrations)
+                        is_test = settings.environment in ("testing", "test")
+                        if not is_test:
+                            db_status = "error"
+                    else:
+                        statuses["db_migrations"] = "ok"
+                except (
+                    Exception
+                ):  # RZ-22-01-JUSTIFIED: health probe — migration check failure
+                    # If migrations check fails (e.g. table missing in SQLite),
+                    # only error out if not in testing.
                     is_test = settings.environment in ("testing", "test")
                     if not is_test:
                         db_status = "error"
-                else:
-                    statuses["db_migrations"] = "ok"
-            except Exception:
-                # If migrations check fails (e.g. table missing in SQLite),
-                # only error out if not in testing.
-                is_test = settings.environment in ("testing", "test")
-                if not is_test:
-                    db_status = "error"
-                statuses["db_migrations"] = "skipped" if is_test else "error"
+                    statuses["db_migrations"] = "skipped" if is_test else "error"
 
-            # 3. Queue status
-            queue_status = "ok"
-            queue_start = time.perf_counter()
-            try:
-                await _check_queue(conn)
-            except (OperationalError, Exception):
-                queue_status = "error"
-            queue_elapsed = time.perf_counter() - queue_start
-            statuses["notification_queue"] = queue_status
-            latencies["notification_queue_latency_ms"] = max(queue_elapsed * 1000, 0.0)
-            record_health_probe("notification_queue", queue_status, queue_elapsed)
+                # 3. Queue status
+                queue_status = "ok"
+                queue_start = time.perf_counter()
+                try:
+                    await _check_queue(conn)
+                except OperationalError, Exception:
+                    queue_status = "error"
+                queue_elapsed = time.perf_counter() - queue_start
+                statuses["notification_queue"] = queue_status
+                latencies["notification_queue_latency_ms"] = max(
+                    queue_elapsed * 1000, 0.0
+                )
+                record_health_probe("notification_queue", queue_status, queue_elapsed)
 
-    except Exception:
+    except TimeoutError:
+        db_status = "error"
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: health probe — DB probe returns "error" on any failure
         db_status = "error"
 
     statuses["db"] = db_status
@@ -234,42 +252,61 @@ async def healthz(
     cache_status = "disabled"
     cache_start = time.perf_counter()
     try:
-        cache_backend = get_cache()
-        if getattr(cache_backend, "enabled", False):
-            probe_key = f"healthz:{uuid.uuid4().hex}"
-            try:
-                await cache_backend.set(probe_key, {"status": "ok"}, ttl=5)
-                cache_status = "ok"
-            except Exception:
-                cache_status = "error"
-            finally:
+        async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):  # PERF-22-02
+            cache_backend = get_cache()
+            if getattr(cache_backend, "enabled", False):
+                probe_key = f"healthz:{uuid.uuid4().hex}"
                 try:
-                    await cache_backend.invalidate(probe_key)
-                except Exception:
+                    await cache_backend.set(probe_key, {"status": "ok"}, ttl=5)
+                    cache_status = "ok"
+                except (
+                    Exception
+                ):  # RZ-22-01-JUSTIFIED: health probe — cache set probe returns "error"
                     cache_status = "error"
-        else:
-            cache_status = "disabled"
-    except Exception:
+                finally:
+                    try:
+                        await cache_backend.invalidate(probe_key)
+                    except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache invalidate probe returns "error"
+                        cache_status = "error"
+            else:
+                cache_status = "disabled"
+    except TimeoutError:
+        cache_status = "error"
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: health probe — cache probe returns "error" on any failure
         cache_status = "error"
     cache_elapsed = time.perf_counter() - cache_start
     statuses["cache"] = cache_status
     latencies["cache_latency_ms"] = max(cache_elapsed * 1000, 0.0)
     record_health_probe("cache", cache_status, cache_elapsed)
 
-    storage_status, storage_elapsed = await _probe_storage()
+    storage_start = time.perf_counter()
+    try:
+        async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):  # PERF-22-02
+            storage_status, storage_elapsed = await _probe_storage()
+    except TimeoutError:
+        storage_status = "error"
+        storage_elapsed = time.perf_counter() - storage_start
     statuses["storage"] = storage_status
     latencies["storage_latency_ms"] = max(storage_elapsed * 1000, 0.0)
     record_health_probe("storage", storage_status, storage_elapsed)
 
     scanner_start = time.perf_counter()
-    if getattr(settings, "event_file_scanner_enabled", False):
-        scanner_status = "ok"
-        try:
-            await check_file_scanner_health()
-        except Exception:
-            scanner_status = "error"
-    else:
-        scanner_status = "disabled"
+    try:
+        async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):  # PERF-22-02
+            if getattr(settings, "event_file_scanner_enabled", False):
+                scanner_status = "ok"
+                try:
+                    await check_file_scanner_health()
+                except (
+                    Exception
+                ):  # RZ-22-01-JUSTIFIED: health probe — scanner probe returns "error"
+                    scanner_status = "error"
+            else:
+                scanner_status = "disabled"
+    except TimeoutError:
+        scanner_status = "error"
     scanner_elapsed = time.perf_counter() - scanner_start
     statuses["file_scanner"] = scanner_status
     latencies["file_scanner_latency_ms"] = max(scanner_elapsed * 1000, 0.0)
@@ -278,7 +315,12 @@ async def healthz(
     # SpiceDB check (RZ-05, audit 2026-03-19)
     from app.core.health import check_spicedb_health
 
-    authz_status, authz_latency_ms = await check_spicedb_health()
+    try:
+        async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):  # PERF-22-02
+            authz_status, authz_latency_ms = await check_spicedb_health()
+    except TimeoutError:
+        authz_status = "error"
+        authz_latency_ms = _PROBE_TIMEOUT_SECONDS * 1000
     statuses["spicedb"] = authz_status
     latencies["spicedb_latency_ms"] = authz_latency_ms
     record_health_probe("spicedb", authz_status, authz_latency_ms / 1000.0)

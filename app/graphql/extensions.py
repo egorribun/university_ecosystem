@@ -92,7 +92,7 @@ async def _increment_user_cost(user_id: str, cost: int, window_minute: int) -> i
         pipe.expire(redis_key, 120)
         results = await pipe.execute()
         return int(results[0])
-    except Exception:  # noqa: S110  # nosec B110
+    except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-22-01: narrowed — Redis errors
         # Redis unavailable — fall through to per-process in-memory counter.
         # In multi-instance deployments this under-counts, but it still provides
         # meaningful protection against single-client abuse within a process.
@@ -248,7 +248,7 @@ def _load_manifest() -> dict[str, str]:
                 len(_query_allowlist),
                 _MANIFEST_PATH,
             )
-        except Exception:
+        except OSError, ValueError, KeyError:  # RZ-22-01: narrowed — JSON/file errors
             logger.warning("Failed to load query manifest — persisted queries disabled")
             _query_allowlist = {}
     else:

@@ -151,7 +151,7 @@ def send_reset_email(
                 if user:
                     s.login(user, password)
                 s.send_message(msg)
-    except Exception:
+    except OSError, smtplib.SMTPException:  # RZ-22-01: narrowed — SMTP/network errors
         safe_link = _redact_sensitive_query(link)
         _log_event(
             logging.ERROR,
@@ -248,7 +248,7 @@ def send_lockout_email(
                 if user:
                     s.login(user, password)
                 s.send_message(msg)
-    except Exception:
+    except OSError, smtplib.SMTPException:  # RZ-22-01: narrowed — SMTP/network errors
         _log_event(
             logging.ERROR,
             "auth.lockout_email.error",

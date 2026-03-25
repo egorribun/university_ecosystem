@@ -148,7 +148,9 @@ def _verify_legacy_bcrypt(
         from app.core.metrics import record_legacy_bcrypt_verification
 
         record_legacy_bcrypt_verification()
-    except Exception as exc:
+    except (
+        Exception
+    ) as exc:  # RZ-22-01-JUSTIFIED: metrics guard — best-effort metrics recording
         _logger.debug("Legacy bcrypt metrics recording failed: %s", exc)  # nosec B110
     _logger.warning(
         "bcrypt_hash_rejected: Legacy bcrypt hashes are no longer accepted. "
@@ -397,7 +399,7 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
             return True
         except VerifyMismatchError:
             return False
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — unknown argon2 error returns False
             # TD-W8-01: Hash format is invalid or argon2 raised an unexpected error.
             # Do NOT fall back to bcrypt — a malformed $argon2 hash is not a bcrypt
             # hash, and bcrypt silently ignores unrecognised prefixes, meaning a
@@ -436,7 +438,7 @@ def verify_and_update_password_sync(
             return True, None
         except VerifyMismatchError:
             return False, None
-        except Exception as exc:
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — falls through to legacy check that always rejects
             # Unexpected error from argon2 (e.g. malformed hash format).
             # TD-21-04 (Wave 21): Falls through to _verify_legacy_bcrypt which
             # now always returns False — forcing the user to reset their password.
@@ -448,7 +450,9 @@ def verify_and_update_password_sync(
 
     try:
         verified = _verify_legacy_bcrypt(plain_password, hashed_password)
-    except Exception:
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: fail-closed auth — bcrypt verification error returns False
         return False, None
     if not verified:
         return False, None
@@ -534,7 +538,7 @@ def _mint_pure_jwt(
 
 
 _public_key_cache: dict[str, str] = {}
-_public_key_cache_lock = threading.Lock()
+_public_key_cache_lock = threading.Lock()  # RZ-22-05 (Wave 22): reviewed — safe under CPython 3.13+ free-threading; CoW pattern (lines 547-580) ensures readers never see partial state
 
 
 def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
@@ -640,7 +644,7 @@ def decode_token(token: str) -> dict[str, Any] | None:
                         # the kid/PEM string auto-invalidates on key rotation.
                         # PERF-NEW-003: Now cached via tied kid+secret.
                         verification_key = _get_cached_public_key_pem(kid, secret)
-                    except Exception as exc:
+                    except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — PEM parse error skips key candidate
                         _logger.error(
                             "Failed to extract public key from PEM for RS256 verification: %s",
                             exc,
