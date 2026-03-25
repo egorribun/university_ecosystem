@@ -30,7 +30,7 @@ try:  # pragma: no cover - optional dependency guard
         Histogram,
         generate_latest,
     )
-except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed
+except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed (reviewed TD-27-04)
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
     Counter: Any = None  # type: ignore[no-redef]
     Gauge: Any = None  # type: ignore[no-redef]
@@ -661,7 +661,7 @@ class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             status_code = str(response.status_code)
             return cast(Response, response)
-        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — ensures metrics are recorded in finally block
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — ensures metrics are recorded in finally block (reviewed TD-27-04)
             raise
         finally:
             _REQUEST_COUNT.labels(
@@ -730,9 +730,7 @@ def _is_authorized(request: Request) -> bool:
     encoded = header[6:].strip()
     try:
         decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: fail-closed auth — invalid base64 returns False
+    except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — invalid base64 returns False (reviewed TD-27-04)
         return False
     provided_username, _, provided_password = decoded.partition(":")
     if not _:
@@ -810,12 +808,12 @@ def record_health_probe(component: str, status: str, elapsed_seconds: float) -> 
             _HEALTH_CHECK_DURATION.labels(component=component).observe(
                 max(elapsed_seconds, 0.0)
             )
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to record health check duration", exc_info=True)
     if _HEALTH_CHECK_STATUS is not None:
         try:
             _HEALTH_CHECK_STATUS.labels(component=component, status=status).inc()
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to record health check status", exc_info=True)
 
 
@@ -827,12 +825,12 @@ def record_redis_command(
             _REDIS_COMMAND_DURATION.labels(command=command).observe(
                 max(elapsed_seconds, 0.0)
             )
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to record redis command duration", exc_info=True)
     if not success and _REDIS_COMMAND_ERRORS is not None:
         try:
             _REDIS_COMMAND_ERRORS.labels(command=command).inc()
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to record redis command error", exc_info=True)
 
 
@@ -844,12 +842,12 @@ def record_db_operation(
             _DB_OPERATION_DURATION.labels(operation=operation).observe(
                 max(elapsed_seconds, 0.0)
             )
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to record db operation duration", exc_info=True)
     if not success and _DB_OPERATION_ERRORS is not None:
         try:
             _DB_OPERATION_ERRORS.labels(operation=operation).inc()
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to record db operation error", exc_info=True)
 
 
@@ -883,7 +881,7 @@ async def _record_cache_metrics() -> None:
                     _CACHE_MEMORY_BYTES.set(float(used_memory))
             if _REDIS_HEALTH is not None:
                 _REDIS_HEALTH.set(1)
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             if _REDIS_HEALTH is not None:
                 _REDIS_HEALTH.set(0)
             record_redis_command("ping", 0.0, success=False)
@@ -924,7 +922,7 @@ def _record_pool_metrics() -> None:
             if _DB_POOL_CHECKEDIN is not None:
                 _DB_POOL_CHECKEDIN.set(float(checked_in))
 
-    except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+    except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
         logger.debug("Failed to collect pool metrics", exc_info=True)
 
 
@@ -942,7 +940,7 @@ async def _record_db_metrics() -> None:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         success = True
-    except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+    except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
         success = False
     finally:
         elapsed = max(time.perf_counter() - start, 0.0)
@@ -971,7 +969,7 @@ def _record_system_metrics() -> None:
             # interval=0.1 performs a short blocking measurement so the first
             # scrape always reports a real (non-zero) value.
             _CPU_LOAD.set(float(psutil.cpu_percent(interval=0.1)))
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to collect CPU metrics", exc_info=True)
     if _GPU_LOAD is not None:
         try:
@@ -985,7 +983,7 @@ def _record_system_metrics() -> None:
                 _GPU_LOAD.labels(index=str(gpu.id), name=str(gpu.name)).set(
                     float(getattr(gpu, "load", 0.0)) * 100.0
                 )
-        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard
+        except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to collect GPU metrics", exc_info=True)
 
 
@@ -1031,9 +1029,7 @@ def _ensure_notification_queue_metrics_registry() -> None:
 
     try:
         from app.core import observability
-    except (
-        Exception
-    ):  # pragma: no cover - defensive guard  # RZ-22-01-JUSTIFIED: metrics guard
+    except Exception:  # pragma: no cover - defensive guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
         return
 
     try:
@@ -1050,9 +1046,7 @@ def _ensure_notification_queue_metrics_registry() -> None:
 
     try:
         from app.services import notification_queue
-    except (
-        Exception
-    ):  # pragma: no cover - defensive guard  # RZ-22-01-JUSTIFIED: metrics guard
+    except Exception:  # pragma: no cover - defensive guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
         return
 
     notification_queue._queue_metrics = fresh
@@ -1119,9 +1113,7 @@ def configure_metrics(app: FastAPI) -> None:
         logger.debug(
             "opentelemetry-exporter-prometheus not installed — OTEL metrics bridge skipped"
         )
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: metrics guard — OTEL init must not crash the app
+    except Exception:  # RZ-22-01-JUSTIFIED: metrics guard — OTEL init must not crash the app (reviewed TD-27-04)
         logger.warning(
             "OTEL Metrics bridge initialization failed — falling back to prometheus_client only",
             exc_info=True,
@@ -1130,9 +1122,7 @@ def configure_metrics(app: FastAPI) -> None:
     app.add_middleware(PrometheusRequestMetricsMiddleware)
     try:
         from app.core.observability import get_notification_queue_metrics
-    except (
-        Exception
-    ):  # pragma: no cover - defensive guard  # RZ-22-01-JUSTIFIED: metrics guard
+    except Exception:  # pragma: no cover - defensive guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
         get_notification_queue_metrics = None  # type: ignore[assignment]
     if get_notification_queue_metrics is not None:
         try:

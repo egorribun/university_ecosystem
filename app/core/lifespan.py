@@ -135,7 +135,7 @@ async def _verify_database_readiness() -> None:
                         raise RuntimeError(
                             f"DB schema mismatch — current={_current!r}, head={_head!r}."
                         )
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs, degrades in dev
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs, degrades in dev (reviewed TD-27-04)
             if settings.environment not in {"development", "local", "testing"}:
                 raise
             _logger.warning("Migration head check skipped/failed: %s", exc)
@@ -169,9 +169,7 @@ async def _handle_schema_and_extensions() -> None:
                             column.computed = None
 
             await conn.run_sync(Base.metadata.create_all)
-    except (
-        Exception
-    ) as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs (reviewed TD-27-04)
         if settings.environment not in {"development", "local", "testing"}:
             raise
         _logger.warning("Auto-schema failed: %s", exc)
@@ -194,9 +192,7 @@ async def _validate_di_container(app: FastAPI) -> None:
     for svc_type in critical_app_services:
         try:
             await container.get(svc_type)
-        except (
-            Exception
-        ) as exc:  # RZ-22-01-JUSTIFIED: health probe — DI smoke-test collects failures
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: health probe — DI smoke-test collects failures (reviewed TD-27-04)
             failures.append(f"{svc_type.__name__}: {exc}")
 
     if failures:
@@ -250,7 +246,7 @@ async def _startup_background_workers(app: FastAPI) -> None:
             app.state.partition_stopper = await start_partition_management_scheduler(
                 settings.partition_management_interval_seconds
             )
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — partition init failure is non-fatal
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — partition init failure is non-fatal (reviewed TD-27-04)
             _logger.warning("Partition init failed: %s", exc)
 
 
@@ -282,7 +278,7 @@ async def _periodic_scheduler_loop() -> None:
         try:
             async with asyncio.timeout(300):
                 await task.kick()
-        except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — cleanup task failure must not crash scheduler
+        except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — cleanup task failure must not crash scheduler (reviewed TD-27-04)
             task_name = type(task).__name__
             _logger.exception("Cleanup failed for %s", task_name)
             # MOD-W10-08: Increment Prometheus counter for Grafana alerting.
@@ -376,9 +372,7 @@ async def _prewarm_jwt_public_key_cache() -> None:
                     kid,
                     secret,
                 )
-            except (
-                Exception
-            ) as exc:  # RZ-22-01-JUSTIFIED: handler-nak — pre-warm failure is non-fatal
+            except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — pre-warm failure is non-fatal (reviewed TD-27-04)
                 # Pre-warm failure is non-fatal — cache fills on first real request
                 _logger.warning("JWT key pre-warm failed for kid=%r: %s", kid, exc)
 
@@ -427,16 +421,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     if settings.environment != "testing":
         try:
             await warm_cache()
-        except (
-            Exception
-        ) as exc:  # RZ-22-01-JUSTIFIED: handler-nak — warm cache failure is non-fatal
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — warm cache failure is non-fatal (reviewed TD-27-04)
             _logger.warning("Warm cache failed: %s", exc)
 
     try:
         await _prewarm_jwt_public_key_cache()
-    except (
-        Exception
-    ) as exc:  # RZ-22-01-JUSTIFIED: handler-nak — JWT pre-warm failure is non-fatal
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — JWT pre-warm failure is non-fatal (reviewed TD-27-04)
         _logger.warning("JWT public key pre-warm failed: %s", exc)
 
     try:

@@ -53,7 +53,7 @@ def _container_cpu_count() -> int:
         sched = getattr(os, "sched_getaffinity", None)
         if sched:
             return len(sched(0))  # Linux cgroups v2 — most accurate
-    except AttributeError, NotImplementedError:  # RZ-26-01
+    except AttributeError, NotImplementedError:  # RZ-27-01
         pass
     try:  # Fallback for cgroups v1 (Docker legacy)
         with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:
@@ -64,7 +64,7 @@ def _container_cpu_count() -> int:
             # LOW-W19: cap at 32 to prevent runaway thread/memory usage on
             # hosts where cgroups v1 quota is set to an unreasonably high value.
             return min(max(1, quota // period), 32)
-    except FileNotFoundError, ValueError, OSError:  # RZ-26-01
+    except FileNotFoundError, ValueError, OSError:  # RZ-27-01
         pass
     return os.cpu_count() or 2
 
@@ -148,9 +148,7 @@ def _verify_legacy_bcrypt(
         from app.core.metrics import record_legacy_bcrypt_verification
 
         record_legacy_bcrypt_verification()
-    except (
-        Exception
-    ) as exc:  # RZ-22-01-JUSTIFIED: metrics guard — best-effort metrics recording
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: metrics guard — best-effort metrics recording (reviewed TD-27-04)
         _logger.debug("Legacy bcrypt metrics recording failed: %s", exc)  # nosec B110
     _logger.warning(
         "bcrypt_hash_rejected: Legacy bcrypt hashes are no longer accepted. "
@@ -399,7 +397,7 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
             return True
         except VerifyMismatchError:
             return False
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — unknown argon2 error returns False
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — unknown argon2 error returns False (reviewed TD-27-04)
             # TD-W8-01: Hash format is invalid or argon2 raised an unexpected error.
             # Do NOT fall back to bcrypt — a malformed $argon2 hash is not a bcrypt
             # hash, and bcrypt silently ignores unrecognised prefixes, meaning a
@@ -438,7 +436,7 @@ def verify_and_update_password_sync(
             return True, None
         except VerifyMismatchError:
             return False, None
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — falls through to legacy check that always rejects
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — falls through to legacy check that always rejects (reviewed TD-27-04)
             # Unexpected error from argon2 (e.g. malformed hash format).
             # TD-21-04 (Wave 21): Falls through to _verify_legacy_bcrypt which
             # now always returns False — forcing the user to reset their password.
@@ -450,9 +448,7 @@ def verify_and_update_password_sync(
 
     try:
         verified = _verify_legacy_bcrypt(plain_password, hashed_password)
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: fail-closed auth — bcrypt verification error returns False
+    except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — bcrypt verification error returns False (reviewed TD-27-04)
         return False, None
     if not verified:
         return False, None
@@ -644,7 +640,7 @@ def decode_token(token: str) -> dict[str, Any] | None:
                         # the kid/PEM string auto-invalidates on key rotation.
                         # PERF-NEW-003: Now cached via tied kid+secret.
                         verification_key = _get_cached_public_key_pem(kid, secret)
-                    except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — PEM parse error skips key candidate
+                    except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — PEM parse error skips key candidate (reviewed TD-27-04)
                         _logger.error(
                             "Failed to extract public key from PEM for RS256 verification: %s",
                             exc,

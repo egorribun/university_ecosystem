@@ -6,7 +6,6 @@ import {
   MessageCircle as ChatBubbleOutlineIcon,
   Heart as FavoriteIcon,
 } from "lucide-react"
-import { memo } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
@@ -101,4 +100,5 @@ const NewsCardContent = ({
   )
 }
 
-export default memo(NewsCardContent)
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export default NewsCardContent

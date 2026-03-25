@@ -1,7 +1,7 @@
 import { motion } from "framer-motion"
-import { memo } from "react"
 
-export const NewsCardBackground = memo(function NewsCardBackground() {
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export function NewsCardBackground() {
   return (
     <>
       <motion.span
@@ -43,4 +43,4 @@ export const NewsCardBackground = memo(function NewsCardBackground() {
       />
     </>
   )
-})
+}

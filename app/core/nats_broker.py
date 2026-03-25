@@ -122,9 +122,7 @@ class NatsTaskBroker:
                 subjects=[f"{self._subject_prefix}.>"],
             )
             _logger.info("Connected to NATS JetStream for task processing")
-        except (
-            Exception
-        ) as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)
             _logger.error("Failed to connect to NATS: %s", exc)
             raise
 
@@ -373,7 +371,7 @@ class NatsTaskBroker:
                                 continue
 
                         await msg.ack()
-                    except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NAKs message for JetStream retry
+                    except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NAKs message for JetStream retry (reviewed TD-27-04)
                         _logger.exception(
                             "Error processing task %s: %s", task_name, exc
                         )
@@ -381,7 +379,7 @@ class NatsTaskBroker:
                         await msg.nak()
             except nats.errors.TimeoutError:
                 continue
-            except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — worker loop must survive any error
+            except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — worker loop must survive any error (reviewed TD-27-04)
                 _logger.error("Broker worker error: %s", exc)
                 await asyncio.sleep(1)
 

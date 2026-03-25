@@ -253,7 +253,7 @@ class PermissionChecker:
             # grpc/authzed not installed — treat as unavailable rather than silently
             # denying. Callers with SpiceDB enabled should always have grpc.
             raise SpiceDBUnavailableError("grpc is not installed") from exc
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — SpiceDB fallback to grace-period cache
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — SpiceDB fallback to grace-period cache (reviewed TD-27-04)
             logger.error(
                 "SpiceDB async permission check failed (%s:%s#%s for %s): %s",
                 resource_type,

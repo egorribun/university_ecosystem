@@ -100,9 +100,7 @@ async def proxy_image(
     except ValueError:
         # Often file not found in storage
         raise_not_found("image", "en", resource_id=path)
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: convert-to-domain — converts any proxy error to HTTP 500
+    except Exception:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts any proxy error to HTTP 500 (reviewed TD-27-04)
         from logging import getLogger
 
         getLogger(__name__).exception("Image proxy error for %s", path)

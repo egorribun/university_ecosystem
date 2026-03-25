@@ -725,7 +725,7 @@ class EventBus:
                 chain_task.cancel()
                 try:
                     await chain_task
-                except asyncio.CancelledError, Exception:  # noqa: S110
+                except asyncio.CancelledError, Exception:  # noqa: S110  # RZ-27-01
                     pass
                 logger.error(
                     "Event production timed out (10s)",
@@ -745,7 +745,7 @@ class EventBus:
         """Execute handler with error protection and optional DLQ."""
         try:
             await handler(event)
-        except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — catches handler errors, routes to DLQ
+        except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — catches handler errors, routes to DLQ (reviewed TD-27-04)
             logger.exception(
                 "Handler %s failed for event %s: %s",
                 handler.__name__,
@@ -756,7 +756,7 @@ class EventBus:
             if self._dlq is not None:
                 try:
                     await self._dlq.add(event, e, handler.__name__)
-                except Exception as dlq_err:  # RZ-22-01-JUSTIFIED: handler-nak — critical fallback when DLQ itself fails
+                except Exception as dlq_err:  # RZ-22-01-JUSTIFIED: handler-nak — critical fallback when DLQ itself fails (reviewed TD-27-04)
                     # NEW-SEC-003: Critical fallback. If DLQ fails, we MUST ensure
                     # the error is catastrophic and visible.
                     logger.critical(

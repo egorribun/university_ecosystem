@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
+	"strings"
 	"time"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
@@ -52,6 +54,14 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 	const maxKeyLen = 1024
 	if len(req.SourceKey) > maxKeyLen || len(req.DestKey) > maxKeyLen {
 		return nil, status.Errorf(codes.InvalidArgument, "source_key/dest_key exceeds %d bytes", maxKeyLen)
+	}
+	// RZ-27-04: Reject path traversal at gRPC boundary before Temporal workflow
+	// start. sanitizeMinIOKey in workflow.go catches this too (defense in depth).
+	for _, key := range []string{req.SourceKey, req.DestKey} {
+		cleaned := path.Clean(key)
+		if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
+			return nil, status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)
+		}
 	}
 	if len(req.Options) > maxOptionsCount {
 		return nil, status.Errorf(codes.InvalidArgument, "options count %d exceeds limit of %d", len(req.Options), maxOptionsCount)

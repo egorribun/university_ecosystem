@@ -221,4 +221,5 @@ const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.is_registered === next.is_registered &&
   prev.participant_count === next.participant_count
 
+// PERF-27-02-KEPT: custom areEqual comparator
 export default memo(EventCardComponent, areEventCardPropsEqual)

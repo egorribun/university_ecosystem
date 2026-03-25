@@ -86,7 +86,7 @@ async def _lightweight_storage_probe(backend: Any) -> str | None:
     try:
         exists = await backend.exists("/")
         return "ok" if exists else "error"
-    except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure (reviewed TD-27-04)
         return "error"
 
 
@@ -94,15 +94,11 @@ async def _write_delete_storage_probe(backend: Any) -> str:
     probe_name = f"healthz/{uuid.uuid4().hex}.txt"
     try:
         probe_url = await backend.save_file(probe_name, b"", content_type="text/plain")
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: health probe — write probe returns "error" on any failure
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — write probe returns "error" on any failure (reviewed TD-27-04)
         return "error"
     try:
         await backend.delete_file(probe_url)
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: health probe — delete probe returns "error" on any failure
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — delete probe returns "error" on any failure (reviewed TD-27-04)
         return "error"
     return "ok"
 
@@ -136,7 +132,7 @@ async def _probe_storage() -> tuple[str, float]:
             lightweight_status = await _lightweight_storage_probe(backend)
             if lightweight_status is not None:
                 _status = lightweight_status
-    except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure (reviewed TD-27-04)
         _status = "error"
     elapsed = time.perf_counter() - start
     latency_seconds = max(elapsed, 0.0)
@@ -211,9 +207,7 @@ async def healthz(
                             db_status = "error"
                     else:
                         statuses["db_migrations"] = "ok"
-                except (
-                    Exception
-                ):  # RZ-22-01-JUSTIFIED: health probe — migration check failure
+                except Exception:  # RZ-22-01-JUSTIFIED: health probe — migration check failure (reviewed TD-27-04)
                     # If migrations check fails (e.g. table missing in SQLite),
                     # only error out if not in testing.
                     is_test = settings.environment in ("testing", "test")
@@ -229,7 +223,7 @@ async def healthz(
                 except (
                     OperationalError,
                     Exception,
-                ):  # RZ-25-01  # RZ-22-01-JUSTIFIED: health probe catch-all
+                ):  # RZ-25-01  # RZ-22-01-JUSTIFIED: health probe catch-all (reviewed TD-27-04)
                     queue_status = "error"
                 queue_elapsed = time.perf_counter() - queue_start
                 statuses["notification_queue"] = queue_status
@@ -240,9 +234,7 @@ async def healthz(
 
     except TimeoutError:
         db_status = "error"
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: health probe — DB probe returns "error" on any failure
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — DB probe returns "error" on any failure (reviewed TD-27-04)
         db_status = "error"
 
     statuses["db"] = db_status
@@ -262,22 +254,18 @@ async def healthz(
                 try:
                     await cache_backend.set(probe_key, {"status": "ok"}, ttl=5)
                     cache_status = "ok"
-                except (
-                    Exception
-                ):  # RZ-22-01-JUSTIFIED: health probe — cache set probe returns "error"
+                except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache set probe returns "error" (reviewed TD-27-04)
                     cache_status = "error"
                 finally:
                     try:
                         await cache_backend.invalidate(probe_key)
-                    except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache invalidate probe returns "error"
+                    except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache invalidate probe returns "error" (reviewed TD-27-04)
                         cache_status = "error"
             else:
                 cache_status = "disabled"
     except TimeoutError:
         cache_status = "error"
-    except (
-        Exception
-    ):  # RZ-22-01-JUSTIFIED: health probe — cache probe returns "error" on any failure
+    except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache probe returns "error" on any failure (reviewed TD-27-04)
         cache_status = "error"
     cache_elapsed = time.perf_counter() - cache_start
     statuses["cache"] = cache_status
@@ -302,9 +290,7 @@ async def healthz(
                 scanner_status = "ok"
                 try:
                     await check_file_scanner_health()
-                except (
-                    Exception
-                ):  # RZ-22-01-JUSTIFIED: health probe — scanner probe returns "error"
+                except Exception:  # RZ-22-01-JUSTIFIED: health probe — scanner probe returns "error" (reviewed TD-27-04)
                     scanner_status = "error"
             else:
                 scanner_status = "disabled"

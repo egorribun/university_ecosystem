@@ -90,7 +90,7 @@ class OutboxWorker:
                             pass
                         finally:
                             self._wakeup_event.clear()
-                except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — top-level worker loop must not crash on any error
+                except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — top-level worker loop must not crash on any error (reviewed TD-27-04)
                     logger.exception("Error in OutboxWorker loop")
                     await asyncio.sleep(self.poll_interval)
         finally:
@@ -193,7 +193,7 @@ class OutboxWorker:
                         OUTBOX_EVENTS_PROCESSED.labels(
                             event_type=se.event_type, status="success"
                         ).inc()
-                    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter
+                    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
                         se.error_count += 1
                         last_error = traceback.format_exc()
                         # Store first 500 chars of error for audit trail
@@ -306,7 +306,7 @@ class OutboxWorker:
                 span.set_attribute("outbox.aggregate_type", se.aggregate_type or "")
                 await event_bus.publish(event)
 
-        except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises for caller retry logic
+        except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises for caller retry logic (reviewed TD-27-04)
             logger.error("Failed to reconstruct event %s: %s", se.id, e)
             se.error_count += 1
             raise

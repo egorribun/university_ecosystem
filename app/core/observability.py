@@ -47,7 +47,7 @@ try:
         Histogram,
         generate_latest,
     )
-except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed
+except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed (reviewed TD-27-04)
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
     CollectorRegistry: Any = None  # type: ignore[no-redef]
     Counter: Any = None  # type: ignore[no-redef]
@@ -72,11 +72,9 @@ try:
         from sentry_sdk.integrations.opentelemetry import (
             SentrySpanProcessor,
         )
-    except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — SentrySpanProcessor may not be available
+    except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — SentrySpanProcessor may not be available (reviewed TD-27-04)
         SentrySpanProcessor: Any = None  # type: ignore[no-redef]
-except (
-    Exception
-):  # RZ-22-01-JUSTIFIED: optional dependency — sentry_sdk may not be installed
+except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — sentry_sdk may not be installed (reviewed TD-27-04)
     sentry_init: Any = None  # type: ignore[no-redef]
     FastApiIntegration: Any = None  # type: ignore[no-redef]
     LoggingIntegration: Any = None  # type: ignore[no-redef]
@@ -497,7 +495,7 @@ class PeriodicTaskRun:
 def _coerce_deleted_value(value: Any) -> int:
     try:
         number = int(value)
-    except TypeError, ValueError:  # RZ-26-01 + MOD-25-04
+    except TypeError, ValueError:  # RZ-27-01 + MOD-25-04
         return 0
     return number if number > 0 else 0
 
@@ -519,7 +517,7 @@ class PeriodicTaskMetrics:
             yield run
         except asyncio.CancelledError:
             raise
-        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — records metrics then re-raises
+        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — records metrics then re-raises (reviewed TD-27-04)
             elapsed = max(time.perf_counter() - start, 0.0)
             self.errors_total.inc()
             self.duration_seconds.observe(elapsed)

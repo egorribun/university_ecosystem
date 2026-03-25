@@ -68,7 +68,7 @@ def _create_clamd_client() -> Any:
         if socket_path:
             return clamd.ClamdUnixSocket(path=socket_path, timeout=timeout)
         return clamd.ClamdNetworkSocket(host=host, port=port, timeout=timeout)
-    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors
+    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
         raise FileScannerUnavailableError("unable to connect to clamd") from exc
 
 
@@ -80,7 +80,7 @@ def _scan_with_clamd_stream(stream: IO[bytes]) -> str | None:
         response: Any = client.instream(stream)
     except FileScannerUnavailableError:
         raise
-    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors
+    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
         raise FileScannerUnavailableError("clamd scan failed") from exc
 
     if not isinstance(response, dict) or "stream" not in response:
@@ -110,7 +110,7 @@ def _check_clamd_health() -> None:
         pong = client.ping()
     except FileScannerUnavailableError:
         raise
-    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors
+    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
         raise FileScannerUnavailableError("clamd health check failed") from exc
 
     if isinstance(pong, str) and pong.upper() == "PONG":
@@ -129,7 +129,7 @@ class _ScanResult:
 def _scanner_size_limit_bytes() -> int:
     try:
         configured = float(getattr(settings, "event_file_scanner_max_size_mb", 0) or 0)
-    except TypeError, ValueError:  # pragma: no cover - invalid config  # RZ-26-01
+    except TypeError, ValueError:  # pragma: no cover - invalid config  # RZ-27-01
         return 0
     if configured <= 0:
         return 0
@@ -141,7 +141,7 @@ def _scanner_duration_limit_seconds() -> float:
         configured = float(
             getattr(settings, "event_file_scanner_max_duration_sec", 0) or 0
         )
-    except TypeError, ValueError:  # pragma: no cover - invalid config  # RZ-26-01
+    except TypeError, ValueError:  # pragma: no cover - invalid config  # RZ-27-01
         return 0.0
     if configured <= 0:
         return 0.0
@@ -414,9 +414,7 @@ async def _scan_upload_with_clamd(
                     logger.debug("Failed to close clamd writer cleanly", exc_info=True)
     except TimeoutError as exc:
         raise FileScannerUnavailableError("clamd scan timed out") from exc
-    except (
-        Exception
-    ) as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd stream errors
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd stream errors (reviewed TD-27-04)
         raise FileScannerUnavailableError("clamd scan failed") from exc
 
     if not response:

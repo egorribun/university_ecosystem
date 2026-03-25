@@ -60,9 +60,21 @@ func estimateQueryDepth(query string) int {
 	inString := false
 	escaped := false // RZ-26-05: track backslash escapes inside strings
 
+	inComment := false // PERF-27-01: skip GraphQL # line comments
 	for _, ch := range query {
 		if escaped {
 			escaped = false
+			continue
+		}
+		// PERF-27-01: Skip # line comments (GraphQL spec section 2.1.2)
+		if ch == '#' && !inString {
+			inComment = true
+			continue
+		}
+		if inComment {
+			if ch == '\n' || ch == '\r' {
+				inComment = false
+			}
 			continue
 		}
 		switch {

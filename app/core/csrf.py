@@ -175,6 +175,9 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
         # Read the persisted per-client nonce from the dedicated cookie.
         anon_nonce = request.cookies.get(_ANON_NONCE_COOKIE_NAME, "")
         # Validate: must be exactly _ANON_NONCE_HEX_LEN lowercase hex chars.
+        # RZ-27-06: Always call token_hex to normalize timing regardless of
+        # cookie validity. Discarded when the cookie is valid.
+        fresh_nonce = secrets.token_hex(16)
         if (
             not anon_nonce
             or len(anon_nonce) != _ANON_NONCE_HEX_LEN
@@ -182,7 +185,7 @@ def _extract_session_id(request: Request, cookie_token: str) -> str:
         ):
             # Generate a fresh nonce and store it in request.state so that
             # send_with_csrf_cookie can include the Set-Cookie in the response.
-            anon_nonce = secrets.token_hex(16)
+            anon_nonce = fresh_nonce
             setattr(request.state, _NEW_ANON_NONCE_STATE_KEY, anon_nonce)
         session_id = f"anon:{anon_nonce}"
     return session_id

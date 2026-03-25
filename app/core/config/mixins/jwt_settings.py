@@ -203,7 +203,7 @@ class JwtSettingsMixin:
                 try:
                     with open(self.jwt_private_key_path) as f:
                         entries.append((fallback_kid, f.read()))
-                except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in prod, falls back in dev
+                except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in prod, falls back in dev (reviewed TD-27-04)
                     # Assuming 'environment' is available on self, or passed via info
                     # For now, using a placeholder 'self.environment'
                     # In a real Pydantic setup, 'environment' would likely be a field

@@ -44,9 +44,7 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
 
         except asyncio.CancelledError:
             break
-        except (
-            Exception
-        ) as e:  # RZ-22-01-JUSTIFIED: handler-nak — cleanup loop must not crash
+        except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — cleanup loop must not crash (reviewed TD-27-04)
             logger.error(
                 "Error in memory rate limit cleanup task: %s", e
             )  # LOW-W19: lazy logging

@@ -85,6 +85,14 @@
 - Frontend sendTyping/sendRead: try-catch guards TOCTOU race (RZ-26-07)
 - Frontend typingUsers: per-chat cap of 20 replaces global 100 (PERF-26-02)
 - CI: Go test coverage threshold 60% enforced in reusable-go-tests.yml (MOD-26-01)
+- ws-hub incoming messages: 60 KB limit at ingress (RZ-27-02), matching broadcast limit (RZ-23-05)
+- ws-hub message types: validated at parse boundary via `allowedMessageTypes` map (MOD-27-02)
+- Rate limit: fails closed with 503 on double failure (Redis + memory), not fail-open (RZ-27-03)
+- File-processor: `sourceKey`/`destKey` path traversal rejected at gRPC boundary (RZ-27-04)
+- CSRF: `secrets.token_hex(16)` always called to normalize timing (RZ-27-06)
+- GraphQL context: only exact `SecurityError` demotes to anonymous; subclasses fail-closed (TD-27-01)
+- React Compiler: only keep `memo()` for custom `areEqual` comparators (PERF-27-02)
+- CI: Python 2 except gate regex fixed — no `grep -v` pipes (MOD-27-01)
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
@@ -94,6 +102,7 @@
 - Wave 23: 21 issues, 28 files, +614/-112 — full report in `TOTAL_AUDIT_WAVE23.md`
 - Wave 24: 20 issues (1 false positive reverted), 15 files, +451/-27 — full report in `TOTAL_AUDIT_WAVE24.md`
 - Wave 25: 20 issues, ~30 files, +452/-53 — full report in `TOTAL_AUDIT_WAVE25.md`
+- Wave 27: 18 issues, ~35 files, +300/-100 — full report in `TOTAL_AUDIT_WAVE27.md`
 - Wave 26: 16 issues (1 FP dropped), ~30 files, +166/-79 — full report in `TOTAL_AUDIT_WAVE26.md`
 - Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
 - Renovate Bot configured (`renovate.json`) — crypto packages manual-review-only (Wave 22)
@@ -108,6 +117,8 @@
 - K8s: outbox-worker PDB in `k8s/outbox-worker/pdb.yaml`; frontend NetworkPolicy tightened to gateway+DNS egress only
 - Wave 23 modernization: OTEL metrics bridge, useSuspenseQuery pattern, asyncio.TaskGroup, adaptive debounce, bundle CI budget
 - Wave 23 typing: mypy strict for chat services (5 files) + webpush — fixed Python 2 exception syntax bug in command_service.py
+- Wave 27: Python 2 except syntax actually fixed (44 occurrences tuple-formed); ws-hub incoming 60 KB limit (RZ-27-02); rate-limit fail-closed on double failure (RZ-27-03); file-processor path traversal at gRPC boundary (RZ-27-04); CSRF timing normalization (RZ-27-06); GraphQL SecurityError subclass escalation guard (TD-27-01); React.memo() removed from 17 components for React Compiler (PERF-27-02); CI except gate regex fixed (MOD-27-01)
+- Wave 27 reviews: 140 RZ-22-01-JUSTIFIED tags revalidated (TD-27-04); pool metrics docstrings (TD-27-02); SSRF error disambiguation (TD-27-03); GraphQL depth comment skip (PERF-27-01); rate-limit fallback metric (PERF-27-03)
 - Wave 26: Python 2 except syntax fully fixed (44 occurrences, 21 files); Helm secrets hardened; Go services input validation + goroutine lifecycle; K8s port mismatch; frontend WS AbortController + TOCTOU guards
 - Wave 26 CI: Go coverage threshold (60%); Python 2 except gate regex strengthened (MOD-26-02)
 - Backend audit status: **production-ready** — further audits recommended after new features, major dep updates, or quarterly

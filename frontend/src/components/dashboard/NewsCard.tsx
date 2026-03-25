@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type KeyboardEvent, useCallback } from "react"
+import { type CSSProperties, type KeyboardEvent, useCallback } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
@@ -19,8 +19,8 @@ interface NewsCardProps {
   "data-pop"?: string
 }
 
-// TD-23-02 (audit 2026-03-25 Wave 23): React.memo prevents re-render on parent state change.
-export const NewsCard = memo(function NewsCard({ locale, className, style, ...props }: NewsCardProps) {
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export function NewsCard({ locale, className, style, ...props }: NewsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
@@ -81,4 +81,4 @@ export const NewsCard = memo(function NewsCard({ locale, className, style, ...pr
       <NewsCardBackground />
     </Card>
   )
-})
+}

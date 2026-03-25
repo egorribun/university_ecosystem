@@ -325,7 +325,7 @@ def auditable(
                 auditor.log(event, request=request, user_id=user_id, **log_kwargs)
 
                 return result
-            except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — audit decorator must not alter exception propagation
+            except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — audit decorator must not alter exception propagation (reviewed TD-27-04)
                 # RZ-20-04: KEEP broad — audit decorator must not alter exception
                 # propagation. Re-raises unconditionally.
                 raise

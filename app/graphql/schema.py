@@ -46,7 +46,7 @@ async def get_context(
     container = request.state.dishka_container
     try:
         session = await container.get(AsyncDatabaseSession)
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts DI resolution errors to HTTPException 503
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts DI resolution errors to HTTPException 503 (reviewed TD-27-04)
         logger.error("Failed to resolve AsyncDatabaseSession from container: %s", exc)
         from fastapi import HTTPException
 
@@ -60,7 +60,7 @@ async def get_context(
             checker = request.app.dependency_overrides[PermissionChecker]()
         else:
             checker = await container.get(PermissionChecker)
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — PermissionChecker may not be available
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — PermissionChecker may not be available (reviewed TD-27-04)
         # P1: If PermissionChecker is missing (e.g. in tests without SpiceDB mock),
         # we MUST NOT crash. But we also MUST NOT allow access to protected resources.
         # Queries using 'checker' will catch exceptions and fail-closed.
@@ -93,13 +93,28 @@ async def get_context(
 
                     if user_id and jti:
                         current_user = await validator.validate(str(user_id), str(jti))
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — re-raises non-SecurityError as 503
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — re-raises non-SecurityError as 503 (reviewed TD-27-04)
+        from fastapi import HTTPException
+
         from app.auth.security import SecurityError
 
         if isinstance(exc, SecurityError):
-            # Expected auth failures (bad token, revoked session, inactive user)
-            # are acceptable for public queries -- silently anonymous.
-            pass
+            # TD-27-01: Only exact SecurityError demotes to anonymous. Subclasses
+            # with different semantics (e.g. AccountLocked) should be added to the
+            # tuple explicitly to prevent silent escalation.
+            if type(exc) is SecurityError:
+                pass
+            else:
+                logger.warning(
+                    "GraphQL context: unrecognized SecurityError subclass %s — "
+                    "failing closed",
+                    type(exc).__name__,
+                    exc_info=exc,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Service temporarily unavailable",
+                ) from exc
         else:
             # RZ-W9-03: Non-auth exceptions (DB timeout, pool exhaustion,
             # asyncpg.TooManyConnectionsError) must NOT silently demote the

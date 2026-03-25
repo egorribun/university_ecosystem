@@ -86,29 +86,33 @@ class PoolHealthMetrics:
 
     @property
     def active_connections(self) -> int:
-        return (
-            self._active_connections
-        )  # PERF-24-01: lock-free read (stale OK for metrics)
+        """TD-27-02: Lock-free read — may lag by one cycle. For metrics only."""
+        return self._active_connections  # PERF-24-01
 
     @property
     def peak_active_connections(self) -> int:
-        return self._peak_active_connections  # PERF-24-01: lock-free read
+        """TD-27-02: Lock-free read — may lag by one cycle. For metrics only."""
+        return self._peak_active_connections  # PERF-24-01
 
     @property
     def total_checkouts(self) -> int:
-        return self._total_checkouts  # PERF-24-01: lock-free read
+        """TD-27-02: Lock-free read — may lag by one cycle. For metrics only."""
+        return self._total_checkouts  # PERF-24-01
 
     @property
     def total_checkins(self) -> int:
-        return self._total_checkins  # PERF-24-01: lock-free read
+        """TD-27-02: Lock-free read — may lag by one cycle. For metrics only."""
+        return self._total_checkins  # PERF-24-01
 
     @property
     def total_invalidations(self) -> int:
-        return self._total_invalidations  # PERF-24-01: lock-free read
+        """TD-27-02: Lock-free read — may lag by one cycle. For metrics only."""
+        return self._total_invalidations  # PERF-24-01
 
     @property
     def failed_checkouts(self) -> int:
-        return self._failed_checkouts  # PERF-24-01: lock-free read
+        """TD-27-02: Lock-free read — may lag by one cycle. For metrics only."""
+        return self._failed_checkouts  # PERF-24-01
 
     def record_checkout(self) -> None:
         # TD-NEW-006 (audit 2026-03-19): Use lock for all counters.
@@ -664,7 +668,7 @@ async def wait_db(
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return
-        except Exception as exc:  # pragma: no cover - defensive logging  # RZ-22-01-JUSTIFIED: health probe — DB wait retries on any error
+        except Exception as exc:  # pragma: no cover - defensive logging  # RZ-22-01-JUSTIFIED: health probe — DB wait retries on any error (reviewed TD-27-04)
             last_exc = exc
             log_func = logger.error if attempt == max_attempts else logger.warning
             log_func(

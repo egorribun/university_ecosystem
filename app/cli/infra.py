@@ -36,9 +36,7 @@ async def check_infra() -> None:
         async with engine.connect() as conn:
             await conn.execute("SELECT 1")
         table.add_row(COMPONENT_POSTGRES, STATUS_ONLINE, "Connected successfully")
-    except (
-        Exception
-    ) as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any DB error
+    except Exception as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any DB error (reviewed TD-27-04)
         table.add_row(COMPONENT_POSTGRES, STATUS_OFFLINE, str(e))
 
     # 2. Redis (Cache)
@@ -56,9 +54,7 @@ async def check_infra() -> None:
                 STATUS_SKIPPED,
                 f"Using {type(cache).__name__}",
             )
-    except (
-        Exception
-    ) as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any Redis error
+    except Exception as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any Redis error (reviewed TD-27-04)
         table.add_row(COMPONENT_REDIS, STATUS_OFFLINE, str(e))
 
     # 3. NATS
@@ -70,9 +66,7 @@ async def check_infra() -> None:
         await nats_service.close()
     except TimeoutError:
         table.add_row(COMPONENT_NATS, STATUS_OFFLINE, "Connection timed out (5s)")
-    except (
-        Exception
-    ) as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any NATS error
+    except Exception as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any NATS error (reviewed TD-27-04)
         table.add_row(COMPONENT_NATS, STATUS_OFFLINE, str(e))
 
     # 4. Storage (MinIO)
@@ -89,9 +83,7 @@ async def check_infra() -> None:
                 STATUS_ONLINE,
                 f"Backend: {settings.storage_backend}",
             )
-        except (
-            Exception
-        ) as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any S3 error
+        except Exception as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any S3 error (reviewed TD-27-04)
             table.add_row(COMPONENT_S3, STATUS_OFFLINE, str(e))
     else:
         table.add_row(

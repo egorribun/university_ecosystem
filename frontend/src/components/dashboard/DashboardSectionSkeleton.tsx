@@ -1,4 +1,3 @@
-import { memo } from "react"
 import { Skeleton, Card } from "@/components/ui"
 import { cn } from "@/utils/cn"
 
@@ -7,7 +6,8 @@ interface DashboardSectionSkeletonProps {
   className?: string
 }
 
-export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export function DashboardSectionSkeleton({
   type,
   className,
 }: DashboardSectionSkeletonProps) {
@@ -58,6 +58,6 @@ export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
       </div>
     </Card>
   )
-})
+}
 
 export default DashboardSectionSkeleton

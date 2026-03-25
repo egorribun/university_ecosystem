@@ -94,9 +94,7 @@ class IsAdmin(BasePermission):
                 "IsAdmin: SpiceDB unavailable during GraphQL permission check"
             )
             return False
-        except (
-            Exception
-        ):  # RZ-22-01-JUSTIFIED: fail-closed auth — denies access on unexpected error
+        except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — denies access on unexpected error (reviewed TD-27-04)
             logger.exception("IsAdmin: unexpected error during permission check")
             return False
 

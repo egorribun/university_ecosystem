@@ -221,7 +221,7 @@ class DeadLetterQueue:
                     "DLQ event replayed successfully: %s",
                     failed.event.event_id,
                 )
-            except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — continues replaying remaining DLQ events on failure
+            except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — continues replaying remaining DLQ events on failure (reviewed TD-27-04)
                 fail_count += 1
                 logger.error(
                     "DLQ replay failed for event %s: %s",

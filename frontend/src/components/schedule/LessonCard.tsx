@@ -1,4 +1,3 @@
-import { memo } from "react"
 import {
   Trash2 as DeleteIcon,
   Info as InfoOutlinedIcon,
@@ -23,7 +22,8 @@ export interface LessonCardProps {
   canEdit?: boolean
 }
 
-export const LessonCard = memo(function LessonCard({
+// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export function LessonCard({
   lesson,
   isConflict,
   onDelete,
@@ -121,6 +121,6 @@ export const LessonCard = memo(function LessonCard({
       )}
     </GlassCard>
   )
-})
+}
 
 export default LessonCard

@@ -52,7 +52,7 @@ def _ensure_provider() -> None:
             "feature flags will use static defaults"
         )
         _provider_initialized = True  # Don't retry
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flagd init failure degrades to defaults
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flagd init failure degrades to defaults (reviewed TD-27-04)
         logger.warning("Failed to initialize flagd provider: %s", exc)
         _provider_initialized = True  # Don't retry on every call
 
@@ -79,7 +79,7 @@ async def is_enabled(
         return result
     except ImportError:
         return default
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flag evaluation failure degrades to default
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flag evaluation failure degrades to default (reviewed TD-27-04)
         logger.debug("Feature flag evaluation failed for %s: %s", flag_name, exc)
         return default
 
@@ -102,7 +102,7 @@ def is_enabled_sync(
         return result
     except ImportError:
         return default
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flag evaluation failure degrades to default
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flag evaluation failure degrades to default (reviewed TD-27-04)
         logger.debug("Feature flag evaluation failed for %s: %s", flag_name, exc)
         return default
 

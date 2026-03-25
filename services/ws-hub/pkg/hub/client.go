@@ -89,6 +89,12 @@ func (c *Client) ReadPump() {
 			continue
 		}
 
+		// MOD-27-02: Validate message type at parse boundary
+		if !isAllowedMessageType(msg.Type) {
+			UnknownMsgTypeTotal.Inc()
+			continue
+		}
+
 		msg.From = c.ID
 		c.handleIncomingMessage(msg, data)
 	}
@@ -102,6 +108,11 @@ func (c *Client) handleIncomingMessage(msg Message, data []byte) {
 		c.handleLeave(msg)
 	case "message":
 		c.handleMessage(msg, data)
+	default:
+		// RZ-27-05: Log unknown message types for protocol drift detection.
+		UnknownMsgTypeTotal.Inc()
+		c.Hub.Logger.WarnContext(c.ctx, "Unknown WS message type",
+			"client_id", c.ID, "type", msg.Type)
 	}
 }
 
@@ -123,7 +134,28 @@ func (c *Client) handleLeave(msg Message) {
 	c.LeaveRoom(msg.Room)
 }
 
+var allowedMessageTypes = map[string]bool{
+	"join":    true,
+	"leave":   true,
+	"message": true,
+}
+
+func isAllowedMessageType(t string) bool {
+	return allowedMessageTypes[t]
+}
+
 func (c *Client) handleMessage(msg Message, data []byte) {
+	// RZ-27-02: Reject oversized messages at ingress, matching the broadcast
+	// limit (RZ-23-05). Without this, messages between 60 KB and 64 KB are
+	// published to NATS but silently dropped at broadcast fan-out.
+	const maxIncomingBytes = 60 * 1024 // match maxBroadcastBytes in hub.go
+	if len(data) > maxIncomingBytes {
+		c.Hub.Logger.WarnContext(c.ctx, "Incoming message exceeds size limit",
+			"client_id", c.ID, "size_bytes", len(data), "limit_bytes", maxIncomingBytes)
+		IncomingDropsTotal.Inc()
+		return
+	}
+
 	// TD-W16-03 / RZ-W18-01: Use configurable rate limit fields copied to Hub struct.
 	raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
 		rate.NewLimiter(rate.Limit(c.Hub.clientMsgRateLimit), c.Hub.clientMsgRateBurst))

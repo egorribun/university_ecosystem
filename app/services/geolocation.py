@@ -80,7 +80,7 @@ class GeolocationService:
             )
         except ValueError:
             return LocationInfo()
-        except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — GeoIP resolution failure returns empty LocationInfo
+        except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — GeoIP resolution failure returns empty LocationInfo (reviewed TD-27-04)
             logger.error(
                 "Error resolving IP %s: %s", ip_address, e
             )  # LOW-W19: lazy logging

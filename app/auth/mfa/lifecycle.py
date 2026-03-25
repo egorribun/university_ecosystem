@@ -81,7 +81,7 @@ def user_has_confirmed_interactive_factor(user: User) -> bool:
                 f"totp_enrollments not loaded on User(id={user.id}). "
                 f"Load the relationship before calling this function."
             )
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises RuntimeError, swallows ORM inspection errors
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises RuntimeError, swallows ORM inspection errors (reviewed TD-27-04)
         # Re-raise only our own RuntimeError; ignore inspection errors for
         # non-ORM objects (e.g. DTOs used in tests).
         if isinstance(exc, RuntimeError):

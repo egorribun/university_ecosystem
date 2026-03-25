@@ -163,4 +163,5 @@ const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.image_url === next.image_url &&
   prev.onChange === next.onChange
 
+// PERF-27-02-KEPT: custom areEqual comparator
 export default memo(NewsCardComponent, areNewsCardPropsEqual)
