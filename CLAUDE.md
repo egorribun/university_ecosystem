@@ -74,8 +74,17 @@
 - Argon2 concurrency: capped at 4 concurrent hashes per worker (PERF-24-04) — 128 MiB peak
 - NullSessionBackend: fails closed in production since Wave 25 (RZ-25-02) — only dev/test/local allowed
 - GraphQL persisted query manifest: loaded under `_manifest_lock` (RZ-25-05) — thread-safe double-checked locking
-- CI: Python 2 except syntax gate (MOD-25-01) — prevents `except A, B:` regression
-- Frontend K8s: NetworkPolicy ingress port 80 (not 8080), nginx emptyDir volumes required (Wave 25)
+- CI: Python 2 except syntax gate (MOD-26-02) — strengthened regex catches multi-exception + lowercase
+- Frontend K8s: NetworkPolicy ingress port 8080 (TD-26-01, was 80), nginx emptyDir volumes required
+- Helm: `gateway.config.jwtSecret` is `required` — empty string fails at template time (RZ-26-03)
+- Helm: `values.yaml` DATABASE_URL is empty placeholder — must be set via `--set` or ExternalSecret (RZ-26-02)
+- File-processor: `sourceKey`/`destKey` max 1024 bytes (RZ-26-04)
+- File-processor GraphQL depth: escaped quotes handled in `estimateQueryDepth` (RZ-26-05)
+- ws-hub WritePump: `c.ctx.Done()` in select loop (RZ-26-08) — goroutine exits when ReadPump cancels
+- Frontend WS ticket fetch: AbortController + 5s timeout (TD-26-02/03)
+- Frontend sendTyping/sendRead: try-catch guards TOCTOU race (RZ-26-07)
+- Frontend typingUsers: per-chat cap of 20 replaces global 100 (PERF-26-02)
+- CI: Go test coverage threshold 60% enforced in reusable-go-tests.yml (MOD-26-01)
 
 ## Audit Trail
 - Wave 19: 315 fixes across 174 files (feat(wave19) commit)
@@ -85,6 +94,7 @@
 - Wave 23: 21 issues, 28 files, +614/-112 — full report in `TOTAL_AUDIT_WAVE23.md`
 - Wave 24: 20 issues (1 false positive reverted), 15 files, +451/-27 — full report in `TOTAL_AUDIT_WAVE24.md`
 - Wave 25: 20 issues, ~30 files, +452/-53 — full report in `TOTAL_AUDIT_WAVE25.md`
+- Wave 26: 16 issues (1 FP dropped), ~30 files, +166/-79 — full report in `TOTAL_AUDIT_WAVE26.md`
 - Remaining `except Exception` in app/ — each tagged with `# RZ-22-01-JUSTIFIED` or narrowed
 - Renovate Bot configured (`renovate.json`) — crypto packages manual-review-only (Wave 22)
 - SBOM generation (Syft/SPDX) added to CI pipeline; actions SHA-pinned (Wave 22)
@@ -98,4 +108,6 @@
 - K8s: outbox-worker PDB in `k8s/outbox-worker/pdb.yaml`; frontend NetworkPolicy tightened to gateway+DNS egress only
 - Wave 23 modernization: OTEL metrics bridge, useSuspenseQuery pattern, asyncio.TaskGroup, adaptive debounce, bundle CI budget
 - Wave 23 typing: mypy strict for chat services (5 files) + webpush — fixed Python 2 exception syntax bug in command_service.py
+- Wave 26: Python 2 except syntax fully fixed (44 occurrences, 21 files); Helm secrets hardened; Go services input validation + goroutine lifecycle; K8s port mismatch; frontend WS AbortController + TOCTOU guards
+- Wave 26 CI: Go coverage threshold (60%); Python 2 except gate regex strengthened (MOD-26-02)
 - Backend audit status: **production-ready** — further audits recommended after new features, major dep updates, or quarterly

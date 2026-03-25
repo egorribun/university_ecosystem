@@ -26,7 +26,7 @@ spec:
         - name: frontend
           image: university-ecosystem/frontend:${IMAGE_TAG}
           ports:
-            - containerPort: 80
+            - containerPort: 8080  # TD-26-01: match nginx-unprivileged default port
               name: http
           lifecycle:
             preStop:

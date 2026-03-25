@@ -93,7 +93,7 @@ async def _increment_user_cost(user_id: str, cost: int, window_minute: int) -> i
         pipe.expire(redis_key, 120)
         results = await pipe.execute()
         return int(results[0])
-    except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-25-01 + PERF-25-01 + RZ-22-01
+    except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-26-01 + PERF-25-01 + RZ-22-01
         # PERF-25-01: Structured log so operators detect degraded cost tracking.
         logger.warning(
             "GraphQL cost tracking falling back to per-process counter",
@@ -258,7 +258,7 @@ def _load_manifest() -> dict[str, str]:
                 OSError,
                 ValueError,
                 KeyError,
-            ):  # RZ-25-01 + RZ-22-01: narrowed — JSON/file errors
+            ):  # RZ-26-01 + RZ-22-01: narrowed — JSON/file errors
                 logger.warning(
                     "Failed to load query manifest — persisted queries disabled"
                 )

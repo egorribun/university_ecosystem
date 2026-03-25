@@ -159,7 +159,13 @@ def validate_and_resolve(url: str) -> list[tuple[str, int]]:
 
     safe_addrs: list[tuple[str, int]] = []
     for _, _, _, _, sockaddr in resolved:
-        addr = ipaddress.ip_address(sockaddr[0])
+        try:
+            addr = ipaddress.ip_address(sockaddr[0])
+        except ValueError as exc:
+            # RZ-26-06: fail-closed on unparseable sockaddr (parity with _check_resolved)
+            raise ValueError(
+                f"SSRF blocked: unparseable address from DNS for {hostname}"
+            ) from exc
         if _is_blocked(addr):
             raise ValueError(f"SSRF blocked: {hostname} resolves to internal IP {addr}")
         safe_addrs.append((str(addr), sockaddr[1]))  # type: ignore[arg-type]

@@ -58,9 +58,16 @@ func estimateQueryDepth(query string) int {
 	maxDepth := 0
 	currentDepth := 0
 	inString := false
+	escaped := false // RZ-26-05: track backslash escapes inside strings
 
 	for _, ch := range query {
+		if escaped {
+			escaped = false
+			continue
+		}
 		switch {
+		case ch == '\\' && inString:
+			escaped = true // RZ-26-05: skip next char (handles \" inside strings)
 		case ch == '"':
 			inString = !inString
 		case inString:

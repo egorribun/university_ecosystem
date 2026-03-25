@@ -14,7 +14,7 @@ backend:
     type: ClusterIP
     port: 8000
   env:
-    DATABASE_URL: "postgresql+asyncpg://postgres:DevSecurePass2024!@postgres:5432/university"
+    DATABASE_URL: ""  # RZ-26-02: MUST be provided via --set or ExternalSecret. Never commit credentials.
     # Using internal redis service
     CACHE_REDIS_URL: "redis://redis:6379/0"
 
