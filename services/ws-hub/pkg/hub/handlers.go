@@ -14,8 +14,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	goredis "github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel/trace"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // PERF-W15-03 (audit 2026-03-23 Wave 15): Rate-limit forced JWKS refreshes.
@@ -178,7 +178,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 // with the same ticket, only the first succeeds.
 func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, error) {
 	if h.redisClient == nil {
-		return "", fmt.Errorf("Redis not available for ticket validation")
+		return "", fmt.Errorf("redis not available for ticket validation")
 	}
 	if len(ticket) != 64 {
 		// tickets are always 64-char hex strings (secrets.token_hex(32))
@@ -186,7 +186,7 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 	}
 	// RZ-W16-06: Validate hex charset — tickets are secrets.token_hex(32) = 64 lowercase hex chars.
 	for _, c := range ticket {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return "", fmt.Errorf("invalid ticket charset")
 		}
 	}
@@ -197,7 +197,7 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 		return "", fmt.Errorf("ticket not found or already used")
 	}
 	if err != nil {
-		return "", fmt.Errorf("Redis error during ticket validation: %w", err)
+		return "", fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
 	// Format: "{user_id}:{jti}" — split on first colon
