@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
-	"math/big"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -12,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"math/big"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -201,7 +201,7 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 				newKey, err := fetchJWKSPublicKey(ctx, httpClient, endpoint)
 				if err != nil {
 					jwksRefreshErrors.Inc()
-					logger.Warn("JWKS refresh failed", "err", err, "backoff", backoff)
+					logger.WarnContext(ctx, "JWKS refresh failed", "err", err, "backoff", backoff)
 					// Exponential backoff on failure (capped at 5 min).
 					backoff = min(backoff*2, 5*time.Minute)
 					ticker.Reset(backoff)
@@ -219,7 +219,7 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 				if old == nil || !old.Equal(newKey) {
 					m.rsaPublicKey.Store(newKey)
 					jwksKeyRotations.Inc()
-					logger.Info("JWKS key rotated successfully")
+					logger.InfoContext(ctx, "JWKS key rotated successfully")
 				}
 			}
 		}
@@ -237,7 +237,7 @@ func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint strin
 	if err != nil {
 		return nil, fmt.Errorf("jwks: fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // HTTP response body close
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("jwks: unexpected status %d", resp.StatusCode)
@@ -333,7 +333,7 @@ func (m *JWTMiddleware) WarmL1Cache(ctx context.Context) {
 	for count < maxWarmupKeys {
 		keys, nextCursor, err := m.redis.Scan(warmCtx, cursor, "revoked:jti:*", 500).Result()
 		if err != nil {
-			slog.Warn("L1 cache warmup: Redis scan failed, skipping",
+			slog.WarnContext(ctx, "L1 cache warmup: Redis scan failed, skipping",
 				"err", err, "warmed", count)
 			return
 		}
@@ -349,7 +349,7 @@ func (m *JWTMiddleware) WarmL1Cache(ctx context.Context) {
 			break
 		}
 	}
-	slog.Info("L1 cache warmed from Redis", "entries", count)
+	slog.InfoContext(ctx, "L1 cache warmed from Redis", "entries", count)
 }
 
 // ListenForRevocations starts a background goroutine to listen for session revocations.
@@ -367,7 +367,7 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				slog.Error("panic in Redis revocation listener recovered",
+				slog.ErrorContext(ctx, "panic in Redis revocation listener recovered",
 					"panic", r, "event", "revocation_listener_panic")
 			}
 		}()
@@ -399,10 +399,10 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 				float64(maxDelay),
 			))
 			// Jitter: 75%-125% of computed delay.
-			jitter := 0.75 + rand.Float64()*0.5
+			jitter := 0.75 + rand.Float64()*0.5 //nolint:gosec // G404: jitter for backoff, not security-sensitive
 			delay = time.Duration(float64(delay) * jitter)
 
-			slog.Error("Redis pubsub disconnected — revocation listener lost, reconnecting",
+			slog.ErrorContext(ctx, "Redis pubsub disconnected — revocation listener lost, reconnecting",
 				"attempt", attempt, "backoff", delay.String(),
 				"event", "revocation_listener_disconnect")
 
@@ -421,7 +421,7 @@ func (m *JWTMiddleware) listenOnce(ctx context.Context) {
 	pubsub := m.redis.Subscribe(ctx, "session:revocations")
 	defer func() {
 		if err := pubsub.Close(); err != nil {
-			slog.Warn("failed to close Redis pubsub in revocation listener",
+			slog.WarnContext(ctx, "failed to close Redis pubsub in revocation listener",
 				"err", err, "event", "pubsub_close_error")
 		}
 	}()
@@ -518,7 +518,7 @@ func (m *JWTMiddleware) verifySession(ctx context.Context, sessionID string, fai
 	// Previously this branch returned (true, false, nil) — i.e. "valid, no deny" —
 	// which allowed JTI-less tokens to bypass session revocation checks entirely.
 	if sessionID == "" {
-		slog.Warn("JWT missing jti claim — rejecting token",
+		slog.WarnContext(ctx, "JWT missing jti claim — rejecting token",
 			"event", "jwt_missing_jti")
 		return false, false, nil
 	}
@@ -625,7 +625,7 @@ func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 }
 
 // Validate returns a Gin middleware that validates JWT tokens.
-func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
+func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint:gocognit // JWT validation is inherently complex
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie (BFF pattern)
 		tokenString, err := c.Cookie(AccessTokenCookieName)
@@ -656,7 +656,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 			}
 			if alg != "RS256" {
 				// TD-W17-01: Structured logging for SOC/SIEM algorithm downgrade detection.
-				slog.Warn("algorithm downgrade attempt rejected",
+				slog.WarnContext(ctx, "algorithm downgrade attempt rejected",
 					"alg", alg, "remote", c.ClientIP(), "event", "jwt_alg_downgrade")
 				AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token algorithm", "https://api.university.edu/probs/invalid-token")
 				return
@@ -735,7 +735,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 }
 
 // Optional returns a middleware that extracts JWT claims but doesn't require auth.
-func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
+func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint:gocognit // mirrors Validate complexity
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie
 		tokenString, err := c.Cookie(AccessTokenCookieName)
@@ -761,7 +761,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 			if algErr != nil || alg != "RS256" {
 				// Malformed header or downgrade attempt — treat as unauthenticated.
 				if algErr == nil {
-					slog.Warn("algorithm downgrade attempt rejected (optional)",
+					slog.WarnContext(ctx, "algorithm downgrade attempt rejected (optional)",
 						"alg", alg, "remote", c.ClientIP(), "event", "jwt_alg_downgrade")
 				}
 				c.Next()
