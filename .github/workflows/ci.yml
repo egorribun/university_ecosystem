@@ -832,6 +832,9 @@ jobs:
         with:
           version: "3.17.0"
 
+      - name: Helm dependency build
+        run: helm dependency build charts/university-ecosystem/
+
       - name: Helm lint — university-ecosystem chart
         run: |  # pragma: allowlist secret
           helm lint charts/university-ecosystem/ --strict \
