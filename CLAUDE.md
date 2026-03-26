@@ -64,6 +64,13 @@
 - ADR-012: Centralized logging — Grafana Loki + Fluent Bit (MOD-W16-03)
 - ADR-013: Secret rotation — three-tier strategy, dual-key JWT window (MOD-W16-07)
 - ChatService DI: fully migrated to Dishka narrow services — no monolithic wrapper (TD-30-01 verified Wave 32)
+- DI: `NotificationService` provided by `ContentProvider` only — removed duplicate from `UserProvider` (TD-33-08)
+- Thread-safe singletons: all module-level singletons use DCL pattern with `threading.Lock` (RZ-33-29)
+- `cached()` decorator: `_l1_ttl` param now forwarded to TieredCache L1 layer (TD-33-09)
+- `RedisClusterCache.invalidate()`: supports glob patterns via SCAN (TD-33-10)
+- Go file-processor: env vars require `FP_` prefix (e.g. `FP_GRPC_PORT`) per `SetEnvPrefix("FP")`
+- Pyroscope: `grafana/pyroscope:1.18.1` in docker-compose.observability.yml
+- Tests: S105/S106 (hardcoded password) suppressed in `tests/` via pyproject.toml per-file-ignores
 
 ## Gotchas
 - Glob `**/alembic/versions/*.py` may not find files on Windows; use `**/*alembic*/**/*.py`
@@ -143,6 +150,7 @@
 - Go services OTEL: composite propagator (TraceContext + Baggage) registered (MOD-31-02)
 
 ## Audit Trail
+- Wave 33: 7 commits, ~145 files, 1 CRITICAL + 11 HIGH + ~115 MEDIUM + ~80 LOW — ALL code-level backend issues closed. Recovery code hash bug (RZ-33-01), 6 DCL singletons (RZ-33-29), DI dedup (TD-33-08), cache SCAN (TD-33-10), Go stale tests (TD-33-11/12), Pyroscope 1.18.1, test quality (7 files). Full report in `memory/audit_wave33_2026_03_26.md`
 - Wave 32: 7 deferred items closed, 20 files, +534/-48 — ChatService DI verified (TD-30-01), Redis circuit breaker (PERF-30-01), L1 XFetch jitter (PERF-31-02), Helm chart complete (MOD-30-04), JWKS hot-reload (MOD-W17-03), ADR-012 centralized logging (MOD-W16-03), ADR-013 secret rotation (MOD-W16-07) — full report in `TOTAL_AUDIT_WAVE32.md`
 - Wave 31: 13 issues (5 dropped after validation), 14 files, +165/-17 — gateway os.Exit fix (RZ-31-01), WS message notification (RZ-31-02), Safari localStorage (RZ-31-03), AbortSignal propagation (RZ-31-04), gRPC timeout (RZ-31-05), pod anti-affinity (TD-31-01), ingress envsubst (TD-31-02), Vault URL param (TD-31-03), BroadcastChannel dedup (TD-31-04), maxClients pre-check (TD-31-05), topology spread (PERF-31-01), golangci-lint exhaustive (MOD-31-01), OTEL baggage (MOD-31-02) — full report in `TOTAL_AUDIT_WAVE31.md`
 - Wave 30: 22 issues (6 FP/already done, 6 deferred), 8 files — free-threading singleton (RZ-30-01), symlink path traversal (RZ-30-02), PII regex tightening (RZ-30-03/04), ruff pin (RZ-30-05), cache Prometheus metrics (TD-30-05), NATS backoff (TD-30-06), CI lazy=noload gate (MOD-30-01), Kyverno image tag policy (MOD-30-02), Dockerfile.test Rust pin (MOD-30-05) — full report in `TOTAL_AUDIT_WAVE30.md`
@@ -175,4 +183,4 @@
 - Wave 26: Python 2 except syntax fully fixed (44 occurrences, 21 files); Helm secrets hardened; Go services input validation + goroutine lifecycle; K8s port mismatch; frontend WS AbortController + TOCTOU guards
 - Wave 26 CI: Go coverage threshold (60%); Python 2 except gate regex strengthened (MOD-26-02)
 - Wave 28: Python 2 except syntax corrected (43 occurrences, 21 files — Wave 27 introduced the bug); CSRF anonymous nonce timing hardened via compiled regex (RZ-28-02); frontend K8s seccompProfile added (TD-28-01); Renovate configs consolidated (TD-28-02); pre-commit hook for except syntax (MOD-28-01)
-- Backend audit status: **production-ready** — further audits recommended after new features, major dep updates, or quarterly
+- Backend audit status: **production-ready (Wave 33 — 100/100)** — all code-level issues closed; only infrastructure items remain (flagd, NATS NKey, Vault, Linkerd, backups)
