@@ -59,6 +59,7 @@ class TestVerifyLegacyBcrypt:
 
         assert _verify_legacy_bcrypt("test", "not-a-valid-hash") is False
 
+
 class TestValidatePasswordHibp:
     @pytest.mark.asyncio
     async def test_password_not_compromised(self):
