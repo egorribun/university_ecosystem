@@ -9,8 +9,8 @@ from sqlalchemy import and_, delete, exists, func, or_, select, text, update
 from sqlalchemy.orm import selectinload
 
 from app.core.protocols import AsyncDatabaseSession
+from app.models import User
 from app.models.chat import Chat, Message, chat_participants
-from app.models.models import User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor

@@ -310,7 +310,7 @@ async def test_refresh_preferences_edge_cases(db_session, user_factory):
     assert user.mfa_required is False
 
     # Mock WebAuthn available
-    from app.models.models import WebAuthnCredential
+    from app.models import WebAuthnCredential
 
     cred = WebAuthnCredential(
         user_id=user.id,

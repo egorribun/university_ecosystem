@@ -30,7 +30,7 @@ from app.api.deps import (
     get_read_chat_query_service,
 )
 from app.core.ratelimit import sensitive_route_limit
-from app.models.models import User
+from app.models import User
 from app.schemas.chat import (
     ChatCreate,
     ChatMaintenanceResult,

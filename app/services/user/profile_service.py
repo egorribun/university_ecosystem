@@ -19,7 +19,7 @@ from app.services.notification_service import NotificationService
 from app.services.user.logic import update_user_attributes
 
 if TYPE_CHECKING:
-    from app.models.models import User
+    from app.models import User
 
 logger = get_logger(__name__)
 

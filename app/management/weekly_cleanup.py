@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session, engine
 from app.core.logging import get_logger
-from app.models.models import PushSubscription, User
+from app.models import PushSubscription, User
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

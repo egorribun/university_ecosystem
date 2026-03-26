@@ -22,7 +22,7 @@ from webauthn.helpers.structs import (
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.models import User, WebAuthnCredential
+from app.models import User, WebAuthnCredential
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.dtos import UserDTO
 

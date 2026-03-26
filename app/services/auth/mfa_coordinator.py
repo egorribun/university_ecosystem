@@ -10,7 +10,7 @@ from app.auth import schemas as auth_schemas
 from app.core.config import settings
 
 if TYPE_CHECKING:
-    from app.models.models import ActiveSession, User
+    from app.models import ActiveSession, User
     from app.repositories.auth_repository import AuthRepository
     from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.dtos import UserAuthDTO, UserDTO

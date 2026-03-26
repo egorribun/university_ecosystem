@@ -28,8 +28,8 @@ from app.auth.schemas import (
 )
 from app.core.fingerprint import store_mfa_challenge_fingerprints
 from app.core.protocols import AsyncDatabaseSession
+from app.models import User
 from app.models.auth import MfaTotpEnrollment
-from app.models.models import User
 from app.schemas.schemas import (
     MfaFactorStatusOut,
     MfaTotpEnrollmentOut,
@@ -41,7 +41,7 @@ from app.services.audit_service import AuditService
 from app.services.auth.login_service import LoginService
 
 if TYPE_CHECKING:
-    from app.models.models import ActiveSession
+    from app.models import ActiveSession
 
 logger = logging.getLogger("app.auth.mfa")
 
@@ -343,7 +343,7 @@ async def list_webauthn_credentials(
     user: User = Depends(get_current_user),
     db: FromDishka[AsyncDatabaseSession] = Depends(),
 ) -> list[dict[str, Any]]:
-    from app.models.models import WebAuthnCredential
+    from app.models import WebAuthnCredential
 
     stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
     result = await db.execute(stmt)
@@ -368,7 +368,7 @@ async def delete_webauthn_credential(
     _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
 ) -> MfaFactorStatusOut:
-    from app.models.models import WebAuthnCredential
+    from app.models import WebAuthnCredential
 
     cred = await db.get(WebAuthnCredential, credential_id)
     if not cred or cred.user_id != user.id:

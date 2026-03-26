@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import select
 
-from app.models.models import ActiveSession
+from app.models import ActiveSession
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

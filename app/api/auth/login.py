@@ -39,7 +39,7 @@ from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.core.timing import ensure_minimum_time
-from app.models.models import User
+from app.models import User
 from app.schemas.schemas import (
     SessionSigningKeyOut,
     TokenWithProfile,

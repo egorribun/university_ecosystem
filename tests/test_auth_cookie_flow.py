@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.auth.security import decode_token, get_password_hash
 from app.core.config import settings
 from app.core.localization import translate
-from app.models.models import ActiveSession
+from app.models import ActiveSession
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

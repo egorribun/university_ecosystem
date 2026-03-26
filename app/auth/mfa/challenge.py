@@ -30,8 +30,8 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
+from app.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 from app.models.auth import ChallengeState
-from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast  # TD-23-04 (audit 2026-03-25 Wave 2
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
-    from app.models.models import User
+    from app.models import User
     from app.schemas.chat import (
         AttachmentResponse,
         ChatParticipant,

@@ -481,7 +481,7 @@ class TestNotificationDelivery:
     def test_only_active_users(self):
         from sqlalchemy import select
 
-        from app.models.models import User
+        from app.models import User
         from app.services.notifications.delivery import only_active_users
 
         stmt = select(User)

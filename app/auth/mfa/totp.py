@@ -31,7 +31,7 @@ from app.auth.mfa.challenge import (
 )
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
+from app.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
 from app.services.session_cleanup import revoke_sessions_matching
 
 if TYPE_CHECKING:

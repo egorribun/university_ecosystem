@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.core.database import async_session as _async_session
 from app.core.localization import SUPPORTED_LOCALES, translate
 from app.core.logging import get_logger
-from app.models.models import User
+from app.models import User
 
 if TYPE_CHECKING:
     import uuid

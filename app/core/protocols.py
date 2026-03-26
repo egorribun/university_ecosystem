@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Protocol, Union, runtime_checkable
 
 if TYPE_CHECKING:
-    from app.models.models import User
+    from app.models import User
     from app.schemas.dtos import UserDTO
 
 # TD-07: Standardized UserLike union for service signatures

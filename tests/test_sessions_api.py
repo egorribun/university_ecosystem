@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.models.models import ActiveSession
+from app.models import ActiveSession
 
 
 async def _login(

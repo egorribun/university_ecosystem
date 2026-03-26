@@ -14,7 +14,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, cast  # TD-23-04 (audit 2026-03-25 Wave 23)
 
 if TYPE_CHECKING:
-    from app.models.models import User
+    from app.models import User
     from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.chat import ChatParticipant, ChatResponse
 

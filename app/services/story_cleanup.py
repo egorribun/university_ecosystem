@@ -13,7 +13,7 @@ from sqlalchemy import delete
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.core.observability import get_periodic_task_metrics
-from app.models.models import Story
+from app.models import Story
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

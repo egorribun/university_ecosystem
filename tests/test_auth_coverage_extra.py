@@ -179,7 +179,7 @@ async def test_trusted_device_expired_coverage(db_session: AsyncSession, user_fa
     # Create an expired device
     import hashlib
 
-    from app.models.models import TrustedDevice
+    from app.models import TrustedDevice
 
     token = "expired-token"
     # match _base64url_encode
@@ -214,7 +214,7 @@ async def test_get_challenge_error_coverage(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_get_challenge_expired_coverage(db_session: AsyncSession, user_factory):
     user = await user_factory()
-    from app.models.models import MfaChallenge
+    from app.models import MfaChallenge
 
     challenge = MfaChallenge(
         user_id=user.id,
@@ -242,7 +242,7 @@ async def test_consume_challenge_coverage(db_session: AsyncSession, user_factory
     the get_challenge function with consume=True parameter instead.
     """
     user = await user_factory()
-    from app.models.models import MfaChallenge
+    from app.models import MfaChallenge
 
     challenge_token = "test-consume-token"
     challenge = MfaChallenge(

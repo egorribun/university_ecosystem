@@ -5,7 +5,7 @@ from app.api.ws.auth import (
     get_user_from_ticket,
 )
 from app.core.logging import get_logger
-from app.models.models import User
+from app.models import User
 from app.schemas.dtos import UserDTO
 
 logger = get_logger(__name__)

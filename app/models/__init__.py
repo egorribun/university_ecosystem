@@ -18,6 +18,9 @@ from app.models.auth import (
     PasswordResetToken as PasswordResetToken,
 )
 from app.models.auth import (
+    RecoveryCode as RecoveryCode,
+)
+from app.models.auth import (
     TrustedDevice as TrustedDevice,
 )
 from app.models.auth import (

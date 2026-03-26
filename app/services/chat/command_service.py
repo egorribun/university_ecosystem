@@ -21,8 +21,8 @@ from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
+    from app.models import User
     from app.models.chat import Attachment
-    from app.models.models import User
     from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.chat import (
         AttachmentResponse,
@@ -44,9 +44,9 @@ from app.api.ws.presence import (
 )
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
+from app.models import Message
 from app.models.chat import Attachment
 from app.models.enums import UserRole
-from app.models.models import Message
 from app.schemas.chat import (
     ChatMaintenanceResult,
     MessageResponse,

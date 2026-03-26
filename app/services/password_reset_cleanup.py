@@ -13,7 +13,7 @@ from sqlalchemy import and_, delete, or_
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.core.observability import get_periodic_task_metrics
-from app.models.models import PasswordResetToken
+from app.models import PasswordResetToken
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
 if TYPE_CHECKING:

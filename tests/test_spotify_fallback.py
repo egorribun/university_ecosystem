@@ -9,8 +9,8 @@ from httpx import AsyncClient
 
 from app.api.spotify import _ensure_access_token, _fallback_now_playing, _save_tokens
 from app.auth.security import get_password_hash
-from app.models.models import SpotifyIntegration
-from app.models.models import User as ModelUser
+from app.models import SpotifyIntegration
+from app.models import User as ModelUser
 
 _spotify_fallback_now_playing = _fallback_now_playing
 
@@ -422,7 +422,7 @@ async def test_spotify_tokens_are_encrypted_in_database(
         expires_in=3600,
     )
 
-    from app.models.models import SpotifyIntegration
+    from app.models import SpotifyIntegration
 
     # Query raw columns while using ORM for filtering to ensure UUID compatibility.
     stmt = (
@@ -460,7 +460,7 @@ async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -
 
     assert token == "plaintext-token"
 
-    from app.models.models import SpotifyIntegration
+    from app.models import SpotifyIntegration
 
     stmt = (
         sa.select(sa.text("access_token"))

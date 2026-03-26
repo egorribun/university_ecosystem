@@ -413,7 +413,7 @@ class TestPrivacyCleanup:
 
 class TestModelEdgeCases:
     def test_user_model(self):
-        from app.models.models import User
+        from app.models import User
 
         assert hasattr(User, "id")
         assert hasattr(User, "email")
@@ -422,7 +422,7 @@ class TestModelEdgeCases:
         assert hasattr(User, "role")
 
     def test_notification_model(self):
-        from app.models.models import Notification
+        from app.models import Notification
 
         assert hasattr(Notification, "id")
         assert hasattr(Notification, "user_id")
@@ -430,14 +430,14 @@ class TestModelEdgeCases:
         assert hasattr(Notification, "read")
 
     def test_push_subscription_model(self):
-        from app.models.models import PushSubscription
+        from app.models import PushSubscription
 
         assert hasattr(PushSubscription, "endpoint")
         assert hasattr(PushSubscription, "p256dh")
         assert hasattr(PushSubscription, "auth")
 
     def test_active_session_model(self):
-        from app.models.models import ActiveSession
+        from app.models import ActiveSession
 
         assert hasattr(ActiveSession, "jti")
         assert hasattr(ActiveSession, "user_id")

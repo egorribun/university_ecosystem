@@ -13,8 +13,7 @@ from sqlalchemy.orm import aliased, selectinload
 
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
-from app.models import models
-from app.models.models import Event
+from app.models import Event, models
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventSearchResultDTO
 

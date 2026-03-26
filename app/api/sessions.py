@@ -15,7 +15,7 @@ from app.auth.security import decode_token
 from app.core.database import get_db, get_read_db
 from app.core.localization import resolve_locale
 from app.core.protocols import AsyncDatabaseSession
-from app.models.models import User
+from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.schemas.dtos import UserDTO

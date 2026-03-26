@@ -14,7 +14,7 @@ from app.services.notifications.core import _current_local_time
 if TYPE_CHECKING:
     import datetime as dt
 
-    from app.models.models import User
+    from app.models import User
 
 
 def is_user_in_quiet_hours(

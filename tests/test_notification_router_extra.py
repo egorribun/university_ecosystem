@@ -5,7 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_current_user
 from app.main import app
-from app.models.models import User
+from app.models import User
 
 
 @pytest.fixture(autouse=True)

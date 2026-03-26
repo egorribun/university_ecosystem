@@ -12,7 +12,7 @@ from fastapi import BackgroundTasks
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.models import ActiveSession
+from app.models import ActiveSession
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import ActiveSessionDTO
 
@@ -127,7 +127,7 @@ class SessionService:
         # preventing TOCTOU races while allowing high parallel load for different users.
         from sqlalchemy import select
 
-        from app.models.models import User
+        from app.models import User
 
         # DB-1: Atomic enforcement logic (RZ-001)
         # We perform a dummy lock-fetch of the user record to take the row lock.

@@ -2,7 +2,7 @@ import uuid
 
 from app.core.database import async_session
 from app.core.nats_broker import broker
-from app.models.models import Event, News
+from app.models import Event, News
 from app.services.notifications.news_events import (
     notify_about_event as _notify_about_event,
 )

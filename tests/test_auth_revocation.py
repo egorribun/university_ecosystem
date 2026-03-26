@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import ActiveSession, User
+from app.models import ActiveSession, User
 from app.services.session_cleanup import revoke_sessions_matching
 
 

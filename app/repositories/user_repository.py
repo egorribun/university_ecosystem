@@ -12,8 +12,7 @@ from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from app.core.protocols import AsyncDatabaseSession
-from app.models import models
-from app.models.models import User, UserProfile
+from app.models import User, UserProfile, models
 from app.models.user_loaders import (
     USER_AUTH_WITH_MFA_OPTIONS,
     USER_MFA_COLLECTION_OPTIONS,

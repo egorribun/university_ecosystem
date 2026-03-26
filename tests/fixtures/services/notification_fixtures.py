@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import PushSubscription, User
+from app.models import PushSubscription, User
 
 
 @pytest_asyncio.fixture

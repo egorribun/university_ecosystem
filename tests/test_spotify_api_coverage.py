@@ -15,7 +15,7 @@ from app.api.spotify import (
     spotify_callback,
     sync_playlists,
 )
-from app.models.models import SpotifyIntegration, User
+from app.models import SpotifyIntegration, User
 
 
 @pytest.fixture

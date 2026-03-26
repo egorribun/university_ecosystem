@@ -24,8 +24,8 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
+from app.models import PushSubscription, User, UserPushTopic
 from app.models.enums import UserRole
-from app.models.models import PushSubscription, User, UserPushTopic
 from app.schemas.notifications import (
     AdminUserTopicsResponse,
     AdminUserTopicsUpdate,

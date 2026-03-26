@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.models.models import User
+from app.models import User
 
 
 @pytest.mark.asyncio

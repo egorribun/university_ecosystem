@@ -10,7 +10,7 @@ from sqlalchemy import delete, event, select
 
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.models.models import (
+from app.models import (
     Group,
     Notification,
     NotificationDelivery,

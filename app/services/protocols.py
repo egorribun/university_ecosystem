@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
-    from app.models.models import User
+    from app.models import User
     from app.schemas.chat import (
         ChatMaintenanceResult,
         ChatResponse,
