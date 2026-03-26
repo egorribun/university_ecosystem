@@ -17,7 +17,7 @@ type Config struct {
 	MinioSecretKey string `mapstructure:"minio_secret_key"`
 	MinioSecure    bool   `mapstructure:"minio_secure"`
 	GraphQLPort    string `mapstructure:"graphql_port"`
-	JWTSecret string `mapstructure:"jwt_secret"`
+	JWTSecret      string `mapstructure:"jwt_secret"`
 	// TD-W18-01 (audit 2026-03-23 Wave 18): RSA public key PEM for RS256 verification.
 	// When set, both RS256 and HS256 tokens are accepted (RS256 preferred).
 	// This brings file-processor into parity with ws-hub and gateway.
@@ -53,20 +53,20 @@ func Load() (*Config, error) {
 	viper.SetDefault("minio_secure", false)
 
 	bindEnvs := map[string]string{
-		"grpc_port":        "GRPC_PORT",
-		"nats_url":         "NATS_URL",
-		"temporal_host":    "TEMPORAL_HOST",
-		"minio_bucket":     "MINIO_BUCKET",
-		"minio_endpoint":   "MINIO_ENDPOINT",
-		"minio_access_key": "MINIO_ACCESS_KEY",
-		"minio_secret_key": "MINIO_SECRET_KEY",
-		"minio_secure":     "MINIO_SECURE",
-		"jwt_secret":          "JWT_SECRET",
-		"rsa_public_key_pem":  "RSA_PUBLIC_KEY_PEM",
-		"sentry_dsn":       "SENTRY_DSN",
-		"environment":      "VITE_ENVIRONMENT",
-		"otlp_endpoint":    "OTLP_ENDPOINT",
-		"otlp_insecure":    "OTLP_INSECURE",
+		"grpc_port":          "GRPC_PORT",
+		"nats_url":           "NATS_URL",
+		"temporal_host":      "TEMPORAL_HOST",
+		"minio_bucket":       "MINIO_BUCKET",
+		"minio_endpoint":     "MINIO_ENDPOINT",
+		"minio_access_key":   "MINIO_ACCESS_KEY",
+		"minio_secret_key":   "MINIO_SECRET_KEY",
+		"minio_secure":       "MINIO_SECURE",
+		"jwt_secret":         "JWT_SECRET",
+		"rsa_public_key_pem": "RSA_PUBLIC_KEY_PEM",
+		"sentry_dsn":         "SENTRY_DSN",
+		"environment":        "VITE_ENVIRONMENT",
+		"otlp_endpoint":      "OTLP_ENDPOINT",
+		"otlp_insecure":      "OTLP_INSECURE",
 	}
 
 	for key, env := range bindEnvs {
