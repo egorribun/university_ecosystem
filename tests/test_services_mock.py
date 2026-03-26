@@ -925,7 +925,6 @@ def test_ical_format_dt_utc() -> None:
 
 
 def test_ical_format_dt_aware_non_utc() -> None:
-
     from app.services.ical import _format_dt
 
     tz = UTC  # UTC is UTC regardless

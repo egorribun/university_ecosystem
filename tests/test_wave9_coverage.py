@@ -15,7 +15,7 @@ from httpx import AsyncClient
 
 from app.auth.security import get_password_hash
 
-_TEST_PASSWORD = "TestPassword123!"  # noqa: S105  # pragma: allowlist secret
+_TEST_PASSWORD = "TestPassword123!"  # pragma: allowlist secret
 
 
 async def _login(client: AsyncClient, email: str) -> dict[str, str]:

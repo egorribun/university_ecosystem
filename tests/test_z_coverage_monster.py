@@ -226,7 +226,7 @@ async def test_monster_coverage_run():
 
         await login_service.perform_login(
             email="a@b.com",
-            password="p",  # noqa: S106
+            password="p",
             request=mock_request,
             response=Response(),
             bg_tasks=BackgroundTasks(),

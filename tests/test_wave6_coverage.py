@@ -725,7 +725,9 @@ class TestGetStorageBackend:
         mock_settings.storage_s3_bucket = "test-bucket"
         mock_settings.storage_s3_region = "us-east-1"
         mock_settings.storage_s3_access_key_id = "key"
-        mock_settings.storage_s3_secret_access_key = "secret"  # noqa: S105  # pragma: allowlist secret
+        mock_settings.storage_s3_secret_access_key = (
+            "secret"  # pragma: allowlist secret
+        )
         mock_settings.storage_s3_endpoint_url = "http://minio:9000"
         mock_settings.storage_s3_base_url = ""
 

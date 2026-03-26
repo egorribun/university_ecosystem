@@ -16,7 +16,6 @@ The authoritative schema is the TypeScript Zod definition in:
 
 from __future__ import annotations
 
-import json
 import re
 import uuid
 
@@ -28,15 +27,17 @@ import pytest
 
 # These must match the discriminated union in wsMessage.ts exactly.
 # If a type is added/removed in Python, this set must be updated too.
-WS_SERVER_MESSAGE_TYPES: frozenset[str] = frozenset({
-    "pong",
-    "error",
-    "new_message",
-    "typing",
-    "read",
-    "online",
-    "presence",
-})
+WS_SERVER_MESSAGE_TYPES: frozenset[str] = frozenset(
+    {
+        "pong",
+        "error",
+        "new_message",
+        "typing",
+        "read",
+        "online",
+        "presence",
+    }
+)
 
 # Required fields per message type (mirrors Zod schema field requirements)
 WS_MESSAGE_REQUIRED_FIELDS: dict[str, set[str]] = {
@@ -60,9 +61,7 @@ def test_pong_message_format():
     msg = {"type": "pong"}
     assert msg["type"] == "pong"
     # pong has no other required fields
-    assert set(msg.keys()) <= {"type"}, (
-        "Pong message should only have 'type' field"
-    )
+    assert set(msg.keys()) <= {"type"}, "Pong message should only have 'type' field"
 
 
 def test_typing_message_format():

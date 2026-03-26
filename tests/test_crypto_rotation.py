@@ -36,9 +36,13 @@ class TestJWTKidRotation:
     """Verify that JWT kid-based key selection works correctly."""
 
     _ACTIVE_KID = "kid-active-v1"
-    _ACTIVE_SECRET = "active-secret-key-with-enough-entropy-for-hs256"  # noqa: S105  # pragma: allowlist secret
+    _ACTIVE_SECRET = (
+        "active-secret-key-with-enough-entropy-for-hs256"  # pragma: allowlist secret
+    )
     _OLD_KID = "kid-old-v0"
-    _OLD_SECRET = "old-secret-key-still-in-registry-for-rotation"  # noqa: S105  # pragma: allowlist secret
+    _OLD_SECRET = (
+        "old-secret-key-still-in-registry-for-rotation"  # pragma: allowlist secret
+    )
     _UNKNOWN_KID = "kid-unknown-never-registered"
     _AUDIENCE = "university-ecosystem"
     _ALGORITHM = "HS256"
@@ -95,7 +99,7 @@ class TestJWTKidRotation:
 
     def test_unknown_kid_rejected(self) -> None:
         """Token with a kid that is not in the registry is rejected immediately."""
-        token = self._mint_token(kid=self._UNKNOWN_KID, secret="some-random-key-xxxx")  # noqa: S106
+        token = self._mint_token(kid=self._UNKNOWN_KID, secret="some-random-key-xxxx")
         with patch("app.auth.security.settings", **self._settings_patch()):
             payload = decode_token(token)
         assert payload is None
@@ -117,7 +121,7 @@ class TestJWTKidRotation:
 
     def test_kid_mismatch_secret_rejected(self) -> None:
         """Token signed with wrong secret for a valid kid is rejected."""
-        token = self._mint_token(kid=self._ACTIVE_KID, secret="wrong-secret-entirely")  # noqa: S106
+        token = self._mint_token(kid=self._ACTIVE_KID, secret="wrong-secret-entirely")
         with patch("app.auth.security.settings", **self._settings_patch()):
             assert decode_token(token) is None
 

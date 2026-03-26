@@ -48,7 +48,7 @@ class TestVerifyLegacyBcrypt:
 
         from app.auth.security import _verify_legacy_bcrypt
 
-        password = "TestPassword123!"  # noqa: S105  # pragma: allowlist secret
+        password = "TestPassword123!"  # pragma: allowlist secret
         hashed = bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode(
             "utf-8"
         )
@@ -72,7 +72,7 @@ class TestVerifyLegacyBcrypt:
 
         from app.auth.security import _verify_legacy_bcrypt
 
-        password = "test"  # noqa: S105  # pragma: allowlist secret
+        password = "test"  # pragma: allowlist secret
         hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
             "utf-8"
         )
@@ -87,7 +87,7 @@ class TestVerifyLegacyBcrypt:
 
         from app.auth.security import _verify_legacy_bcrypt
 
-        password = "test"  # noqa: S105  # pragma: allowlist secret
+        password = "test"  # pragma: allowlist secret
         hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
             "utf-8"
         )
@@ -123,7 +123,7 @@ class TestValidatePasswordHibp:
             validate_password_hibp,
         )
 
-        password = "password123"  # noqa: S105  # pragma: allowlist secret
+        password = "password123"  # pragma: allowlist secret
         sha1 = _calculate_lookup_hash(password)
         suffix = sha1[5:]
 
