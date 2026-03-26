@@ -35,6 +35,7 @@ WS_SERVER_MESSAGE_TYPES: frozenset[str] = frozenset(
         "typing",
         "read",
         "online",
+        "online_list",
         "presence",
     }
 )
@@ -47,6 +48,7 @@ WS_MESSAGE_REQUIRED_FIELDS: dict[str, set[str]] = {
     "typing": {"type", "chat_id", "user_id", "user_name"},
     "read": {"type", "chat_id", "message_id", "user_id"},
     "online": {"type", "user_id", "status"},
+    "online_list": {"type", "users"},
     "presence": {"type", "user_id", "active"},  # last_seen is optional
 }
 
