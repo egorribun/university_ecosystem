@@ -6,7 +6,7 @@
 # other is restarted.  For replicaCount=1 the PDB effectively prevents any
 # voluntary eviction — enable only when replicaCount >= 2.
 #
-# The {{- if gt (int .Values.*.replicaCount) 1 }} guards ensure PDBs are not
+# The "if gt replicaCount 1" guards ensure PDBs are not
 # emitted for single-replica deployments where they would block all node drains.
 
 {{- if gt (int .Values.backend.replicaCount) 1 }}
