@@ -18,10 +18,6 @@ allow-licenses:
   - CC0-1.0
   - 0BSD
 
-deny-licenses:
-  - GPL-3.0
-  - AGPL-3.0
-
 allow-ghsas: []
 
 vulnerability-check: true
