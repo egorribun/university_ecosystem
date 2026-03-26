@@ -11,7 +11,7 @@ from app.api.deps import (
     get_current_user_optional,
     get_locale,
 )
-from app.models.models import ActiveSession, User
+from app.models import ActiveSession, User
 
 
 @pytest.fixture

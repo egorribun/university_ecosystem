@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import Event
+from app.models import Event
 from app.repositories.event_repository import EventRepository
 
 

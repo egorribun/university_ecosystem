@@ -22,7 +22,7 @@ from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import get_cache_client
-from app.models.models import ActiveSession, User
+from app.models import ActiveSession, User
 from app.models.user_loaders import (
     USER_AUTH_LOAD_OPTIONS,
     ensure_mfa_relationships_loaded,

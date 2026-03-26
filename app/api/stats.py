@@ -4,6 +4,7 @@ from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
+import app.models as models
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.container import get_read_stats_handler
@@ -16,7 +17,6 @@ from app.core.middleware import _ensure_vary_header
 from app.core.ratelimit import sensitive_route_limit
 from app.cqrs.queries import GetStatsHandler, GetStatsQuery
 from app.deps.cache import format_etag
-from app.models import models
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 

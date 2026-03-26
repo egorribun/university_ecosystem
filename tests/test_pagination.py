@@ -10,7 +10,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import models
+import app.models as models
 from app.repositories.unit_of_work import uow_from_session
 from app.utils.pagination import (
     CursorParams,

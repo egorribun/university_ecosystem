@@ -30,6 +30,41 @@ npm:
       reason: |
         Uncontrolled Resource Consumption (GHSA-7h2j-956f-4vf2) in brace-expansion.
         Another source ID for the same vulnerability found in recent audit.
+    - id: "1115382"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        ReDoS via extglob quantifiers (GHSA-c2c7-rcm5-vvqj).
+        Transitive dep from vite/chokidar; no override available yet.
+    - id: "1115384"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        ReDoS via extglob quantifiers (GHSA-c2c7-rcm5-vvqj), alternate source ID.
+        Transitive dep from vite/chokidar; no override available yet.
+    - id: "1115394"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Method Injection in POSIX Character Classes (GHSA-3v7f-55p6-f55p).
+        Transitive dep from vite/chokidar; awaiting upstream patch.
+    - id: "1115396"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Method Injection in POSIX Character Classes (GHSA-3v7f-55p6-f55p), alternate source ID.
+        Transitive dep from vite/chokidar; awaiting upstream patch.
+    - id: "1115369"
+      package: yaml
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Stack Overflow via deeply nested YAML collections.
+        Used by postcss-import; not exploitable via our CSS pipeline.
 
 pip:
   advisories:

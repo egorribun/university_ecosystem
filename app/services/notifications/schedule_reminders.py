@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, select
 
 from app.core.localization import SUPPORTED_LOCALES, translate, translate_lesson_type
-from app.models.models import Notification, Schedule, User
+from app.models import Notification, Schedule, User
 from app.services.notification_templates import render_notification_template
 from app.services.notifications.core import (
     _ROOM_LABEL_PREFIXES,

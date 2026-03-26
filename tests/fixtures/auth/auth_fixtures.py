@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import models
+import app.models as models
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 
 

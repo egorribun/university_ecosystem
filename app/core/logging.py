@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from app.core.config import settings
 from app.core.orjson_utils import orjson
 
 if TYPE_CHECKING:
@@ -120,6 +119,8 @@ def _add_service_context(
     non-obvious, harder to test, and cannot be inspected by structlog's
     processor introspection tools.
     """
+    from app.core.config import settings  # deferred: avoid circular import
+
     event_dict["service"] = "backend"
     event_dict["environment"] = getattr(settings, "environment", "production")
     return event_dict

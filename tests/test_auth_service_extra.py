@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.models import PasswordResetToken
+from app.models import PasswordResetToken
 from app.schemas import schemas
 from app.services.auth_service import AuthService
 

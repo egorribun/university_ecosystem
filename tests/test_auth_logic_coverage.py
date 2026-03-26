@@ -7,12 +7,12 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
+import app.models as models
 from app.auth import mfa
 from app.auth.constants import (
     CHALLENGE_TYPE_TOTP_VERIFY,
     MFA_METHOD_TOTP,
 )
-from app.models import models
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -310,7 +310,7 @@ async def test_refresh_preferences_edge_cases(db_session, user_factory):
     assert user.mfa_required is False
 
     # Mock WebAuthn available
-    from app.models.models import WebAuthnCredential
+    from app.models import WebAuthnCredential
 
     cred = WebAuthnCredential(
         user_id=user.id,

@@ -8,7 +8,7 @@ from sqlalchemy import or_, update
 from app.api.validation import raise_unauthorized
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
-from app.models.models import ActiveSession
+from app.models import ActiveSession
 
 logger = logging.getLogger("app.auth.security")
 

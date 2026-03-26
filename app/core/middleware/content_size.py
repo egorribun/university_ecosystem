@@ -11,7 +11,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
-    HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    HTTP_413_CONTENT_TOO_LARGE,
 )
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -81,7 +81,7 @@ class ContentSizeLimitMiddleware:
                 locale = resolve_locale(request=request)
                 await asgi_json_problem(
                     send,
-                    status_code=HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    status_code=HTTP_413_CONTENT_TOO_LARGE,
                     title_key="titles.bad_request",
                     detail_key="errors.config.payload_too_large",
                     locale=locale,
@@ -200,7 +200,7 @@ class ContentSizeLimitMiddleware:
         # MED-W19: send is passed as a proper parameter, not via scope
         await asgi_json_problem(
             send,
-            status_code=HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=HTTP_413_CONTENT_TOO_LARGE,
             title_key="titles.bad_request",
             detail_key="errors.config.payload_too_large",
             locale=locale,

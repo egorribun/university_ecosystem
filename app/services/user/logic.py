@@ -1,9 +1,9 @@
 import uuid
 from typing import Any
 
+import app.models as models
 from app.core.constants import ANONYMIZED_USER_CREDENTIAL
 from app.core.exceptions.domain import EntityAlreadyExists
-from app.models import models
 from app.repositories.user_repository import UserRepository
 from app.utils.files import delete_static_file
 

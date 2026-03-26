@@ -3,7 +3,7 @@ import datetime
 import pytest
 from sqlalchemy import select
 
-from app.models import models
+import app.models as models
 from app.models.enums import UserRole
 from app.repositories.user_repository import UserRepository
 

@@ -7,12 +7,12 @@ import pytest
 from dishka import Provider, Scope, make_async_container, provide
 from httpx import ASGITransport, AsyncClient
 
+import app.models as models
 from app.api.deps import get_current_user
 from app.core.container import get_read_schedule_handler
 from app.core.database import get_db
 from app.cqrs.bus import CommandBus, QueryBus
 from app.main import app
-from app.models import models
 
 
 @pytest.fixture

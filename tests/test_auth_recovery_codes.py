@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import mfa
 from app.auth.security import get_password_hash
-from app.models.models import User
+from app.models import User
 
 # Mock WebAuthn to avoid import issues
 sys_modules_mock = MagicMock()

@@ -142,7 +142,7 @@ type ProcessFileInput struct {
 	Height    *int32
 }
 
-// RZ-W19-17: use UUID instead of nanosecond timestamp to avoid collisions
+// RZ-W19-17: use UUID instead of nanosecond timestamp to avoid collisions.
 func generateID() string {
 	return fmt.Sprintf("file-process-%s", uuid.New().String())
 }

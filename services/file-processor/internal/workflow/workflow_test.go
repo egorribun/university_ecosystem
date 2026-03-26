@@ -54,7 +54,7 @@ func TestGetValidatedDimension_ErrorsOnInvalidType(t *testing.T) {
 	_, err := getValidatedDimension(options, "width", 800)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid type")
+	assert.Contains(t, err.Error(), "invalid string value")
 }
 
 func TestGetValidatedDimension_ErrorsOnNonPositive(t *testing.T) {

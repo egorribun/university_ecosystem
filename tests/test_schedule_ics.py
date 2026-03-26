@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+import app.models as models
 from app.api.schedule import _SCHEDULE_CACHE_CONTROL
 from app.core.localization import translate, translate_lesson_type
-from app.models import models
 from app.services.ical import generate_schedule_ics
 
 

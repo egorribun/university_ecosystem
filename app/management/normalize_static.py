@@ -10,7 +10,7 @@ from sqlalchemy import update
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import get_logger
-from app.models.models import User
+from app.models import User
 from app.utils.files import normalize_filename_prefix
 
 if TYPE_CHECKING:

@@ -6,8 +6,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from app.core.protocols import AsyncDatabaseSession
+    from app.models import User
     from app.models.chat import Message
-    from app.models.models import User
     from app.schemas.dtos import ChatParticipantDTO
 
 from app.api.ws.connection_manager import manager as ws_manager

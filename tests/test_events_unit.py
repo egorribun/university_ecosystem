@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import Request
 
+import app.models as models
 from app.api.events import all_events, attend, create_event, upload_event_file
-from app.models import models
 from app.schemas import schemas
 
 

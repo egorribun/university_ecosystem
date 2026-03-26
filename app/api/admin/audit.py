@@ -5,10 +5,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+import app.models as models
 from app.api.deps import get_current_admin_user
 from app.core.container import get_secure_audit_service_dep
 from app.core.database import get_db
-from app.models import models
 from app.models.logs import DataAccessLog
 from app.schemas import schemas
 from app.services.audit_service import SecureAuditService

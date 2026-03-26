@@ -7,10 +7,10 @@ from typing import Any
 
 from sqlalchemy import select
 
+import app.models as models
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import BaseCache
-from app.models import models
 from app.services import stats_cache
 
 logger = get_logger(__name__)

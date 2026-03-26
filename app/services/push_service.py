@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.logging import get_logger
-from app.models.models import PushSubscription
+from app.models import PushSubscription
 from app.services.push_topics import subscription_supports_topic
 from app.services.webpush import WebPushResult, send_web_push
 
@@ -23,7 +23,7 @@ from app.services.webpush import WebPushResult, send_web_push
 _UNKNOWN_UUID = uuid.UUID(int=0)
 
 if TYPE_CHECKING:
-    from app.models.models import User
+    from app.models import User
 
 logger = get_logger(__name__)
 

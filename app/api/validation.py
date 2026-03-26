@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from app.schemas.dtos import UserDTO
 
 if TYPE_CHECKING:
-    from app.models.models import User
+    from app.models import User
 
 T = TypeVar("T")
 

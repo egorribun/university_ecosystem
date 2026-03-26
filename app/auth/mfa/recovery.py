@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete, func, select
 
 from app.auth.security import get_password_hash, verify_password
-from app.models.models import RecoveryCode, User
+from app.models import RecoveryCode, User
 from app.services.audit_service import AuditService, SecurityEvent
 
 if TYPE_CHECKING:

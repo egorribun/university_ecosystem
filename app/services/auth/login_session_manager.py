@@ -10,14 +10,14 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import get_logger
-from app.models.models import User
+from app.models import User
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.schemas import schemas
 
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from app.models.models import ActiveSession
+    from app.models import ActiveSession
     from app.schemas.dtos import ActiveSessionDTO, UserAuthDTO, UserDTO
     from app.services.audit_service import AuditService
     from app.services.session_service import SessionService

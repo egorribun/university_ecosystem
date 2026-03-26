@@ -39,37 +39,46 @@ const (
 )
 
 // ProcessFile is the gRPC method to start a file processing job.
-func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
-	// RZ-23-04: Input validation gate — reject invalid requests before Temporal
+// validateProcessFileRequest performs input validation on gRPC requests.
+// RZ-23-04: reject invalid requests before Temporal workflow start.
+func validateProcessFileRequest(req *pb.ProcessFileRequest) error {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "id is required")
+		return status.Error(codes.InvalidArgument, "id is required")
 	}
 	if !allowedFileTypes[req.Type] {
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported file type: %q", req.Type)
+		return status.Errorf(codes.InvalidArgument, "unsupported file type: %q", req.Type)
 	}
 	if req.SourceKey == "" || req.DestKey == "" {
-		return nil, status.Error(codes.InvalidArgument, "source_key and dest_key are required")
+		return status.Error(codes.InvalidArgument, "source_key and dest_key are required")
 	}
-	// RZ-26-04: bound key lengths to prevent Temporal workflow history bloat
+	// RZ-26-04: bound key lengths to prevent Temporal workflow history bloat.
 	const maxKeyLen = 1024
 	if len(req.SourceKey) > maxKeyLen || len(req.DestKey) > maxKeyLen {
-		return nil, status.Errorf(codes.InvalidArgument, "source_key/dest_key exceeds %d bytes", maxKeyLen)
+		return status.Errorf(codes.InvalidArgument, "source_key/dest_key exceeds %d bytes", maxKeyLen)
 	}
 	// RZ-27-04: Reject path traversal at gRPC boundary before Temporal workflow
 	// start. sanitizeMinIOKey in workflow.go catches this too (defense in depth).
 	for _, key := range []string{req.SourceKey, req.DestKey} {
 		cleaned := path.Clean(key)
 		if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
-			return nil, status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)
+			return status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)
 		}
 	}
 	if len(req.Options) > maxOptionsCount {
-		return nil, status.Errorf(codes.InvalidArgument, "options count %d exceeds limit of %d", len(req.Options), maxOptionsCount)
+		return status.Errorf(codes.InvalidArgument, "options count %d exceeds limit of %d", len(req.Options), maxOptionsCount)
 	}
 	for k, v := range req.Options {
 		if len(k) > maxOptionKeyLen || len(v) > maxOptionValueLen {
-			return nil, status.Error(codes.InvalidArgument, "option key/value exceeds size limit")
+			return status.Error(codes.InvalidArgument, "option key/value exceeds size limit")
 		}
+	}
+	return nil
+}
+
+// ProcessFile validates the request and starts an async Temporal workflow.
+func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
+	if err := validateProcessFileRequest(req); err != nil {
+		return nil, err
 	}
 
 	// Create common job from proto

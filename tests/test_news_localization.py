@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.models import models
+import app.models as models
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.services.news_service import NewsService

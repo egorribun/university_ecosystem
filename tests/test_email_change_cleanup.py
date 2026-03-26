@@ -4,7 +4,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.models.models import EmailChangeToken, User
+from app.models import EmailChangeToken, User
 from app.services import email_change_cleanup
 from app.services.email_change_cleanup import (
     EmailChangeCleanupConfig,

@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.auth.security import get_password_hash
 from app.core.database import async_session
-from app.models.models import InviteCode, User
+from app.models import InviteCode, User
 
 app = typer.Typer(help="Database management commands.")
 

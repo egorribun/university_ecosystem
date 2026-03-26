@@ -35,7 +35,7 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
-from app.models.models import PushSubscription, User
+from app.models import PushSubscription, User
 from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic
 
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = get_logger(__name__)
-logger.setLevel(logging.NOTSET)
 
 # HIGH-W19: defer URL computation until first use so that importing this module
 # does not immediately read settings or touch the database driver.

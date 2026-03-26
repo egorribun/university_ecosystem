@@ -9,6 +9,9 @@ from app.models.auth import (
     FailedLoginAttempt as FailedLoginAttempt,
 )
 from app.models.auth import (
+    LoginHistory as LoginHistory,
+)
+from app.models.auth import (
     MfaChallenge as MfaChallenge,
 )
 from app.models.auth import (
@@ -16,6 +19,9 @@ from app.models.auth import (
 )
 from app.models.auth import (
     PasswordResetToken as PasswordResetToken,
+)
+from app.models.auth import (
+    RecoveryCode as RecoveryCode,
 )
 from app.models.auth import (
     TrustedDevice as TrustedDevice,

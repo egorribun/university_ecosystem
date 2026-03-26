@@ -15,7 +15,7 @@ from sqlalchemy import delete, or_, select
 from app.core.config import settings
 from app.core.database import async_session as _async_session
 from app.core.logging import get_logger
-from app.models.models import Notification, NotificationDelivery
+from app.models import Notification, NotificationDelivery
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession

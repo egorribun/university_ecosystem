@@ -14,10 +14,10 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
+import app.models as models
 from app.api import events
 from app.core.config import settings
 from app.core.localization import translate
-from app.models import models
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.utils import files

@@ -64,7 +64,7 @@ from app.auth.mfa.trusted_device import (
     create_trusted_device_token,
     verify_trusted_device_token,
 )
-from app.models.models import MfaTotpEnrollment, RecoveryCode, WebAuthnCredential
+from app.models import MfaTotpEnrollment, RecoveryCode, WebAuthnCredential
 
 
 def _utcnow() -> datetime.datetime:

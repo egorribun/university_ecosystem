@@ -29,7 +29,7 @@ from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
-from app.models.models import SpotifyIntegration, User
+from app.models import SpotifyIntegration, User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
 
 logger = get_logger(__name__)

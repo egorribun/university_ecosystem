@@ -6,9 +6,9 @@ from typing import Any
 
 from sqlalchemy import select, update
 
+import app.models as models
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
-from app.models import models
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import EmailChangeTokenDTO, PasswordResetTokenDTO

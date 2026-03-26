@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, inspect, select, update  # MED-W19
 
 from app.auth.constants import MFA_METHOD_TOTP, MFA_METHOD_WEBAUTHN
-from app.models.models import (
+from app.models import (
     ActiveSession,
     MfaChallenge,
     MfaTotpEnrollment,

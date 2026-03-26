@@ -55,7 +55,7 @@ func main() {
 	// 2. Load Configuration
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("Failed to load configuration", "err", err)
+		logger.ErrorContext(context.Background(), "Failed to load configuration", "err", err)
 		os.Exit(1)
 	}
 
@@ -68,21 +68,21 @@ func main() {
 
 	tp, err := initTracer(ctx, cfg)
 	if err != nil {
-		logger.Error("OpenTelemetry initialization failed", "err", err)
+		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
 	} else {
 		defer func() {
 			if err := tp.Shutdown(ctx); err != nil {
-				logger.Error("Failed to shutdown tracer provider", "err", err)
+				logger.ErrorContext(ctx, "Failed to shutdown tracer provider", "err", err)
 			}
 		}()
-		logger.Info("OpenTelemetry initialized")
+		logger.InfoContext(ctx, "OpenTelemetry initialized")
 	}
 
 	// 5. Initialize gRPC connection to File Processor
 	grpcConn, fileClient := initGRPC(cfg, logger)
 	defer func() {
 		if err := grpcConn.Close(); err != nil {
-			logger.Error("Failed to close gRPC connection", "err", err)
+			logger.ErrorContext(ctx, "Failed to close gRPC connection", "err", err)
 		}
 	}()
 
@@ -111,18 +111,18 @@ func initSentry(cfg *config.Config, logger *slog.Logger) {
 		return
 	}
 	err := sentry.Init(sentry.ClientOptions{
-		Dsn:              cfg.SentryDSN,
-		Environment:      cfg.Environment,
-		Release:          cfg.AppVersion,
+		Dsn:         cfg.SentryDSN,
+		Environment: cfg.Environment,
+		Release:     cfg.AppVersion,
 		// RZ-33-02: Configurable via SENTRY_TRACES_SAMPLE_RATE env var.
 		// Default 1.0 (100%) for dev; recommend 0.1 (10%) for production.
 		TracesSampleRate: cfg.SentryTracesSampleRate,
 	})
 	if err != nil {
-		logger.Error("Sentry initialization failed", "err", err)
+		logger.ErrorContext(context.Background(), "Sentry initialization failed", "err", err)
 		return
 	}
-	logger.Info("Sentry initialized", "environment", cfg.Environment)
+	logger.InfoContext(context.Background(), "Sentry initialized", "environment", cfg.Environment)
 }
 
 func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
@@ -140,10 +140,10 @@ func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.Fil
 		grpc.WithDefaultServiceConfig(`{"methodConfig":[{"name":[{}],"timeout":"30s"}]}`),
 	)
 	if err != nil {
-		logger.Error("Failed to initialize File Processor gRPC transport", "err", err)
+		logger.ErrorContext(context.Background(), "Failed to initialize File Processor gRPC transport", "err", err)
 		os.Exit(1)
 	}
-	logger.Info("Connected to File Processor gRPC", "addr", cfg.FileProcessorAddr)
+	logger.InfoContext(context.Background(), "Connected to File Processor gRPC", "addr", cfg.FileProcessorAddr)
 
 	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn)
 }
@@ -154,7 +154,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	// FIX 1.4: Security Hardening: Explicitly trust only internal networks and local proxies.
 	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}); err != nil {
-		logger.Error("Failed to set trusted proxies", "err", err)
+		logger.ErrorContext(ctx, "Failed to set trusted proxies", "err", err)
 	}
 
 	// TD-W17-02: Replace ginzap with gin.Recovery + otelgin.
@@ -179,7 +179,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	// Proxy configuration
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
-		logger.Error("Invalid backend URL", "err", err, "url", cfg.BackendURL)
+		logger.ErrorContext(ctx, "Invalid backend URL", "err", err, "url", cfg.BackendURL)
 		os.Exit(1)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
@@ -195,7 +195,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		TLSHandshakeTimeout:   10 * time.Second,
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		logger.Error("Proxy error", "err", err, "path", r.URL.Path)
+		logger.ErrorContext(ctx, "Proxy error", "err", err, "path", r.URL.Path)
 		w.WriteHeader(http.StatusBadGateway)
 	}
 
@@ -203,13 +203,13 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	rateLimiter, err := middleware.NewRateLimiter(ctx, cfg.RedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
 	var redisClient *redis.Client
 	if err != nil {
-		logger.Warn("Rate limiter not available, continuing without", "err", err)
+		logger.WarnContext(ctx, "Rate limiter not available, continuing without", "err", err)
 	} else {
 		router.Use(rateLimiter.Middleware(ctx))
 		redisClient = rateLimiter.GetClient()
 		collector := redisprometheus.NewCollector("gateway", "redis", redisClient)
 		if err := prometheus.Register(collector); err != nil {
-			logger.Warn("Failed to register Redis metrics collector", "err", err)
+			logger.WarnContext(ctx, "Failed to register Redis metrics collector", "err", err)
 		}
 	}
 
@@ -224,7 +224,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	// JWT
 	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
-		logger.Error("JWT_SECRET must be set and at least 32 characters.")
+		logger.ErrorContext(ctx, "JWT_SECRET must be set and at least 32 characters.")
 		os.Exit(1)
 	}
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
@@ -235,7 +235,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	if cfg.JWKSEndpoint != "" {
 		interval := time.Duration(cfg.JWKSRefreshInterval) * time.Second
 		jwtMiddleware.StartJWKSRefresher(ctx, cfg.JWKSEndpoint, interval, logger)
-		logger.Info("JWKS hot-reload enabled", "endpoint", cfg.JWKSEndpoint, "interval", interval)
+		logger.InfoContext(ctx, "JWKS hot-reload enabled", "endpoint", cfg.JWKSEndpoint, "interval", interval)
 	}
 
 	internalSecret := []byte(cfg.InternalHMACSecret)
@@ -292,9 +292,9 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 	// os.Exit bypasses defers in ALL goroutines — traces and error reports are lost.
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("Starting API Gateway", "addr", addr, "backend", cfg.BackendURL)
+		logger.InfoContext(context.Background(), "Starting API Gateway", "addr", addr, "backend", cfg.BackendURL)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("Failed to start server", "err", err)
+			logger.ErrorContext(context.Background(), "Failed to start server", "err", err)
 			serverErr <- err
 		}
 	}()
@@ -304,19 +304,19 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 	select {
 	case <-quit:
 	case err := <-serverErr:
-		logger.Error("Server startup failed, initiating orderly shutdown", "err", err)
+		logger.ErrorContext(context.Background(), "Server startup failed, initiating orderly shutdown", "err", err)
 	}
 
-	logger.Info("Shutting down server...")
+	logger.InfoContext(context.Background(), "Shutting down server...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("Server forced to shutdown", "err", err)
+		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
 
-	logger.Info("Server exiting")
+	logger.InfoContext(context.Background(), "Server exiting")
 }
 
 func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {

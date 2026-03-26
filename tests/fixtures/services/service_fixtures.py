@@ -5,9 +5,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 import fakeredis.aioredis
 import pytest_asyncio
 
+import app.models as models
 from app.core.config import settings
 from app.deps import cache as cache_module
-from app.models import models
 
 
 class _TestingRedisCache(cache_module.RedisCache):

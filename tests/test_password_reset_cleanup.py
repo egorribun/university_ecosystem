@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.models.models import PasswordResetToken, User
+from app.models import PasswordResetToken, User
 from app.services import password_reset_cleanup
 from app.services.password_reset_cleanup import (
     PasswordResetCleanupConfig,

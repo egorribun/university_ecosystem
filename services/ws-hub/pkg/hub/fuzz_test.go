@@ -44,7 +44,7 @@ func FuzzParseMessage(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Must not panic on any input — exactly the guarantee the production code needs.
 		var msg Message
-		_ = json.Unmarshal(data, &msg)
+		_ = json.Unmarshal(data, &msg) //nolint:errcheck // fuzz: intentionally ignore parse errors
 
 		// If unmarshal succeeded, accessing fields must not panic.
 		_ = msg.Type
@@ -75,6 +75,6 @@ func FuzzExtractAlgFromHeader(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, token string) {
 		// Must not panic on any input.
-		_, _ = extractAlgFromHeader(token)
+		_, _ = extractAlgFromHeader(token) //nolint:errcheck // fuzz: intentionally ignore errors
 	})
 }

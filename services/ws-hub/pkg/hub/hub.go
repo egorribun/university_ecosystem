@@ -81,8 +81,8 @@ type Hub struct {
 	// Used by ReadPump/WritePump goroutines to detect hub shutdown (RZ-24-02).
 	ctx       context.Context
 	ctxCancel context.CancelFunc
-	stopOnce           sync.Once
-	jwksMu      sync.Mutex
+	stopOnce  sync.Once
+	jwksMu    sync.Mutex
 	// redisClient is the shared Redis connection used for upgrade ticket validation.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
 	redisClient *goredis.Client
@@ -100,10 +100,10 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		Logger:     logger,
 		authClient: authClient,
 		// 10 upgrade attempts per 60-second window per IP.
-		UpgradeLimiter: NewWSUpgradeRateLimiter(10, 60),
-		jwksCache:      nil, // Initialised via SetupJWKS()
-		maxClients:       cfg.MaxClients,
-		broadcastWorkers: cfg.BroadcastWorkers,
+		UpgradeLimiter:     NewWSUpgradeRateLimiter(10, 60),
+		jwksCache:          nil, // Initialised via SetupJWKS()
+		maxClients:         cfg.MaxClients,
+		broadcastWorkers:   cfg.BroadcastWorkers,
 		internalSecret:     cfg.InternalSecret,
 		clientMsgRateLimit: cfg.ClientMsgRateLimit,
 		clientMsgRateBurst: cfg.ClientMsgRateBurst,
@@ -263,6 +263,47 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 	h.Logger.InfoContext(ctx, "Client disconnected", "id", client.ID)
 }
 
+type recipient struct {
+	client      *Client
+	evictOnFull bool
+}
+
+// collectRecipients gathers target clients under a read-lock.
+// MOD-23-03 (audit 2026-03-25 Wave 23): Collect recipients under read-lock,
+// then fan-out writes lock-free. Go 1.24 range-over-map is stable for sets.
+func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	switch {
+	case msg.Room != "":
+		clients, ok := h.Rooms[msg.Room]
+		if !ok {
+			return nil
+		}
+		span.SetAttributes(attribute.Int("recipient.count", len(clients)))
+		recipients := make([]recipient, 0, len(clients))
+		for c := range clients {
+			recipients = append(recipients, recipient{client: c})
+		}
+		return recipients
+	case msg.To != "":
+		c, ok := h.Clients[msg.To]
+		if !ok {
+			return nil
+		}
+		span.SetAttributes(attribute.Int("recipient.count", 1))
+		return []recipient{{client: c}}
+	default:
+		span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
+		recipients := make([]recipient, 0, len(h.Clients))
+		for _, c := range h.Clients {
+			recipients = append(recipients, recipient{client: c, evictOnFull: true})
+		}
+		return recipients
+	}
+}
+
 func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 	bctx := parentCtx
 	if len(msg.TraceCtx) > 0 {
@@ -301,37 +342,7 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 		return
 	}
 
-	type recipient struct {
-		client      *Client
-		evictOnFull bool
-	}
-
-	// MOD-23-03 (audit 2026-03-25 Wave 23): Collect recipients under read-lock,
-	// then fan-out writes lock-free. Go 1.24 range-over-map is stable for sets.
-	h.mu.RLock()
-	var recipients []recipient
-	switch {
-	case msg.Room != "":
-		if clients, ok := h.Rooms[msg.Room]; ok {
-			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
-			recipients = make([]recipient, 0, len(clients))
-			for c := range clients {
-				recipients = append(recipients, recipient{client: c})
-			}
-		}
-	case msg.To != "":
-		if c, ok := h.Clients[msg.To]; ok {
-			span.SetAttributes(attribute.Int("recipient.count", 1))
-			recipients = []recipient{{client: c}}
-		}
-	default:
-		span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
-		recipients = make([]recipient, 0, len(h.Clients))
-		for _, c := range h.Clients {
-			recipients = append(recipients, recipient{client: c, evictOnFull: true})
-		}
-	}
-	h.mu.RUnlock()
+	recipients := h.collectRecipients(msg, span)
 
 	for _, r := range recipients {
 		if safeSend(r.client.Send, data) {
@@ -447,7 +458,7 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 			// Immediate Nak causes amplification when the worker pool is
 			// saturated — 5-second backoff breaks the feedback loop.
 			if msg.Reply != "" {
-				_ = msg.NakWithDelay(5 * time.Second)
+				_ = msg.NakWithDelay(5 * time.Second) //nolint:errcheck // best-effort NAK
 			}
 		}
 	}
@@ -496,7 +507,7 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 				"subject", msg.Subject)
 			// PERF-W18-01 / PERF-22-01: NakWithDelay to prevent redelivery storm.
 			if msg.Reply != "" {
-				_ = msg.NakWithDelay(5 * time.Second)
+				_ = msg.NakWithDelay(5 * time.Second) //nolint:errcheck // best-effort NAK
 			}
 		}
 	}

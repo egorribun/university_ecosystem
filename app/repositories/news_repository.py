@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
+import app.models as models
 from app.core.cache import cached, news_cache
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
-from app.models import models
 from app.models.news import News
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import (

@@ -15,7 +15,7 @@ from app.auth.fingerprint import (
 )
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
-from app.models.models import ActiveSession, User
+from app.models import ActiveSession, User
 
 logger = logging.getLogger("app.auth.security")
 

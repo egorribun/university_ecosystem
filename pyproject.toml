@@ -307,6 +307,8 @@ filterwarnings = [
   # TD-28-05: passlib removed in Wave 21 (TD-21-04) — filter kept for test compat
   "ignore::DeprecationWarning:passlib",       # passlib/bcrypt upstream noise
   "ignore::DeprecationWarning:pkg_resources", # setuptools legacy noise
+  "ignore::DeprecationWarning:dishka",        # dishka 1.8+ starlette integration move
+  "ignore:The 'lia' package has been renamed:DeprecationWarning",  # lia→cross_web (strawberry dep, stacklevel=2)
   "ignore::PendingDeprecationWarning",        # third-party pending removals
 ]
 markers = [

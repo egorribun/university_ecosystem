@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import models
+import app.models as models
 from app.schemas import schemas
 from app.schemas.dtos.event import (
     EventAttendanceDTO,

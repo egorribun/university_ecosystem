@@ -7,6 +7,7 @@ These handlers are registered with the EventBus during application startup.
 
 from __future__ import annotations
 
+import app.models as models
 from app.core.container import get_vector_service
 from app.core.database import async_session
 from app.core.events import (
@@ -25,7 +26,6 @@ from app.core.events import (
     event_bus,
 )
 from app.core.logging import get_logger
-from app.models import models
 
 logger = get_logger(__name__)
 

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models import models
+import app.models as models
 from app.schemas import schemas
 
 

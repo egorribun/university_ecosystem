@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, delete, func, or_, select, update
 
 from app.core.protocols import AsyncDatabaseSession
-from app.models.models import ActiveSession
+from app.models import ActiveSession
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.session import ActiveSessionDTO
 

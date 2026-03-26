@@ -387,7 +387,10 @@ def _setup_pool_health_monitoring(engine: AsyncEngine) -> None:
     event.listen(pool, "checkout", _on_checkout)
     event.listen(pool, "checkin", _on_checkin)
     event.listen(pool, "invalidate", _on_invalidate)
-    event.listen(pool, "checkout_failed", _on_checkout_failed)
+    # checkout_failed is not a standard SA pool event; guard to avoid
+    # InvalidRequestError on NullPool or older SA versions.
+    if hasattr(pool.dispatch, "checkout_failed"):
+        event.listen(pool, "checkout_failed", _on_checkout_failed)
 
     logger.info(
         "Pool health monitoring enabled (size=%s, overflow=%s)",

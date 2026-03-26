@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.models import TrustedDevice, User
+from app.models import TrustedDevice, User
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

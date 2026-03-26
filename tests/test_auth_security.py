@@ -1,30 +1,20 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import bcrypt as bcrypt_lib
 import jwt
 import pytest
 from fastapi import status
 from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 
+import app.models as models
 from app.auth.security import (
-    LEGACY_BCRYPT_MAX_BYTES,
     _mint_pure_jwt,
-    _truncate_for_bcrypt,
     decode_token,
     get_password_hash,
-    verify_and_update_password,
     verify_password,
 )
 from app.core.config import settings
-from app.models import models
-
-
-def _make_legacy_hash(password: str) -> str:
-    prepared = _truncate_for_bcrypt(password).encode("utf-8")
-    salt = bcrypt_lib.gensalt()
-    return bcrypt_lib.hashpw(prepared, salt).decode("utf-8")
 
 
 @pytest.mark.asyncio
@@ -61,66 +51,12 @@ async def test_password_policy_allows_limits():
 
 
 @pytest.mark.asyncio
-async def test_verify_and_update_password_migrates_bcrypt():
-    password = "LegacySecur3!"
-    legacy_hash = _make_legacy_hash(password)
-
-    assert legacy_hash.startswith("$2")
-
-    verified, new_hash = await verify_and_update_password(password, legacy_hash)
-
-    assert verified is True
-    assert new_hash is not None
-    assert new_hash.startswith("$argon2id$")
-    assert await verify_password(password, new_hash)
-
-
-@pytest.mark.asyncio
-async def test_verify_and_update_password_invalid_password():
-    password = "ValidPassw0rd!"
-    legacy_hash = _make_legacy_hash(password)
-
-    verified, new_hash = await verify_and_update_password("wrong", legacy_hash)
-
-    assert verified is False
-    assert new_hash is None
-
-
-@pytest.mark.asyncio
-async def test_verify_and_update_password_up_to_date_hash():
-    password = "UpToDateP@ss1"
-    current_hash = await get_password_hash(password)
-
-    verified, new_hash = await verify_and_update_password(password, current_hash)
-
-    assert verified is True
-    assert new_hash is None
-
-
-@pytest.mark.asyncio
 async def test_unicode_password_hashing():
     password = "Пароль🔒1234"
     hashed = await get_password_hash(password)
 
     assert hashed.startswith("$argon2id$")
     assert await verify_password(password, hashed)
-
-
-@pytest.mark.asyncio
-async def test_legacy_bcrypt_truncation_behavior():
-    long_password = "a" * 80
-    legacy_hash = _make_legacy_hash(long_password)
-
-    truncated = _truncate_for_bcrypt(long_password)
-    assert len(truncated.encode("utf-8")) == LEGACY_BCRYPT_MAX_BYTES
-
-    assert await verify_password(long_password, legacy_hash)
-
-    mutated_after_limit = long_password[:72] + "b" * 8
-    assert await verify_password(mutated_after_limit, legacy_hash)
-
-    mutated_before_limit = "b" + long_password[1:]
-    assert not await verify_password(mutated_before_limit, legacy_hash)
 
 
 @pytest.mark.asyncio
@@ -189,34 +125,6 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
     rotated_decoded = decode_token(rotated_token)
     assert rotated_decoded is not None
     assert rotated_decoded["sub"] == "current-user"
-
-
-@pytest.mark.asyncio
-async def test_login_migrates_legacy_hash(async_client, user_factory, db_session):
-    password = "LegacyLog1n!"
-    legacy_hash = _make_legacy_hash(password)
-
-    user = await user_factory(hashed_password=legacy_hash, is_active=True)
-
-    response = await async_client.post(
-        "/auth/login",
-        data={"username": user.email, "password": password},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["token_type"] == "bearer"
-    assert response.cookies.get("access_token_v2")
-    assert body["user"]["id"] == str(user.id)
-    session = body.get("session")
-    assert session is not None
-    assert isinstance(session.get("signing_key"), str)
-    assert session["signing_key"]
-
-    await db_session.refresh(user)
-    assert user.hashed_password.startswith("$argon2id$")
-    assert await verify_password(password, user.hashed_password)
 
 
 @pytest.mark.asyncio

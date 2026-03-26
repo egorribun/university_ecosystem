@@ -3,7 +3,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.models.models import MfaChallenge, User
+from app.models import MfaChallenge, User
 from app.services.mfa_challenge_cleanup import cleanup_stale_mfa_challenges
 
 

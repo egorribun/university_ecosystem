@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import PushSubscription
+from app.models import PushSubscription
 from app.services.webpush import (
     WebPushResult,
     _is_user_in_quiet_hours,

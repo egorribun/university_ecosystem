@@ -13,18 +13,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 if "magic" not in sys.modules:
     sys.modules["magic"] = None  # type: ignore[assignment]
 
-# Workaround for passlib/bcrypt 4.1+ incompatibility
-import bcrypt
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
-
-if not hasattr(bcrypt, "__about__"):
-    try:
-        bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})  # type: ignore[attr-defined]
-    except AttributeError:
-        # Fallback if __version__ is also missing or other issues
-        bcrypt.__about__ = type("about", (object,), {"__version__": "4.0.0"})  # type: ignore[attr-defined]
 
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
@@ -36,11 +27,11 @@ else:
     os.environ["DATABASE_URL"] = os.environ.get(
         "DATABASE_URL", "sqlite+aiosqlite:///./test.db"
     )
-os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"  # noqa: S105
+os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"
 os.environ["ALGORITHM"] = "HS256"
-os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"  # noqa: S105
+os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
 os.environ["STATIC_DIR"] = "app/test-static"
-os.environ["SPOTIFY_TOKEN_SECRET"] = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="  # noqa: S105
+os.environ["SPOTIFY_TOKEN_SECRET"] = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
 os.environ["CACHE_ENABLED"] = "false"
 os.environ["ENABLE_OTEL"] = "false"
 os.environ["SESSION_STORAGE_BACKEND"] = "redis"
@@ -49,7 +40,7 @@ os.environ["RATE_LIMIT_STORAGE_URI"] = "redis://localhost"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["RATE_LIMIT_NEWS"] = "5/minute"
 os.environ["RATE_LIMIT_AUTH_REGISTER"] = "4/minute"
-os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"  # noqa: S105
+os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"
 os.environ["IMGPROXY_KEY"] = ""
 os.environ["IMGPROXY_SALT"] = ""
 

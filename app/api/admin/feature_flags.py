@@ -2,11 +2,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
+import app.models as models
 from app.api.deps import get_current_admin_user
 from app.api.validation import raise_not_found, raise_validation_error
 from app.core.feature_flags import feature_flags
 from app.core.localization import resolve_locale
-from app.models import models
 from app.schemas import schemas
 
 router = APIRouter(prefix="/feature-flags", tags=["admin-feature-flags"])

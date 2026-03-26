@@ -1,8 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+import app.models as models
 from app.auth.security import get_password_hash
-from app.models import models
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

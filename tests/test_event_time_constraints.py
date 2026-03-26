@@ -5,9 +5,9 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
+import app.models as models
 from app.auth.security import get_password_hash
 from app.core.localization import translate
-from app.models import models
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.services.event_service import EventService

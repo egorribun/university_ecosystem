@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import app.models as models
 import app.services.event_service as event_service
 from app.core.localization import normalize_locale, translate
-from app.models import models
 from app.utils.files import detect_mime_type, normalize_filename_prefix, save_attachment
 
 
@@ -226,7 +226,7 @@ async def test_monster_coverage_run():
 
         await login_service.perform_login(
             email="a@b.com",
-            password="p",  # noqa: S106
+            password="p",
             request=mock_request,
             response=Response(),
             bg_tasks=BackgroundTasks(),

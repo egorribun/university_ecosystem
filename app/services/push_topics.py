@@ -10,7 +10,7 @@ from sqlalchemy.orm import attributes as orm_attributes
 
 from app.core.config import Settings
 from app.core.config import settings as app_settings
-from app.models.models import PushSubscription, UserPushTopic
+from app.models import PushSubscription, UserPushTopic
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence

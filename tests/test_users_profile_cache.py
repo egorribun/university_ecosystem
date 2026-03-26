@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.auth.security import get_password_hash
 from app.core.localization import translate
-from app.models.models import ActiveSession
+from app.models import ActiveSession
 
 PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 

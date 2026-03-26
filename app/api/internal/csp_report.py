@@ -68,7 +68,7 @@ async def receive_csp_report(request: Request) -> Response:
                 "CSP report payload too large",
                 extra={"event": "csp_report", "status": "payload_too_large"},
             )
-            return Response(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+            return Response(status_code=status.HTTP_413_CONTENT_TOO_LARGE)
         if not body:
             record_csp_report("empty")
             return Response(status_code=status.HTTP_204_NO_CONTENT)

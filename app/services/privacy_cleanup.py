@@ -14,7 +14,7 @@ from app.core.database import async_session
 from app.core.logging import get_logger
 from app.core.observability import get_periodic_task_metrics
 from app.core.protocols import AsyncDatabaseSession as AsyncSession
-from app.models.models import (
+from app.models import (
     ActiveSession,
     FailedLoginAttempt,
     MfaChallenge,

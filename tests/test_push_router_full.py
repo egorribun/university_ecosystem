@@ -15,14 +15,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
-from app.models.models import PushSubscription, UserPushTopic
+from app.models import PushSubscription, UserPushTopic
 from app.services.webpush import WebPushResult
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_TEST_PASSWORD = "TestPassword123!"  # noqa: S105  # pragma: allowlist secret
+_TEST_PASSWORD = "TestPassword123!"  # pragma: allowlist secret
 
 
 async def _login(client: AsyncClient, email: str) -> dict[str, str]:

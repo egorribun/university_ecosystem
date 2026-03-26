@@ -10,7 +10,7 @@ from sqlalchemy import delete, event, select
 
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.models.models import (
+from app.models import (
     Group,
     Notification,
     NotificationDelivery,
@@ -525,7 +525,7 @@ async def test_event_creation_enqueues_notifications(
     monkeypatch: pytest.MonkeyPatch,
 ):
     admin = await user_factory(role="admin")
-    password = "Adm1nPass!"  # noqa: S105
+    password = "Adm1nPass!"
     admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 
@@ -571,7 +571,7 @@ async def test_news_creation_enqueues_notifications(
     monkeypatch: pytest.MonkeyPatch,
 ):
     admin = await user_factory(role="admin")
-    password = "Adm1nPass!"  # noqa: S105
+    password = "Adm1nPass!"
     admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 

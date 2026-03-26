@@ -3,7 +3,7 @@ from datetime import UTC, datetime, time, timedelta
 import pytest
 from pydantic import ValidationError
 
-from app.models import models
+import app.models as models
 from app.schemas import schemas
 
 

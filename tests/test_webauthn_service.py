@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.models import User, WebAuthnCredential
+from app.models import User, WebAuthnCredential
 from app.services.webauthn import WebAuthnService
 
 

@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.localization import translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
-from app.models.models import FailedLoginAttempt
+from app.models import FailedLoginAttempt
 from app.repositories.auth_repository import AuthRepository
 
 logger = get_logger(__name__)

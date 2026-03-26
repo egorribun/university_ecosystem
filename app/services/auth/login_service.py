@@ -11,7 +11,7 @@ from app.schemas import schemas
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
-    from app.models.models import User
+    from app.models import User
     from app.schemas.dtos import UserAuthDTO, UserDTO
     from app.services.auth.credential_validator import CredentialValidator
     from app.services.auth.login_session_manager import LoginSessionManager

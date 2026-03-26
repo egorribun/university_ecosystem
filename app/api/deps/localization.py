@@ -6,7 +6,7 @@ from fastapi import Depends, Request
 # endpoints (no auth required) can still resolve a locale via Accept-Language.
 from app.api.deps.auth import get_current_user_optional
 from app.core.localization import resolve_locale
-from app.models.models import User
+from app.models import User
 
 
 def get_locale(

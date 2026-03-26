@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.models.models import Notification, Schedule
+from app.models import Notification, Schedule
 from app.services.notifications import create_notifications_for_users
 
 
@@ -330,7 +330,7 @@ async def test_check_schedule_creates_notifications(
     user_factory,
     db_session,
 ):
-    from app.models.models import Group
+    from app.models import Group
 
     password = "ScheduleCheck123!"
     hashed = await get_password_hash(password)

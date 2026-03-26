@@ -10,7 +10,7 @@ from sqlalchemy.orm.interfaces import LoaderOption
 from sqlalchemy.sql.elements import ClauseElement
 
 from app.core.protocols import AsyncDatabaseSession
-from app.models.models import ActiveSession, User
+from app.models import ActiveSession, User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
 

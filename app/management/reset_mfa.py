@@ -11,10 +11,10 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.models as models
 from app.auth import mfa
 from app.core.database import async_session
 from app.core.localization import resolve_locale, translate
-from app.models import models
 from app.services.notifications import create_notifications_for_users
 
 audit_logger = logging.getLogger("app.users.audit")

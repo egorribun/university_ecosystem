@@ -21,7 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.core import metrics
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.models import (
+from app.models import (
     Notification,
     NotificationDelivery,
     PushSubscription,

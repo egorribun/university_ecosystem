@@ -4,9 +4,9 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+import app.models as models
 from app.auth.security import get_password_hash
 from app.core.database import async_session
-from app.models import models
 from app.services.story_cleanup import cleanup_expired_stories
 
 
