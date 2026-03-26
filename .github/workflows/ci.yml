@@ -832,20 +832,19 @@ jobs:
         with:
           version: "3.17.0"
 
-      - name: Helm lint — backend
-        run: helm lint k8s/backend/ --strict
+      - name: Helm lint — university-ecosystem chart
+        run: |  # pragma: allowlist secret
+          helm lint charts/university-ecosystem/ --strict \
+            --set redis.enabled=false \
+            --set nats.enabled=false \
+            --set gateway.config.jwtSecret=ci-placeholder
 
-      - name: Helm lint — gateway (if exists)
-        run: |
-          if [ -d k8s/gateway ]; then
-            helm lint k8s/gateway/ --strict
-          else
-            echo "k8s/gateway not found, skipping"
-          fi
-
-      - name: Helm template — backend dry-run
-        run: |
-          helm template backend k8s/backend/ \
+      - name: Helm template — dry-run
+        run: |  # pragma: allowlist secret
+          helm template university-ecosystem charts/university-ecosystem/ \
+            --set redis.enabled=false \
+            --set nats.enabled=false \
+            --set gateway.config.jwtSecret=ci-placeholder \
             --set image.tag=test-sha-${{ github.sha }} \
             > /tmp/backend-manifests.yaml
           echo "Helm template rendered successfully ($(wc -l < /tmp/backend-manifests.yaml) lines)"
