@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react"
+import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 
@@ -43,17 +43,24 @@ class MockWebSocket {
 
 describe("useChatWebSocket", () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     MockWebSocket.instances = []
     vi.stubGlobal("WebSocket", MockWebSocket)
+    // Mock the ticket fetch so the hook can proceed to create a WebSocket
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ ticket: "test-ticket", expires_in: 15 }),
+      })
+    )
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
-  it("emits presence updates with last seen information", () => {
+  it("emits presence updates with last seen information", async () => {
     const presenceSpy = vi.fn()
     const onlineSpy = vi.fn()
     const queryClient = new QueryClient()
@@ -73,6 +80,11 @@ describe("useChatWebSocket", () => {
         ),
       }
     )
+
+    // Wait for the async ticket fetch to complete and WebSocket to be created
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBeGreaterThan(0)
+    })
 
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]
     expect(socket).toBeDefined()
