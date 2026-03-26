@@ -897,9 +897,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: astral-sh/setup-uv@6b9c6063abd0c5d2b1adb8dfd1f81566f60ddb6e # v5.4.0
-        with:
-          version: "0.6.14"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
 
       - name: Install dependencies
         run: uv sync --group dev
