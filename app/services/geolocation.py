@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -92,12 +93,17 @@ class GeolocationService:
 
 
 _geolocation_service_instance: GeolocationService | None = None
+_geolocation_service_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 
 
 async def get_geolocation_service_instance() -> GeolocationService:
     global _geolocation_service_instance
-    if _geolocation_service_instance is None:
-        _geolocation_service_instance = GeolocationService()
+    if (
+        _geolocation_service_instance is None
+    ):  # RZ-33-29: fast path — no lock after init
+        with _geolocation_service_lock:  # RZ-33-29: slow path — double-checked locking
+            if _geolocation_service_instance is None:
+                _geolocation_service_instance = GeolocationService()
 
     if not _geolocation_service_instance._initialized:
         await _geolocation_service_instance.initialize()

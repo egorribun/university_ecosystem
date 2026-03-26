@@ -68,12 +68,14 @@ class Settings(
     IntegrationSettings,
     AppGeneralSettings,
 ):
-    """Consolidated application settings."""
+    """Consolidated application settings.
 
-    health_storage_probe_enabled: bool = True
-    health_storage_probe_min_interval_seconds: int = 3600
-    monitoring_heavy_probe_enabled: bool = False
-    api_v2_prefix: str = "/api/v2"
+    Note: health_storage_probe_enabled, health_storage_probe_min_interval_seconds,
+    monitoring_heavy_probe_enabled, and api_v2_prefix are inherited from parent
+    mixin classes (AppGeneralSettings / SecuritySettings / StorageSettings).
+    Do not re-declare them here — shadowing breaks MRO field resolution.
+    (TD-33-04, Wave 33)
+    """
 
     @field_validator("auto_create_schema")
     @classmethod

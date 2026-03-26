@@ -114,7 +114,9 @@ func initSentry(cfg *config.Config, logger *slog.Logger) {
 		Dsn:              cfg.SentryDSN,
 		Environment:      cfg.Environment,
 		Release:          cfg.AppVersion,
-		TracesSampleRate: 1.0,
+		// RZ-33-02: Configurable via SENTRY_TRACES_SAMPLE_RATE env var.
+		// Default 1.0 (100%) for dev; recommend 0.1 (10%) for production.
+		TracesSampleRate: cfg.SentryTracesSampleRate,
 	})
 	if err != nil {
 		logger.Error("Sentry initialization failed", "err", err)
@@ -255,10 +257,6 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy, internalSecret))
 		optional.Any("/graphql", handlers.ProxyHandler(proxy, internalSecret))
 	}
-
-	// Public API (No Auth)
-	publicAPI := router.Group("/api/public")
-	publicAPI.Any("/*path", handlers.ProxyHandler(proxy, internalSecret))
 
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {

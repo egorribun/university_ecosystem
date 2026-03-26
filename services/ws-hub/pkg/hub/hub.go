@@ -255,8 +255,11 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 		}
 		client.mu.Unlock()
 		h.mu.Unlock()
+
+		// RZ-33-03: Dec inside closeOnce so concurrent unregister calls
+		// only decrement the gauge once per client.
+		ActiveConnections.Dec()
 	})
-	ActiveConnections.Dec()
 	h.Logger.InfoContext(ctx, "Client disconnected", "id", client.ID)
 }
 

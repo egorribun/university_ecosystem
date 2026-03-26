@@ -4,6 +4,7 @@ import asyncio
 import fnmatch
 import hashlib
 import inspect
+import threading
 import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -400,21 +401,31 @@ class RedisClusterCache(BaseCache):
         if self._client is None:
             return
         client, self._client = self._client, None
+        start = time_module.perf_counter()
+        success = False
         try:
             if hasattr(client, "aclose"):
                 await client.aclose()
             elif hasattr(client, "close"):
                 await client.close()
+            success = True
         except (RedisError, OSError, AttributeError):  # RZ-28-01
             logger.debug("Failed to close Redis cluster client", exc_info=True)
+        finally:
+            record_redis_command(
+                "close", time_module.perf_counter() - start, success=success
+            )
 
     async def get(self, key: str) -> CacheEntry | None:
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
             raw = await client.get(key)
             if raw is None:
                 return None
             parsed = orjson.loads(raw)
+            success = True
             return CacheEntry(
                 etag=str(parsed.get("etag", "")),
                 payload=parsed.get("payload"),
@@ -427,6 +438,10 @@ class RedisClusterCache(BaseCache):
         except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cluster get failed for key %s", key, exc_info=True)
             return None
+        finally:
+            record_redis_command(
+                "get", time_module.perf_counter() - start, success=success
+            )
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized, serialized = _normalize_payload(payload)
@@ -441,14 +456,21 @@ class RedisClusterCache(BaseCache):
                 "ttl_seconds": float(effective_ttl),
             }
         ).decode("utf-8")
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
             if effective_ttl:
                 await client.set(key, envelope, ex=effective_ttl)
             else:
                 await client.set(key, envelope)
+            success = True
         except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cluster set failed for key %s", key, exc_info=True)
+        finally:
+            record_redis_command(
+                "set", time_module.perf_counter() - start, success=success
+            )
         return CacheEntry(
             etag=etag,
             payload=normalized,
@@ -460,12 +482,21 @@ class RedisClusterCache(BaseCache):
         filtered = [str(k) for k in keys if k and "*" not in k]
         if not filtered:
             return
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
             await client.delete(*filtered)
+            success = True
         except (RedisError, OSError):  # RZ-28-01
             logger.warning(
                 "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
+            )
+        finally:
+            record_redis_command(
+                "invalidate",
+                time_module.perf_counter() - start,
+                success=success,
             )
 
     def _resolve_ttl(self, ttl: int | None) -> int:
@@ -794,6 +825,7 @@ def stale_while_revalidate(
 
 
 _cache_backend: BaseCache | None = None
+_cache_backend_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
@@ -853,9 +885,12 @@ def create_cache_backend() -> BaseCache:
 
 def get_cache() -> BaseCache:
     global _cache_backend
-    if _cache_backend is None:
-        _cache_backend = create_cache_backend()
-    return _cache_backend
+    if _cache_backend is not None:  # RZ-33-29: fast path — no lock after init
+        return _cache_backend
+    with _cache_backend_lock:  # RZ-33-29: slow path — double-checked locking
+        if _cache_backend is None:
+            _cache_backend = create_cache_backend()
+        return _cache_backend
 
 
 def set_cache_backend(cache: BaseCache | None) -> None:

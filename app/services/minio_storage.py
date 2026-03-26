@@ -11,6 +11,7 @@ Features:
 
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from functools import partial
@@ -209,39 +210,43 @@ class MinIOClient:
 
 # Singleton instance (configure via settings)
 _minio_client: MinIOClient | None = None
+_minio_client_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 
 
 def get_minio_client() -> MinIOClient:
     """Get the configured MinIO client instance."""
     global _minio_client
-    if _minio_client is None:
-        from app.core.config import settings
+    if _minio_client is not None:  # RZ-33-29: fast path — no lock after init
+        return _minio_client
+    with _minio_client_lock:  # RZ-33-29: slow path — double-checked locking
+        if _minio_client is None:
+            from app.core.config import settings
 
-        access_key = getattr(settings, "minio_access_key", "minioadmin")
-        secret_key = getattr(settings, "minio_secret_key", "minioadmin")
+            access_key = getattr(settings, "minio_access_key", "minioadmin")
+            secret_key = getattr(settings, "minio_secret_key", "minioadmin")
 
-        # LOW-W19: warn when default MinIO credentials are in use.  The
-        # factory-default "minioadmin"/"minioadmin" credentials are publicly
-        # known and MUST be rotated before deploying to any non-development
-        # environment.  An attacker with network access to the MinIO endpoint
-        # can gain full bucket access if these defaults remain unchanged.
-        _DEFAULT_CRED = "minioadmin"
-        if access_key == _DEFAULT_CRED or secret_key == _DEFAULT_CRED:
-            logger.warning(
-                "MinIO is using default credentials (%s). "
-                "Set MINIO_ACCESS_KEY and MINIO_SECRET_KEY before deploying "
-                "to staging or production.",
-                "minioadmin",
+            # LOW-W19: warn when default MinIO credentials are in use.  The
+            # factory-default "minioadmin"/"minioadmin" credentials are publicly
+            # known and MUST be rotated before deploying to any non-development
+            # environment.  An attacker with network access to the MinIO endpoint
+            # can gain full bucket access if these defaults remain unchanged.
+            _DEFAULT_CRED = "minioadmin"
+            if access_key == _DEFAULT_CRED or secret_key == _DEFAULT_CRED:
+                logger.warning(
+                    "MinIO is using default credentials (%s). "
+                    "Set MINIO_ACCESS_KEY and MINIO_SECRET_KEY before deploying "
+                    "to staging or production.",
+                    "minioadmin",
+                )
+
+            _minio_client = MinIOClient(
+                endpoint=getattr(settings, "minio_endpoint", "minio:9000"),
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=getattr(settings, "minio_secure", False),
+                default_bucket=getattr(settings, "minio_bucket", "uploads"),
             )
-
-        _minio_client = MinIOClient(
-            endpoint=getattr(settings, "minio_endpoint", "minio:9000"),
-            access_key=access_key,
-            secret_key=secret_key,
-            secure=getattr(settings, "minio_secure", False),
-            default_bucket=getattr(settings, "minio_bucket", "uploads"),
-        )
-    return _minio_client
+        return _minio_client
 
 
 __all__ = ["MinIOClient", "get_minio_client"]

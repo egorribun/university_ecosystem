@@ -10,6 +10,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -502,14 +503,18 @@ class SecureAuditService:
 
 
 _secure_audit_service: SecureAuditService | None = None
+_secure_audit_service_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 
 
 def get_secure_audit_service() -> SecureAuditService:
     """Get or create the global secure audit service instance."""
     global _secure_audit_service
-    if _secure_audit_service is None:
-        _secure_audit_service = SecureAuditService()
-    return _secure_audit_service
+    if _secure_audit_service is not None:  # RZ-33-29: fast path — no lock after init
+        return _secure_audit_service
+    with _secure_audit_service_lock:  # RZ-33-29: slow path — double-checked locking
+        if _secure_audit_service is None:
+            _secure_audit_service = SecureAuditService()
+        return _secure_audit_service
 
 
 __all__ = [

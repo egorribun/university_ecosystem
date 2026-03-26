@@ -1,22 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-gateway
+  name: {{ include "university-ecosystem.fullname" . }}-gateway
   labels:
-    app: gateway
-    release: {{ .Release.Name }}
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
 spec:
   replicas: {{ .Values.gateway.replicaCount }}
   selector:
     matchLabels:
-      app: gateway
-      release: {{ .Release.Name }}
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: gateway
   template:
     metadata:
       labels:
-        app: gateway
-        release: {{ .Release.Name }}
+        {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: gateway
       annotations:
         prometheus.io/scrape: "true"
@@ -36,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: gateway
-          image: "{{ .Values.global.imageRegistry }}/{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           # RZ-03: distroless Go binary has no filesystem writes — readOnlyRootFilesystem
           # is safe without any emptyDir volumes.
@@ -58,9 +56,9 @@ spec:
                   name: {{ .Release.Name }}-secrets
                   key: jwt-secret
             - name: BACKEND_URL
-              value: "http://{{ .Release.Name }}-backend:8000"
+              value: "http://{{ include "university-ecosystem.fullname" . }}-backend:8000"
             - name: FILE_PROCESSOR_ADDR
-              value: "{{ .Release.Name }}-file-processor:50051"
+              value: "{{ include "university-ecosystem.fullname" . }}-file-processor:50051"
             - name: REDIS_URL
               value: "redis://{{ .Release.Name }}-redis:6379/3"
             # PERF-03 (RZ-W13): OTel sampling — 10% in production.
@@ -91,3 +89,5 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}

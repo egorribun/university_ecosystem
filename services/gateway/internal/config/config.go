@@ -8,6 +8,22 @@ import (
 	"strings"
 )
 
+// getEnvFloat64 reads a float64 from the given environment variable, returning
+// defaultValue if the variable is empty or unparseable.
+func getEnvFloat64(key string, defaultValue float64) float64 {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultValue
+	}
+	val, err := strconv.ParseFloat(valStr, 64)
+	if err != nil {
+		slog.Warn("invalid float env var, using default",
+			"key", key, "value", valStr, "default", defaultValue)
+		return defaultValue
+	}
+	return val
+}
+
 // Config holds the gateway configuration.
 type Config struct {
 	Port       string
@@ -40,6 +56,9 @@ type Config struct {
 	// JWKSPublicKeyPEM is still used as the initial/fallback key.
 	JWKSEndpoint        string
 	JWKSRefreshInterval int // seconds between JWKS fetches (default: 300 = 5 min)
+	// SentryTracesSampleRate controls Sentry performance monitoring sample rate.
+	// Default 1.0 (100%) for dev; recommend 0.1 (10%) for production.
+	SentryTracesSampleRate float64
 }
 
 // Load loads the configuration from environment variables
@@ -67,6 +86,9 @@ func Load() (*Config, error) {
 		// MOD-W17-03: JWKS hot-reload. Set JWKS_ENDPOINT to enable.
 		JWKSEndpoint:        os.Getenv("JWKS_ENDPOINT"),
 		JWKSRefreshInterval: getEnvInt("JWKS_REFRESH_INTERVAL", 300),
+		// RZ-33-02: Configurable Sentry sample rate. Default 1.0 for dev;
+		// recommend 0.1 for production (set SENTRY_TRACES_SAMPLE_RATE=0.1).
+		SentryTracesSampleRate: getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
 	}
 
 	if cfg.JWTSecret == "" {

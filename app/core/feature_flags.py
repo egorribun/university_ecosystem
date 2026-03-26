@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from app.core.logging import get_logger
@@ -26,35 +27,39 @@ FLAG_PUSH_BATCHING = "push-batching"
 FLAG_GRAPHQL_SUBSCRIPTIONS = "graphql-subscriptions"
 
 _provider_initialized = False
+_provider_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 
 
 def _ensure_provider() -> None:
     """Lazily initialize the OpenFeature provider on first use."""
     global _provider_initialized
-    if _provider_initialized:
+    if _provider_initialized:  # RZ-33-29: fast path — no lock after init
         return
-    try:
-        from openfeature import api as of_api
-        from openfeature.contrib.provider.flagd import FlagdProvider
+    with _provider_lock:  # RZ-33-29: slow path — double-checked locking
+        if _provider_initialized:
+            return  # type: ignore[unreachable]  # RZ-33-29: DCL — reachable under concurrent access
+        try:
+            from openfeature import api as of_api
+            from openfeature.contrib.provider.flagd import FlagdProvider
 
-        from app.core.config import settings
+            from app.core.config import settings
 
-        host = getattr(settings, "flagd_host", "localhost")
-        port = int(getattr(settings, "flagd_port", 8013))
+            host = getattr(settings, "flagd_host", "localhost")
+            port = int(getattr(settings, "flagd_port", 8013))
 
-        provider = FlagdProvider(host=host, port=port)
-        of_api.set_provider(provider)
-        _provider_initialized = True
-        logger.info("OpenFeature flagd provider initialized", host=host, port=port)
-    except ImportError:
-        logger.info(
-            "openfeature-sdk or flagd provider not installed — "
-            "feature flags will use static defaults"
-        )
-        _provider_initialized = True  # Don't retry
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flagd init failure degrades to defaults (reviewed TD-27-04)
-        logger.warning("Failed to initialize flagd provider: %s", exc)
-        _provider_initialized = True  # Don't retry on every call
+            provider = FlagdProvider(host=host, port=port)
+            of_api.set_provider(provider)
+            _provider_initialized = True
+            logger.info("OpenFeature flagd provider initialized", host=host, port=port)
+        except ImportError:
+            logger.info(
+                "openfeature-sdk or flagd provider not installed — "
+                "feature flags will use static defaults"
+            )
+            _provider_initialized = True  # Don't retry
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: optional dependency — flagd init failure degrades to defaults (reviewed TD-27-04)
+            logger.warning("Failed to initialize flagd provider: %s", exc)
+            _provider_initialized = True  # Don't retry on every call
 
 
 async def is_enabled(

@@ -73,7 +73,7 @@ class UserProvider(Provider):
         from app.repositories.unit_of_work import get_unit_of_work
 
         uow = get_unit_of_work(lambda: db)
-        uow._session = db
+        uow._session = db  # RZ-33-06: manual session injection — UnitOfWork lacks public set_session() API
         uow.users = UserRepository(db)
         uow.auth = AuthRepository(db)
         uow.chats = ChatRepository(db)

@@ -378,7 +378,7 @@ jobs:
           format: spdx-json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 — RZ-22-03
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sbom
           path: sbom.spdx.json
@@ -780,7 +780,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@dd746615b3b9d728a6a37ca2045b68ca76d4f6e7 # v3
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
         if: always()
         with:
           sarif_file: trivy-results.sarif

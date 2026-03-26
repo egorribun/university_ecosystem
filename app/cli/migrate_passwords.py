@@ -180,12 +180,6 @@ def force_reset(
             "Users will be prompted to set a new (Argon2id) password on next login."
         )
 
-        # Update Prometheus gauge so runbook dashboards reflect new state.
-        try:
-            from app.core.metrics import record_legacy_bcrypt_user_count
-
-            record_legacy_bcrypt_user_count(0)
-        except Exception:  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: metrics guard — best-effort in CLI context (reviewed TD-27-04)
-            pass
+        # TD-33-03: bcrypt metrics removed in Wave 33 (dead code).
 
     asyncio.run(_run())

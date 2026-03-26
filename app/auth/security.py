@@ -136,16 +136,8 @@ def _verify_legacy_bcrypt(
     their passwords.  The function signature is retained to avoid changing
     callers; it always returns False and logs a warning.
 
-    The Prometheus counter auth_legacy_bcrypt_verifications_total continues to
-    track attempts so operators can monitor how many users are affected and
-    trigger password-reset campaigns.
+    TD-33-03: Prometheus counter removed in Wave 33 (bcrypt metrics dead code).
     """
-    try:
-        from app.core.metrics import record_legacy_bcrypt_verification
-
-        record_legacy_bcrypt_verification()
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: metrics guard — best-effort metrics recording (reviewed TD-27-04)
-        _logger.debug("Legacy bcrypt metrics recording failed: %s", exc)  # nosec B110
     _logger.warning(
         "bcrypt_hash_rejected: Legacy bcrypt hashes are no longer accepted. "
         "The user must reset their password to migrate to argon2id.",

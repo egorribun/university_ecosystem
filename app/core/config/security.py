@@ -117,6 +117,10 @@ class SecuritySettings(
         # module level (_AUDIT_SECRET_PLACEHOLDERS) to avoid Pydantic treating it
         # as a private-attr field.
         normalized = _validate_non_empty(value, label="AUDIT_LOG_SECRET")
+        # TD-33-05: _coerce_str_list splits on commas intentionally — multiple
+        # comma-separated secrets support key rotation (old + new secret accepted
+        # concurrently).  A single secret containing a literal comma would be
+        # split into two entries; avoid commas in individual secret values.
         secrets = _coerce_str_list(normalized)
         if not secrets:
             raise ValueError("AUDIT_LOG_SECRET must not be empty")
