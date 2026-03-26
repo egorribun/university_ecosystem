@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = get_logger(__name__)
-logger.setLevel(logging.NOTSET)
 
 # HIGH-W19: defer URL computation until first use so that importing this module
 # does not immediately read settings or touch the database driver.
