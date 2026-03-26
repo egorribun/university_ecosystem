@@ -8,8 +8,8 @@ from typing import Any
 from sqlalchemy import and_, case, func, literal, select, true
 from sqlalchemy.orm import aliased
 
+import app.models as models
 from app.core.protocols import AsyncDatabaseSession
-from app.models import models
 from app.repositories.base import ReadOnlyRepository
 from app.schemas.dtos import UserDTO
 from app.schemas.dtos.analytics import ParticipationStatsDTO

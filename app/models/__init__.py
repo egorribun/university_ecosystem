@@ -9,6 +9,9 @@ from app.models.auth import (
     FailedLoginAttempt as FailedLoginAttempt,
 )
 from app.models.auth import (
+    LoginHistory as LoginHistory,
+)
+from app.models.auth import (
     MfaChallenge as MfaChallenge,
 )
 from app.models.auth import (

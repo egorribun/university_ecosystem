@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import BackgroundTasks, HTTPException, Request
 
-from app.models import models
+import app.models as models
 from app.schemas import schemas
 from app.services.auth_service import AuthService
 

@@ -14,7 +14,7 @@ from app.core.localization import (
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
-    from app.models import models
+    import app.models as models
 
 
 def _weekday_index(value: str | None) -> int | None:

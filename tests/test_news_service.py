@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.models import models
+import app.models as models
 from app.schemas import schemas
 from app.schemas.dtos.news import NewsDTO, NewsListingDTO
 from app.services.news_service import NewsService

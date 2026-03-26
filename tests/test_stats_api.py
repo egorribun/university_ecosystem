@@ -4,10 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+import app.models as models
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.deps import cache as cache_module
-from app.models import models
 from app.services import attendance_tokens, stats_cache
 
 

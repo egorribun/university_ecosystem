@@ -14,7 +14,7 @@ from alembic.config import Config
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.core.config import Settings
-from app.models import models
+import app.models as models
 
 _settings = Settings(_allow_missing=True)
 config: Config = context.config

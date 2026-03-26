@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import app.models as models
 from app.api import events
-from app.models import models
 
 
 @pytest.mark.asyncio

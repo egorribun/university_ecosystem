@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import UploadFile
 
+import app.models as models
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     EntityNotFound,
     PermissionDenied,
 )
-from app.models import models
 from app.schemas import schemas
 from app.schemas.dtos import UserDTO
 from app.services.user_service import UserService

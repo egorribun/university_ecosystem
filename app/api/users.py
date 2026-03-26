@@ -18,6 +18,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 
+import app.models as models
 from app.api import deps
 from app.api.deps import (
     get_current_admin_user,
@@ -40,7 +41,6 @@ from app.core.localization import resolve_locale
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
-from app.models import models
 from app.models.enums import UserRole
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO

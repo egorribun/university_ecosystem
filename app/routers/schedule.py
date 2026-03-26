@@ -10,11 +10,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.models as models
 from app.api.deps import get_read_schedule_service
 from app.api.validation import raise_not_found
 from app.core.database import get_read_db
 from app.core.localization import resolve_locale, translate
-from app.models import models
 from app.services.ical import generate_schedule_ics
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])

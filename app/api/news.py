@@ -18,6 +18,7 @@ from fastapi import (
 )
 from sqlalchemy import exists, func, literal, select
 
+import app.models as models
 from app.api.deps import (
     get_current_user,
     get_current_user_optional,
@@ -45,7 +46,6 @@ from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
-from app.models import models
 from app.models.enums import UserRole
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware

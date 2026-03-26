@@ -5,9 +5,9 @@ import pytest
 from fastapi import status
 from sqlalchemy import select
 
+import app.models as models
 from app.auth.security import get_password_hash
 from app.core.localization import translate
-from app.models import models
 from app.services import attendance_tokens
 
 

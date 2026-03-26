@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models import models
+import app.models as models
 from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.services.user_service import UserService

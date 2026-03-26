@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import AsyncClient
 
+import app.models as models
 from app.api.deps import get_news_service
 from app.core.container import get_notification_service
 from app.main import app
-from app.models import models
 from app.schemas import schemas
 
 

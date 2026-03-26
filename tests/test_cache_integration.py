@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.models import models
+import app.models as models
 
 
 async def _robust_invalidate(cache, *patterns):

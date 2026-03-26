@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+import app.models as models
 from app.core.cache import schedule_cache
-from app.models import models
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO

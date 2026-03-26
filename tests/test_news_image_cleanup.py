@@ -2,9 +2,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import app.models as models
 from app.api import news
 from app.core.config import settings
-from app.models import models
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 

@@ -7,6 +7,7 @@ from fastapi import status
 from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 
+import app.models as models
 from app.auth.security import (
     _mint_pure_jwt,
     decode_token,
@@ -14,7 +15,6 @@ from app.auth.security import (
     verify_password,
 )
 from app.core.config import settings
-from app.models import models
 
 
 @pytest.mark.asyncio

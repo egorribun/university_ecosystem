@@ -14,6 +14,7 @@ from fastapi import (
     status,
 )
 
+import app.models as models
 from app.api.deps import get_current_user, get_current_user_optional
 from app.api.validation import ensure_exists, raise_forbidden, require_teacher_or_admin
 from app.core.localization import resolve_locale
@@ -24,7 +25,6 @@ from app.cqrs.commands.schedule import (
     UpdateScheduleCommand,
 )
 from app.cqrs.queries import GetScheduleQuery
-from app.models import models
 from app.models.enums import UserRole
 from app.schemas import schemas
 

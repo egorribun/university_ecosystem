@@ -12,6 +12,7 @@ from fastapi import (
     UploadFile,
 )
 
+import app.models as models
 from app.api.deps import (
     get_current_user,
     get_read_story_service,
@@ -29,7 +30,6 @@ from app.core.localization import (
 from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import get_cache
-from app.models import models
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.story_service import StoryService

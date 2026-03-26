@@ -21,7 +21,7 @@ from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from app.models import models
+    import app.models as models
 
 router = APIRouter(prefix="/admin/dlq", tags=["admin"])
 

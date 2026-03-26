@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.models import models
+import app.models as models
 from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
 
 

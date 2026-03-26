@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, Request, UploadFile
 
+import app.models as models
 from app.api.events import (
     attend,
     create_event,
@@ -13,7 +14,6 @@ from app.api.events import (
     upload_event_file,
     upload_event_image,
 )
-from app.models import models
 from app.schemas import schemas
 
 
@@ -116,10 +116,8 @@ async def test_upload_event_image_exception(request_mock):
                 "app.api.events.save_upload",
                 AsyncMock(side_effect=Exception("Save failed")),
             ):
-                with patch(
-                    "app.api.events.delete_static_file", AsyncMock()
-                ) as delete_mock:
-                    with pytest.raises(Exception):
+                with patch("app.api.events.delete_static_file", AsyncMock()):
+                    with pytest.raises(Exception):  # noqa: B017
                         await upload_event_image(
                             file,
                             request=request_mock,

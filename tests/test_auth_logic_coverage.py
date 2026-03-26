@@ -7,12 +7,12 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
+import app.models as models
 from app.auth import mfa
 from app.auth.constants import (
     CHALLENGE_TYPE_TOTP_VERIFY,
     MFA_METHOD_TOTP,
 )
-from app.models import models
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

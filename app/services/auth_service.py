@@ -15,13 +15,14 @@ from sqlalchemy.orm import exc as orm_exc
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
+    import app.models as _models
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
-    from app.models import models as _models
     from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
     _AnyUser = _models.User | UserAuthDTO | UserDTO
 
+import app.models as models
 from app.api.validation import raise_validation_error
 from app.auth.security import (
     get_password_hash,
@@ -32,7 +33,6 @@ from app.core.config import settings
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import resolve_locale
 from app.core.protocols import UserLike
-from app.models import models
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository

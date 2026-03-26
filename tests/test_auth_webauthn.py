@@ -7,9 +7,9 @@ import pytest
 from fastapi import status
 from sqlalchemy import select
 
+import app.models as models
 from app.auth import mfa
 from app.auth.security import get_password_hash
-from app.models import models
 
 # Mock data needed for WebAuthn responses
 MOCK_CHALLENGE = "mock_challenge_token_base64"
