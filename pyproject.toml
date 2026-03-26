@@ -308,6 +308,7 @@ filterwarnings = [
   "ignore::DeprecationWarning:passlib",       # passlib/bcrypt upstream noise
   "ignore::DeprecationWarning:pkg_resources", # setuptools legacy noise
   "ignore::DeprecationWarning:dishka",        # dishka 1.8+ starlette integration move
+  "ignore::DeprecationWarning:lia",           # lia→cross_web rename (strawberry dep)
   "ignore::PendingDeprecationWarning",        # third-party pending removals
 ]
 markers = [
