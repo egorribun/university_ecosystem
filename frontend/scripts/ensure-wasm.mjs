@@ -25,7 +25,7 @@ if (!existsSync(wasmPkgJson)) {
       "-------------------------------------------------------------\n" +
       " WARNING (TD-24-04): wasm-sanitizer/pkg/package.json missing.\n" +
       "\n" +
-      " The frontend depends on \"wasm-sanitizer\" as a local file\n" +
+      ' The frontend depends on "wasm-sanitizer" as a local file\n' +
       " dependency (file:./wasm-sanitizer/pkg).  npm install will\n" +
       " fail unless the WASM package has been built first.\n" +
       "\n" +

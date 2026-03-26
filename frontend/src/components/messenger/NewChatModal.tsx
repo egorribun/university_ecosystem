@@ -30,7 +30,9 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
       if (!debouncedSearch) return []
-      const response = await client.get<User[]>(`/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`)
+      const response = await client.get<User[]>(
+        `/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`
+      )
       return response.data
     },
     enabled: open && debouncedSearch.length > MIN_SEARCH_LENGTH,

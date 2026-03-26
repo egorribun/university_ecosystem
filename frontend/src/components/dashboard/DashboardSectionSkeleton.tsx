@@ -7,10 +7,7 @@ interface DashboardSectionSkeletonProps {
 }
 
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function DashboardSectionSkeleton({
-  type,
-  className,
-}: DashboardSectionSkeletonProps) {
+export function DashboardSectionSkeleton({ type, className }: DashboardSectionSkeletonProps) {
   return (
     <Card className={cn("p-5 h-full", className)}>
       <Skeleton width="55%" height="1.5rem" className="mb-6" />

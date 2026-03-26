@@ -112,7 +112,7 @@ try {
       (e: MessageEvent<{ key: string; action: "add" | "delete" }>) => {
         if (e.data.action === "add") _inflightIdempotencyKeys.add(e.data.key)
         else _inflightIdempotencyKeys.delete(e.data.key)
-      },
+      }
     )
   }
 } catch {

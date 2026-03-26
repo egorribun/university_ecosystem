@@ -241,184 +241,187 @@ export function useChatWebSocket({
         clearTimeout(ticketTimeout) // TD-26-03: clean up timeout
       }
 
-    try {
-      const ws = new WebSocket(`${baseWsUrl}?ticket=${encodeURIComponent(ticket)}`)
-      wsRef.current = ws
+      try {
+        const ws = new WebSocket(`${baseWsUrl}?ticket=${encodeURIComponent(ticket)}`)
+        wsRef.current = ws
 
-      ws.onopen = () => {
-        wsStore.setConnected(true)
-        reconnectAttemptRef.current = 0
+        ws.onopen = () => {
+          wsStore.setConnected(true)
+          reconnectAttemptRef.current = 0
 
-        if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
-        pingIntervalRef.current = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "ping" }))
-          }
-        }, PING_INTERVAL_MS)
-      }
+          if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
+          pingIntervalRef.current = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "ping" }))
+            }
+          }, PING_INTERVAL_MS)
+        }
 
-      ws.onmessage = (event) => {
-        try {
-          const validated = parseWsMessage(event.data)
-          if (!validated) {
-            // MOD-W18-02 (audit 2026-03-23 Wave 18): log invalid frames for
-            // observability. Previously silent drops made attack detection difficult.
-            console.warn("[ws] Invalid frame dropped", { size: (event.data as string).length })
-            return
-          }
-
-          switch (validated.type) {
-            case "new_message": {
-              queryClient.setQueryData<MessagesListResponse>(
-                ["messages", validated.chat_id],
-                (old) => {
-                  if (!old)
-                    return {
-                      items: [validated.message as unknown as Message],
-                      has_more: false,
-                      next_cursor: null,
-                    }
-                  if (old.items.some((m) => m.id === validated.message.id)) return old
-                  // RZ-004: Sliding window prevents V8 heap exhaustion in long-lived sessions.
-                  // Cap in-memory buffer at 200 messages — older messages are re-fetched
-                  // via cursor-based pagination when the user scrolls up.
-                  const MAX_BUFFERED_MESSAGES = 200
-                  const appended = [...old.items, validated.message as unknown as Message]
-                  const trimmed =
-                    appended.length > MAX_BUFFERED_MESSAGES
-                      ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
-                      : appended
-                  return { ...old, items: trimmed }
-                }
-              )
-              queryClient.invalidateQueries({
-                queryKey: ["messages", validated.chat_id],
-                refetchType: "none",
-              })
-              queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
-                if (!old) return old
-                return {
-                  ...old,
-                  items: old.items.map((chat) =>
-                    chat.id === validated.chat_id
-                      ? {
-                          ...chat,
-                          last_message: validated.message as unknown as Message,
-                          unread_count: chat.unread_count + 1,
-                        }
-                      : chat
-                  ),
-                }
-              })
-              queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
-              onNewMessageRef.current?.(validated.message as unknown as Message, validated.chat_id)
-              break
+        ws.onmessage = (event) => {
+          try {
+            const validated = parseWsMessage(event.data)
+            if (!validated) {
+              // MOD-W18-02 (audit 2026-03-23 Wave 18): log invalid frames for
+              // observability. Previously silent drops made attack detection difficult.
+              console.warn("[ws] Invalid frame dropped", { size: (event.data as string).length })
+              return
             }
 
-            case "typing": {
-              // PERF-26-02: per-chat cap replaces global 100 cap (was PERF-W18-02).
-              // Global cap starved low-activity chats when many chats were active.
-              const MAX_TYPING_PER_CHAT = 20
-              setTypingUsers((prev) => {
-                const key = `${validated.chat_id}:${validated.user_id}`
-                // Allow updates to existing keys but reject new keys when at per-chat capacity
-                if (!prev.has(key)) {
-                  let chatCount = 0
-                  for (const k of prev.keys()) {
-                    if (k.startsWith(`${validated.chat_id}:`)) chatCount++
+            switch (validated.type) {
+              case "new_message": {
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => {
+                    if (!old)
+                      return {
+                        items: [validated.message as unknown as Message],
+                        has_more: false,
+                        next_cursor: null,
+                      }
+                    if (old.items.some((m) => m.id === validated.message.id)) return old
+                    // RZ-004: Sliding window prevents V8 heap exhaustion in long-lived sessions.
+                    // Cap in-memory buffer at 200 messages — older messages are re-fetched
+                    // via cursor-based pagination when the user scrolls up.
+                    const MAX_BUFFERED_MESSAGES = 200
+                    const appended = [...old.items, validated.message as unknown as Message]
+                    const trimmed =
+                      appended.length > MAX_BUFFERED_MESSAGES
+                        ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
+                        : appended
+                    return { ...old, items: trimmed }
                   }
-                  if (chatCount >= MAX_TYPING_PER_CHAT) return prev
-                }
-                const newMap = new Map(prev)
-                const existing = newMap.get(key)
-                if (existing) clearTimeout(existing.timeout)
-
-                const timeout = setTimeout(() => {
-                  if (!mountedRef.current) return
-                  setTypingUsers((p) => {
-                    if (!p.has(key)) return p
-                    const updated = new Map(p)
-                    updated.delete(key)
-                    return updated
-                  })
-                }, 3000)
-
-                newMap.set(key, {
-                  userId: validated.user_id,
-                  userName: validated.user_name,
-                  timeout,
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
                 })
-                return newMap
-              })
-              onTypingRef.current?.(validated.chat_id, validated.user_id, validated.user_name)
-              break
-            }
-
-            case "read": {
-              queryClient.setQueryData<MessagesListResponse>(
-                ["messages", validated.chat_id],
-                (old) => {
+                queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
                   if (!old) return old
                   return {
                     ...old,
-                    items: old.items.map((m) =>
-                      m.id === validated.message_id ? { ...m, read_status: true } : m
+                    items: old.items.map((chat) =>
+                      chat.id === validated.chat_id
+                        ? {
+                            ...chat,
+                            last_message: validated.message as unknown as Message,
+                            unread_count: chat.unread_count + 1,
+                          }
+                        : chat
                     ),
                   }
-                }
-              )
-              queryClient.invalidateQueries({
-                queryKey: ["messages", validated.chat_id],
-                refetchType: "none",
-              })
-              onReadRef.current?.(validated.chat_id, validated.message_id, validated.user_id)
-              break
-            }
+                })
+                queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+                onNewMessageRef.current?.(
+                  validated.message as unknown as Message,
+                  validated.chat_id
+                )
+                break
+              }
 
-            case "online": {
-              onOnlineStatusRef.current?.(validated.user_id, validated.status)
-              break
-            }
+              case "typing": {
+                // PERF-26-02: per-chat cap replaces global 100 cap (was PERF-W18-02).
+                // Global cap starved low-activity chats when many chats were active.
+                const MAX_TYPING_PER_CHAT = 20
+                setTypingUsers((prev) => {
+                  const key = `${validated.chat_id}:${validated.user_id}`
+                  // Allow updates to existing keys but reject new keys when at per-chat capacity
+                  if (!prev.has(key)) {
+                    let chatCount = 0
+                    for (const k of prev.keys()) {
+                      if (k.startsWith(`${validated.chat_id}:`)) chatCount++
+                    }
+                    if (chatCount >= MAX_TYPING_PER_CHAT) return prev
+                  }
+                  const newMap = new Map(prev)
+                  const existing = newMap.get(key)
+                  if (existing) clearTimeout(existing.timeout)
 
-            case "presence": {
-              onPresenceUpdateRef.current?.(
-                validated.user_id,
-                validated.active,
-                validated.last_seen
-              )
-              onOnlineStatusRef.current?.(validated.user_id, validated.active)
-              break
-            }
+                  const timeout = setTimeout(() => {
+                    if (!mountedRef.current) return
+                    setTypingUsers((p) => {
+                      if (!p.has(key)) return p
+                      const updated = new Map(p)
+                      updated.delete(key)
+                      return updated
+                    })
+                  }, 3000)
 
-            case "error":
-              logError("[WebSocket] Server error:", validated)
-              break
+                  newMap.set(key, {
+                    userId: validated.user_id,
+                    userName: validated.user_name,
+                    timeout,
+                  })
+                  return newMap
+                })
+                onTypingRef.current?.(validated.chat_id, validated.user_id, validated.user_name)
+                break
+              }
+
+              case "read": {
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => {
+                    if (!old) return old
+                    return {
+                      ...old,
+                      items: old.items.map((m) =>
+                        m.id === validated.message_id ? { ...m, read_status: true } : m
+                      ),
+                    }
+                  }
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
+                })
+                onReadRef.current?.(validated.chat_id, validated.message_id, validated.user_id)
+                break
+              }
+
+              case "online": {
+                onOnlineStatusRef.current?.(validated.user_id, validated.status)
+                break
+              }
+
+              case "presence": {
+                onPresenceUpdateRef.current?.(
+                  validated.user_id,
+                  validated.active,
+                  validated.last_seen
+                )
+                onOnlineStatusRef.current?.(validated.user_id, validated.active)
+                break
+              }
+
+              case "error":
+                logError("[WebSocket] Server error:", validated)
+                break
+            }
+          } catch (e) {
+            logError("[WebSocket] Failed to parse message:", e)
           }
-        } catch (e) {
-          logError("[WebSocket] Failed to parse message:", e)
         }
-      }
 
-      ws.onclose = (event) => {
-        wsStore.setConnected(false)
-        cleanup()
+        ws.onclose = (event) => {
+          wsStore.setConnected(false)
+          cleanup()
 
-        if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
-          const delay = calculateReconnectDelay(reconnectAttemptRef.current)
-          reconnectAttemptRef.current += 1
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connectRef.current()
-          }, delay)
+          if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
+            const delay = calculateReconnectDelay(reconnectAttemptRef.current)
+            reconnectAttemptRef.current += 1
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connectRef.current()
+            }, delay)
+          }
         }
-      }
 
-      ws.onerror = (error) => {
-        logError("[WebSocket] Error:", error)
+        ws.onerror = (error) => {
+          logError("[WebSocket] Error:", error)
+        }
+      } catch (e) {
+        logError("[WebSocket] Failed to connect:", e)
       }
-    } catch (e) {
-      logError("[WebSocket] Failed to connect:", e)
-    }
-    })()  // end async IIFE — ticket fetch + WS connect
+    })() // end async IIFE — ticket fetch + WS connect
   }, [enabled, cleanup, queryClient, wsStore])
 
   const disconnect = useCallback(() => {
@@ -450,9 +453,12 @@ export function useChatWebSocket({
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing) return
     lastSentRef.current.set(key, now)
-    try { // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
+    try {
+      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
       wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
-    } catch { /* WS closed between readyState check and send — safe to ignore */ }
+    } catch {
+      /* WS closed between readyState check and send — safe to ignore */
+    }
   }, [])
 
   const sendRead = useCallback((chatId: string, messageId: string) => {
@@ -461,9 +467,12 @@ export function useChatWebSocket({
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read) return
     lastSentRef.current.set(key, now)
-    try { // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
+    try {
+      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
       wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
-    } catch { /* WS closed between readyState check and send — safe to ignore */ }
+    } catch {
+      /* WS closed between readyState check and send — safe to ignore */
+    }
   }, [])
 
   const getTypingUsersForChat = useCallback(
