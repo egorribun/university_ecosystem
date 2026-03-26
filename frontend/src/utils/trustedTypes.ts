@@ -86,7 +86,7 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
     // Mirrors the existing pattern in ensureSanitizePolicy (lines above).
     console.error(
       "[TrustedTypes] Failed to create app policy — script URL enforcement may be degraded:",
-      err,
+      err
     )
     win.__ttAppPolicy = false
   }
