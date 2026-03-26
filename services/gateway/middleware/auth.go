@@ -625,7 +625,7 @@ func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 }
 
 // Validate returns a Gin middleware that validates JWT tokens.
-func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint:gocognit // JWT validation is inherently complex
+func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint:gocognit,cyclop // JWT validation is inherently complex
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie (BFF pattern)
 		tokenString, err := c.Cookie(AccessTokenCookieName)
@@ -735,7 +735,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 }
 
 // Optional returns a middleware that extracts JWT claims but doesn't require auth.
-func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint:gocognit // mirrors Validate complexity
+func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint:gocognit,cyclop // mirrors Validate complexity
 	return func(c *gin.Context) {
 		// 1. Try to get token from cookie
 		tokenString, err := c.Cookie(AccessTokenCookieName)
