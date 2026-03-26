@@ -8,6 +8,12 @@ from app.main import app
 from app.models.models import User
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_overrides():
+    yield
+    app.dependency_overrides.clear()
+
+
 # Helper to create fresh users in DB
 async def create_test_user(db, email="test@example.com", role="student"):
     user = User(
@@ -61,7 +67,6 @@ async def test_subscribe_success(db_session):
     assert response.status_code == 200
     data = response.json()
     assert data["endpoint"] == payload["endpoint"]
-    app.dependency_overrides.pop(get_current_user)
 
 
 @pytest.mark.asyncio
@@ -79,7 +84,6 @@ async def test_get_push_topics_empty(db_session):
     data = response.json()
     assert "topics" in data
     assert isinstance(data["topics"], list)
-    app.dependency_overrides.pop(get_current_user)
 
 
 @pytest.mark.asyncio
@@ -97,7 +101,6 @@ async def test_admin_get_user_topics_success(db_session):
         )
 
     assert response.status_code == 200
-    app.dependency_overrides.pop(get_current_user)
 
 
 @pytest.mark.asyncio
@@ -116,7 +119,6 @@ async def test_admin_disable_user_push_success(db_session):
         )
 
     assert response.status_code == 200
-    app.dependency_overrides.pop(get_current_user)
 
 
 @pytest.mark.asyncio
@@ -135,7 +137,6 @@ async def test_unsubscribe_endpoint_not_found(db_session):
 
     assert response.status_code == 200
     assert response.json()["removed"] is False
-    app.dependency_overrides.pop(get_current_user)
 
 
 @pytest.mark.asyncio
@@ -149,7 +150,6 @@ async def test_send_test_forbidden(db_session):
         response = await ac.post("/api/v1/push/test", json={"title": "Test"})
 
     assert response.status_code == 403
-    app.dependency_overrides.pop(get_current_user)
 
 
 @pytest.mark.asyncio
@@ -177,4 +177,3 @@ async def test_admin_send_test_success(db_session):
         )
 
     assert response.status_code == 404
-    app.dependency_overrides.pop(get_current_user)

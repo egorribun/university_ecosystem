@@ -6,9 +6,15 @@ from fastapi import HTTPException, UploadFile
 from app.core.config import settings
 from app.utils.files import _looks_like_polyglot, detect_mime_type, save_attachment
 
-# Mock settings for testing
-settings.event_file_allowed_mime_types = "image/jpeg,image/png,application/pdf"
-settings.event_file_allowed_extensions = ".jpg,.png,.pdf"
+
+@pytest.fixture(autouse=True)
+def _override_file_settings(monkeypatch):
+    monkeypatch.setattr(
+        settings,
+        "event_file_allowed_mime_types",
+        "image/jpeg,image/png,application/pdf",
+    )
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", ".jpg,.png,.pdf")
 
 
 @pytest.mark.asyncio

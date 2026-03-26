@@ -275,7 +275,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "ERA001"]
+"tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "S105", "S106", "ERA001"]
 "alembic/*" = ["I001", "E402"]
 "app/main.py" = ["E402"]
 # Wave-20 (audit 2026-03-24): suppress pre-existing false positives on field

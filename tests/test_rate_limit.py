@@ -275,11 +275,9 @@ async def test_rate_limit_memory_backend_blocks_requests():
 
 
 @pytest.mark.asyncio
-async def test_sensitive_dependency_memory_backend():
-    original_backend = settings.rate_limit_storage_backend
-    original_uri = settings.rate_limit_storage_uri
-    settings.rate_limit_storage_backend = "memory"
-    settings.rate_limit_storage_uri = "memory://"
+async def test_sensitive_dependency_memory_backend(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "memory://")
     ratelimit_module.clear_memory_state()
     ratelimit_module.clear_delay_memory()
 
@@ -295,16 +293,12 @@ async def test_sensitive_dependency_memory_backend():
 
     transport = httpx.ASGITransport(app=app)
 
-    try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            first = await client.get("/limited")
-            second = await client.get("/limited")
-            third = await client.get("/limited")
-    finally:
-        settings.rate_limit_storage_backend = original_backend
-        settings.rate_limit_storage_uri = original_uri
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        first = await client.get("/limited")
+        second = await client.get("/limited")
+        third = await client.get("/limited")
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_200_OK
@@ -312,13 +306,10 @@ async def test_sensitive_dependency_memory_backend():
 
 
 @pytest.mark.asyncio
-async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
-    original_backend = settings.rate_limit_storage_backend
-    original_uri = settings.rate_limit_storage_uri
-    original_trusted = settings.trusted_proxies
-    settings.rate_limit_storage_backend = "memory"
-    settings.rate_limit_storage_uri = "memory://"
-    settings.trusted_proxies = "127.0.0.1"
+async def test_sensitive_dependency_memory_backend_resolves_proxy_headers(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "memory://")
+    monkeypatch.setattr(settings, "trusted_proxies", "127.0.0.1")
     ratelimit_module.clear_memory_state()
     ratelimit_module.clear_delay_memory()
 
@@ -334,26 +325,21 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
 
     transport = httpx.ASGITransport(app=app)
 
-    try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            first = await client.get(
-                "/limited",
-                headers={"X-Forwarded-For": " 2001:DB8::1 "},
-            )
-            second = await client.get(
-                "/limited",
-                headers={"X-Forwarded-For": "2001:db8::1"},
-            )
-            third = await client.get(
-                "/limited",
-                headers={"X-Forwarded-For": "2001:db8::1"},
-            )
-    finally:
-        settings.rate_limit_storage_backend = original_backend
-        settings.rate_limit_storage_uri = original_uri
-        settings.trusted_proxies = original_trusted
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        first = await client.get(
+            "/limited",
+            headers={"X-Forwarded-For": " 2001:DB8::1 "},
+        )
+        second = await client.get(
+            "/limited",
+            headers={"X-Forwarded-For": "2001:db8::1"},
+        )
+        third = await client.get(
+            "/limited",
+            headers={"X-Forwarded-For": "2001:db8::1"},
+        )
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_200_OK
@@ -361,13 +347,12 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
 
 
 @pytest.mark.asyncio
-async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_headers():
-    original_backend = settings.rate_limit_storage_backend
-    original_uri = settings.rate_limit_storage_uri
-    original_trusted = settings.trusted_proxies
-    settings.rate_limit_storage_backend = "memory"
-    settings.rate_limit_storage_uri = "memory://"
-    settings.trusted_proxies = ""
+async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_headers(
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "memory://")
+    monkeypatch.setattr(settings, "trusted_proxies", "")
     ratelimit_module.clear_memory_state()
     ratelimit_module.clear_delay_memory()
 
@@ -383,26 +368,21 @@ async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_heade
 
     transport = httpx.ASGITransport(app=app)
 
-    try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            first = await client.get(
-                "/limited",
-                headers={"X-Forwarded-For": "203.0.113.10"},
-            )
-            second = await client.get(
-                "/limited",
-                headers={"X-Forwarded-For": "198.51.100.12"},
-            )
-            third = await client.get(
-                "/limited",
-                headers={"X-Forwarded-For": "198.51.100.13"},
-            )
-    finally:
-        settings.rate_limit_storage_backend = original_backend
-        settings.rate_limit_storage_uri = original_uri
-        settings.trusted_proxies = original_trusted
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        first = await client.get(
+            "/limited",
+            headers={"X-Forwarded-For": "203.0.113.10"},
+        )
+        second = await client.get(
+            "/limited",
+            headers={"X-Forwarded-For": "198.51.100.12"},
+        )
+        third = await client.get(
+            "/limited",
+            headers={"X-Forwarded-For": "198.51.100.13"},
+        )
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_200_OK
@@ -413,10 +393,8 @@ async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_heade
 async def test_sensitive_dependency_redis_backend(
     monkeypatch, _rate_limit_redis_client
 ):
-    original_backend = settings.rate_limit_storage_backend
-    original_uri = settings.rate_limit_storage_uri
-    settings.rate_limit_storage_backend = "redis"
-    settings.rate_limit_storage_uri = "redis://test"
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://test")
 
     dependency = ratelimit_module.sensitive_route_limit(
         limit=2, window_sec=60, key_prefix="redis-dep"
@@ -440,16 +418,12 @@ async def test_sensitive_dependency_redis_backend(
 
     transport = httpx.ASGITransport(app=app)
 
-    try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            first = await client.get("/limited")
-            second = await client.get("/limited")
-            third = await client.get("/limited")
-    finally:
-        settings.rate_limit_storage_backend = original_backend
-        settings.rate_limit_storage_uri = original_uri
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        first = await client.get("/limited")
+        second = await client.get("/limited")
+        third = await client.get("/limited")
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_200_OK
@@ -461,12 +435,9 @@ async def test_sensitive_dependency_redis_backend(
 async def test_sensitive_dependency_redis_backend_forwarded_header(
     monkeypatch, _rate_limit_redis_client
 ):
-    original_backend = settings.rate_limit_storage_backend
-    original_uri = settings.rate_limit_storage_uri
-    original_trusted = settings.trusted_proxies
-    settings.rate_limit_storage_backend = "redis"
-    settings.rate_limit_storage_uri = "redis://test"
-    settings.trusted_proxies = "127.0.0.1"
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://test")
+    monkeypatch.setattr(settings, "trusted_proxies", "127.0.0.1")
 
     dependency = ratelimit_module.sensitive_route_limit(
         limit=2, window_sec=60, key_prefix="redis-proxy"
@@ -490,32 +461,27 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
 
     transport = httpx.ASGITransport(app=app)
 
-    try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            first = await client.get(
-                "/limited",
-                headers={
-                    "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
-                },
-            )
-            second = await client.get(
-                "/limited",
-                headers={
-                    "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
-                },
-            )
-            third = await client.get(
-                "/limited",
-                headers={
-                    "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
-                },
-            )
-    finally:
-        settings.rate_limit_storage_backend = original_backend
-        settings.rate_limit_storage_uri = original_uri
-        settings.trusted_proxies = original_trusted
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        first = await client.get(
+            "/limited",
+            headers={
+                "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
+            },
+        )
+        second = await client.get(
+            "/limited",
+            headers={
+                "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
+            },
+        )
+        third = await client.get(
+            "/limited",
+            headers={
+                "Forwarded": 'for="[203.0.113.42]:1234";proto=https;by=proxy',
+            },
+        )
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_200_OK

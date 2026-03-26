@@ -6,14 +6,22 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.observability import _configure_otel
 
 
+@pytest.fixture(autouse=True)
+def _reset_otel():
+    import app.core.observability as obs
+
+    original_configured = obs._otel_configured
+    original_instrumented = obs._sqlalchemy_instrumented
+    obs._otel_configured = False
+    obs._sqlalchemy_instrumented = False
+    yield
+    obs._otel_configured = original_configured
+    obs._sqlalchemy_instrumented = original_instrumented
+
+
 @pytest.mark.asyncio
 async def test_otel_span_generation():
     """Verify that _configure_otel returns a valid SDK TracerProvider when enabled."""
-    # Force reset global state for testing
-    import app.core.observability
-
-    app.core.observability._otel_configured = False
-    app.core.observability._sqlalchemy_instrumented = False
 
     # Mock settings to enable OTel
     with patch("app.core.observability.settings") as mock_settings:

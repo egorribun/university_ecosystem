@@ -1,5 +1,6 @@
 import contextlib
 import os
+import warnings
 from collections.abc import AsyncIterator
 
 import pytest_asyncio
@@ -65,7 +66,9 @@ async def prepare_database() -> AsyncIterator[None]:
                     except Exception as e:
                         # Log and continue - some tables might have Postgres-only features
                         # like Computed columns with to_tsvector
-                        print(f"Skipping table {table.name} due to error: {e}")
+                        warnings.warn(
+                            f"Table creation failed for {table.name}: {e}", stacklevel=1
+                        )
 
         await conn.run_sync(_create_non_excluded)
 
