@@ -199,19 +199,51 @@ jobs:
           # to prevent N+1 queries.  See CLAUDE.md: "ALL relationships must have
           # explicit lazy=\"noload\"".  Use '# noload-exempt: <reason>' for
           # justified exceptions (e.g., lazy="joined" for 1:1).
-          violations=$(grep -rn 'relationship(' app/models/ \
-            | grep -v 'lazy=' \
-            | grep -v '# noload-exempt' \
-            | grep -v '__pycache__' || true)
-          if [ -n "$violations" ]; then
-            echo "::error::Relationships without explicit lazy= found (MOD-30-01):"
-            echo "$violations"
-            echo ""
-            echo "All relationships MUST have lazy=\"noload\" (see CLAUDE.md)."
-            echo "Add '# noload-exempt: <reason>' for justified exceptions."
-            exit 1
-          fi
-          echo "OK: all relationships have explicit lazy= parameter"
+          #
+          # Multi-line aware: reads full relationship(...) calls across lines.
+          python3 -c "
+          import re, sys, pathlib
+
+          models = pathlib.Path('app/models')
+          # Match relationship( ... ) spanning multiple lines
+          pat = re.compile(r'relationship\s*\(', re.MULTILINE)
+          violations = []
+          for f in sorted(models.rglob('*.py')):
+              if '__pycache__' in str(f):
+                  continue
+              text = f.read_text(encoding='utf-8')
+              lines = text.splitlines(keepends=True)
+              # Build line offset map
+              offsets = []
+              pos = 0
+              for line in lines:
+                  offsets.append(pos)
+                  pos += len(line)
+              for m in pat.finditer(text):
+                  start = m.start()
+                  # Find matching closing paren (handle nesting)
+                  depth, i = 1, m.end()
+                  while i < len(text) and depth > 0:
+                      if text[i] == '(':
+                          depth += 1
+                      elif text[i] == ')':
+                          depth -= 1
+                      i += 1
+                  block = text[start:i]
+                  # Line number (1-based)
+                  lineno = next(j + 1 for j in range(len(offsets) - 1, -1, -1) if offsets[j] <= start)
+                  if 'lazy=' in block or '# noload-exempt' in block:
+                      continue
+                  violations.append(f'{f}:{lineno}:    {lines[lineno-1].rstrip()}')
+          if violations:
+              print('::error::Relationships without explicit lazy= found (MOD-30-01):')
+              print('\n'.join(violations))
+              print()
+              print('All relationships MUST have lazy=\"noload\" (see CLAUDE.md).')
+              print(\"Add '# noload-exempt: <reason>' for justified exceptions.\")
+              sys.exit(1)
+          print('OK: all relationships have explicit lazy= parameter')
+          "
 
       - name: Validate docker compose configuration
         shell: pwsh
