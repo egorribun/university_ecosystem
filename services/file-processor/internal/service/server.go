@@ -75,6 +75,7 @@ func validateProcessFileRequest(req *pb.ProcessFileRequest) error {
 	return nil
 }
 
+// ProcessFile validates the request and starts an async Temporal workflow.
 func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
 	if err := validateProcessFileRequest(req); err != nil {
 		return nil, err
