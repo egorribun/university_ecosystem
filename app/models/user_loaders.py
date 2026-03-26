@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import inspect
 from sqlalchemy.orm import joinedload, selectinload
 
-from .models import User
+from app.models.users import User
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
