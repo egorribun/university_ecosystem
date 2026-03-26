@@ -57,6 +57,7 @@ jobs:
           fi
 
       - name: Generate artifact name
+        if: always()
         id: artifact-name
         shell: bash
         run: |
