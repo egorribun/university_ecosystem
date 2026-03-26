@@ -43,62 +43,21 @@ class TestContainerCpuCount:
 
 
 class TestVerifyLegacyBcrypt:
-    def test_correct_password(self):
-        import bcrypt
+    """TD-21-04: bcrypt verification removed in Wave 21.
 
+    _verify_legacy_bcrypt now always returns False and logs a warning.
+    """
+
+    def test_always_rejects(self):
         from app.auth.security import _verify_legacy_bcrypt
 
-        password = "TestPassword123!"  # pragma: allowlist secret
-        hashed = bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode(
-            "utf-8"
-        )
-        assert _verify_legacy_bcrypt(password, hashed) is True
-
-    def test_wrong_password(self):
-        import bcrypt
-
-        from app.auth.security import _verify_legacy_bcrypt
-
-        hashed = bcrypt.hashpw(b"correct", bcrypt.gensalt()).decode("utf-8")
-        assert _verify_legacy_bcrypt("wrong", hashed) is False
+        # Any input is rejected — bcrypt migration period ended
+        assert _verify_legacy_bcrypt("any-password", "$2b$12$fakehash") is False
 
     def test_invalid_hash(self):
         from app.auth.security import _verify_legacy_bcrypt
 
         assert _verify_legacy_bcrypt("test", "not-a-valid-hash") is False
-
-    def test_metrics_recording(self):
-        import bcrypt
-
-        from app.auth.security import _verify_legacy_bcrypt
-
-        password = "test"  # pragma: allowlist secret
-        hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
-            "utf-8"
-        )
-
-        # record_legacy_bcrypt_verification is imported lazily inside the function
-        with patch("app.core.metrics.record_legacy_bcrypt_verification") as mock_record:
-            _verify_legacy_bcrypt(password, hashed)
-            mock_record.assert_called_once()
-
-    def test_metrics_failure_doesnt_break_auth(self):
-        import bcrypt
-
-        from app.auth.security import _verify_legacy_bcrypt
-
-        password = "test"  # pragma: allowlist secret
-        hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
-            "utf-8"
-        )
-
-        with patch(
-            "app.core.metrics.record_legacy_bcrypt_verification",
-            side_effect=RuntimeError("metrics broken"),
-        ):
-            # Should still verify correctly
-            assert _verify_legacy_bcrypt(password, hashed) is True
-
 
 class TestValidatePasswordHibp:
     @pytest.mark.asyncio

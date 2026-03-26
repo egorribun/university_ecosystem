@@ -13,18 +13,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 if "magic" not in sys.modules:
     sys.modules["magic"] = None  # type: ignore[assignment]
 
-# Workaround for passlib/bcrypt 4.1+ incompatibility
-import bcrypt
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
-
-if not hasattr(bcrypt, "__about__"):
-    try:
-        bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})  # type: ignore[attr-defined]
-    except AttributeError:
-        # Fallback if __version__ is also missing or other issues
-        bcrypt.__about__ = type("about", (object,), {"__version__": "4.0.0"})  # type: ignore[attr-defined]
 
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
