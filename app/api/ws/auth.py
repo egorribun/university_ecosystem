@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from app.core.database import async_session
 from app.core.logging import get_logger
@@ -16,9 +16,6 @@ from app.models.models import User
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.dtos import UserDTO
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 

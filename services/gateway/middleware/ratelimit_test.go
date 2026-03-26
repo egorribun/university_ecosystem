@@ -13,8 +13,7 @@ func TestRateLimiter_GetClientKey_ReturnsUserIDWhenAuthenticated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rateLimiter := &RateLimiter{
-		rps:   100,
-		burst: 200,
+		rps: 100,
 	}
 
 	router := gin.New()
@@ -36,8 +35,7 @@ func TestRateLimiter_GetClientKey_ReturnsIPWhenNotAuthenticated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rateLimiter := &RateLimiter{
-		rps:   100,
-		burst: 200,
+		rps: 100,
 	}
 
 	router := gin.New()
@@ -59,8 +57,7 @@ func TestRateLimiter_GetClientKey_UsesXForwardedFor(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rateLimiter := &RateLimiter{
-		rps:   100,
-		burst: 200,
+		rps: 100,
 	}
 
 	router := gin.New()
@@ -88,8 +85,7 @@ func TestRateLimiter_GetClientKey_TrimsWhitespaceFromForwardedIP(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rateLimiter := &RateLimiter{
-		rps:   100,
-		burst: 200,
+		rps: 100,
 	}
 
 	router := gin.New()
@@ -117,8 +113,7 @@ func TestRateLimiter_GetClientKey_PrefersUserIDOverIP(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rateLimiter := &RateLimiter{
-		rps:   100,
-		burst: 200,
+		rps: 100,
 	}
 
 	router := gin.New()
@@ -140,10 +135,8 @@ func TestRateLimiter_GetClientKey_PrefersUserIDOverIP(t *testing.T) {
 
 func TestRateLimiter_StructFields(t *testing.T) {
 	rl := &RateLimiter{
-		rps:   50,
-		burst: 100,
+		rps: 50,
 	}
 
 	assert.Equal(t, 50, rl.rps)
-	assert.Equal(t, 100, rl.burst)
 }

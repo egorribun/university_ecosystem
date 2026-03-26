@@ -102,7 +102,8 @@ class RetryMiddleware:
         capped = min(delay, self.config.max_delay)
         # Jitter: uniform random in [0.75 * capped, 1.25 * capped]
         jitter_factor = random.uniform(0.75, 1.25)  # nosec B311  # noqa: S311
-        return capped * jitter_factor
+        jittered = capped * jitter_factor
+        return min(jittered, self.config.max_delay)
 
     def _is_retryable(self, error: Exception) -> bool:
         """Check if the exception is retryable."""

@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,  # runtime: FastAPI get_type_hints() resolves annotations
+)
 
 from app.core.database import get_db, get_read_db
 from app.deps.cache import BaseCache, get_cache

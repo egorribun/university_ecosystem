@@ -21,6 +21,25 @@ spec:
       securityContext:                    # TD-28-01: match backend seccompProfile
         seccompProfile:
           type: RuntimeDefault
+      # TD-33-01: Spread replicas across nodes so a single node failure doesn't
+      # take out 100% of frontend capacity. Mirrors backend anti-affinity (TD-31-01).
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: frontend
+                topologyKey: kubernetes.io/hostname
+      # TD-33-02: Spread replicas across availability zones where possible.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend
       # MOD-06 (audit 2026-03-15 Wave 7): Graceful shutdown for nginx.
       # nginx stops accepting new connections on SIGTERM; preStop sleep
       # allows in-flight connections to drain from the load balancer.

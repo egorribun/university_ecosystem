@@ -7,13 +7,10 @@ Single responsibility: convert domain objects to WebSocket-wire format.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.models.chat import Message
 from app.schemas.chat import ChatParticipant, PresenceStatus
-
-if TYPE_CHECKING:
-    pass
 
 
 def serialize_message(

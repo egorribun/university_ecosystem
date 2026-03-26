@@ -78,16 +78,6 @@ func ProxyHandler(proxy *httputil.ReverseProxy, internalSecret []byte) gin.Handl
 	}
 }
 
-// GenerateRequestID returns a cryptographically random UUID v4.
-//
-// RZ-03 (audit 2026-03-04): The previous implementation prefixed the current
-// timestamp, making request IDs partially predictable and leaking server time
-// to API consumers.  A full UUID provides 122 bits of entropy with no timing
-// information.
-func GenerateRequestID() string {
-	return uuid.New().String()
-}
-
 // HealthHandler returns a simple OK status to indicate the gateway is running.
 func HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "gateway"})
@@ -119,8 +109,9 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 			return
 		}
 
-		// Call gRPC
-		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		// Call gRPC — use the per-request context so cancellation propagates
+		// when the client disconnects (RZ-33-04).
+		rpcCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
 		// Propagate Authorization header to gRPC metadata

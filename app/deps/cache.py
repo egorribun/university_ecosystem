@@ -678,7 +678,11 @@ def cached(
                 key = key_builder(*args, **kwargs)
             else:
                 # Basic key building from args/kwargs
-                key_parts = [str(arg) for arg in args]
+                # Skip `self` for bound methods to avoid unstable str(self) in keys
+                _args: tuple[object, ...] = args
+                if _args and hasattr(_args[0], "__dict__"):
+                    _args = _args[1:]
+                key_parts = [str(arg) for arg in _args]
                 key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
                 key = ":".join(key_parts)
 
@@ -878,8 +882,14 @@ async def shutdown_cache() -> None:
     global _cache_backend
     backend = _cache_backend
     _cache_backend = None
-    if backend and isinstance(backend, RedisCache):
+    if backend is None:
+        return
+    # RedisCache, RedisClusterCache, NatsKVCache — anything with .close()
+    if hasattr(backend, "close"):
         await backend.close()
+    # TieredCache: close the L2 layer if it exposes .close()
+    if hasattr(backend, "l2") and hasattr(backend.l2, "close"):
+        await backend.l2.close()
 
 
 def format_etag(etag: str) -> str:

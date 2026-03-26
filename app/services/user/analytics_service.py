@@ -132,7 +132,7 @@ class UserAnalyticsService:
                 }
             )
 
-        # In absence of full UserStats, compute simple stats from recent if there are any
+        # TD-33-02: stub — returns 100% until GradeRecord model exists
         total_events = len(recent)
         attended_events = len(recent)
         if total_events > 0:

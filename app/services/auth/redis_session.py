@@ -161,14 +161,21 @@ class RedisSessionService:
             await cast("Awaitable[Any]", client.hset(key, "is_active", "0"))
             # P0-W5-03: Write gateway blocklist key before deletion so gateway's
             # `EXISTS revoked:jti:{jti}` check correctly detects revocation.
-            remaining_ttl = await cast("Awaitable[Any]", client.ttl(key))
-            if remaining_ttl > 0:
-                revoked_key = f"revoked:jti:{jti}"
-                await cast(
-                    "Awaitable[Any]", client.set(revoked_key, "1", ex=remaining_ttl)
-                )
+            try:
+                remaining_ttl = await cast("Awaitable[Any]", client.ttl(key))
+                if remaining_ttl > 0:
+                    revoked_key = f"revoked:jti:{jti}"
+                    await cast(
+                        "Awaitable[Any]",
+                        client.set(revoked_key, "1", ex=remaining_ttl),
+                    )
+            except (RedisError, OSError):
+                logger.warning("Failed to write revocation blocklist for %s", jti)
             # Step 2: Delete for cleanup (TTL would handle this anyway).
-            await cast("Awaitable[Any]", client.delete(key))
+            try:
+                await cast("Awaitable[Any]", client.delete(key))
+            except (RedisError, OSError):
+                logger.warning("Failed to delete session key %s", jti)
         except (RedisError, OSError) as e:
             logger.error(
                 "Failed to revoke session %s in Redis: %s — "

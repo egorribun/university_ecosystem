@@ -173,6 +173,8 @@ class NatsTaskBroker:
         """
         if self._js is None:
             await self.connect()
+        if self._js is None:
+            raise RuntimeError("NATS JetStream not available")
 
         with tracer.start_as_current_span(
             f"nats.publish:{subject}", kind=SpanKind.PRODUCER
@@ -195,6 +197,8 @@ class NatsTaskBroker:
         """Push a task to the JetStream queue with trace context propagation."""
         if self._js is None:
             await self.connect()
+        if self._js is None:
+            raise RuntimeError("NATS JetStream not available")
 
         with tracer.start_as_current_span(
             f"nats.enqueue:{task_name}", kind=SpanKind.PRODUCER

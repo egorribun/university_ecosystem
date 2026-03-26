@@ -41,6 +41,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Запись уже существует: {identifier}",
         "en": "Record already exists: {identifier}",
     },
+    "errors.not_found": {
+        "ru": "Не найдено",
+        "en": "Not found",
+    },
     "titles.bad_request": {
         "ru": "Некорректный запрос",
         "en": "Bad Request",

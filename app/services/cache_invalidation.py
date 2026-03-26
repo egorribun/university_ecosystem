@@ -91,19 +91,12 @@ async def invalidate_by_tag(tag: CacheTag) -> int:
     Uses a Redis SET index (SMEMBERS) to find member keys in O(members)
     rather than a full-keyspace SCAN.  Returns the number of keys deleted.
     """
-    from typing import cast
-
     from app.deps.cache import get_cache_client
 
     tag_index_key = f"{tag}:keys"
     try:
         redis = await get_cache_client()
-        from typing import Any, cast
-
-        result = redis.smembers(tag_index_key)
-        raw_keys: set[bytes] = (
-            await result if hasattr(result, "__await__") else cast(Any, result)
-        )
+        raw_keys: set[bytes] = await redis.smembers(tag_index_key)
         if not raw_keys:
             logger.debug("No cached keys found for tag %s", tag)
             return 0

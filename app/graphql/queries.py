@@ -89,6 +89,7 @@ class Query:
         OFFSET O(N) because Postgres can use the (created_at DESC, id DESC) index
         to seek directly to the starting row.
         """
+        limit = min(limit, 200)
         session = info.context.session
         from sqlalchemy import and_, or_
 
@@ -195,6 +196,7 @@ class Query:
 
         ``after`` is an opaque base64-encoded cursor returned in PageInfo.cursor.
         """
+        limit = min(limit, 200)
         from sqlalchemy import and_, or_
 
         from app.models import Event

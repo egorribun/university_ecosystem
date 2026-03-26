@@ -78,6 +78,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("BACKEND_URL must be set")
 	}
 
+	// RZ-33-02: If JWKS hot-reload is enabled but refresh interval is invalid,
+	// fall back to the default (300s) to prevent tight-loop polling.
+	if cfg.JWKSEndpoint != "" && cfg.JWKSRefreshInterval <= 0 {
+		cfg.JWKSRefreshInterval = 300
+	}
+
 	return cfg, nil
 }
 
@@ -96,26 +102,6 @@ func getEnvInt(key string, defaultValue int) int {
 	val, err := strconv.Atoi(valStr)
 	if err != nil {
 		slog.Warn("invalid integer env var, using default",
-			"key", key, "value", valStr, "default", defaultValue)
-		return defaultValue
-	}
-	return val
-}
-
-// getEnvFloat parses an environment variable as a float64.
-// FIX-FLOAT-01: Uses strconv.ParseFloat instead of fmt.Sscan. fmt.Sscan
-// performs a partial parse — it accepts values like "10abc" and silently
-// returns 10.0, ignoring the trailing garbage. strconv.ParseFloat rejects
-// any input that is not a valid floating-point literal, preventing
-// misconfigured env vars from being silently truncated.
-func getEnvFloat(key string, defaultValue float64) float64 {
-	valStr := os.Getenv(key)
-	if valStr == "" {
-		return defaultValue
-	}
-	val, err := strconv.ParseFloat(valStr, 64)
-	if err != nil {
-		slog.Warn("invalid float env var, using default",
 			"key", key, "value", valStr, "default", defaultValue)
 		return defaultValue
 	}

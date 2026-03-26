@@ -216,9 +216,9 @@ def configure_logging(
         pass
 
 
-def _orjson_serializer(obj: dict[str, Any], **kwargs: Any) -> bytes:
-    """Serialize log event to JSON bytes using orjson."""
-    return orjson.dumps(obj)
+def _orjson_serializer(obj: dict[str, Any], **kwargs: Any) -> str:
+    """Serialize log event to JSON string using orjson."""
+    return orjson.dumps(obj, default=str).decode("utf-8")
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

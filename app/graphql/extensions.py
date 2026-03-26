@@ -103,7 +103,12 @@ async def _increment_user_cost(user_id: str, cost: int, window_minute: int) -> i
     async with _user_cost_lock:
         stored_cost, stored_minute = _user_cost_memory.get(user_id, (0, window_minute))
         if stored_minute != window_minute:
-            stored_cost = 0  # new window — reset counter
+            # New window — evict stale entries from previous windows
+            _user_cost_memory.clear()
+            stored_cost = 0
+        elif len(_user_cost_memory) > 10_000:
+            _user_cost_memory.clear()
+            stored_cost = 0
         new_total = stored_cost + cost
         _user_cost_memory[user_id] = (new_total, window_minute)
     return new_total

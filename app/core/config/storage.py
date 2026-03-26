@@ -97,7 +97,7 @@ class StorageSettings(BaseAppSettings):
             if e.strip()
         }
 
-    @property
+    @cached_property
     def event_file_allowed_mime_types_set(self) -> set[str]:
         return {
             m.strip().lower()
@@ -105,7 +105,7 @@ class StorageSettings(BaseAppSettings):
             if m.strip()
         }
 
-    @property
+    @cached_property
     def event_file_allowed_extensions_set(self) -> set[str]:
         return {
             e.strip().lower().lstrip(".")

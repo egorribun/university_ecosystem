@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, time
-from typing import Any, TypeVar
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -24,8 +24,6 @@ from app.core.events import EventEmitterMixin
 from app.models.enums import UserRole
 from app.models.mixins import UUID7PrimaryKeyMixin
 from app.models.spotify import SpotifyIntegration
-
-_T = TypeVar("_T")
 
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
@@ -52,7 +50,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         default=UserRole.STUDENT,
         index=True,
     )
-    group_id: Mapped[uuid.UUID] = mapped_column(
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("groups.id", ondelete="SET NULL"),
         index=True,

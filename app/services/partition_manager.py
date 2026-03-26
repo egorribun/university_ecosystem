@@ -4,6 +4,8 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError as SAOperationalError
+from sqlalchemy.exc import ProgrammingError as SAProgrammingError
 
 from app.core.database import engine
 from app.core.logging import get_logger
@@ -91,8 +93,13 @@ async def ensure_partitions_exist() -> None:
                         },
                     )
                     await conn.commit()
-                except (OSError, ConnectionError) as e:
-                    # RZ-20-04: Narrowed — partition DDL errors.
+                except (
+                    OSError,
+                    ConnectionError,
+                    SAOperationalError,
+                    SAProgrammingError,
+                ) as e:
+                    # RZ-20-04 + RZ-33-03: Broadened — DDL errors include SA exceptions.
                     logger.error(
                         "Failed to create partition: %s", e
                     )  # LOW-W19: lazy logging
@@ -133,8 +140,13 @@ async def ensure_partitions_exist() -> None:
                             safe_p_name = preparer.quote(p_name)
                             await conn.execute(text(f"DROP TABLE {safe_p_name}"))
                             await conn.commit()
-                        except (OSError, ConnectionError) as e:
-                            # RZ-20-04: Narrowed — partition DDL errors.
+                        except (
+                            OSError,
+                            ConnectionError,
+                            SAOperationalError,
+                            SAProgrammingError,
+                        ) as e:
+                            # RZ-20-04 + RZ-33-03: Broadened — DDL errors include SA exceptions.
                             logger.error(
                                 "Failed to prune partition %s: %s", p_name, e
                             )  # LOW-W19: lazy logging

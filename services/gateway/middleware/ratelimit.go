@@ -25,7 +25,6 @@ type RateLimiter struct {
 	client  *redis.Client
 	limiter *redis_rate.Limiter
 	rps     int
-	burst   int
 
 	// P0-W5-04: In-memory fallback for Redis outages.
 	// Conservative limits prevent brute-force even when Redis is unavailable.
@@ -61,7 +60,6 @@ func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*Rate
 		client:           client,
 		limiter:          limiter,
 		rps:              rps,
-		burst:            burst,
 		fallbackCounters: make(map[string]*fallbackEntry),
 		fallbackLimit:    3, // RZ-22-06: conservative per-instance limit (N instances × 3 = 9 effective, prevents brute-force during Redis outage)
 		fallbackWindow:   60,

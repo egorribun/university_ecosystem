@@ -4,12 +4,7 @@ import os
 
 from pydantic import field_validator, model_validator
 
-from .base import BaseAppSettings, _load_file_secret
-
-# Mirrors _DEVELOPMENT_ENVIRONMENTS from base.py to avoid a circular import.
-_DEV_ENVS: frozenset[str] = frozenset(
-    {"dev", "development", "local", "test", "testing"}
-)
+from .base import _DEVELOPMENT_ENVIRONMENTS, BaseAppSettings, _load_file_secret
 
 
 class IntegrationSettings(BaseAppSettings):
@@ -94,14 +89,18 @@ class IntegrationSettings(BaseAppSettings):
         # Developers running ES locally (outside Docker) with no password expose
         # all indexed data on localhost:9200 without any access control.
         # CI and dev/testing environments are exempted (no real ES instance).
-        if not self.elasticsearch_password and not is_ci and env_name not in _DEV_ENVS:
+        if (
+            not self.elasticsearch_password
+            and not is_ci
+            and env_name not in _DEVELOPMENT_ENVIRONMENTS
+        ):
             errors.append(
                 "ELASTICSEARCH_PASSWORD is required in all environments. "
                 "An empty password allows unauthenticated Elasticsearch access. "
                 "Set ELASTICSEARCH_PASSWORD in your .env or docker-compose override."
             )
 
-        if env_name in _DEV_ENVS or is_ci:
+        if env_name in _DEVELOPMENT_ENVIRONMENTS or is_ci:
             # Remaining checks are production-only.
             if errors:
                 raise ValueError(

@@ -646,6 +646,10 @@ _PLACEHOLDER_PASSWORDS: frozenset[str] = frozenset(
 _LOOPBACK_HOSTNAMES = {"localhost"}
 logger = get_logger(__name__)
 
+# RZ-33-28: Prime psutil CPU measurement so the first real call to
+# cpu_percent(interval=None) returns a non-zero value (needs a prior baseline).
+psutil.cpu_percent(interval=None)
+
 
 class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
@@ -964,11 +968,9 @@ def _load_gputil() -> Any:
 def _record_system_metrics() -> None:
     if _CPU_LOAD is not None:
         try:
-            # LOW-W19: interval=None returns 0.0 on the very first call because
-            # psutil has no previous measurement to compare against.  Using
-            # interval=0.1 performs a short blocking measurement so the first
-            # scrape always reports a real (non-zero) value.
-            _CPU_LOAD.set(float(psutil.cpu_percent(interval=0.1)))
+            # Non-blocking: uses delta from the previous call (primed at
+            # module load time so the first scrape already has a baseline).
+            _CPU_LOAD.set(float(psutil.cpu_percent(interval=None)))
         except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to collect CPU metrics", exc_info=True)
     if _GPU_LOAD is not None:

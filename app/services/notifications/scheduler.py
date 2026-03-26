@@ -49,6 +49,7 @@ async def _scheduler_loop(
         metrics=None,
     )
 
+    # TD-33-03: monkey-patching for test scheduling — not thread-safe
     original_sleep = worker_module.asyncio.sleep
     original_session = worker_module.async_session
     try:
