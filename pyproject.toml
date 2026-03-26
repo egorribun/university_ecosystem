@@ -275,7 +275,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "ERA001"]
+"tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "S105", "S106", "ERA001"]
 "alembic/*" = ["I001", "E402"]
 "app/main.py" = ["E402"]
 # Wave-20 (audit 2026-03-24): suppress pre-existing false positives on field
@@ -286,6 +286,9 @@ ignore = [
 "app/core/config/mixins/rate_limit_settings.py" = ["S105"]  # rate_limit names
 "app/services/audit_service.py" = ["S105"]  # AuditEvent enum values
 "app/core/exceptions/handlers.py" = ["S101"]  # assert isinstance() guard
+"app/cli/tests.py" = ["S603"]  # MOD-29-01: subprocess with hardcoded cmd list (not user input)
+"app/schemas/schemas.py" = ["S105"]  # MOD-29-01: token_type="bearer" is not a password
+"app/utils/retry.py" = ["S311"]  # MOD-29-01: random.random() for jitter, not crypto
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
@@ -356,6 +359,7 @@ omit = [
 
 [tool.coverage.report]
 show_missing = true
+fail_under = 80  # TD-29-01: enforce locally too (CI already gates via --cov-fail-under=80)
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",
@@ -380,7 +384,9 @@ dev = [
   "pytest-asyncio>=0.23",
   "pytest-cov>=5",
   "pytest-xdist>=3.5",
-  "ruff>=0.15.4",
+  # RZ-30-05: ruff v0.15.x has regression (strips except parens → SyntaxError).
+  # Pin to 0.14.x until upstream fix lands.  Pre-commit already pins 0.14.14.
+  "ruff>=0.14.14,<0.15",
   "types-aiofiles>=25.1.0.20251011",
   # RZ-11 (audit 2026-03-05): virtualenv belongs here — it is developer tooling,
   # not a production runtime dependency.

@@ -74,7 +74,7 @@ def _parse_datetime(value: Any) -> datetime | None:
             numeric /= 1000.0
         try:
             return datetime.fromtimestamp(numeric, UTC)
-        except OverflowError, OSError, ValueError:  # RZ-28-01
+        except (OverflowError, OSError, ValueError):  # RZ-28-01
             return None
 
     if isinstance(value, str):
@@ -93,7 +93,7 @@ def _parse_datetime(value: Any) -> datetime | None:
                 numeric /= 1000.0
             try:
                 return datetime.fromtimestamp(numeric, UTC)
-            except OverflowError, OSError, ValueError:  # RZ-28-01
+            except (OverflowError, OSError, ValueError):  # RZ-28-01
                 return None
         else:
             return (
@@ -148,7 +148,7 @@ def _coerce_int(value: Any, default: int = 0) -> int:
     except ValueError:
         try:
             return int(float(text))
-        except TypeError, ValueError:  # RZ-28-01
+        except (TypeError, ValueError):  # RZ-28-01
             return default
 
 
@@ -391,7 +391,7 @@ async def list_notifications(
         # cause type confusion or unexpected DB cast behaviour.
         try:
             uuid.UUID(str(cursor_id))
-        except ValueError, AttributeError:  # RZ-28-01
+        except (ValueError, AttributeError):  # RZ-28-01
             raise_validation_error("errors.notifications.bad_cursor", locale)
         cursor_info = (_ensure_utc(cursor_dt), cursor_id)
 
@@ -458,7 +458,7 @@ async def mark_read_single(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
-    assert notif is not None  # nosec B101  # noqa: S101
+    assert notif is not None  # noqa: S101
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)
@@ -503,7 +503,7 @@ async def delete_notification(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
-    assert notif is not None  # nosec B101  # noqa: S101
+    assert notif is not None  # noqa: S101
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)

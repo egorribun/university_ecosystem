@@ -66,6 +66,16 @@ class DomainEvent(ABC):  # noqa: B024
 _EVENT_REGISTRY: dict[str, type[DomainEvent]] = {}
 
 
+def get_registered_events() -> dict[str, type[DomainEvent]]:
+    """Return a read-only snapshot of the event registry.
+
+    Used by ``app.workers.outbox`` to reconstruct DomainEvent subclasses from
+    stored ``event_type`` strings, and by tests/introspection tooling to list
+    all registered domain events.
+    """
+    return dict(_EVENT_REGISTRY)
+
+
 def register_domain_event(cls: type[DomainEvent]) -> type[DomainEvent]:
     """Register a DomainEvent subclass for safe Outbox/CDC deserialization.
 
@@ -725,7 +735,7 @@ class EventBus:
                 chain_task.cancel()
                 try:
                     await chain_task
-                except asyncio.CancelledError, Exception:  # noqa: S110  # RZ-27-01
+                except (asyncio.CancelledError, Exception):  # noqa: S110  # RZ-27-01
                     pass
                 logger.error(
                     "Event production timed out (10s)",

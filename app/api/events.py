@@ -378,7 +378,12 @@ async def update_event(
         raise_forbidden(locale)
 
     old_image_url = q.image_url
-    ev_id = uuid.UUID(str(event_id)) if isinstance(event_id, int) else event_id
+    if isinstance(event_id, int):
+        raise HTTPException(
+            status_code=400,
+            detail="Integer event IDs are not supported; use a UUID.",
+        )
+    ev_id = event_id
     try:
         event_dto = await events.update_event(ev_id, data)
     except ValueError as exc:

@@ -4,7 +4,7 @@ from functools import cached_property
 
 from pydantic import ValidationInfo, field_validator
 
-from .base import _DEVELOPMENT_ENVIRONMENTS, BaseAppSettings
+from .base import _DEVELOPMENT_ENVIRONMENTS, BaseAppSettings, _coerce_str_list
 
 # MOD-W10-03: Full set of accepted environment names.  Any other string causes a
 # startup ValidationError — prevents silent "prod" typos being treated as dev.
@@ -112,16 +112,4 @@ class AppGeneralSettings(BaseAppSettings):
         return _coerce_str_list(self.metrics_allowlist)
 
 
-def _coerce_str_list(values: object) -> list[str]:
-    if not values:
-        return []
-    if isinstance(values, str):
-        items = [item.strip() for item in values.split(",")]
-    else:
-        from collections.abc import Iterable
-
-        if isinstance(values, Iterable):
-            items = [str(item).strip() for item in values]
-        else:
-            items = [str(values).strip()]
-    return [item for item in items if item]
+# TD-33-07: local _coerce_str_list duplicate removed — now imported from .base

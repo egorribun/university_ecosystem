@@ -421,13 +421,9 @@ class TestGenericPagination:
         # created_at: 0 > 1 > 2 > 3 > 4
         # Our news_factory might be creating them such that 0 is oldest
         # and has earliest ID
-        assert result.items[0].title in [
-            "News 0",
-            "News 1",
-            "News 2",
-            "News 3",
-            "News 4",
-        ]
+        # Verify items are in ascending order by ID
+        item_ids = [item.id for item in result.items]
+        assert item_ids == sorted(item_ids), "Items should be in ascending ID order"
 
     @pytest.mark.asyncio
     async def test_paginate_cursor_with_cursor(

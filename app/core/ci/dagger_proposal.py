@@ -2,6 +2,9 @@
 
 This script uses the Dagger Python SDK to define a repeatable, containerized
 CI/CD pipeline that runs identically on local dev machines and in GitHub Actions.
+
+NOTE: This is a proposal/reference implementation, not production code.
+See .github/workflows/ for the active CI configuration.
 """
 
 import sys

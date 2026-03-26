@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -29,6 +28,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
@@ -114,7 +114,9 @@ func initSentry(cfg *config.Config, logger *slog.Logger) {
 		Dsn:              cfg.SentryDSN,
 		Environment:      cfg.Environment,
 		Release:          cfg.AppVersion,
-		TracesSampleRate: 1.0,
+		// RZ-33-02: Configurable via SENTRY_TRACES_SAMPLE_RATE env var.
+		// Default 1.0 (100%) for dev; recommend 0.1 (10%) for production.
+		TracesSampleRate: cfg.SentryTracesSampleRate,
 	})
 	if err != nil {
 		logger.Error("Sentry initialization failed", "err", err)
@@ -131,7 +133,12 @@ func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.Fil
 		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 
-	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds)
+	// RZ-31-05: Set a default 30s per-RPC timeout via service config.  grpc.NewClient
+	// is lazy (no blocking dial), but RPCs without a deadline can hang indefinitely if
+	// file-processor is unresponsive.  30s matches the gateway ResponseHeaderTimeout.
+	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds,
+		grpc.WithDefaultServiceConfig(`{"methodConfig":[{"name":[{}],"timeout":"30s"}]}`),
+	)
 	if err != nil {
 		logger.Error("Failed to initialize File Processor gRPC transport", "err", err)
 		os.Exit(1)
@@ -224,6 +231,12 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	// PERF-W17-02: Pre-populate L1 cache from Redis to avoid cold-start thundering herd.
 	jwtMiddleware.WarmL1Cache(ctx)
 	jwtMiddleware.ListenForRevocations(ctx)
+	// MOD-W17-03: Start JWKS hot-reload if endpoint is configured.
+	if cfg.JWKSEndpoint != "" {
+		interval := time.Duration(cfg.JWKSRefreshInterval) * time.Second
+		jwtMiddleware.StartJWKSRefresher(ctx, cfg.JWKSEndpoint, interval, logger)
+		logger.Info("JWKS hot-reload enabled", "endpoint", cfg.JWKSEndpoint, "interval", interval)
+	}
 
 	internalSecret := []byte(cfg.InternalHMACSecret)
 
@@ -244,10 +257,6 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy, internalSecret))
 		optional.Any("/graphql", handlers.ProxyHandler(proxy, internalSecret))
 	}
-
-	// Public API (No Auth)
-	publicAPI := router.Group("/api/public")
-	publicAPI.Any("/*path", handlers.ProxyHandler(proxy, internalSecret))
 
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
@@ -278,17 +287,25 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 		MaxHeaderBytes: 1 << 13,
 	}
 
+	// RZ-31-01: Replace os.Exit(1) with channel-based error propagation so that
+	// all defers in main() execute (OTEL flush, gRPC close, Sentry drain).
+	// os.Exit bypasses defers in ALL goroutines — traces and error reports are lost.
+	serverErr := make(chan error, 1)
 	go func() {
 		logger.Info("Starting API Gateway", "addr", addr, "backend", cfg.BackendURL)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Failed to start server", "err", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	select {
+	case <-quit:
+	case err := <-serverErr:
+		logger.Error("Server startup failed, initiating orderly shutdown", "err", err)
+	}
 
 	logger.Info("Shutting down server...")
 
@@ -337,5 +354,13 @@ func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 		sdktrace.WithResource(res),
 	)
 	otel.SetTracerProvider(tp)
+	// MOD-31-02: Register composite propagator so W3C Baggage headers (user_id,
+	// request_id) propagate alongside TraceContext across service boundaries.
+	otel.SetTextMapPropagator(
+		propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		),
+	)
 	return tp, nil
 }

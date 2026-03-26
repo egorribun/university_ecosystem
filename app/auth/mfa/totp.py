@@ -105,22 +105,23 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     return bool(result)
 
 
-def _ct_verify_totp(secret: str, code: str) -> bool:
+def _ct_verify_totp(secret: str, code: str, *, valid_window: int | None = None) -> bool:
     """P0-W5-02: Constant-time TOTP verification.
 
-    Checks the current window plus ±1 window (90-second tolerance) without
+    Checks the current window plus ±``valid_window`` windows without
     short-circuiting on a match, eliminating the timing oracle that lets
     attackers distinguish which enrollment slot or window matched.
     """
+    window = _TOTP_VALID_WINDOW if valid_window is None else valid_window
     normalized = "".join(ch for ch in code if ch.isdigit())
     if len(normalized) != _TOTP_DIGITS:
         return False
     totp_obj = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
     now = time.time()
     matched = False
-    # Always evaluate all three windows — no short-circuit via `or`
-    for offset in (-30, 0, 30):
-        candidate = totp_obj.at(int(now) + offset)
+    # Always evaluate all windows — no short-circuit via `or`
+    for offset in range(-window, window + 1):
+        candidate = totp_obj.at(int(now) + offset * 30)
         if hmac.compare_digest(normalized, candidate):
             matched = True
     return matched

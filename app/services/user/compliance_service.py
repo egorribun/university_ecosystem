@@ -193,7 +193,7 @@ class UserComplianceService:
             await self.uow.commit()
         # Refresh to get anonymized email
         updated_user = await self.repo.get(user_identity)
-        assert updated_user is not None  # nosec B101  # noqa: S101
+        assert updated_user is not None  # noqa: S101
         return schemas.DataDeletionOut(
             deleted=True, anonymized_email=updated_user.email
         )

@@ -173,6 +173,8 @@ class NatsTaskBroker:
         """
         if self._js is None:
             await self.connect()
+        if self._js is None:
+            raise RuntimeError("NATS JetStream not available")
 
         with tracer.start_as_current_span(
             f"nats.publish:{subject}", kind=SpanKind.PRODUCER
@@ -195,6 +197,8 @@ class NatsTaskBroker:
         """Push a task to the JetStream queue with trace context propagation."""
         if self._js is None:
             await self.connect()
+        if self._js is None:
+            raise RuntimeError("NATS JetStream not available")
 
         with tracer.start_as_current_span(
             f"nats.enqueue:{task_name}", kind=SpanKind.PRODUCER
@@ -233,7 +237,7 @@ class NatsTaskBroker:
 
         # Create/use a pull-based durable consumer
         js = self._js
-        assert js is not None  # nosec B101  # noqa: S101
+        assert js is not None  # noqa: S101
         sub = await js.pull_subscribe(
             subject=f"{self._subject_prefix}.>",
             durable="python-worker",

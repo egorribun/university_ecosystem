@@ -46,6 +46,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: gateway
   policyTypes:
     - Ingress

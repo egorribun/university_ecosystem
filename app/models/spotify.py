@@ -54,7 +54,7 @@ class SpotifyIntegration(Base):
         String(2048)
     )  # LOW-W19: bounded String
 
-    user = relationship("User", back_populates="spotify")
+    user = relationship("User", back_populates="spotify", lazy="noload")  # RZ-33-06
 
     def __repr__(self) -> str:
         return (

@@ -2,6 +2,8 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.skip(reason="debug/scratch file")
+
 
 @pytest.fixture(autouse=True)
 def my_autouse():

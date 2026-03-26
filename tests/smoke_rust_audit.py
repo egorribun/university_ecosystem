@@ -1,7 +1,9 @@
 import hashlib
 import hmac
 
-import rust_ext
+import pytest
+
+rust_ext = pytest.importorskip("rust_ext", reason="rust_ext not built")
 
 
 def test_rust_audit_verification():

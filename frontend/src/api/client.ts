@@ -100,6 +100,25 @@ const getRetryDelay = (headers: Record<string, unknown> | undefined) => {
 // We suppress the duplicate on the client by tracking in-flight Idempotency-Keys.
 const _inflightIdempotencyKeys = new Set<string>()
 
+// TD-31-04: Synchronize in-flight idempotency keys across tabs via BroadcastChannel.
+// Prevents duplicate mutations when two tabs submit the same form simultaneously.
+// Server-side idempotency key is the authoritative check — this is defense-in-depth.
+let _dedupeChannel: BroadcastChannel | null = null
+try {
+  if (typeof BroadcastChannel !== "undefined") {
+    _dedupeChannel = new BroadcastChannel("ecosystem.idempotency.dedup")
+    _dedupeChannel.addEventListener(
+      "message",
+      (e: MessageEvent<{ key: string; action: "add" | "delete" }>) => {
+        if (e.data.action === "add") _inflightIdempotencyKeys.add(e.data.key)
+        else _inflightIdempotencyKeys.delete(e.data.key)
+      },
+    )
+  }
+} catch {
+  // BroadcastChannel not available (SSR, old browsers, Web Workers).
+}
+
 api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
 
@@ -114,6 +133,7 @@ api.interceptors.request.use(async (config) => {
     }
     if (idempotencyKey) {
       _inflightIdempotencyKeys.add(idempotencyKey)
+      _dedupeChannel?.postMessage({ key: idempotencyKey, action: "add" })
     }
   }
 
@@ -159,7 +179,10 @@ const _cleanupIdempotencyKey = (config: ApiRequestConfig | undefined) => {
     config.headers instanceof AxiosHeaders
       ? (config.headers.get("Idempotency-Key") as string | undefined)
       : undefined
-  if (key) _inflightIdempotencyKeys.delete(key)
+  if (key) {
+    _inflightIdempotencyKeys.delete(key)
+    _dedupeChannel?.postMessage({ key, action: "delete" })
+  }
 }
 
 api.interceptors.response.use(
@@ -195,7 +218,9 @@ api.interceptors.response.use(
       const retryCount = config.__rateLimitRetryCount ?? 0
       if (retryCount < RATE_LIMIT_MAX_RETRY && !config.signal?.aborted && !isAbortError(error)) {
         config.__rateLimitRetryCount = retryCount + 1
-        await waitForRateLimitWindow()
+        // RZ-31-04: Propagate AbortSignal so navigation cancels the wait.
+        await waitForRateLimitWindow(config.signal)
+        if (config.signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"))
         return api.request(config)
       }
     }

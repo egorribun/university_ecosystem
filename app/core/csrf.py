@@ -107,16 +107,7 @@ def signal_csrf_rotation(request: Request) -> None:
 
     CSRFMiddleware reads this flag and rotates the cookie unconditionally.
     """
-    request.state.rotate_csrf = True
-
-
-# Pre-serialised CSRF rejection body.
-# Using raw bytes + a factory avoids the shared-mutable-singleton hazard:
-# JSONResponse holds a mutable `headers` dict that concurrent middleware
-# (e.g. SecurityHeadersMiddleware) could mutate on one request while another
-# request reads it, producing cross-request header pollution.
-# (RZ-5: audit 2026-02-24)
-_REJECT_BODY: bytes = b'{"detail":"CSRF token mismatch"}'
+    setattr(request.state, _ROTATE_CSRF_KEY, True)
 
 
 # ── HMAC helpers ─────────────────────────────────────────────────────────────

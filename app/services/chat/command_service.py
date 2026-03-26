@@ -150,7 +150,7 @@ class ChatMessageDispatcher:
                 try:
                     _hit = _json.loads(_cached)
                     _msg_id = uuid.UUID(_hit["message_id"])
-                except ValueError, KeyError, TypeError:  # RZ-28-01
+                except (ValueError, KeyError, TypeError):  # RZ-28-01
                     # Legacy entry: full JSON from before BE-02 — fall through to
                     # re-send path (idempotency protection degraded, not broken).
                     pass
@@ -167,7 +167,7 @@ class ChatMessageDispatcher:
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101  # noqa: S101
+        assert chat is not None  # noqa: S101
 
         # Check participation (TD-4 security audit)
         is_participant = await self.repository.check_participant(chat_id, user.id)
@@ -423,7 +423,7 @@ class ChatMaintenanceService:
         """Mark all messages in a chat as read by the user."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101  # noqa: S101
+        assert chat is not None  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -439,7 +439,7 @@ class ChatMaintenanceService:
         """Delete all messages in a chat (but keep the chat)."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101  # noqa: S101
+        assert chat is not None  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids and user.role != UserRole.ADMIN:
@@ -497,7 +497,7 @@ class ChatMaintenanceService:
         """Permanently delete a chat."""
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101  # noqa: S101
+        assert chat is not None  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids and user.role != UserRole.ADMIN:

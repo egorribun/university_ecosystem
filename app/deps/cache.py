@@ -4,6 +4,7 @@ import asyncio
 import fnmatch
 import hashlib
 import inspect
+import threading
 import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -31,7 +32,7 @@ except ImportError:
         def dumps(v: Any, default: Any = None, _option: int | None = None) -> bytes:
             return json.dumps(v, default=default, sort_keys=True).encode("utf-8")
 
-    orjson = OrJsonCompat()  # type: ignore
+    orjson = OrJsonCompat()  # type: ignore[assignment]
 from fastapi.encoders import jsonable_encoder
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -235,7 +236,7 @@ class RedisCache(BaseCache):
                 if inspect.isawaitable(res):
                     await res
             success = True
-        except RedisError, OSError, AttributeError:  # RZ-28-01
+        except (RedisError, OSError, AttributeError):  # RZ-28-01
             logger.debug("Failed to close Redis client", exc_info=True)
         finally:
             record_redis_command(
@@ -270,7 +271,7 @@ class RedisCache(BaseCache):
             logger.debug("Invalid cache payload for key %s, dropping", key)
             await self.invalidate(key)
             return None
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cache get failed for key %s", key, exc_info=True)
             return None
         finally:
@@ -300,7 +301,7 @@ class RedisCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cache set failed for key %s", key, exc_info=True)
         finally:
             record_redis_command(
@@ -347,7 +348,7 @@ class RedisCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning(
                 "Redis cache invalidate failed for keys %s", filtered, exc_info=True
             )
@@ -400,21 +401,31 @@ class RedisClusterCache(BaseCache):
         if self._client is None:
             return
         client, self._client = self._client, None
+        start = time_module.perf_counter()
+        success = False
         try:
             if hasattr(client, "aclose"):
                 await client.aclose()
             elif hasattr(client, "close"):
                 await client.close()
-        except RedisError, OSError, AttributeError:  # RZ-28-01
+            success = True
+        except (RedisError, OSError, AttributeError):  # RZ-28-01
             logger.debug("Failed to close Redis cluster client", exc_info=True)
+        finally:
+            record_redis_command(
+                "close", time_module.perf_counter() - start, success=success
+            )
 
     async def get(self, key: str) -> CacheEntry | None:
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
             raw = await client.get(key)
             if raw is None:
                 return None
             parsed = orjson.loads(raw)
+            success = True
             return CacheEntry(
                 etag=str(parsed.get("etag", "")),
                 payload=parsed.get("payload"),
@@ -424,9 +435,13 @@ class RedisClusterCache(BaseCache):
         except orjson.JSONDecodeError:
             logger.debug("Invalid cache payload in cluster for key %s", key)
             return None
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cluster get failed for key %s", key, exc_info=True)
             return None
+        finally:
+            record_redis_command(
+                "get", time_module.perf_counter() - start, success=success
+            )
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized, serialized = _normalize_payload(payload)
@@ -441,14 +456,21 @@ class RedisClusterCache(BaseCache):
                 "ttl_seconds": float(effective_ttl),
             }
         ).decode("utf-8")
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
             if effective_ttl:
                 await client.set(key, envelope, ex=effective_ttl)
             else:
                 await client.set(key, envelope)
-        except RedisError, OSError:  # RZ-28-01
+            success = True
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cluster set failed for key %s", key, exc_info=True)
+        finally:
+            record_redis_command(
+                "set", time_module.perf_counter() - start, success=success
+            )
         return CacheEntry(
             etag=etag,
             payload=normalized,
@@ -457,15 +479,47 @@ class RedisClusterCache(BaseCache):
         )
 
     async def invalidate(self, *keys: str) -> None:
-        filtered = [str(k) for k in keys if k and "*" not in k]
+        filtered = [str(k) for k in keys if k]
         if not filtered:
             return
+        start = time_module.perf_counter()
+        success = False
         try:
             client = await self._get_client()
-            await client.delete(*filtered)
-        except RedisError, OSError:  # RZ-28-01
+
+            # TD-33-10: Separate exact keys and patterns (same as RedisCache).
+            exact_keys = []
+            patterns = []
+            for key in filtered:
+                if "*" in key:
+                    patterns.append(key)
+                else:
+                    exact_keys.append(key)
+
+            if exact_keys:
+                await client.delete(*exact_keys)
+
+            # Process patterns via SCAN — works on both single-node and cluster.
+            for pattern in patterns:
+                cursor: int = 0
+                while True:
+                    cursor, matches = await client.scan(
+                        cursor, match=pattern, count=100
+                    )
+                    if matches:
+                        await client.delete(*matches)
+                    if cursor == 0:
+                        break
+            success = True
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning(
                 "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
+            )
+        finally:
+            record_redis_command(
+                "invalidate",
+                time_module.perf_counter() - start,
+                success=success,
             )
 
     def _resolve_ttl(self, ttl: int | None) -> int:
@@ -678,7 +732,11 @@ def cached(
                 key = key_builder(*args, **kwargs)
             else:
                 # Basic key building from args/kwargs
-                key_parts = [str(arg) for arg in args]
+                # Skip `self` for bound methods to avoid unstable str(self) in keys
+                _args: tuple[object, ...] = args
+                if _args and hasattr(_args[0], "__dict__"):
+                    _args = _args[1:]
+                key_parts = [str(arg) for arg in _args]
                 key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
                 key = ":".join(key_parts)
 
@@ -695,13 +753,18 @@ def cached(
             # Resolve TTL
             seconds = int(ttl.total_seconds()) if isinstance(ttl, timedelta) else ttl
 
-            # Optimization: If we have multiple layers, we can potentially use
-            # different TTLs
-            # but for now we follow the BaseCache interface.
-            # If it's a TieredCache, we could technically override set behavior here
-            # but sticking to standard for now.
-
-            await cache.set(full_key, result, ttl=seconds)
+            # TD-33-09: If TieredCache and _l1_ttl specified, set L1 with
+            # separate TTL for shorter in-memory retention.
+            l1_secs = (
+                int(_l1_ttl.total_seconds())
+                if isinstance(_l1_ttl, timedelta)
+                else _l1_ttl
+            )
+            if l1_secs and isinstance(cache, TieredCache):
+                await cache.l2.set(full_key, result, ttl=seconds)
+                await cache.l1.set(full_key, result, ttl=l1_secs)
+            else:
+                await cache.set(full_key, result, ttl=seconds)
             return result
 
         return wrapper
@@ -790,6 +853,7 @@ def stale_while_revalidate(
 
 
 _cache_backend: BaseCache | None = None
+_cache_backend_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
@@ -849,9 +913,12 @@ def create_cache_backend() -> BaseCache:
 
 def get_cache() -> BaseCache:
     global _cache_backend
-    if _cache_backend is None:
-        _cache_backend = create_cache_backend()
-    return _cache_backend
+    if _cache_backend is not None:  # RZ-33-29: fast path — no lock after init
+        return _cache_backend
+    with _cache_backend_lock:  # RZ-33-29: slow path — double-checked locking
+        if _cache_backend is None:
+            _cache_backend = create_cache_backend()
+        return _cache_backend
 
 
 def set_cache_backend(cache: BaseCache | None) -> None:
@@ -878,8 +945,14 @@ async def shutdown_cache() -> None:
     global _cache_backend
     backend = _cache_backend
     _cache_backend = None
-    if backend and isinstance(backend, RedisCache):
+    if backend is None:
+        return
+    # RedisCache, RedisClusterCache, NatsKVCache — anything with .close()
+    if hasattr(backend, "close"):
         await backend.close()
+    # TieredCache: close the L2 layer if it exposes .close()
+    if hasattr(backend, "l2") and hasattr(backend.l2, "close"):
+        await backend.l2.close()
 
 
 def format_etag(etag: str) -> str:

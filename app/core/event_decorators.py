@@ -103,7 +103,9 @@ def register_decorated_handlers(bus: EventBus) -> int:
             # args, ValueError/AttributeError for badly configured classes, etc.)
             # so the registration loop never aborts mid-way.
             try:
-                type_str = event_type().event_type
+                type_str = (
+                    getattr(event_type, "EVENT_TYPE", None) or event_type().event_type
+                )
             except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — falls back to class name for registration (reviewed TD-27-04)
                 # Fall back to the fully-qualified class name so the
                 # subscription is still registered under a deterministic key.

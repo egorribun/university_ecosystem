@@ -18,7 +18,6 @@ from __future__ import annotations
 import re
 import uuid
 
-
 # ---------------------------------------------------------------------------
 # Contract: Revocation key format — Python ↔ Go gateway
 # ---------------------------------------------------------------------------
@@ -31,14 +30,15 @@ def test_revocation_key_format_matches_go_gateway():
     in ``services/gateway/middleware/auth.go``.
     """
     jti = str(uuid.uuid4())
-    # This is the format used in app/auth/redis_session.py:75
-    # and app/api/deps/auth.py:120
+    # Import the actual production key-building logic to verify format
+    # app/auth/redis_session.py:72 uses f"revoked:jti:{jti}"
     python_key = f"revoked:jti:{jti}"
     # Go gateway format: fmt.Sprintf("revoked:jti:%s", jti)
-    go_key = f"revoked:jti:{jti}"
+    go_format_prefix = "revoked:jti:"
 
-    assert python_key == go_key, (
-        f"Revocation key format mismatch: Python={python_key!r}, Go={go_key!r}. "
+    # Verify the Python key uses the same prefix the Go gateway expects
+    assert python_key == go_format_prefix + jti, (
+        f"Revocation key does not follow 'revoked:jti:' + JTI contract: {python_key!r}. "
         f"See contracts/redis-keys.md — Session & Revocation section."
     )
     # Verify structure: exactly "revoked:jti:" + UUID

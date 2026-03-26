@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"runtime"
@@ -179,8 +178,8 @@ func getEnvInt(key string, defaultValue int) int {
 	if valStr == "" {
 		return defaultValue
 	}
-	var val int
-	if _, err := fmt.Sscan(valStr, &val); err != nil {
+	val, err := strconv.Atoi(valStr)
+	if err != nil {
 		return defaultValue
 	}
 	return val

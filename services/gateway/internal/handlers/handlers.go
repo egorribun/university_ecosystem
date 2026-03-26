@@ -55,19 +55,20 @@ func ProxyHandler(proxy *httputil.ReverseProxy, internalSecret []byte) gin.Handl
 		userIDVal, hasUser := c.Get("user_id")
 		sessionIDVal, hasSession := c.Get("session_id")
 
-		if hasUser {
-			c.Request.Header.Set("X-User-ID", userIDVal.(string))
+		// RZ-33-23: Use two-value type assertion to avoid panic on non-string ctx values.
+		userID, userOK := userIDVal.(string)
+		sessionID, sessionOK := sessionIDVal.(string)
+		if hasUser && userOK {
+			c.Request.Header.Set("X-User-ID", userID)
 		}
-		if hasSession {
-			c.Request.Header.Set("X-Session-ID", sessionIDVal.(string))
+		if hasSession && sessionOK {
+			c.Request.Header.Set("X-Session-ID", sessionID)
 		}
 
 		// RZ-14-05: Sign identity headers with HMAC-SHA256 so the backend can
 		// cryptographically verify that this request passed through the gateway.
 		// Signature covers "{user_id}:{session_id}" — both fields must be present.
-		if len(internalSecret) > 0 && hasUser && hasSession {
-			userID := userIDVal.(string)
-			sessionID := sessionIDVal.(string)
+		if len(internalSecret) > 0 && hasUser && userOK && hasSession && sessionOK {
 			mac := hmac.New(sha256.New, internalSecret)
 			mac.Write([]byte(userID + ":" + sessionID))
 			c.Request.Header.Set("X-Internal-Signature", hex.EncodeToString(mac.Sum(nil)))
@@ -75,16 +76,6 @@ func ProxyHandler(proxy *httputil.ReverseProxy, internalSecret []byte) gin.Handl
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
-}
-
-// GenerateRequestID returns a cryptographically random UUID v4.
-//
-// RZ-03 (audit 2026-03-04): The previous implementation prefixed the current
-// timestamp, making request IDs partially predictable and leaking server time
-// to API consumers.  A full UUID provides 122 bits of entropy with no timing
-// information.
-func GenerateRequestID() string {
-	return uuid.New().String()
 }
 
 // HealthHandler returns a simple OK status to indicate the gateway is running.
@@ -118,8 +109,9 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 			return
 		}
 
-		// Call gRPC
-		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		// Call gRPC — use the per-request context so cancellation propagates
+		// when the client disconnects (RZ-33-04).
+		rpcCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
 		// Propagate Authorization header to gRPC metadata

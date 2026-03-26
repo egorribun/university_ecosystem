@@ -75,7 +75,7 @@ def _event_to_type(event: Event, organizer: User | None = None) -> EventType:
 
 @strawberry.type(description="Root Query type for the University Ecosystem API")
 class Query:
-    @strawberry.field(description="Get paginated list of news articles")  # type: ignore
+    @strawberry.field(description="Get paginated list of news articles")  # type: ignore[misc]
     async def news(
         self: Any,
         info: strawberry.Info[GraphQLContext],
@@ -89,6 +89,7 @@ class Query:
         OFFSET O(N) because Postgres can use the (created_at DESC, id DESC) index
         to seek directly to the starting row.
         """
+        limit = min(limit, 200)
         session = info.context.session
         from sqlalchemy import and_, or_
 
@@ -124,7 +125,7 @@ class Query:
 
                 try:
                     last_id = _uuid.UUID(last_id_str)
-                except ValueError, AttributeError:  # RZ-28-01
+                except (ValueError, AttributeError):  # RZ-28-01
                     last_id = None
                 if last_id is not None:
                     stmt = stmt.where(
@@ -160,7 +161,7 @@ class Query:
             ),
         )
 
-    @strawberry.field(description="Get a single news article by ID")  # type: ignore
+    @strawberry.field(description="Get a single news article by ID")  # type: ignore[misc]
     async def news_by_id(
         self,
         info: strawberry.Info[GraphQLContext],
@@ -172,7 +173,7 @@ class Query:
 
         try:
             uid = UUID(str(id))
-        except ValueError, TypeError:  # RZ-28-01
+        except (ValueError, TypeError):  # RZ-28-01
             return None
 
         result = await info.context.session.execute(
@@ -183,7 +184,7 @@ class Query:
             return None
         return _news_to_type(news, getattr(news, "author", None))
 
-    @strawberry.field(description="Get paginated list of events")  # type: ignore
+    @strawberry.field(description="Get paginated list of events")  # type: ignore[misc]
     async def events(
         self: Any,
         info: strawberry.Info[GraphQLContext],
@@ -195,6 +196,7 @@ class Query:
 
         ``after`` is an opaque base64-encoded cursor returned in PageInfo.cursor.
         """
+        limit = min(limit, 200)
         from sqlalchemy import and_, or_
 
         from app.models import Event
@@ -229,7 +231,7 @@ class Query:
 
                 try:
                     last_id = _uuid.UUID(last_id_str)
-                except ValueError, AttributeError:  # RZ-28-01
+                except (ValueError, AttributeError):  # RZ-28-01
                     last_id = None
                 if last_id is not None:
                     query = query.where(
@@ -265,7 +267,7 @@ class Query:
             ),
         )
 
-    @strawberry.field(description="Get schedule entries for a group")  # type: ignore
+    @strawberry.field(description="Get schedule entries for a group")  # type: ignore[misc]
     async def schedule(
         self: Any,
         info: strawberry.Info[GraphQLContext],
@@ -277,7 +279,7 @@ class Query:
 
         try:
             uid = UUID(str(group_id))
-        except ValueError, TypeError:  # RZ-28-01
+        except (ValueError, TypeError):  # RZ-28-01
             return []
 
         # RZ-GQL-AUTH: Enforce ReBAC for group schedules.
@@ -321,7 +323,7 @@ class Query:
             for e in entries
         ]
 
-    @strawberry.field(description="Get current authenticated user")  # type: ignore
+    @strawberry.field(description="Get current authenticated user")  # type: ignore[misc]
     async def me(
         self: Any,
         info: strawberry.Info[GraphQLContext],

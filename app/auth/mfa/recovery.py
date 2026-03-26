@@ -33,7 +33,7 @@ async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
     await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
 
     plain_codes: list[str] = []
-    for _ in range(10):
+    for _ in range(_MAX_RECOVERY_CODES):
         # MOD-W8-02: 8 bytes = 16 hex chars = 64-bit entropy (up from 40-bit / 5 bytes).
         # NIST SP 800-63B recommends ≥ 64 bits for backup authentication codes.
         # Format as 4 groups of 4 for readability: "A3F8-B9C2-1E47-D06A".
@@ -47,9 +47,16 @@ async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
     # gather tasks would stall on the semaphore anyway — same wall-clock time,
     # but 9 blocked tasks starve concurrent login requests for ~3 seconds.
     # Sequential hashing releases the event loop between each hash operation.
+    #
+    # RZ-33-01: Hash the NORMALIZED (dash-free, uppercase) form so that
+    # verify_recovery_code() can strip dashes before comparing.  The user
+    # sees the formatted "A3F8-B9C2-1E47-D06A" form, but the DB stores
+    # hash(A3F8B9C21E47D06A).  Both inputs — with or without dashes — are
+    # normalized to the same canonical form before verify_password().
     hashed_codes: list[str] = []
     for code in plain_codes:
-        hashed_codes.append(await get_password_hash(code, validate_policy=False))
+        canonical = code.replace("-", "")
+        hashed_codes.append(await get_password_hash(canonical, validate_policy=False))
 
     # LOW-W19: strict=True catches any length mismatch between plain_codes and
     # hashed_codes early rather than silently producing fewer DB rows.

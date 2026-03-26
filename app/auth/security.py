@@ -23,16 +23,12 @@ from app.core.config import settings
 from app.core.localization import translate
 from app.core.logging import get_logger
 
-LEGACY_BCRYPT_MAX_BYTES = 72
 # PERF-02 (audit 2026-03-04): Reduced from 65536 KiB (64 MiB) to 32768 KiB (32 MiB).
 # 4 workers × 32 MiB = 128 MB peak at login burst (was 256 MB).
 # OWASP ASVS §2.4.4 requires ≥ 19 MiB — 32 MiB is a comfortable safe margin.
 ARGON2_MEMORY_COST_KIB = 32768
 ARGON2_TIME_COST = 3
 ARGON2_PARALLELISM = 4
-
-DEFAULT_SCHEME = "argon2"
-LEGACY_SCHEME = "bcrypt"
 
 _logger = get_logger(__name__)
 
@@ -53,7 +49,7 @@ def _container_cpu_count() -> int:
         sched = getattr(os, "sched_getaffinity", None)
         if sched:
             return len(sched(0))  # Linux cgroups v2 — most accurate
-    except AttributeError, NotImplementedError:  # RZ-28-01
+    except (AttributeError, NotImplementedError):  # RZ-28-01
         pass
     try:  # Fallback for cgroups v1 (Docker legacy)
         with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:
@@ -64,7 +60,7 @@ def _container_cpu_count() -> int:
             # LOW-W19: cap at 32 to prevent runaway thread/memory usage on
             # hosts where cgroups v1 quota is set to an unreasonably high value.
             return min(max(1, quota // period), 32)
-    except FileNotFoundError, ValueError, OSError:  # RZ-28-01
+    except (FileNotFoundError, ValueError, OSError):  # RZ-28-01
         pass
     return os.cpu_count() or 2
 
@@ -76,7 +72,7 @@ _auth_executor = ThreadPoolExecutor(
 )
 
 # Semaphore that caps concurrent async Argon2 operations to (worker_count - 1).
-# Without this, a login burst fans out 100+ simultaneous 64MB/~300ms hash calls,
+# Without this, a login burst fans out 100+ simultaneous 32MB/~300ms hash calls,
 # saturating the thread pool and spiking latency for every other request.
 # The semaphore provides backpressure: excess callers await a free slot instead
 # of all racing to the executor at once. Always >=1 to avoid deadlock.
@@ -117,9 +113,9 @@ class SecurityError(Exception):
     pass
 
 
-# Native argon2-cffi hasher — the only scheme used for NEW passwords.
-# Legacy bcrypt hashes are verified below using the bare `bcrypt` package;
-# bcrypt is no longer used to create hashes.
+# Native argon2-cffi hasher — the only password hashing scheme.
+# TD-21-04 (Wave 21): bcrypt verification removed — _verify_legacy_bcrypt
+# always returns False. Users with legacy bcrypt hashes must reset passwords.
 argon2_hasher = PasswordHasher(
     time_cost=ARGON2_TIME_COST,
     memory_cost=ARGON2_MEMORY_COST_KIB,
@@ -140,16 +136,8 @@ def _verify_legacy_bcrypt(
     their passwords.  The function signature is retained to avoid changing
     callers; it always returns False and logs a warning.
 
-    The Prometheus counter auth_legacy_bcrypt_verifications_total continues to
-    track attempts so operators can monitor how many users are affected and
-    trigger password-reset campaigns.
+    TD-33-03: Prometheus counter removed in Wave 33 (bcrypt metrics dead code).
     """
-    try:
-        from app.core.metrics import record_legacy_bcrypt_verification
-
-        record_legacy_bcrypt_verification()
-    except Exception as exc:  # RZ-22-01-JUSTIFIED: metrics guard — best-effort metrics recording (reviewed TD-27-04)
-        _logger.debug("Legacy bcrypt metrics recording failed: %s", exc)  # nosec B110
     _logger.warning(
         "bcrypt_hash_rejected: Legacy bcrypt hashes are no longer accepted. "
         "The user must reset their password to migrate to argon2id.",
@@ -379,14 +367,6 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
     # service-layer callers (auth_service, user_service) via
     # validate_password_hibp().  This keeps get_password_hash() synchronous
     # so it remains usable from CLI commands and MFA code generation.
-
-
-def _truncate_for_bcrypt(password: str) -> str:
-    encoded = password.encode("utf-8")
-    if len(encoded) <= LEGACY_BCRYPT_MAX_BYTES:
-        return password
-    truncated = encoded[:LEGACY_BCRYPT_MAX_BYTES]
-    return truncated.decode("utf-8", "ignore")
 
 
 def verify_password_sync(plain_password: str, hashed_password: str) -> bool:

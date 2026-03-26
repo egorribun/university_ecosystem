@@ -12,6 +12,7 @@ Features:
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -247,17 +248,21 @@ class NatsService:
 
 # Singleton instance
 _nats_service: NatsService | None = None
+_nats_service_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 
 
 def get_nats_service() -> NatsService:
     """Get the configured NATS service instance."""
     global _nats_service
-    if _nats_service is None:
-        from app.core.config import settings
+    if _nats_service is not None:  # RZ-33-29: fast path — no lock after init
+        return _nats_service
+    with _nats_service_lock:  # RZ-33-29: slow path — double-checked locking
+        if _nats_service is None:
+            from app.core.config import settings
 
-        servers = getattr(settings, "nats_servers", "nats://localhost:4222")
-        _nats_service = NatsService(servers=servers)
-    return _nats_service
+            servers = getattr(settings, "nats_servers", "nats://localhost:4222")
+            _nats_service = NatsService(servers=servers)
+        return _nats_service
 
 
 __all__ = ["NatsMessage", "NatsService", "get_nats_service"]

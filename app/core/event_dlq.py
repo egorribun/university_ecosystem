@@ -210,13 +210,13 @@ class DeadLetterQueue:
 
         success_count = 0
         fail_count = 0
-        success_ids: list[str] = []
+        success_ids: set[str] = set()
 
         for failed in events_to_replay:
             try:
                 await bus.publish(failed.event)
                 success_count += 1
-                success_ids.append(failed.event.event_id)
+                success_ids.add(failed.event.event_id)
                 logger.info(
                     "DLQ event replayed successfully: %s",
                     failed.event.event_id,

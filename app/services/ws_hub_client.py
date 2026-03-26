@@ -15,6 +15,8 @@ import asyncio
 import hashlib
 import hmac
 import json
+import random
+import threading
 import time
 import uuid
 
@@ -103,7 +105,11 @@ class WsHubClient:
                 # RZ-20-04: Narrowed — NATS publish retry catches infra errors.
                 last_exc = exc
                 if attempt < _MAX_PUBLISH_ATTEMPTS - 1:
-                    await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
+                    # TD-30-06: Exponential backoff with jitter prevents
+                    # thundering herd when NATS recovers after outage.
+                    backoff = _RETRY_BACKOFF_SECONDS * (2**attempt)
+                    jitter = random.uniform(0, backoff * 0.5)  # noqa: S311 — not security-sensitive  # nosec B311
+                    await asyncio.sleep(backoff + jitter)
 
         # All attempts exhausted — record the failure for alerting.
         _INVALIDATION_FAILURES.inc()
@@ -120,14 +126,24 @@ class WsHubClient:
 # WsHubClient() at module import time, which triggered `settings` and `broker`
 # resolution before the application lifespan had completed.  This caused
 # AttributeError or stale config in test fixtures and CLI startup paths.
+#
+# RZ-30-01 (audit Wave 30): Double-checked locking with threading.Lock.
+# Under Python 3.13+ free-threading (PYTHON_GIL=0) the original check-then-set
+# was racy — two threads could both see _client is None and construct two
+# WsHubClient instances, leaking one NATS connection.  The fast path (no lock)
+# avoids contention after initialization.
+_client_lock = threading.Lock()
 _client: WsHubClient | None = None
 
 
 def _get_client() -> WsHubClient:
     global _client
-    if _client is None:
-        _client = WsHubClient()
-    return _client
+    if _client is not None:  # fast path — no lock after init
+        return _client
+    with _client_lock:  # slow path — double-checked locking
+        if _client is None:
+            _client = WsHubClient()
+        return _client
 
 
 async def invalidate_ws_hub_cache(

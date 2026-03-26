@@ -7,17 +7,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TD-33-12: Use FP_ prefix — SetEnvPrefix("FP") in Load() requires it.
 func TestLoad_ReturnsDefaultValues(t *testing.T) {
-	originalEnvVars := map[string]string{
-		"GRPC_PORT":        os.Getenv("GRPC_PORT"),
-		"GRAPHQL_PORT":     os.Getenv("GRAPHQL_PORT"),
-		"NATS_URL":         os.Getenv("NATS_URL"),
-		"TEMPORAL_HOST":    os.Getenv("TEMPORAL_HOST"),
-		"MINIO_BUCKET":     os.Getenv("MINIO_BUCKET"),
-		"MINIO_ENDPOINT":   os.Getenv("MINIO_ENDPOINT"),
-		"MINIO_ACCESS_KEY": os.Getenv("MINIO_ACCESS_KEY"),
-		"MINIO_SECRET_KEY": os.Getenv("MINIO_SECRET_KEY"),
-		"MINIO_SECURE":     os.Getenv("MINIO_SECURE"),
+	fpEnvVars := []string{
+		"FP_GRPC_PORT", "FP_GRAPHQL_PORT", "FP_NATS_URL",
+		"FP_TEMPORAL_HOST", "FP_MINIO_BUCKET", "FP_MINIO_ENDPOINT",
+		"FP_MINIO_ACCESS_KEY", "FP_MINIO_SECRET_KEY", "FP_MINIO_SECURE",
+	}
+	originalEnvVars := make(map[string]string, len(fpEnvVars))
+	for _, key := range fpEnvVars {
+		originalEnvVars[key] = os.Getenv(key)
 	}
 	defer func() {
 		for key, value := range originalEnvVars {
@@ -47,9 +46,10 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 	assert.False(t, cfg.MinioSecure)
 }
 
+// TD-33-12: Use FP_ prefix — SetEnvPrefix("FP") in Load() requires it.
 func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
-	t.Setenv("GRPC_PORT", "9999")
-	t.Setenv("NATS_URL", "nats://custom:4222")
+	t.Setenv("FP_GRPC_PORT", "9999")
+	t.Setenv("FP_NATS_URL", "nats://custom:4222")
 
 	cfg, err := Load()
 	assert.NoError(t, err)

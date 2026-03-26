@@ -57,7 +57,7 @@ async def cleanup_stale_email_change_tokens(
                 db=session, now=now, retention_minutes=retention
             )
 
-    assert db is not None  # nosec B101  # noqa: S101
+    assert db is not None  # noqa: S101
     removed = await db.execute(
         delete(EmailChangeToken).where(EmailChangeToken.created_at <= cutoff)
     )

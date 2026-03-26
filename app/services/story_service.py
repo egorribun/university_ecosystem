@@ -88,7 +88,7 @@ class StoryService:
             updates["expires_at"] = self.repo._ensure_utc(updates["expires_at"])
 
         updated_story = await self.repo.update(story.id, updates)
-        assert updated_story is not None  # nosec B101  # noqa: S101
+        assert updated_story is not None  # noqa: S101
 
         async with self.uow:
             await self.uow.commit()

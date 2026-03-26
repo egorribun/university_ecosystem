@@ -380,6 +380,9 @@ async def _prewarm_jwt_public_key_cache() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
+    # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
+    _SCHEDULER_STOP.clear()
+
     # 1. Bootstrapping
     await _startup_database_and_di(app)
     await _startup_websocket_and_flags(app)

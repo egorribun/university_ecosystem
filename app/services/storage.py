@@ -11,6 +11,12 @@ from urllib.parse import urlparse
 
 from app.core.logging import get_logger
 
+# RZ-29-01: Business-level timeout guards for S3 operations.
+# DB already has command_timeout=15s (asyncpg), but aioboto3 HTTP calls
+# can hang indefinitely on network issues without an explicit deadline.
+_S3_WRITE_TIMEOUT: float = 30.0  # seconds — upload/put
+_S3_READ_TIMEOUT: float = 15.0  # seconds — get/head/delete
+
 if TYPE_CHECKING:
     from app.core.config import Settings
 
@@ -57,6 +63,28 @@ class StaticFSStorage(StorageBackend):
             raise ValueError("Relative path must not escape base directory")
         return candidate
 
+    def _validate_resolved_path(self, target: Path) -> None:
+        """RZ-30-02: Reject symlinks and ensure resolved path stays within base_dir.
+
+        Defense-in-depth against ZipSlip-style attacks where a symlink inside
+        the upload directory points to an arbitrary filesystem location.
+        ``_normalize_relative_path`` guards against ``..`` components but cannot
+        detect symlinks — this method resolves the real path and verifies it.
+        """
+        try:
+            resolved = target.resolve(strict=False)
+        except OSError as exc:
+            raise ValueError(f"Cannot resolve path: {exc}") from exc
+        base_resolved = self.base_dir.resolve()
+        if not resolved.is_relative_to(base_resolved):
+            raise ValueError("Resolved path escapes base directory")
+        # Walk each component to catch symlinks before the final target exists.
+        current = self.base_dir
+        for part in target.relative_to(self.base_dir).parts:
+            current = current / part
+            if current.exists() and current.is_symlink():
+                raise ValueError(f"Symlink detected in path at {current.name}")
+
     async def save_file(
         self,
         relative_path: str,
@@ -68,6 +96,7 @@ class StaticFSStorage(StorageBackend):
         del content_type, cache_control  # unused for filesystem storage
         normalized = self._normalize_relative_path(relative_path)
         target = self.base_dir / normalized
+        self._validate_resolved_path(target)  # RZ-30-02
         await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
         await asyncio.to_thread(target.write_bytes, data)
         relative_str = normalized.as_posix()
@@ -105,7 +134,9 @@ class StaticFSStorage(StorageBackend):
         relative = self._extract_relative_path(file_url)
         if relative is None:
             return
-        await asyncio.to_thread(self._unlink_ignore_missing, self.base_dir / relative)
+        target = self.base_dir / relative
+        self._validate_resolved_path(target)  # RZ-30-02
+        await asyncio.to_thread(self._unlink_ignore_missing, target)
 
     async def exists(self, file_url_or_path: str) -> bool:
         relative = self._extract_relative_path(file_url_or_path)
@@ -113,6 +144,7 @@ class StaticFSStorage(StorageBackend):
             # Fallback for raw paths
             relative = Path(file_url_or_path.lstrip("/"))
         target = self.base_dir / relative
+        self._validate_resolved_path(target)  # RZ-30-02
         return await asyncio.to_thread(target.exists)
 
     async def read_file(self, file_url_or_path: str) -> bytes:
@@ -121,6 +153,7 @@ class StaticFSStorage(StorageBackend):
             # Fallback for raw paths
             relative = Path(file_url_or_path.lstrip("/"))
         target = self.base_dir / relative
+        self._validate_resolved_path(target)  # RZ-30-02
         if not await asyncio.to_thread(target.exists):
             raise FileNotFoundError(f"File not found: {file_url_or_path}")
         return await asyncio.to_thread(target.read_bytes)
@@ -195,9 +228,10 @@ class S3Storage(StorageBackend):
         if cache_control:
             args["CacheControl"] = cache_control
         try:
-            async with self._build_aioboto3_client() as s3:
-                await s3.put_object(**args)
-        except ConnectionError, TimeoutError, OSError:  # RZ-28-01
+            async with asyncio.timeout(_S3_WRITE_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    await s3.put_object(**args)
+        except (ConnectionError, TimeoutError, OSError):  # RZ-28-01
             # RZ-20-04: Narrowed — S3/MinIO upload failures are infra issues.
             logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
             raise
@@ -258,9 +292,10 @@ class S3Storage(StorageBackend):
         if not key:
             return
         try:
-            async with self._build_aioboto3_client() as s3:
-                await s3.delete_object(Bucket=self.bucket, Key=key)
-        except ConnectionError, TimeoutError, OSError:  # pragma: no cover  # RZ-28-01
+            async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    await s3.delete_object(Bucket=self.bucket, Key=key)
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover  # RZ-28-01
             # RZ-20-04: Narrowed — S3 delete is best-effort (fire-and-forget).
             logger.warning(
                 "Failed to delete %s from bucket %s", key, self.bucket, exc_info=True
@@ -271,8 +306,9 @@ class S3Storage(StorageBackend):
         if not key:
             key = file_url_or_path.lstrip("/")
         try:
-            async with self._build_aioboto3_client() as s3:
-                await s3.head_object(Bucket=self.bucket, Key=key)
+            async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    await s3.head_object(Bucket=self.bucket, Key=key)
             return True
         except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — only swallows 404, re-raises others (reviewed TD-27-04)
             # HIGH-W19 + RZ-20-04: Only swallow S3 "not found" (404/NoSuchKey);
@@ -293,10 +329,11 @@ class S3Storage(StorageBackend):
         if not key:
             key = file_url_or_path.lstrip("/")
         try:
-            async with self._build_aioboto3_client() as s3:
-                response = await s3.get_object(Bucket=self.bucket, Key=key)
-                async with response["Body"] as stream:
-                    return cast(bytes, await stream.read())
+            async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
+                async with self._build_aioboto3_client() as s3:
+                    response = await s3.get_object(Bucket=self.bucket, Key=key)
+                    async with response["Body"] as stream:
+                        return cast(bytes, await stream.read())
         except (FileNotFoundError, OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — S3 read errors. Converts to FileNotFoundError
             # for uniform caller interface.

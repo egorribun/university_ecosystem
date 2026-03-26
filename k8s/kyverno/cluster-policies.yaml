@@ -303,3 +303,54 @@ spec:
           spec:
             containers:
               - imagePullPolicy: Always
+
+---
+# Policy 9: Disallow empty or 'latest' image tags (MOD-30-02, Wave 30).
+# CI validates IMAGE_TAG but manual `kubectl apply` can bypass CI.
+# This admission-level gate ensures every container image has a non-empty,
+# non-latest tag (must be semver or commit SHA).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest or Empty Image Tags
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      All container images must specify an explicit tag that is not 'latest'.
+      This prevents accidental deployment of unversioned images and ensures
+      reproducible rollouts. Use semver tags or commit SHAs.
+    policies.kyverno.io/minversion: "1.6.0"
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: >-
+          Image tag must not be 'latest' or empty. Use a semver tag (v1.2.3)
+          or commit SHA for reproducible deployments.
+        pattern:
+          spec:
+            containers:
+              - image: "*:?*"
+    - name: deny-latest-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [university-ecosystem]
+      validate:
+        message: "Image tag 'latest' is not allowed. Use a specific version tag."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.containers[].image }}"
+                operator: AnyIn
+                value: ["*:latest"]

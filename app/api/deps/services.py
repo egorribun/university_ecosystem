@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 def get_chat_message_dispatcher(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatMessageDispatcher":
+) -> ChatMessageDispatcher:
     """FastAPI dep: ChatMessageDispatcher on write DB."""
     from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.attachment_service import ChatAttachmentService
@@ -45,7 +45,7 @@ def get_chat_message_dispatcher(
 
 def get_chat_maintenance_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatMaintenanceService":
+) -> ChatMaintenanceService:
     """FastAPI dep: ChatMaintenanceService on write DB."""
     from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.attachment_service import ChatAttachmentService
@@ -58,7 +58,7 @@ def get_chat_maintenance_service(
 
 def get_chat_creation_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatCreationService":
+) -> ChatCreationService:
     """FastAPI dep: ChatCreationService (DM creation with Redis lock)."""
     from app.deps.cache import get_cache
     from app.repositories.unit_of_work import uow_from_session
@@ -70,7 +70,7 @@ def get_chat_creation_service(
 
 def get_chat_query_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatQueryService":
+) -> ChatQueryService:
     """FastAPI dep: ChatQueryService (read-only) on write DB."""
     from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.query_service import ChatQueryService
@@ -81,7 +81,7 @@ def get_chat_query_service(
 
 def get_read_chat_query_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> "ChatQueryService":
+) -> ChatQueryService:
     """FastAPI dep: ChatQueryService (read-only) on read replica."""
     from app.repositories.unit_of_work import uow_from_session
     from app.services.chat.query_service import ChatQueryService
@@ -94,26 +94,26 @@ def get_read_chat_query_service(
 # do not break immediately.  Remove after audit confirms no other usages.
 def get_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatMessageDispatcher":
+) -> ChatMessageDispatcher:
     return get_chat_message_dispatcher(session)
 
 
 def get_read_chat_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> "ChatQueryService":
+) -> ChatQueryService:
     return get_read_chat_query_service(session)
 
 
 def get_chat_command_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ChatMessageDispatcher":
+) -> ChatMessageDispatcher:
     """Legacy alias for get_chat_message_dispatcher."""
     return get_chat_message_dispatcher(session)
 
 
 def _build_event_service(
     session: AsyncDatabaseSession, vector_service: Any
-) -> "EventService":
+) -> EventService:
     from app.repositories.unit_of_work import uow_from_session
     from app.services.event_service import EventService
 
@@ -124,20 +124,20 @@ def _build_event_service(
 def get_event_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> "EventService":
+) -> EventService:
     return _build_event_service(session, vector_service)
 
 
 def get_read_event_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> "EventService":
+) -> EventService:
     return _build_event_service(session, vector_service)
 
 
 def _build_news_service(
     session: AsyncDatabaseSession, vector_service: Any
-) -> "NewsService":
+) -> NewsService:
     from app.repositories.unit_of_work import uow_from_session
     from app.services.news_service import NewsService
 
@@ -148,18 +148,18 @@ def _build_news_service(
 def get_news_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> "NewsService":
+) -> NewsService:
     return _build_news_service(session, vector_service)
 
 
 def get_read_news_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> "NewsService":
+) -> NewsService:
     return _build_news_service(session, vector_service)
 
 
-def _build_story_service(session: AsyncDatabaseSession) -> "StoryService":
+def _build_story_service(session: AsyncDatabaseSession) -> StoryService:
     from app.repositories.unit_of_work import uow_from_session
     from app.services.story_service import StoryService
 
@@ -169,17 +169,17 @@ def _build_story_service(session: AsyncDatabaseSession) -> "StoryService":
 
 def get_story_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "StoryService":
+) -> StoryService:
     return _build_story_service(session)
 
 
 def get_read_story_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> "StoryService":
+) -> StoryService:
     return _build_story_service(session)
 
 
-def _build_schedule_service(session: AsyncDatabaseSession) -> "ScheduleService":
+def _build_schedule_service(session: AsyncDatabaseSession) -> ScheduleService:
     from app.repositories.unit_of_work import uow_from_session
     from app.services.schedule_optimizer import ScheduleOptimizerService
     from app.services.schedule_service import ScheduleService
@@ -191,19 +191,19 @@ def _build_schedule_service(session: AsyncDatabaseSession) -> "ScheduleService":
 
 def get_schedule_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "ScheduleService":
+) -> ScheduleService:
     return _build_schedule_service(session)
 
 
 def get_read_schedule_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-) -> "ScheduleService":
+) -> ScheduleService:
     return _build_schedule_service(session)
 
 
 def get_auth_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "AuthService":
+) -> AuthService:
     from app.repositories.unit_of_work import uow_from_session
     from app.services.audit_service import audit_service
     from app.services.auth_service import AuthService
@@ -220,7 +220,7 @@ def get_auth_service(
 
 def get_session_service(
     session: Annotated[AsyncDatabaseSession, Depends(get_db)],
-) -> "SessionService":
+) -> SessionService:
     from app.repositories.unit_of_work import uow_from_session
     from app.services.session_service import SessionService
 
@@ -228,7 +228,7 @@ def get_session_service(
     return SessionService(uow)
 
 
-async def get_geolocation_service() -> "GeolocationService":
+async def get_geolocation_service() -> GeolocationService:
     from app.services.geolocation import (
         get_geolocation_service_instance,
     )
@@ -236,7 +236,7 @@ async def get_geolocation_service() -> "GeolocationService":
     return await get_geolocation_service_instance()
 
 
-async def get_redis_session_service() -> "RedisSessionService":
+async def get_redis_session_service() -> RedisSessionService:
     from app.services.auth.redis_session import RedisSessionService
 
     return RedisSessionService()
@@ -244,15 +244,15 @@ async def get_redis_session_service() -> "RedisSessionService":
 
 async def get_login_service(
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    session_service: Annotated["SessionService", Depends(get_session_service)],
+    session_service: Annotated[SessionService, Depends(get_session_service)],
     audit: Annotated[Any, Depends(get_audit_service)],
     redis_session_service: Annotated[
-        "RedisSessionService", Depends(get_redis_session_service)
+        RedisSessionService, Depends(get_redis_session_service)
     ],
     geolocation_service: Annotated[
-        "GeolocationService", Depends(get_geolocation_service)
+        GeolocationService, Depends(get_geolocation_service)
     ],
-) -> "LoginService":
+) -> LoginService:
     from app.repositories.unit_of_work import uow_from_session
     from app.services.auth.credential_validator import CredentialValidator
     from app.services.auth.lockout import LockoutService
@@ -293,7 +293,7 @@ async def get_login_service(
     )
 
 
-def get_analytics_service() -> "AnalyticsService":
+def get_analytics_service() -> AnalyticsService:
     from app.services.analytics import get_analytics_service
 
     return get_analytics_service()

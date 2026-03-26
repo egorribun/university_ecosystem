@@ -21,9 +21,9 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pywebpush import WebPushException, webpush
-from sqlalchemy import create_engine, delete, select, update
+from sqlalchemy import create_engine, delete, update
 from sqlalchemy.engine import URL, Engine, make_url
-from sqlalchemy.orm import selectinload, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -37,11 +37,9 @@ from app.core.ratelimit import (
 )
 from app.models.models import PushSubscription, User
 from app.services.notification_templates import render_notification_template
-from app.services.push_topics import normalize_topic, subscription_supports_topic
+from app.services.push_topics import normalize_topic
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
-
     from sqlalchemy.orm import Session
 
 logger = get_logger(__name__)
@@ -127,7 +125,7 @@ def cleanup() -> None:
     if engine is not None:
         try:
             engine.dispose()
-        except OSError, ConnectionError:  # pragma: no cover  # RZ-28-01
+        except (OSError, ConnectionError):  # pragma: no cover  # RZ-28-01
             # RZ-20-04: Narrowed — engine dispose during shutdown.
             logger.exception("Failed to dispose webpush engine")
 
@@ -157,8 +155,6 @@ _TTL_BY_URGENCY: dict[str, int] = {
     "very-low": 24 * 60 * 60,
 }
 
-_USER_RATE_LIMIT = 60
-_TOPIC_RATE_LIMIT = 300
 _RATE_LIMIT_WINDOW_SECONDS = 60
 
 # RED-07 (audit 2026-03-14): Cap concurrent push threads to prevent thread-pool
@@ -218,7 +214,7 @@ def _current_local_time(user: User | None = None) -> time:
             if candidate:
                 try:
                     tz = ZoneInfo(candidate)
-                except ZoneInfoNotFoundError, ValueError:  # RZ-28-01
+                except (ZoneInfoNotFoundError, ValueError):  # RZ-28-01
                     tz = UTC
     now = datetime.now(tz)
     current = now.timetz()
@@ -321,7 +317,7 @@ def _normalize_payload(
         if key == "ttl":
             try:
                 meta[key] = int(value)
-            except TypeError, ValueError:  # RZ-28-01
+            except (TypeError, ValueError):  # RZ-28-01
                 continue
         else:
             meta[key] = value
@@ -355,7 +351,7 @@ def _normalize_payload(
             if key == "ttl":
                 try:
                     meta[key] = int(value)
-                except TypeError, ValueError:  # RZ-28-01
+                except (TypeError, ValueError):  # RZ-28-01
                     continue
             else:
                 meta[key] = value
@@ -380,7 +376,7 @@ def _normalize_payload(
     if "timestamp" in payload_options:
         try:
             payload_options["timestamp"] = int(payload_options["timestamp"])
-        except TypeError, ValueError:  # RZ-28-01
+        except (TypeError, ValueError):  # RZ-28-01
             payload_options.pop("timestamp", None)
     if "body" not in payload_options:
         payload_options["body"] = ""
@@ -425,7 +421,7 @@ def _resolve_ttl(meta: Mapping[str, Any]) -> int:
     elif raw_ttl is not None:
         try:
             ttl_value = int(raw_ttl)
-        except TypeError, ValueError:  # RZ-28-01
+        except (TypeError, ValueError):  # RZ-28-01
             ttl_value = None
     if ttl_value is not None and ttl_value > 0:
         return ttl_value
@@ -600,7 +596,7 @@ def build_payload(
         if key == "ttl":
             try:
                 meta[key] = int(value)
-            except TypeError, ValueError:  # RZ-28-01
+            except (TypeError, ValueError):  # RZ-28-01
                 continue
         else:
             meta[key] = value
@@ -762,164 +758,3 @@ async def process_push_results(results: list[WebPushResult]) -> None:
                 .values(last_seen_at=datetime.now(UTC))
             )
         await session.commit()
-
-
-async def send_to_user(
-    user_id: uuid.UUID,
-    payload: Mapping[str, Any] | None,
-    topic: str | None = None,
-) -> list[WebPushResult]:
-    normalized_topic = normalize_topic(topic) if topic is not None else None
-    if topic and normalized_topic is None:
-        _log_event(
-            "dispatch",
-            level=logging.WARNING,
-            user_id=user_id,
-            topic=topic,
-            status="invalid_topic",
-        )
-    _, payload_meta = _normalize_payload(payload)
-    payload_topic = normalize_topic(payload_meta.get("topic"))
-    effective_topic = normalized_topic or payload_topic
-    rate_info = await _check_rate_limit(
-        f"user:{user_id}", namespace="webpush:user", limit=_USER_RATE_LIMIT
-    )
-    if not rate_info.allowed:
-        _log_event(
-            "dispatch",
-            level=logging.WARNING,
-            user_id=user_id,
-            topic=effective_topic or normalized_topic or topic,
-            status="rate_limited",
-            retry_after=rate_info.retry_after,
-        )
-        return []
-    await _ensure_async_sessionmaker()
-    async with async_session() as session:
-        result = await session.execute(
-            select(PushSubscription)
-            .options(
-                selectinload(PushSubscription.user).selectinload(
-                    User.push_topic_preferences
-                )
-            )
-            .where(PushSubscription.user_id == user_id)
-        )
-        subscriptions = result.scalars().all()
-    if not subscriptions:
-        _log_event(
-            "dispatch",
-            user_id=user_id,
-            topic=effective_topic or normalized_topic or topic,
-            status="no_subscriptions",
-        )
-        return []
-    tasks: list[Awaitable[WebPushResult]] = []
-    for sub in subscriptions:
-        if not subscription_supports_topic(sub, effective_topic):
-            continue
-        prepared = _prepare_delivery_payload(
-            payload,
-            topic=normalized_topic or payload_topic,
-            user=getattr(sub, "user", None),
-        )
-        tasks.append(_send_push_async(sub, prepared))
-    if not tasks:
-        _log_event(
-            "dispatch",
-            user_id=user_id,
-            topic=effective_topic or normalized_topic or topic,
-            status="no_matching_topics",
-        )
-        return []
-
-    async def _bounded_send_dispatch(task: Awaitable[WebPushResult]) -> WebPushResult:
-        async with _PUSH_DELIVERY_SEMAPHORE:
-            return await task
-
-    results: list[WebPushResult] = await asyncio.gather(
-        *(_bounded_send_dispatch(t) for t in tasks)
-    )
-    await process_push_results(results)
-
-    _log_event(
-        "dispatch",
-        user_id=user_id,
-        topic=effective_topic or normalized_topic or topic,
-        status="sent",
-        delivered=len(results),
-    )
-    return list(results)
-
-
-async def broadcast_to_topic(
-    topic: str,
-    payload: Mapping[str, Any] | None,
-) -> list[WebPushResult]:
-    normalized_topic = normalize_topic(topic)
-    if not normalized_topic:
-        _log_event(
-            "broadcast",
-            level=logging.WARNING,
-            topic=topic,
-            status="invalid_topic",
-        )
-        return []
-    rate_info = await _check_rate_limit(
-        f"topic:{normalized_topic}",
-        namespace="webpush:topic",
-        limit=_TOPIC_RATE_LIMIT,
-    )
-    if not rate_info.allowed:
-        _log_event(
-            "broadcast",
-            level=logging.WARNING,
-            topic=normalized_topic,
-            status="rate_limited",
-            retry_after=rate_info.retry_after,
-        )
-        return []
-    await _ensure_async_sessionmaker()
-    # PERF-20-01 (audit 2026-03-24): Added safety limit for topic broadcasts.
-    # Popular topics (e.g. "news") could match thousands of subscriptions.
-    _BROADCAST_LIMIT = 10_000
-    async with async_session() as session:
-        result = await session.execute(
-            select(PushSubscription)
-            .options(selectinload(PushSubscription.user))
-            .where(PushSubscription.topics.contains([normalized_topic]))
-            .limit(_BROADCAST_LIMIT)
-        )
-        subscriptions = result.scalars().all()
-    if not subscriptions:
-        _log_event(
-            "broadcast",
-            topic=normalized_topic,
-            status="no_subscribers",
-        )
-        return []
-    tasks: list[Awaitable[WebPushResult]] = []
-    for sub in subscriptions:
-        prepared = _prepare_delivery_payload(
-            payload,
-            topic=normalized_topic,
-            user=getattr(sub, "user", None),
-        )
-        tasks.append(_send_push_async(sub, prepared))
-
-    async def _bounded_send_broadcast(task: Awaitable[WebPushResult]) -> WebPushResult:
-        async with _PUSH_DELIVERY_SEMAPHORE:
-            return await task
-
-    results: list[WebPushResult] = await asyncio.gather(
-        *(_bounded_send_broadcast(t) for t in tasks)
-    )
-    await process_push_results(results)
-
-    _log_event(
-        "broadcast",
-        topic=normalized_topic,
-        status="sent",
-        delivered=len(results),
-    )
-    return list(results)

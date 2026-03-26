@@ -44,6 +44,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
@@ -347,7 +348,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 
 	grpcSrv.GracefulStop()
 
-	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)  // RZ-33-21: use Background — ctx is already cancelled
 	defer cancel()
 	if err := graphqlSrv.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(ctx, "HTTP Server forced to shutdown", "err", err)
@@ -535,5 +536,13 @@ func initTracer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 		sdktrace.WithResource(res),
 	)
 	otel.SetTracerProvider(tp)
+	// MOD-31-02: Register composite propagator so W3C Baggage headers propagate
+	// alongside TraceContext across service boundaries (user_id, request_id).
+	otel.SetTextMapPropagator(
+		propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		),
+	)
 	return tp, nil
 }

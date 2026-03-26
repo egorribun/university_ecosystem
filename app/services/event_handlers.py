@@ -42,9 +42,8 @@ async def log_all_events(event: DomainEvent) -> None:
 async def handle_user_created(event: UserCreated) -> None:
     """Handle user creation events."""
     logger.info(
-        "New user registered: user_id=%d, email=%s",
+        "New user registered: user_id=%d",
         event.user_id,
-        event.email,
     )
     # Could trigger:
     # - Welcome email

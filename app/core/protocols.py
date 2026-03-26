@@ -11,12 +11,6 @@ if TYPE_CHECKING:
 UserLike = Union["User", "UserDTO", uuid.UUID, str]
 
 
-class HasID(Protocol):
-    """Protocol for objects that have an 'id' attribute."""
-
-    id: Any
-
-
 def extract_user_id(user: UserLike) -> uuid.UUID:
     """Safely extracts a UUID from any UserLike object for strict type compliance."""
     if isinstance(user, str):

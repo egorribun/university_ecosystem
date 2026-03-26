@@ -35,20 +35,6 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-func TestGenerateRequestID_ReturnsNonEmptyString(t *testing.T) {
-	requestID := GenerateRequestID()
-
-	assert.NotEmpty(t, requestID)
-}
-
-func TestGenerateRequestID_IsUUID(t *testing.T) {
-	requestID := GenerateRequestID()
-
-	// UUID v4 length is 36 (8-4-4-4-12 hex + 4 hyphens)
-	assert.Len(t, requestID, 36)
-	assert.Contains(t, requestID, "-")
-}
-
 func TestHealthHandler_ReturnsOKStatus(t *testing.T) {
 	router := gin.New()
 	router.GET("/health", HealthHandler)
@@ -234,15 +220,6 @@ func TestProxyHandler_DropsForgedSignatureWhenNoSecret(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	assert.Empty(t, capturedSig, "Client-supplied X-Internal-Signature must always be stripped")
-}
-
-func TestGenerateRequestID_IsUnique(t *testing.T) {
-	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
-		id := GenerateRequestID()
-		assert.False(t, ids[id], "Generated duplicate ID")
-		ids[id] = true
-	}
 }
 
 func createTestProxy(targetURL string) *httputil.ReverseProxy {

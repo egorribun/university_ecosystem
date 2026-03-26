@@ -210,17 +210,25 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub) {
 		MaxHeaderBytes:    1 << 13,
 	}
 
+	// RZ-33-07: Use channel-based error propagation instead of os.Exit in
+	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
+	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
+	errChan := make(chan error, 1)
 	go func() {
 		logger.InfoContext(context.Background(), "Starting WebSocket Hub", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			logger.ErrorContext(context.Background(), "Server error", "err", err)
-			os.Exit(1)
+			errChan <- err
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+
+	select {
+	case err := <-errChan:
+		logger.ErrorContext(context.Background(), "Server error", "err", err)
+	case <-quit:
+	}
 
 	logger.InfoContext(context.Background(), "Shutting down...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)

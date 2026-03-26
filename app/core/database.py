@@ -387,6 +387,7 @@ def _setup_pool_health_monitoring(engine: AsyncEngine) -> None:
     event.listen(pool, "checkout", _on_checkout)
     event.listen(pool, "checkin", _on_checkin)
     event.listen(pool, "invalidate", _on_invalidate)
+    event.listen(pool, "checkout_failed", _on_checkout_failed)
 
     logger.info(
         "Pool health monitoring enabled (size=%s, overflow=%s)",
@@ -399,7 +400,13 @@ def create_session_factory(
     current_settings: Settings = settings,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession], AsyncEngine | None]:
     engine_kwargs = _build_engine_kwargs(current_settings)
-    logger.debug("Creating engine for URL: %s", current_settings.database_url)
+    # RZ-33-02: Mask credentials — log only the host/db portion after '@'.
+    _masked = (
+        str(current_settings.database_url).split("@")[-1]
+        if "@" in str(current_settings.database_url)
+        else "<configured>"
+    )
+    logger.debug("Creating engine for URL: ...@%s", _masked)
     engine = create_async_engine(current_settings.database_url, **engine_kwargs)
 
     # Enable slow query logging
@@ -586,12 +593,20 @@ def init_database(current_settings: Settings | None = None) -> None:
             class_=AsyncSession,
         )
 
-        logger.info(
-            "Database initialised: %s (replica: %s)",
-            s.database_url,
-            s.database_read_replica_url
+        # RZ-33-02: Mask credentials in database URL before logging.
+        _masked_url = (
+            str(s.database_url).split("@")[-1]
+            if "@" in str(s.database_url)
+            else "<configured>"
+        )
+        _masked_replica = (
+            str(s.database_read_replica_url).split("@")[-1]
             if getattr(s, "database_read_replica_url", None)
-            else "none",
+            and "@" in str(s.database_read_replica_url)
+            else "none"
+        )
+        logger.info(
+            "Database initialised: %s (replica: %s)", _masked_url, _masked_replica
         )
 
 

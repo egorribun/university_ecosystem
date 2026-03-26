@@ -136,11 +136,13 @@ class ETagMiddleware(BaseHTTPMiddleware):
                 headers={"ETag": formatted_etag},
             )
 
-        # Return response with ETag
+        # Return response with ETag — use items() to preserve duplicate headers
+        merged_headers = dict(response.headers.items())
+        merged_headers["ETag"] = formatted_etag
         return Response(
             content=body,
             status_code=response.status_code,
-            headers={**dict(response.headers), "ETag": formatted_etag},
+            headers=merged_headers,
             media_type=response.media_type,
         )
 

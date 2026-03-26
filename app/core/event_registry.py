@@ -66,9 +66,15 @@ def reconstruct_event(event_type: str, payload: dict[str, Any]) -> DomainEvent:
     """
     cls = _REGISTRY.get(event_type)
     if cls is None:
+        # RZ-33-01: fallback to the auto-populated _EVENT_REGISTRY from events module,
+        # since no event class currently uses @register_event.
+        from app.core.events import _EVENT_REGISTRY
+
+        cls = _EVENT_REGISTRY.get(event_type)
+    if cls is None:
         raise ValueError(
             f"Unknown event type {event_type!r}. "
-            "Decorate the class with @register_event to enable outbox dispatch."
+            "Decorate the class with @register_event or define it in app.core.events."
         )
 
     # Only pass keys that the dataclass actually declares — drop unknown keys

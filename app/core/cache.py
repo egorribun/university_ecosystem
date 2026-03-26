@@ -17,8 +17,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import orjson
+from prometheus_client import Counter
 
 from app.core.logging import get_logger
+
+# TD-30-05: Prometheus counters for L1 cache observability.
+# Thread-safe by design (atomic inc), feed Grafana dashboards directly.
+_L1_CACHE_HITS = Counter("cache_l1_hits_total", "L1 in-memory cache hits")
+_L1_CACHE_MISSES = Counter("cache_l1_misses_total", "L1 in-memory cache misses")
 
 logger = get_logger(__name__)
 
@@ -73,16 +79,19 @@ class LRUCache[T]:
 
             if entry is None:
                 self._misses += 1
+                _L1_CACHE_MISSES.inc()  # TD-30-05
                 return None
 
             if entry.is_expired():
                 del self._cache[key]
                 self._misses += 1
+                _L1_CACHE_MISSES.inc()  # TD-30-05
                 return None
 
             # Move to end (most recently used)
             self._cache.move_to_end(key)
             self._hits += 1
+            _L1_CACHE_HITS.inc()  # TD-30-05
             return entry.value
 
     def set(self, key: str, value: T, ttl: float | None = None) -> None:
@@ -118,7 +127,10 @@ class LRUCache[T]:
 
     def clear(self) -> None:
         """Clear all entries."""
-        self._cache.clear()
+        with (
+            self._lock
+        ):  # RZ-33-03: acquire lock — prevent data race under free-threading
+            self._cache.clear()
 
     def invalidate_prefix(self, prefix: str) -> int:
         """
@@ -126,10 +138,13 @@ class LRUCache[T]:
 
         Returns number of keys invalidated.
         """
-        keys_to_delete = [k for k in self._cache if k.startswith(prefix)]
-        for key in keys_to_delete:
-            del self._cache[key]
-        return len(keys_to_delete)
+        with (
+            self._lock
+        ):  # RZ-33-03: acquire lock — prevent data race under free-threading
+            keys_to_delete = [k for k in self._cache if k.startswith(prefix)]
+            for key in keys_to_delete:
+                del self._cache[key]
+            return len(keys_to_delete)
 
     @property
     def size(self) -> int:
@@ -214,7 +229,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("get", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
+                except Exception:  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
                     pass  # metrics unavailable — never block cache logic
 
         return None
@@ -243,7 +258,7 @@ class MultiLayerCache:
                     from app.core.metrics import record_redis_command
 
                     record_redis_command("set", 0.0, success=False)
-                except Exception:  # noqa: S110  # nosec B110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
+                except Exception:  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
                     pass
 
     async def delete(self, key: str) -> None:

@@ -16,10 +16,14 @@ RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash app
 
-# Install Rust toolchain (required by maturin to build pyo3-sanitizer and rust_ext)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --no-modify-path --default-toolchain stable --profile minimal
-ENV PATH="/root/.cargo/bin:$PATH"
+# MOD-30-05: Install Rust toolchain from official Docker image instead of
+# curl|sh (supply chain risk — executing unversioned script from internet).
+# Pin to a specific Rust version for reproducible builds.
+COPY --from=rust:1.85-slim-bookworm /usr/local/rustup /usr/local/rustup
+COPY --from=rust:1.85-slim-bookworm /usr/local/cargo /usr/local/cargo
+ENV RUSTUP_HOME="/usr/local/rustup" \
+    CARGO_HOME="/usr/local/cargo" \
+    PATH="/usr/local/cargo/bin:$PATH"
 
 # Install uv
 # LOW-W19: pin to same version used in CI (reusable-backend-tests uses setup-uv v7.6.0)

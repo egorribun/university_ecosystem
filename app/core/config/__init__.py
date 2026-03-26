@@ -68,12 +68,14 @@ class Settings(
     IntegrationSettings,
     AppGeneralSettings,
 ):
-    """Consolidated application settings."""
+    """Consolidated application settings.
 
-    health_storage_probe_enabled: bool = True
-    health_storage_probe_min_interval_seconds: int = 3600
-    monitoring_heavy_probe_enabled: bool = False
-    api_v2_prefix: str = "/api/v2"
+    Note: health_storage_probe_enabled, health_storage_probe_min_interval_seconds,
+    monitoring_heavy_probe_enabled, and api_v2_prefix are inherited from parent
+    mixin classes (AppGeneralSettings / SecuritySettings / StorageSettings).
+    Do not re-declare them here — shadowing breaks MRO field resolution.
+    (TD-33-04, Wave 33)
+    """
 
     @field_validator("auto_create_schema")
     @classmethod
@@ -136,8 +138,54 @@ class Settings(
                 raise ValueError("SPOTIFY_TOKEN_SECRET required in production")
             if not getattr(self, "nats_auth_token", None):
                 raise ValueError("NATS_AUTH_TOKEN required in production")
-            if "PRIVATE KEY" in str(getattr(self, "jwt_signing_active_secret", "")):
-                raise ValueError("jwt signing registry must contain PUBLIC keys only")
+            # RZ-33-07: RS256 signing legitimately requires a private key.
+            # Only reject if the *public* JWKS endpoint accidentally contains a private key.
+            # The signing secret is expected to be private for RS256.
+        return self
+
+    @model_validator(mode="after")
+    def _validate_dependent_settings(self) -> Settings:
+        """TD-29-02: Cross-validate dependent configuration pairs.
+
+        Catches configuration mistakes that compile individually but break
+        at runtime due to missing counterparts.
+        """
+        env = str(getattr(self, "environment", "production") or "production").lower()
+        if env in _DEVELOPMENT_ENVIRONMENTS:
+            return self
+
+        # Cache backend requires matching URL
+        cache_backend = str(getattr(self, "cache_backend", "redis") or "redis").lower()
+        if cache_backend in ("redis", "tiered"):
+            redis_url = str(getattr(self, "cache_redis_url", "") or "")
+            if not redis_url or redis_url == "redis://127.0.0.1:6379/0":
+                _logger.warning(
+                    "TD-29-02: cache_backend=%s but cache_redis_url is default/empty — "
+                    "set CACHE_REDIS_URL for production or connections will fail",
+                    cache_backend,
+                )
+
+        # Database pool coordination
+        pool_size = int(getattr(self, "database_pool_size", 5) or 5)
+        max_overflow = int(getattr(self, "database_max_overflow", 10) or 10)
+        if pool_size + max_overflow < 4:
+            _logger.warning(
+                "TD-29-02: database_pool_size=%d + max_overflow=%d = %d connections — "
+                "this is very low for production; consider at least 10 total",
+                pool_size,
+                max_overflow,
+                pool_size + max_overflow,
+            )
+
+        # Read replica URL should be different from primary
+        replica_url = str(getattr(self, "database_read_replica_url", "") or "")
+        db_url = str(getattr(self, "database_url", "") or "")
+        if replica_url and replica_url == db_url:
+            _logger.warning(
+                "TD-29-02: database_read_replica_url is identical to database_url — "
+                "read queries will hit the primary instead of a replica"
+            )
+
         return self
 
     @cached_property

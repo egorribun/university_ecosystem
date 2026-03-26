@@ -8,6 +8,22 @@ import (
 	"strings"
 )
 
+// getEnvFloat64 reads a float64 from the given environment variable, returning
+// defaultValue if the variable is empty or unparseable.
+func getEnvFloat64(key string, defaultValue float64) float64 {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultValue
+	}
+	val, err := strconv.ParseFloat(valStr, 64)
+	if err != nil {
+		slog.Warn("invalid float env var, using default",
+			"key", key, "value", valStr, "default", defaultValue)
+		return defaultValue
+	}
+	return val
+}
+
 // Config holds the gateway configuration.
 type Config struct {
 	Port       string
@@ -34,6 +50,15 @@ type Config struct {
 	// X-Internal-Signature to reject requests that bypass the gateway.
 	// Optional in dev; required in production for full zero-trust enforcement.
 	InternalHMACSecret string
+	// MOD-W17-03: JWKS hot-reload configuration.
+	// When JWKSEndpoint is non-empty, the gateway periodically fetches the JWKS
+	// from this URL and atomically swaps the RSA public key for RS256 verification.
+	// JWKSPublicKeyPEM is still used as the initial/fallback key.
+	JWKSEndpoint        string
+	JWKSRefreshInterval int // seconds between JWKS fetches (default: 300 = 5 min)
+	// SentryTracesSampleRate controls Sentry performance monitoring sample rate.
+	// Default 1.0 (100%) for dev; recommend 0.1 (10%) for production.
+	SentryTracesSampleRate float64
 }
 
 // Load loads the configuration from environment variables
@@ -58,6 +83,12 @@ func Load() (*Config, error) {
 		GrpcUseTLS: os.Getenv("GRPC_USE_TLS") != "false",
 		// RZ-14-05: optional in dev, required in production.
 		InternalHMACSecret: os.Getenv("INTERNAL_HMAC_SECRET"),
+		// MOD-W17-03: JWKS hot-reload. Set JWKS_ENDPOINT to enable.
+		JWKSEndpoint:        os.Getenv("JWKS_ENDPOINT"),
+		JWKSRefreshInterval: getEnvInt("JWKS_REFRESH_INTERVAL", 300),
+		// RZ-33-02: Configurable Sentry sample rate. Default 1.0 for dev;
+		// recommend 0.1 for production (set SENTRY_TRACES_SAMPLE_RATE=0.1).
+		SentryTracesSampleRate: getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
 	}
 
 	if cfg.JWTSecret == "" {
@@ -67,6 +98,12 @@ func Load() (*Config, error) {
 
 	if cfg.BackendURL == "" {
 		return nil, fmt.Errorf("BACKEND_URL must be set")
+	}
+
+	// RZ-33-02: If JWKS hot-reload is enabled but refresh interval is invalid,
+	// fall back to the default (300s) to prevent tight-loop polling.
+	if cfg.JWKSEndpoint != "" && cfg.JWKSRefreshInterval <= 0 {
+		cfg.JWKSRefreshInterval = 300
 	}
 
 	return cfg, nil
@@ -87,26 +124,6 @@ func getEnvInt(key string, defaultValue int) int {
 	val, err := strconv.Atoi(valStr)
 	if err != nil {
 		slog.Warn("invalid integer env var, using default",
-			"key", key, "value", valStr, "default", defaultValue)
-		return defaultValue
-	}
-	return val
-}
-
-// getEnvFloat parses an environment variable as a float64.
-// FIX-FLOAT-01: Uses strconv.ParseFloat instead of fmt.Sscan. fmt.Sscan
-// performs a partial parse — it accepts values like "10abc" and silently
-// returns 10.0, ignoring the trailing garbage. strconv.ParseFloat rejects
-// any input that is not a valid floating-point literal, preventing
-// misconfigured env vars from being silently truncated.
-func getEnvFloat(key string, defaultValue float64) float64 {
-	valStr := os.Getenv(key)
-	if valStr == "" {
-		return defaultValue
-	}
-	val, err := strconv.ParseFloat(valStr, 64)
-	if err != nil {
-		slog.Warn("invalid float env var, using default",
 			"key", key, "value", valStr, "default", defaultValue)
 		return defaultValue
 	}

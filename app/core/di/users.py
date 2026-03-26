@@ -16,9 +16,9 @@ from app.services.user_service import UserService
 
 
 class UserProvider(Provider):
-    @provide(scope=Scope.REQUEST)
-    def notification_service(self, db: AsyncDatabaseSession) -> NotificationService:
-        return NotificationService(db=db)
+    # TD-33-08: NotificationService provider removed — now provided by
+    # ContentProvider only.  Dishka injects the same instance into both
+    # UserService and content services, eliminating the duplicate registration.
 
     @provide(scope=Scope.REQUEST)
     def user_service(
@@ -73,7 +73,7 @@ class UserProvider(Provider):
         from app.repositories.unit_of_work import get_unit_of_work
 
         uow = get_unit_of_work(lambda: db)
-        uow._session = db
+        uow._session = db  # RZ-33-06: manual session injection — UnitOfWork lacks public set_session() API
         uow.users = UserRepository(db)
         uow.auth = AuthRepository(db)
         uow.chats = ChatRepository(db)

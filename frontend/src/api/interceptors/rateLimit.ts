@@ -207,13 +207,24 @@ export const scheduleRateLimitWindow = (delayMs: number) => {
   )
 }
 
-export const waitForRateLimitWindow = async () => {
+// RZ-31-04: Accept optional AbortSignal so callers (e.g. 429 retry in client.ts)
+// can cancel the wait when the user navigates away or the component unmounts.
+// Follows the same pattern established by TD-26-02/03 in the WS ticket fetch.
+export const waitForRateLimitWindow = async (signal?: AbortSignal) => {
   if (rateLimitResetAt <= Date.now()) {
     return
   }
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError")
+  }
 
-  await new Promise<void>((resolve) => {
-    rateLimitWaiters.push(resolve)
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("Aborted", "AbortError"))
+    signal?.addEventListener("abort", onAbort, { once: true })
+    rateLimitWaiters.push(() => {
+      signal?.removeEventListener("abort", onAbort)
+      resolve()
+    })
   })
 }
 

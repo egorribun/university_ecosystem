@@ -277,7 +277,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             .limit(limit)
             .options(contains_eager(User.profile), *USER_MFA_COLLECTION_OPTIONS)
         )
-        objs = result.scalars().all()
+        objs = result.unique().scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
     async def get_user_sessions(

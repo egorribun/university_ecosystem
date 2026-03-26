@@ -115,55 +115,36 @@ async def test_refresh_user_mfa_preferences_coverage(
     assert user.mfa_required is True
 
 
-def test_password_policy_min_classes_coverage():
+def test_password_policy_min_classes_coverage(monkeypatch):
     from app.core.config import settings
 
-    # Temporarily force policy settings
-    original_min = settings.password_min_character_classes
-    original_req_upper = settings.password_require_uppercase
-    original_req_lower = settings.password_require_lowercase
-    original_req_digit = settings.password_require_digit
-    original_req_sym = settings.password_require_special
+    monkeypatch.setattr(settings, "password_min_character_classes", 4)
+    monkeypatch.setattr(settings, "password_require_uppercase", False)
+    monkeypatch.setattr(settings, "password_require_lowercase", False)
+    monkeypatch.setattr(settings, "password_require_digit", False)
+    monkeypatch.setattr(settings, "password_require_special", False)
 
-    settings.password_min_character_classes = 4
-    settings.password_require_uppercase = False
-    settings.password_require_lowercase = False
-    settings.password_require_digit = False
-    settings.password_require_special = False
-
-    try:
-        # Fails because it only has 3 classes (Upper, Lower, Digit)
-        with pytest.raises(ValueError) as excinfo:
-            security._validate_password_policy("Ab1Ab1Ab1")
-        assert "include at least 4" in str(excinfo.value)
-    finally:
-        settings.password_min_character_classes = original_min
-        settings.password_require_uppercase = original_req_upper
-        settings.password_require_lowercase = original_req_lower
-        settings.password_require_digit = original_req_digit
-        settings.password_require_special = original_req_sym
+    # Fails because it only has 3 classes (Upper, Lower, Digit)
+    with pytest.raises(ValueError) as excinfo:
+        security._validate_password_policy("Ab1Ab1Ab1")
+    assert "include at least 4" in str(excinfo.value)
 
 
-def test_password_policy_strength_coverage():
+def test_password_policy_strength_coverage(monkeypatch):
     from app.core.config import settings
 
-    original_score = settings.password_zxcvbn_min_score
-    original_min_classes = settings.password_min_character_classes
-    settings.password_zxcvbn_min_score = 4
+    monkeypatch.setattr(settings, "password_zxcvbn_min_score", 4)
     # Disable class checks to ensure we reach the strength check
-    settings.password_require_uppercase = False
-    settings.password_require_lowercase = False
-    settings.password_require_digit = False
-    settings.password_require_special = False
-    settings.password_min_character_classes = 0
-    try:
-        # "password" is very weak
-        with pytest.raises(ValueError) as excinfo:
-            security._validate_password_policy("password")
-        assert "too weak" in str(excinfo.value)
-    finally:
-        settings.password_zxcvbn_min_score = original_score
-        settings.password_min_character_classes = original_min_classes
+    monkeypatch.setattr(settings, "password_require_uppercase", False)
+    monkeypatch.setattr(settings, "password_require_lowercase", False)
+    monkeypatch.setattr(settings, "password_require_digit", False)
+    monkeypatch.setattr(settings, "password_require_special", False)
+    monkeypatch.setattr(settings, "password_min_character_classes", 0)
+
+    # "password" is very weak
+    with pytest.raises(ValueError) as excinfo:
+        security._validate_password_policy("password")
+    assert "too weak" in str(excinfo.value)
 
 
 @pytest.mark.asyncio

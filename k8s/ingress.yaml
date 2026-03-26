@@ -20,13 +20,15 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    # TD-28-03: Replace with actual domain or Helm .Values.ingress.hosts
+    # TD-31-02 (supersedes TD-28-03): Parameterized via envsubst in the deploy
+    # pipeline.  Set FRONTEND_HOST, API_HOST, TLS_SECRET_NAME env vars before
+    # running: envsubst < ingress.yaml | kubectl apply -f -
     - hosts:
-        - university.example.com
-        - api.university.example.com
-      secretName: university-ecosystem-tls
+        - ${FRONTEND_HOST}
+        - ${API_HOST}
+      secretName: ${TLS_SECRET_NAME}
   rules:
-    - host: university.example.com
+    - host: ${FRONTEND_HOST}
       http:
         paths:
           - path: /
@@ -36,7 +38,7 @@ spec:
                 name: frontend
                 port:
                   number: 80
-    - host: api.university.example.com
+    - host: ${API_HOST}
       http:
         paths:
           - path: /

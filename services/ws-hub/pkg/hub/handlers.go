@@ -124,6 +124,20 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		return
 	}
 
+	// TD-31-05: Pre-check capacity before WebSocket upgrade and goroutine spawn.
+	// This is a racy check (another client may register concurrently), but it
+	// prevents the upgrade + goroutine spawn in the common case.  The authoritative
+	// check remains in handleRegister inside the Run loop.
+	h.mu.RLock()
+	atCapacity := h.maxClients > 0 && len(h.Clients) >= h.maxClients
+	h.mu.RUnlock()
+	if atCapacity {
+		h.Logger.WarnContext(setupCtx, "WebSocket rejected: hub at capacity",
+			"max_clients", h.maxClients)
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebSocket upgrade failed", "err", err)

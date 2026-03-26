@@ -1,0 +1,78 @@
+# MOD-W16-03 / ADR-012: Fluent Bit DaemonSet configuration for Grafana Loki.
+# Deploy Fluent Bit via Helm: helm install fluent-bit fluent/fluent-bit -f this-file.yaml
+#
+# This ConfigMap is used by the Fluent Bit DaemonSet to parse JSON container logs,
+# enrich with Kubernetes metadata, and forward to Loki.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: university-ecosystem
+  labels:
+    app.kubernetes.io/name: fluent-bit
+    app.kubernetes.io/part-of: university-ecosystem
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Daemon        Off
+        Log_Level     info
+        Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/university-ecosystem*.log
+        Parser            cri
+        Mem_Buf_Limit     10MB
+        Skip_Long_Lines   On
+        Refresh_Interval  10
+        DB                /var/log/flb_kube.db
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log           On
+        Merge_Log_Key       log_parsed
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Labels              On
+        Annotations         Off
+
+    [FILTER]
+        Name    nest
+        Match   kube.*
+        Operation lift
+        Nested_under kubernetes
+        Add_prefix   k8s_
+
+    [OUTPUT]
+        Name          loki
+        Match         kube.*
+        Host          loki.monitoring.svc.cluster.local
+        Port          3100
+        Labels        namespace=$k8s_namespace_name, app=$k8s_labels_app.kubernetes.io/name, component=$k8s_labels_app.kubernetes.io/component
+        Remove_Keys   k8s_pod_id,k8s_docker_id,k8s_container_hash
+        Auto_Kubernetes_Labels Off
+        Line_Format   json
+
+  parsers.conf: |
+    [PARSER]
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+    [PARSER]
+        Name        json
+        Format      json
+        Time_Key    timestamp
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z

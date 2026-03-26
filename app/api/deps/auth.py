@@ -158,7 +158,7 @@ async def get_current_user(
         if cached_sid:
             try:
                 session = await db.get(ActiveSession, _uuid_mod.UUID(cached_sid))
-            except ValueError, TypeError:  # RZ-28-01
+            except (ValueError, TypeError):  # RZ-28-01
                 session = None
         if not session or session.revoked_at:
             # session_id missing/stale in old cache entries — fall through to DB
@@ -197,7 +197,7 @@ async def get_current_user(
     # 4. Security Lifecycle Validation
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
-    assert session is not None  # nosec B101  # noqa: S101
+    assert session is not None  # noqa: S101
 
     security_service = AuthSecurityService(db, locale)
     security_service.validate_session_expiry(session)

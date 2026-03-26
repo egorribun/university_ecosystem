@@ -111,15 +111,11 @@ async def test_search_similar_with_scores_success(vector_service, mock_db):
         mock_result.all.return_value = [(mock_obj, mock_score)]
         mock_db.execute.return_value = mock_result
 
-        try:
-            results = await vector_service.search_similar_with_scores(mock_model, [0.1])
-            assert len(results) == 1
-            assert results[0][0] == mock_obj
-            assert results[0][1] == 0.8
-            mock_db.execute.assert_called()
-        except TypeError:
-            # Fallback if mock arithmetic fails in some environments
-            pass
+        results = await vector_service.search_similar_with_scores(mock_model, [0.1])
+        assert len(results) == 1
+        assert results[0][0] == mock_obj
+        assert results[0][1] == 0.8
+        mock_db.execute.assert_called()
 
 
 @pytest.mark.asyncio

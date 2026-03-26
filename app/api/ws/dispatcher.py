@@ -154,7 +154,10 @@ class MessageDispatcher:
                 scope="chat_participants",
                 **self._get_websocket_audit_context(websocket),
             )
-            await websocket.send_json({"type": "online_list", "users": online})
+            # RZ-33-08: Convert UUIDs to strings — json.dumps cannot serialize uuid.UUID.
+            await websocket.send_json(
+                {"type": "online_list", "users": [str(u) for u in online]}
+            )
 
         else:
             await websocket.send_json(

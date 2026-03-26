@@ -330,6 +330,7 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
 
 
 def shutdown_observability() -> None:
+    global _otel_configured
     provider = trace.get_tracer_provider()
     with suppress(Exception):
         if isinstance(provider, TracerProvider):
@@ -347,6 +348,8 @@ def shutdown_observability() -> None:
     if _otel_logger_provider is not None:
         with suppress(Exception):
             cast(Any, _otel_logger_provider).shutdown()
+
+    _otel_configured = False
 
 
 def _sanitize_metric_name(name: str) -> str:
@@ -495,7 +498,7 @@ class PeriodicTaskRun:
 def _coerce_deleted_value(value: Any) -> int:
     try:
         number = int(value)
-    except TypeError, ValueError:  # RZ-28-01 + MOD-25-04
+    except (TypeError, ValueError):  # RZ-28-01 + MOD-25-04
         return 0
     return number if number > 0 else 0
 

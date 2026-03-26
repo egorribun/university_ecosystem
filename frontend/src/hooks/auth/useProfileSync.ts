@@ -794,7 +794,14 @@ export const useProfileSync = (
     const controller = new AbortController()
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
-    const hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    // RZ-31-03: Safari private browsing throws SecurityError on localStorage access.
+    // Every other localStorage call in this file is wrapped — this was a missed spot.
+    let hasCache = false
+    try {
+      hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    } catch {
+      // Incognito/privacy mode — proceed without cache.
+    }
     if (
       userStateRef.current == null &&
       !hasCache &&

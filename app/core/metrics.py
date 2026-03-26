@@ -425,29 +425,11 @@ _CIRCUIT_BREAKER_TRIPS = (
 #     FOR 1h
 #     LABELS { severity="warning" }
 #     ANNOTATIONS { summary="bcrypt migration deadline passed but users remain" }
-_LEGACY_BCRYPT_VERIFICATIONS = (
-    Counter(
-        "auth_legacy_bcrypt_verifications_total",
-        "Total legacy bcrypt password verifications — decreasing to 0 means migration is complete",
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
-)
-
-# Gauge for the total number of user accounts still using bcrypt hashes.
-# Populated by record_legacy_bcrypt_user_count() called from the startup lifespan
-# (see app/core/lifespan.py) and periodically by the session_cleanup task.
-_LEGACY_BCRYPT_USERS_REMAINING = (
-    Gauge(
-        "auth_legacy_bcrypt_users_remaining",
-        "Number of user accounts still storing a legacy bcrypt password hash — "
-        "should reach 0 before 2026-09-01",
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
-)
+# TD-33-03: bcrypt metric definitions (_LEGACY_BCRYPT_VERIFICATIONS,
+# _LEGACY_BCRYPT_USERS_REMAINING) and their recording functions were removed
+# in Wave 33 — bcrypt verification was removed in TD-21-04 (Wave 21) and the
+# metrics were dead code.  Callers in security.py and migrate_passwords.py
+# have try/except guards and degrade gracefully on ImportError.
 
 # MOD-W10-08: Counter for background task failures.
 # Alert when rate(background_task_errors_total[5m]) > 0.
@@ -472,31 +454,6 @@ def record_background_task_error(task_name: str) -> None:
     """
     if _BACKGROUND_TASK_ERRORS is not None:
         _BACKGROUND_TASK_ERRORS.labels(task_name=task_name).inc()
-
-
-def record_legacy_bcrypt_verification() -> None:
-    """Increment the legacy bcrypt verification counter.
-
-    Called by _verify_legacy_bcrypt on every successful or attempted bcrypt check.
-    Monitor this counter: when it reaches 0 for 30+ days the bcrypt migration
-    is complete and the legacy code path can be removed.
-    """
-    if _LEGACY_BCRYPT_VERIFICATIONS is not None:
-        _LEGACY_BCRYPT_VERIFICATIONS.inc()
-
-
-def record_legacy_bcrypt_user_count(count: int) -> None:
-    """Set the gauge for how many users still have bcrypt hashes.
-
-    TD-W14-02: Call this from the startup lifespan after a DB query such as:
-        SELECT COUNT(*) FROM users WHERE password_hash LIKE '$2b$%'
-    and from periodic cleanup tasks so the gauge stays current.
-
-    Prometheus alert: if auth_legacy_bcrypt_users_remaining > 0 after
-    2026-09-01 (Unix timestamp 1756684800), page oncall.
-    """
-    if _LEGACY_BCRYPT_USERS_REMAINING is not None:
-        _LEGACY_BCRYPT_USERS_REMAINING.set(count)
 
 
 def record_login_success(method: str = "password") -> None:
@@ -645,6 +602,10 @@ _PLACEHOLDER_PASSWORDS: frozenset[str] = frozenset(
 )
 _LOOPBACK_HOSTNAMES = {"localhost"}
 logger = get_logger(__name__)
+
+# RZ-33-28: Prime psutil CPU measurement so the first real call to
+# cpu_percent(interval=None) returns a non-zero value (needs a prior baseline).
+psutil.cpu_percent(interval=None)
 
 
 class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
@@ -964,11 +925,9 @@ def _load_gputil() -> Any:
 def _record_system_metrics() -> None:
     if _CPU_LOAD is not None:
         try:
-            # LOW-W19: interval=None returns 0.0 on the very first call because
-            # psutil has no previous measurement to compare against.  Using
-            # interval=0.1 performs a short blocking measurement so the first
-            # scrape always reports a real (non-zero) value.
-            _CPU_LOAD.set(float(psutil.cpu_percent(interval=0.1)))
+            # Non-blocking: uses delta from the previous call (primed at
+            # module load time so the first scrape already has a baseline).
+            _CPU_LOAD.set(float(psutil.cpu_percent(interval=None)))
         except Exception:  # pragma: no cover - defensive metrics guard  # RZ-22-01-JUSTIFIED: metrics guard  # RZ-22-01-JUSTIFIED: metrics guard (reviewed TD-27-04)
             logger.debug("Failed to collect CPU metrics", exc_info=True)
     if _GPU_LOAD is not None:

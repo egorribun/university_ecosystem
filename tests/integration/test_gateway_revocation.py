@@ -156,12 +156,12 @@ async def test_gateway_rejects_revoked_session_with_different_client() -> None:
     # New client instance — simulates a different machine / attacker
     async with httpx.AsyncClient(timeout=10.0) as attacker:
         # No cookies — Bearer token only (attacker may not have the session cookie)
-        status = await attacker.get(
+        resp = await attacker.get(
             f"{GATEWAY_URL}/api/me",
             headers={"Authorization": f"Bearer {token}"},
         )
 
-    assert status == 401, (
+    assert resp.status_code == 401, (
         f"Gateway accepted a revoked token replayed by a different client "
-        f"(status {status})."
+        f"(status {resp.status_code})."
     )

@@ -39,14 +39,14 @@ class OrmModel(BaseModel):
 
 
 class PasswordResetTokenCreate(BaseModel):
-    user_id: int
+    user_id: uuid.UUID  # RZ-33-17: was `int`, model uses UUID7 PKs
     token_hash: str
     expires_at: datetime
     used: bool = False
 
 
 class EmailChangeTokenCreate(BaseModel):
-    user_id: int
+    user_id: uuid.UUID  # RZ-33-17: was `int`, model uses UUID7 PKs
     new_email: EmailStr
     token_hash: str
     expires_at: datetime

@@ -126,7 +126,7 @@ class ChatQueryService:
         """Get details for a specific chat."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101  # noqa: S101
+        assert chat is not None  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:
@@ -163,7 +163,7 @@ class ChatQueryService:
         """Fetch messages for a chat."""
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
-        assert chat is not None  # nosec B101  # noqa: S101
+        assert chat is not None  # noqa: S101
 
         participant_ids = {p.id for p in chat.participants}
         if user.id not in participant_ids:

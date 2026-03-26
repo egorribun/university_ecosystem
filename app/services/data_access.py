@@ -146,7 +146,7 @@ async def cleanup_access_logs(
         async with async_session() as session:
             return await cleanup_access_logs(db=session, retention_days=retention)
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
-    assert db is not None  # nosec B101  # noqa: S101
+    assert db is not None  # noqa: S101
     repo = AuditRepository(db)
     count = await repo.prune_logs(cutoff)
     return count
@@ -230,6 +230,9 @@ async def export_access_logs_stream(
         stmt = stmt.where(DataAccessLog.actor_user_id == actor_user_id)
     if subject_user_id is not None:
         stmt = stmt.where(DataAccessLog.subject_user_id == subject_user_id)
+
+    # Safety cap to prevent unbounded streaming
+    stmt = stmt.limit(100_000)
 
     # Write header
     yield "created_at,actor_user_id,subject_user_id,resource_type,resource_id,action,ip_address,user_agent,context\n"

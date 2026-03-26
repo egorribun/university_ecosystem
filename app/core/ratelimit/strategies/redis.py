@@ -102,7 +102,9 @@ class RedisSlidingWindowStrategy:
             result = cast(list[Any], eval_result)
         except NoScriptError:
             # RZ-25-04: Invalidate under lock to prevent TOCTOU race with _load_script_sha.
+            # RZ-33-05: `global` required to clear the module-level SHA cache.
             async with _SHA_LOCK:
+                global _RATE_LIMIT_SHA
                 _RATE_LIMIT_SHA = None
             eval_result = await cast(Any, client).eval(
                 _RATE_LIMIT_SCRIPT,

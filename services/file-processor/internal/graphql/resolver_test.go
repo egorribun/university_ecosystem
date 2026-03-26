@@ -105,12 +105,15 @@ func TestGenerateID_ReturnsNonEmptyString(t *testing.T) {
 	assert.NotEmpty(t, id)
 }
 
-func TestGenerateID_ReturnsNumericString(t *testing.T) {
+// TD-33-11: generateID now returns "file-process-<uuid>" format (RZ-W19-17).
+func TestGenerateID_ReturnsPrefixedUUID(t *testing.T) {
 	id := generateID()
 
-	for _, char := range id {
-		assert.True(t, char >= '0' && char <= '9', "ID should contain only digits")
-	}
+	assert.True(t, len(id) > len("file-process-"), "ID should be longer than prefix")
+	assert.Contains(t, id, "file-process-")
+	// UUID portion: 36 chars of hex digits and dashes
+	uuidPart := id[len("file-process-"):]
+	assert.Regexp(t, `^[0-9a-f-]{36}$`, uuidPart)
 }
 
 func TestProcessFileInput_FieldsAccessible(t *testing.T) {

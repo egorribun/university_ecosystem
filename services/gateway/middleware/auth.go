@@ -3,15 +3,20 @@ package middleware
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/x509"
+	"math/big"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -50,17 +55,19 @@ func DefaultL1CacheConfig() L1CacheConfig {
 	}
 }
 
-// cacheEntry represents a local cache entry.
+// cacheEntry represents a local cache entry with creation time for XFetch jitter.
 type cacheEntry struct {
-	exists bool
+	exists   bool
+	storedAt time.Time // PERF-31-02: timestamp for probabilistic early refresh
 }
 
 // JWTMiddleware validates JWT tokens (HS256 and RS256).
 type JWTMiddleware struct {
 	secret       []byte
-	rsaPublicKey *rsa.PublicKey // non-nil when RS256/JWKS is configured
+	rsaPublicKey atomic.Pointer[rsa.PublicKey] // RZ-33-19: atomic for JWKS hot-reload safety
 	redis        *redis.Client
 	l1cache      *expirable.LRU[string, cacheEntry]
+	l1TTL        time.Duration // PERF-31-02: TTL for XFetch jitter calculation
 }
 
 var (
@@ -84,6 +91,11 @@ var (
 	revocationListenerDisconnects = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "gateway_revocation_listener_disconnects_total",
 		Help: "Total number of Redis pubsub disconnects in revocation listener",
+	})
+	// PERF-31-02: Track XFetch probabilistic cache refreshes.
+	l1ProbRefreshes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "gateway_l1_cache_probabilistic_refreshes_total",
+		Help: "Total number of L1 cache entries refreshed early via XFetch algorithm",
 	})
 	metricsRegistered sync.Once
 )
@@ -111,7 +123,7 @@ func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
 // the given PEM-encoded RSA public key alongside HS256 tokens.
 func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig) *JWTMiddleware {
 	metricsRegistered.Do(func() {
-		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors, revocationListenerDisconnects)
+		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors, revocationListenerDisconnects, l1ProbRefreshes)
 	})
 
 	// Create LRU cache with eviction callback for observability
@@ -125,6 +137,7 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 		secret:  []byte(secret),
 		redis:   redisClient,
 		l1cache: cache,
+		l1TTL:   config.TTL, // PERF-31-02: store TTL for XFetch calculation
 	}
 
 	// Parse the optional RS256 public key at startup so we fail fast on bad config.
@@ -136,10 +149,168 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 			// safer than silently allowing HS256-only mode when RS256 was intended.
 			panic(fmt.Sprintf("gateway: failed to parse JWKS_PUBLIC_KEY_PEM: %v", err))
 		}
-		m.rsaPublicKey = pubKey
+		m.rsaPublicKey.Store(pubKey)
 	}
 
 	return m
+}
+
+// ---------------------------------------------------------------------------
+// MOD-W17-03: JWKS hot-reload — periodic background refresh of RSA public key
+// ---------------------------------------------------------------------------
+
+var (
+	jwksRefreshes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "gateway_jwks_refreshes_total",
+		Help: "Total JWKS fetch attempts",
+	})
+	jwksRefreshErrors = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "gateway_jwks_refresh_errors_total",
+		Help: "Total JWKS fetch failures",
+	})
+	jwksKeyRotations = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "gateway_jwks_key_rotations_total",
+		Help: "Total RSA public key rotations via JWKS refresh",
+	})
+	jwksMetricsOnce sync.Once
+)
+
+// StartJWKSRefresher starts a background goroutine that periodically fetches
+// the JWKS from endpoint and atomically swaps the RSA public key.  The caller
+// must cancel ctx to stop the goroutine on shutdown.
+func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string, interval time.Duration, logger *slog.Logger) {
+	jwksMetricsOnce.Do(func() {
+		prometheus.MustRegister(jwksRefreshes, jwksRefreshErrors, jwksKeyRotations)
+	})
+
+	// RZ-33-19: rsaPublicKey is already atomic.Pointer on the struct — no local copy needed.
+
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	backoff := interval
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				jwksRefreshes.Inc()
+				newKey, err := fetchJWKSPublicKey(ctx, httpClient, endpoint)
+				if err != nil {
+					jwksRefreshErrors.Inc()
+					logger.Warn("JWKS refresh failed", "err", err, "backoff", backoff)
+					// Exponential backoff on failure (capped at 5 min).
+					backoff = min(backoff*2, 5*time.Minute)
+					ticker.Reset(backoff)
+					continue
+				}
+
+				// Reset backoff on success.
+				if backoff != interval {
+					backoff = interval
+					ticker.Reset(interval)
+				}
+
+				// Atomic swap — RZ-33-19: hot path reads via m.rsaPublicKey.Load().
+				old := m.rsaPublicKey.Load()
+				if old == nil || !old.Equal(newKey) {
+					m.rsaPublicKey.Store(newKey)
+					jwksKeyRotations.Inc()
+					logger.Info("JWKS key rotated successfully")
+				}
+			}
+		}
+	}()
+}
+
+// fetchJWKSPublicKey fetches a JWKS JSON from the given endpoint and returns
+// the first RSA public key found.  Supports standard JWKS format (RFC 7517).
+func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint string) (*rsa.PublicKey, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("jwks: create request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("jwks: fetch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jwks: unexpected status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024)) // 64 KB limit
+	if err != nil {
+		return nil, fmt.Errorf("jwks: read body: %w", err)
+	}
+
+	// Try standard JWKS format first.
+	var jwks struct {
+		Keys []json.RawMessage `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &jwks); err != nil {
+		// Fallback: try parsing as raw PEM.
+		return parseRSAPublicKeyFromPEM(body)
+	}
+
+	for _, keyJSON := range jwks.Keys {
+		var kty struct {
+			Kty string `json:"kty"`
+			N   string `json:"n"`
+			E   string `json:"e"`
+		}
+		if err := json.Unmarshal(keyJSON, &kty); err != nil {
+			continue
+		}
+		if kty.Kty == "RSA" && kty.N != "" && kty.E != "" {
+			return jwkToRSAPublicKey(kty.N, kty.E)
+		}
+	}
+
+	return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
+}
+
+func jwkToRSAPublicKey(nB64, eB64 string) (*rsa.PublicKey, error) {
+	nBytes, err := base64.RawURLEncoding.DecodeString(nB64)
+	if err != nil {
+		return nil, fmt.Errorf("jwks: decode n: %w", err)
+	}
+	eBytes, err := base64.RawURLEncoding.DecodeString(eB64)
+	if err != nil {
+		return nil, fmt.Errorf("jwks: decode e: %w", err)
+	}
+
+	// Convert e bytes to int (big-endian).
+	var eInt int
+	for _, b := range eBytes {
+		eInt = eInt<<8 + int(b)
+	}
+
+	n := new(big.Int).SetBytes(nBytes)
+	return &rsa.PublicKey{
+		N: n,
+		E: eInt,
+	}, nil
+}
+
+func parseRSAPublicKeyFromPEM(data []byte) (*rsa.PublicKey, error) {
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("jwks: no PEM block found")
+	}
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("jwks: parse public key: %w", err)
+	}
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("jwks: key is not RSA")
+	}
+	return rsaPub, nil
 }
 
 // WarmL1Cache pre-populates the L1 cache by scanning Redis for currently
@@ -167,7 +338,7 @@ func (m *JWTMiddleware) WarmL1Cache(ctx context.Context) {
 			return
 		}
 		for _, key := range keys {
-			m.l1cache.Add(key, cacheEntry{exists: true})
+			m.l1cache.Add(key, cacheEntry{exists: true, storedAt: time.Now()})
 			count++
 			if count >= maxWarmupKeys {
 				break
@@ -272,10 +443,35 @@ func (m *JWTMiddleware) listenOnce(ctx context.Context) {
 	}
 }
 
-// checkL1Cache checks if a session exists in the L1 cache
+// shouldRefreshProbabilistic implements the XFetch algorithm to prevent cache
+// stampede.  Some fraction of requests will trigger a background refresh before
+// the entry's TTL expires, spreading revalidation load across time.
+// Ported from Python: app/deps/cache.py:56-92 (PERF-31-02).
+func shouldRefreshProbabilistic(storedAt time.Time, ttl time.Duration, beta float64) bool {
+	remaining := ttl - time.Since(storedAt)
+	if remaining <= 0 {
+		return true
+	}
+	randFactor := rand.Float64() // #nosec G404 — non-cryptographic use
+	if randFactor == 0 {
+		randFactor = 1e-10
+	}
+	threshold := -beta * ttl.Seconds() * math.Log(randFactor)
+	return remaining.Seconds() < threshold
+}
+
+// checkL1Cache checks if a session exists in the L1 cache.
 // Returns: (exists, found) where found indicates if the key was in cache.
+// PERF-31-02: Uses XFetch algorithm — probabilistically returns a "miss" for
+// entries nearing expiry, spreading Redis revalidation across requests.
 func (m *JWTMiddleware) checkL1Cache(key string) (exists bool, found bool) {
 	if entry, ok := m.l1cache.Get(key); ok {
+		if shouldRefreshProbabilistic(entry.storedAt, m.l1TTL, 1.0) {
+			l1ProbRefreshes.Inc()
+			// Trigger a Redis re-check by returning "not found" in cache,
+			// but the caller will still get the correct result from Redis.
+			return false, false
+		}
 		l1Hits.Inc()
 		return entry.exists, true
 	}
@@ -303,7 +499,7 @@ func (m *JWTMiddleware) checkSessionInRedis(ctx context.Context, key string) (bo
 	}
 
 	// Update L1 cache with the result
-	m.l1cache.Add(key, cacheEntry{exists: exists > 0})
+	m.l1cache.Add(key, cacheEntry{exists: exists > 0, storedAt: time.Now()})
 
 	return exists > 0, nil
 }
@@ -410,16 +606,16 @@ func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 	switch token.Method.(type) {
 	case *jwt.SigningMethodRSA:
 		// RS256 path — requires a configured public key.
-		if m.rsaPublicKey == nil {
+		if m.rsaPublicKey.Load() == nil {
 			return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
 		}
-		return m.rsaPublicKey, nil
+		return m.rsaPublicKey.Load(), nil
 	case *jwt.SigningMethodHMAC:
 		// HS256 path — only allowed when RS256 is NOT configured.
 		// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
 		// alongside RS256 would allow an attacker with knowledge of the HMAC secret
 		// to forge tokens even after the RS256 key is rotated.
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
 		}
 		return m.secret, nil
@@ -452,7 +648,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 		// RZ-W15-01: Pre-parse algorithm check — mirrors ws-hub's extractAlgFromHeader.
 		// Reads the alg claim from the JOSE header before any signature work, so that
 		// an algorithm downgrade attempt is caught and logged early.
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			alg, algErr := extractAlgFromHeader(tokenString)
 			if algErr != nil {
 				AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "malformed token header", "https://api.university.edu/probs/invalid-token")
@@ -471,7 +667,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc {
 		// any other algorithm not in the list before signature verification occurs.
 		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
 		validMethods := []string{"RS256", "HS256"}
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			validMethods = []string{"RS256"}
 		}
 		parser := jwt.NewParser(
@@ -560,7 +756,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 		}
 
 		// RZ-W15-01: Same pre-parse algorithm check as Validate() for optional auth.
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			alg, algErr := extractAlgFromHeader(tokenString)
 			if algErr != nil || alg != "RS256" {
 				// Malformed header or downgrade attempt — treat as unauthenticated.
@@ -575,7 +771,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc {
 
 		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
 		optValidMethods := []string{"RS256", "HS256"}
-		if m.rsaPublicKey != nil {
+		if m.rsaPublicKey.Load() != nil {
 			optValidMethods = []string{"RS256"}
 		}
 		parser := jwt.NewParser(
