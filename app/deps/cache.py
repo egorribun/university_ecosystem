@@ -479,14 +479,37 @@ class RedisClusterCache(BaseCache):
         )
 
     async def invalidate(self, *keys: str) -> None:
-        filtered = [str(k) for k in keys if k and "*" not in k]
+        filtered = [str(k) for k in keys if k]
         if not filtered:
             return
         start = time_module.perf_counter()
         success = False
         try:
             client = await self._get_client()
-            await client.delete(*filtered)
+
+            # TD-33-10: Separate exact keys and patterns (same as RedisCache).
+            exact_keys = []
+            patterns = []
+            for key in filtered:
+                if "*" in key:
+                    patterns.append(key)
+                else:
+                    exact_keys.append(key)
+
+            if exact_keys:
+                await client.delete(*exact_keys)
+
+            # Process patterns via SCAN — works on both single-node and cluster.
+            for pattern in patterns:
+                cursor: int = 0
+                while True:
+                    cursor, matches = await client.scan(
+                        cursor, match=pattern, count=100
+                    )
+                    if matches:
+                        await client.delete(*matches)
+                    if cursor == 0:
+                        break
             success = True
         except (RedisError, OSError):  # RZ-28-01
             logger.warning(
@@ -730,13 +753,18 @@ def cached(
             # Resolve TTL
             seconds = int(ttl.total_seconds()) if isinstance(ttl, timedelta) else ttl
 
-            # Optimization: If we have multiple layers, we can potentially use
-            # different TTLs
-            # but for now we follow the BaseCache interface.
-            # If it's a TieredCache, we could technically override set behavior here
-            # but sticking to standard for now.
-
-            await cache.set(full_key, result, ttl=seconds)
+            # TD-33-09: If TieredCache and _l1_ttl specified, set L1 with
+            # separate TTL for shorter in-memory retention.
+            l1_secs = (
+                int(_l1_ttl.total_seconds())
+                if isinstance(_l1_ttl, timedelta)
+                else _l1_ttl
+            )
+            if l1_secs and isinstance(cache, TieredCache):
+                await cache.l2.set(full_key, result, ttl=seconds)
+                await cache.l1.set(full_key, result, ttl=l1_secs)
+            else:
+                await cache.set(full_key, result, ttl=seconds)
             return result
 
         return wrapper

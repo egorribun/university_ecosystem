@@ -46,7 +46,7 @@ services:
 
   # Pyroscope - Continuous profiling
   pyroscope:
-    image: grafana/pyroscope:1.11.0
+    image: grafana/pyroscope:1.18.1
     ports:
       - "4040:4040"
     volumes:

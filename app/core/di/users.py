@@ -16,9 +16,9 @@ from app.services.user_service import UserService
 
 
 class UserProvider(Provider):
-    @provide(scope=Scope.REQUEST)
-    def notification_service(self, db: AsyncDatabaseSession) -> NotificationService:
-        return NotificationService(db=db)
+    # TD-33-08: NotificationService provider removed — now provided by
+    # ContentProvider only.  Dishka injects the same instance into both
+    # UserService and content services, eliminating the duplicate registration.
 
     @provide(scope=Scope.REQUEST)
     def user_service(
