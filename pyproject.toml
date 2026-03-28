@@ -73,11 +73,11 @@ dependencies = [
   "python-multipart>=0.0.22",
   "pyvips>=2.2 ; sys_platform != 'win32'",
   "pywebpush>=1.9",
-  "redis>=5,<8",
+  "redis>=6,<8",  # FIX-41-03: redis 5.x has recursion bug with Python 3.14
   "sentry-sdk[opentelemetry]>=2,<3",
   "sqlalchemy[asyncio]>=2.0.48,<3",
   "starlette>=0.40,<2.0",                             # MOD-W10-01: upper bound; starlette 1.0 will be a breaking release
-  "strawberry-graphql[fastapi]>=0.282.0,<0.313.0",    # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
+  "strawberry-graphql[fastapi]>=0.283.2,<0.313.0",    # FIX-41-02: >=0.283.2 for Python 3.14 Field(doc=) compat; Renovate opens PR to advance
   "structlog>=24.0",
   "typer>=0.12.0",
   "urllib3>=2.6.3,<2.7",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate

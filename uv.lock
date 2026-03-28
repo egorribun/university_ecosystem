@@ -1399,18 +1399,6 @@ wheels = [
 ]
 
 [[package]]
-name = "lia-web"
-version = "0.3.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cross-web" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/05/3d/7d574a7a5cf5fbc5fc09c07ea3696dd400353b7702bc009cf596b8c12035/lia_web-0.3.1.tar.gz", hash = "sha256:7f551269eddd729f1437e9341ad21622a849eb0c0975d9232ccbbaadbdc74c06", size = 2021, upload-time = "2025-12-25T20:41:51.195Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/8b/b628fc18658f94b3d094708a18b71083cf47628e85cbc6b9edba54d5b2d7/lia_web-0.3.1-py3-none-any.whl", hash = "sha256:e4e6e7a9381e228aca60a6f3d67dbae9a5f4638eced242d931f95797ddba3f8b", size = 5933, upload-time = "2025-12-25T20:41:52.289Z" },
-]
-
-[[package]]
 name = "license-expression"
 version = "30.4.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3105,14 +3093,11 @@ wheels = [
 
 [[package]]
 name = "redis"
-version = "5.3.1"
+version = "7.4.0"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyjwt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6a/cf/128b1b6d7086200c9f387bd4be9b2572a30b90745ef078bd8b235042dc9f/redis-5.3.1.tar.gz", hash = "sha256:ca49577a531ea64039b5a36db3d6cd1a0c7a60c34124d46924a45b956e8cf14c", size = 4626200, upload-time = "2025-07-25T08:06:27.778Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/7f/3759b1d0d72b7c92f0d70ffd9dc962b7b7b5ee74e135f9d7d8ab06b8a318/redis-7.4.0.tar.gz", hash = "sha256:64a6ea7bf567ad43c964d2c30d82853f8df927c5c9017766c55a1d1ed95d18ad", size = 4943913, upload-time = "2026-03-24T09:14:37.53Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/26/5c5fa0e83c3621db835cfc1f1d789b37e7fa99ed54423b5f519beb931aa7/redis-5.3.1-py3-none-any.whl", hash = "sha256:dc1909bd24669cc31b5f67a039700b16ec30571096c5f1f0d9d2324bff31af97", size = 272833, upload-time = "2025-07-25T08:06:26.317Z" },
+    { url = "https://files.pythonhosted.org/packages/74/3a/95deec7db1eb53979973ebd156f3369a72732208d1391cd2e5d127062a32/redis-7.4.0-py3-none-any.whl", hash = "sha256:a9c74a5c893a5ef8455a5adb793a31bb70feb821c86eccb62eebef5a19c429ec", size = 409772, upload-time = "2026-03-24T09:14:35.968Z" },
 ]
 
 [[package]]
@@ -3484,18 +3469,18 @@ wheels = [
 
 [[package]]
 name = "strawberry-graphql"
-version = "0.282.0"
+version = "0.312.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "cross-web" },
     { name = "graphql-core" },
-    { name = "lia-web" },
     { name = "packaging" },
     { name = "python-dateutil" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/58/c5e680a5a088ffa91caade9cd861f03d52a12cd7ad336d9f104544d92d49/strawberry_graphql-0.282.0.tar.gz", hash = "sha256:f15610e4944210c15f83be814bfcd6ac1024b4293c18c9f4eee8345639795d1c", size = 212315, upload-time = "2025-09-07T20:29:09.035Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/90/ffc198d3691fbcdaff3751552a9e360e3cfb0c80577fe6326724008178a5/strawberry_graphql-0.312.2.tar.gz", hash = "sha256:e545681441842a64203bb78010e6a56737340da5022864da3df58602a718fb2b", size = 215123, upload-time = "2026-03-25T16:57:46.546Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/98/81595a80ca75ac25f304cdb6a7ebcf86b2956d15679eedb4598d4216b5bd/strawberry_graphql-0.282.0-py3-none-any.whl", hash = "sha256:6671cf90fd3630ae7d50aae2d8a06808ada6ce55d02ee01b7b7cba0026dfed18", size = 309831, upload-time = "2025-09-07T20:29:06.272Z" },
+    { url = "https://files.pythonhosted.org/packages/69/6d/f22f1cc6c2faf4307c96f8f2a58a031ebf42a8ee0f9fa046bf6304f3dc0e/strawberry_graphql-0.312.2-py3-none-any.whl", hash = "sha256:fac534323c9fe57600c3ce6f64d02e6bd0a0b8c5e865ef07c061060fc9a46923", size = 312679, upload-time = "2026-03-25T16:57:47.89Z" },
 ]
 
 [package.optional-dependencies]
@@ -3822,12 +3807,12 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "pyvips", marker = "sys_platform != 'win32'", specifier = ">=2.2" },
     { name = "pywebpush", specifier = ">=1.9" },
-    { name = "redis", specifier = ">=5,<8" },
+    { name = "redis", specifier = ">=6,<8" },
     { name = "rust-ext", editable = "native/rust_ext" },
     { name = "sentry-sdk", extras = ["opentelemetry"], specifier = ">=2,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.48,<3" },
     { name = "starlette", specifier = ">=0.40,<2.0" },
-    { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.282.0,<0.313.0" },
+    { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.283.2,<0.313.0" },
     { name = "structlog", specifier = ">=24.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "urllib3", specifier = ">=2.6.3,<2.7" },
