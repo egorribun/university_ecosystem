@@ -122,7 +122,13 @@ async def test_monster_coverage_run():
             patch("app.utils.files.scan_for_malware", new_callable=AsyncMock),
             patch("app.utils.files._prepare_local_storage", new_callable=AsyncMock),
         ):
-            await save_attachment(mock_upload, subdir="s", prefix="p")
+            await save_attachment(
+                mock_upload,
+                subdir="s",
+                prefix="p",
+                allowed_mime_types={"application/pdf"},
+                allowed_extensions={".pdf"},
+            )
 
     # 6. AUTH LOGIN (Refactored for LoginService)
     from app.services.auth.login_service import LoginService

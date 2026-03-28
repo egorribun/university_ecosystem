@@ -61,19 +61,20 @@ async def test_auth_url(mock_user):
 
 @pytest.mark.asyncio
 async def test_spotify_callback_success(mock_db, mock_request, mock_user, monkeypatch):
+    monkeypatch.setenv("SPOTIFY_OAUTH_STATE_SECRET", "test-state-secret")
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "test-client-secret")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://localhost:8000/spotify/callback")
+
+    # Pydantic BaseSettings reads from env vars; force reload into the singleton
     from app.core.config import settings
 
-    # Pydantic v2 BaseSettings may block regular setattr; use object.__setattr__
-    for attr, val in [
-        ("spotify_oauth_state_secret", "test-state-secret"),
-        ("spotify_client_id", "test-client-id"),
-        ("spotify_client_secret", "test-client-secret"),
-        ("spotify_redirect_uri", "http://localhost:8000/spotify/callback"),
-    ]:
-        monkeypatch.setattr(settings, attr, val, raising=False)
-        # Fallback: force into __dict__ if setattr was intercepted
-        if getattr(settings, attr, None) != val:
-            object.__setattr__(settings, attr, val)
+    object.__setattr__(settings, "spotify_oauth_state_secret", "test-state-secret")
+    object.__setattr__(settings, "spotify_client_id", "test-client-id")
+    object.__setattr__(settings, "spotify_client_secret", "test-client-secret")
+    object.__setattr__(
+        settings, "spotify_redirect_uri", "http://localhost:8000/spotify/callback"
+    )
     return await _run_spotify_callback_success(mock_db, mock_request, mock_user)
 
 
