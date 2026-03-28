@@ -438,8 +438,10 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    # Detected type (application/pdf) is not in allowed_types (["text/plain"]),
+    # so the "blocked-mime" check fires before the mismatch check.
     assert excinfo.value.detail == translate(
-        "errors.files.content_type_mismatch", locale="en"
+        "errors.files.unsupported_type", locale="en"
     )
 
 
