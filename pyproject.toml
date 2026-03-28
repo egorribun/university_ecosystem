@@ -321,6 +321,7 @@ filterwarnings = [
   "ignore::DeprecationWarning:dishka",        # dishka 1.8+ starlette integration move
   "ignore:The 'lia' package has been renamed:DeprecationWarning",  # lia→cross_web (strawberry dep, stacklevel=2)
   "ignore::PendingDeprecationWarning",        # third-party pending removals
+  "ignore:DISTINCT ON is currently supported only:sqlalchemy.exc.SADeprecationWarning",  # SQLite test DB — chat repo uses DISTINCT ON
 ]
 markers = [
   "slow: marks tests as slow (deselect with '-m \"not slow\"')",

@@ -128,7 +128,7 @@ class TestConnectionManager:
         """Test that dead connections are cleaned up on send failure."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
-        mock_ws1.send_json.side_effect = Exception("Connection closed")
+        mock_ws1.send_json.side_effect = RuntimeError("Connection closed")
         user_id = uuid.uuid4()
         message = {"type": "test"}
 

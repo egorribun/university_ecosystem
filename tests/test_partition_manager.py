@@ -19,6 +19,10 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         mock_engine = MagicMock()
         mock_conn = AsyncMock()
         mock_conn.dialect.name = "postgresql"
+        # The real code uses conn.dialect.identifier_preparer.quote() for safe DDL
+        mock_preparer = MagicMock()
+        mock_preparer.quote = MagicMock(side_effect=lambda name: f'"{name}"')
+        mock_conn.dialect.identifier_preparer = mock_preparer
 
         # Correctly mock the async context manager for engine.connect()
         mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -60,12 +64,13 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         mock_conn.commit = AsyncMock()
 
         # Mock rust_ext
+        mock_partition_info = MagicMock()
+        mock_partition_info.name = "notifications_y2026m04"
+        mock_partition_info.start_date = "2026-04-01"
+        mock_partition_info.end_date = "2026-05-01"
+
         mock_rust = MagicMock()
-        mock_rust.get_partition_info.return_value = MagicMock(
-            name="notifications_y1999m01",
-            start_date="1999-01-01",
-            end_date="1999-02-01",
-        )
+        mock_rust.get_partition_info.return_value = mock_partition_info
         mock_rust.is_partition_expired.return_value = True
 
         with patch.dict("sys.modules", {"rust_ext": mock_rust}):

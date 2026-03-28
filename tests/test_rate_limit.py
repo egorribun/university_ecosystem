@@ -18,7 +18,7 @@ from app.core.ratelimit.utils import _TIME_UNITS
 
 @pytest.fixture(autouse=True)
 def enable_rate_limiting(monkeypatch):
-    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
 
 
 @pytest.mark.asyncio

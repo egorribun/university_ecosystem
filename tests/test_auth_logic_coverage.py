@@ -578,9 +578,12 @@ async def test_consume_challenge_webauthn(db_session, user_factory):
 async def test_legacy_enrollment_check(db_session, user_factory):
     user = await user_factory()
     user.mfa_default_method = "totp"
-    # Unconfirmed but active enrollment (legacy case)
+    # Active and confirmed enrollment (MED-W19 removed legacy unconfirmed fallback)
     enrollment = models.MfaTotpEnrollment(
-        user_id=user.id, secret="JBSWY3DPEHPK3PXP", is_active=True, confirmed_at=None
+        user_id=user.id,
+        secret="JBSWY3DPEHPK3PXP",  # pragma: allowlist secret
+        is_active=True,
+        confirmed_at=datetime.now(UTC),
     )
     db_session.add(enrollment)
     await db_session.commit()

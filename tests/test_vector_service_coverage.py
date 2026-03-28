@@ -97,10 +97,13 @@ async def test_search_similar_with_scores_success(vector_service, mock_db):
         # Mock distance calculation
         mock_distance = MagicMock()
 
-        # Setup operation mocks — label() must return a MagicMock, not a string,
-        # because the result is used in comparisons (score >= min_score).
+        # Setup operation mocks — label() must return a MagicMock that supports
+        # comparison operators (__ge__) because the result is used in
+        # `where(score >= min_score)`.
         mock_score_column = MagicMock()
         mock_score_column.desc.return_value = mock_score_column
+        # SQLAlchemy column-like: __ge__ should return a clause element, not raise
+        mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
 
         # When 1.0 - distance is called:
         mock_sub_result = MagicMock()

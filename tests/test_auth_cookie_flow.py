@@ -283,7 +283,8 @@ async def test_logout_rotates_session_signing_key(
 
 
 @pytest.mark.asyncio
-async def test_register_rate_limit(async_client):
+async def test_register_rate_limit(async_client, monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
     for attempt in range(4):
         payload = {
             "email": f"rate-limit-{attempt}@example.com",

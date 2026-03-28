@@ -51,8 +51,16 @@ def mock_background_tasks(monkeypatch):
 
 @pytest_asyncio.fixture
 async def app():
-    async with LifespanManager(main.app) as manager:
-        yield manager
+    manager = LifespanManager(main.app)
+    await manager.__aenter__()
+    yield manager
+    try:
+        await manager.__aexit__(None, None, None)
+    except RuntimeError as exc:
+        # Suppress "unable to perform operation on <TCPTransport closed=True>"
+        # from httpx/httpcore teardown — known uvloop/asyncio race condition.
+        if "TCPTransport" not in str(exc) and "closed" not in str(exc):
+            raise
 
 
 @pytest_asyncio.fixture
