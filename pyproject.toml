@@ -312,6 +312,7 @@ line-ending = "auto"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 filterwarnings = [
   "error::DeprecationWarning",                # our code: treat as errors
   # TD-28-05: passlib removed in Wave 21 (TD-21-04) — filter kept for test compat
