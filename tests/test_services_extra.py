@@ -176,10 +176,22 @@ async def test_auth_service_basics():
 async def test_partition_management_logic():
     from app.services.partition_manager import ensure_partitions_exist
 
-    with patch("app.services.partition_manager.engine") as m_engine:
+    mock_info = MagicMock()
+    mock_info.name = "notifications_2026_04"
+    mock_info.start_date = "2026-04-01"
+    mock_info.end_date = "2026-05-01"
+
+    with (
+        patch("app.services.partition_manager.engine") as m_engine,
+        patch.dict("sys.modules", {"rust_ext": (m_rust := MagicMock())}),
+    ):
+        m_rust.get_partition_info.return_value = mock_info
         conn = AsyncMock()
         conn.dialect.name = "postgresql"
-        # Mocking the async context manager engine.connect()
+        conn.commit = AsyncMock()
+        preparer = MagicMock()
+        preparer.quote = MagicMock(side_effect=lambda x: f'"{x}"')
+        conn.dialect.identifier_preparer = preparer
         m_engine.connect.return_value.__aenter__.return_value = conn
 
         mock_result = MagicMock()
