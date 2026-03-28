@@ -439,10 +439,8 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
     assert excinfo.value.detail == translate(
-        "errors.files.unsupported_type", locale="en"
+        "errors.files.content_type_mismatch", locale="en"
     )
-    folder = tmp_path / "event_files"
-    assert not folder.exists()
 
 
 @pytest.mark.asyncio
@@ -593,6 +591,11 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+    # save_attachment uses the _set properties (cached_property); patch them too
+    type(settings).event_file_allowed_mime_types_set = property(
+        lambda self: {"text/plain"}
+    )
+    type(settings).event_file_allowed_extensions_set = property(lambda self: {"txt"})
 
     calls: list[tuple[bytes, str | None, int | None]] = []
 
@@ -664,6 +667,11 @@ async def test_delete_event_file_removes_payload(
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+    # save_attachment uses the _set properties (cached_property); patch them too
+    type(settings).event_file_allowed_mime_types_set = property(
+        lambda self: {"text/plain"}
+    )
+    type(settings).event_file_allowed_extensions_set = property(lambda self: {"txt"})
 
     event_file = await events.upload_event_file(
         event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker

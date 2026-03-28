@@ -60,15 +60,16 @@ async def test_auth_url(mock_user):
 
 
 @pytest.mark.asyncio
-async def test_spotify_callback_success(mock_db, mock_request, mock_user):
+async def test_spotify_callback_success(mock_db, mock_request, mock_user, monkeypatch):
     from app.core.config import settings
 
-    original = settings.spotify_oauth_state_secret
-    object.__setattr__(settings, "spotify_oauth_state_secret", "test-state-secret")
-    try:
-        return await _run_spotify_callback_success(mock_db, mock_request, mock_user)
-    finally:
-        object.__setattr__(settings, "spotify_oauth_state_secret", original)
+    monkeypatch.setattr(settings, "spotify_oauth_state_secret", "test-state-secret")
+    monkeypatch.setattr(settings, "spotify_client_id", "test-client-id")
+    monkeypatch.setattr(settings, "spotify_client_secret", "test-client-secret")
+    monkeypatch.setattr(
+        settings, "spotify_redirect_uri", "http://localhost:8000/spotify/callback"
+    )
+    return await _run_spotify_callback_success(mock_db, mock_request, mock_user)
 
 
 async def _run_spotify_callback_success(mock_db, mock_request, mock_user):

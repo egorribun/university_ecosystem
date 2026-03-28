@@ -1,8 +1,8 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.api.events import events_cache_version
+from app.core.cache_versioning import events_cache_version
 from app.deps.cache import RedisCache
 
 
@@ -20,22 +20,30 @@ async def test_get_events_list_version_redis():
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
     mock_client = AsyncMock()
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    # Case 1: Value exists
-    mock_client.get.return_value = b"5"
-    version = await events_cache_version.get_version(mock_cache)
-    assert version == "5"
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        # Case 1: Value exists
+        mock_client.get.return_value = b"5"
+        version = await events_cache_version.get_version(mock_cache)
+        assert version == "5"
 
-    # Case 2: Value miss (returns None)
-    mock_client.get.return_value = None
-    version = await events_cache_version.get_version(mock_cache)
-    assert version == "0"
+        # Case 2: Value miss (returns None)
+        mock_client.get.return_value = None
+        version = await events_cache_version.get_version(mock_cache)
+        assert version == "0"
 
     # Case 3: Redis Error
-    mock_cache._get_client.side_effect = OSError("Connection failed")
-    version = await events_cache_version.get_version(mock_cache)
-    assert version == "0"
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        side_effect=OSError("Connection failed"),
+    ):
+        version = await events_cache_version.get_version(mock_cache)
+        assert version == "0"
 
 
 @pytest.mark.asyncio
@@ -52,15 +60,19 @@ async def test_increment_events_list_version_redis():
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
     mock_client = AsyncMock()
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    # Case 1: Client has incr
-    mock_client.incr = AsyncMock()
-    await events_cache_version.increment(mock_cache)
-    mock_client.incr.assert_called_once_with("events:list:version")
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        # Case 1: Client has incr
+        mock_client.incr = AsyncMock()
+        await events_cache_version.increment(mock_cache)
+        mock_client.incr.assert_called_once_with("events:list:version")
 
-    # Case 2: Client has no incr (manual update)
-    del mock_client.incr
-    mock_client.get.return_value = b"10"
-    await events_cache_version.increment(mock_cache)
-    mock_client.set.assert_called_with("events:list:version", "11")
+        # Case 2: Client has no incr (manual update)
+        del mock_client.incr
+        mock_client.get.return_value = b"10"
+        await events_cache_version.increment(mock_cache)
+        mock_client.set.assert_called_with("events:list:version", "11")

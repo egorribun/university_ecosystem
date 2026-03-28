@@ -350,11 +350,20 @@ async def test_check_schedule_creates_notifications(
     start = now + timedelta(minutes=10)
     end = start + timedelta(hours=1)
 
+    _WEEKDAY_NAMES = (
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    )
     lesson = Schedule(
         group_id=group_id,
         start_time=start,
         end_time=end,
-        weekday=str(start.weekday()),
+        weekday=_WEEKDAY_NAMES[start.weekday()],
         subject="Math",
         teacher="Mr. Smith",
         room="101",
