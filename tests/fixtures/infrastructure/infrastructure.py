@@ -53,7 +53,7 @@ def mock_background_tasks(monkeypatch):
 async def app():
     manager = LifespanManager(main.app)
     await manager.__aenter__()
-    yield manager
+    yield main.app  # yield the ASGI app, not the manager
     try:
         await manager.__aexit__(None, None, None)
     except RuntimeError as exc:
