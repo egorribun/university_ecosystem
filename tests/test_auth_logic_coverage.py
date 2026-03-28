@@ -440,8 +440,10 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
             challenge_token=challenge_for_invalid.token,
         )
 
-    # With challenge token — use next TOTP window to avoid code_already_used
-    import time as _time
+    # With challenge token — clear last_used_code_hash to avoid replay
+    # rejection, then use totp.now() (always valid in current window).
+    enrollment.last_used_code_hash = None
+    await db_session.commit()
 
     challenge = await mfa.issue_challenge(
         db_session, user_id=user.id, challenge_type=CHALLENGE_TYPE_TOTP_VERIFY
@@ -450,7 +452,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     res_enr, res_chal = await mfa.verify_totp_for_user(
         db_session,
         user=user,
-        code=totp.at(int(_time.time()) + 31),
+        code=totp.now(),
         challenge_token=challenge.token,
     )
     assert res_chal.id == challenge.id
