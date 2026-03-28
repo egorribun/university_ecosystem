@@ -543,34 +543,10 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # 9. Column comments (use raw SQL — op.alter_column comment= unreliable
-    #    with asyncpg dialect)
+    # 9. Column comments — removed. The ORM models do not define
+    #    comment= on these columns, so setting DB comments would create
+    #    reverse drift (DB has comment, model doesn't).
     # ------------------------------------------------------------------
-    op.execute(
-        sa.text(
-            "COMMENT ON COLUMN failed_login_attempts.ip_address IS "
-            "'Source IP (IPv4/IPv6, max 45 chars). Nullable for backwards compatibility.'"
-        )
-    )
-    op.execute(
-        sa.text(
-            "COMMENT ON COLUMN mfa_totp_enrollments.last_used_code_hash IS "
-            "'SHA-256 hex digest of the last successfully verified TOTP code.'"
-        )
-    )
-    op.execute(
-        sa.text(
-            "COMMENT ON COLUMN mfa_totp_enrollments.last_used_at IS "
-            "'Timestamp of the last successful TOTP verification.'"
-        )
-    )
-    op.execute(
-        sa.text(
-            "COMMENT ON COLUMN notification_deliveries.subscription_id IS "
-            "'Push subscription that received this delivery; "
-            "NULL for in-app and skipped-no-subscription rows.'"
-        )
-    )
 
     # ------------------------------------------------------------------
     # 10. Embedding indexes (use raw SQL for vector type)
