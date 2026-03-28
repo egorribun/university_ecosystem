@@ -189,6 +189,11 @@ warn_unused_ignores = false
 # structlog optional import: pre-commit mypy 1.15 doesn't flag assignment, CI mypy does.
 
 [[tool.mypy.overrides]]
+module = ["app.services.minio_storage", "app.core.ssrf"]
+warn_unused_ignores = false
+# pre-commit mypy lacks minio stubs / full socket types; CI mypy has all deps installed.
+
+[[tool.mypy.overrides]]
 module = ["app.services.chat_service", "app.services.webpush"]
 disallow_untyped_defs = false
 # TD-20-06: Large service modules with complex async callback signatures.
