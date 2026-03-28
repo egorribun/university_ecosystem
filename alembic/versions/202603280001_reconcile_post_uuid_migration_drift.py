@@ -197,6 +197,7 @@ _FK_SPECS: list[tuple[str, str, str, str, str]] = [
     ("messages", "sender_id", "users", "id", "CASCADE"),
     ("messages", "chat_id", "chats", "id", "CASCADE"),
     ("mfa_challenges", "user_id", "users", "id", "CASCADE"),
+    ("mfa_challenges", "session_id", "active_sessions", "id", "CASCADE"),
     ("mfa_totp_enrollments", "user_id", "users", "id", "CASCADE"),
     ("news_comments", "news_id", "news", "id", "CASCADE"),
     ("news_comments", "user_id", "users", "id", "CASCADE"),
@@ -206,7 +207,9 @@ _FK_SPECS: list[tuple[str, str, str, str, str]] = [
     ("password_reset_tokens", "user_id", "users", "id", "CASCADE"),
     ("push_subscriptions", "user_id", "users", "id", "CASCADE"),
     ("recovery_codes", "user_id", "users", "id", "CASCADE"),
+    ("news", "author_id", "users", "id", "SET NULL"),
     ("schedule", "group_id", "groups", "id", "CASCADE"),
+    ("schedule", "creator_id", "users", "id", "SET NULL"),
     ("spotify_integrations", "user_id", "users", "id", "CASCADE"),
     ("stories", "created_by", "users", "id", "SET NULL"),
     ("trusted_devices", "user_id", "users", "id", "CASCADE"),
@@ -348,9 +351,14 @@ def upgrade() -> None:
     for table_name, col_name in _NOT_NULL_CHANGES:
         op.alter_column(table_name, col_name, existing_type=sa.UUID(), nullable=False)
 
-    # Also handle events.embedding — keep nullable (model says NOT NULL but
-    # existing rows may have NULLs; the model default handles new rows)
-    # Skipped: events.embedding nullable change — would break existing data.
+    # events.embedding: set NOT NULL with a default zero-vector for any NULLs
+    op.execute(
+        sa.text(
+            "UPDATE events SET embedding = array_fill(0, ARRAY[1536])::vector "
+            "WHERE embedding IS NULL"
+        )
+    )
+    op.alter_column("events", "embedding", existing_type=sa.Text(), nullable=False)
 
     # ------------------------------------------------------------------
     # 5. Re-create foreign keys
@@ -535,30 +543,33 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # 9. Column comments
+    # 9. Column comments (use raw SQL — op.alter_column comment= unreliable
+    #    with asyncpg dialect)
     # ------------------------------------------------------------------
-    op.alter_column(
-        "failed_login_attempts",
-        "ip_address",
-        comment="Source IP (IPv4/IPv6, max 45 chars). Nullable for backwards compatibility.",
+    op.execute(
+        sa.text(
+            "COMMENT ON COLUMN failed_login_attempts.ip_address IS "
+            "'Source IP (IPv4/IPv6, max 45 chars). Nullable for backwards compatibility.'"
+        )
     )
-    op.alter_column(
-        "mfa_totp_enrollments",
-        "last_used_code_hash",
-        comment="SHA-256 hex digest of the last successfully verified TOTP code.",
+    op.execute(
+        sa.text(
+            "COMMENT ON COLUMN mfa_totp_enrollments.last_used_code_hash IS "
+            "'SHA-256 hex digest of the last successfully verified TOTP code.'"
+        )
     )
-    op.alter_column(
-        "mfa_totp_enrollments",
-        "last_used_at",
-        comment="Timestamp of the last successful TOTP verification.",
+    op.execute(
+        sa.text(
+            "COMMENT ON COLUMN mfa_totp_enrollments.last_used_at IS "
+            "'Timestamp of the last successful TOTP verification.'"
+        )
     )
-    op.alter_column(
-        "notification_deliveries",
-        "subscription_id",
-        comment=(
-            "Push subscription that received this delivery; NULL for in-app"
-            " and skipped-no-subscription rows."
-        ),
+    op.execute(
+        sa.text(
+            "COMMENT ON COLUMN notification_deliveries.subscription_id IS "
+            "'Push subscription that received this delivery; "
+            "NULL for in-app and skipped-no-subscription rows.'"
+        )
     )
 
     # ------------------------------------------------------------------
