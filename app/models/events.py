@@ -82,8 +82,8 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )  # LOW-W19: bounded String
     about: Mapped[str | None] = mapped_column(Text)
     about_en: Mapped[str | None] = mapped_column(Text)
-    embedding: Mapped[Any] = mapped_column(
-        Text().with_variant(Vector(1536), "postgresql")
+    embedding: Mapped[Any | None] = mapped_column(
+        Text().with_variant(Vector(1536), "postgresql"), nullable=True
     )
 
     __table_args__ = (

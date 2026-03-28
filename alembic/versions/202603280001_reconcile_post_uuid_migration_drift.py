@@ -358,14 +358,8 @@ def upgrade() -> None:
     for table_name, col_name in _NOT_NULL_CHANGES:
         op.alter_column(table_name, col_name, existing_type=sa.UUID(), nullable=False)
 
-    # events.embedding: set NOT NULL with a default zero-vector for any NULLs
-    op.execute(
-        sa.text(
-            "UPDATE events SET embedding = array_fill(0, ARRAY[1536])::vector "
-            "WHERE embedding IS NULL"
-        )
-    )
-    op.alter_column("events", "embedding", existing_type=sa.Text(), nullable=False)
+    # events.embedding stays nullable — events are created before embeddings
+    # are computed asynchronously. Model changed to Mapped[Any | None].
 
     # ------------------------------------------------------------------
     # 5. Re-create foreign keys
