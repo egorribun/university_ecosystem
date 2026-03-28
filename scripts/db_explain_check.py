@@ -18,7 +18,7 @@ async def check_seq_scans(engine, tables: list[str]) -> bool:
     queries = {
         "news": "EXPLAIN (FORMAT JSON) SELECT * FROM news ORDER BY embedding <=> '[0]'::vector LIMIT 10;",
         "events": "EXPLAIN (FORMAT JSON) SELECT * FROM events WHERE is_active = true ORDER BY created_at DESC LIMIT 20;",
-        "users": "EXPLAIN (FORMAT JSON) SELECT * FROM users WHERE email = 'test@example.com';",
+        "users": "EXPLAIN (FORMAT JSON) SELECT * FROM users WHERE lower(email) = 'test@example.com';",
     }
 
     for table in tables:
