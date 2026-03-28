@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.models import Event, News, Schedule
+from app.models.schedule import Group
 
 
 @pytest.mark.asyncio
@@ -113,7 +114,10 @@ async def test_graphql_events_query(root_client: AsyncClient, db_session, user_f
 @pytest.mark.asyncio
 async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
     now = dt.datetime.now(dt.UTC)
-    group_id = uuid.uuid4()
+    group = Group(name="CS-101")
+    db_session.add(group)
+    await db_session.flush()
+    group_id = group.id
     schedule_entry = Schedule(
         group_id=group_id,
         weekday="monday",
