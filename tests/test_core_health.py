@@ -68,10 +68,12 @@ async def test_check_database_health_with_pool_stats(mock_db):
 
 @pytest.mark.asyncio
 async def test_check_database_health_pool_stats_failure(mock_db):
-    mock_db.get_bind.side_effect = Exception("Bind error")
-
-    # Should not crash, just log and return None for pool stats
-    result = await check_database_health(mock_db)
+    # Patch get_read_engine to raise, simulating pool stats unavailable
+    with patch(
+        "app.core.database.get_read_engine",
+        side_effect=Exception("Engine unavailable"),
+    ):
+        result = await check_database_health(mock_db)
     assert result.pool_size is None
     assert result.pool_checked_out is None
 
