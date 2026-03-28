@@ -21,29 +21,31 @@ async def check_seq_scans(engine, tables: list[str]) -> bool:
         "users": "EXPLAIN (FORMAT JSON) SELECT * FROM users WHERE email = 'test@example.com';",
     }
 
-    async with engine.connect() as conn:
-        for table in tables:
-            if table not in queries:
-                continue
+    for table in tables:
+        if table not in queries:
+            continue
 
-            query = queries[table]
-            logger.info(f"Analyzing {table}...")
-            try:
+        query = queries[table]
+        logger.info(f"Analyzing {table}...")
+        try:
+            # Each query gets its own connection so a failed EXPLAIN
+            # (e.g. missing table) does not poison subsequent queries.
+            async with engine.connect() as conn:
                 result = await conn.execute(text(query))
                 plan = result.scalar()
 
-                plan_str = json.dumps(plan)
-                if "Seq Scan" in plan_str:
-                    logger.error(f"Sequential Scan detected on {table}!")
-                    logger.error(f"Plan: {plan_str}")
-                    has_seq_scan = True
-                else:
-                    logger.info(f"✓ {table} uses proper indexing.")
-            except Exception as e:
-                # LOW-W19: treat EXPLAIN failure as a conservative positive to avoid
-                # silently bypassing the seq-scan gate on a broken query/table.
-                logger.warning(f"Could not execute EXPLAIN on {table}: {e}")
+            plan_str = json.dumps(plan)
+            if "Seq Scan" in plan_str:
+                logger.error(f"Sequential Scan detected on {table}!")
+                logger.error(f"Plan: {plan_str}")
                 has_seq_scan = True
+            else:
+                logger.info(f"✓ {table} uses proper indexing.")
+        except Exception as e:
+            # LOW-W19: treat EXPLAIN failure as a conservative positive to avoid
+            # silently bypassing the seq-scan gate on a broken query/table.
+            logger.warning(f"Could not execute EXPLAIN on {table}: {e}")
+            has_seq_scan = True
 
     return has_seq_scan
 

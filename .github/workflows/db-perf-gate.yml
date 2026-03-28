@@ -32,10 +32,14 @@ jobs:
             - name: Run Alembic migrations
               env:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
-              run: alembic upgrade head || echo "No migrations to run"
-            - name: Seed test data and run EXPLAIN checks
+                  SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
+                  ENVIRONMENT: test
+              run: alembic upgrade head
+            - name: Run EXPLAIN checks
               env:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
+                  SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
+                  ENVIRONMENT: test
               run: |
                   python scripts/db_explain_check.py \
                     --fail-on-seq-scan \
