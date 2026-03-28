@@ -873,8 +873,9 @@ jobs:
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
   # MOD-W15-04 (audit 2026-03-23 Wave 15): Postgres migration gate.
-  # Validates alembic upgrade head + downgrade -1 + upgrade head round-trip
+  # Validates alembic upgrade head + downgrade base + upgrade head round-trip
   # on a real Postgres instance (not SQLite) to catch migration regressions.
+  # Note: "downgrade -1" fails on merge heads (ambiguous walk) — use "base".
   db-migration-gate:
     name: DB Migration Gate (Postgres)
     runs-on: ubuntu-latest
@@ -902,7 +903,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run migration round-trip (up → down -1 → up)
+      - name: Run migration round-trip (up → down base → up)
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/test_migration
           ENVIRONMENT: test
@@ -911,8 +912,8 @@ jobs:
           echo "=== Upgrade to HEAD ==="
           uv run alembic upgrade head
 
-          echo "=== Downgrade -1 ==="
-          uv run alembic downgrade -1
+          echo "=== Downgrade to base ==="
+          uv run alembic downgrade base
 
           echo "=== Upgrade back to HEAD ==="
           uv run alembic upgrade head
