@@ -79,10 +79,15 @@ class TestSendWebPush:
         assert result.status == "gone"
 
     def test_error_429(self, mock_pywebpush):
+        from types import SimpleNamespace
+
         from pywebpush import WebPushException
 
+        # Use SimpleNamespace instead of MagicMock to avoid random memory
+        # addresses in str(exc) that could accidentally contain "410"/"404".
+        mock_resp = SimpleNamespace(status_code=429, text="Rate Limited")
         mock_pywebpush.side_effect = WebPushException(
-            "Rate Limited", response=MagicMock(status_code=429)
+            "Rate Limited", response=mock_resp
         )
         result = send_web_push(self._make_sub(), {"title": "Rate"})
         assert result.status == "error"
