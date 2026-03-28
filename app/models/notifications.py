@@ -205,6 +205,7 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
             "notification_id",
             "channel",
             "subscription_id",
+            "attempted_at",
             name="uq_notification_delivery_once",
         ),
         {"postgresql_partition_by": "RANGE (attempted_at)"},

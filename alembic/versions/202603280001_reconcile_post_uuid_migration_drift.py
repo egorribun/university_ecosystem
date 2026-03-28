@@ -274,19 +274,25 @@ def upgrade() -> None:
 
     # ------------------------------------------------------------------
     # 0. Drop data_access_logs_default partition (autogenerate artefact)
+    #    May not exist on fresh DBs — guard with DO $$ block.
     # ------------------------------------------------------------------
     op.execute(
         sa.text(
-            "ALTER TABLE data_access_logs DETACH PARTITION data_access_logs_default"
+            "DO $$ BEGIN "
+            "IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'data_access_logs_default') THEN "
+            "ALTER TABLE data_access_logs DETACH PARTITION data_access_logs_default; "
+            "DROP TABLE data_access_logs_default; "
+            "END IF; "
+            "END $$"
         )
     )
-    op.execute(sa.text("DROP TABLE IF EXISTS data_access_logs_default"))
 
     # ------------------------------------------------------------------
     # 1. Drop all shadow / uuid_id / stale indexes
     # ------------------------------------------------------------------
-    for idx_name, table_name in _SHADOW_INDEXES:
-        op.drop_index(idx_name, table_name=table_name, if_exists=True)
+    for idx_name, _table_name in _SHADOW_INDEXES:
+        # CASCADE needed: some uuid_id unique indexes back FK constraints
+        op.execute(sa.text(f"DROP INDEX IF EXISTS {idx_name} CASCADE"))
 
     # ------------------------------------------------------------------
     # 2. Drop vestigial uuid_id columns
@@ -472,10 +478,12 @@ def upgrade() -> None:
     op.create_unique_constraint(
         "uq_news_like_user_news", "news_likes", ["user_id", "news_id"]
     )
+    # notification_deliveries is partitioned by attempted_at — PG requires
+    # all partitioning columns in unique constraints.
     op.create_unique_constraint(
         "uq_notification_delivery_once",
         "notification_deliveries",
-        ["notification_id", "channel", "subscription_id"],
+        ["notification_id", "channel", "subscription_id", "attempted_at"],
     )
     op.create_unique_constraint("uq_users_email", "users", ["email"])
 
