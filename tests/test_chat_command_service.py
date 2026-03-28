@@ -375,6 +375,7 @@ class TestSendMessageSuccess:
         uow.chats.get_last_messages = AsyncMock(side_effect=_get_last)
 
         mock_file = MagicMock()
+        mock_file.size = 1024
         attachment_svc = _mock_attachment_service()
 
         dispatcher = ChatMessageDispatcher(

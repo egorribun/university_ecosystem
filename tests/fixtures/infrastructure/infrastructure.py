@@ -8,7 +8,6 @@ import pytest_asyncio
 
 import app.core.ratelimit as ratelimit_module
 from app import main
-from app.core.config import settings
 from asgi_lifespan import LifespanManager
 
 # Static CSRF token for test clients — used by both the cookie and the header.
@@ -24,8 +23,8 @@ async def _rate_limit_redis_client(mock_global_redis):
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def configure_rate_limit(_rate_limit_redis_client):
     ratelimit_module.set_rate_limit_client_factory(lambda _: _rate_limit_redis_client)
-    # Make sure it's enabled for tests that need it
-    settings.rate_limit_enabled = True
+    # Rate limiting is disabled by default (RATE_LIMIT_ENABLED=false in conftest).
+    # Tests that need rate limiting should enable it per-test via monkeypatch.
     yield
     ratelimit_module.set_rate_limit_client_factory(None)
 

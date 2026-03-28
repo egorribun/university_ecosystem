@@ -1,4 +1,3 @@
-import logging
 from email.message import EmailMessage
 
 import pytest
@@ -19,21 +18,27 @@ def reset_email_settings(monkeypatch):
     yield
 
 
-def test_send_reset_email_logs_fallback_when_missing_server(monkeypatch, caplog):
+def test_send_reset_email_logs_fallback_when_missing_server(monkeypatch):
     monkeypatch.setattr(
         email_utils,
         "build_reset_email_content",
         lambda *args, **kwargs: ("Subject", "Plain", "<p>html</p>"),
     )
 
-    with caplog.at_level(logging.WARNING):
-        email_utils.send_reset_email(
-            "student@example.com",
-            "https://example.com/reset?token=super-secret",
-            "Student Name",
-        )
+    log_calls: list[tuple[int, str]] = []
 
-    messages = [record.message for record in caplog.records]
+    def tracking_log_event(level, message, **kwargs):
+        log_calls.append((level, message))
+
+    monkeypatch.setattr(email_utils, "_log_event", tracking_log_event)
+
+    email_utils.send_reset_email(
+        "student@example.com",
+        "https://example.com/reset?token=super-secret",
+        "Student Name",
+    )
+
+    messages = [msg for _, msg in log_calls]
     assert "password.reset_email.fallback" in messages
 
 

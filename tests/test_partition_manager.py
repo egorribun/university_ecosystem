@@ -28,44 +28,36 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         monkeypatch.setattr("app.services.partition_manager.engine", mock_engine)
 
         # Mock result for partition listing
-        mock_future_partitions = MagicMock()
-        mock_future_partitions.scalars.return_value.all.return_value = []
+        mock_create_result = MagicMock()
 
         mock_old_partitions = MagicMock()
         mock_old_partitions.scalars.return_value.all.return_value = [
             "notifications_y1999m01"
         ]
 
-        mock_conn.execute.side_effect = [
-            # Future partitions check (for loop range(settings.partition_warmup_months + 1))
-            mock_future_partitions,
-            # Prune old partitions check (one for each PARTITIONED_TABLES entry)
-            # Actually, there is one execute per table in PARTITIONED_TABLES
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-        ]
+        mock_drop_result = MagicMock()
+
+        # Build side_effect list to match the actual call pattern:
+        # For each table (3 tables) with warmup_months=0:
+        #   1 x execute(CREATE TABLE) per table = 3 creates
+        # Then pruning with retention_days=30:
+        #   1 x execute(SELECT partitions) per table = 3 selects
+        #   1 x execute(DROP TABLE) per found partition per table
+        #   (each returns 1 partition) = 3 drops
+        # Total: 3 + 3 + 3 = 9 execute calls
+        from app.services.partition_manager import PARTITIONED_TABLES
+
+        num_tables = len(PARTITIONED_TABLES)
+        side_effects = []
+        # Phase 1: CREATE TABLE calls (1 per table)
+        for _ in range(num_tables):
+            side_effects.append(mock_create_result)
+        # Phase 2: SELECT partition + DROP TABLE per table
+        for _ in range(num_tables):
+            side_effects.append(mock_old_partitions)  # SELECT
+            side_effects.append(mock_drop_result)  # DROP
+        mock_conn.execute.side_effect = side_effects
+        mock_conn.commit = AsyncMock()
 
         # Mock rust_ext
         mock_rust = MagicMock()

@@ -50,7 +50,7 @@ async def test_check_schedule_with_lessons(
         start_time=now + timedelta(minutes=5),
         end_time=now + timedelta(minutes=95),
         lesson_type="lecture",
-        weekday="Monday",
+        weekday="monday",
     )
     db_session.add(lesson)
     await db_session.commit()

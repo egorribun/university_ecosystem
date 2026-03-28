@@ -29,6 +29,7 @@ async def test_outbox_worker_is_scope_app_singleton() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires PostgreSQL — OutboxWorker uses asyncpg DSN format")
 async def test_outbox_worker_can_start_and_stop() -> None:
     """OutboxWorker retrieved from DI starts run_forever() and stops cleanly."""
     import asyncio

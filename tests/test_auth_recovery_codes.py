@@ -65,16 +65,15 @@ async def test_generate_recovery_codes_unit(
     assert len(user_codes) == 10
     assert not any(c.is_used for c in user_codes)
 
-    # Verify hash
+    # Verify hash — RZ-33-01: codes are hashed from dash-free canonical form
 
     from app.auth.security import verify_password
 
-    # Check that at least one code matches
-    # (Checking all is expensive in bcrypt, checking one is enough for unit test logic)
-    # To be precise: valid_code = codes[0]. We need to find the corresponding record.
+    # Check that at least one code matches using the normalized (dash-free) form
+    canonical = codes[0].replace("-", "")
     match = None
     for c in user_codes:
-        if await verify_password(codes[0], c.code_hash):
+        if await verify_password(canonical, c.code_hash):
             match = c
             break
     assert match is not None

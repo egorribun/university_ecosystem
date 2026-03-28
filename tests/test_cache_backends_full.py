@@ -180,13 +180,15 @@ class TestRedisClusterCache:
 
     @pytest.mark.asyncio
     async def test_invalidate_skips_patterns(self, cluster_cache):
-        """Cluster cache skips pattern keys (with *)."""
+        """Cluster cache handles pattern keys via SCAN (TD-33-10)."""
         fake_client = AsyncMock()
         fake_client.delete = AsyncMock()
+        # SCAN returns (cursor, matches); cursor=0 means done
+        fake_client.scan = AsyncMock(return_value=(0, []))
         cluster_cache._client = fake_client
 
         await cluster_cache.invalidate("key:*", "exact:key")
-        # Only exact key should be passed
+        # Exact key deleted, pattern processed via SCAN (no matches found)
         fake_client.delete.assert_called_once_with("exact:key")
 
     @pytest.mark.asyncio

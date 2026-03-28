@@ -89,7 +89,7 @@ class TestSendWebPush:
         assert result.status_code == 429
 
     def test_error_generic_exception(self, mock_pywebpush):
-        mock_pywebpush.side_effect = RuntimeError("Connection reset")
+        mock_pywebpush.side_effect = ConnectionError("Connection reset")
         result = send_web_push(self._make_sub(), {"title": "Error"})
         assert result.status == "error"
         assert "Connection reset" in (result.error or "")

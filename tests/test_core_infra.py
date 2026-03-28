@@ -375,9 +375,9 @@ def test_retry_middleware_calculate_delay_uncapped() -> None:
     mw = RetryMiddleware(
         max_retries=3, base_delay=0.1, max_delay=10.0, exponential_base=2.0
     )
-    # attempt=0: 0.1 * 2^0 = 0.1
+    # attempt=0: 0.1 * 2^0 = 0.1, then +-25% jitter → [0.075, 0.125]
     delay = mw._calculate_delay(0)
-    assert delay == pytest.approx(0.1)
+    assert delay == pytest.approx(0.1, rel=0.3)
 
 
 def test_retry_middleware_is_retryable() -> None:
@@ -550,143 +550,193 @@ def test_event_decorators_register_class_type() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_request(
+def _make_asgi_scope(
     path: str = "/api/internal/test",
     headers: dict[str, str] | None = None,
     client_host: str = "127.0.0.1",
-) -> MagicMock:
-    req = MagicMock()
-    req.url.path = path
-    req.method = "GET"
-    req.headers = headers or {}
-    mock_client = MagicMock()
-    mock_client.host = client_host
-    req.client = mock_client
-    return req
+    method: str = "GET",
+) -> dict[str, Any]:
+    raw_headers = [
+        (k.lower().encode("latin-1"), v.encode("latin-1"))
+        for k, v in (headers or {}).items()
+    ]
+    return {
+        "type": "http",
+        "method": method,
+        "path": path,
+        "headers": raw_headers,
+        "query_string": b"",
+        "client": (client_host, 0) if client_host else None,
+    }
+
+
+async def _call_asgi_middleware(
+    mw: Any,
+    scope: dict[str, Any],
+    body: bytes = b"",
+) -> dict[str, Any]:
+    """Call an ASGI middleware and capture the response status + headers."""
+    captured: dict[str, Any] = {
+        "status": None,
+        "headers": {},
+        "body": b"",
+        "called_app": False,
+    }
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.start":
+            captured["status"] = message["status"]
+            captured["headers"] = {
+                k.decode("latin-1") if isinstance(k, bytes) else k: v.decode("latin-1")
+                if isinstance(v, bytes)
+                else v
+                for k, v in message.get("headers", [])
+            }
+        elif message["type"] == "http.response.body":
+            captured["body"] += message.get("body", b"")
+
+    await mw(scope, receive, send)
+    return captured
 
 
 @pytest.mark.asyncio
 async def test_internal_access_non_internal_path_passes_through() -> None:
     from app.core.internal_access import InternalAccessMiddleware
 
-    mock_app = AsyncMock()
-    mock_response = MagicMock()
+    app_called = False
 
-    async def call_next(request: Any) -> Any:
-        return mock_response
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        nonlocal app_called
+        app_called = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
 
     mw = InternalAccessMiddleware(
-        mock_app,
+        inner_app,
         internal_prefixes=["/api/internal"],
         header_name="X-Internal-Token",
         header_token="secret",
     )
 
-    request = _make_mock_request(path="/api/v1/users")
-    response = await mw.dispatch(request, call_next)
-    assert response is mock_response
+    scope = _make_asgi_scope(path="/api/v1/users")
+    result = await _call_asgi_middleware(mw, scope)
+    assert app_called
+    assert result["status"] == 200
 
 
 @pytest.mark.asyncio
 async def test_internal_access_valid_token_passes() -> None:
     from app.core.internal_access import InternalAccessMiddleware
 
-    mock_app = AsyncMock()
-    mock_response = MagicMock()
-    mock_response.headers = {}
+    app_called = False
 
-    async def call_next(request: Any) -> Any:
-        return mock_response
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        nonlocal app_called
+        app_called = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
 
     mw = InternalAccessMiddleware(
-        mock_app,
+        inner_app,
         internal_prefixes=["/api/internal"],
         header_name="X-Internal-Token",
         header_token="secret123",
     )
 
-    request = _make_mock_request(
+    scope = _make_asgi_scope(
         path="/api/internal/health",
         headers={"X-Internal-Token": "secret123"},
     )
-    response = await mw.dispatch(request, call_next)
-    assert response is mock_response
+    result = await _call_asgi_middleware(mw, scope)
+    assert app_called
+    assert result["status"] == 200
+    # Token-authenticated requests get Vary header injected
+    assert "x-internal-token" in result["headers"] or "vary" in result["headers"]
 
 
 @pytest.mark.asyncio
 async def test_internal_access_valid_ip_passes() -> None:
     from app.core.internal_access import InternalAccessMiddleware
 
-    mock_app = AsyncMock()
-    mock_response = MagicMock()
+    app_called = False
 
-    async def call_next(request: Any) -> Any:
-        return mock_response
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        nonlocal app_called
+        app_called = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
 
     mw = InternalAccessMiddleware(
-        mock_app,
+        inner_app,
         internal_prefixes=["/internal"],
         allowed_ips=["10.0.0.1"],
     )
 
-    request = _make_mock_request(path="/internal/status", client_host="10.0.0.1")
-    response = await mw.dispatch(request, call_next)
-    assert response is mock_response
+    scope = _make_asgi_scope(path="/internal/status", client_host="10.0.0.1")
+    result = await _call_asgi_middleware(mw, scope)
+    assert app_called
+    assert result["status"] == 200
 
 
 @pytest.mark.asyncio
 async def test_internal_access_denied_wrong_token() -> None:
-    from starlette.responses import JSONResponse
-
     from app.core.internal_access import InternalAccessMiddleware
 
-    mock_app = AsyncMock()
+    app_called = False
 
-    async def call_next(request: Any) -> Any:
-        return MagicMock()
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        nonlocal app_called
+        app_called = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
 
     mw = InternalAccessMiddleware(
-        mock_app,
+        inner_app,
         internal_prefixes=["/internal"],
         header_name="X-Internal-Token",
         header_token="correct",
     )
 
-    request = _make_mock_request(
+    scope = _make_asgi_scope(
         path="/internal/admin",
         headers={"X-Internal-Token": "wrong"},
     )
-    response = await mw.dispatch(request, call_next)
-    assert isinstance(response, JSONResponse)
-    assert response.status_code == 403
+    result = await _call_asgi_middleware(mw, scope)
+    assert not app_called
+    assert result["status"] == 403
 
 
 @pytest.mark.asyncio
 async def test_internal_access_no_client_still_denies() -> None:
-    from starlette.responses import JSONResponse
-
     from app.core.internal_access import InternalAccessMiddleware
 
-    mock_app = AsyncMock()
+    app_called = False
 
-    async def call_next(request: Any) -> Any:
-        return MagicMock()
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        nonlocal app_called
+        app_called = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
 
     mw = InternalAccessMiddleware(
-        mock_app,
+        inner_app,
         internal_prefixes=["/internal"],
         allowed_ips=["127.0.0.1"],
     )
 
-    request = _make_mock_request(path="/internal/test")
-    request.client = None  # no client
+    scope = _make_asgi_scope(path="/internal/test")
+    scope["client"] = None  # no client
 
-    response = await mw.dispatch(request, call_next)
-    assert isinstance(response, JSONResponse)
-    assert response.status_code == 403
+    result = await _call_asgi_middleware(mw, scope)
+    assert not app_called
+    assert result["status"] == 403
 
 
 def test_internal_access_has_valid_header_missing_name() -> None:
+    """When header_name is None, _has_valid_header_from_scope returns False."""
     from app.core.internal_access import InternalAccessMiddleware
 
     mock_app = MagicMock()
@@ -694,55 +744,81 @@ def test_internal_access_has_valid_header_missing_name() -> None:
     mw.header_name = None
     mw.header_token = "token"
 
-    request = MagicMock()
-    assert mw._has_valid_header(request) is False
+    # Test via the scope-based method that the middleware actually uses
+    assert mw._has_valid_header_from_scope({}) is False
 
 
-def test_internal_access_ensure_vary_adds_header() -> None:
+@pytest.mark.asyncio
+async def test_internal_access_vary_header_added_on_token_auth() -> None:
+    """Token-authenticated internal requests get Vary header with header_name."""
     from app.core.internal_access import InternalAccessMiddleware
 
-    mock_app = MagicMock()
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
     mw = InternalAccessMiddleware(
-        mock_app,
-        internal_prefixes=[],
+        inner_app,
+        internal_prefixes=["/internal"],
         header_name="X-Token",
+        header_token="secret",
     )
 
-    response = MagicMock()
-    response.headers = {}
+    scope = _make_asgi_scope(
+        path="/internal/test",
+        headers={"X-Token": "secret"},
+    )
+    result = await _call_asgi_middleware(mw, scope)
+    assert result["status"] == 200
+    assert "vary" in result["headers"]
+    assert "X-Token" in result["headers"]["vary"]
 
-    mw._ensure_vary_header(response)
-    assert response.headers["Vary"] == "X-Token"
 
-
-def test_internal_access_ensure_vary_appends_to_existing() -> None:
+@pytest.mark.asyncio
+async def test_internal_access_vary_header_appends_to_existing() -> None:
+    """Vary header appends header_name without duplicating existing values."""
     from app.core.internal_access import InternalAccessMiddleware
 
-    mock_app = MagicMock()
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"vary", b"Accept-Encoding")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"ok"})
+
     mw = InternalAccessMiddleware(
-        mock_app,
-        internal_prefixes=[],
+        inner_app,
+        internal_prefixes=["/internal"],
         header_name="X-Token",
+        header_token="secret",
     )
 
-    response = MagicMock()
-    response.headers = {"Vary": "Accept-Encoding"}
+    scope = _make_asgi_scope(
+        path="/internal/test",
+        headers={"X-Token": "secret"},
+    )
+    result = await _call_asgi_middleware(mw, scope)
+    assert result["status"] == 200
+    vary_value = result["headers"].get("vary", "")
+    assert "X-Token" in vary_value
+    assert "Accept-Encoding" in vary_value
 
-    mw._ensure_vary_header(response)
-    assert "X-Token" in response.headers["Vary"]
-    assert "Accept-Encoding" in response.headers["Vary"]
 
-
-def test_internal_access_ensure_vary_no_header_name() -> None:
+def test_internal_access_no_header_name_no_vary() -> None:
+    """When header_name is None, _make_vary_send returns the original send."""
     from app.core.internal_access import InternalAccessMiddleware
 
     mock_app = MagicMock()
     mw = InternalAccessMiddleware(mock_app, internal_prefixes=[])
     mw.header_name = None
 
-    response = MagicMock()
-    response.headers = {}
-    mw._ensure_vary_header(response)  # should be no-op
+    mock_send = MagicMock()
+    result = mw._make_vary_send(mock_send)
+    # When header_name is None, _make_vary_send returns the original send unchanged
+    assert result is mock_send
 
 
 # ---------------------------------------------------------------------------

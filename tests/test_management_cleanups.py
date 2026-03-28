@@ -12,7 +12,8 @@ def test_stories_cleanup_main():
         with patch("app.management.stories_cleanup.logger") as mock_log:
             stories_main()
             mock_cleanup.assert_called_once()
-            mock_log.info.assert_any_call("Removed 5 expired stories")
+            # Source uses lazy logging: logger.info("Removed %s expired stories", removed)
+            mock_log.info.assert_any_call("Removed %s expired stories", 5)
 
 
 def test_weekly_cleanup_main():
@@ -27,6 +28,7 @@ def test_weekly_cleanup_main():
         with patch("app.management.weekly_cleanup.logger") as mock_log:
             weekly_main()
             mock_run.assert_called_once()
+            # Source uses lazy logging: logger.info("Weekly cleanup finished: %s", stats)
             mock_log.info.assert_any_call(
-                f"Weekly cleanup finished: {mock_run.return_value}"
+                "Weekly cleanup finished: %s", mock_run.return_value
             )

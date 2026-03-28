@@ -27,7 +27,9 @@ async def _login(client: AsyncClient, email: str) -> dict[str, str]:
         data={"username": email, "password": _TEST_PASSWORD},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    token = resp.cookies.get("access_token_v2") or ""
+    assert resp.status_code == 200, f"Login failed: {resp.status_code} {resp.text}"
+    token = resp.cookies.get("access_token_v2") or client.cookies.get("access_token_v2")
+    assert token, "access_token_v2 cookie not found after login"
     return {"Authorization": f"Bearer {token}"}
 
 

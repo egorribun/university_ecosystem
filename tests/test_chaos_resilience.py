@@ -15,7 +15,7 @@ class TestRedisChaos:
     async def test_redis_get_failure_returns_none(self):
         """When Redis get fails, MultiLayerCache should return None (fail-soft)."""
         mock_redis = AsyncMock()
-        mock_redis.get.side_effect = Exception("Redis connection lost")
+        mock_redis.get.side_effect = ConnectionError("Redis connection lost")
 
         cache = MultiLayerCache(redis_client=mock_redis)
         result = await cache.get("test-key")
@@ -26,7 +26,7 @@ class TestRedisChaos:
     async def test_redis_set_failure_does_not_raise(self):
         """When Redis set fails, MultiLayerCache should not raise (fail-soft)."""
         mock_redis = AsyncMock()
-        mock_redis.setex.side_effect = Exception("Redis write failure")
+        mock_redis.setex.side_effect = ConnectionError("Redis write failure")
 
         cache = MultiLayerCache(redis_client=mock_redis)
         # Should not raise
@@ -37,7 +37,7 @@ class TestRedisChaos:
     async def test_redis_invalidate_failure_does_not_raise(self):
         """When Redis scan/delete fails, MultiLayerCache should not raise."""
         mock_redis = AsyncMock()
-        mock_redis.scan.side_effect = Exception("Redis scan failed")
+        mock_redis.scan.side_effect = ConnectionError("Redis scan failed")
 
         cache = MultiLayerCache(redis_client=mock_redis)
         # Should not raise

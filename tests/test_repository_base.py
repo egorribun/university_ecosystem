@@ -132,7 +132,7 @@ async def test_repository_get_or_raise_not_found(repository, mock_db):
     mock_result.scalars.return_value.first.return_value = None
     mock_db.execute.return_value = mock_result
 
-    with pytest.raises(ValueError, match="User with id 999 not found"):
+    with pytest.raises(ValueError, match="Resource not found"):
         await repository.get_or_raise(999)
 
 

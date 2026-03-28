@@ -104,7 +104,7 @@ async def test_rate_limit_per_cookie():
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
     ) as client:
-        client.cookies.set("access_token", "cookie-token-a", path="/")
+        client.cookies.set("access_token_v2", "cookie-token-a", path="/")
         endpoint = "/api/v1/news"
 
         for _ in range(5):
@@ -114,7 +114,7 @@ async def test_rate_limit_per_cookie():
         blocked = await client.get(endpoint)
         assert blocked.status_code == 429
 
-        client.cookies.set("access_token", "cookie-token-b", path="/")
+        client.cookies.set("access_token_v2", "cookie-token-b", path="/")
 
         other = await client.get(endpoint)
         assert other.status_code == 200

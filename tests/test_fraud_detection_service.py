@@ -18,6 +18,11 @@ def mock_redis() -> Any:
     client = MagicMock()
     client.xadd = AsyncMock()
     client.xrevrange = AsyncMock(return_value=[])
+    client.zcount = AsyncMock(return_value=0)
+    # pipeline() returns a mock whose execute() is awaitable
+    mock_pipe = MagicMock()
+    mock_pipe.execute = AsyncMock(return_value=[])
+    client.pipeline = MagicMock(return_value=mock_pipe)
     return client
 
 
@@ -79,10 +84,8 @@ class TestCountRecentHighSeverity:
     async def test_counts_high_severity_events(
         self, service: FraudDetectionService, mock_redis: AsyncMock
     ) -> None:
-        mock_redis.xrevrange.return_value = [
-            (b"1-0", {b"user_id": b"5", b"severity": b"high"}),
-            (b"2-0", {b"user_id": b"5", b"severity": b"high"}),
-            (b"3-0", {b"user_id": b"5", b"severity": b"medium"}),
-        ]
+        # PERF-4: count_recent_high_severity now uses ZCOUNT on a sorted set
+        # instead of scanning the stream via XREVRANGE.
+        mock_redis.zcount = AsyncMock(return_value=2)
         count = await service.count_recent_high_severity(user_id="5")
         assert count == 2

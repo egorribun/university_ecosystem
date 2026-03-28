@@ -373,13 +373,14 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
     user = await user_factory(group_id=group.id)
 
     now = dt.datetime.now(dt.UTC)
+    current_weekday = now.strftime("%A").lower()
     lessons = [
         Schedule(
             group_id=group.id,
             subject="Mathematics",
             teacher="Teacher",
             room="201",
-            weekday="monday",
+            weekday=current_weekday,
             start_time=now + dt.timedelta(minutes=idx * 5 + 5),
             end_time=now + dt.timedelta(minutes=idx * 5 + 55),
         )
@@ -428,12 +429,13 @@ async def test_generate_schedule_reminders_skips_inactive_users(
     inactive_user = await user_factory(group_id=group.id, is_active=False)
 
     now = dt.datetime.now(dt.UTC)
+    current_weekday = now.strftime("%A").lower()
     lesson = Schedule(
         group_id=group.id,
         subject="History",
         teacher="Teacher",
         room="301",
-        weekday="tuesday",
+        weekday=current_weekday,
         start_time=now + dt.timedelta(minutes=10),
         end_time=now + dt.timedelta(minutes=60),
     )

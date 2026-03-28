@@ -370,7 +370,8 @@ class TestDispatchGetOnline:
         mock_websocket.send_json.assert_called_once()
         msg = mock_websocket.send_json.call_args[0][0]
         assert msg["type"] == "online_list"
-        assert msg["users"] == online_ids
+        # RZ-33-08: UUIDs are now serialized to strings before send_json
+        assert msg["users"] == [str(u) for u in online_ids]
 
     @pytest.mark.asyncio
     async def test_non_admin_denied(

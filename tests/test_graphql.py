@@ -116,11 +116,11 @@ async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
     group_id = uuid.uuid4()
     schedule_entry = Schedule(
         group_id=group_id,
-        weekday="Monday",
+        weekday="monday",
         start_time=now,
         end_time=now + dt.timedelta(hours=1, minutes=30),
         subject="Mathematics",
-        lesson_type="Lecture",
+        lesson_type="lecture",
     )
     db_session.add(schedule_entry)
     await db_session.commit()
@@ -144,7 +144,7 @@ async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
     data = response.json()["data"]
     assert len(data["schedule"]) == 1
     assert data["schedule"][0]["subject"] == "Mathematics"
-    assert data["schedule"][0]["dayOfWeek"] == "Monday"
+    assert data["schedule"][0]["dayOfWeek"] == "monday"
 
 
 @pytest.mark.asyncio

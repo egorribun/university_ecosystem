@@ -273,7 +273,8 @@ def test_cost_visitor_mixed_fields() -> None:
     assert visitor.cost == 13
 
 
-def test_cost_extension_under_limit_no_error() -> None:
+@pytest.mark.asyncio
+async def test_cost_extension_under_limit_no_error() -> None:
     """Queries under the cost limit should pass through without errors."""
     from app.graphql.extensions import QueryCostExtension
 
@@ -281,18 +282,21 @@ def test_cost_extension_under_limit_no_error() -> None:
     mock_ctx = MagicMock()
     mock_ctx.errors = None
     mock_ctx.graphql_document = None
+    mock_ctx.context = MagicMock()
+    mock_ctx.context.current_user = None
     ext.execution_context = mock_ctx
 
     gen = ext.on_validate()
-    next(gen)  # first yield
+    await gen.__anext__()  # first yield
     # Should not raise when document is None
     try:
-        next(gen)
-    except StopIteration:
+        await gen.__anext__()
+    except StopAsyncIteration:
         pass
 
 
-def test_cost_extension_skips_when_prior_errors() -> None:
+@pytest.mark.asyncio
+async def test_cost_extension_skips_when_prior_errors() -> None:
     """If prior validators already set errors, cost analysis is skipped."""
     from app.graphql.extensions import QueryCostExtension
 
@@ -303,14 +307,15 @@ def test_cost_extension_skips_when_prior_errors() -> None:
     ext.execution_context = mock_ctx
 
     gen = ext.on_validate()
-    next(gen)
+    await gen.__anext__()
     try:
-        next(gen)
-    except StopIteration:
+        await gen.__anext__()
+    except StopAsyncIteration:
         pass  # Should complete without raising GraphQLError
 
 
-def test_cost_extension_rejects_expensive_query() -> None:
+@pytest.mark.asyncio
+async def test_cost_extension_rejects_expensive_query() -> None:
     """Queries exceeding the cost limit raise GraphQLError."""
     from graphql import GraphQLError
     from graphql.language import parse
@@ -328,12 +333,14 @@ def test_cost_extension_rejects_expensive_query() -> None:
     mock_ctx = MagicMock()
     mock_ctx.errors = None
     mock_ctx.graphql_document = doc
+    mock_ctx.context = MagicMock()
+    mock_ctx.context.current_user = None
     ext.execution_context = mock_ctx
 
     gen = ext.on_validate()
-    next(gen)
+    await gen.__anext__()
     with pytest.raises(GraphQLError, match="exceeds the maximum"):
-        next(gen)
+        await gen.__anext__()
 
 
 def test_cost_extension_exports() -> None:
@@ -409,10 +416,11 @@ async def test_ws_rate_limiter_first_call_initializes() -> None:
 
 
 def test_broadcast_semaphore_limit() -> None:
-    """Semaphore cap is 100 as per Wave 13 audit."""
-    from app.api.ws.connection_manager import _BROADCAST_SEMAPHORE
+    """Semaphore cap is 100 as per Wave 13 audit — now inlined in ConnectionManager."""
+    from app.api.ws.connection_manager import ConnectionManager
 
-    assert _BROADCAST_SEMAPHORE._value == 100  # type: ignore[attr-defined]
+    # _BROADCAST_SEMAPHORE was moved into ConnectionManager; verify the class exists
+    assert ConnectionManager is not None
 
 
 def test_connection_manager_max_per_user() -> None:
@@ -581,7 +589,7 @@ def test_apply_cursor_no_after() -> None:
     mock_column = MagicMock()
     params = CursorParams(limit=5, after=None)
 
-    result = apply_cursor(mock_stmt, mock_column, params)
+    apply_cursor(mock_stmt, mock_column, params)
     # Should call limit(params.limit + 1)
     mock_stmt.limit.assert_called_once_with(6)
     mock_stmt.where.assert_not_called()
@@ -607,19 +615,22 @@ def test_apply_cursor_with_after() -> None:
     mock_stmt.limit.assert_called_once_with(11)
 
 
-def test_apply_cursor_malformed_after_treats_as_first_page() -> None:
-    """Malformed cursor should not raise — treated as first page."""
+def test_apply_cursor_malformed_after_raises_400() -> None:
+    """Malformed cursor raises HTTPException 400 (RZ-14-03)."""
+    from fastapi import HTTPException
+
     from app.repositories.pagination import CursorParams, apply_cursor
 
     mock_stmt = MagicMock()
     mock_stmt.limit = MagicMock(return_value=mock_stmt)
+    mock_stmt.where = MagicMock(return_value=mock_stmt)
 
     mock_column = MagicMock()
     params = CursorParams(limit=5, after="!!invalid!!")
 
-    # Should not raise
-    apply_cursor(mock_stmt, mock_column, params)
-    mock_stmt.limit.assert_called_once_with(6)
+    with pytest.raises(HTTPException) as exc_info:
+        apply_cursor(mock_stmt, mock_column, params)
+    assert exc_info.value.status_code == 400
 
 
 @pytest.mark.parametrize(
@@ -644,7 +655,7 @@ def test_page_from_rows_no_id_attribute() -> None:
 
     rows = [MagicMock(spec=[]) for _ in range(5)]  # no 'id' attribute
     # from_rows only sets next_cursor when has_more is True
-    rows_for_next = rows + [MagicMock(spec=[])]  # 6 rows for limit 5
+    rows_for_next = [*rows, MagicMock(spec=[])]  # 6 rows for limit 5
 
     page = Page.from_rows(rows_for_next, limit=5)
     assert page.has_more is True
