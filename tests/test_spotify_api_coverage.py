@@ -63,12 +63,17 @@ async def test_auth_url(mock_user):
 async def test_spotify_callback_success(mock_db, mock_request, mock_user, monkeypatch):
     from app.core.config import settings
 
-    monkeypatch.setattr(settings, "spotify_oauth_state_secret", "test-state-secret")
-    monkeypatch.setattr(settings, "spotify_client_id", "test-client-id")
-    monkeypatch.setattr(settings, "spotify_client_secret", "test-client-secret")
-    monkeypatch.setattr(
-        settings, "spotify_redirect_uri", "http://localhost:8000/spotify/callback"
-    )
+    # Pydantic v2 BaseSettings may block regular setattr; use object.__setattr__
+    for attr, val in [
+        ("spotify_oauth_state_secret", "test-state-secret"),
+        ("spotify_client_id", "test-client-id"),
+        ("spotify_client_secret", "test-client-secret"),
+        ("spotify_redirect_uri", "http://localhost:8000/spotify/callback"),
+    ]:
+        monkeypatch.setattr(settings, attr, val, raising=False)
+        # Fallback: force into __dict__ if setattr was intercepted
+        if getattr(settings, attr, None) != val:
+            object.__setattr__(settings, attr, val)
     return await _run_spotify_callback_success(mock_db, mock_request, mock_user)
 
 

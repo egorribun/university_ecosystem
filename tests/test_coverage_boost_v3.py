@@ -83,7 +83,7 @@ async def test_query_cost_extension_high_cost():
 
     ext = object.__new__(QueryCostExtension)
     ext.execution_context = MagicMock()
-    ext.execution_context.errors = None
+    ext.execution_context.pre_execution_errors = None
     mock_doc = MagicMock()
     ext.execution_context.graphql_document = mock_doc
     ext.execution_context.context = MagicMock()

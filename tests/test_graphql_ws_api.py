@@ -331,7 +331,7 @@ async def test_cost_extension_rejects_expensive_query() -> None:
     doc = parse(f"{{ {many_list_fields} }}")
 
     mock_ctx = MagicMock()
-    mock_ctx.errors = None
+    mock_ctx.pre_execution_errors = None
     mock_ctx.graphql_document = doc
     mock_ctx.context = MagicMock()
     mock_ctx.context.current_user = None

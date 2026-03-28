@@ -364,9 +364,9 @@ def test_retry_middleware_calculate_delay_capped() -> None:
     mw = RetryMiddleware(
         max_retries=10, base_delay=1.0, max_delay=5.0, exponential_base=2.0
     )
-    # attempt=10: 1.0 * 2^10 = 1024 → capped to 5.0
+    # attempt=10: 1.0 * 2^10 = 1024 → capped to 5.0 (±25% jitter)
     delay = mw._calculate_delay(10)
-    assert delay == 5.0
+    assert delay == pytest.approx(5.0, rel=0.3)
 
 
 def test_retry_middleware_calculate_delay_uncapped() -> None:
