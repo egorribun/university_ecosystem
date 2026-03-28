@@ -105,10 +105,13 @@ def downgrade():
     dialect = bind.dialect.name
 
     if dialect == "postgresql":
-        op.drop_constraint(
-            "fk_mfa_challenges_session_id_uuid", "mfa_challenges", type_="foreignkey"
+        op.execute(
+            sa.text(
+                "ALTER TABLE mfa_challenges "
+                "DROP CONSTRAINT IF EXISTS fk_mfa_challenges_session_id_uuid"
+            )
         )
-        op.drop_index("ix_mfa_challenges_session_id", "mfa_challenges")
+        op.execute(sa.text("DROP INDEX IF EXISTS ix_mfa_challenges_session_id"))
         op.alter_column(
             "mfa_challenges", "session_id", type_=sa.Integer(), postgresql_using="NULL"
         )
