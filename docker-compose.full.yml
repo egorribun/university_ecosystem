@@ -17,9 +17,9 @@ services:
       FRONTEND_ORIGIN: http://localhost:8081
       FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/0"
       RATE_LIMIT_STORAGE_BACKEND: redis
-      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
+      RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/1"
       MINIO_ENDPOINT: minio:9000
       MINIO_BUCKET: uploads
       MINIO_SECURE: "false"
@@ -33,6 +33,8 @@ services:
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
       ELASTICSEARCH_USER: "elastic"
       ELASTICSEARCH_PASSWORD: "${ELASTIC_PASSWORD:?ELASTIC_PASSWORD is required - set in .env file}"
+      SPICEDB_ENDPOINT: "spicedb:50051"
+      SPICEDB_INSECURE: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
@@ -100,7 +102,7 @@ services:
     environment:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/0"
       AUTO_CREATE_SCHEMA: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
@@ -172,9 +174,9 @@ services:
       - "20"
       # LOW-W19: require a password so unauthenticated access is blocked
       - "--requirepass"
-      - "${REDIS_PASSWORD:-DevRedisPass2024!}"
+      - "${REDIS_PASSWORD:-DevRedisPass2024x}"
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-DevRedisPass2024x}", "--no-auth-warning", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -276,7 +278,7 @@ services:
     environment:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
-      REDIS_URL: redis://redis:6379/3
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/3"
       JWT_SECRET: ${SECRET_KEY}
       # AUDIT-INFRA-05: explicit opt-out for local dev — production K8s must NOT set this
       GRPC_USE_TLS: "false"
