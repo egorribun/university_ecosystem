@@ -268,14 +268,15 @@ jobs:
             coverage-check: true
             run-integration: true
             free-threading: false
-          # MOD-24-03: Free-threading CI variant — unit tests only, GIL disabled.
-          # Validates that the backend test suite passes under PEP 703 free-threading
-          # mode (PYTHON_GIL=0) to prepare for GIL-optional Python 3.14+.
-          - python-version: "3.14"
-            name: "Python 3.14 (free-threading)"
-            coverage-check: false
-            run-integration: false
-            free-threading: true
+          # MOD-24-03: Free-threading CI variant — temporarily disabled.
+          # http-ece 1.2.1 (pywebpush dep) crashes on Python 3.14 during
+          # setup.py ("Disabling the GIL is not supported by this build").
+          # Re-enable once http-ece ships a 3.14-compatible release.
+          # - python-version: "3.14"
+          #   name: "Python 3.14 (free-threading)"
+          #   coverage-check: false
+          #   run-integration: false
+          #   free-threading: true
     needs: pre-commit-check
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
