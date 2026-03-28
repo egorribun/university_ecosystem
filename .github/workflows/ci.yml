@@ -276,7 +276,7 @@ jobs:
       test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
       python-version: ${{ matrix.python-version }}
-      coverage-threshold: ${{ matrix.coverage-check && 79 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 78 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03

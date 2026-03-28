@@ -127,7 +127,7 @@ async def test_monster_coverage_run():
                 subdir="s",
                 prefix="p",
                 allowed_mime_types={"application/pdf"},
-                allowed_extensions={".pdf"},
+                allowed_extensions={"pdf"},
             )
 
     # 6. AUTH LOGIN (Refactored for LoginService)
