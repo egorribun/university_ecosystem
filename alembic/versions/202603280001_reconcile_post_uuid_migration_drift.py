@@ -543,10 +543,18 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # 9. Column comments — removed. The ORM models do not define
-    #    comment= on these columns, so setting DB comments would create
-    #    reverse drift (DB has comment, model doesn't).
+    # 9. Column comments — older migrations set comments via add_column/
+    #    alter_column but the ORM models don't define comment=.
+    #    Clear them so DB matches model (both None).
     # ------------------------------------------------------------------
+    op.execute(sa.text("COMMENT ON COLUMN failed_login_attempts.ip_address IS NULL"))
+    op.execute(
+        sa.text("COMMENT ON COLUMN mfa_totp_enrollments.last_used_code_hash IS NULL")
+    )
+    op.execute(sa.text("COMMENT ON COLUMN mfa_totp_enrollments.last_used_at IS NULL"))
+    op.execute(
+        sa.text("COMMENT ON COLUMN notification_deliveries.subscription_id IS NULL")
+    )
 
     # ------------------------------------------------------------------
     # 10. Embedding indexes (use raw SQL for vector type)
