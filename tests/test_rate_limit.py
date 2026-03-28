@@ -603,8 +603,11 @@ def test_parse_rate_limit_invalid_returns_fallback(value: str) -> None:
 async def test_check_rate_limit_blocks_after_limit(
     identifier: str, _rate_limit_redis_client, monkeypatch
 ):
-    # Clear redis between hypothesis iterations to ensure clean state
+    # Clear redis AND in-memory state between hypothesis iterations
     await _rate_limit_redis_client.flushall()
+    from app.core.ratelimit import clear_memory_state
+
+    clear_memory_state()
     monkeypatch.setattr("app.core.ratelimit.strategies.base._shared_clients", {})
     # Reset the single write lock (replaces the removed _shared_client_locks dict).
     # PERF-3 audit 2026-02-26: per-URL lock dict was replaced by one module-level lock.
