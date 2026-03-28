@@ -32,7 +32,6 @@ dependencies = [
   "fastapi>=0.135.1,<0.136",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
   "filelock>=3.20.3",
   "geoip2>=4.0",
-  "gputil>=1.4.0",
   "grpcio>=1.60.0",
   "gunicorn>=21.2.0",
   "httpx[http2]>=0.27,<1.0",                          # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
