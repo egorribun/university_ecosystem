@@ -65,6 +65,135 @@ npm:
       reason: |
         Stack Overflow via deeply nested YAML collections.
         Used by postcss-import; not exploitable via our CSS pipeline.
+    - id: "1115556"
+      package: yaml
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Stack Overflow via deeply nested YAML collections (new advisory ID).
+        Same issue as 1115369; used by postcss-import, not exploitable via our CSS pipeline.
+    - id: "1115514"
+      package: handlebars
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        JS Injection in CLI Precompiler via Unescaped Names.
+        Dev-only dep from eslint-plugin-boundaries → @boundaries/elements; not in production bundle.
+    - id: "1115515"
+      package: handlebars
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        JS Injection via AST Type Confusion when passing an object.
+        Dev-only dep from eslint-plugin-boundaries → @boundaries/elements.
+    - id: "1115516"
+      package: handlebars
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Denial of Service via Malformed Decorator Syntax.
+        Dev-only dep from eslint-plugin-boundaries → @boundaries/elements.
+    - id: "1115538"
+      package: handlebars
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        JS Injection via AST Type Confusion by tampering @partial-block.
+        Dev-only dep from eslint-plugin-boundaries → @boundaries/elements.
+    - id: "1115539"
+      package: handlebars
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        JS Injection via AST Type Confusion (critical).
+        Dev-only dep from eslint-plugin-boundaries → @boundaries/elements.
+    - id: "1115544"
+      package: handlebars
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Prototype Pollution Leading to XSS through Partial Template Injection.
+        Dev-only dep from eslint-plugin-boundaries → @boundaries/elements.
+    - id: "1115527"
+      package: path-to-regexp
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        ReDoS via multiple repeated backtracking parameters.
+        Transitive dep from @lhci/cli (Lighthouse CI) and msw (test mock); dev/test only.
+    - id: "1115549"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Method Injection in POSIX Character Classes (new advisory ID).
+        Transitive dep from vite/chokidar; awaiting upstream patch.
+    - id: "1115551"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Method Injection in POSIX Character Classes (new advisory ID, alt source).
+        Transitive dep from vite/chokidar; awaiting upstream patch.
+    - id: "1115552"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        ReDoS via extglob quantifiers (new advisory ID).
+        Transitive dep from vite/chokidar; awaiting upstream patch.
+    - id: "1115554"
+      package: picomatch
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        ReDoS via extglob quantifiers (new advisory ID, alt source).
+        Transitive dep from vite/chokidar; awaiting upstream patch.
+    - id: "1115540"
+      package: brace-expansion
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Zero-step sequence causes process hang and memory exhaustion.
+        Transitive dep; awaiting upstream patch.
+    - id: "1115541"
+      package: brace-expansion
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Zero-step sequence causes process hang and memory exhaustion (alt source).
+        Transitive dep; awaiting upstream patch.
+    - id: "1115543"
+      package: brace-expansion
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Zero-step sequence causes process hang and memory exhaustion (alt source).
+        Transitive dep; awaiting upstream patch.
+    - id: "1115519"
+      package: serialize-javascript
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        CPU Exhaustion DoS via crafted array-like object.
+        Transitive dep from workbox-build → @rollup/plugin-terser; build-time only.
+    # npm audit emits package names as string-type "via" references for
+    # transitive vulnerabilities.  The audit script collects these alongside
+    # numeric advisory IDs, so they must be allowlisted explicitly.
+    - id: "@boundaries/elements"
+      package: "@boundaries/elements"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Transitive via reference from eslint-plugin-boundaries.
+        Flagged because it depends on handlebars; dev-only, not in production bundle.
+    - id: handlebars
+      package: handlebars
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Transitive via reference from @boundaries/elements.
+        Dev-only dep; not in production bundle.
 
 pip:
   advisories:
