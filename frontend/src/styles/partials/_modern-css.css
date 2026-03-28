@@ -1,0 +1,323 @@
+/*
+ * Modern CSS Features — Wave 39
+ *
+ * 1. @container queries — parent-aware responsive design
+ * 2. @starting-style — CSS-only entrance animations
+ * 3. View Transitions API — smooth page navigation
+ *
+ * All features are progressive enhancements.
+ * Browsers without support get the existing behavior.
+ */
+
+/* ═══════════════════════════════════════════════ */
+/* 1. CONTAINER QUERIES                           */
+/* ═══════════════════════════════════════════════ */
+
+/* Container declaration for dashboard grid */
+.dashboard-grid {
+  container-type: inline-size;
+  container-name: dashboard;
+}
+
+/* Container for card areas */
+.card-container {
+  container-type: inline-size;
+  container-name: card;
+}
+
+/* Container for page content areas */
+.content-container {
+  container-type: inline-size;
+  container-name: content;
+}
+
+/* Dashboard hero adapts to container width, not viewport */
+@container dashboard (max-width: 720px) {
+  .hero-header {
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .hero-time {
+    font-size: var(--fs-display-sm, 2.5rem);
+  }
+
+  .hero-greeting {
+    font-size: var(--fs-h3, 1.25rem);
+  }
+}
+
+@container dashboard (min-width: 721px) {
+  .hero-header {
+    padding: var(--space-6) var(--space-10);
+  }
+
+  .hero-time {
+    font-size: var(--fs-display, 4rem);
+  }
+}
+
+/* Cards adapt to their container, not viewport */
+@container card (max-width: 300px) {
+  .card-responsive {
+    padding: var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .card-responsive .card-title {
+    font-size: var(--fs-sm, 0.875rem);
+  }
+
+  .card-responsive .card-subtitle {
+    display: none;
+  }
+}
+
+@container card (min-width: 301px) and (max-width: 500px) {
+  .card-responsive {
+    padding: var(--space-4);
+    gap: var(--space-3);
+  }
+}
+
+@container card (min-width: 501px) {
+  .card-responsive {
+    padding: var(--space-6);
+    gap: var(--space-4);
+  }
+}
+
+/* Activity ring adapts to container */
+@container card (max-width: 200px) {
+  .ring-container {
+    --ring-size: 68px;
+  }
+}
+
+@container card (min-width: 201px) and (max-width: 350px) {
+  .ring-container {
+    --ring-size: 84px;
+  }
+}
+
+@container card (min-width: 351px) {
+  .ring-container {
+    --ring-size: 96px;
+  }
+}
+
+/* Events grid adapts to container */
+@container content (max-width: 600px) {
+  .events-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+}
+
+@container content (min-width: 601px) and (max-width: 900px) {
+  .events-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+@container content (min-width: 901px) {
+  .events-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-5);
+  }
+}
+
+/* ═══════════════════════════════════════════════ */
+/* 2. @STARTING-STYLE — CSS-ONLY ENTRANCE ANIMS   */
+/* ═══════════════════════════════════════════════ */
+
+/* Fade-in entrance for elements that appear in the DOM */
+.css-fade-in {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+  transition:
+    opacity var(--motion-duration-base) var(--ease-premium),
+    transform var(--motion-duration-base) var(--ease-premium),
+    filter var(--motion-duration-base) var(--ease-premium);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(4px);
+  }
+}
+
+/* Scale-in entrance */
+.css-scale-in {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--motion-duration-base) var(--ease-premium),
+    transform var(--motion-duration-base) var(--ease-premium);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Slide-in from left (for sidebars, panels) */
+.css-slide-left {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity var(--motion-duration-base) var(--ease-premium),
+    transform var(--motion-duration-base) var(--ease-premium);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
+/* Slide-in from right */
+.css-slide-right {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity var(--motion-duration-base) var(--ease-premium),
+    transform var(--motion-duration-base) var(--ease-premium);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+/* Dialog/modal pop-in */
+.css-dialog-in {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition:
+    opacity var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-base) cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+}
+
+/* Toast/snackbar slide-up */
+.css-toast-in {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--motion-duration-fast) ease-out,
+    transform var(--motion-duration-base) var(--ease-premium);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+/* Staggered fade-in with CSS custom property delay */
+.css-stagger-item {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+  transition:
+    opacity var(--motion-duration-base) var(--ease-premium),
+    transform var(--motion-duration-base) var(--ease-premium),
+    filter var(--motion-duration-base) var(--ease-premium);
+  transition-delay: calc(var(--stagger-index, 0) * var(--motion-stagger-medium));
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(16px);
+    filter: blur(4px);
+  }
+}
+
+/* ═══════════════════════════════════════════════ */
+/* 3. VIEW TRANSITIONS API                         */
+/* ═══════════════════════════════════════════════ */
+
+/* Named view transition elements for cross-page morphing */
+.vt-page-header {
+  view-transition-name: page-header;
+}
+
+.vt-page-content {
+  view-transition-name: page-content;
+}
+
+.vt-navbar {
+  view-transition-name: navbar;
+}
+
+.vt-sidebar {
+  view-transition-name: sidebar;
+}
+
+/* View transition animation keyframes */
+::view-transition-old(page-content) {
+  animation:
+    var(--motion-duration-fast) var(--ease-premium) both fade-out,
+    var(--motion-duration-base) var(--ease-premium) both slide-out-up;
+}
+
+::view-transition-new(page-content) {
+  animation:
+    var(--motion-duration-fast) var(--ease-premium) both fade-in,
+    var(--motion-duration-base) var(--ease-premium) both slide-in-up;
+}
+
+/* Navbar persists across transitions (no animation) */
+::view-transition-old(navbar),
+::view-transition-new(navbar) {
+  animation: none;
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-out-up {
+  to {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes slide-in-up {
+  from {
+    transform: translateY(8px);
+  }
+}
+
+/* ═══════════════════════════════════════════════ */
+/* REDUCED MOTION                                   */
+/* ═══════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .css-fade-in,
+  .css-scale-in,
+  .css-slide-left,
+  .css-slide-right,
+  .css-dialog-in,
+  .css-toast-in,
+  .css-stagger-item {
+    transition-duration: 0.01s !important;
+    filter: none !important;
+  }
+
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01s !important;
+  }
+}

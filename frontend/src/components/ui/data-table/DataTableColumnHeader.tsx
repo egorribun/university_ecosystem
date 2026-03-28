@@ -22,21 +22,25 @@ export function DataTableColumnHeader<TData, TValue>({
     return <div className={cn(className)}>{title}</div>
   }
 
+  const sortDirection = column.getIsSorted()
+  const ariaSortValue = sortDirection === "asc" ? "ascending" : sortDirection === "desc" ? "descending" : "none"
+
   return (
-    <div className={cn("flex items-center space-x-2", className)}>
+    <div className={cn("flex items-center space-x-2", className)} aria-sort={ariaSortValue}>
       <Button
         variant="ghost"
         size="sm"
         className="-ml-3 h-8 data-[state=open]:bg-accent"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        onClick={() => column.toggleSorting(sortDirection === "asc")}
+        aria-label={`${title}, ${sortDirection === "asc" ? "sorted ascending" : sortDirection === "desc" ? "sorted descending" : "not sorted"}`}
       >
         <span>{title}</span>
-        {column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
+        {sortDirection === "desc" ? (
+          <ArrowDown className="ml-2 h-4 w-4" aria-hidden="true" />
+        ) : sortDirection === "asc" ? (
+          <ArrowUp className="ml-2 h-4 w-4" aria-hidden="true" />
         ) : (
-          <ChevronsUpDown className="ml-2 h-4 w-4" />
+          <ChevronsUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
         )}
       </Button>
     </div>

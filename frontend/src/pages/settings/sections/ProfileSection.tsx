@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { useAvatarUpload } from "@/pages/settings/hooks/useAvatarUpload"
@@ -149,7 +149,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
+                onClick={() => navigate({ to: "/profile", search: { edit: "1" } })}
                 className="self-start"
               >
                 {t("common:buttons.edit")}

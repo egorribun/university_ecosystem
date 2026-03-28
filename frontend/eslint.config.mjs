@@ -168,4 +168,9 @@ export default tseslint.config({
   rules: {
     "i18next/no-literal-string": "off"
   }
-}, prettier, storybook.configs["flat/recommended"]);
+}, prettier, storybook.configs["flat/recommended"], {
+  files: ["src/routes/**/*.{ts,tsx}"],
+  rules: {
+    "storybook/default-exports": "off"
+  }
+});

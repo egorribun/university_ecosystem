@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft as ArrowBackIcon,
@@ -82,7 +82,7 @@ const getMoscowDate = (dateStr: string) => {
 }
 
 export default function NewsDetail() {
-  const { id = "" } = useParams()
+  const { id = "" } = useParams({ strict: false })
   const navigate = useNavigate()
   const { user } = useAuth()
   const { t } = useTranslation(["news", "common"])
@@ -290,8 +290,8 @@ export default function NewsDetail() {
       setSnackbar(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
-      if (window.history.length > 1) navigate(-1)
-      else navigate("/news")
+      if (window.history.length > 1) window.history.back()
+      else navigate({ to: "/news" })
     } catch (_error) {
       setSnackbar(t("news:notifications.deleteError"))
     } finally {
@@ -301,8 +301,8 @@ export default function NewsDetail() {
   }
 
   const handleBack = () => {
-    if (window.history.length > 1) navigate(-1)
-    else navigate("/news")
+    if (window.history.length > 1) window.history.back()
+    else navigate({ to: "/news" })
   }
 
   const rawImageUrl = useMemo(

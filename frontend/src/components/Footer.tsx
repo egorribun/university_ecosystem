@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom"
+import { Link, useRouterState } from "@tanstack/react-router"
 import { Send, Mail } from "lucide-react"
 import guuLogo from "@/assets/guu_logo.png"
 import SmartImage from "@/components/SmartImage"
@@ -8,9 +8,9 @@ import { Button } from "@/components/ui"
 export default function Footer() {
   const { t } = useTranslation(["navigation"])
   const currentYear = new Date().getFullYear()
-  const location = useLocation()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isAuthPage = ["/login", "/register", "/forgot-password", "/messenger"].some((p) =>
-    location.pathname.startsWith(p)
+    pathname.startsWith(p)
   )
   if (isAuthPage) return null
 

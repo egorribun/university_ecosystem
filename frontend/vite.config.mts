@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react"
 import wasm from "vite-plugin-wasm"
 import topLevelAwait from "vite-plugin-top-level-await"
 import { VitePWA } from "vite-plugin-pwa"
+import { TanStackRouterVite } from "@tanstack/router-vite-plugin"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
@@ -137,6 +138,11 @@ export default defineConfig(({ mode }) => {
       }
 
   const plugins: PluginOption[] = [
+    TanStackRouterVite({
+      routesDirectory: resolve(srcDir, "routes"),
+      generatedRouteTree: resolve(srcDir, "routeTree.gen.ts"),
+      quoteStyle: "double",
+    }),
     wasm(),
     topLevelAwait(),
     withGeneratedManifests(),

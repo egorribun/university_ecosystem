@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { MessageSquare } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -19,7 +19,7 @@ export default function MessengerButton() {
         boxShadow: "var(--shadow-glow-blue)",
       }}
       whileTap={{ scale: 0.95 }}
-      onClick={() => navigate("/messenger")}
+      onClick={() => navigate({ to: "/messenger" })}
       className={cn(
         "relative flex items-center justify-center rounded-lg transition-all duration-base group focus-ring-premium",
         "w-11 h-11 border border-transparent hover:border-brand/(--opacity-soft) bg-transparent glass-morphism shadow-sm"

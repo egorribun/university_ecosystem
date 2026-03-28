@@ -1,10 +1,10 @@
 import type { ReactNode } from "react"
-import { BrowserRouter as Router } from "react-router-dom"
 
 import ErrorBoundary from "@/components/ErrorBoundary"
 import { LiveRegionProvider } from "./components/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AuthProvider } from "./contexts/AuthContext"
+import { WebSocketProvider } from "./hooks/useChatWebSocket"
 import { MessengerProvider } from "./contexts/MessengerContext"
 import { LanguageProvider } from "./contexts/LanguageContext"
 import { GlobalHapticsListener } from "./components/GlobalHapticsListener"
@@ -18,11 +18,13 @@ function ProvidersInner({ children }: AppProvidersProps) {
     <LiveRegionProvider>
       <AppShellProvider>
         <AuthProvider>
-          <MessengerProvider>
-            <ErrorBoundary>
-              <Router>{children}</Router>
-            </ErrorBoundary>
-          </MessengerProvider>
+          <WebSocketProvider>
+            <MessengerProvider>
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
+            </MessengerProvider>
+          </WebSocketProvider>
         </AuthProvider>
       </AppShellProvider>
     </LiveRegionProvider>

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useSearch, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
@@ -14,7 +14,8 @@ import { SettingsIntegrations } from "./settings/SettingsIntegrations"
 
 export default function Settings() {
   const { t } = useTranslation(["settings", "common"])
-  const [searchParams, setSearchParams] = useSearchParams()
+  const searchParams = useSearch({ strict: false }) as Record<string, string | undefined>
+  const navigate = useNavigate()
   const [tab, setTab] = useState(0)
 
   // Shared Snackbar State
@@ -47,7 +48,7 @@ export default function Settings() {
   }, [])
 
   useEffect(() => {
-    const spotifyStatus = searchParams.get("spotify")
+    const spotifyStatus = searchParams.spotify
     if (spotifyStatus) {
       if (spotifyStatus === "connected")
         setSnackbar({
@@ -61,13 +62,17 @@ export default function Settings() {
         })
 
       // Clean up the URL param without refreshing
-      setSearchParams((prev) => {
-        const newParams = new URLSearchParams(prev)
-        newParams.delete("spotify")
-        return newParams
+      void navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => {
+          const next = { ...prev }
+          delete next.spotify
+          return next
+        },
+        replace: true,
       })
     }
-  }, [searchParams, setSearchParams, t])
+  }, [searchParams, navigate, t])
 
   return (
     <PageLayout variant="full">

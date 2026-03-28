@@ -53,25 +53,41 @@ if (-not (Test-Path $EnvFile)) {
     $postgresPassword = New-SecureString -Length 32
     $secretKey = New-SecureString -Length 64
     $minioPassword = New-SecureString -Length 24
+    $elasticPassword = New-SecureString -Length 24
+    $natsPassword = New-SecureString -Length 24
+    $garageRpcSecret = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+    $garageAdminToken = New-SecureString -Length 32
+    $spicedbKey = New-SecureString -Length 32
+    $wsHubSecret = New-SecureString -Length 32
+    $grafanaPassword = New-SecureString -Length 24
 
-    @"
-# Auto-generated Docker environment configuration
-# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-
+    $envContent = @"
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
-
 SECRET_KEY=$secretKey
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
-
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=$minioPassword
-
+ELASTIC_PASSWORD=$elasticPassword
+NATS_USER=app
+NATS_PASSWORD=$natsPassword
+GARAGE_RPC_SECRET=$garageRpcSecret
+GARAGE_ADMIN_TOKEN=$garageAdminToken
+SPICEDB_PRESHARED_KEY=$spicedbKey
+WS_HUB_INTERNAL_SECRET=$wsHubSecret
+GRAFANA_ADMIN_PASSWORD=$grafanaPassword
+REDIS_PASSWORD=$minioPassword
 VAPID_SUBJECT=mailto:admin@example.com
 ENVIRONMENT=development
-"@ | Out-File -Encoding UTF8 $EnvFile
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+SPOTIFY_REDIRECT_URI=
+SPOTIFY_SCOPES=
+"@
+    # Write without BOM — docker compose cannot parse UTF-8 BOM
+    [System.IO.File]::WriteAllText((Join-Path $ProjectRoot $EnvFile), $envContent, [System.Text.UTF8Encoding]::new($false))
 
     Write-Success "Generated $EnvFile with secure secrets"
 }
@@ -111,7 +127,6 @@ do {
 
     $backendHealth = docker compose -f $ComposeFile ps backend --format json 2>$null | ConvertFrom-Json
     $postgresHealth = docker compose -f $ComposeFile ps postgres --format json 2>$null | ConvertFrom-Json
-    $rustOptimizerHealth = docker compose -f $ComposeFile ps rust-optimizer --format json 2>$null | ConvertFrom-Json
     $natsHealth = docker compose -f $ComposeFile ps nats --format json 2>$null | ConvertFrom-Json
     $gatewayHealth = docker compose -f $ComposeFile ps gateway --format json 2>$null | ConvertFrom-Json
     $wsHubHealth = docker compose -f $ComposeFile ps ws-hub --format json 2>$null | ConvertFrom-Json
@@ -119,14 +134,13 @@ do {
     # Handle both single object and array output from docker compose ps
     $backendReady = if ($backendHealth -is [array]) { $backendHealth[0].Health -eq "healthy" } else { $backendHealth.Health -eq "healthy" }
     $postgresReady = if ($postgresHealth -is [array]) { $postgresHealth[0].Health -eq "healthy" } else { $postgresHealth.Health -eq "healthy" }
-    $rustOptimizerReady = if ($rustOptimizerHealth -is [array]) { $rustOptimizerHealth[0].Health -eq "healthy" } else { $rustOptimizerHealth.Health -eq "healthy" }
     $natsReady = if ($natsHealth -is [array]) { $natsHealth[0].Health -eq "healthy" } else { $natsHealth.Health -eq "healthy" }
     $gatewayReady = if ($gatewayHealth -is [array]) { $gatewayHealth[0].Health -eq "healthy" } else { $gatewayHealth.Health -eq "healthy" }
     $wsHubReady = if ($wsHubHealth -is [array]) { $wsHubHealth[0].Health -eq "healthy" } else { $wsHubHealth.Health -eq "healthy" }
 
-    Write-Host "  Backend: $(if ($backendReady) { 'Ready' } else { 'Starting...' }) | Gateway: $(if ($gatewayReady) { 'Ready' } else { 'Starting...' }) | WS-Hub: $(if ($wsHubReady) { 'Ready' } else { 'Starting...' }) | Rust: $(if ($rustOptimizerReady) { 'Ready' } else { 'Starting...' })"
+    Write-Host "  Backend: $(if ($backendReady) { 'Ready' } else { 'Starting...' }) | Gateway: $(if ($gatewayReady) { 'Ready' } else { 'Starting...' }) | WS-Hub: $(if ($wsHubReady) { 'Ready' } else { 'Starting...' }) | NATS: $(if ($natsReady) { 'Ready' } else { 'Starting...' })"
 
-} while ((-not $backendReady -or -not $postgresReady -or -not $rustOptimizerReady -or -not $natsReady -or -not $gatewayReady -or -not $wsHubReady) -and $elapsed -lt $timeout)
+} while ((-not $backendReady -or -not $postgresReady -or -not $natsReady -or -not $gatewayReady -or -not $wsHubReady) -and $elapsed -lt $timeout)
 
 if ($elapsed -ge $timeout) {
     Write-Error "Timeout waiting for services. Check logs with: .\start-docker.ps1 -Logs"
@@ -141,11 +155,7 @@ Write-Host "  Gateway API: http://localhost:8080" -ForegroundColor Yellow
 Write-Host "  Backend API: http://localhost:8000" -ForegroundColor Yellow
 Write-Host "  API Docs:    http://localhost:8000/docs" -ForegroundColor Yellow
 Write-Host "  WS Hub:      http://localhost:8083" -ForegroundColor Yellow
-Write-Host "  Grafana:     http://localhost:3000" -ForegroundColor Yellow
-Write-Host "  MinIO:       http://localhost:9001" -ForegroundColor Yellow
-Write-Host "  Rust Opt:    http://localhost:8090" -ForegroundColor Yellow
-Write-Host "  NATS Mon:    http://localhost:8222" -ForegroundColor Yellow
-Write-Host "  ES Search:   http://localhost:9200" -ForegroundColor Yellow
+Write-Host "  Grafana:     http://localhost:3000 (localhost only)" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray
 Write-Host "  Stop:   .\start-docker.ps1 -Down"

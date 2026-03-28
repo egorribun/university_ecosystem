@@ -20,12 +20,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {t("navigation:aria.skipLink")}
       </a>
 
-      {!isCompactPage && <Navbar />}
+      {!isCompactPage && (
+        <div className="vt-navbar">
+          <Navbar />
+        </div>
+      )}
 
       <main
         id="main-content"
         className={cn(
-          "flex-1 w-full outline-none",
+          "vt-page-content flex-1 w-full outline-none",
           isMessenger ? "overflow-hidden" : "overflow-y-auto"
         )}
       >

@@ -35,7 +35,7 @@ export default function BackToTop() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.5, y: 20 }}
               className={cn(
-                "group relative flex h-12 w-12 items-center justify-center rounded-full border border-white/(--opacity-dim) bg-primary shadow-lg transition-transform active:scale-95",
+                "group relative flex h-12 w-12 items-center justify-center rounded-full border border-white/(--opacity-dim) bg-primary shadow-lg transition-transform active:scale-95 focus-ring-premium",
                 "before:absolute before:inset-0 before:rounded-full before:bg-white/(--opacity-subtle) before:opacity-0 before:transition-opacity hover:before:opacity-100"
               )}
               aria-label={t("common:buttons.backToTop")}

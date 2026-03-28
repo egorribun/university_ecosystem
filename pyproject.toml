@@ -62,7 +62,7 @@ dependencies = [
   "psutil>=6.0.0",
   "psycopg[binary]>=3.1",
   "pyasn1>=0.6.3,<1",  # TD-26-04: upper bound
-  "pydantic>=2.12.5,<3",
+  "pydantic>=2.13.0b2,<3",  # FIX-41-01: Python 3.14 Field.__init__(doc=) support requires 2.13+
   "pydantic-settings>=2.13.0,<3",
   "pyjwt>=2.12.0",
   "pyopenssl>=26.0.0",

@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
 import { motion } from "framer-motion"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Sparkles } from "lucide-react"
 
@@ -179,7 +179,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                       listActionBase,
                       "flex min-h-18 flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/(--opacity-faint) active:scale-(--scale-active) sm:gap-3"
                     )}
-                    onClick={() => navigate(`/events/${e.id}`)}
+                    onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                   >
                     <span className="flex w-full items-start justify-between gap-3">

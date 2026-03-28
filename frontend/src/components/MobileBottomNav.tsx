@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom"
+import { Link, useRouterState } from "@tanstack/react-router"
 import { useLayoutEffect, useMemo } from "react"
 import {
   LayoutDashboard as DashboardIcon,
@@ -20,7 +20,7 @@ function samePath(a: string, b: string) {
 }
 
 export default function MobileBottomNav() {
-  const { pathname } = useLocation()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const { t } = useTranslation(["navigation"])
 
   useLayoutEffect(() => {
@@ -63,7 +63,7 @@ export default function MobileBottomNav() {
         {items.map((it) => {
           const isActive = pathname.startsWith(it.to) && (it.to !== "/" || pathname === "/")
           return (
-            <NavLink
+            <Link
               key={it.to}
               to={it.to}
               onPointerDown={markIfFromBottom}
@@ -73,7 +73,7 @@ export default function MobileBottomNav() {
                   smoothToTop(getScrollRoot())
                 }
               }}
-              className={({ isActive }) =>
+              className={
                 "group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none " +
                 (isActive
                   ? "active text-brand font-bold scale-110"
@@ -110,7 +110,7 @@ export default function MobileBottomNav() {
               >
                 {it.label}
               </motion.span>
-            </NavLink>
+            </Link>
           )
         })}
       </nav>

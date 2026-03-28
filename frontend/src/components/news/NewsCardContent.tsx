@@ -7,7 +7,7 @@ import {
   Heart as FavoriteIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 
 interface NewsCardContentProps {
   id: string
@@ -36,7 +36,8 @@ const NewsCardContent = ({
     <ContentCard.Body className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-base ease-out group-hover:-translate-y-px group-focus-visible/content:-translate-y-px md:gap-3">
       <ContentCard.Title className="text-fluid-h3 font-semibold line-clamp-none">
         <Link
-          to={`/news/${id}`}
+          to="/news/$id"
+          params={{ id: String(id) }}
           className={cn(
             "before:absolute before:inset-0 focus:outline-none line-clamp-2",
             hoveringDisabled && "pointer-events-none"

@@ -2,7 +2,7 @@
 
 ## Project Structure
 - Python backend: `app/` (FastAPI + SQLAlchemy 2.0 + Pydantic v2) — **Python >=3.13,<3.15**
-- TypeScript frontend: `frontend/src/` (React 19 + Vite + TanStack Query + Zustand + Framer Motion)
+- TypeScript frontend: `frontend/src/` (React 19 + Vite + TanStack Router + TanStack Query + Zustand + Framer Motion)
 - Rust optimizer: `native/rust_ext/` (PyO3 FFI — schedule conflicts, partition management, HMAC)
 - Go services: `services/` (ws-hub, file-processor, gateway, caddy)
 - Alembic migrations: `alembic/versions/` (112 files; squash script: `app/management/squash_migrations.py`)
@@ -148,9 +148,54 @@
 - ws-hub HandleWebSocket: maxClients pre-check before upgrade (TD-31-05)
 - Go services: `.golangci.yml` with exhaustive + gosec linters (MOD-31-01)
 - Go services OTEL: composite propagator (TraceContext + Baggage) registered (MOD-31-02)
+- Frontend WCAG 2.2: ConfirmDialog has `role="alertdialog"`, `aria-labelledby`, `aria-describedby` (A11Y-35-01)
+- Frontend WCAG 2.2: TextField connects helperText via `aria-describedby` + `role="alert"` on error (A11Y-35-02)
+- Frontend WCAG 2.2: ActionMenu items have `focus-visible:ring-2` focus indicator (A11Y-35-03)
+- Frontend WCAG 2.2: DataTableColumnHeader has `aria-sort` on columns (A11Y-35-04)
+- Frontend WCAG 2.2: ScheduleDesktopTable uses `scope="col"`/`scope="row"` semantics (A11Y-35-05)
+- Frontend WCAG 2.2: ChatWindow has `role="log"` + `aria-live="polite"` (A11Y-35-06)
+- Frontend WCAG 2.2: Global CSS `scroll-margin-top` on `:focus-visible` for Focus Not Obscured (A11Y-35-07)
+- Frontend: useEventRegistration uses `useOptimistic` + `useTransition` for instant RSVP feedback (PERF-35-01)
+- Frontend glass layers: `glass-layer-surface`, `glass-layer-elevated`, `glass-layer-floating` — depth hierarchy with noise texture (DESIGN-36-01)
+- Frontend glass noise: `glass-noise` class adds SVG feTurbulence frosted texture (pure CSS, 0 JS) (DESIGN-36-02)
+- Frontend aurora: `aurora-mesh` class adds animated gradient mesh background (20s CSS animation) (DESIGN-36-03)
+- Frontend micro-interactions: `btn-ripple` (Button), `input-focus-glow` (Input), `card-hover-lift` (GlassCard), `check-celebrate` (Checkbox) (DESIGN-36-04)
+- Frontend skeleton morph: `SkeletonMorph` component for blur-dissolve skeleton→content transitions (DESIGN-36-05)
+- Frontend theme toggle: `ThemeToggle` component with sun/moon spring animation + color pulse wave (DESIGN-36-06)
+- Frontend stagger: `StaggerChildren` wrapper + `.stagger-item` CSS class for cascading entry animations (DESIGN-36-07)
+- All Wave 36 animations respect `prefers-reduced-motion: reduce`
+- Frontend routing: TanStack Router (file-based) replaces React Router DOM 7 — routes in `frontend/src/routes/` (INFRA-37-01)
+- Frontend route guards: `beforeLoad` in `_auth.tsx`, `_public.tsx`, `_admin.tsx` replaces RouteGuards.tsx (INFRA-37-02)
+- Frontend search params: Valibot `validateSearch` in route files replaces useSearchParams (INFRA-37-03)
+- Frontend prefetch: `defaultPreload: 'intent'` replaces manual prefetchRouteModules.ts (INFRA-37-04)
+- Frontend navigate: `navigate({ to: "/path" })` object form (not string) — TanStack Router convention (INFRA-37-05)
+- Frontend params: `useParams({ strict: false })` for untyped access, or `from:` for type-safe (INFRA-37-06)
+- Frontend ESLint: storybook/default-exports rule off for src/routes/ (admin.stories.tsx is a route, not a story)
+- Frontend search: `SearchDialog` component — Cmd+K / Ctrl+K global search with glass morphism, keyboard nav, recent searches (AI-38-01)
+- Frontend AI: `ContentSummary` component — expandable AI summary with "AI Summary" badge, skeleton loading (AI-38-02)
+- Frontend AI: `NotificationRelevanceScore` — 3-dot priority indicator (high/medium/low) for smart notifications (AI-38-03)
+- Backend search: `GET /api/v1/search?q=&type=&limit=` — unified Elasticsearch endpoint via Dishka DI (AI-38-04)
+- Storybook: stories for ThemeToggle, ConfirmDialog — visual regression via Chromatic addon (TEST-38-01)
+- Frontend CSS: `_modern-css.css` — @container queries, @starting-style, View Transitions (CSS-39-01)
+- Frontend container queries: `.dashboard-grid`, `.card-container`, `.content-container` — parent-aware responsive (CSS-39-02)
+- Frontend @starting-style: `.css-fade-in`, `.css-scale-in`, `.css-slide-left/right`, `.css-dialog-in`, `.css-toast-in`, `.css-stagger-item` (CSS-39-03)
+- Frontend View Transitions: `defaultViewTransition: true` in router.ts, `view-transition-name` on navbar and main content (CSS-39-04)
+- Frontend View Transitions: `.vt-navbar` persists across transitions (no animation), `.vt-page-content` fades/slides (CSS-39-05)
+- Frontend WebSocket: `WebSocketProvider` wraps `MessengerProvider` in `AppProviders.tsx` — required for `useChatWebSocket` context (FIX-40-01)
+- Gateway routing: all `/api/v1/*path` in single gin wildcard with inline auth dispatch — avoids gin tree conflict between `*path` and `/auth/*`, `/files/*` (FIX-40-02)
+- Gateway: `ProxyOrFileHandler` intercepts `/files/process/sync` → gRPC, proxies rest (FIX-40-03)
+- Docker: `docker-compose.full.yml` uses MinIO (not Garage — registry denied), `pgvector/pgvector:pg17`, `service_started` for backend dependency (FIX-40-04)
+- Docker: `start-docker.ps1` generates `.env.docker` with 12+ secrets, no BOM, no rust-optimizer health check (FIX-40-05)
+- Docker: NATS config uses `sed` instead of `envsubst` (not in alpine) (FIX-40-06)
 
 ## Audit Trail
 - Wave 33: 7 commits, ~145 files, 1 CRITICAL + 11 HIGH + ~115 MEDIUM + ~80 LOW — ALL code-level backend issues closed. Recovery code hash bug (RZ-33-01), 6 DCL singletons (RZ-33-29), DI dedup (TD-33-08), cache SCAN (TD-33-10), Go stale tests (TD-33-11/12), Pyroscope 1.18.1, test quality (7 files). Full report in `memory/audit_wave33_2026_03_26.md`
+- Wave 40 (Docker): rust-optimizer removed, Garage→MinIO, gateway gin route conflict fixed (unified wildcard), WebSocketProvider added to AppProviders, NATS envsubst→sed, .env.docker BOM fix, pgvector tag fix, depends_on relaxed. ~14 GB old images cleaned.
+- Wave 39: CSS modernization — @container queries (3 container types, 5 query breakpoints), @starting-style (7 entrance animations), View Transitions API (defaultViewTransition in router, view-transition-name on navbar/content). All progressive enhancement with reduced-motion support.
+- Wave 38: AI features + visual regression — SearchDialog (Cmd+K global search with glass morphism), ContentSummary (AI summary expand/collapse), NotificationRelevanceScore (priority indicator), backend GET /api/v1/search endpoint (Elasticsearch + Dishka DI), Storybook stories for ThemeToggle + ConfirmDialog. Design doc: `docs/plans/2026-03-28-wave38-testing-ai-design.md`
+- Wave 37: TanStack Router migration — React Router DOM 7 → TanStack Router file-based. 25 route files created, 31 files migrated (navigate/useParams/useLocation/Link/NavLink), router.ts with auth context + queryClient, beforeLoad guards replace RouteGuards.tsx, Valibot validateSearch replaces useSearchParams, defaultPreload 'intent' replaces prefetchRouteModules.ts. 0 TS errors, 0 lint warnings.
+- Wave 36: Frontend UI/UX polish — Glass Morphism 2.0 (depth layers, noise texture, aurora mesh), micro-interactions (ripple, focus glow, card lift, checkbox celebration), SkeletonMorph component, ThemeToggle with spring animation, StaggerChildren wrapper. 3 new CSS files, 3 new TSX components, 7 existing components enhanced. Design doc: `docs/plans/2026-03-28-wave36-ui-polish-design.md`
+- Wave 35: Frontend WCAG 2.2 AA + useOptimistic — 9 a11y fixes across 8 files (ConfirmDialog ARIA, TextField aria-describedby, ActionMenu/BackToTop focus rings, DataTable aria-sort, Schedule table semantics, ChatWindow live region, NotificationsBell touch targets, global scroll-margin-top) + useOptimistic for event RSVP (PERF-35-01). CSP enforcement verified already complete.
 - Wave 32: 7 deferred items closed, 20 files, +534/-48 — ChatService DI verified (TD-30-01), Redis circuit breaker (PERF-30-01), L1 XFetch jitter (PERF-31-02), Helm chart complete (MOD-30-04), JWKS hot-reload (MOD-W17-03), ADR-012 centralized logging (MOD-W16-03), ADR-013 secret rotation (MOD-W16-07) — full report in `TOTAL_AUDIT_WAVE32.md`
 - Wave 31: 13 issues (5 dropped after validation), 14 files, +165/-17 — gateway os.Exit fix (RZ-31-01), WS message notification (RZ-31-02), Safari localStorage (RZ-31-03), AbortSignal propagation (RZ-31-04), gRPC timeout (RZ-31-05), pod anti-affinity (TD-31-01), ingress envsubst (TD-31-02), Vault URL param (TD-31-03), BroadcastChannel dedup (TD-31-04), maxClients pre-check (TD-31-05), topology spread (PERF-31-01), golangci-lint exhaustive (MOD-31-01), OTEL baggage (MOD-31-02) — full report in `TOTAL_AUDIT_WAVE31.md`
 - Wave 30: 22 issues (6 FP/already done, 6 deferred), 8 files — free-threading singleton (RZ-30-01), symlink path traversal (RZ-30-02), PII regex tightening (RZ-30-03/04), ruff pin (RZ-30-05), cache Prometheus metrics (TD-30-05), NATS backoff (TD-30-06), CI lazy=noload gate (MOD-30-01), Kyverno image tag policy (MOD-30-02), Dockerfile.test Rust pin (MOD-30-05) — full report in `TOTAL_AUDIT_WAVE30.md`

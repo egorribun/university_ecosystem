@@ -16,7 +16,7 @@ import {
 } from "lucide-react"
 import { Dispatch, SetStateAction, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 
 interface ChatAreaProps {
   isMobile: boolean
@@ -89,7 +89,7 @@ export function ChatArea({
                   {isMobile && (
                     <motion.button
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => navigate("/messenger")}
+                      onClick={() => navigate({ to: "/messenger" })}
                       className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
                       <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />

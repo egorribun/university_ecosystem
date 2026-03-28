@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 import { formatRelativeTime, toDate } from "@/utils/date"
 
 import api from "@/api/client"
@@ -162,7 +162,7 @@ export function useEventCardLogic({
     }
   }
 
-  const navigateToDetails = useCallback(() => navigate(`/events/${id}`), [id, navigate])
+  const navigateToDetails = useCallback(() => navigate({ to: "/events/$id", params: { id: String(id) } }), [id, navigate])
 
   const handleCardClick = (e: React.MouseEvent) => {
     if (editOpen) return

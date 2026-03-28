@@ -1,6 +1,6 @@
 import { type ReactNode } from "react"
 import type { User } from "@/types/User"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Badge, Button } from "@/components/ui"
 import WeatherWidget from "@/components/WeatherWidget"
@@ -45,7 +45,7 @@ export function DashboardHero({
   return (
     <section
       className={cn(
-        "relative flex w-full flex-col overflow-hidden",
+        "aurora-mesh relative flex w-full flex-col overflow-hidden",
         "px-4 pb-16 pt-10 text-text-primary sm:px-8 md:px-12 lg:px-16",
         "bg-linear-[145deg,var(--hero-grad-start),var(--hero-grad-end)]"
       )}
@@ -124,7 +124,7 @@ export function DashboardHero({
                     variant="outline"
                     size="md"
                     className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-[0.125rem]"
-                    onClick={() => navigate("/profile")}
+                    onClick={() => navigate({ to: "/profile" })}
                     aria-label={t("navigation:aria.openProfile")}
                   >
                     {t("navigation:menu.profile")}

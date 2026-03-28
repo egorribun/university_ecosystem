@@ -83,6 +83,23 @@ func HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "gateway"})
 }
 
+// ProxyOrFileHandler routes /v1/files/process/sync to gRPC file-processor,
+// everything else to the reverse proxy. This avoids gin wildcard route conflict
+// between /v1/files/* and /v1/*path.
+func ProxyOrFileHandler(proxy *httputil.ReverseProxy, internalSecret []byte, ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger) gin.HandlerFunc {
+	proxyFn := ProxyHandler(proxy, internalSecret)
+	fileFn := FileProcessSyncHandler(ctx, grpcConn, fileClient, logger)
+
+	return func(c *gin.Context) {
+		path := c.Param("path")
+		if c.Request.Method == http.MethodPost && path == "/files/process/sync" {
+			fileFn(c)
+			return
+		}
+		proxyFn(c)
+	}
+}
+
 // FileProcessSyncHandler proximales a synchronous file processing request to the file-processor service over gRPC.
 func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) { //nolint:contextcheck // uses c.Request.Context() for gRPC calls

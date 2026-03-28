@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
 import { motion } from "framer-motion"
@@ -96,7 +96,7 @@ const Register = () => {
         role: data.role,
         invite_code: data.invite_code,
       })
-      navigate("/login")
+      navigate({ to: "/login" })
     } catch (error: unknown) {
       let errorMessage = t("auth:register.error")
       if (typeof error === "object" && error !== null && "response" in error) {

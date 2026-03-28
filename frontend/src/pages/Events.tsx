@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { createEvent } from "@/api/events"
 import { Calendar as EventNoteIcon } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
-import { useSearchParams } from "react-router-dom"
+import { useSearch, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 import { Button } from "@/components/ui"
@@ -44,7 +44,8 @@ const DEBOUNCE_STRATEGY = "search" as const
 
 const Events = () => {
   const { user } = useAuth()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const searchParams = useSearch({ strict: false }) as Record<string, string | undefined>
+  const navigate = useNavigate()
   const { t, i18n } = useTranslation(["events", "common"])
   const language = i18n.language?.startsWith("en") ? "en" : "ru"
 
@@ -53,27 +54,28 @@ const Events = () => {
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
 
   // Sync state variables directly from the URL params to prevent stale closures
-  const tab = (searchParams.get("tab") as EventTabKey) || "active"
-  const search = searchParams.get("q") || ""
-  const type = searchParams.get("type") || ""
-  const location = searchParams.get("loc") || ""
+  const tab = (searchParams.tab as EventTabKey) || "active"
+  const search = searchParams.q || ""
+  const type = searchParams.type || ""
+  const location = searchParams.loc || ""
 
   const handleURLChange = useCallback(
     (key: string, value: string) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev)
+      void navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => {
+          const next = { ...prev }
           if (value) {
-            next.set(key, value)
+            next[key] = value
           } else {
-            next.delete(key)
+            delete next[key]
           }
           return next
         },
-        { replace: true }
-      )
+        replace: true,
+      })
     },
-    [setSearchParams]
+    [navigate]
   )
 
   const setTab = useCallback((val: string) => handleURLChange("tab", val), [handleURLChange])

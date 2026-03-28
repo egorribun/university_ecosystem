@@ -1,6 +1,6 @@
 import { motion } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 import { WifiOff, Home as HomeIcon, RotateCw as RefreshIcon } from "lucide-react"
 import { Button } from "@/components/ui"
 
@@ -56,7 +56,7 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
         </Button>
         <Button
           variant="outline"
-          onClick={() => navigate("/")}
+          onClick={() => navigate({ to: "/" })}
           leadingIcon={<HomeIcon size={18} />}
           className="border-white/(--opacity-subtle)"
         >

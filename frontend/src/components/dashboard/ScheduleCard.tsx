@@ -1,6 +1,6 @@
 import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
 import { motion } from "framer-motion"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"

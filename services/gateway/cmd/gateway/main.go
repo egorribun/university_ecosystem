@@ -240,23 +240,50 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	internalSecret := []byte(cfg.InternalHMACSecret)
 
-	// Core API
+	// All API routes under a single wildcard to avoid gin tree conflicts.
+	// Auth logic is handled inside the handler based on path prefix.
+	proxyFn := handlers.ProxyHandler(proxy, internalSecret)
+	fileFn := handlers.ProxyOrFileHandler(proxy, internalSecret, ctx, grpcConn, fileClient, logger)
 	api := router.Group("/api")
-	api.Use(jwtMiddleware.Validate(ctx))
 	{
-		api.POST("/v1/files/process/sync", handlers.FileProcessSyncHandler(ctx, grpcConn, fileClient, logger))
-		api.Any("/v1/*path", handlers.ProxyHandler(proxy, internalSecret))
-		api.Any("/admin/*path", handlers.ProxyHandler(proxy, internalSecret))
+		api.Any("/v1/*path", func(c *gin.Context) {
+			subPath := c.Param("path")
+			if strings.HasPrefix(subPath, "/auth/") {
+				// Auth routes: optional JWT
+				jwtMiddleware.Optional(ctx)(c)
+			} else {
+				// All other v1 routes: require JWT
+				jwtMiddleware.Validate(ctx)(c)
+			}
+			if c.IsAborted() {
+				return
+			}
+			fileFn(c)
+		})
+		api.Any("/admin/*path", func(c *gin.Context) {
+			jwtMiddleware.Validate(ctx)(c)
+			if c.IsAborted() {
+				return
+			}
+			proxyFn(c)
+		})
+		api.Any("/public/*path", func(c *gin.Context) {
+			jwtMiddleware.Optional(ctx)(c)
+			if c.IsAborted() {
+				return
+			}
+			proxyFn(c)
+		})
 	}
 
-	// Public API (Optional)
-	optional := router.Group("/")
-	optional.Use(jwtMiddleware.Optional(ctx))
-	{
-		optional.Any("/api/public/*path", handlers.ProxyHandler(proxy, internalSecret))
-		optional.Any("/api/v1/auth/*path", handlers.ProxyHandler(proxy, internalSecret))
-		optional.Any("/graphql", handlers.ProxyHandler(proxy, internalSecret))
-	}
+	// GraphQL (optional JWT)
+	router.Any("/graphql", func(c *gin.Context) {
+		jwtMiddleware.Optional(ctx)(c)
+		if c.IsAborted() {
+			return
+		}
+		proxyFn(c)
+	})
 
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {

@@ -43,6 +43,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
   return (
     <div
       ref={containerRef}
+      role="log"
+      aria-live="polite"
+      aria-label="Chat messages"
       className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
     >
       <div

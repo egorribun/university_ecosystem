@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import api from "@/api/client"
-import { useParams, useSearchParams, Link } from "react-router-dom"
+import { useParams, useSearch, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -47,9 +47,9 @@ async function isPwnedPassword(pwd: string) {
 
 export default function ResetPassword() {
   const { t } = useTranslation(["auth", "common"])
-  const routeParameters = useParams<{ token?: string }>()
-  const [searchParameters] = useSearchParams()
-  const token = routeParameters.token || searchParameters.get("token") || ""
+  const routeParameters = useParams({ strict: false })
+  const searchParameters = useSearch({ strict: false })
+  const token = (routeParameters as { token?: string }).token || (searchParameters as { token?: string }).token || ""
 
   const [capsPass, setCapsPass] = useState(false)
   const [capsConfirm, setCapsConfirm] = useState(false)

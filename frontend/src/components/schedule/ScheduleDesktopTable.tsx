@@ -140,7 +140,7 @@ export function ScheduleDesktopTable({
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-sticky shadow-sm">
           <tr>
-            <th className="sticky left-0 z-navbar w-(--w-sidebar-collapsed) border-r border-glass-border bg-surface-raised px-4 py-4 text-center font-extrabold text-primary shadow-md backdrop-blur-md">
+            <th scope="col" className="sticky left-0 z-navbar w-(--w-sidebar-collapsed) border-r border-glass-border bg-surface-raised px-4 py-4 text-center font-extrabold text-primary shadow-md backdrop-blur-md">
               №
             </th>
             {weekdayBackend.map((day, idx) => {
@@ -149,6 +149,7 @@ export function ScheduleDesktopTable({
               return (
                 <th
                   key={day}
+                  scope="col"
                   ref={(el) => {
                     headRefs.current[idx] = el
                   }}
@@ -165,14 +166,16 @@ export function ScheduleDesktopTable({
                     </span>
                     {(user?.role === "admin" || user?.role === "teacher") && (
                       <button
-                        className="flex h-7 w-7 items-center justify-center rounded-xs border border-glass-border bg-surface/(--opacity-strong) text-brand transition-colors hover:bg-brand hover:text-white"
+                        type="button"
+                        aria-label={t("schedule:actions.addLesson", { day: label })}
+                        className="flex h-8 w-8 items-center justify-center rounded-xs border border-glass-border bg-surface/(--opacity-strong) text-brand transition-colors hover:bg-brand hover:text-white focus-ring-premium"
                         onClick={(event) => {
                           event.stopPropagation()
                           setAddDay(day)
                           openDialog("add")
                         }}
                       >
-                        <AddIcon className="h-3.5 w-3.5" />
+                        <AddIcon className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     )}
                   </div>
@@ -197,9 +200,9 @@ export function ScheduleDesktopTable({
           ) : (
             visibleRows.map((row: (Lesson | null)[], rowIdx: number) => (
               <tr key={rowIdx}>
-                <td className="sticky left-0 z-sticky border-r border-glass-border bg-surface/(--opacity-strong) px-4 py-3 text-center font-bold shadow-md backdrop-blur-md">
+                <th scope="row" className="sticky left-0 z-sticky border-r border-glass-border bg-surface/(--opacity-strong) px-4 py-3 text-center font-bold shadow-md backdrop-blur-md">
                   {rowIdx + 1}
-                </td>
+                </th>
                 {row.map((lesson: Lesson | null, colIdx: number) => {
                   const colIsToday = hasToday && colIdx === todayIdx
                   if (!lesson) {

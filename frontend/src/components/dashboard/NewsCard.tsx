@@ -1,5 +1,5 @@
 import { type CSSProperties, type KeyboardEvent, useCallback } from "react"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Button, Card } from "@/components/ui"

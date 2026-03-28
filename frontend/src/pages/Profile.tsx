@@ -1,6 +1,6 @@
 import { useAuth } from "@/contexts/AuthContext"
 import { useEffect, useState, useRef, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 import api from "@/api/client"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.png"
@@ -156,7 +156,7 @@ export default function Profile() {
       })
       setUser(response.data)
       setEdit(false)
-      navigate("/profile", { replace: true })
+      navigate({ to: "/profile", replace: true })
       setSnackbar({ key: "profileUpdated", severity: "success" })
       setAvatarVersion(Date.now())
       setCoverVersion(Date.now())
@@ -191,7 +191,7 @@ export default function Profile() {
 
   const handleCancel = () => {
     setEdit(false)
-    navigate("/profile", { replace: true })
+    navigate({ to: "/profile", replace: true })
   }
 
   const snackbarMessage = snackbar?.key

@@ -17,7 +17,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useNavigate, useRouterState } from "@tanstack/react-router"
 import * as Sentry from "@sentry/react"
 import { logError } from "@/app/logger"
 import { extractApiError } from "@/utils/error"
@@ -129,15 +129,15 @@ function PageErrorFallback({
 
 /** Inner component that uses hooks */
 function PageErrorBoundaryInner({ children, pageName, fallback }: PageErrorBoundaryProps) {
-  const location = useLocation()
+  const locationKey = useRouterState({ select: (s) => s.location.pathname })
   const navigate = useNavigate()
 
   return (
     <PageErrorBoundaryClass
       pageName={pageName}
       fallback={fallback}
-      locationKey={location.key}
-      onNavigateHome={() => navigate("/")}
+      locationKey={locationKey}
+      onNavigateHome={() => navigate({ to: "/" })}
     >
       {children}
     </PageErrorBoundaryClass>

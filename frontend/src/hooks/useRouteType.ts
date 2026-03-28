@@ -1,8 +1,7 @@
-import { useLocation } from "react-router-dom"
+import { useRouterState } from "@tanstack/react-router"
 
 export function useRouteType() {
-  const location = useLocation()
-  const path = location.pathname
+  const path = useRouterState({ select: (s) => s.location.pathname })
 
   const isCompactPage = ["/login", "/register", "/forgot-password", "/reset-password"].some((p) =>
     path.startsWith(p)

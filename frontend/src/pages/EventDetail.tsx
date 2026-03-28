@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate } from "@tanstack/react-router"
 import {
   Users as PeopleAltIcon,
   Info as InfoIcon,
@@ -86,7 +86,7 @@ function Snackbar({
 }
 
 export default function EventDetail() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useParams({ strict: false }) as { id: string }
   const navigate = useNavigate()
   const { user } = useAuth()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
@@ -157,8 +157,8 @@ export default function EventDetail() {
       window.history?.state &&
       typeof window.history.state.idx === "number" &&
       window.history.state.idx > 0
-    if (canGoBack) navigate(-1)
-    else navigate("/events")
+    if (canGoBack) window.history.back()
+    else navigate({ to: "/events" })
   }
 
   if (loading) {
@@ -181,7 +181,7 @@ export default function EventDetail() {
           <h2 className="mb-2 text-xl font-semibold text-text-primary">
             {t("events:detail.messages.notFound")}
           </h2>
-          <Button variant="outline" onClick={() => navigate("/events")}>
+          <Button variant="outline" onClick={() => navigate({ to: "/events" })}>
             {t("common:buttons.back")}
           </Button>
         </div>

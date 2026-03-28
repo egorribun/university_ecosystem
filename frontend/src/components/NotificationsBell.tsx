@@ -184,24 +184,28 @@ export default function NotificationsBell() {
 
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
                     onClick={() => markAll()}
                     disabled={actionsDisabled}
-                    className="p-1.5 text-(--text-secondary) hover:text-text-primary hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors disabled:opacity-soft disabled:hover:bg-transparent"
+                    className="p-2 text-(--text-secondary) hover:text-text-primary hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
+                    aria-label={t("system:notificationsBell.markAll")}
                     title={t("system:notificationsBell.markAll")}
                   >
-                    <CheckCheck className="w-4 h-4" />
+                    <CheckCheck className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <button
+                    type="button"
                     onClick={() =>
                       clearAll(undefined, {
                         onSuccess: () => setIsOpen(false),
                       })
                     }
                     disabled={actionsDisabled}
-                    className="p-1.5 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-soft disabled:hover:bg-transparent"
+                    className="p-2 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
+                    aria-label={t("system:notificationsBell.clear")}
                     title={t("system:notificationsBell.clear")}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
                   </button>
                 </div>
               </div>

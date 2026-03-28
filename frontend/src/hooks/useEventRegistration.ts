@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useOptimistic, useTransition } from "react"
 import { isAxiosError } from "axios"
 import api from "@/api/client"
 import type { Event } from "@/types/Event"
@@ -32,7 +32,11 @@ export function useEventRegistration({
   const [isRegistered, setIsRegistered] = useState(initialRegistered)
   const [participantCount, setParticipantCount] = useState(initialParticipantCount)
   const [qrToken, setQrToken] = useState<string | undefined>(initialQrToken)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  // Optimistic state for instant UI feedback
+  const [optimisticRegistered, setOptimisticRegistered] = useOptimistic(isRegistered)
+  const [optimisticCount, setOptimisticCount] = useOptimistic(participantCount)
 
   // Sync state from props changes
   useEffect(() => {
@@ -138,90 +142,100 @@ export function useEventRegistration({
 
   const register = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
-    setIsLoading(true)
-    try {
-      const res = await api.post<{ qr_code: string }>("/events/attendance", { event_id: eventId })
-      const code: string = res.data.qr_code
-      setIsRegistered(true)
-      setQrToken(code)
-      setParticipantCount((c) => c + 1)
-      onNotify?.(t("events:card.messages.registerSuccess"))
+    startTransition(async () => {
+      // Instant optimistic feedback
+      setOptimisticRegistered(true)
+      setOptimisticCount(participantCount + 1)
+
       try {
-        localStorage.setItem(qrKey(eventId, user), code)
-      } catch {
-        // ignore
-      }
-    } catch (error) {
-      const shouldResync =
-        isAxiosError(error) &&
-        (error.code === "ECONNABORTED" ||
-          error.code === "ERR_NETWORK" ||
-          !error.response ||
-          (typeof error.response?.status === "number" && error.response.status >= 500))
-
-      if (shouldResync) {
-        const restored = await sync()
-        if (restored === "registered") {
-          onNotify?.(t("events:card.messages.registerSuccess"))
-          return
+        const res = await api.post<{ qr_code: string }>("/events/attendance", { event_id: eventId })
+        const code: string = res.data.qr_code
+        setIsRegistered(true)
+        setQrToken(code)
+        setParticipantCount((c) => c + 1)
+        onNotify?.(t("events:card.messages.registerSuccess"))
+        try {
+          localStorage.setItem(qrKey(eventId, user), code)
+        } catch {
+          // ignore
         }
-      }
+      } catch (error) {
+        // Optimistic state auto-reverts when transition completes
 
-      const detail =
-        (isAxiosError(error) && typeof error.response?.data?.detail === "string"
-          ? error.response?.data?.detail
-          : null) || t("events:card.messages.registerFailure")
-      onNotify?.(detail)
-    } finally {
-      setIsLoading(false)
-    }
+        const shouldResync =
+          isAxiosError(error) &&
+          (error.code === "ECONNABORTED" ||
+            error.code === "ERR_NETWORK" ||
+            !error.response ||
+            (typeof error.response?.status === "number" && error.response.status >= 500))
+
+        if (shouldResync) {
+          const restored = await sync()
+          if (restored === "registered") {
+            onNotify?.(t("events:card.messages.registerSuccess"))
+            return
+          }
+        }
+
+        const detail =
+          (isAxiosError(error) && typeof error.response?.data?.detail === "string"
+            ? error.response?.data?.detail
+            : null) || t("events:card.messages.registerFailure")
+        onNotify?.(detail)
+      }
+    })
   }
 
   const unregister = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
-    setIsLoading(true)
-    try {
-      await api.delete("/events/attendance", { data: { event_id: eventId } })
-      setIsRegistered(false)
-      setQrToken(undefined)
-      setParticipantCount((c) => Math.max(0, c - 1))
-      onNotify?.(t("events:card.messages.unregisterSuccess"))
+    startTransition(async () => {
+      // Instant optimistic feedback
+      setOptimisticRegistered(false)
+      setOptimisticCount(Math.max(0, participantCount - 1))
+
       try {
-        localStorage.removeItem(qrKey(eventId, user))
-      } catch {
-        // ignore
-      }
-    } catch (error) {
-      const shouldResync =
-        isAxiosError(error) &&
-        (error.code === "ECONNABORTED" ||
-          error.code === "ERR_NETWORK" ||
-          !error.response ||
-          (typeof error.response?.status === "number" && error.response.status >= 500))
-
-      if (shouldResync) {
-        const restored = await sync()
-        if (restored === "unregistered") {
-          onNotify?.(t("events:card.messages.unregisterSuccess"))
-          return
+        await api.delete("/events/attendance", { data: { event_id: eventId } })
+        setIsRegistered(false)
+        setQrToken(undefined)
+        setParticipantCount((c) => Math.max(0, c - 1))
+        onNotify?.(t("events:card.messages.unregisterSuccess"))
+        try {
+          localStorage.removeItem(qrKey(eventId, user))
+        } catch {
+          // ignore
         }
-      }
+      } catch (error) {
+        // Optimistic state auto-reverts when transition completes
 
-      const detail =
-        (isAxiosError(error) && typeof error.response?.data?.detail === "string"
-          ? error.response?.data?.detail
-          : null) || t("events:card.messages.unregisterFailure")
-      onNotify?.(detail)
-    } finally {
-      setIsLoading(false)
-    }
+        const shouldResync =
+          isAxiosError(error) &&
+          (error.code === "ECONNABORTED" ||
+            error.code === "ERR_NETWORK" ||
+            !error.response ||
+            (typeof error.response?.status === "number" && error.response.status >= 500))
+
+        if (shouldResync) {
+          const restored = await sync()
+          if (restored === "unregistered") {
+            onNotify?.(t("events:card.messages.unregisterSuccess"))
+            return
+          }
+        }
+
+        const detail =
+          (isAxiosError(error) && typeof error.response?.data?.detail === "string"
+            ? error.response?.data?.detail
+            : null) || t("events:card.messages.unregisterFailure")
+        onNotify?.(detail)
+      }
+    })
   }
 
   return {
-    isRegistered,
-    participantCount,
+    isRegistered: optimisticRegistered,
+    participantCount: optimisticCount,
     qrToken,
-    isLoading,
+    isLoading: isPending,
     register,
     unregister,
     sync,

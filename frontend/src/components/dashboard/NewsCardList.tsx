@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ArrowRight } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -50,7 +50,7 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
           <button
             type="button"
             className={cn(listActionBase, "flex items-start gap-4 text-left sm:gap-5")}
-            onClick={() => navigate(`/news/${n.id}`)}
+            onClick={() => navigate({ to: "/news/$id", params: { id: String(n.id) } })}
             title={n.title}
             aria-label={t("dashboard:aria.newsItem", { title: n.title })}
           >

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "./partials/_glass-layers.css";
+@import "./partials/_micro-interactions.css";
+@import "./partials/_modern-css.css";
 
 @theme {
   /*
@@ -499,6 +502,11 @@
   ::selection {
     background: var(--primary-main);
     color: var(--color-white);
+  }
+
+  /* WCAG 2.4.11 Focus Not Obscured — prevent sticky navbar from covering focused elements */
+  :focus-visible {
+    scroll-margin-top: calc(var(--navbar-h-scrolled, 4.5rem) + 1rem);
   }
 }
 

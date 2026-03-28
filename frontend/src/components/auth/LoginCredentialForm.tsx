@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 import { Eye, EyeOff, Sparkles, Fingerprint, LogIn } from "lucide-react"
 
 import { FadeIn } from "@/components/ui/motion/FadeIn"
