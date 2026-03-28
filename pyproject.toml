@@ -184,6 +184,11 @@ disable_error_code = ["assignment"]
 # TD-20-06: Dynamic file-type detection assigns str | None to str — acceptable.
 
 [[tool.mypy.overrides]]
+module = "app.core.middleware.request_id"
+warn_unused_ignores = false
+# structlog optional import: pre-commit mypy 1.15 doesn't flag assignment, CI mypy does.
+
+[[tool.mypy.overrides]]
 module = ["app.services.chat_service", "app.services.webpush"]
 disallow_untyped_defs = false
 # TD-20-06: Large service modules with complex async callback signatures.
