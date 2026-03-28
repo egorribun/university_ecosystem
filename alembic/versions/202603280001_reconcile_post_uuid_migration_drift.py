@@ -300,12 +300,19 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     # 2. Drop vestigial uuid_id columns
     # ------------------------------------------------------------------
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
     for table_name, col_name in _UUID_ID_COLUMNS:
-        op.drop_column(table_name, col_name)
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        if col_name in existing_cols:
+            op.drop_column(table_name, col_name)
 
     # ------------------------------------------------------------------
-    # 3. Create user_stats table
+    # 3. Create user_stats table (guarded for idempotent re-run)
     # ------------------------------------------------------------------
+    all_tables = set(inspector.get_table_names())
+    if "user_stats" in all_tables:
+        op.drop_table("user_stats")
     op.create_table(
         "user_stats",
         sa.Column(
@@ -365,135 +372,112 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     for table, local_col, ref_table, ref_col, ondelete in _FK_SPECS:
         fk_name = f"fk_{table}_{local_col}"
-        op.create_foreign_key(
-            fk_name, table, ref_table, [local_col], [ref_col], ondelete=ondelete
-        )
+        # Guard: skip if FK already exists (idempotent re-run after downgrade)
+        existing_fks = {
+            fk["name"] for fk in inspector.get_foreign_keys(table) if fk["name"]
+        }
+        if fk_name not in existing_fks:
+            op.create_foreign_key(
+                fk_name, table, ref_table, [local_col], [ref_col], ondelete=ondelete
+            )
 
     # notification_deliveries composite FK to partitioned notifications
-    op.create_foreign_key(
-        "fk_notification_deliveries_notification",
-        "notification_deliveries",
-        "notifications",
-        ["notification_id", "notification_created_at"],
-        ["id", "created_at"],
-        ondelete="CASCADE",
+    nd_fks = {
+        fk["name"]
+        for fk in inspector.get_foreign_keys("notification_deliveries")
+        if fk["name"]
+    }
+    if "fk_notification_deliveries_notification" not in nd_fks:
+        op.create_foreign_key(
+            "fk_notification_deliveries_notification",
+            "notification_deliveries",
+            "notifications",
+            ["notification_id", "notification_created_at"],
+            ["id", "created_at"],
+            ondelete="CASCADE",
+        )
+
+    # ------------------------------------------------------------------
+    # 6. Create new indexes (IF NOT EXISTS for idempotent re-run)
+    # ------------------------------------------------------------------
+    _INDEXES: list[tuple[str, str, str]] = [
+        ("ix_active_sessions_mfa_completed_at", "active_sessions", "mfa_completed_at"),
+        ("ix_active_sessions_mfa_required", "active_sessions", "mfa_required"),
+        ("ix_attachments_message_id", "attachments", "message_id"),
+        ("ix_data_access_logs_action", "data_access_logs", "action"),
+        ("ix_data_access_logs_actor_user_id", "data_access_logs", "actor_user_id"),
+        ("ix_data_access_logs_created_at", "data_access_logs", "created_at"),
+        ("ix_data_access_logs_resource_id", "data_access_logs", "resource_id"),
+        ("ix_data_access_logs_resource_type", "data_access_logs", "resource_type"),
+        ("ix_data_access_logs_subject_user_id", "data_access_logs", "subject_user_id"),
+        ("ix_events_created_by", "events", "created_by"),
+        ("ix_events_title", "events", "title"),
+        ("ix_failed_login_attempts_ip_address", "failed_login_attempts", "ip_address"),
+        ("ix_invite_codes_used_by_user_id", "invite_codes", "used_by_user_id"),
+        ("ix_news_author_id", "news", "author_id"),
+        ("ix_news_title", "news", "title"),
+        ("ix_news_comments_created_at", "news_comments", "created_at"),
+        ("ix_news_likes_created_at", "news_likes", "created_at"),
+        (
+            "ix_notification_deliveries_subscription_id",
+            "notification_deliveries",
+            "subscription_id",
+        ),
+        ("ix_notifications_title", "notifications", "title"),
+        ("ix_stored_events_aggregate_id_uuid", "stored_events", "aggregate_id_uuid"),
+        ("ix_trusted_devices_user_id", "trusted_devices", "user_id"),
+        ("ix_users_mfa_last_verified_at", "users", "mfa_last_verified_at"),
+        ("ix_users_mfa_required", "users", "mfa_required"),
+    ]
+    for idx_name, tbl, cols in _INDEXES:
+        op.execute(sa.text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {tbl} ({cols})"))
+
+    # Composite indexes
+    op.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_news_comments_news_created "
+            "ON news_comments (news_id, created_at)"
+        )
+    )
+    op.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_news_likes_news_created "
+            "ON news_likes (news_id, created_at)"
+        )
+    )
+    op.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_notification_queue_jobs_pending_claim "
+            "ON notification_queue_jobs (next_retry_at, enqueued_at, id)"
+        )
     )
 
     # ------------------------------------------------------------------
-    # 6. Create new indexes matching ORM model definitions
+    # 7. Unique constraints (idempotent via DO $$ guard)
     # ------------------------------------------------------------------
-    # active_sessions
-    op.create_index(
-        "ix_active_sessions_mfa_completed_at",
-        "active_sessions",
-        ["mfa_completed_at"],
-    )
-    op.create_index(
-        "ix_active_sessions_mfa_required", "active_sessions", ["mfa_required"]
-    )
-
-    # attachments
-    op.create_index("ix_attachments_message_id", "attachments", ["message_id"])
-
-    # data_access_logs
-    op.create_index("ix_data_access_logs_action", "data_access_logs", ["action"])
-    op.create_index(
-        "ix_data_access_logs_actor_user_id", "data_access_logs", ["actor_user_id"]
-    )
-    op.create_index(
-        "ix_data_access_logs_created_at", "data_access_logs", ["created_at"]
-    )
-    op.create_index(
-        "ix_data_access_logs_resource_id", "data_access_logs", ["resource_id"]
-    )
-    op.create_index(
-        "ix_data_access_logs_resource_type", "data_access_logs", ["resource_type"]
-    )
-    op.create_index(
-        "ix_data_access_logs_subject_user_id",
-        "data_access_logs",
-        ["subject_user_id"],
-    )
-
-    # events
-    op.create_index("ix_events_created_by", "events", ["created_by"])
-    op.create_index("ix_events_title", "events", ["title"])
-
-    # failed_login_attempts
-    op.create_index(
-        "ix_failed_login_attempts_ip_address",
-        "failed_login_attempts",
-        ["ip_address"],
-    )
-
-    # invite_codes
-    op.create_index(
-        "ix_invite_codes_used_by_user_id", "invite_codes", ["used_by_user_id"]
-    )
-
-    # news
-    op.create_index("ix_news_author_id", "news", ["author_id"])
-    op.create_index("ix_news_title", "news", ["title"])
-
-    # news_comments
-    op.create_index("ix_news_comments_created_at", "news_comments", ["created_at"])
-    op.create_index(
-        "ix_news_comments_news_created",
-        "news_comments",
-        ["news_id", "created_at"],
-    )
-
-    # news_likes
-    op.create_index("ix_news_likes_created_at", "news_likes", ["created_at"])
-    op.create_index(
-        "ix_news_likes_news_created", "news_likes", ["news_id", "created_at"]
-    )
-
-    # notification_deliveries
-    op.create_index(
-        "ix_notification_deliveries_subscription_id",
-        "notification_deliveries",
-        ["subscription_id"],
-    )
-
-    # notification_queue_jobs
-    op.create_index(
-        "ix_notification_queue_jobs_pending_claim",
-        "notification_queue_jobs",
-        ["next_retry_at", "enqueued_at", "id"],
-    )
-
-    # notifications
-    op.create_index("ix_notifications_title", "notifications", ["title"])
-
-    # stored_events
-    op.create_index(
-        "ix_stored_events_aggregate_id_uuid",
-        "stored_events",
-        ["aggregate_id_uuid"],
-    )
-
-    # trusted_devices
-    op.create_index("ix_trusted_devices_user_id", "trusted_devices", ["user_id"])
-
-    # users
-    op.create_index("ix_users_mfa_last_verified_at", "users", ["mfa_last_verified_at"])
-    op.create_index("ix_users_mfa_required", "users", ["mfa_required"])
-
-    # ------------------------------------------------------------------
-    # 7. Unique constraints
-    # ------------------------------------------------------------------
-    op.create_unique_constraint(
-        "uq_news_like_user_news", "news_likes", ["user_id", "news_id"]
-    )
-    # notification_deliveries is partitioned by attempted_at — PG requires
-    # all partitioning columns in unique constraints.
-    op.create_unique_constraint(
-        "uq_notification_delivery_once",
-        "notification_deliveries",
-        ["notification_id", "channel", "subscription_id", "attempted_at"],
-    )
-    op.create_unique_constraint("uq_users_email", "users", ["email"])
+    _UQ_CONSTRAINTS = [
+        (
+            "uq_news_like_user_news",
+            "news_likes",
+            "user_id, news_id",
+        ),
+        (
+            "uq_notification_delivery_once",
+            "notification_deliveries",
+            "notification_id, channel, subscription_id, attempted_at",
+        ),
+        (
+            "uq_users_email",
+            "users",
+            "email",
+        ),
+    ]
+    for uq_name, uq_table, uq_cols in _UQ_CONSTRAINTS:
+        existing_uqs = {
+            c["name"] for c in inspector.get_unique_constraints(uq_table) if c["name"]
+        }
+        if uq_name not in existing_uqs:
+            op.create_unique_constraint(uq_name, uq_table, uq_cols.split(", "))
 
     # ------------------------------------------------------------------
     # 8. Type changes
