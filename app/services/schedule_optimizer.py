@@ -161,13 +161,21 @@ class ScheduleOptimizerService:
                 "Thursday",
                 "Friday",
             ]
-            # Rust expects Vec<(String, Vec<u32>)>: each day paired with candidate hours.
+            # Rust API accepts either Vec<(String, Vec<u32>)> (new) or
+            # Vec<String> (old).  Try the new signature first, fall back.
             available_blocks = [(day, list(range(8, 21))) for day in days]
-            suggested_rust = rust_ext.find_optimal_slot(
-                duration_minutes,
-                existing_rust,
-                available_blocks,
-            )
+            try:
+                suggested_rust = rust_ext.find_optimal_slot(
+                    duration_minutes,
+                    existing_rust,
+                    available_blocks,
+                )
+            except TypeError:
+                suggested_rust = rust_ext.find_optimal_slot(
+                    duration_minutes,
+                    existing_rust,
+                    days,
+                )
 
             if suggested_rust:
                 return self._from_rust_item(

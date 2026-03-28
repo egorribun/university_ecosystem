@@ -76,6 +76,7 @@ async def test_outbox_worker_error_handling(db_session, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires PostgreSQL — OutboxWorker uses asyncpg DSN format")
 async def test_outbox_worker_run_stop():
     # Use a very small poll interval for testing
     worker = OutboxWorker(poll_interval=0.01)

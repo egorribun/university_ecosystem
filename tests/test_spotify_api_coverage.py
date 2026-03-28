@@ -60,9 +60,37 @@ async def test_auth_url(mock_user):
 
 
 @pytest.mark.asyncio
-async def test_spotify_callback_success(mock_db, mock_request, mock_user):
+async def test_spotify_callback_success(mock_db, mock_request, mock_user, monkeypatch):
+    """Test Spotify OAuth callback flow with mocked settings.
+
+    Pydantic v2 BaseSettings singleton resists attribute mutation, so we
+    replace the entire `settings` reference in the spotify module.
+    """
+
+    from app.core.config import settings
+
+    # Build a proxy that delegates everything to the real settings but
+    # overrides the four Spotify fields.
+    overrides = {
+        "spotify_oauth_state_secret": "test-state-secret",  # pragma: allowlist secret
+        "spotify_client_id": "test-client-id",
+        "spotify_client_secret": "test-client-secret",  # pragma: allowlist secret
+        "spotify_redirect_uri": "http://localhost:8000/spotify/callback",
+    }
+
+    class _SettingsProxy:
+        def __getattr__(self, name):
+            if name in overrides:
+                return overrides[name]
+            return getattr(settings, name)
+
+    monkeypatch.setattr("app.api.spotify.settings", _SettingsProxy())
+    return await _run_spotify_callback_success(mock_db, mock_request, mock_user)
+
+
+async def _run_spotify_callback_success(mock_db, mock_request, mock_user):
     with (
-        patch("app.api.spotify.decode_token") as mock_decode,
+        patch("app.api.spotify.jwt.decode") as mock_decode,
         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post,
         patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
     ):

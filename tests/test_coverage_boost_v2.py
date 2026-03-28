@@ -1,15 +1,60 @@
 import asyncio
 import time
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import Request, Response
 from starlette.responses import FileResponse, JSONResponse
-from starlette.types import ASGIApp
 
 from app.core.internal_access import InternalAccessMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.timing import RequestTimingMiddleware, ensure_minimum_time
+
+
+def _make_http_scope(
+    path: str = "/test",
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    client: tuple[str, int] | None = ("127.0.0.1", 0),
+) -> dict[str, Any]:
+    raw_headers = [
+        (k.lower().encode("latin-1"), v.encode("latin-1"))
+        for k, v in (headers or {}).items()
+    ]
+    return {
+        "type": "http",
+        "method": method,
+        "path": path,
+        "headers": raw_headers,
+        "query_string": b"",
+        "client": client,
+    }
+
+
+async def _capture_asgi_response(
+    middleware: Any,
+    scope: dict[str, Any],
+    body: bytes = b"",
+) -> dict[str, Any]:
+    captured: dict[str, Any] = {"status": None, "headers": {}, "body": b""}
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.start":
+            captured["status"] = message["status"]
+            captured["headers"] = {
+                k.decode("latin-1") if isinstance(k, bytes) else k: v.decode("latin-1")
+                if isinstance(v, bytes)
+                else v
+                for k, v in message.get("headers", [])
+            }
+        elif message["type"] == "http.response.body":
+            captured["body"] += message.get("body", b"")
+
+    await middleware(scope, receive, send)
+    return captured
 
 
 @pytest.mark.asyncio
@@ -29,89 +74,92 @@ async def test_ensure_minimum_time():
 
 @pytest.mark.asyncio
 async def test_request_timing_middleware():
-    app = MagicMock(spec=ASGIApp)
-    middleware = RequestTimingMiddleware(app)
-    request = MagicMock(spec=Request)
-    request.url.path = "/test"
-    request.method = "GET"
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
 
-    async def call_next(req):
-        return Response(content="ok", status_code=200)
+    middleware = RequestTimingMiddleware(inner_app)
 
-    # Normal request
-    response = await middleware.dispatch(request, call_next)
-    assert "X-Response-Time" in response.headers
+    # Normal request — check that it completes (X-Response-Time is opt-in via settings)
+    with patch("app.core.timing.settings") as mock_settings:
+        mock_settings.expose_timing_header = True
+        scope = _make_http_scope(path="/test")
+        result = await _capture_asgi_response(middleware, scope)
+        assert result["status"] == 200
+        assert "x-response-time" in result["headers"]
 
-    # Slow request
-    async def slow_call_next(req):
+    # Slow request — triggers warning log
+    async def slow_inner_app(scope: Any, receive: Any, send: Any) -> None:
         await asyncio.sleep(0.6)
-        return Response(content="slow", status_code=200)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"slow"})
 
-    with patch("app.core.timing.logger") as mock_logger:
-        response = await middleware.dispatch(request, slow_call_next)
+    slow_middleware = RequestTimingMiddleware(slow_inner_app)
+    with (
+        patch("app.core.timing.logger") as mock_logger,
+        patch("app.core.timing.settings") as mock_settings,
+    ):
+        mock_settings.expose_timing_header = False
+        scope = _make_http_scope(path="/test")
+        result = await _capture_asgi_response(slow_middleware, scope)
         assert mock_logger.warning.called
 
 
 @pytest.mark.asyncio
 async def test_internal_access_middleware():
-    app = MagicMock(spec=ASGIApp)
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
     middleware = InternalAccessMiddleware(
-        app,
+        inner_app,
         allowed_ips=["127.0.0.1"],
         header_name="X-Internal-Token",
         header_token="secret",
         internal_prefixes=["/internal"],
     )
 
-    async def call_next(req):
-        return Response(content="ok", status_code=200)
-
     # Non-internal path
-    request = MagicMock(spec=Request)
-    request.url.path = "/public"
-    response = await middleware.dispatch(request, call_next)
-    assert response.status_code == 200
+    scope = _make_http_scope(path="/public")
+    result = await _capture_asgi_response(middleware, scope)
+    assert result["status"] == 200
 
     # Internal path, allowed IP
-    request = MagicMock(spec=Request)
-    request.url.path = "/internal/stats"
-    request.client.host = "127.0.0.1"
-    request.headers.get.return_value = None
-    response = await middleware.dispatch(request, call_next)
-    assert response.status_code == 200
+    scope = _make_http_scope(path="/internal/stats", client=("127.0.0.1", 0))
+    result = await _capture_asgi_response(middleware, scope)
+    assert result["status"] == 200
 
     # Internal path, denied IP, valid header
-    request = MagicMock(spec=Request)
-    request.url.path = "/internal/stats"
-    request.client.host = "192.168.1.1"
-    request.headers = {"X-Internal-Token": "secret"}
-    response = await middleware.dispatch(request, call_next)
-    assert response.status_code == 200
-    assert "Vary" in response.headers
-    assert "X-Internal-Token" in response.headers["Vary"]
+    scope = _make_http_scope(
+        path="/internal/stats",
+        headers={"X-Internal-Token": "secret"},
+        client=("192.168.1.1", 0),
+    )
+    result = await _capture_asgi_response(middleware, scope)
+    assert result["status"] == 200
+    assert "vary" in result["headers"]
+    assert "X-Internal-Token" in result["headers"]["vary"]
 
     # Internal path, denied IP, invalid header
-    request.headers = {"X-Internal-Token": "wrong"}
-    response = await middleware.dispatch(request, call_next)
-    assert response.status_code == 403
+    scope = _make_http_scope(
+        path="/internal/stats",
+        headers={"X-Internal-Token": "wrong"},
+        client=("192.168.1.1", 0),
+    )
+    result = await _capture_asgi_response(middleware, scope)
+    assert result["status"] == 403
 
     # Internal path, denied IP, no header
-    request.headers = {}
-    response = await middleware.dispatch(request, call_next)
-    assert response.status_code == 403
-
-    # Test _ensure_vary_header with existing Vary
-    response = Response(content="ok")
-    response.headers["Vary"] = "Accept-Encoding"
-    middleware._ensure_vary_header(response)
-    assert "X-Internal-Token" in response.headers["Vary"]
-    assert "Accept-Encoding" in response.headers["Vary"]
+    scope = _make_http_scope(
+        path="/internal/stats",
+        client=("192.168.1.1", 0),
+    )
+    result = await _capture_asgi_response(middleware, scope)
+    assert result["status"] == 403
 
 
 @pytest.mark.asyncio
 async def test_security_headers_middleware(monkeypatch, tmp_path):
-    from unittest.mock import MagicMock
-
     import httpx
     from fastapi import FastAPI
     from starlette.responses import Response

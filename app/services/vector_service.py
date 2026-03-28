@@ -70,6 +70,7 @@ class VectorService:
             OSError,
             ValueError,
             httpx.HTTPStatusError,
+            httpx.TransportError,
         ):
             # RZ-20-04 + RZ-33-04: httpx.HTTPStatusError added for raise_for_status().
             logger.exception("Failed to fetch embedding")

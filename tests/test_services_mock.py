@@ -118,16 +118,16 @@ async def test_ws_hub_client_invalidate_cache_nats_error_logged(
     from app.services.ws_hub_client import WsHubClient
 
     mock_broker = AsyncMock()
-    mock_broker.publish = AsyncMock(side_effect=RuntimeError("NATS down"))
+    mock_broker.publish = AsyncMock(side_effect=ConnectionError("NATS down"))
 
     client = WsHubClient.__new__(WsHubClient)
     client._broker = mock_broker
     client._secret = "test_secret"
 
-    with caplog.at_level(logging.WARNING, logger="app.services.ws_hub_client"):
+    with caplog.at_level(logging.ERROR, logger="app.services.ws_hub_client"):
         await client.invalidate_cache(user_id="user1", room_id="room1")
 
-    assert "Failed to publish" in caplog.text
+    assert "ws_hub_invalidation_failed" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -561,7 +561,10 @@ async def test_vector_service_get_embedding_disabled() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
         mock_settings.embedding_api_key = "key"
@@ -579,7 +582,10 @@ async def test_vector_service_get_embedding_no_api_key() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
         mock_settings.embedding_api_key = ""
@@ -603,7 +609,10 @@ async def test_vector_service_get_embedding_http_success() -> None:
     mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
     mock_response.raise_for_status = MagicMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
         mock_settings.embedding_api_key = "test-key"
@@ -627,7 +636,10 @@ async def test_vector_service_get_embedding_http_error() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
         mock_settings.embedding_api_key = "key"
@@ -649,7 +661,10 @@ async def test_vector_service_search_similar_disabled() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
         mock_settings.embedding_api_key = ""
@@ -669,7 +684,10 @@ async def test_vector_service_search_similar_empty_embedding() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost"
         mock_settings.embedding_api_key = "key"
@@ -687,7 +705,10 @@ async def test_vector_service_close() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost"
         mock_settings.embedding_api_key = ""
@@ -708,7 +729,10 @@ async def test_vector_service_search_disabled_returns_empty() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = False
         mock_settings.embedding_api_base = "http://localhost:8001"
         mock_settings.embedding_api_key = None
@@ -728,7 +752,10 @@ async def test_vector_service_search_empty_embedding_returns_empty() -> None:
 
     mock_db = AsyncMock()
 
-    with patch("app.services.vector_service.settings") as mock_settings:
+    with (
+        patch("app.services.vector_service.settings") as mock_settings,
+        patch("app.services.vector_service.validate_url_not_internal"),
+    ):
         mock_settings.semantic_search_enabled = True
         mock_settings.embedding_api_base = "http://localhost:8001"
         mock_settings.embedding_api_key = None
@@ -788,7 +815,7 @@ async def test_fraud_detection_record_event_redis_error() -> None:
     from app.services.fraud_detection_service import FraudDetectionService
 
     mock_redis = AsyncMock()
-    mock_redis.xadd = AsyncMock(side_effect=RuntimeError("Redis down"))
+    mock_redis.xadd = AsyncMock(side_effect=ConnectionError("Redis down"))
 
     svc = FraudDetectionService(redis_client=mock_redis)
     # Should not raise
@@ -851,7 +878,7 @@ async def test_fraud_detection_get_recent_events_redis_error() -> None:
     from app.services.fraud_detection_service import FraudDetectionService
 
     mock_redis = AsyncMock()
-    mock_redis.xrevrange = AsyncMock(side_effect=RuntimeError("oops"))
+    mock_redis.xrevrange = AsyncMock(side_effect=ConnectionError("oops"))
 
     svc = FraudDetectionService(redis_client=mock_redis)
     events = await svc.get_recent_events()
@@ -883,7 +910,7 @@ async def test_fraud_detection_count_recent_high_severity_fallback_on_error() ->
         (b"3-0", {b"severity": b"high", b"user_id": b"usr"}),
     ]
     mock_redis = AsyncMock()
-    mock_redis.zcount = AsyncMock(side_effect=RuntimeError("zcount down"))
+    mock_redis.zcount = AsyncMock(side_effect=ConnectionError("zcount down"))
     mock_redis.xrevrange = AsyncMock(return_value=raw_data)
 
     svc = FraudDetectionService(redis_client=mock_redis)

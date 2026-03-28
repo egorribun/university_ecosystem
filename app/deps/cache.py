@@ -220,7 +220,7 @@ class RedisCache(BaseCache):
                     retry_on_timeout=True,
                     max_connections=getattr(settings, "redis_pool_size", 20),
                 )
-        return cast(Redis[Any], self._client)
+        return cast("Redis[Any]", self._client)
 
     async def close(self) -> None:
         if self._client is None:
@@ -933,9 +933,9 @@ async def get_cache_client() -> Redis[Any]:
     """
     cache = get_cache()
     if hasattr(cache, "_get_client"):
-        return cast(Redis[Any], await cast(Any, cache)._get_client())
+        return cast("Redis[Any]", await cast(Any, cache)._get_client())
     if hasattr(cache, "l2") and hasattr(cast(Any, cache).l2, "_get_client"):
-        return cast(Redis[Any], await cast(Any, cache.l2)._get_client())
+        return cast("Redis[Any]", await cast(Any, cache.l2)._get_client())
     raise RuntimeError(
         f"Cache backend {type(cache)} does not support direct Redis client access."
     )

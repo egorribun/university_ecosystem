@@ -18,7 +18,17 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_mfa_check_helpers(db_session, user_factory):
+    from sqlalchemy.orm import selectinload
+
     user = await user_factory()
+
+    # Load MFA relationships for the sync helper
+    result = await db_session.execute(
+        select(models.User)
+        .where(models.User.id == user.id)
+        .options(selectinload(models.User.totp_enrollments))
+    )
+    user = result.scalars().first()
 
     # Initially no MFA
     assert await mfa.has_totp_enabled(db_session, user) is False
@@ -31,21 +41,56 @@ async def test_mfa_check_helpers(db_session, user_factory):
     enrollment = models.MfaTotpEnrollment(user=user, secret=secret, is_active=False)
     db_session.add(enrollment)
     await db_session.commit()
-    await db_session.refresh(user)
+
+    # Re-load user with totp_enrollments eagerly loaded
+    result = await db_session.execute(
+        select(models.User)
+        .where(models.User.id == user.id)
+        .options(selectinload(models.User.totp_enrollments))
+    )
+    user = result.scalars().first()
 
     assert (
         await mfa.user_has_active_factor(db_session, user) is False
     )  # is_active=False
+
+    # Activate enrollment
+    enrollment_result = await db_session.execute(
+        select(models.MfaTotpEnrollment).where(
+            models.MfaTotpEnrollment.user_id == user.id
+        )
+    )
+    enrollment = enrollment_result.scalars().first()
     enrollment.is_active = True
     await db_session.commit()
-    await db_session.refresh(user)
+
+    # Re-load user with relationships
+    result = await db_session.execute(
+        select(models.User)
+        .where(models.User.id == user.id)
+        .options(selectinload(models.User.totp_enrollments))
+    )
+    user = result.scalars().first()
     assert await mfa.user_has_active_factor(db_session, user) is True
     assert mfa.user_has_confirmed_interactive_factor(user) is False  # not confirmed_at
 
     # Confirm TOTP
+    enrollment_result = await db_session.execute(
+        select(models.MfaTotpEnrollment).where(
+            models.MfaTotpEnrollment.user_id == user.id
+        )
+    )
+    enrollment = enrollment_result.scalars().first()
     enrollment.confirmed_at = datetime.now(UTC)
     await db_session.commit()
-    await db_session.refresh(user)
+
+    # Re-load user with relationships
+    result = await db_session.execute(
+        select(models.User)
+        .where(models.User.id == user.id)
+        .options(selectinload(models.User.totp_enrollments))
+    )
+    user = result.scalars().first()
     assert await mfa.has_totp_enabled(db_session, user) is True
     assert mfa.user_has_confirmed_interactive_factor(user) is True
 
@@ -395,8 +440,10 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
             challenge_token=challenge_for_invalid.token,
         )
 
-    # With challenge token — use next TOTP window to avoid code_already_used
-    import time as _time
+    # With challenge token — clear last_used_code_hash to avoid replay
+    # rejection, then use totp.now() (always valid in current window).
+    enrollment.last_used_code_hash = None
+    await db_session.commit()
 
     challenge = await mfa.issue_challenge(
         db_session, user_id=user.id, challenge_type=CHALLENGE_TYPE_TOTP_VERIFY
@@ -405,7 +452,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     res_enr, res_chal = await mfa.verify_totp_for_user(
         db_session,
         user=user,
-        code=totp.at(int(_time.time()) + 31),
+        code=totp.now(),
         challenge_token=challenge.token,
     )
     assert res_chal.id == challenge.id
@@ -533,9 +580,12 @@ async def test_consume_challenge_webauthn(db_session, user_factory):
 async def test_legacy_enrollment_check(db_session, user_factory):
     user = await user_factory()
     user.mfa_default_method = "totp"
-    # Unconfirmed but active enrollment (legacy case)
+    # Active and confirmed enrollment (MED-W19 removed legacy unconfirmed fallback)
     enrollment = models.MfaTotpEnrollment(
-        user_id=user.id, secret="JBSWY3DPEHPK3PXP", is_active=True, confirmed_at=None
+        user_id=user.id,
+        secret="JBSWY3DPEHPK3PXP",  # pragma: allowlist secret
+        is_active=True,
+        confirmed_at=datetime.now(UTC),
     )
     db_session.add(enrollment)
     await db_session.commit()

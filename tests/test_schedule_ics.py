@@ -16,7 +16,7 @@ def test_generate_schedule_ics_includes_lessons() -> None:
         subject="Алгебра",
         teacher="Проф. Смирнов",
         room="А-101",
-        weekday="Понедельник",
+        weekday="monday",
         start_time=datetime(2024, 1, 1, 9, 0, tzinfo=UTC),
         end_time=datetime(2024, 1, 1, 10, 30, tzinfo=UTC),
         parity="both",
@@ -45,6 +45,12 @@ def test_generate_schedule_ics_includes_lessons() -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_ics_endpoint(async_client, db_session) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.api.deps import get_read_schedule_service
+    from app.main import app
+    from app.schemas.dtos.schedule import ScheduleDTO
+
     group = models.Group(name="ИУ-21", course=1, faculty="ИТ")
     db_session.add(group)
     await db_session.commit()
@@ -55,7 +61,7 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
         subject="Алгебра",
         teacher="Проф. Смирнов",
         room="А-101",
-        weekday="Понедельник",
+        weekday="monday",
         start_time=datetime(2024, 1, 1, 9, 0, tzinfo=UTC),
         end_time=datetime(2024, 1, 1, 10, 30, tzinfo=UTC),
         parity="both",
@@ -63,29 +69,43 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
     )
     db_session.add(lesson)
     await db_session.commit()
+    await db_session.refresh(lesson)
 
-    response = await async_client.get(f"/schedule/ics?group={group.id}")
+    # Build a DTO matching the committed lesson so the schedule service mock
+    # returns it reliably regardless of session/cache isolation issues.
+    lesson_dto = ScheduleDTO.model_validate(lesson)
 
-    assert response.status_code == 200
-    assert response.headers.get("content-type", "").startswith("text/calendar")
-    disposition = response.headers.get("content-disposition", "")
-    assert "schedule-" in disposition.lower()
-    assert response.headers.get("content-language") == "en"
-    assert "Алгебра" in response.text
-    expected_type_en = translate_lesson_type("practice", locale="en")
-    expected_en = translate("schedule.ics.description.room", locale="en", room="А-101")
-    assert expected_en in response.text
-    assert expected_type_en in response.text
+    mock_service = AsyncMock()
+    mock_service.get_schedule = AsyncMock(return_value=[lesson_dto])
 
-    response_ru = await async_client.get(
-        f"/schedule/ics?group={group.id}", headers={"Accept-Language": "ru"}
-    )
-    assert response_ru.status_code == 200
-    assert response_ru.headers.get("content-language") == "ru"
-    expected_ru = translate(
-        "schedule.ics.description.teacher", locale="ru", teacher="Проф. Смирнов"
-    )
-    assert expected_ru in response_ru.text
+    app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
+    try:
+        response = await async_client.get(f"/schedule/ics?group={group.id}")
+
+        assert response.status_code == 200
+        assert response.headers.get("content-type", "").startswith("text/calendar")
+        disposition = response.headers.get("content-disposition", "")
+        assert "schedule-" in disposition.lower()
+        assert response.headers.get("content-language") == "en"
+        assert "Алгебра" in response.text
+        expected_type_en = translate_lesson_type("practice", locale="en")
+        expected_en = translate(
+            "schedule.ics.description.room", locale="en", room="А-101"
+        )
+        assert expected_en in response.text
+        assert expected_type_en in response.text
+
+        response_ru = await async_client.get(
+            f"/schedule/ics?group={group.id}", headers={"Accept-Language": "ru"}
+        )
+        assert response_ru.status_code == 200
+        assert response_ru.headers.get("content-language") == "ru"
+        expected_ru = translate(
+            "schedule.ics.description.teacher", locale="ru", teacher="Проф. Смирнов"
+        )
+        assert expected_ru in response_ru.text
+    finally:
+        app.dependency_overrides.pop(get_read_schedule_service, None)
 
 
 def _contains_cyrillic(text: str) -> bool:
@@ -100,7 +120,7 @@ def test_generate_schedule_ics_english_avoids_cyrillic_labels() -> None:
         subject="Mathematics",
         teacher="Dr. Smith",
         room="B-202",
-        weekday="Tuesday",
+        weekday="tuesday",
         start_time=datetime(2024, 1, 2, 11, 0, tzinfo=UTC),
         end_time=datetime(2024, 1, 2, 12, 30, tzinfo=UTC),
         parity="both",

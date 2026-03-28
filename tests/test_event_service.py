@@ -133,7 +133,7 @@ async def test_get_events_issue_token_fails(
 
     with patch(
         "app.services.event_service.attendance_tokens.issue_token",
-        side_effect=Exception("token_fail"),
+        side_effect=KeyError("token_fail"),
     ):
         res = await event_service.get_events(user_id=user_id)
         assert len(res.items) == 1

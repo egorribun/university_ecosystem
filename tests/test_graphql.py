@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.models import Event, News, Schedule
+from app.models.schedule import Group
 
 
 @pytest.mark.asyncio
@@ -113,14 +114,17 @@ async def test_graphql_events_query(root_client: AsyncClient, db_session, user_f
 @pytest.mark.asyncio
 async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
     now = dt.datetime.now(dt.UTC)
-    group_id = uuid.uuid4()
+    group = Group(name="CS-101")
+    db_session.add(group)
+    await db_session.flush()
+    group_id = group.id
     schedule_entry = Schedule(
         group_id=group_id,
-        weekday="Monday",
+        weekday="monday",
         start_time=now,
         end_time=now + dt.timedelta(hours=1, minutes=30),
         subject="Mathematics",
-        lesson_type="Lecture",
+        lesson_type="lecture",
     )
     db_session.add(schedule_entry)
     await db_session.commit()
@@ -144,7 +148,7 @@ async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
     data = response.json()["data"]
     assert len(data["schedule"]) == 1
     assert data["schedule"][0]["subject"] == "Mathematics"
-    assert data["schedule"][0]["dayOfWeek"] == "Monday"
+    assert data["schedule"][0]["dayOfWeek"] == "monday"
 
 
 @pytest.mark.asyncio
@@ -217,10 +221,17 @@ async def test_graphql_context_non_bearer_auth(root_client: AsyncClient):
 async def test_graphql_context_user_not_found(
     root_client: AsyncClient, monkeypatch, db_session
 ):
-    # Test with valid token but non-existent user ID
-    from tests.fixtures.auth.auth_fixtures import create_access_token
+    # Test with valid token but non-existent user ID.
+    # Build JWT directly (no ActiveSession row) to avoid FK constraint on
+    # active_sessions.user_id — the GraphQL context will fail to find the
+    # session and return anonymous context, which is what we test.
+    from app.auth.security import _mint_pure_jwt
 
-    token, _ = await create_access_token(sub=str(uuid.uuid4()), db=db_session)
+    token = _mint_pure_jwt(
+        subject=str(uuid.uuid4()),
+        expires_minutes=30,
+        extra_claims={"jti": str(uuid.uuid4())},
+    )
 
     query = "{ me { email } }"
     response = await root_client.post(
@@ -236,10 +247,15 @@ async def test_graphql_context_user_not_found(
 async def test_graphql_context_db_error(
     root_client: AsyncClient, monkeypatch, db_session
 ):
-    # Test with database error during user fetching
-    from tests.fixtures.auth.auth_fixtures import create_access_token
+    # Test with database error during user fetching.
+    # Build JWT directly (no ActiveSession row) to avoid FK constraint.
+    from app.auth.security import _mint_pure_jwt
 
-    token, _ = await create_access_token(sub=str(uuid.uuid4()), db=db_session)
+    token = _mint_pure_jwt(
+        subject=str(uuid.uuid4()),
+        expires_minutes=30,
+        extra_claims={"jti": str(uuid.uuid4())},
+    )
 
     # Mock select to raise error
 

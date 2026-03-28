@@ -3,6 +3,7 @@
 import time
 from unittest.mock import AsyncMock
 
+import orjson
 import pytest
 
 from app.core.cache import (
@@ -154,7 +155,7 @@ class TestMultiLayerCache:
     async def test_get_l2_hit_populates_l1(self):
         """Test L2 hit populates L1."""
         redis = AsyncMock()
-        redis.get.return_value = "l2_value"
+        redis.get.return_value = orjson.dumps("l2_value")
         cache = MultiLayerCache(redis_client=redis)
 
         # L1 miss, L2 hit
@@ -167,7 +168,7 @@ class TestMultiLayerCache:
     async def test_get_l2_exception(self):
         """Test L2 exception doesn't crash get."""
         redis = AsyncMock()
-        redis.get.side_effect = Exception("Redis error")
+        redis.get.side_effect = ConnectionError("Redis error")
         cache = MultiLayerCache(redis_client=redis)
 
         # Should return None instead of crashing
@@ -177,7 +178,7 @@ class TestMultiLayerCache:
     async def test_set_l2_exception(self):
         """Test L2 exception doesn't crash set."""
         redis = AsyncMock()
-        redis.setex.side_effect = Exception("Redis error")
+        redis.setex.side_effect = ConnectionError("Redis error")
         cache = MultiLayerCache(redis_client=redis)
 
         # Should not crash
@@ -188,7 +189,7 @@ class TestMultiLayerCache:
     async def test_delete_l2_exception(self):
         """Test L2 exception doesn't crash delete."""
         redis = AsyncMock()
-        redis.delete.side_effect = Exception("Redis error")
+        redis.delete.side_effect = ConnectionError("Redis error")
         cache = MultiLayerCache(redis_client=redis)
 
         await cache.set("key", "val")
@@ -216,7 +217,7 @@ class TestMultiLayerCache:
     async def test_invalidate_prefix_l2_exception(self):
         """Test L2 prefix invalidation exception."""
         redis = AsyncMock()
-        redis.scan.side_effect = Exception("Redis error")
+        redis.scan.side_effect = ConnectionError("Redis error")
         cache = MultiLayerCache(redis_client=redis)
         cache.l1.set("p:1", "v1")
 

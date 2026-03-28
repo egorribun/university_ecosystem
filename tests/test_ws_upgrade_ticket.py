@@ -187,7 +187,7 @@ class TestGetUserFromTicket:
 
         with (
             patch(
-                "app.api.ws.auth.get_cache_client",
+                "app.deps.cache.get_cache_client",
                 new=AsyncMock(return_value=mock_redis),
             ),
             patch("app.api.ws.ticket.TICKET_KEY_PREFIX", TICKET_KEY_PREFIX),
@@ -224,7 +224,7 @@ class TestGetUserFromTicket:
         mock_redis.getdel = AsyncMock(return_value=None)
 
         with patch(
-            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+            "app.deps.cache.get_cache_client", new=AsyncMock(return_value=mock_redis)
         ):
             result = await get_user_from_ticket(secrets.token_hex(32))
 
@@ -243,7 +243,7 @@ class TestGetUserFromTicket:
 
         # First call — we expect it to attempt user resolution; short-circuit on invalid UUID
         with patch(
-            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+            "app.deps.cache.get_cache_client", new=AsyncMock(return_value=mock_redis)
         ):
             await get_user_from_ticket(ticket)  # consume
             result = await get_user_from_ticket(ticket)  # replay attempt
@@ -259,7 +259,7 @@ class TestGetUserFromTicket:
         mock_redis.getdel = AsyncMock(return_value="nodivider")
 
         with patch(
-            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+            "app.deps.cache.get_cache_client", new=AsyncMock(return_value=mock_redis)
         ):
             result = await get_user_from_ticket(secrets.token_hex(32))
 
@@ -280,7 +280,7 @@ class TestGetUserFromTicket:
         mock_redis.exists = AsyncMock(return_value=1)
 
         with patch(
-            "app.api.ws.auth.get_cache_client", new=AsyncMock(return_value=mock_redis)
+            "app.deps.cache.get_cache_client", new=AsyncMock(return_value=mock_redis)
         ):
             result = await get_user_from_ticket(ticket)
 
@@ -385,7 +385,7 @@ class TestWsAuthenticatorTicketPath:
             ),
         ):
             auth = WsAuthenticator()
-            user, session_jti, _ = await auth.authenticate_upgrade(ws)
+            user, _session_jti, _ = await auth.authenticate_upgrade(ws)
 
         assert user is mock_user
 

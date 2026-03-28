@@ -36,7 +36,9 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
         captured["url"] = url
         captured["engine_kwargs"] = kwargs
         # Mock engine needs sync_engine for slow query logging setup
-        return SimpleNamespace(sync_engine=SimpleNamespace(pool=SimpleNamespace()))
+        mock_dispatch = SimpleNamespace()
+        mock_pool = SimpleNamespace(dispatch=mock_dispatch)
+        return SimpleNamespace(sync_engine=SimpleNamespace(pool=mock_pool))
 
     def fake_sessionmaker(engine, **kwargs):
         captured["engine"] = engine
@@ -87,7 +89,9 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
     def fake_create_async_engine(url: str, **kwargs):
         captured["url"] = url
         captured["engine_kwargs"] = kwargs
-        return SimpleNamespace(sync_engine=SimpleNamespace(pool=SimpleNamespace()))
+        mock_dispatch = SimpleNamespace()
+        mock_pool = SimpleNamespace(dispatch=mock_dispatch)
+        return SimpleNamespace(sync_engine=SimpleNamespace(pool=mock_pool))
 
     def fake_sessionmaker(engine, **kwargs):
         captured["engine"] = engine
@@ -107,6 +111,7 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         database_max_overflow=4,
         database_pool_timeout=45.0,
         database_pool_recycle=900,
+        database_statement_cache_size=0,
     )
 
     engine, session_factory, _ = database_module.create_session_factory(stub_settings)

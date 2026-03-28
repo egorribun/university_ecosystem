@@ -44,7 +44,8 @@ class GroupRepository(
         result = await self.db.execute(stmt)
         groups = list(result.scalars().all())
         dtos = [self._to_dto(g) for g in groups]
-        await schedule_cache.set(cache_key, dtos)
+        # Serialize to dicts for orjson compatibility in L2 cache
+        await schedule_cache.set(cache_key, [d.model_dump(mode="json") for d in dtos])
         return dtos
 
 
@@ -82,7 +83,8 @@ class ScheduleRepository(
         result = await self.db.execute(stmt)
         schedule_items = list(result.scalars().all())
         dtos = [self._to_dto(s) for s in schedule_items]
-        await schedule_cache.set(cache_key, dtos)
+        # Serialize to dicts for orjson compatibility in L2 cache
+        await schedule_cache.set(cache_key, [d.model_dump(mode="json") for d in dtos])
         return dtos
 
     async def get_by_teacher(self, teacher: str) -> Sequence[ScheduleDTO]:

@@ -40,7 +40,7 @@ async def test_schedule_repository_get_by_group(db_session):
         id=uuid.uuid4(),
         group_id=group_id,
         subject="Mathematics",
-        weekday="1",
+        weekday="monday",
         start_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
         end_time=datetime(2026, 1, 1, 11, 30, tzinfo=UTC),
         parity="both",
@@ -60,11 +60,15 @@ async def test_schedule_repository_get_by_teacher(db_session):
     repo = ScheduleRepository(db_session)
     teacher_name = "Professor X"
 
+    group = models.Group(name="Teacher-Test-Group")
+    db_session.add(group)
+    await db_session.flush()
+
     item = models.Schedule(
         id=uuid.uuid4(),
-        group_id=uuid.uuid4(),
+        group_id=group.id,
         subject="Telepathy 101",
-        weekday="2",
+        weekday="tuesday",
         start_time=datetime(2026, 1, 1, 14, 0, tzinfo=UTC),
         end_time=datetime(2026, 1, 1, 15, 30, tzinfo=UTC),
         parity="even",
@@ -83,13 +87,16 @@ async def test_schedule_repository_get_by_teacher(db_session):
 @pytest.mark.asyncio
 async def test_schedule_repository_create_ensures_utc(db_session):
     repo = ScheduleRepository(db_session)
-    group_id = uuid.uuid4()
+
+    group = models.Group(name="UTC-Test-Group")
+    db_session.add(group)
+    await db_session.flush()
 
     # Create with naive datetimes
     data = {
-        "group_id": group_id,
+        "group_id": group.id,
         "subject": "Chemistry",
-        "weekday": "3",
+        "weekday": "wednesday",
         "start_time": datetime(2026, 1, 1, 10, 0),
         "end_time": datetime(2026, 1, 1, 11, 30),
         "parity": "odd",

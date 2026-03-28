@@ -1233,9 +1233,13 @@ async def test_cache_version_manager_redis_get_valid() -> None:
 
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    version = await mgr.get_version(cache=mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        version = await mgr.get_version(cache=mock_cache)
     assert version == "42"
 
 
@@ -1251,9 +1255,13 @@ async def test_cache_version_manager_redis_get_none() -> None:
 
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    version = await mgr.get_version(cache=mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        version = await mgr.get_version(cache=mock_cache)
     assert version == "0"
 
 
@@ -1269,9 +1277,13 @@ async def test_cache_version_manager_redis_get_invalid_value() -> None:
 
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    version = await mgr.get_version(cache=mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        version = await mgr.get_version(cache=mock_cache)
     assert version == "0"
 
 
@@ -1286,9 +1298,13 @@ async def test_cache_version_manager_redis_error_fallback() -> None:
 
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
-    mock_cache._get_client = AsyncMock(side_effect=RedisError("connection failed"))
 
-    version = await mgr.get_version(cache=mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        side_effect=RedisError("connection failed"),
+    ):
+        version = await mgr.get_version(cache=mock_cache)
     assert version == "0"
 
 
@@ -1304,9 +1320,13 @@ async def test_cache_version_manager_increment_with_incr() -> None:
 
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    await mgr.increment(cache=mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        await mgr.increment(cache=mock_cache)
     mock_client.incr.assert_awaited_once()
 
 
@@ -1324,9 +1344,13 @@ async def test_cache_version_manager_increment_fallback_no_incr() -> None:
 
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    await mgr.increment(cache=mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        await mgr.increment(cache=mock_cache)
     mock_client.set.assert_awaited()
 
 
@@ -1342,9 +1366,13 @@ async def test_cache_version_manager_reset() -> None:
 
     mock_cache = MagicMock(spec=RedisCache)
     mock_cache.enabled = True
-    mock_cache._get_client = AsyncMock(return_value=mock_client)
 
-    await mgr.reset(cache=mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client",
+        new_callable=AsyncMock,
+        return_value=mock_client,
+    ):
+        await mgr.reset(cache=mock_cache)
     mock_client.set.assert_awaited_once_with(mgr.version_key, "0")
 
 

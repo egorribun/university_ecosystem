@@ -170,7 +170,7 @@ def validate_and_resolve(url: str) -> list[tuple[str, int]]:
             ) from exc
         if _is_blocked(addr):
             raise ValueError(f"SSRF blocked: {hostname} resolves to internal IP {addr}")
-        safe_addrs.append((str(addr), sockaddr[1]))  # type: ignore[arg-type]
+        safe_addrs.append((str(addr), sockaddr[1]))  # type: ignore[arg-type]  # sockaddr[1] is always int for AF_INET/AF_INET6
 
     if not safe_addrs:
         raise ValueError(f"SSRF blocked: no valid addresses for {hostname}")

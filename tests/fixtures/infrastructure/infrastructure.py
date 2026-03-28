@@ -8,7 +8,6 @@ import pytest_asyncio
 
 import app.core.ratelimit as ratelimit_module
 from app import main
-from app.core.config import settings
 from asgi_lifespan import LifespanManager
 
 # Static CSRF token for test clients — used by both the cookie and the header.
@@ -24,8 +23,8 @@ async def _rate_limit_redis_client(mock_global_redis):
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def configure_rate_limit(_rate_limit_redis_client):
     ratelimit_module.set_rate_limit_client_factory(lambda _: _rate_limit_redis_client)
-    # Make sure it's enabled for tests that need it
-    settings.rate_limit_enabled = True
+    # Rate limiting is disabled by default (RATE_LIMIT_ENABLED=false in conftest).
+    # Tests that need rate limiting should enable it per-test via monkeypatch.
     yield
     ratelimit_module.set_rate_limit_client_factory(None)
 
@@ -52,8 +51,16 @@ def mock_background_tasks(monkeypatch):
 
 @pytest_asyncio.fixture
 async def app():
-    async with LifespanManager(main.app) as manager:
-        yield manager
+    manager = LifespanManager(main.app)
+    await manager.__aenter__()
+    yield main.app  # yield the ASGI app, not the manager
+    try:
+        await manager.__aexit__(None, None, None)
+    except RuntimeError as exc:
+        # Suppress "unable to perform operation on <TCPTransport closed=True>"
+        # from httpx/httpcore teardown — known uvloop/asyncio race condition.
+        if "TCPTransport" not in str(exc) and "closed" not in str(exc):
+            raise
 
 
 @pytest_asyncio.fixture

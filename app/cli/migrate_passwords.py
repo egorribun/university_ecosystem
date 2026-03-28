@@ -39,7 +39,7 @@ from sqlalchemy import select, update
 
 from app.core.database import async_session
 from app.core.logging import get_logger
-from app.models.users import User  # type: ignore[attr-defined]
+from app.models.users import User
 
 logger = get_logger(__name__)
 
@@ -94,7 +94,7 @@ async def _force_reset_batch(batch_size: int) -> tuple[int, int]:
 
         user_ids = [u.id for u in bcrypt_batch]
         await session.execute(
-            update(User).where(User.id.in_(user_ids)).values(must_reset_password=True)  # type: ignore[arg-type]
+            update(User).where(User.id.in_(user_ids)).values(must_reset_password=True)
         )
         await session.commit()
 

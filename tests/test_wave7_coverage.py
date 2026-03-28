@@ -279,18 +279,30 @@ class TestContentSizeMiddleware:
     async def test_get_request_passes_through(self):
         from app.core.middleware.content_size import ContentSizeLimitMiddleware
 
-        mw = ContentSizeLimitMiddleware(None, max_bytes=1024)
+        async def inner_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
 
-        request = MagicMock()
-        request.headers = {}
-        request.method = "GET"
-        request.url.path = "/api/test"
+        mw = ContentSizeLimitMiddleware(inner_app, max_bytes=1024)
 
-        async def call_next(req):
-            return Response(status_code=200)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/test",
+            "headers": [],
+            "query_string": b"",
+        }
+        captured = {}
 
-        response = await mw.dispatch(request, call_next)
-        assert response.status_code == 200
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            if message["type"] == "http.response.start":
+                captured["status"] = message["status"]
+
+        await mw(scope, receive, send)
+        assert captured["status"] == 200
 
 
 # ===========================================================================

@@ -128,7 +128,7 @@ class TestConnectionManager:
         """Test that dead connections are cleaned up on send failure."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
-        mock_ws1.send_json.side_effect = Exception("Connection closed")
+        mock_ws1.send_json.side_effect = RuntimeError("Connection closed")
         user_id = uuid.uuid4()
         message = {"type": "test"}
 
@@ -241,13 +241,31 @@ class TestWebSocketAuth:
     @pytest.mark.asyncio
     async def test_get_user_from_token_valid(self, db_session, user_factory):
         """Test token validation returns user."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+
         from app.api.ws.auth import get_user_from_token
 
         user = await user_factory(full_name="Test User")
         token, _ = await create_access_token(str(user.id), db=db_session)
         await db_session.commit()
 
-        result_user, session_jti = await get_user_from_token(token)
+        # Mock Redis (unavailable in tests) and use test DB session
+        @asynccontextmanager
+        async def _mock_session():
+            yield db_session
+
+        mock_redis = AsyncMock()
+        mock_redis.exists = AsyncMock(return_value=0)
+
+        with (
+            patch(
+                "app.deps.cache.get_cache_client",
+                new=AsyncMock(return_value=mock_redis),
+            ),
+            patch("app.api.ws.auth.async_session", side_effect=_mock_session),
+        ):
+            result_user, session_jti = await get_user_from_token(token)
 
         assert result_user is not None
         assert result_user.id == user.id

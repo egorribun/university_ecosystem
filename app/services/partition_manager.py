@@ -79,18 +79,19 @@ async def ensure_partitions_exist() -> None:
                     datetime.fromisoformat(str(start_date_iso).replace("Z", "+00:00"))
                     datetime.fromisoformat(str(end_date_iso).replace("Z", "+00:00"))
 
-                    # RZ-20-05: Use text() bind parameters for date literals
-                    # instead of manual replace("'", "''") escaping.
+                    # RZ-20-05: Date literals are pre-validated via
+                    # datetime.fromisoformat() above — safe to interpolate.
+                    # DDL statements (CREATE TABLE) do not support bind
+                    # parameters in PostgreSQL; asyncpg rejects them with
+                    # "the server expects 0 arguments".
+                    safe_start = str(start_date_iso).replace("'", "''")
+                    safe_end = str(end_date_iso).replace("'", "''")
                     await conn.execute(
                         text(
                             f"CREATE TABLE IF NOT EXISTS {safe_partition} "
                             f"PARTITION OF {safe_table} "
-                            f"FOR VALUES FROM (:start_val) TO (:end_val)"
-                        ),
-                        {
-                            "start_val": str(start_date_iso),
-                            "end_val": str(end_date_iso),
-                        },
+                            f"FOR VALUES FROM ('{safe_start}') TO ('{safe_end}')"
+                        )
                     )
                     await conn.commit()
                 except (
@@ -98,8 +99,11 @@ async def ensure_partitions_exist() -> None:
                     ConnectionError,
                     SAOperationalError,
                     SAProgrammingError,
+                    RuntimeError,
+                    ImportError,
                 ) as e:
-                    # RZ-20-04 + RZ-33-03: Broadened — DDL errors include SA exceptions.
+                    # RZ-20-04 + RZ-33-03: Broadened — DDL errors, rust_ext import,
+                    # and asyncpg interface errors.
                     logger.error(
                         "Failed to create partition: %s", e
                     )  # LOW-W19: lazy logging

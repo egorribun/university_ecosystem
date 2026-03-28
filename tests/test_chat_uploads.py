@@ -116,7 +116,7 @@ async def test_send_message_blocks_infected_file(
     notifications = ChatNotificationService(db_session)
     service = ChatMessageDispatcher(uow, attachments, notifications)
 
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises((HTTPException, ExceptionGroup)) as excinfo:
         await service.send_message(
             chat.id,
             user=sender,
@@ -125,7 +125,15 @@ async def test_send_message_blocks_infected_file(
             locale="en",
         )
 
-    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    # asyncio.TaskGroup wraps exceptions in ExceptionGroup
+    if isinstance(excinfo.value, ExceptionGroup):
+        http_exceptions = [
+            e for e in excinfo.value.exceptions if isinstance(e, HTTPException)
+        ]
+        assert http_exceptions, "Expected HTTPException inside ExceptionGroup"
+        assert http_exceptions[0].status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    else:
+        assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     upload_dir = tmp_path / "chat_uploads"
     assert not upload_dir.exists() or not any(upload_dir.iterdir())
 

@@ -19,6 +19,10 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         mock_engine = MagicMock()
         mock_conn = AsyncMock()
         mock_conn.dialect.name = "postgresql"
+        # The real code uses conn.dialect.identifier_preparer.quote() for safe DDL
+        mock_preparer = MagicMock()
+        mock_preparer.quote = MagicMock(side_effect=lambda name: f'"{name}"')
+        mock_conn.dialect.identifier_preparer = mock_preparer
 
         # Correctly mock the async context manager for engine.connect()
         mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -28,52 +32,45 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         monkeypatch.setattr("app.services.partition_manager.engine", mock_engine)
 
         # Mock result for partition listing
-        mock_future_partitions = MagicMock()
-        mock_future_partitions.scalars.return_value.all.return_value = []
+        mock_create_result = MagicMock()
 
         mock_old_partitions = MagicMock()
         mock_old_partitions.scalars.return_value.all.return_value = [
             "notifications_y1999m01"
         ]
 
-        mock_conn.execute.side_effect = [
-            # Future partitions check (for loop range(settings.partition_warmup_months + 1))
-            mock_future_partitions,
-            # Prune old partitions check (one for each PARTITIONED_TABLES entry)
-            # Actually, there is one execute per table in PARTITIONED_TABLES
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-            mock_old_partitions,
-        ]
+        mock_drop_result = MagicMock()
+
+        # Build side_effect list to match the actual call pattern:
+        # For each table (3 tables) with warmup_months=0:
+        #   1 x execute(CREATE TABLE) per table = 3 creates
+        # Then pruning with retention_days=30:
+        #   1 x execute(SELECT partitions) per table = 3 selects
+        #   1 x execute(DROP TABLE) per found partition per table
+        #   (each returns 1 partition) = 3 drops
+        # Total: 3 + 3 + 3 = 9 execute calls
+        from app.services.partition_manager import PARTITIONED_TABLES
+
+        num_tables = len(PARTITIONED_TABLES)
+        side_effects = []
+        # Phase 1: CREATE TABLE calls (1 per table)
+        for _ in range(num_tables):
+            side_effects.append(mock_create_result)
+        # Phase 2: SELECT partition + DROP TABLE per table
+        for _ in range(num_tables):
+            side_effects.append(mock_old_partitions)  # SELECT
+            side_effects.append(mock_drop_result)  # DROP
+        mock_conn.execute.side_effect = side_effects
+        mock_conn.commit = AsyncMock()
 
         # Mock rust_ext
+        mock_partition_info = MagicMock()
+        mock_partition_info.name = "notifications_y2026m04"
+        mock_partition_info.start_date = "2026-04-01"
+        mock_partition_info.end_date = "2026-05-01"
+
         mock_rust = MagicMock()
-        mock_rust.get_partition_info.return_value = MagicMock(
-            name="notifications_y1999m01",
-            start_date="1999-01-01",
-            end_date="1999-02-01",
-        )
+        mock_rust.get_partition_info.return_value = mock_partition_info
         mock_rust.is_partition_expired.return_value = True
 
         with patch.dict("sys.modules", {"rust_ext": mock_rust}):

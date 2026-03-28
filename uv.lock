@@ -1079,12 +1079,6 @@ wheels = [
 ]
 
 [[package]]
-name = "gputil"
-version = "1.4.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ed/0e/5c61eedde9f6c87713e89d794f01e378cfd9565847d4576fa627d758c554/GPUtil-1.4.0.tar.gz", hash = "sha256:099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9", size = 5545, upload-time = "2018-12-18T09:12:13.63Z" }
-
-[[package]]
 name = "graphql-core"
 version = "3.2.7"
 source = { registry = "https://pypi.org/simple" }
@@ -3683,7 +3677,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "filelock" },
     { name = "geoip2" },
-    { name = "gputil" },
     { name = "grpcio" },
     { name = "grpcio-health-checking" },
     { name = "gunicorn" },
@@ -3789,7 +3782,6 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.135.1,<0.136" },
     { name = "filelock", specifier = ">=3.20.3" },
     { name = "geoip2", specifier = ">=4.0" },
-    { name = "gputil", specifier = ">=1.4.0" },
     { name = "grpcio", specifier = ">=1.60.0" },
     { name = "grpcio-health-checking", specifier = ">=1.60.0" },
     { name = "gunicorn", specifier = ">=21.2.0" },

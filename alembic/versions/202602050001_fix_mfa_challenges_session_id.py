@@ -44,37 +44,35 @@ def upgrade():
             op.drop_constraint(fk_name, "mfa_challenges", type_="foreignkey")
             logger.info(f"Dropped FK {fk_name} from mfa_challenges")
 
-        # 2. Add shadow column
-        op.add_column(
-            "mfa_challenges",
-            sa.Column(
-                "shadow_session_id", postgresql.UUID(as_uuid=True), nullable=True
-            ),
-        )
-
-        # 3. RZ-W19-06: Clear only orphaned challenges instead of TRUNCATE.
-        # TRUNCATE destroys active MFA sessions — users mid-auth are logged out.
-        op.execute(
+        # 2. Check current column type — the UUID cutover (202602010003) may
+        # have already converted session_id, or it may still be INTEGER.
+        col_type_row = bind.execute(
             sa.text("""
-            UPDATE "mfa_challenges"
-            SET shadow_session_id = session_id::uuid
-            WHERE session_id IS NOT NULL
+            SELECT data_type FROM information_schema.columns
+            WHERE table_name = 'mfa_challenges' AND column_name = 'session_id'
         """)
-        )
-        logger.info("Migrated mfa_challenges.session_id -> shadow_session_id")
+        ).fetchone()
+        current_type = col_type_row[0] if col_type_row else None
+        logger.info("mfa_challenges.session_id current type: %s", current_type)
 
-        # 4. Swap columns
-        op.alter_column(
-            "mfa_challenges", "session_id", new_column_name="legacy_session_id"
-        )
-        op.alter_column(
-            "mfa_challenges", "shadow_session_id", new_column_name="session_id"
-        )
+        if current_type and current_type.lower() == "uuid":
+            # Already UUID (e.g. from the UUID cutover) — nothing to convert.
+            logger.info("session_id is already UUID — skipping type conversion")
+        else:
+            # Still INTEGER — old FK values are orphaned after UUID cutover.
+            # Drop the integer column and recreate as UUID.
+            op.drop_column("mfa_challenges", "session_id")
+            op.add_column(
+                "mfa_challenges",
+                sa.Column(
+                    "session_id",
+                    postgresql.UUID(as_uuid=True),
+                    nullable=True,
+                ),
+            )
+            logger.info("Replaced integer session_id with UUID column")
 
-        # 5. Drop legacy column
-        op.drop_column("mfa_challenges", "legacy_session_id")
-
-        # 6. Recreate index and FK
+        # 3. Recreate index and FK
         op.create_index(
             "ix_mfa_challenges_session_id", "mfa_challenges", ["session_id"]
         )
@@ -107,10 +105,13 @@ def downgrade():
     dialect = bind.dialect.name
 
     if dialect == "postgresql":
-        op.drop_constraint(
-            "fk_mfa_challenges_session_id_uuid", "mfa_challenges", type_="foreignkey"
+        op.execute(
+            sa.text(
+                "ALTER TABLE mfa_challenges "
+                "DROP CONSTRAINT IF EXISTS fk_mfa_challenges_session_id_uuid"
+            )
         )
-        op.drop_index("ix_mfa_challenges_session_id", "mfa_challenges")
+        op.execute(sa.text("DROP INDEX IF EXISTS ix_mfa_challenges_session_id"))
         op.alter_column(
             "mfa_challenges", "session_id", type_=sa.Integer(), postgresql_using="NULL"
         )

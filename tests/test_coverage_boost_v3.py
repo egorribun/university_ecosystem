@@ -48,7 +48,8 @@ def test_cost_visitor_all_list_fields():
     assert visitor.cost == 3 * _LIST_FIELD_COST
 
 
-def test_query_cost_extension_low_cost():
+@pytest.mark.asyncio
+async def test_query_cost_extension_low_cost():
     from app.graphql.extensions import QueryCostExtension, _CostVisitor
 
     ext = object.__new__(QueryCostExtension)
@@ -56,6 +57,8 @@ def test_query_cost_extension_low_cost():
     ext.execution_context.errors = None
     mock_doc = MagicMock()
     ext.execution_context.graphql_document = mock_doc
+    ext.execution_context.context = MagicMock()
+    ext.execution_context.context.current_user = None
 
     visitor_instance = MagicMock(spec=_CostVisitor)
     visitor_instance.cost = 10  # under max
@@ -65,23 +68,26 @@ def test_query_cost_extension_low_cost():
         patch("app.graphql.extensions._CostVisitor", return_value=visitor_instance),
     ):
         gen = ext.on_validate()
-        next(gen)
+        await gen.__anext__()
         try:
-            next(gen)
-        except StopIteration:
+            await gen.__anext__()
+        except StopAsyncIteration:
             pass
 
 
-def test_query_cost_extension_high_cost():
+@pytest.mark.asyncio
+async def test_query_cost_extension_high_cost():
     from graphql import GraphQLError
 
     from app.graphql.extensions import _MAX_QUERY_COST, QueryCostExtension, _CostVisitor
 
     ext = object.__new__(QueryCostExtension)
     ext.execution_context = MagicMock()
-    ext.execution_context.errors = None
+    ext.execution_context.pre_execution_errors = None
     mock_doc = MagicMock()
     ext.execution_context.graphql_document = mock_doc
+    ext.execution_context.context = MagicMock()
+    ext.execution_context.context.current_user = None
 
     visitor_instance = MagicMock(spec=_CostVisitor)
     visitor_instance.cost = _MAX_QUERY_COST + 1
@@ -91,12 +97,13 @@ def test_query_cost_extension_high_cost():
         patch("app.graphql.extensions._CostVisitor", return_value=visitor_instance),
     ):
         gen = ext.on_validate()
-        next(gen)
+        await gen.__anext__()
         with pytest.raises(GraphQLError):
-            next(gen)
+            await gen.__anext__()
 
 
-def test_query_cost_extension_prior_errors():
+@pytest.mark.asyncio
+async def test_query_cost_extension_prior_errors():
     from app.graphql.extensions import QueryCostExtension
 
     ext = object.__new__(QueryCostExtension)
@@ -104,14 +111,15 @@ def test_query_cost_extension_prior_errors():
     ext.execution_context.errors = ["some error"]
 
     gen = ext.on_validate()
-    next(gen)
+    await gen.__anext__()
     try:
-        next(gen)
-    except StopIteration:
+        await gen.__anext__()
+    except StopAsyncIteration:
         pass
 
 
-def test_query_cost_extension_no_document():
+@pytest.mark.asyncio
+async def test_query_cost_extension_no_document():
     from app.graphql.extensions import QueryCostExtension
 
     ext = object.__new__(QueryCostExtension)
@@ -120,10 +128,10 @@ def test_query_cost_extension_no_document():
     ext.execution_context = ctx
 
     gen = ext.on_validate()
-    next(gen)
+    await gen.__anext__()
     try:
-        next(gen)
-    except StopIteration:
+        await gen.__anext__()
+    except StopAsyncIteration:
         pass
 
 
@@ -912,7 +920,7 @@ async def test_graphql_token_validator_redis_unavailable():
     with patch(
         "app.deps.cache.get_cache_client",
         new_callable=AsyncMock,
-        side_effect=Exception("Redis down"),
+        side_effect=ConnectionError("Redis down"),
     ):
         result = await validator._redis_jti_check("some-jti")
 
@@ -924,7 +932,7 @@ async def test_graphql_token_validator_load_db_session_db_error():
     from app.services.auth.graphql_token_validator import GraphQLTokenValidator
 
     mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(side_effect=Exception("DB down"))
+    mock_session.execute = AsyncMock(side_effect=OSError("DB down"))
     validator = GraphQLTokenValidator(MagicMock(), mock_session)
     result = await validator._load_db_session("some-jti")
     assert result is None

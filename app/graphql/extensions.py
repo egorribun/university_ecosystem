@@ -150,7 +150,7 @@ class QueryCostExtension(SchemaExtension):
         # If prior validators already rejected the query, skip cost analysis.
         # Use getattr for compatibility — execution_context.errors is not
         # guaranteed to exist during the validation phase in all Strawberry versions.
-        if getattr(self.execution_context, "errors", None):
+        if getattr(self.execution_context, "pre_execution_errors", None):
             return
 
         document: DocumentNode | None = getattr(

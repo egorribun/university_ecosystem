@@ -21,8 +21,10 @@ async def test_internal_routes_absent_from_openapi(root_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_internal_routes_require_token(root_client: AsyncClient):
-    # Patch _is_allowed_ip to return False, simulating request from external IP
-    with patch.object(InternalAccessMiddleware, "_is_allowed_ip", return_value=False):
+    # Patch _is_allowed_ip_from_scope to return False, simulating request from external IP
+    with patch.object(
+        InternalAccessMiddleware, "_is_allowed_ip_from_scope", return_value=False
+    ):
         response = await root_client.get("/api/v1/admin/dlq/stats")
 
         assert response.status_code == 403

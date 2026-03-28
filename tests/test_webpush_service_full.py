@@ -79,17 +79,22 @@ class TestSendWebPush:
         assert result.status == "gone"
 
     def test_error_429(self, mock_pywebpush):
+        from types import SimpleNamespace
+
         from pywebpush import WebPushException
 
+        # Use SimpleNamespace instead of MagicMock to avoid random memory
+        # addresses in str(exc) that could accidentally contain "410"/"404".
+        mock_resp = SimpleNamespace(status_code=429, text="Rate Limited")
         mock_pywebpush.side_effect = WebPushException(
-            "Rate Limited", response=MagicMock(status_code=429)
+            "Rate Limited", response=mock_resp
         )
         result = send_web_push(self._make_sub(), {"title": "Rate"})
         assert result.status == "error"
         assert result.status_code == 429
 
     def test_error_generic_exception(self, mock_pywebpush):
-        mock_pywebpush.side_effect = RuntimeError("Connection reset")
+        mock_pywebpush.side_effect = ConnectionError("Connection reset")
         result = send_web_push(self._make_sub(), {"title": "Error"})
         assert result.status == "error"
         assert "Connection reset" in (result.error or "")

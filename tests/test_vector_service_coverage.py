@@ -63,7 +63,9 @@ async def test_get_embedding_failure(vector_service):
         patch.object(settings, "semantic_search_enabled", True),
         patch.object(settings, "embedding_api_key", "fake-key"),
     ):
-        vector_service._client.post = AsyncMock(side_effect=Exception("API Error"))
+        vector_service._client.post = AsyncMock(
+            side_effect=ConnectionError("API Error")
+        )
 
         embedding = await vector_service.get_embedding("test")
         assert len(embedding) == settings.embedding_dimensions
@@ -88,19 +90,25 @@ async def test_search_similar_with_scores_empty_embedding(vector_service):
 async def test_search_similar_with_scores_success(vector_service, mock_db):
     with (
         patch.object(settings, "semantic_search_enabled", True),
-        patch("app.services.vector_service.select"),
+        patch("app.services.vector_service.select") as _mock_select,
     ):
         # Mock model
         mock_model = MagicMock()
         # Mock distance calculation
         mock_distance = MagicMock()
 
-        # Setup operation mocks
-        mock_sub_result = MagicMock()
-        mock_sub_result.label.return_value = "similarity_score"
+        # Setup operation mocks — label() must return a MagicMock that supports
+        # comparison operators (__ge__) because the result is used in
+        # `where(score >= min_score)`.
+        mock_score_column = MagicMock()
+        mock_score_column.desc.return_value = mock_score_column
+        # SQLAlchemy column-like: __ge__ should return a clause element, not raise
+        mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
 
         # When 1.0 - distance is called:
-        mock_distance.__rsub__.return_value = mock_sub_result
+        mock_sub_result = MagicMock()
+        mock_sub_result.label.return_value = mock_score_column
+        mock_distance.__rsub__ = MagicMock(return_value=mock_sub_result)
 
         mock_model.embedding.cosine_distance.return_value = mock_distance
 

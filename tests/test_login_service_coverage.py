@@ -312,7 +312,9 @@ async def test_perform_login_mfa_required_success(
             )
 
             with patch.object(
-                login_service, "_collect_mfa_challenges", new_callable=AsyncMock
+                login_service.mfa_coord,
+                "_collect_mfa_challenges",
+                new_callable=AsyncMock,
             ) as mock_collect:
                 mock_collect.return_value = [challenge_model]
 

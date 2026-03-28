@@ -47,4 +47,5 @@ def downgrade() -> None:
     op.drop_index(
         "ix_active_sessions_user_active_created",
         table_name="active_sessions",
+        if_exists=True,
     )

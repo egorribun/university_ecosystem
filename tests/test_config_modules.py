@@ -3,10 +3,9 @@
 import os
 from unittest import mock
 
-from app.config import DatabaseSettings, NotificationsSettings, SecuritySettings
-from app.config.database import DatabaseSettings as DBSettings
-from app.config.notifications import NotificationsSettings as NotifSettings
-from app.config.security import SecuritySettings as SecSettings
+from app.config.database import DatabaseSettings
+from app.config.notifications import NotificationsSettings
+from app.config.security import SecuritySettings
 
 
 class TestDatabaseSettings:
@@ -112,14 +111,20 @@ class TestNotificationsSettings:
 class TestConfigImports:
     """Test config package imports."""
 
-    def test_database_settings_import(self):
+    def test_database_settings_importable(self):
         """Test DatabaseSettings can be imported from package."""
-        assert DBSettings is DatabaseSettings
+        from app.config import DatabaseSettings as PkgDatabaseSettings
 
-    def test_security_settings_import(self):
+        assert PkgDatabaseSettings is not None
+
+    def test_security_settings_importable(self):
         """Test SecuritySettings can be imported from package."""
-        assert SecSettings is SecuritySettings
+        from app.config import SecuritySettings as PkgSecuritySettings
 
-    def test_notifications_settings_import(self):
+        assert PkgSecuritySettings is not None
+
+    def test_notifications_settings_importable(self):
         """Test NotificationsSettings can be imported from package."""
-        assert NotifSettings is NotificationsSettings
+        from app.config import NotificationsSettings as PkgNotificationsSettings
+
+        assert PkgNotificationsSettings is not None

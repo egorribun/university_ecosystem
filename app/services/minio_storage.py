@@ -17,7 +17,7 @@ from datetime import timedelta
 from functools import partial
 from typing import TYPE_CHECKING
 
-from minio import Minio  # type: ignore[import-not-found]
+from minio import Minio  # type: ignore[import-not-found]  # no stubs
 from minio.error import S3Error  # type: ignore[import-not-found]
 
 from app.core.logging import get_logger
@@ -149,7 +149,7 @@ class MinIOClient:
             ),
         )
 
-        return url  # type: ignore[no-any-return]
+        return url  # type: ignore[no-any-return]  # minio untyped
 
     async def get_presigned_upload_url(
         self,
@@ -182,7 +182,7 @@ class MinIOClient:
             ),
         )
 
-        return url  # type: ignore[no-any-return]
+        return url  # type: ignore[no-any-return]  # minio untyped
 
     async def delete_object(
         self,
