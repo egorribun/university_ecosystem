@@ -1,6 +1,6 @@
 module github.com/university-ecosystem/file-processor
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/getsentry/sentry-go v0.43.0
@@ -22,7 +22,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.42.0
 	go.temporal.io/api v1.62.5
 	go.temporal.io/sdk v1.41.1
-	golang.org/x/image v0.37.0
+	golang.org/x/image v0.38.0
 	google.golang.org/grpc v1.79.3
 )
 
