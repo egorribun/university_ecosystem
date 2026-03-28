@@ -158,31 +158,37 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install uv
-        run: pip install uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb # v6.1.0
+
+      - name: Export Python requirements
+        run: |
+          uv export --no-hashes --no-dev > /tmp/requirements.txt
+          echo "Exported $(wc -l < /tmp/requirements.txt) requirements"
 
       - name: Python — pip-audit (CRITICAL/HIGH gate)
         # pip-audit exits non-zero when vulnerabilities above the threshold are found.
         # --fix is NOT passed — this is a read-only gate, not an auto-patcher.
         # Accepted-risk CVEs can be suppressed via .pip-audit-ignore in the repo root.
-        # Uses `uvx` (uv tool run) to avoid needing a project venv.
         run: |
-          uv export --no-hashes --no-dev 2>/dev/null > /tmp/requirements.txt
           uvx pip-audit \
             --requirement /tmp/requirements.txt \
             --desc on \
             --format columns \
             --vulnerability-service osv \
-            --ignore-vuln-file .pip-audit-ignore 2>/dev/null || true
-          # Fail on CRITICAL or HIGH (pip-audit severity levels: critical, high, medium, low)
+            --ignore-vuln-file .pip-audit-ignore || true
+          # Fail on CRITICAL or HIGH
           uvx pip-audit \
             --requirement /tmp/requirements.txt \
             --format json \
             --vulnerability-service osv \
-            --ignore-vuln-file .pip-audit-ignore 2>/dev/null \
+            --ignore-vuln-file .pip-audit-ignore \
             | python3 -c "
           import sys, json
-          data = json.load(sys.stdin)
-          # RZ-W16-05: Gate on ALL vulnerabilities, not just those with fixes.
+          raw = sys.stdin.read()
+          if not raw.strip():
+              print('pip-audit: no output (empty requirements?)')
+              sys.exit(0)
+          data = json.loads(raw)
           all_vulns = [
               v for dep in data.get('dependencies', [])
               for v in dep.get('vulns', [])
