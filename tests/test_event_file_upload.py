@@ -699,6 +699,17 @@ async def test_delete_event_removes_all_files(
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
+    # Patch cached_property sets used by save_attachment
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_mime_types_set",
+        property(lambda self: {"text/plain"}),
+    )
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_extensions_set",
+        property(lambda self: {"txt"}),
+    )
 
     image_path = tmp_path / "event_images" / "banner.png"
     image_path.parent.mkdir(parents=True, exist_ok=True)
