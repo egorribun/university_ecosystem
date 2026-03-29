@@ -301,6 +301,80 @@
 }
 
 /* ═══════════════════════════════════════════════ */
+/* 4. CARD MORPH NAVIGATION (Wave 48)               */
+/* ═══════════════════════════════════════════════ */
+
+/* Dashboard cards get unique view-transition-name for morph effect */
+.vt-dash-schedule { view-transition-name: dash-schedule; }
+.vt-dash-news { view-transition-name: dash-news; }
+.vt-dash-events { view-transition-name: dash-events; }
+
+::view-transition-old(dash-schedule),
+::view-transition-old(dash-news),
+::view-transition-old(dash-events) {
+  animation:
+    var(--motion-duration-base) var(--ease-premium) both fade-out,
+    var(--motion-duration-slow) var(--ease-premium) both card-morph-out;
+}
+
+::view-transition-new(dash-schedule),
+::view-transition-new(dash-news),
+::view-transition-new(dash-events) {
+  animation:
+    var(--motion-duration-base) var(--ease-premium) both fade-in,
+    var(--motion-duration-slow) var(--ease-premium) both card-morph-in;
+}
+
+@keyframes card-morph-out {
+  to {
+    transform: scale(1.02);
+    filter: blur(2px);
+  }
+}
+
+@keyframes card-morph-in {
+  from {
+    transform: scale(0.95);
+    filter: blur(4px);
+  }
+}
+
+/* ═══════════════════════════════════════════════ */
+/* 5. CARD BORDER SHIMMER (Wave 48)                 */
+/* ═══════════════════════════════════════════════ */
+
+/* Glowing border on hover — box-shadow always follows border-radius exactly.
+ * Replaces conic-gradient mask technique (size mismatch with nested elements). */
+.dash-border-shimmer {
+  transition:
+    box-shadow 0.4s var(--ease-premium),
+    border-color 0.4s var(--ease-premium);
+}
+
+.dash-border-shimmer:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--primary-main) 25%, transparent),
+    0 0 16px -2px color-mix(in srgb, var(--primary-main) 20%, transparent),
+    0 0 32px -4px color-mix(in srgb, var(--primary-main) 10%, transparent);
+  animation: border-glow-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes border-glow-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--primary-main) 25%, transparent),
+      0 0 16px -2px color-mix(in srgb, var(--primary-main) 20%, transparent),
+      0 0 32px -4px color-mix(in srgb, var(--primary-main) 10%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--primary-main) 40%, transparent),
+      0 0 24px -2px color-mix(in srgb, var(--primary-main) 30%, transparent),
+      0 0 40px -4px color-mix(in srgb, var(--primary-main) 15%, transparent);
+  }
+}
+
+/* ═══════════════════════════════════════════════ */
 /* REDUCED MOTION                                   */
 /* ═══════════════════════════════════════════════ */
 
@@ -319,5 +393,10 @@
   ::view-transition-old(*),
   ::view-transition-new(*) {
     animation-duration: 0.01s !important;
+  }
+
+  .dash-border-shimmer:hover {
+    animation: none !important;
+    box-shadow: none !important;
   }
 }

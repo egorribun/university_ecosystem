@@ -45,13 +45,14 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   return (
     <Card
       className={cn(
-        "group glass-noise transition-all duration-base ease-back-out p-6 md:p-7",
+        "group glass-noise refetch-shimmer dash-border-shimmer transition-all duration-base ease-back-out p-6 md:p-7",
         "motion-reduce:hover:transform-none",
         "dash-panel-news",
         className
       )}
       padding="none"
       aria-busy={loadingNews}
+      data-refetching={dashboardNewsQuery.isFetching && !dashboardNewsQuery.isLoading}
       style={style}
       {...props}
     >

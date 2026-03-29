@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent 
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
+import { motion, AnimatePresence } from "framer-motion"
 import { Sparkles } from "lucide-react"
 
 import { Badge, Button, Card, Skeleton } from "@/components/ui"
@@ -87,13 +88,14 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
   return (
     <Card
       className={cn(
-        "group glass-noise transition-all duration-base ease-back-out p-6 md:p-7",
+        "group glass-noise refetch-shimmer dash-border-shimmer transition-all duration-base ease-back-out p-6 md:p-7",
         "motion-reduce:hover:transform-none",
         "dash-panel-events",
         className
       )}
       padding="none"
       aria-busy={loadingEvents}
+      data-refetching={dashboardEventsQuery.isFetching && !dashboardEventsQuery.isLoading}
       style={style}
       {...props}
     >
@@ -168,9 +170,17 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                 : t("dashboard:aria.eventsWeek")
             }
           >
+            <AnimatePresence mode="popLayout" initial={false}>
             {scopedEvents.map((e, idx) => {
               return (
-                <li key={e.id} className="dash-list-item px-0 py-0">
+                <motion.li
+                  key={`${eventsScope}-${e.id}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2, delay: idx * 0.04 }}
+                  className="dash-list-item px-0 py-0"
+                >
                   <button
                     type="button"
                     className={cn(
@@ -216,17 +226,18 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                       )}
                     </span>
                   </button>
-                </li>
+                </motion.li>
               )
             })}
+            </AnimatePresence>
           </ul>
         )}
       </div>
 
-      {/* Decorative orbs — visible accent glow */}
+      {/* Decorative orbs — visible accent glow (Wave 48: dash-orb-reactive) */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
+        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
         style={{
           background:
             "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)",
@@ -235,7 +246,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
       />
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide opacity-dim bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
+        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive opacity-dim bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
         style={{ animation: "orb-drift-alt 9s ease-in-out infinite" }}
       />
     </Card>

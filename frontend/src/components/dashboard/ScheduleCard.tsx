@@ -6,6 +6,8 @@ import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import { useDashboardSchedule, type DashboardLesson } from "@/hooks/useDashboardSchedule"
 import { fmtTime, nowParity, parseMinutes } from "@/utils/scheduleUtils"
+import { ScheduleTimeline } from "./ScheduleTimeline"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface ScheduleCardProps {
   userRole?: string | null
@@ -27,6 +29,8 @@ export function ScheduleCard({
   ...props
 }: ScheduleCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
+  // Wave 46: show timeline on wider viewports, list on narrow
+  const showTimeline = useMediaQuery("(min-width: 480px)")
 
   const shouldLoadSchedule = userRole === "student" && Boolean(userGroupId)
   const dashboardScheduleQuery = useDashboardSchedule(
@@ -119,9 +123,10 @@ export function ScheduleCard({
 
   return (
     <Card
-      className={cn("glass-noise dash-panel-schedule p-6 md:p-7", className)}
+      className={cn("glass-noise refetch-shimmer dash-border-shimmer dash-panel-schedule p-6 md:p-7", className)}
       padding="none"
       aria-busy={loadingSched}
+      data-refetching={dashboardScheduleQuery.isFetching && !dashboardScheduleQuery.isLoading}
       style={style}
       {...props}
     >
@@ -211,7 +216,17 @@ export function ScheduleCard({
           <p className="text-sm text-(--text-secondary)">{t("dashboard:noClasses")}</p>
         )}
 
-        {!loadingSched && todayLessons.length > 0 && (
+        {/* Wave 46: Interactive timeline (wide) or classic list (narrow) */}
+        {!loadingSched && todayLessons.length > 0 && showTimeline && (
+          <ScheduleTimeline
+            lessons={todayLessons}
+            minutesNow={minutesNow}
+            currentLesson={currentLesson}
+            nextLesson={nextLesson}
+          />
+        )}
+
+        {!loadingSched && todayLessons.length > 0 && !showTimeline && (
           <ul className="space-y-2.5">
             {todayLessons.map((l, idx) => (
               <li key={l.id} className="dash-list-item px-0 py-0">
@@ -246,15 +261,15 @@ export function ScheduleCard({
         )}
       </div>
 
-      {/* Decorative orbs — visible accents */}
+      {/* Decorative orbs — visible accents (Wave 48: dash-orb-reactive) */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-schedule-flare) mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
+        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive bg-(--grad-schedule-flare) mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
         style={{ animation: "orb-breathe 5s ease-in-out infinite" }}
       />
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute -top-16 right-8 z-hide h-32 w-32 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light opacity-medium transition-opacity duration-slower motion-reduce:!animate-none"
+        className="pointer-events-none absolute -top-16 right-8 z-hide dash-orb-reactive h-32 w-32 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light opacity-medium transition-opacity duration-slower motion-reduce:!animate-none"
         style={{ animation: "orb-pulse-opacity 5s ease-in-out infinite" }}
       />
     </Card>

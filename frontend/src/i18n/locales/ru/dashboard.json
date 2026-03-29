@@ -3,7 +3,12 @@
     "morning": "Доброе утро",
     "afternoon": "Добрый день",
     "evening": "Добрый вечер",
-    "night": "Доброй ночи"
+    "night": "Доброй ночи",
+    "special": {
+      "newYear": "С Новым годом",
+      "newYearEve": "Скоро Новый год",
+      "knowledgeDay": "С Днём знаний"
+    }
   },
   "todaySchedule": "Расписание на сегодня",
   "aria": {

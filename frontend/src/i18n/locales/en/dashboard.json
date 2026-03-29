@@ -3,7 +3,12 @@
     "morning": "Good morning",
     "afternoon": "Good afternoon",
     "evening": "Good evening",
-    "night": "Good night"
+    "night": "Good night",
+    "special": {
+      "newYear": "Happy New Year",
+      "newYearEve": "Happy upcoming New Year",
+      "knowledgeDay": "Happy Knowledge Day"
+    }
   },
   "todaySchedule": "Today's schedule",
   "aria": {

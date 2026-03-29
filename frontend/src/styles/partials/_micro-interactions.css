@@ -232,5 +232,91 @@
       opacity: 1;
       transform: none;
     }
+
+    .refetch-shimmer::after {
+      animation: none !important;
+    }
+  }
+
+  /* ── Refetch Shimmer (Wave 47) ─────────────────────────── */
+  /* Subtle sweep overlay when a card is refetching data.
+   * Applied via data-refetching="true" on the card container. */
+  .refetch-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .refetch-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 4%, transparent) 40%,
+      color-mix(in srgb, white 6%, transparent) 50%,
+      color-mix(in srgb, white 4%, transparent) 60%,
+      transparent 100%
+    );
+    opacity: 0;
+    transition: opacity 0.3s var(--ease-premium);
+  }
+
+  .refetch-shimmer[data-refetching="true"]::after {
+    opacity: 1;
+    animation: refetch-sweep 1.4s var(--ease-premium) infinite;
+  }
+
+  @keyframes refetch-sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+}
+
+/* ── Weather Ambient Keyframes (Wave 47) ───────────────── */
+/* CSS-only particles for rain and snow effects on dashboard. */
+
+@keyframes weather-rain-fall {
+  0% {
+    transform: translateY(-10px) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--_particle-opacity, 0.2);
+  }
+  90% {
+    opacity: var(--_particle-opacity, 0.2);
+  }
+  100% {
+    transform: translateY(calc(100vh + 10px)) translateX(-4px);
+    opacity: 0;
+  }
+}
+
+@keyframes weather-snow-fall {
+  0% {
+    transform: translateY(-10px) translateX(0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--_particle-opacity, 0.15);
+  }
+  50% {
+    transform: translateY(50vh) translateX(15px) rotate(180deg);
+  }
+  90% {
+    opacity: var(--_particle-opacity, 0.15);
+  }
+  100% {
+    transform: translateY(calc(100vh + 10px)) translateX(-10px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="weather-"] {
+    animation: none !important;
   }
 }

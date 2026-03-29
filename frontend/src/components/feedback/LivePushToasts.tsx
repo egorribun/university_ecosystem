@@ -223,13 +223,19 @@ export default function LivePushToasts() {
     error: XCircle,
   }[severity]
 
-  const severityClasses = {
-    success:
-      "bg-success-bg/(--opacity-subtle) border-success-border/(--opacity-dim) text-success-text",
-    info: "bg-brand/(--opacity-subtle) border-brand/(--opacity-dim) text-brand",
-    warning:
-      "bg-warning-bg/(--opacity-subtle) border-warning-border/(--opacity-dim) text-warning-text",
-    error: "bg-error-bg/(--opacity-subtle) border-error-border/(--opacity-dim) text-error-text",
+  /** Wave 46: severity → left accent border color */
+  const severityAccent = {
+    success: "border-l-success-border",
+    info: "border-l-brand",
+    warning: "border-l-warning-border",
+    error: "border-l-error-border",
+  }[severity]
+
+  const severityIconColor = {
+    success: "text-success-text",
+    info: "text-brand",
+    warning: "text-warning-text",
+    error: "text-error-text",
   }[severity]
 
   return (
@@ -237,30 +243,43 @@ export default function LivePushToasts() {
       <AnimatePresence>
         {open && current && (
           <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            initial={{ opacity: 0, y: -20, filter: "blur(8px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
             className={cn(
-              "pointer-events-auto relative overflow-hidden flex items-start gap-4 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
-              severityClasses
+              "pointer-events-auto relative overflow-hidden flex items-start gap-4 p-4 rounded-2xl",
+              "glass-noise backdrop-blur-2xl border border-(--glass-border) shadow-premium",
+              "bg-(--glass-bg-high) dark:bg-(--glass-bg-high)",
+              "border-l-[3px]",
+              severityAccent
             )}
           >
-            <div className="shrink-0 mt-0.5">
+            {/* Glass sheen overlay */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/(--opacity-faint) via-transparent to-transparent"
+            />
+
+            <div className={cn("shrink-0 mt-0.5 relative z-base", severityIconColor)}>
               <Icon className="h-5 w-5" />
             </div>
 
-            <div className="flex-1 min-w-0 pr-4">
-              <h4 className="text-sm font-black tracking-tight mb-0.5 truncate uppercase">
+            <div className="flex-1 min-w-0 pr-4 relative z-base">
+              <h4 className="text-sm font-black tracking-tight mb-0.5 truncate uppercase text-text-primary">
                 {title}
               </h4>
-              <p className="text-xs font-semibold opacity-hover leading-relaxed text-pretty">
+              <p className="text-xs font-semibold opacity-hover leading-relaxed text-pretty text-(--text-secondary)">
                 {body}
               </p>
 
               {current.url && (
                 <button
                   onClick={handleAction}
-                  className="mt-3 inline-flex items-center gap-1.5 text-label-md font-black uppercase tracking-widest hover:underline"
+                  className={cn(
+                    "mt-3 inline-flex items-center gap-1.5 text-label-md font-black uppercase tracking-widest hover:underline",
+                    severityIconColor
+                  )}
                 >
                   {t("notifications:toast.open")}
                   <ExternalLink className="h-3 w-3" />
@@ -272,16 +291,17 @@ export default function LivePushToasts() {
               type="button"
               whileTap={{ scale: 0.94 }}
               onClick={() => handleClose()}
-              className="group/btn relative flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-white transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
+              className="group/btn relative z-base flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-(--text-secondary) transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
               aria-label={t("common:buttons.close")}
             >
               <X className="h-3.5 w-3.5 opacity-hover transition-opacity group-hover/btn:opacity-100" />
             </motion.button>
 
-            {/* Progress Bar */}
+            {/* Progress Bar — gradient style */}
             <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden rounded-b-xl bg-white/(--opacity-faint)">
               <motion.div
-                className="absolute bottom-0 left-0 h-0.5 bg-current opacity-soft"
+                className={cn("absolute bottom-0 left-0 h-0.5 opacity-heavy", severityIconColor)}
+                style={{ background: "linear-gradient(to right, currentColor, transparent)" }}
                 initial={{ width: "100%" }}
                 animate={{ width: "0%" }}
                 transition={{ duration: 6, ease: "linear" }}
