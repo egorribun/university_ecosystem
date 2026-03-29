@@ -2,6 +2,7 @@
   "skipToContent": "Перейти к содержанию",
   "skipToMain": "Перейти к основному содержанию",
   "dateUnknown": "Дата недоступна",
+  "noResults": "Ничего не найдено.",
   "ariaDatePublished": "Опубликовано: {{date}}",
   "ariaCurrentTime": "Текущее время",
   "ariaCurrentLessonProgress": "Прогресс текущего занятия",
@@ -41,7 +42,8 @@
     "live": "В ЭФИРЕ"
   },
   "errors": {
-    "generic": "Произошла ошибка"
+    "generic": "Произошла ошибка",
+    "featureUnavailable": "{{feature}} недоступен"
   },
   "pagination": {
     "rowsPerPage": "Строк на странице",

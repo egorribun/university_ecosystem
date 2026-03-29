@@ -11,7 +11,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 // Mock SmartImage
-vi.mock("@/components/SmartImage", () => ({
+vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt, className }: { alt?: string; className?: string }) => (
     <img alt={alt} className={className} />
   ),

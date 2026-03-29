@@ -105,10 +105,13 @@
     --fs-xl: 1.25rem;
     --fs-2xl: 1.5rem;
 
+    /* Letter Spacing */
+    --tracking-body: -0.011em;
+
     /* Font Stacks */
     --font-sf: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
 
-    /* Z-Index Scale */
+    /* Z-Index Scale (ordered: background → foreground) */
     --z-negative: -10;
     --z-hide: -1;
     --z-base: 0;
@@ -120,19 +123,15 @@
     --z-sidebar: 400;
     --z-navbar: 500;
     --z-overlay: 1000;
-    --z-dropdown: 1200;
-    --z-modal: 1100;
+    --z-dropdown: 1100;
     --z-popover: 1200;
-    --z-floating: 1300;
+    --z-modal: 1300;
+    --z-floating: 1400;
     --z-toast: 2000;
     --z-tooltip: 2100;
     --z-offline: 9999;
 
     /* Animation Tokens */
-    --spring-stiff: stiffness: 520, damping: 34;
-    --spring-standard: stiffness: 460, damping: 34;
-    --spring-gentle: stiffness: 260, damping: 26;
-
     --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-back-out: cubic-bezier(0.34, 1.56, 0.64, 1);
 

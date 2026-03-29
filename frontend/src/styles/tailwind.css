@@ -68,8 +68,6 @@
   --news-hero-h: var(--h-news-hero);
   --news-hero-h-md: var(--h-news-hero-md);
   --h-hero-max: var(--h-hero-max);
-  --w-2-5: var(--w-2-5);
-  --h-2-5: var(--h-2-5);
 
   /* Spacing Scale - Standard Aliases */
   --spacing-1: var(--space-1);
@@ -245,8 +243,6 @@
   --animate-dash-colon-blink: dash-colon-blink var(--motion-duration-pulse-slow, 2s)
     var(--ease-premium) infinite;
   --animate-pulse-shadow: pulse-shadow var(--motion-duration-pulse-slow, 2s) ease-in-out infinite;
-
-  --animate-pulse-shadow: pulse-shadow 2s ease-in-out infinite;
 
   /* Easing */
   --ease-back-out: var(--ease-back-out);
@@ -452,7 +448,7 @@
 
 @utility sf-pro {
   font-family: var(--font-sf);
-  letter-spacing: -0.011em;
+  letter-spacing: var(--tracking-body);
 }
 
 @utility scale-hover {
@@ -487,7 +483,7 @@
       color 0.6s var(--ease-premium);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
-    letter-spacing: -0.011em;
+    letter-spacing: var(--tracking-body);
   }
 
   h1,

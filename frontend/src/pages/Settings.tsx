@@ -3,7 +3,7 @@ import { useSearch, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
-import { PageLayout } from "@/components/PageLayout"
+import { PageLayout } from "@/components/layout/PageLayout"
 import { Tabs, Tab, Snackbar } from "@/components/settings"
 import { StepUpDialog } from "@/components/mfa/StepUpDialog"
 

@@ -1,4 +1,4 @@
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { User } from "@/types/User"
 

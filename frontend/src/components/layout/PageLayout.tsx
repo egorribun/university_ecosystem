@@ -1,7 +1,7 @@
 import { ReactNode } from "react"
-import Layout from "./Layout"
-import PageFadeIn from "./PageFadeIn"
-import { SEO, SEOProps } from "./SEO"
+import Layout from "@/components/Layout"
+import PageFadeIn from "@/components/motion/PageFadeIn"
+import { SEO, SEOProps } from "@/components/ui/SEO"
 import { cn } from "@/utils/cn"
 
 type PageLayoutVariant = "default" | "wide" | "narrow" | "full"

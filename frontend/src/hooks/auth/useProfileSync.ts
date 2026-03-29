@@ -285,8 +285,11 @@ const decryptData = async (
     if (parts.length !== 3) return null
     const [saltHex, ivHex, ciphertextBase64] = parts
 
-    const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
-    const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
+    const saltMatch = saltHex.match(/.{1,2}/g)
+    const ivMatch = ivHex.match(/.{1,2}/g)
+    if (!saltMatch || !ivMatch) return null
+    const salt = new Uint8Array(saltMatch.map((byte) => parseInt(byte, 16)))
+    const iv = new Uint8Array(ivMatch.map((byte) => parseInt(byte, 16)))
     const ciphertext = Uint8Array.from(atob(ciphertextBase64), (c) => c.charCodeAt(0))
 
     const keyMaterial = await importKey(signingKey)

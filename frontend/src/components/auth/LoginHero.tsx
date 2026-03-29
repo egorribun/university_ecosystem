@@ -11,28 +11,28 @@ export function LoginHero() {
     {
       icon: Calendar,
       title: t("auth:login.highlightSchedule", {
-        defaultValue: "Расписание занятий",
+        defaultValue: "Class schedule",
       }),
       description: t("auth:login.highlightScheduleDescription", {
-        defaultValue: "Актуальное расписание пар, экзаменов и консультаций.",
+        defaultValue: "Up-to-date schedule of classes, exams, and consultations.",
       }),
     },
     {
       icon: Newspaper,
       title: t("auth:login.highlightNews", {
-        defaultValue: "Новости и мероприятия",
+        defaultValue: "News and events",
       }),
       description: t("auth:login.highlightNewsDescription", {
-        defaultValue: "Будьте в курсе университетской жизни и важных событий.",
+        defaultValue: "Stay up to date with university life and important events.",
       }),
     },
     {
       icon: MessageCircle,
       title: t("auth:login.highlightMessenger", {
-        defaultValue: "Мессенджер",
+        defaultValue: "Messenger",
       }),
       description: t("auth:login.highlightMessengerDescription", {
-        defaultValue: "Общайтесь с одногруппниками и преподавателями.",
+        defaultValue: "Chat with classmates and professors.",
       }),
     },
   ]
@@ -49,13 +49,13 @@ export function LoginHero() {
       </p>
       <h1 className="mt-4 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
         {t("auth:login.heroHeading", {
-          defaultValue: "Добро пожаловать в систему Университета",
+          defaultValue: "Welcome to the University system",
         })}
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-text-secondary">
         {t("auth:login.heroDescription", {
           defaultValue:
-            "Расписание, новости, мероприятия и мессенджер — всё в одном месте для студентов и преподавателей.",
+            "Schedule, news, events, and messenger — all in one place for students and professors.",
         })}
       </p>
 
@@ -77,16 +77,16 @@ export function LoginHero() {
         <div className="auth-stat-glass w-auto px-6">
           <Zap className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
           <span className="text-xs font-extrabold uppercase tracking-widest-xl">
-            {t("auth:login.statFast", { defaultValue: "Быстро" })}
+            {t("auth:login.statFast", { defaultValue: "Fast" })}
           </span>
           <span className="text-xs font-extrabold uppercase tracking-widest-xl ml-1">
-            {t("auth:login.statFastLabel", { defaultValue: "и безопасно" })}
+            {t("auth:login.statFastLabel", { defaultValue: "and secure" })}
           </span>
         </div>
         <div className="auth-stat-glass w-auto px-6">
           <Sparkles className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
           <span className="text-xs font-extrabold uppercase tracking-widest-xl">
-            {t("auth:login.statSmart", { defaultValue: "Умный интерфейс" })}
+            {t("auth:login.statSmart", { defaultValue: "Smart interface" })}
           </span>
         </div>
       </div>

@@ -18,13 +18,13 @@ import { LanguageProvider } from "@/contexts/LanguageContext"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { AppShellProvider } from "@/contexts/AppShellContext"
 
-vi.mock("@/components/NotificationsBell", () => ({
+vi.mock("@/components/feedback/NotificationsBell", () => ({
   default: ({ iconColor }: { iconColor?: string }) => (
     <div data-testid="notifications-bell" data-color={iconColor ?? ""} />
   ),
 }))
 
-vi.mock("@/components/MessengerButton", () => ({
+vi.mock("@/components/layout/MessengerButton", () => ({
   default: () => <button aria-label="Messenger">Messenger</button>,
 }))
 

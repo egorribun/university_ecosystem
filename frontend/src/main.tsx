@@ -4,7 +4,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 // dayjs removed
 
 import App from "./App"
-import ErrorBoundary from "@/components/ErrorBoundary"
+import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
 import { initObservability } from "./app/observability"

@@ -2,7 +2,7 @@ import { CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { Skeleton, StoryCircle } from "@/components/ui"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import type { StoryItem } from "@/types/Story"
 
 const SKELETON_COUNT = 8

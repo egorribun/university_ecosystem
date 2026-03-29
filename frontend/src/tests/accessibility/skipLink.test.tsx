@@ -33,7 +33,7 @@ vi.mock("@/components/DashboardStories", () => ({
   default: () => <div data-testid="stub-dashboard-stories" />,
 }))
 
-vi.mock("@/components/WeatherWidget", () => ({
+vi.mock("@/components/ui/WeatherWidget", () => ({
   default: () => <div data-testid="stub-weather-widget" />,
 }))
 

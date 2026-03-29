@@ -1,6 +1,6 @@
 import { Newspaper as ArticleIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import FadeSection from "@/components/FadeSection"
+import FadeSection from "@/components/motion/FadeSection"
 import { Button } from "@/components/ui"
 
 interface NewsHeaderProps {

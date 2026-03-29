@@ -128,15 +128,15 @@ do {
     $backendHealth = docker compose -f $ComposeFile ps backend --format json 2>$null | ConvertFrom-Json
     $postgresHealth = docker compose -f $ComposeFile ps postgres --format json 2>$null | ConvertFrom-Json
     $natsHealth = docker compose -f $ComposeFile ps nats --format json 2>$null | ConvertFrom-Json
-    $gatewayHealth = docker compose -f $ComposeFile ps gateway --format json 2>$null | ConvertFrom-Json
-    $wsHubHealth = docker compose -f $ComposeFile ps ws-hub --format json 2>$null | ConvertFrom-Json
 
     # Handle both single object and array output from docker compose ps
     $backendReady = if ($backendHealth -is [array]) { $backendHealth[0].Health -eq "healthy" } else { $backendHealth.Health -eq "healthy" }
     $postgresReady = if ($postgresHealth -is [array]) { $postgresHealth[0].Health -eq "healthy" } else { $postgresHealth.Health -eq "healthy" }
     $natsReady = if ($natsHealth -is [array]) { $natsHealth[0].Health -eq "healthy" } else { $natsHealth.Health -eq "healthy" }
-    $gatewayReady = if ($gatewayHealth -is [array]) { $gatewayHealth[0].Health -eq "healthy" } else { $gatewayHealth.Health -eq "healthy" }
-    $wsHubReady = if ($wsHubHealth -is [array]) { $wsHubHealth[0].Health -eq "healthy" } else { $wsHubHealth.Health -eq "healthy" }
+
+    # Gateway and WS-Hub use distroless images (no shell) — probe via HTTP from host
+    $gatewayReady = try { (Invoke-WebRequest -Uri http://localhost:8080/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { $false }
+    $wsHubReady = try { (Invoke-WebRequest -Uri http://localhost:8083/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { $false }
 
     Write-Host "  Backend: $(if ($backendReady) { 'Ready' } else { 'Starting...' }) | Gateway: $(if ($gatewayReady) { 'Ready' } else { 'Starting...' }) | WS-Hub: $(if ($wsHubReady) { 'Ready' } else { 'Starting...' }) | NATS: $(if ($natsReady) { 'Ready' } else { 'Starting...' })"
 

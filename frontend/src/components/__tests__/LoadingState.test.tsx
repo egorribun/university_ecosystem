@@ -1,5 +1,5 @@
 import { screen } from "@testing-library/react"
-import LoadingState from "@/components/LoadingState"
+import LoadingState from "@/components/feedback/LoadingState"
 import { renderWithA11y } from "@/tests/axeTest"
 
 describe("LoadingState", () => {

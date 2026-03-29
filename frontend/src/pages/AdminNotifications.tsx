@@ -15,7 +15,7 @@ import {
   updateAdminUserTopics,
 } from "@/api/notifications"
 import Layout from "@/components/Layout"
-import PageFadeIn from "@/components/PageFadeIn"
+import PageFadeIn from "@/components/motion/PageFadeIn"
 import { useLocaleFormatters } from "@/i18n/formatters"
 
 const queryKey = ["admin", "notifications", "dead-letter"] as const

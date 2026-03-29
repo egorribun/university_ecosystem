@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
-import Dialog from "@/components/Dialog"
-import SmartImage from "@/components/SmartImage"
+import Dialog from "@/components/ui/Dialog"
+import SmartImage from "@/components/media/SmartImage"
 
 type EventQrDialogProps = {
   open: boolean

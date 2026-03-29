@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
-import { motion } from "framer-motion"
+
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Sparkles } from "lucide-react"
@@ -222,40 +222,20 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           </ul>
         )}
       </div>
-      <motion.span
+      {/* Wave 43: CSS-only decorative orbs (was Framer Motion infinite loops) */}
+      <span
         aria-hidden="true"
-        initial={{ opacity: 0 }}
-        whileHover={{ opacity: "var(--opacity-hover)" }}
-        animate={{
-          scale: [1, 1.12, 1],
-          rotate: [0, 5, 0],
-        }}
-        transition={{
-          duration: 5,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
         style={{
           background:
             "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)",
+          animation: "orb-sway 5s ease-in-out infinite",
         }}
       />
-      <motion.span
+      <span
         aria-hidden="true"
-        initial={{ opacity: "var(--opacity-soft)" }}
-        whileHover={{ opacity: "var(--opacity-strong)" }}
-        animate={{
-          scale: [1, 1.2, 1],
-          x: [0, -10, 0],
-          y: [0, 10, 0],
-        }}
-        transition={{
-          duration: 7,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 z-hide opacity-(--opacity-soft) bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
+        style={{ animation: "orb-drift-alt 7s ease-in-out infinite" }}
       />
     </Card>
   )

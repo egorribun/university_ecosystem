@@ -54,6 +54,9 @@
     --w-mobile-menu: 300px;
     --h-news-card-mobile: 400px;
     --h-news-card-desktop: 480px;
+    --h-news-hero: 380px;
+    --h-news-hero-md: 480px;
+    --h-hero-max: 80vh;
 
     --w-index-col: 52px;
     --h-checkbox: 20px;
@@ -68,6 +71,9 @@
     --h-textarea-min: 120px;
     --size-pattern-min: 180px;
     --size-pattern-max: 360px;
+    /* Yandex Maps API injects a 45px attribution bar at the bottom of the map
+       container. This offset prevents UI controls from being hidden behind it.
+       Value source: https://yandex.ru/dev/jsapi-v2-1/doc/dg/concepts/map.html */
     --offset-yandex-maps: 45px;
     --w-label-sm: 110px;
     --w-label-md: 150px;
@@ -78,8 +84,8 @@
     --fs-page-title: clamp(1.6rem, 5vw, 2.75rem);
     --fs-card-stat: clamp(1.75rem, 2vw, 2.25rem);
     --fs-detail-title: clamp(1.2rem, 3vw, 1.45rem);
-    --fs-label-xs: 10px;
-    --fs-label-md: 11px;
+    --fs-label-xs: 0.625rem;
+    --fs-label-md: 0.6875rem;
     --fs-micro: 0.65rem;
     --fs-badge: 0.7rem;
     --fs-badge-sm: 0.78rem;

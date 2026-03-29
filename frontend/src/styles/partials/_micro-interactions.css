@@ -61,13 +61,13 @@
   }
 
   .card-hover-lift:hover {
-    transform: translateY(-4px);
+    transform: translateY(calc(-1 * var(--space-1)));
     box-shadow: var(--raw-shadow-premium-lift);
     border-color: color-mix(in srgb, var(--primary-main) var(--opacity-soft), transparent);
   }
 
   .card-hover-lift:active {
-    transform: translateY(-1px);
+    transform: translateY(calc(-1 * var(--space-05)));
     transition-duration: var(--motion-duration-instant);
   }
 
@@ -179,19 +179,34 @@
     filter: blur(0);
   }
 
-  /* Stagger delays (up to 12 items) */
-  .stagger-item:nth-child(1) { transition-delay: 0s; }
-  .stagger-item:nth-child(2) { transition-delay: 0.06s; }
-  .stagger-item:nth-child(3) { transition-delay: 0.12s; }
-  .stagger-item:nth-child(4) { transition-delay: 0.18s; }
-  .stagger-item:nth-child(5) { transition-delay: 0.24s; }
-  .stagger-item:nth-child(6) { transition-delay: 0.3s; }
-  .stagger-item:nth-child(7) { transition-delay: 0.36s; }
-  .stagger-item:nth-child(8) { transition-delay: 0.42s; }
-  .stagger-item:nth-child(9) { transition-delay: 0.48s; }
-  .stagger-item:nth-child(10) { transition-delay: 0.54s; }
-  .stagger-item:nth-child(11) { transition-delay: 0.6s; }
-  .stagger-item:nth-child(12) { transition-delay: 0.66s; }
+  /*
+   * Stagger delays — scalable to any number of items.
+   * Each item sets --stagger-i via style attribute or nth-child.
+   * Formula: delay = --stagger-i * --motion-stagger-delay (default 0.06s).
+   * Max delay capped at 0.8s via min() to prevent excessive wait.
+   */
+  .stagger-item {
+    --stagger-i: 0;
+    --stagger-step: var(--motion-stagger-delay, 0.06s);
+    transition-delay: min(calc(var(--stagger-i) * var(--stagger-step)), 0.8s);
+  }
+
+  /* Fallback: nth-child sets --stagger-i for common counts (no JS needed) */
+  .stagger-item:nth-child(1) { --stagger-i: 0; }
+  .stagger-item:nth-child(2) { --stagger-i: 1; }
+  .stagger-item:nth-child(3) { --stagger-i: 2; }
+  .stagger-item:nth-child(4) { --stagger-i: 3; }
+  .stagger-item:nth-child(5) { --stagger-i: 4; }
+  .stagger-item:nth-child(6) { --stagger-i: 5; }
+  .stagger-item:nth-child(7) { --stagger-i: 6; }
+  .stagger-item:nth-child(8) { --stagger-i: 7; }
+  .stagger-item:nth-child(9) { --stagger-i: 8; }
+  .stagger-item:nth-child(10) { --stagger-i: 9; }
+  .stagger-item:nth-child(11) { --stagger-i: 10; }
+  .stagger-item:nth-child(12) { --stagger-i: 11; }
+  /* Items 13+ use --stagger-i from parent via style="--stagger-i: N" or
+     inherit the calc()-based delay with --stagger-i: 0 (instant). */
+  .stagger-item:nth-child(n+13) { --stagger-i: 12; }
 
   /* ── Reduced Motion ──────────────────────────────────────── */
   @media (prefers-reduced-motion: reduce) {

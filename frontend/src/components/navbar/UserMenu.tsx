@@ -1,8 +1,8 @@
 import { motion } from "framer-motion"
 import { springSoft, springBouncy } from "@/utils/animations"
-import NotificationsBell from "@/components/NotificationsBell"
-import MessengerButton from "@/components/MessengerButton"
-import SmartImage from "@/components/SmartImage"
+import NotificationsBell from "@/components/feedback/NotificationsBell"
+import MessengerButton from "@/components/layout/MessengerButton"
+import SmartImage from "@/components/media/SmartImage"
 import { Settings as SettingsIcon } from "lucide-react"
 import { type User } from "@/types/User" // Assuming User type location, will verify imports
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders" // Verify import

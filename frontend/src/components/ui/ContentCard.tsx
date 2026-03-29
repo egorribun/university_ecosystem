@@ -32,7 +32,7 @@ import {
 } from "react"
 
 import { cn } from "@/utils/cn"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { Card, type CardProps } from "./Card"
 
 /** Card context for sharing state between compound components */

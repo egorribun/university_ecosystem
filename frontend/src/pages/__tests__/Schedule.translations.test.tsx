@@ -140,7 +140,7 @@ const apiPatchMock = apiMocks.patch
 const apiDeleteMock = apiMocks.delete
 const apiPutMock = apiMocks.put
 
-vi.mock("@/components/PageFadeIn", () => ({
+vi.mock("@/components/motion/PageFadeIn", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
 

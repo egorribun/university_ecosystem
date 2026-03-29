@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next"
 import { Button, ProgressBar } from "@/components/ui"
-import Dialog from "@/components/Dialog"
+import Dialog from "@/components/ui/Dialog"
 import type {
   AttendanceStats,
   GradeStats,

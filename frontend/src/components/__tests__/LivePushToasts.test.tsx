@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import LivePushToasts from "../LivePushToasts"
+import LivePushToasts from "../feedback/LivePushToasts"
 
 const translations: Record<string, string> = {
   "notifications:defaultTitle": "University Ecosystem",

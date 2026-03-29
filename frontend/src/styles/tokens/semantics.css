@@ -1,6 +1,6 @@
 @layer base {
   :root {
-    /* Semantic Blurs */
+    /* Semantic Blurs (always px — blur must not scale with font-size) */
     --blur-none: 0px;
     --blur-xs: 4px;
     --blur-sm: 8px;
@@ -8,6 +8,8 @@
     --blur-lg: 16px;
     --blur-xl: 24px;
     --blur-2xl: 40px;
+    --blur-3xl: 64px;
+    --blur-glass: var(--glass-blur);
 
     /* Touch Targets */
     --size-touch-target: 44px;
@@ -21,7 +23,6 @@
 
     /* Animation & Transitions */
     --transition-premium: 500ms var(--ease-premium);
-    --transition-spring: spring(1, 100, 10, 0);
     --transition-fast: 200ms var(--ease-premium);
     --scale-hover: 1.02;
     --scale-hover-subtle: 1.01;
@@ -130,6 +131,7 @@
 
     /* Glass System Extensions */
     --glass-alpha-low: 0.1;
+    --glass-alpha-med: 0.15;
     --glass-alpha-high: 0.2;
     --glass-blur: 12px;
     --glass-bg-low: color-mix(in srgb, white var(--glass-alpha-low), transparent);
@@ -161,8 +163,8 @@
     --glass-bg-elevated: color-mix(in srgb, var(--bg-surface) 90%, transparent);
     --glass-sheen: linear-gradient(
       135deg,
-      rgba(255, 255, 255, 0.15) 0%,
-      rgba(255, 255, 255, 0.05) 50%,
+      color-mix(in srgb, white var(--opacity-dim), transparent) 0%,
+      color-mix(in srgb, white var(--opacity-faint), transparent) 50%,
       transparent 100%
     );
     --text-muted-subtle: color-mix(in srgb, var(--text-secondary) 60%, transparent);

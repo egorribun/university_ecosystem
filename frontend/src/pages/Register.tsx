@@ -117,11 +117,11 @@ const Register = () => {
   const passwordStrengthLabel = useMemo(() => {
     if (strength === null) return null
     return [
-      t("auth:register.passwordStrength.veryWeak", { defaultValue: "Очень слабый" }),
-      t("auth:register.passwordStrength.weak", { defaultValue: "Слабый" }),
-      t("auth:register.passwordStrength.medium", { defaultValue: "Средний" }),
-      t("auth:register.passwordStrength.good", { defaultValue: "Хороший" }),
-      t("auth:register.passwordStrength.excellent", { defaultValue: "Отличный" }),
+      t("auth:register.passwordStrength.veryWeak", { defaultValue: "Very weak" }),
+      t("auth:register.passwordStrength.weak", { defaultValue: "Weak" }),
+      t("auth:register.passwordStrength.medium", { defaultValue: "Medium" }),
+      t("auth:register.passwordStrength.good", { defaultValue: "Good" }),
+      t("auth:register.passwordStrength.excellent", { defaultValue: "Excellent" }),
     ][strength]
   }, [strength, t])
 
@@ -144,8 +144,8 @@ const Register = () => {
   ]
 
   const inviteHint = needsInvite
-    ? t("auth:register.inviteRequired", { defaultValue: "Пригласительный код обязателен" })
-    : t("auth:register.inviteOptional", { defaultValue: "Приглашение необязательно" })
+    ? t("auth:register.inviteRequired", { defaultValue: "Invitation code is required" })
+    : t("auth:register.inviteOptional", { defaultValue: "Invitation is optional" })
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
@@ -208,7 +208,7 @@ const Register = () => {
                   disabled={isSubmitting}
                   error={!!errors.full_name}
                   placeholder={
-                    t("auth:register.namePlaceholder", { defaultValue: "Имя и фамилия" }) ??
+                    t("auth:register.namePlaceholder", { defaultValue: "Full name" }) ??
                     undefined
                   }
                 />

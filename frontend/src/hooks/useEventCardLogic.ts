@@ -11,7 +11,18 @@ import type { Event, EventEditDraft } from "@/types/Event"
 
 // dayjs extensions removed
 
-const normalizeDate = (d?: string) => (d ? d.replace("T", " ").replace("Z", "") : "")
+/** Normalize ISO 8601 date string to locale-friendly display format.
+ *  Handles both "2024-01-15T10:30:00Z" and "2024-01-15 10:30:00" inputs. */
+const normalizeDate = (d?: string) => {
+  if (!d) return ""
+  try {
+    const date = new Date(d)
+    if (Number.isNaN(date.getTime())) return d
+    return date.toLocaleString()
+  } catch {
+    return d.replace("T", " ").replace("Z", "")
+  }
+}
 
 interface UseEventCardLogicProps extends Partial<Event> {
   id: string

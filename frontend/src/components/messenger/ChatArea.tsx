@@ -1,4 +1,4 @@
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { ChatWindow, MessageInput } from "@/components/messenger"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
@@ -61,7 +61,7 @@ export function ChatArea({
 
   useEffect(() => {
     if (showSearchInChat && searchInputRef.current) {
-      setTimeout(() => searchInputRef.current?.focus(), 0)
+      requestAnimationFrame(() => searchInputRef.current?.focus())
     }
   }, [showSearchInChat])
 

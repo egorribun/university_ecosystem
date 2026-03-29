@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import Layout from "./Layout"
+import Layout from "@/components/Layout"
 import { Skeleton } from "@/components/ui"
 
 type LoadingStateProps = {

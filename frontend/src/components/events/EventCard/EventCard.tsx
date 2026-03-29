@@ -96,6 +96,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
       }}
       className="w-full outline-none"
       data-testid="event-card"
+      role="button"
       tabIndex={editOpen ? -1 : 0}
       aria-labelledby={`event-title-${id}`}
       aria-describedby={`event-location-${id}`}

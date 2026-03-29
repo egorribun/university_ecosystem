@@ -1,5 +1,6 @@
 {
   "title": "Messages",
+  "svgNotAllowed": "SVG files are not allowed for security reasons",
   "search": "Search",
   "searchMessages": "Search messages...",
   "selectChat": "Select a chat to start messaging",

@@ -19,19 +19,22 @@ const POLLING_IDLE_MS = 3_000
 const POLLING_PAUSED_MS = 2_000
 const POLLING_ACTIVE_MS = 500
 
-let rateLimitedUntil = 0
+// RZ-43-03: Module-level rate limit state wrapped in object to avoid
+// race conditions with concurrent React Strict Mode double-invocations.
+// Object reference is stable; mutations are intentional (shared singleton).
+const rateLimit = { until: 0 }
 
 const clearRateLimit = () => {
-  rateLimitedUntil = 0
+  rateLimit.until = 0
 }
 
 const scheduleRateLimit = (ms: number) => {
   const wait = Math.max(0, ms)
-  rateLimitedUntil = Date.now() + wait
+  rateLimit.until = Date.now() + wait
 }
 
 const rateLimitDelay = () => {
-  return Math.max(0, rateLimitedUntil - Date.now())
+  return Math.max(0, rateLimit.until - Date.now())
 }
 
 type RawNowPlaying = Partial<NowPlaying> | null | undefined
@@ -201,5 +204,5 @@ export const useNowPlaying = (enabled: boolean) => {
 
 export const __testing = {
   clearRateLimit,
-  getRateLimitedUntil: () => rateLimitedUntil,
+  getRateLimitedUntil: () => rateLimit.until,
 }

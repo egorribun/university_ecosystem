@@ -1,4 +1,4 @@
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
 import { getMoscowDate } from "@/utils/date"
@@ -76,7 +76,7 @@ const NewsCardHero = ({ image_url, title, created_at }: NewsCardHeroProps) => {
         {!isOnline && (
           <div className="flex items-center gap-1 rounded-full bg-warning-bg/(--opacity-heavy) px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text shadow-surface backdrop-blur-sm">
             <Cloud size={12} />
-            <span>{t("common:statuses.cached", { defaultValue: "Кэш" })}</span>
+            <span>{t("common:statuses.cached", { defaultValue: "Cached" })}</span>
           </div>
         )}
       </div>

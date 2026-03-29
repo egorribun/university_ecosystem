@@ -8,7 +8,7 @@ import type { ComponentProps } from "react"
 import DashboardStories from "../DashboardStories"
 import type { StoryItem } from "@/types/Story"
 
-vi.mock("@/components/SmartImage", () => ({
+vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt }: { alt?: string }) => <img alt={alt ?? ""} data-testid="smart-image" />,
 }))
 

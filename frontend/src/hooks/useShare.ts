@@ -106,18 +106,15 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
     setCopyingLink(true)
 
     try {
+      // RZ-43-02: Prefer Clipboard API; fall back to legacy only if truly unavailable.
+      // document.execCommand("copy") is deprecated and may be blocked by CSP.
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl)
+      } else if (typeof window !== "undefined" && window.isSecureContext === false) {
+        // Non-secure contexts (HTTP) cannot use Clipboard API — warn instead of silently failing
+        throw new Error("Clipboard API requires a secure context (HTTPS)")
       } else {
-        const textarea = document.createElement("textarea")
-        textarea.value = shareUrl
-        textarea.setAttribute("readonly", "")
-        textarea.style.position = "absolute"
-        textarea.style.left = "-9999rem"
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand("copy")
-        document.body.removeChild(textarea)
+        throw new Error("Clipboard API not available")
       }
 
       setCopiedLink(true)

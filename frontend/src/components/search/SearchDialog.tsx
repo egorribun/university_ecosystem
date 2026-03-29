@@ -13,7 +13,7 @@
  * Wave 38: AI-powered search foundation
  */
 
-import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, X, FileText, Calendar, ArrowRight, Clock } from "lucide-react"
@@ -70,6 +70,7 @@ export function SearchDialog() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
+  const isMac = useMemo(() => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform ?? ""), [])
 
   const debouncedQuery = useDebounced(query, "search")
 
@@ -313,7 +314,7 @@ export function SearchDialog() {
             </div>
             <span className="hidden sm:inline">
               <kbd className="rounded border border-glass-border px-1.5 py-0.5 font-mono">
-                {navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+K
+                {isMac ? "⌘" : "Ctrl"}+K
               </kbd>
             </span>
           </div>

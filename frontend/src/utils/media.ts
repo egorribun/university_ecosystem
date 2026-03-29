@@ -1,5 +1,6 @@
 const DUMMY_BASE = "http://internal.placeholder"
 
+// eslint-disable-next-line security/detect-unsafe-regex -- linear pattern, no backtracking risk
 const hasProtocol = (value: string) => /^(?:https?:)?\/\//i.test(value)
 const isBlobUrl = (value: string) => /^blob:/i.test(value)
 

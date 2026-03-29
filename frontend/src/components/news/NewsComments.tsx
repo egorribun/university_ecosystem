@@ -60,7 +60,7 @@ export function NewsComments({
       <div className="flex items-center gap-(--fluid-gap) mb-8">
         <ChatBubbleOutlineIcon className="h-6 w-6 text-brand" size={24} />
         <h2 className="text-3xl font-extrabold text-text-primary">
-          {t("news:sections.comments", { defaultValue: "Комментарии" })}
+          {t("news:sections.comments", { defaultValue: "Comments" })}
         </h2>
         <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
           {comments.length}
@@ -71,7 +71,7 @@ export function NewsComments({
         {comments.length === 0 ? (
           <p className="text-(--text-secondary) italic py-4">
             {t("news:states.noComments", {
-              defaultValue: "Пока нет ни одного комментария. Будьте первым!",
+              defaultValue: "No comments yet. Be the first!",
             })}
           </p>
         ) : (
@@ -147,7 +147,7 @@ export function NewsComments({
             value={commentText}
             onChange={(event) => setCommentText(event.target.value)}
             placeholder={t("news:form.commentPlaceholder", {
-              defaultValue: "Напишите что-нибудь...",
+              defaultValue: "Write something...",
             })}
             className="min-h-24"
           />
@@ -158,7 +158,7 @@ export function NewsComments({
               loading={isCommenting}
               leadingIcon={<SendIcon size={16} />}
             >
-              {t("news:actions.postComment", { defaultValue: "Отправить" })}
+              {t("news:actions.postComment", { defaultValue: "Submit" })}
             </Button>
           </div>
         </div>

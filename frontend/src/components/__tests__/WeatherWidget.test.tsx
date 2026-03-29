@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
-import WeatherWidget from "../WeatherWidget"
+import WeatherWidget from "../ui/WeatherWidget"
 import type { WeatherAnimationVariant } from "@/utils/weatherIcons"
 
 const translations: Record<string, string> = {

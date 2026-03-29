@@ -7,7 +7,7 @@ import {
   RefreshCw as RestartAltIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import MapFallback from "@/components/MapFallback"
+import MapFallback from "@/components/ui/MapFallback"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"

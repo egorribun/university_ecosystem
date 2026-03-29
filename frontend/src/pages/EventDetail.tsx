@@ -8,7 +8,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import Layout from "@/components/Layout"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import type { Event } from "@/types/Event"
 import { useTranslation } from "react-i18next"
 import { formatDate } from "@/utils/date"

@@ -31,5 +31,13 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
     return <span className={className}>{textOnly}</span>
   }
 
+  // RZ-43-01: Defense-in-depth — reject if sanitizer output still contains
+  // script injection patterns (should never happen with ammonia, but protects
+  // against hypothetical sanitizer bypass vulnerabilities).
+  if (/<script[\s>]/i.test(sanitized) || /\bon\w+\s*=/i.test(sanitized)) {
+    const textOnly = html.replace(/<[^>]*>/g, "")
+    return <span className={className}>{textOnly}</span>
+  }
+
   return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} />
 }

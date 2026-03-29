@@ -1,5 +1,5 @@
 import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
-import { motion } from "framer-motion"
+
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
@@ -241,32 +241,16 @@ export function ScheduleCard({
           </ul>
         )}
       </div>
-      <motion.span
+      {/* Wave 43: CSS-only decorative orbs (was Framer Motion infinite loops) */}
+      <span
         aria-hidden="true"
-        initial={{ opacity: 0 }}
-        whileHover={{ opacity: "var(--opacity-heavy)" }}
-        animate={{
-          scale: [1, 1.1, 1],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-schedule-flare) mix-blend-soft-light transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-schedule-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
+        style={{ animation: "orb-breathe 4s ease-in-out infinite" }}
       />
-      <motion.span
+      <span
         aria-hidden="true"
-        animate={{
-          opacity: [0.4, 0.7, 0.4],
-          scale: [1, 1.1, 1],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute -top-24 right-10 z-hide h-36 w-36 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-slower"
+        className="pointer-events-none absolute -top-24 right-10 z-hide h-36 w-36 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-slower motion-reduce:!animate-none"
+        style={{ animation: "orb-pulse-opacity 4s ease-in-out infinite" }}
       />
     </Card>
   )

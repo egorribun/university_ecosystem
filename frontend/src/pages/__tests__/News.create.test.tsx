@@ -9,7 +9,7 @@ vi.mock("@/api/news", () => ({
   uploadNewsImage: vi.fn(),
 }))
 
-vi.mock("@/components/Dialog", () => {
+vi.mock("@/components/ui/Dialog", () => {
   const MockDialog = ({
     open,
     children,

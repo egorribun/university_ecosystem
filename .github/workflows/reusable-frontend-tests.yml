@@ -105,6 +105,16 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      # MOD-43-01 (audit 2026-03-29 Wave 43): Token sync drift gate.
+      # Ensures CSS → TS token mirror stays in sync. Fails if sync produces a diff.
+      - name: Verify token sync (CSS ↔ TS)
+        run: |
+          npm run tokens:sync
+          git diff --exit-code src/theme/tokens.ts || {
+            echo "::error::tokens.ts is out of sync with CSS tokens. Run 'npm run tokens:sync' and commit."
+            exit 1
+          }
+
   build:
     name: Production Build
     runs-on: ubuntu-latest

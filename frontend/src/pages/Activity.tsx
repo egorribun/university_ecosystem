@@ -1,11 +1,11 @@
-import { PageLayout } from "@/components/PageLayout"
+import { PageLayout } from "@/components/layout/PageLayout"
 import { type CSSProperties } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { Activity as TimelineIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import FadeSection from "@/components/FadeSection"
+import FadeSection from "@/components/motion/FadeSection"
 import useActivityData from "@/hooks/useActivityData"
 import { EASE_OUT_EXPO } from "@/components/activity/activityTypes"
 

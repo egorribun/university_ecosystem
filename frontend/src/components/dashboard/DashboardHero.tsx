@@ -3,9 +3,9 @@ import type { User } from "@/types/User"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Badge, Button } from "@/components/ui"
-import WeatherWidget from "@/components/WeatherWidget"
-import Magnetic from "@/components/Magnetic"
-import { ScrollReveal } from "@/components/ScrollReveal"
+import WeatherWidget from "@/components/ui/WeatherWidget"
+import Magnetic from "@/components/motion/Magnetic"
+import { ScrollReveal } from "@/components/motion/ScrollReveal"
 import { cn } from "@/utils/cn"
 import { useGreeting } from "@/hooks/useGreeting"
 import { DashboardBackdrop } from "./DashboardBackdrop"
@@ -84,7 +84,7 @@ export function DashboardHero({
             )}
             <div className="pointer-events-none absolute -right-24 top-1 h-64 w-64 -translate-y-1/2 rounded-full bg-(--flare-highlight) dash-highlight-veil blur-3xl" />
             {showHeaderMotion ? (
-              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-[14rem] w-[14rem] animate-[spin_18s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-strong blur-(--glow-blur-lg)" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-[14rem] w-[14rem] animate-[spin_18s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-strong blur-(--glow-blur-lg) will-change-transform" />
             ) : (
               <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-[12rem] w-[12rem] rounded-full bg-(--grad-dash-conic-simple) opacity-medium blur-(--glow-blur-md)" />
             )}

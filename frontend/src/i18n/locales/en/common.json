@@ -2,6 +2,7 @@
   "skipToContent": "Skip to content",
   "skipToMain": "Skip to main content",
   "dateUnknown": "Date unavailable",
+  "noResults": "No results.",
   "ariaDatePublished": "Published on {{date}}",
   "ariaCurrentTime": "Current time",
   "ariaCurrentLessonProgress": "Progress of the current lesson",
@@ -30,7 +31,8 @@
     "live": "LIVE"
   },
   "errors": {
-    "generic": "An error occurred"
+    "generic": "An error occurred",
+    "featureUnavailable": "{{feature}} unavailable"
   },
   "pagination": {
     "rowsPerPage": "Rows per page",

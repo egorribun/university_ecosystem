@@ -10,7 +10,7 @@ import {
 import { useTranslation } from "react-i18next"
 import { Plus as AddIcon } from "lucide-react"
 import { Badge } from "@/components/ui"
-import OfflineFallback from "@/components/OfflineFallback"
+import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { cn } from "@/utils/cn"
 import { type Lesson, buildTable, minutesDiff } from "@/components/schedule/scheduleUtils"
 import { LessonCard } from "@/components/schedule/LessonCard"

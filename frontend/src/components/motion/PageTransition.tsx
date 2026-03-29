@@ -48,7 +48,9 @@ const PageTransition: FC<Props> = ({ children }) => {
       .then((mod) => {
         if (active) setMotionModule(mod)
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (import.meta.env.DEV) console.warn("[PageTransition] framer-motion load failed:", err)
+      })
     return () => {
       active = false
     }

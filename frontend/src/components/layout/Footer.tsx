@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router"
 import { Send, Mail } from "lucide-react"
 import guuLogo from "@/assets/guu_logo.png"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
 

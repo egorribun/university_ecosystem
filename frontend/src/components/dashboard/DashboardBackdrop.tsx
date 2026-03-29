@@ -23,13 +23,13 @@ function DashboardBackdropComponent({ isNarrow, prefersReducedMotion }: Dashboar
       baseLayers.push(
         prefersReducedMotion
           ? "absolute bottom-[-16rem] right-[10%] h-[10rem] w-[10rem] rounded-full bg-(--grad-dash-pulse) opacity-strong blur-(--glow-blur-xl)"
-          : "absolute bottom-[-18rem] right-[8%] h-[13rem] w-[13rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-(--grad-dash-pulse) blur-(--glow-blur-3xl)"
+          : "absolute bottom-[-18rem] right-[8%] h-[13rem] w-[13rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-(--grad-dash-pulse) blur-(--glow-blur-3xl) will-change-transform"
       )
     }
 
     if (!prefersReducedMotion && !isNarrow) {
       baseLayers.push(
-        "absolute -left-28 top-1 h-48 w-48 -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-hover blur-(--glow-blur-mega)"
+        "absolute -left-28 top-1 h-48 w-48 -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-hover blur-(--glow-blur-mega) will-change-transform"
       )
     } else if (!isNarrow) {
       baseLayers.push(

@@ -164,6 +164,11 @@
 - Frontend theme toggle: `ThemeToggle` component with sun/moon spring animation + color pulse wave (DESIGN-36-06)
 - Frontend stagger: `StaggerChildren` wrapper + `.stagger-item` CSS class for cascading entry animations (DESIGN-36-07)
 - All Wave 36 animations respect `prefers-reduced-motion: reduce`
+- Frontend @property: `--glass-alpha-low`, `--glass-alpha-med`, `--glass-alpha-high`, `--opacity-medium`, `--aurora-hue` registered for CSS transitions (DESIGN-43-01)
+- Frontend stagger: `calc(var(--stagger-i) * var(--stagger-step))` replaces 12-item hardcoded nth-child delays; items 13+ use `--stagger-i: 12` fallback (DESIGN-43-02)
+- Frontend dashboard orbs: CSS `@keyframes` (orb-breathe, orb-drift, orb-drift-alt, orb-pulse-opacity, orb-sway) replace Framer Motion infinite loops — zero JS overhead (PERF-43-01)
+- Frontend component org: root-level components moved to `feedback/`, `motion/`, `media/`, `search/`, `pwa/` feature folders with barrel index.ts (INFRA-43-01)
+- CI: token sync gate in `reusable-frontend-tests.yml` — `npm run tokens:sync && git diff --exit-code` fails if CSS/TS drift (MOD-43-01)
 - Frontend routing: TanStack Router (file-based) replaces React Router DOM 7 — routes in `frontend/src/routes/` (INFRA-37-01)
 - Frontend route guards: `beforeLoad` in `_auth.tsx`, `_public.tsx`, `_admin.tsx` replaces RouteGuards.tsx (INFRA-37-02)
 - Frontend search params: Valibot `validateSearch` in route files replaces useSearchParams (INFRA-37-03)
@@ -228,4 +233,6 @@
 - Wave 26: Python 2 except syntax fully fixed (44 occurrences, 21 files); Helm secrets hardened; Go services input validation + goroutine lifecycle; K8s port mismatch; frontend WS AbortController + TOCTOU guards
 - Wave 26 CI: Go coverage threshold (60%); Python 2 except gate regex strengthened (MOD-26-02)
 - Wave 28: Python 2 except syntax corrected (43 occurrences, 21 files — Wave 27 introduced the bug); CSRF anonymous nonce timing hardened via compiled regex (RZ-28-02); frontend K8s seccompProfile added (TD-28-01); Renovate configs consolidated (TD-28-02); pre-commit hook for except syntax (MOD-28-01)
+- Wave 41 (Docker): pydantic >=2.13.0b2 (FIX-41-01), strawberry >=0.283.2 (FIX-41-02), redis >=6 (FIX-41-03) — all for Python 3.14 Field(doc=) compat. Docker compose env alignment (.env ↔ .env.docker), Redis auth in URLs, SpiceDB insecure mode for dev. Test user: test@university.dev / TestPass@2024x
+- Wave 43: Deep frontend audit — @property registrations (glass alpha, aurora-hue, opacity), calc()-based stagger animations, Framer Motion→CSS keyframes (3 dashboard cards: orb-breathe, orb-drift, orb-sway), component reorg (40 files → 6 feature folders), CI token sync gate (MOD-43-01), undefined CSS vars fixed, vendor hack documented. 130 files changed, +341/-5382
 - Backend audit status: **production-ready (Wave 33 — 100/100)** — all code-level issues closed; only infrastructure items remain (flagd, NATS NKey, Vault, Linkerd, backups)

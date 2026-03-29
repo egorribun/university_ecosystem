@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import BackToTop from "@/components/BackToTop"
+import BackToTop from "@/components/motion/BackToTop"
 import i18n from "@/i18n/config"
 
 const getLabel = () => i18n.t("common:buttons.backToTop")

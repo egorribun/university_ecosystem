@@ -1,7 +1,7 @@
 import React, { useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/utils/cn"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 
 export function Alert({
   severity = "info",

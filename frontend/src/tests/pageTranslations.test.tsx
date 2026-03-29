@@ -399,11 +399,11 @@ vi.mock("@/components/Layout", () => ({
   ),
 }))
 
-vi.mock("@/components/PageFadeIn", () => ({
+vi.mock("@/components/motion/PageFadeIn", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
 
-vi.mock("@/components/SmartImage", () => ({
+vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt }: { alt?: string }) => <img alt={alt ?? ""} />,
 }))
 

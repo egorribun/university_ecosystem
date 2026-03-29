@@ -32,8 +32,8 @@ type RecentActivityGridProps = {
   formatDate: (date: string) => string
 }
 
-/** Visible scroll area height — ~5 rows before the user needs to scroll */
-const LIST_HEIGHT = 208
+/** Maximum visible rows before the container becomes scrollable */
+const MAX_VISIBLE_ROWS = 5
 /** Approximate row height used by the virtualizer for initial layout */
 const ITEM_ESTIMATE_SIZE = 44
 
@@ -61,6 +61,10 @@ export function RecentActivityGrid({
   const attendanceItems = attendance?.recent ?? []
   const gradesItems = grades?.recent ?? []
   const participationItems = participation?.recent ?? []
+
+  /** Container height adapts to item count (up to MAX_VISIBLE_ROWS cap) */
+  const listHeight = (count: number) =>
+    Math.max(ITEM_ESTIMATE_SIZE, Math.min(count, MAX_VISIBLE_ROWS) * ITEM_ESTIMATE_SIZE)
 
   const attendanceVirtualizer = useVirtualizer({
     count: attendanceItems.length,
@@ -133,7 +137,7 @@ export function RecentActivityGrid({
           </div>
           <div
             ref={attendanceParentRef}
-            style={{ height: LIST_HEIGHT, overflowY: "auto" }}
+            style={{ height: listHeight(attendanceItems.length), overflowY: "auto" }}
             className="relative"
           >
             {attendanceItems.length === 0 && !loading ? (
@@ -209,7 +213,7 @@ export function RecentActivityGrid({
           </div>
           <div
             ref={gradesParentRef}
-            style={{ height: LIST_HEIGHT, overflowY: "auto" }}
+            style={{ height: listHeight(gradesItems.length), overflowY: "auto" }}
             className="relative"
           >
             {gradesItems.length === 0 && !loading ? (
@@ -269,7 +273,7 @@ export function RecentActivityGrid({
           </div>
           <div
             ref={participationParentRef}
-            style={{ height: LIST_HEIGHT, overflowY: "auto" }}
+            style={{ height: listHeight(participationItems.length), overflowY: "auto" }}
             className="relative"
           >
             {participationItems.length === 0 && !loading ? (

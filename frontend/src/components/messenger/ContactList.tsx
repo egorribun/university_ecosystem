@@ -1,6 +1,6 @@
 import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/utils/cn"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { Contact } from "./types"
 

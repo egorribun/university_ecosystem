@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
-import MapFallback from "@/components/MapFallback"
+import MapFallback from "@/components/ui/MapFallback"
 import { LanguageProvider, useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 

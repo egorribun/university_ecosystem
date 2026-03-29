@@ -4,9 +4,9 @@ import { useNavigate } from "@tanstack/react-router"
 import api from "@/api/client"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.png"
-import PageFadeIn from "@/components/PageFadeIn"
+import PageFadeIn from "@/components/motion/PageFadeIn"
 import Layout from "@/components/Layout"
-import { SEO } from "@/components/SEO"
+import { SEO } from "@/components/ui/SEO"
 import {
   Alert,
   Button,

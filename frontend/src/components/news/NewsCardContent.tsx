@@ -90,7 +90,7 @@ const NewsCardContent = ({
 
       <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
         <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-base ease-out group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
-          {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
+          {t("common:cta.learnMore", { defaultValue: "Learn more" })}
         </span>
         <ArrowOutwardIcon
           size={16}

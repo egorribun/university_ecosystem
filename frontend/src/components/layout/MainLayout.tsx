@@ -1,8 +1,8 @@
 import React from "react"
 import { useRouteType } from "@/hooks/useRouteType"
 import Navbar from "@/components/navbar"
-import Footer from "@/components/Footer"
-import MobileBottomNav from "@/components/MobileBottomNav"
+import Footer from "@/components/layout/Footer"
+import MobileBottomNav from "@/components/layout/MobileBottomNav"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 
