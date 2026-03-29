@@ -66,11 +66,17 @@ export function ScheduleCard({
 
   const weekdayIndex = useMemo(() => {
     const map = new Map<string, number>()
+    // i18n display/raw names (e.g. Russian: "воскресенье" → 0)
     weekDaysDisplay.forEach((name, index) => {
       map.set(name.toLowerCase(), index)
     })
     weekDaysRaw.forEach((name, index) => {
       map.set(name.toLowerCase(), index)
+    })
+    // English backend names — API returns weekday as "sunday", "monday", etc.
+    const englishDays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+    englishDays.forEach((name, index) => {
+      map.set(name, index)
     })
     return map
   }, [weekDaysDisplay, weekDaysRaw])
