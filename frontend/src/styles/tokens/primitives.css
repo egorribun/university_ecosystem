@@ -52,6 +52,18 @@
     --color-pink-400: #f472b6;
     --color-rose-500: #f43f5e;
 
+    /* Matte Palette — desaturated variants for frosted glass surfaces (Wave 45) */
+    --color-matte-sky: #c4dff0;
+    --color-matte-indigo: #b8bdd4;
+    --color-matte-violet: #c5b8d4;
+    --color-matte-rose: #d4c0c8;
+    --color-matte-amber: #d4cdb8;
+
+    /* Sky tone extras for card tinting */
+    --color-sky-50: #f0f9ff;
+    --color-indigo-50: #eef2ff;
+    --color-indigo-950: #1e1b4b;
+
     /* RADIUS */
     --radius-xs: 0.5rem;
     --radius-sm: 0.75rem;
@@ -153,6 +165,8 @@
     --motion-delay-long: 0.2s;
 
     /* Opacities */
+    --opacity-micro: 0.03;
+    --opacity-whisper: 0.07;
     --opacity-faint: 0.05;
     --opacity-subtle: 0.1;
     --opacity-dim: 0.2;

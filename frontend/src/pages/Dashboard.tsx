@@ -12,8 +12,8 @@ import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashbo
 import { useClock } from "@/hooks/useClock"
 import type { StoryItem } from "@/types/Story"
 
-// Extracted Components
 import { DashboardHero } from "@/components/dashboard/DashboardHero"
+import { DashboardBackdrop } from "@/components/dashboard/DashboardBackdrop"
 import { ScheduleCard } from "@/components/dashboard/ScheduleCard"
 import { NewsCard } from "@/components/dashboard/NewsCard"
 import { EventsCard } from "@/components/dashboard/EventsCard"
@@ -56,44 +56,54 @@ export default function Dashboard() {
   return (
     <PageLayout variant="full" className="dashboard-theme py-0 md:py-0">
       <SEO title={t("dashboard:pageTitle", "Dashboard")} />
-      <DashboardHero
-        user={user}
-        time={time}
-        hh={hh}
-        mm={mm}
-        dateStr={dateStr}
-        isNarrow={isNarrow}
-        prefersReducedMotion={prefersReducedMotion}
-      >
-        <ScrollReveal mode="slide" direction="up" delay={0.2}>
-          <DashboardStories
-            stories={stories}
-            loading={loadingStories}
-            onPrefetch={prefetchStories}
-            onStoryOpen={handleStoryOpen}
-          />
-        </ScrollReveal>
 
-        <div className="mt-lg grid w-full grid-cols-12 gap-md md:mt-xl md:gap-lg pb-3xl">
-          <div className="col-span-12 lg:col-span-4">
-            <ScrollReveal mode="slide" direction="up" delay={0.3} width="100%">
-              <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
-            </ScrollReveal>
-          </div>
+      {/* Aurora wrapper — backdrop lives HERE so it's not clipped by hero overflow-hidden */}
+      <div className="aurora-mesh relative w-full">
+        <DashboardBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
-          <div className="col-span-12 lg:col-span-4">
-            <ScrollReveal mode="slide" direction="up" delay={0.4} width="100%">
-              <NewsCard locale={locale} />
-            </ScrollReveal>
-          </div>
+        {/* Hero — greeting card */}
+        <DashboardHero
+          user={user}
+          time={time}
+          hh={hh}
+          mm={mm}
+          dateStr={dateStr}
+          isNarrow={isNarrow}
+          prefersReducedMotion={prefersReducedMotion}
+        />
 
-          <div className="col-span-12 lg:col-span-4">
-            <ScrollReveal mode="slide" direction="up" delay={0.5} width="100%">
-              <EventsCard />
-            </ScrollReveal>
+        {/* Content: stories + cards */}
+        <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14">
+          <ScrollReveal mode="slide" direction="up" delay={0.2}>
+            <DashboardStories
+              stories={stories}
+              loading={loadingStories}
+              onPrefetch={prefetchStories}
+              onStoryOpen={handleStoryOpen}
+            />
+          </ScrollReveal>
+
+          <div className="mt-4 grid w-full grid-cols-12 gap-3 md:mt-5 md:gap-3.5 lg:gap-4 pb-10">
+            <div className="col-span-12 lg:col-span-4">
+              <ScrollReveal mode="slide" direction="up" delay={0.3} width="100%">
+                <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
+              </ScrollReveal>
+            </div>
+
+            <div className="col-span-12 lg:col-span-4">
+              <ScrollReveal mode="slide" direction="up" delay={0.4} width="100%">
+                <NewsCard locale={locale} />
+              </ScrollReveal>
+            </div>
+
+            <div className="col-span-12 lg:col-span-4">
+              <ScrollReveal mode="slide" direction="up" delay={0.5} width="100%">
+                <EventsCard />
+              </ScrollReveal>
+            </div>
           </div>
         </div>
-      </DashboardHero>
+      </div>
     </PageLayout>
   )
 }

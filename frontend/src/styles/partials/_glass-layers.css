@@ -44,32 +44,31 @@
 }
 
 /* ── Decorative Orb Keyframes ─────────────────────────────
- * Wave 43: CSS-only replacements for Framer Motion infinite loops
- * on dashboard card background decorations. Zero JS overhead.
+ * Wave 43→45: CSS-only decorative loops. Slowed ~25% for subtlety.
  */
 @keyframes orb-breathe {
   0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  50% { transform: scale(1.06); }
 }
 
 @keyframes orb-drift {
   0%, 100% { transform: scale(1) rotate(0deg) translateX(0); }
-  50% { transform: scale(1.18) rotate(-5deg) translateX(10px); }
+  50% { transform: scale(1.1) rotate(-3deg) translateX(6px); }
 }
 
 @keyframes orb-drift-alt {
   0%, 100% { transform: scale(1) rotate(0deg) translateX(0) translateY(0); }
-  50% { transform: scale(1.2) rotate(0deg) translateX(-10px) translateY(10px); }
+  50% { transform: scale(1.12) rotate(0deg) translateX(-6px) translateY(6px); }
 }
 
 @keyframes orb-pulse-opacity {
-  0%, 100% { opacity: 0.4; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.1); }
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.06); }
 }
 
 @keyframes orb-sway {
   0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.12) rotate(5deg); }
+  50% { transform: scale(1.08) rotate(3deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -97,7 +96,7 @@
     border-radius: inherit;
     pointer-events: none;
     z-index: 1;
-    opacity: 0.035;
+    opacity: 0.04;
     mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-repeat: repeat;
@@ -105,7 +104,7 @@
   }
 
   .dark .glass-noise::before {
-    opacity: 0.06;
+    opacity: 0.07;
   }
 
   /* ── Depth Layer 1: Surface ──────────────────────────────── */
@@ -173,12 +172,51 @@
       inset 0 0 0 1px color-mix(in srgb, white var(--opacity-faint), transparent);
   }
 
+  /* ── Depth Layer: Matte ──────────────────────────────────── */
+  /* Wave 45: Near-opaque frosted surface with subtle color tinting.
+   * Lower blur (12px) + higher background opacity = chalky premium feel. */
+  .glass-layer-matte {
+    background: var(--bg-matte-card);
+    border: 1px solid var(--border-matte);
+    box-shadow: var(--shadow-matte-card), var(--border-inner-glow);
+    transition:
+      box-shadow var(--motion-duration-base) var(--ease-premium),
+      border-color var(--motion-duration-base) var(--ease-premium),
+      transform var(--motion-duration-base) var(--ease-premium);
+  }
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .glass-layer-matte {
+      backdrop-filter: blur(12px) saturate(1.15);
+      -webkit-backdrop-filter: blur(12px) saturate(1.15);
+    }
+  }
+
+  .glass-layer-matte:hover {
+    box-shadow: var(--shadow-matte-card-hover), var(--border-inner-glow);
+  }
+
+  .dark .glass-layer-matte {
+    box-shadow:
+      var(--shadow-matte-card),
+      var(--border-inner-glow),
+      inset 0 0 0 1px color-mix(in srgb, white var(--opacity-micro), transparent);
+  }
+
+  .dark .glass-layer-matte:hover {
+    box-shadow:
+      var(--shadow-matte-card-hover),
+      var(--border-inner-glow),
+      inset 0 0 0 1px color-mix(in srgb, white var(--opacity-faint), transparent);
+  }
+
   /* ── Aurora Mesh Background ──────────────────────────────── */
   /* Animated gradient mesh for Dashboard hero area. CSS-only, no canvas. */
+  /* Wave 45: Aurora — visible but elegant, slower cycle */
   .aurora-mesh {
-    --aurora-1: color-mix(in srgb, var(--primary-main) var(--opacity-subtle), transparent);
-    --aurora-2: color-mix(in srgb, var(--color-indigo-500) var(--opacity-subtle), transparent);
-    --aurora-3: color-mix(in srgb, var(--color-sky-400) var(--opacity-faint), transparent);
+    --aurora-1: color-mix(in srgb, var(--primary-main) 12%, transparent);
+    --aurora-2: color-mix(in srgb, var(--color-indigo-500) 10%, transparent);
+    --aurora-3: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
 
     position: relative;
   }
@@ -195,13 +233,13 @@
       radial-gradient(ellipse 80% 50% at 20% 40%, var(--aurora-1), transparent),
       radial-gradient(ellipse 60% 40% at 80% 20%, var(--aurora-2), transparent),
       radial-gradient(ellipse 50% 60% at 50% 80%, var(--aurora-3), transparent);
-    animation: aurora-shift 20s ease-in-out infinite alternate;
+    animation: aurora-shift 28s ease-in-out infinite alternate;
   }
 
   .dark .aurora-mesh::after {
-    --aurora-1: color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
-    --aurora-2: color-mix(in srgb, var(--color-indigo-400) var(--opacity-dim), transparent);
-    --aurora-3: color-mix(in srgb, var(--color-sky-500) var(--opacity-subtle), transparent);
+    --aurora-1: color-mix(in srgb, var(--primary-main) 18%, transparent);
+    --aurora-2: color-mix(in srgb, var(--color-indigo-400) 15%, transparent);
+    --aurora-3: color-mix(in srgb, var(--color-sky-500) 10%, transparent);
   }
 
   @keyframes aurora-shift {
@@ -210,11 +248,11 @@
       transform: scale(1) translateY(0);
     }
     50% {
-      filter: hue-rotate(30deg) blur(50px);
-      transform: scale(1.05) translateY(-2%);
+      filter: hue-rotate(18deg) blur(48px);
+      transform: scale(1.03) translateY(-1%);
     }
     100% {
-      filter: hue-rotate(-20deg) blur(40px);
+      filter: hue-rotate(-12deg) blur(40px);
       transform: scale(1) translateY(0);
     }
   }

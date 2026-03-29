@@ -45,19 +45,19 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   return (
     <Card
       className={cn(
-        "group backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+        "group glass-noise transition-all duration-base ease-back-out p-6 md:p-7",
+        "motion-reduce:hover:transform-none",
         "dash-panel-news",
         className
       )}
-      padding="lg"
+      padding="none"
       aria-busy={loadingNews}
       style={style}
       {...props}
     >
       <div className="relative z-deep space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-fluid-h2 font-extrabold text-text-primary">
+          <h2 className="font-extrabold text-text-primary" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>
             {t("dashboard:news.heading")}
           </h2>
           <Button
@@ -65,7 +65,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
             to="/news"
             size="sm"
             variant="outline"
-            className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
+            className="btn-dash whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
             aria-label={t("dashboard:aria.viewAllNews")}
             onPointerDown={prefetchNewsList}
             onKeyDown={(event) => {

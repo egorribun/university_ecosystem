@@ -84,25 +84,22 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
 
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
-  const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-sm border border-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
-
   return (
     <Card
       className={cn(
-        "group bg-glass backdrop-blur-3xl transition-all duration-base ease-back-out",
-        "hover:-translate-y-1 hover:scale-(--scale-hover-subtle) hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
-        "dash-panel-events border-glass-border",
+        "group glass-noise transition-all duration-base ease-back-out p-6 md:p-7",
+        "motion-reduce:hover:transform-none",
+        "dash-panel-events",
         className
       )}
-      padding="lg"
+      padding="none"
       aria-busy={loadingEvents}
       style={style}
       {...props}
     >
       <div className="relative z-base space-y-5">
         <div className="relative z-base flex items-center justify-between gap-3">
-          <h2 className="text-fluid-h2 font-extrabold text-text-primary">
+          <h2 className="font-extrabold text-text-primary" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>
             {t("dashboard:events.heading")}
           </h2>
           <Button
@@ -110,7 +107,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             to="/events"
             size="sm"
             variant="outline"
-            className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
+            className="btn-dash whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
             aria-label={t("dashboard:aria.viewAllEvents")}
             onPointerDown={prefetchEventsList}
             onKeyDown={(event) => {
@@ -120,33 +117,33 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             {t("dashboard:viewAll")}
           </Button>
         </div>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant={eventsScope === "today" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-0.5"
-            onClick={() => setEventsScope("today")}
-            aria-pressed={eventsScope === "today"}
-          >
-            {t("dashboard:scope.today")}
-          </Button>
-          <Button
-            size="sm"
-            variant={eventsScope === "week" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-0.5"
-            onClick={() => setEventsScope("week")}
-            aria-pressed={eventsScope === "week"}
-          >
-            {t("dashboard:scope.week")}
-          </Button>
+
+        {/* Scope toggle — segment control, inline-flex so it doesn't stretch */}
+        <div className="mb-4 inline-flex items-center gap-1 rounded-lg p-1" style={{ background: "var(--dash-btn-bg)" }}>
+          {(["today", "week"] as const).map((scope) => (
+            <button
+              key={scope}
+              type="button"
+              className={cn(
+                "rounded-md px-4 py-1.5 text-sm font-semibold transition-all duration-base",
+                eventsScope === scope
+                  ? "bg-brand text-white shadow-sm"
+                  : "text-text-secondary hover:text-text-primary"
+              )}
+              onClick={() => setEventsScope(scope)}
+              aria-pressed={eventsScope === scope}
+            >
+              {t(`dashboard:scope.${scope}`)}
+            </button>
+          ))}
         </div>
 
         {loadingEvents && (
-          <div className="space-y-4" role="presentation">
+          <div className="space-y-3" role="presentation">
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-sm border border-border-subtle bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-medium"
+                className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3 opacity-medium"
               >
                 <Skeleton width="60%" height={20} />
                 <div className="flex items-center gap-2">
@@ -157,36 +154,39 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             ))}
           </div>
         )}
+
         {!loadingEvents && scopedEvents.length === 0 && (
           <p className="text-sm text-(--text-secondary)">{t("dashboard:events.empty")}</p>
         )}
+
         {!loadingEvents && scopedEvents.length > 0 && (
           <ul
-            className="space-y-3"
+            className="space-y-2.5"
             aria-label={
               eventsScope === "today"
                 ? t("dashboard:aria.eventsToday")
                 : t("dashboard:aria.eventsWeek")
             }
           >
-            {scopedEvents.map((e) => {
-              // e.d is now a dayjs object from the useMemo above
+            {scopedEvents.map((e, idx) => {
               return (
                 <li key={e.id} className="dash-list-item px-0 py-0">
                   <button
                     type="button"
                     className={cn(
-                      listActionBase,
-                      "flex min-h-18 flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/(--opacity-faint) active:scale-(--scale-active) sm:gap-3"
+                      "group list-item-matte list-item-matte-hover",
+                      "flex min-h-18 flex-col justify-center gap-2 sm:gap-3",
+                      "active:scale-(--scale-active)"
                     )}
                     onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
+                    style={{ "--stagger-i": idx } as React.CSSProperties}
                   >
                     <span className="flex w-full items-start justify-between gap-3">
                       <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                         {e.title}
                       </span>
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-dim) text-brand transition-all duration-base group-hover:bg-brand/(--opacity-subtle)">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand transition-all duration-base group-hover:bg-brand/(--opacity-faint) group-hover:border-brand/(--opacity-soft)">
                         <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                       </span>
                     </span>
@@ -222,20 +222,21 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           </ul>
         )}
       </div>
-      {/* Wave 43: CSS-only decorative orbs (was Framer Motion infinite loops) */}
+
+      {/* Decorative orbs — visible accent glow */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
+        className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
         style={{
           background:
             "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)",
-          animation: "orb-sway 5s ease-in-out infinite",
+          animation: "orb-sway 6.5s ease-in-out infinite",
         }}
       />
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide opacity-(--opacity-soft) bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{ animation: "orb-drift-alt 7s ease-in-out infinite" }}
+        className="pointer-events-none absolute inset-0 z-hide opacity-dim bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
+        style={{ animation: "orb-drift-alt 9s ease-in-out infinite" }}
       />
     </Card>
   )

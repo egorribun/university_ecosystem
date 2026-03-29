@@ -117,27 +117,24 @@ export function ScheduleCard({
     }
   }, [])
 
-  const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-1 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
-
   return (
     <Card
-      className={cn("card-glass card-glass-interactive dash-panel-schedule", className)}
-      padding="lg"
+      className={cn("glass-noise dash-panel-schedule p-6 md:p-7", className)}
+      padding="none"
       aria-busy={loadingSched}
       style={style}
       {...props}
     >
       <div className="relative z-base space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-(--fs-card-title) font-extrabold">{t("dashboard:todaySchedule")}</h2>
+          <h2 className="font-extrabold" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>{t("dashboard:todaySchedule")}</h2>
           <div className="flex items-center gap-2">
             <Button
               as={Link}
               to="/schedule"
               size="sm"
               variant="outline"
-              className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
+              className="btn-dash whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
               aria-label={t("dashboard:aria.openFullSchedule")}
               onPointerDown={warmSchedulePage}
               onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
@@ -146,8 +143,10 @@ export function ScheduleCard({
             </Button>
           </div>
         </div>
+
+        {/* Current lesson with left accent border (Wave 45) */}
         {currentLesson && (
-          <div>
+          <div className="rounded-xl border-l-2 border-brand bg-(--bg-matte-list) p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge size="sm" tone="primary" label={t("dashboard:now")} />
@@ -163,13 +162,14 @@ export function ScheduleCard({
             </div>
             <ProgressBar
               value={currentProgress}
-              className="h-2.5"
+              className="h-2"
               ariaLabel={t("common:ariaCurrentLessonProgress")}
             />
           </div>
         )}
+
         {!currentLesson && nextLesson && (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 rounded-xl border-l-2 border-brand/(--opacity-soft) bg-(--bg-matte-list) p-4 sm:flex-row sm:items-center">
             <Badge
               size="sm"
               variant="outline"
@@ -189,12 +189,13 @@ export function ScheduleCard({
             </div>
           </div>
         )}
+
         {loadingSched && (
-          <div className="space-y-4" role="presentation">
+          <div className="space-y-3" role="presentation">
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-medium"
+                className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3 opacity-medium"
               >
                 <div className="flex items-center gap-2">
                   <Skeleton width={80} height={18} />
@@ -205,19 +206,22 @@ export function ScheduleCard({
             ))}
           </div>
         )}
+
         {!loadingSched && todayLessons.length === 0 && (
           <p className="text-sm text-(--text-secondary)">{t("dashboard:noClasses")}</p>
         )}
+
         {!loadingSched && todayLessons.length > 0 && (
-          <ul className="space-y-3">
-            {todayLessons.map((l) => (
+          <ul className="space-y-2.5">
+            {todayLessons.map((l, idx) => (
               <li key={l.id} className="dash-list-item px-0 py-0">
                 <div
                   className={cn(
-                    listActionBase,
-                    "flex flex-col gap-2 border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 pb-4 hover:bg-(--bg-surface)/(--opacity-dim) sm:gap-2.5",
+                    "list-item-matte list-item-matte-hover",
+                    "flex flex-col gap-2 pb-4 sm:gap-2.5",
                     "cursor-default"
                   )}
+                  style={{ "--stagger-i": idx } as React.CSSProperties}
                 >
                   <div className="flex w-full items-start justify-between gap-3">
                     <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
@@ -241,16 +245,17 @@ export function ScheduleCard({
           </ul>
         )}
       </div>
-      {/* Wave 43: CSS-only decorative orbs (was Framer Motion infinite loops) */}
+
+      {/* Decorative orbs — visible accents */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-schedule-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{ animation: "orb-breathe 4s ease-in-out infinite" }}
+        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-schedule-flare) mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
+        style={{ animation: "orb-breathe 5s ease-in-out infinite" }}
       />
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute -top-24 right-10 z-hide h-36 w-36 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-slower motion-reduce:!animate-none"
-        style={{ animation: "orb-pulse-opacity 4s ease-in-out infinite" }}
+        className="pointer-events-none absolute -top-16 right-8 z-hide h-32 w-32 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light opacity-medium transition-opacity duration-slower motion-reduce:!animate-none"
+        style={{ animation: "orb-pulse-opacity 5s ease-in-out infinite" }}
       />
     </Card>
   )

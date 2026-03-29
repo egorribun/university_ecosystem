@@ -91,6 +91,18 @@
     --error-text: var(--color-red-600);
     --error-text-rgb: 153, 27, 27;
 
+    /* Matte Glass System — Wave 45 */
+    --bg-matte-card: color-mix(in srgb, var(--bg-surface) 92%, var(--color-matte-sky) 8%);
+    --bg-matte-list: color-mix(in srgb, var(--bg-surface) 95%, var(--color-matte-sky) 5%);
+    --border-matte: color-mix(in srgb, var(--color-slate-300) 40%, transparent);
+    --border-inner-glow: inset 0 1px 0 0 color-mix(in srgb, white 50%, transparent);
+    --shadow-matte-card:
+      0 4px 20px color-mix(in srgb, var(--color-slate-400) var(--opacity-subtle), transparent),
+      0 1px 3px color-mix(in srgb, black var(--opacity-faint), transparent);
+    --shadow-matte-card-hover:
+      0 8px 30px color-mix(in srgb, var(--color-slate-400) var(--opacity-dim), transparent),
+      0 2px 6px color-mix(in srgb, black var(--opacity-subtle), transparent);
+
     /* Brand Gradients */
     --gradient-brand: linear-gradient(135deg, var(--primary-main), var(--primary-hover));
 
@@ -253,6 +265,18 @@
     --text-label: color-mix(in srgb, var(--text-secondary) 60%, transparent);
     --text-caption: color-mix(in srgb, var(--text-secondary) 72%, transparent);
     --primary-subtle-bg: color-mix(in srgb, var(--primary-main) 12%, transparent);
+
+    /* Matte Glass System — Wave 45 (Dark) */
+    --bg-matte-card: color-mix(in srgb, var(--bg-surface) 88%, var(--color-matte-indigo) 12%);
+    --bg-matte-list: color-mix(in srgb, var(--bg-surface) 93%, var(--color-matte-indigo) 7%);
+    --border-matte: color-mix(in srgb, var(--color-slate-600) 30%, transparent);
+    --border-inner-glow: inset 0 1px 0 0 color-mix(in srgb, white 8%, transparent);
+    --shadow-matte-card:
+      0 4px 20px color-mix(in srgb, black var(--opacity-dim), transparent),
+      0 1px 3px color-mix(in srgb, black var(--opacity-subtle), transparent);
+    --shadow-matte-card-hover:
+      0 8px 30px color-mix(in srgb, black var(--opacity-soft), transparent),
+      0 2px 6px color-mix(in srgb, black var(--opacity-dim), transparent);
 
     /* Overlay & Backdrop */
     --overlay-bg: color-mix(in srgb, black var(--opacity-hover), transparent);

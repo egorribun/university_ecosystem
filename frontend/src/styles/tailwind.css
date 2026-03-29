@@ -549,20 +549,121 @@
   }
 }
 
+/* Wave 45: Dashboard — gradient fills <main>, overflow-x hidden prevents horizontal scroll */
+@layer utilities {
+  main:has(.dashboard-theme) {
+    background: linear-gradient(145deg, var(--hero-grad-start), var(--hero-grad-end)) !important;
+    overflow-x: hidden;
+  }
+}
+
 @utility surface-raised {
   @apply bg-(--bg-surface-raised) shadow-sm border border-border-subtle;
 }
 
+/* Wave 45: Dashboard glass card utility */
+@utility card-matte {
+  @apply relative overflow-hidden rounded-2xl text-text-primary;
+  background: var(--dash-card-bg, var(--bg-matte-card));
+  border: 1px solid var(--dash-border, var(--border-matte));
+  box-shadow: 0 4px 24px color-mix(in srgb, black 15%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  transition:
+    box-shadow var(--motion-duration-base) var(--ease-premium),
+    border-color var(--motion-duration-base) var(--ease-premium),
+    transform var(--motion-duration-base) var(--ease-premium);
+}
+
+@utility card-matte-interactive {
+  @apply cursor-pointer hover:-translate-y-0.5 hover:shadow-[var(--shadow-matte-card-hover)] motion-reduce:hover:transform-none;
+}
+
+@utility list-item-matte {
+  @apply w-full rounded-xl border border-transparent px-4 py-3 text-left;
+  background: var(--bg-matte-list);
+  transition:
+    background-color var(--motion-duration-fast) var(--ease-premium),
+    border-color var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-fast) var(--ease-premium),
+    box-shadow var(--motion-duration-fast) var(--ease-premium);
+}
+
+@utility list-item-matte-hover {
+  @apply hover:border-(--border-matte) hover:-translate-y-0.5 hover:shadow-[var(--shadow-matte-card)] motion-reduce:hover:transform-none;
+}
+
+@utility skeleton-matte {
+  background: color-mix(in srgb, var(--bg-matte-card) 60%, var(--border-matte) 40%);
+}
+
 @layer utilities {
+  /* Wave 45: Dashboard cards — matte embossed surface with depth */
   .dash-panel-schedule,
   .dash-panel-news,
   .dash-panel-events {
-    @apply bg-glass border-glass-border shadow-glass;
-    transition-property: background-color, border-color, box-shadow, opacity;
-    transition-duration: 300ms;
-    transition-timing-function: var(--ease-premium);
+    background: var(--dash-card-bg);
+    border: 1px solid var(--dash-border);
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 3px color-mix(in srgb, black 8%, transparent),
+      0 4px 16px color-mix(in srgb, black 6%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    transition: border-color 300ms var(--ease-premium), box-shadow 300ms var(--ease-premium), transform 300ms var(--ease-premium);
     position: relative;
     overflow: hidden;
+  }
+
+  /* Blue accent line at top */
+  .dash-panel-schedule::after,
+  .dash-panel-news::after,
+  .dash-panel-events::after {
+    content: "";
+    position: absolute;
+    inset-inline: 20%;
+    top: 0;
+    height: 1px;
+    pointer-events: none;
+    z-index: 2;
+    background: var(--dash-accent-line);
+    opacity: 0.4;
+    transition: opacity 300ms var(--ease-premium), inset 300ms var(--ease-premium);
+  }
+
+  .dash-panel-schedule:hover,
+  .dash-panel-news:hover,
+  .dash-panel-events:hover {
+    border-color: var(--dash-border-hover);
+    box-shadow:
+      0 2px 6px color-mix(in srgb, black 10%, transparent),
+      0 8px 28px color-mix(in srgb, black 8%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+    transform: translateY(-3px);
+  }
+
+  .dash-panel-schedule:hover::after,
+  .dash-panel-news:hover::after,
+  .dash-panel-events:hover::after {
+    opacity: 0.8;
+    inset-inline: 10%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dash-panel-schedule:hover,
+    .dash-panel-news:hover,
+    .dash-panel-events:hover {
+      transform: none;
+    }
+  }
+
+  /* Dashboard buttons — clearly distinct from card bg */
+  .btn-dash {
+    background: var(--dash-btn-bg) !important;
+    border-color: var(--dash-btn-border) !important;
+    font-weight: 600 !important;
+  }
+
+  .btn-dash:hover {
+    border-color: var(--dash-border-hover) !important;
   }
 
   .animate-premium-in {
