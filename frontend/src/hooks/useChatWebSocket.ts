@@ -13,6 +13,7 @@ import type { Message, MessagesListResponse, ChatsListResponse } from "@/api/cha
 // Auth token storage handled natively via cookies
 import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
+import api from "@/api/client"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
@@ -208,34 +209,30 @@ export function useChatWebSocket({
       const ticketController = new AbortController()
       const ticketTimeout = setTimeout(() => ticketController.abort(), 5000)
       try {
-        const resp = await fetch("/ws/ticket", {
-          method: "POST",
-          credentials: "include", // send HttpOnly session cookie
-          headers: { "Content-Type": "application/json" },
-          signal: ticketController.signal, // TD-26-02
-        })
-        if (resp.ok) {
-          const data = (await resp.json()) as { ticket: string; expires_in: number }
-          ticket = data.ticket
-        } else if (resp.status === 401 || resp.status === 403) {
+        // FIX-44-02: Use axios instead of fetch so CSRF header (X-CSRF-Token)
+        // is automatically attached from the csrf_token cookie.
+        // baseURL: "" prevents axios from prepending /api/v1 — the /ws/ticket
+        // endpoint lives outside the API prefix (nginx /ws/ location block).
+        const resp = await api.post<{ ticket: string; expires_in: number }>(
+          "/ws/ticket",
+          undefined,
+          { signal: ticketController.signal, baseURL: "" },
+        )
+        ticket = resp.data.ticket
+      } catch (e: unknown) {
+        const axiosErr = e as { response?: { status: number } }
+        const status = axiosErr?.response?.status
+        if (status === 401 || status === 403) {
           // Session expired or revoked — do not attempt to connect.
-          logError("[WebSocket] Session invalid (status %s); aborting connection.", resp.status)
+          logError("[WebSocket] Session invalid (status %s); aborting connection.", status)
           onAuthErrorRef.current?.()
-          return
         } else {
-          // Transient server error — schedule backoff reconnect.
-          logError("[WebSocket] Ticket fetch failed (status %s); will retry.", resp.status)
+          // Transient server/network error — schedule backoff reconnect.
+          logError("[WebSocket] Ticket fetch failed; will retry.", e)
           const delay = calculateReconnectDelay(reconnectAttemptRef.current)
           reconnectAttemptRef.current += 1
           reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
-          return
         }
-      } catch (e) {
-        // Network error or abort — schedule backoff reconnect.
-        logError("[WebSocket] Ticket fetch network error; will retry.", e)
-        const delay = calculateReconnectDelay(reconnectAttemptRef.current)
-        reconnectAttemptRef.current += 1
-        reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
         return
       } finally {
         clearTimeout(ticketTimeout) // TD-26-03: clean up timeout

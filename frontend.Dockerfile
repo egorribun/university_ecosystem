@@ -4,19 +4,31 @@
 FROM node:22-alpine@sha256:8094c002d08262dba12645a3b4a15cd6cd627d30bc782f53229a2ec13ee22a00 AS base
 WORKDIR /app
 
-# Stage 2: Dependencies
+# Stage 2: WASM — build Rust WASM packages (rust-crypto + wasm-sanitizer)
+FROM rust:1.88-slim-bookworm AS wasm-builder
+RUN cargo install wasm-pack --locked
+WORKDIR /wasm
+COPY frontend/rust-crypto ./rust-crypto
+COPY frontend/wasm-sanitizer ./wasm-sanitizer
+RUN wasm-pack build rust-crypto --target web \
+ && wasm-pack build wasm-sanitizer --target web
+
+# Stage 3: Dependencies
 FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/scripts ./scripts/
 RUN --mount=type=cache,target=/root/.npm \
   npm ci --legacy-peer-deps
 
-# Stage 3: Builder
+# Stage 4: Builder
 FROM base AS builder
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend ./
+# Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
+COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 RUN npm run build
 
 # Stage 4: Runtime

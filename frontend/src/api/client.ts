@@ -122,6 +122,17 @@ try {
 api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
 
+  // FIX-44-01: Normalize doubled /api/v1 prefix.
+  // The @hey-api/client-axios `buildUrl()` reads our axios instance's baseURL ("/api/v1")
+  // and prepends it to the SDK URL (also "/api/v1/..."), producing "/api/v1/api/v1/...".
+  // It then passes `baseURL: ""` to axios, so we detect the doubled prefix in the URL itself.
+  const _url = config.url ?? ""
+  if (_url.startsWith("/api/v1/api/v1/")) {
+    config.url = _url.slice("/api/v1".length)
+  } else if (_url.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
+    config.url = _url.slice("/api/v1".length)
+  }
+
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
   if (config.method && ["post", "put", "patch", "delete"].includes(config.method)) {
     const idempotencyKey =
