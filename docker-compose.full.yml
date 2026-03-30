@@ -79,6 +79,12 @@ services:
     depends_on:
       backend:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
     deploy:
       resources:
         limits:
@@ -394,6 +400,8 @@ services:
     environment:
       # P1-10: Key is in env var — invisible to `docker ps --no-trunc` / docker inspect env.
       SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required - set in .env file}"
+      # Dev-only: skip TLS on gRPC — production K8s must NOT set this
+      SPICEDB_GRPC_NO_TLS: "true"
     networks:
       - internal
     depends_on:
@@ -528,6 +536,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      gateway:
+        condition: service_started
+      ws-hub:
+        condition: service_started
+      frontend:
+        condition: service_started
     networks:
       - public
     deploy:
@@ -548,9 +562,4 @@ volumes:
   minio-data:
   nats-data:
   elasticsearch-data:
-  tempo-data:
-  loki-data:
-  grafana-data:
-  prometheus-data:
-  temporal-data:
 

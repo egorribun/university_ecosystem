@@ -4,18 +4,24 @@
 
 .DESCRIPTION
     Builds and starts all Docker containers for the full site.
-    Generates secure secrets if .env.docker doesn't exist.
+    Generates secure secrets if .env / .env.docker don't exist.
+    Creates MinIO bucket and SpiceDB database on first run.
 
 .EXAMPLE
-    .\start-docker.ps1
-    .\start-docker.ps1 -Build
-    .\start-docker.ps1 -Down
+    .\start-docker.ps1            # Start (no rebuild)
+    .\start-docker.ps1 -Build     # Build (cached) then start
+    .\start-docker.ps1 -Rebuild   # Build (no-cache) then start
+    .\start-docker.ps1 -Down      # Stop all containers
+    .\start-docker.ps1 -Logs                  # Follow all logs
+    .\start-docker.ps1 -Logs -LogService backend  # Follow one service
 #>
 
 param(
     [switch]$Build,
+    [switch]$Rebuild,
     [switch]$Down,
-    [switch]$Logs
+    [switch]$Logs,
+    [string]$LogService = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,44 +30,102 @@ Set-Location $ProjectRoot
 
 $ComposeFile = "docker-compose.full.yml"
 $EnvFile = ".env.docker"
+$EnvCompose = ".env"
 
-function Write-Status {
-    param([string]$Message)
-    Write-Host "[*] $Message" -ForegroundColor Cyan
-}
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
-function Write-Success {
-    param([string]$Message)
-    Write-Host "[+] $Message" -ForegroundColor Green
-}
+function Write-Status  { param([string]$Msg) Write-Host "[*] $Msg" -ForegroundColor Cyan }
+function Write-Ok      { param([string]$Msg) Write-Host "[+] $Msg" -ForegroundColor Green }
+function Write-Err     { param([string]$Msg) Write-Host "[-] $Msg" -ForegroundColor Red }
+function Write-Warn    { param([string]$Msg) Write-Host "[!] $Msg" -ForegroundColor Yellow }
 
-function Write-Error {
-    param([string]$Message)
-    Write-Host "[-] $Message" -ForegroundColor Red
-}
-
-function New-SecureString {
+function New-Secret {
     param([int]$Length = 32)
     $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     -join ((1..$Length) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
 }
 
-# Generate .env.docker if missing
-if (-not (Test-Path $EnvFile)) {
-    Write-Status "Generating $EnvFile with secure secrets..."
+function New-HexSecret {
+    param([int]$Length = 32)
+    -join ((1..$Length) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+}
 
-    $postgresPassword = New-SecureString -Length 32
-    $secretKey = New-SecureString -Length 64
-    $minioPassword = New-SecureString -Length 24
-    $elasticPassword = New-SecureString -Length 24
-    $natsPassword = New-SecureString -Length 24
-    $garageRpcSecret = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
-    $garageAdminToken = New-SecureString -Length 32
-    $spicedbKey = New-SecureString -Length 32
-    $wsHubSecret = New-SecureString -Length 32
-    $grafanaPassword = New-SecureString -Length 24
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    [System.IO.File]::WriteAllText(
+        (Join-Path $ProjectRoot $Path),
+        $Content,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+}
 
-    $envContent = @"
+function Test-ServiceHttp {
+    param([string]$Url, [int]$Timeout = 2)
+    try { (Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $Timeout).StatusCode -eq 200 }
+    catch { $false }
+}
+
+# ── Prerequisite: Docker running ─────────────────────────────────────────────
+
+Write-Status "Checking Docker..."
+$dockerOk = $false
+try {
+    $null = docker info 2>$null
+    $dockerOk = $LASTEXITCODE -eq 0
+} catch { }
+
+if (-not $dockerOk) {
+    Write-Err "Docker is not running. Start Docker Desktop and try again."
+    exit 1
+}
+
+# ── Handle -Down ─────────────────────────────────────────────────────────────
+
+if ($Down) {
+    Write-Status "Stopping all containers..."
+    $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
+    docker compose -f $ComposeFile @envArgs down
+    Write-Ok "All containers stopped"
+    exit 0
+}
+
+# ── Handle -Logs ─────────────────────────────────────────────────────────────
+
+if ($Logs) {
+    $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
+    if ($LogService) {
+        docker compose -f $ComposeFile @envArgs logs -f $LogService
+    } else {
+        docker compose -f $ComposeFile @envArgs logs -f
+    }
+    exit 0
+}
+
+# ── Generate secrets ─────────────────────────────────────────────────────────
+
+$generated = $false
+
+$needsEnvDocker = -not (Test-Path $EnvFile)
+$needsEnvCompose = -not (Test-Path $EnvCompose)
+
+if ($needsEnvDocker -and $needsEnvCompose) {
+    # Both missing — fresh setup, generate from scratch
+    Write-Status "Generating environment files with secure secrets..."
+
+    $postgresPassword = New-Secret -Length 32
+    $secretKey         = New-Secret -Length 64
+    $minioPassword     = New-Secret -Length 24
+    $redisPassword     = New-Secret -Length 24
+    $elasticPassword   = New-Secret -Length 24
+    $natsPassword      = New-Secret -Length 24
+    $garageRpcSecret   = New-HexSecret -Length 32
+    $garageAdminToken  = New-Secret -Length 32
+    $spicedbKey        = New-Secret -Length 32
+    $wsHubSecret       = New-Secret -Length 32
+    $grafanaPassword   = New-Secret -Length 24
+
+    # ── .env.docker (container env_file) ─────────────────────────────────
+    $dockerEnv = @"
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
@@ -78,7 +142,7 @@ GARAGE_ADMIN_TOKEN=$garageAdminToken
 SPICEDB_PRESHARED_KEY=$spicedbKey
 WS_HUB_INTERNAL_SECRET=$wsHubSecret
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
-REDIS_PASSWORD=$minioPassword
+REDIS_PASSWORD=$redisPassword
 VAPID_SUBJECT=mailto:admin@example.com
 ENVIRONMENT=development
 SPOTIFY_CLIENT_ID=
@@ -86,78 +150,210 @@ SPOTIFY_CLIENT_SECRET=
 SPOTIFY_REDIRECT_URI=
 SPOTIFY_SCOPES=
 "@
-    # Write without BOM — docker compose cannot parse UTF-8 BOM
-    [System.IO.File]::WriteAllText((Join-Path $ProjectRoot $EnvFile), $envContent, [System.Text.UTF8Encoding]::new($false))
+    Write-Utf8NoBom $EnvFile $dockerEnv
 
-    Write-Success "Generated $EnvFile with secure secrets"
+    # ── .env (compose interpolation) ─────────────────────────────────────
+    $composeEnv = @"
+# Auto-generated by start-docker.ps1 — used for docker compose interpolation.
+# Passwords MUST match .env.docker. Re-run start-docker.ps1 after editing.
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=$postgresPassword
+POSTGRES_DB=university
+SECRET_KEY=$secretKey
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=$minioPassword
+ELASTIC_PASSWORD=$elasticPassword
+NATS_USER=app
+NATS_PASSWORD=$natsPassword
+SPICEDB_PRESHARED_KEY=$spicedbKey
+WS_HUB_INTERNAL_SECRET=$wsHubSecret
+GRAFANA_ADMIN_PASSWORD=$grafanaPassword
+REDIS_PASSWORD=$redisPassword
+ENVIRONMENT=development
+VAPID_SUBJECT=mailto:admin@example.com
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+SPOTIFY_REDIRECT_URI=
+SPOTIFY_SCOPES=
+"@
+    Write-Utf8NoBom $EnvCompose $composeEnv
+
+    Write-Ok "Generated $EnvFile and $EnvCompose with secure secrets"
+    $generated = $true
+} elseif ($needsEnvDocker -and -not $needsEnvCompose) {
+    # .env exists but .env.docker missing — copy .env as base for .env.docker
+    Write-Warn ".env.docker missing — deriving from .env..."
+    Copy-Item $EnvCompose $EnvFile
+    Write-Ok "Created $EnvFile from $EnvCompose"
+    $generated = $true
+} elseif (-not $needsEnvDocker -and $needsEnvCompose) {
+    # .env.docker exists but .env missing — derive .env from .env.docker
+    Write-Warn ".env missing — deriving from .env.docker..."
+    Copy-Item $EnvFile $EnvCompose
+    Write-Ok "Created $EnvCompose from $EnvFile"
+    $generated = $true
 }
 
-# Handle -Down flag
-if ($Down) {
-    Write-Status "Stopping all containers..."
-    docker compose -f $ComposeFile --env-file $EnvFile down
-    Write-Success "All containers stopped"
-    exit 0
+# ── Sync check: ensure .env has all required vars ────────────────────────────
+
+if (-not $generated) {
+    $envContent = Get-Content $EnvCompose -Raw -ErrorAction SilentlyContinue
+    $missing = @()
+    foreach ($key in @("WS_HUB_INTERNAL_SECRET", "REDIS_PASSWORD", "MINIO_ROOT_PASSWORD", "SPICEDB_PRESHARED_KEY", "GRAFANA_ADMIN_PASSWORD")) {
+        if ($envContent -notmatch "(?m)^$key=") {
+            $missing += $key
+        }
+    }
+    if ($missing.Count -gt 0) {
+        Write-Warn "Missing vars in .env: $($missing -join ', '). Reading from .env.docker..."
+        $dockerLines = Get-Content $EnvFile -ErrorAction SilentlyContinue
+        $patch = ""
+        foreach ($key in $missing) {
+            $line = $dockerLines | Where-Object { $_ -match "^$key=" } | Select-Object -First 1
+            if ($line) { $patch += "`n$line" }
+        }
+        if ($patch) {
+            Add-Content -Path $EnvCompose -Value $patch -NoNewline:$false
+            Write-Ok "Patched .env with missing vars"
+        }
+    }
 }
 
-# Handle -Logs flag
-if ($Logs) {
-    docker compose -f $ComposeFile --env-file $EnvFile logs -f
-    exit 0
-}
+# ── Build ────────────────────────────────────────────────────────────────────
 
-# Build images if requested or if they don't exist
-if ($Build) {
-    Write-Status "Building Docker images..."
+if ($Rebuild) {
+    Write-Status "Rebuilding ALL images (no cache)..."
+    docker compose -f $ComposeFile --env-file $EnvFile build --no-cache
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Build failed. Check output above."
+        exit 1
+    }
+    Write-Ok "All images rebuilt"
+} elseif ($Build) {
+    Write-Status "Building images (cached)..."
     docker compose -f $ComposeFile --env-file $EnvFile build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Build failed. Check output above."
+        exit 1
+    }
+    Write-Ok "Images built"
 }
 
-# Start services
-Write-Status "Starting Docker containers..."
-docker compose -f $ComposeFile --env-file $EnvFile up -d
+# ── Start services ───────────────────────────────────────────────────────────
 
-# Wait for services to be healthy
-Write-Status "Waiting for services to become healthy..."
+Write-Status "Starting containers..."
+docker compose -f $ComposeFile --env-file $EnvFile up -d
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "Failed to start containers."
+    exit 1
+}
+
+# ── First-run initialization ─────────────────────────────────────────────────
+
+# SpiceDB needs its own database in Postgres (idempotent)
+Write-Status "Ensuring SpiceDB database exists..."
+docker compose -f $ComposeFile --env-file $EnvFile exec -T postgres psql -U postgres -c "CREATE DATABASE spicedb" 2>$null
+# Ignore errors — database may already exist
+
+# MinIO bucket (wait for MinIO to be healthy, then create via minio/mc container)
+Write-Status "Ensuring MinIO 'uploads' bucket exists..."
+$minioReady = $false
+for ($i = 0; $i -lt 12; $i++) {
+    $health = docker compose -f $ComposeFile --env-file $EnvFile ps minio --format json 2>$null | ConvertFrom-Json
+    $h = if ($health -is [array]) { $health[0].Health } else { $health.Health }
+    if ($h -eq "healthy") { $minioReady = $true; break }
+    Start-Sleep -Seconds 5
+}
+if ($minioReady) {
+    $minioPass = (Select-String -Path $EnvFile -Pattern "^MINIO_ROOT_PASSWORD=(.+)$").Matches.Groups[1].Value
+    # mc is NOT in minio/minio image — use separate minio/mc container on the same network
+    $projectName = (Split-Path $ProjectRoot -Leaf).ToLower() -replace '[^a-z0-9]', '_'
+    $network = "${projectName}_internal"
+    docker run --rm --network $network --entrypoint "" minio/mc sh -c "mc alias set local http://minio:9000 minioadmin $minioPass && mc mb local/uploads --ignore-existing" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok "MinIO bucket ready"
+    } else {
+        Write-Warn "Could not create MinIO bucket — create manually after startup"
+    }
+} else {
+    Write-Warn "MinIO not healthy yet — create bucket manually after startup"
+}
+
+# ── Health check loop ────────────────────────────────────────────────────────
+
+Write-Status "Waiting for services..."
 $timeout = 120
 $elapsed = 0
+$services = @{
+    postgres = @{ type = "docker"; ready = $false }
+    backend  = @{ type = "docker"; ready = $false }
+    nats     = @{ type = "docker"; ready = $false }
+    gateway  = @{ type = "http"; url = "http://localhost:8080/health"; ready = $false }
+    wshub    = @{ type = "http"; url = "http://localhost:8083/health"; ready = $false }
+    frontend = @{ type = "http"; url = "http://localhost:8081"; ready = $false }
+}
 
 do {
     Start-Sleep -Seconds 5
     $elapsed += 5
 
-    $backendHealth = docker compose -f $ComposeFile ps backend --format json 2>$null | ConvertFrom-Json
-    $postgresHealth = docker compose -f $ComposeFile ps postgres --format json 2>$null | ConvertFrom-Json
-    $natsHealth = docker compose -f $ComposeFile ps nats --format json 2>$null | ConvertFrom-Json
+    foreach ($name in $services.Keys) {
+        if ($services[$name].ready) { continue }
 
-    # Handle both single object and array output from docker compose ps
-    $backendReady = if ($backendHealth -is [array]) { $backendHealth[0].Health -eq "healthy" } else { $backendHealth.Health -eq "healthy" }
-    $postgresReady = if ($postgresHealth -is [array]) { $postgresHealth[0].Health -eq "healthy" } else { $postgresHealth.Health -eq "healthy" }
-    $natsReady = if ($natsHealth -is [array]) { $natsHealth[0].Health -eq "healthy" } else { $natsHealth.Health -eq "healthy" }
+        if ($services[$name].type -eq "docker") {
+            $info = docker compose -f $ComposeFile --env-file $EnvFile ps $name --format json 2>$null | ConvertFrom-Json
+            $h = if ($info -is [array]) { $info[0].Health } else { $info.Health }
+            if ($h -eq "healthy") { $services[$name].ready = $true }
+        } else {
+            if (Test-ServiceHttp $services[$name].url) { $services[$name].ready = $true }
+        }
+    }
 
-    # Gateway and WS-Hub use distroless images (no shell) — probe via HTTP from host
-    $gatewayReady = try { (Invoke-WebRequest -Uri http://localhost:8080/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { $false }
-    $wsHubReady = try { (Invoke-WebRequest -Uri http://localhost:8083/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { $false }
+    # Status line
+    $statParts = @()
+    foreach ($name in @("postgres", "backend", "gateway", "frontend", "nats", "wshub")) {
+        $icon = if ($services[$name].ready) { "+" } else { "." }
+        $color = if ($services[$name].ready) { "Green" } else { "DarkGray" }
+        $statParts += @{ name = $name; icon = $icon; color = $color }
+    }
+    Write-Host -NoNewline "  "
+    foreach ($p in $statParts) {
+        Write-Host -NoNewline "[$($p.icon)] $($p.name)  " -ForegroundColor $p.color
+    }
+    Write-Host ""  # newline
 
-    Write-Host "  Backend: $(if ($backendReady) { 'Ready' } else { 'Starting...' }) | Gateway: $(if ($gatewayReady) { 'Ready' } else { 'Starting...' }) | WS-Hub: $(if ($wsHubReady) { 'Ready' } else { 'Starting...' }) | NATS: $(if ($natsReady) { 'Ready' } else { 'Starting...' })"
+    $allReady = ($services.Values | Where-Object { -not $_.ready }).Count -eq 0
 
-} while ((-not $backendReady -or -not $postgresReady -or -not $natsReady -or -not $gatewayReady -or -not $wsHubReady) -and $elapsed -lt $timeout)
+} while (-not $allReady -and $elapsed -lt $timeout)
 
-if ($elapsed -ge $timeout) {
-    Write-Error "Timeout waiting for services. Check logs with: .\start-docker.ps1 -Logs"
+if (-not $allReady) {
+    Write-Err "Timeout after ${timeout}s. Failing services:"
+    foreach ($name in $services.Keys) {
+        if (-not $services[$name].ready) {
+            Write-Err "  $name — showing last 15 log lines:"
+            docker compose -f $ComposeFile --env-file $EnvFile logs --tail=15 $name 2>$null
+            Write-Host ""
+        }
+    }
     exit 1
 }
 
+# ── Done ─────────────────────────────────────────────────────────────────────
+
 Write-Host ""
-Write-Success "University Ecosystem is running!"
+Write-Ok "University Ecosystem is running!"
 Write-Host ""
 Write-Host "  Frontend:    http://localhost:8081" -ForegroundColor Yellow
 Write-Host "  Gateway API: http://localhost:8080" -ForegroundColor Yellow
 Write-Host "  Backend API: http://localhost:8000" -ForegroundColor Yellow
 Write-Host "  API Docs:    http://localhost:8000/docs" -ForegroundColor Yellow
 Write-Host "  WS Hub:      http://localhost:8083" -ForegroundColor Yellow
-Write-Host "  Grafana:     http://localhost:3000 (localhost only)" -ForegroundColor Yellow
+Write-Host "  MinIO:       http://localhost:9001" -ForegroundColor Yellow
+Write-Host "  Grafana:     http://localhost:3000" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray
-Write-Host "  Stop:   .\start-docker.ps1 -Down"
-Write-Host "  Logs:   .\start-docker.ps1 -Logs"
-Write-Host "  Rebuild: .\start-docker.ps1 -Build"
+Write-Host "  Stop:      .\start-docker.ps1 -Down"
+Write-Host "  Logs:      .\start-docker.ps1 -Logs"
+Write-Host "  Logs svc:  .\start-docker.ps1 -Logs -LogService backend"
+Write-Host "  Build:     .\start-docker.ps1 -Build"
+Write-Host "  Rebuild:   .\start-docker.ps1 -Rebuild   (no cache)"

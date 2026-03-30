@@ -24,7 +24,7 @@
     header {
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
-        X-XSS-Protection "1; mode=block"
+        X-XSS-Protection "0"
         Referrer-Policy strict-origin-when-cross-origin
         -Server
     }
@@ -57,7 +57,7 @@
 
     # Frontend (default)
     handle {
-        reverse_proxy frontend:80
+        reverse_proxy frontend:8080
     }
 }
 
@@ -69,7 +69,7 @@
 #         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 #         X-Content-Type-Options nosniff
 #         X-Frame-Options DENY
-#         X-XSS-Protection "1; mode=block"
+#         X-XSS-Protection "0"
 #         Referrer-Policy strict-origin-when-cross-origin
 #         -Server
 #     }
@@ -83,6 +83,6 @@
 #     }
 #
 #     handle {
-#         reverse_proxy frontend:80
+#         reverse_proxy frontend:8080
 #     }
 # }
