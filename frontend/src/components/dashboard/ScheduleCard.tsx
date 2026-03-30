@@ -6,8 +6,6 @@ import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import { useDashboardSchedule, type DashboardLesson } from "@/hooks/useDashboardSchedule"
 import { fmtTime, nowParity, parseMinutes } from "@/utils/scheduleUtils"
-import { ScheduleTimeline } from "./ScheduleTimeline"
-import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface ScheduleCardProps {
   userRole?: string | null
@@ -29,9 +27,6 @@ export function ScheduleCard({
   ...props
 }: ScheduleCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
-  // Wave 46: show timeline on wider viewports, list on narrow
-  const showTimeline = useMediaQuery("(min-width: 480px)")
-
   const shouldLoadSchedule = userRole === "student" && Boolean(userGroupId)
   const dashboardScheduleQuery = useDashboardSchedule(
     (userRole as "student" | "teacher" | "admin" | null) ?? null,
@@ -155,20 +150,18 @@ export function ScheduleCard({
           </div>
         </div>
 
-        {/* Current lesson with left accent border (Wave 45) */}
+        {/* Current lesson — premium blue panel */}
         {currentLesson && (
-          <div className="rounded-xl border-l-2 border-brand bg-(--bg-matte-list) p-4">
-            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-              <div className="flex flex-wrap items-center gap-2">
+          <div className="list-item-blue rounded-xl p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
                 <Badge size="sm" tone="primary" label={t("dashboard:now")} />
-                <Badge
-                  size="sm"
-                  className="border-(--brand-main)/(--opacity-dim) bg-(--brand-main)/(--opacity-faint) font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/(--opacity-subtle)"
-                  label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
-                />
+                <span className="text-base font-semibold leading-tight text-text-primary line-clamp-1">
+                  {currentLesson.subject}
+                </span>
               </div>
-              <span className="text-base font-semibold leading-tight text-text-primary line-clamp-1">
-                {currentLesson.subject}
+              <span className="shrink-0 font-mono text-sm font-medium text-brand">
+                {fmtTime(currentLesson.start_time)}–{fmtTime(currentLesson.end_time)}
               </span>
             </div>
             <ProgressBar
@@ -180,24 +173,20 @@ export function ScheduleCard({
         )}
 
         {!currentLesson && nextLesson && (
-          <div className="flex flex-col gap-2 rounded-xl border-l-2 border-brand/(--opacity-soft) bg-(--bg-matte-list) p-4 sm:flex-row sm:items-center">
+          <div className="list-item-blue flex items-center gap-3 rounded-xl p-4">
             <Badge
               size="sm"
               variant="outline"
               tone="primary"
-              className="self-start font-bold uppercase tracking-wide"
+              className="shrink-0 text-[0.625rem] font-bold uppercase tracking-wide"
               label={t("dashboard:next")}
             />
-            <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-              <span className="text-base font-semibold leading-tight text-text-primary truncate">
-                {nextLesson.subject}
-              </span>
-              <Badge
-                size="sm"
-                className="self-start border-brand/(--opacity-dim) bg-brand/(--opacity-faint) font-mono text-xs font-medium text-brand dark:bg-brand/(--opacity-subtle)"
-                label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
-              />
-            </div>
+            <span className="min-w-0 flex-1 text-base font-semibold leading-tight text-text-primary truncate">
+              {nextLesson.subject}
+            </span>
+            <span className="shrink-0 font-mono text-sm font-medium text-brand">
+              {fmtTime(nextLesson.start_time)}–{fmtTime(nextLesson.end_time)}
+            </span>
           </div>
         )}
 
@@ -222,41 +211,30 @@ export function ScheduleCard({
           <p className="text-sm text-(--text-secondary)">{t("dashboard:noClasses")}</p>
         )}
 
-        {/* Wave 46: Interactive timeline (wide) or classic list (narrow) */}
-        {!loadingSched && todayLessons.length > 0 && showTimeline && (
-          <ScheduleTimeline
-            lessons={todayLessons}
-            minutesNow={minutesNow}
-            currentLesson={currentLesson}
-            nextLesson={nextLesson}
-          />
-        )}
-
-        {!loadingSched && todayLessons.length > 0 && !showTimeline && (
+        {/* Wave 49: always list view on dashboard — timeline removed (too cramped for card width) */}
+        {!loadingSched && todayLessons.length > 0 && (
           <ul className="space-y-2.5">
             {todayLessons.map((l, idx) => (
               <li key={l.id} className="dash-list-item px-0 py-0">
                 <div
                   className={cn(
-                    "list-item-matte list-item-matte-hover",
-                    "flex flex-col gap-2 pb-4 sm:gap-2.5",
+                    "list-item-blue list-item-blue-hover",
+                    "flex flex-col gap-2 sm:gap-2.5",
                     "cursor-default"
                   )}
                   style={{ "--stagger-i": idx } as React.CSSProperties}
                 >
-                  <div className="flex w-full items-start justify-between gap-3">
+                  <div className="flex w-full items-center justify-between gap-3">
                     <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                       {l.subject}
                     </span>
-                    <Badge
-                      size="sm"
-                      className="shrink-0 border-(--brand-main)/(--opacity-dim) bg-(--brand-main)/(--opacity-faint) font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/(--opacity-subtle)"
-                      label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                    />
+                    <span className="shrink-0 font-mono text-sm font-medium text-brand">
+                      {fmtTime(l.start_time)}–{fmtTime(l.end_time)}
+                    </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                     <Badge size="sm" tone="default" variant="outline" label={l.lesson_type} />
-                    <span className="truncate max-w-40 opacity-heavy">
+                    <span className="opacity-heavy">
                       {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
                     </span>
                   </div>

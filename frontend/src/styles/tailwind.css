@@ -592,6 +592,43 @@
   @apply hover:border-(--border-matte) hover:-translate-y-0.5 hover:shadow-[var(--shadow-matte-card)] motion-reduce:hover:transform-none;
 }
 
+/* Wave 49: Premium blue list items — rich blue depth for dashboard cards */
+@utility list-item-blue {
+  @apply w-full rounded-xl px-4 py-3.5 text-left;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--brand-main) 6%, var(--bg-matte-list)) 0%,
+    var(--bg-matte-list) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--brand-main) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent),
+    0 1px 2px color-mix(in srgb, black 4%, transparent);
+  transition:
+    background var(--motion-duration-fast) var(--ease-premium),
+    border-color var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-fast) var(--ease-premium),
+    box-shadow var(--motion-duration-fast) var(--ease-premium);
+}
+
+@utility list-item-blue-hover {
+  @apply motion-reduce:hover:transform-none;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--brand-main) 25%, transparent);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--brand-main) 10%, var(--bg-matte-list)) 0%,
+      color-mix(in srgb, var(--brand-main) 4%, var(--bg-matte-list)) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+      0 2px 8px color-mix(in srgb, var(--brand-main) 10%, transparent),
+      0 1px 3px color-mix(in srgb, black 6%, transparent);
+    transform: translateY(-2px);
+  }
+}
+
 @utility skeleton-matte {
   background: color-mix(in srgb, var(--bg-matte-card) 60%, var(--border-matte) 40%);
 }
@@ -664,6 +701,42 @@
 
   .btn-dash:hover {
     border-color: var(--dash-border-hover) !important;
+  }
+
+  /* Wave 49: Premium DateBullet — 3D depth with layered shadows and radial gradient */
+  .date-bullet-premium {
+    background:
+      radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--brand-main) 18%, transparent), transparent 70%),
+      radial-gradient(circle at 65% 70%, color-mix(in srgb, var(--brand-main) 10%, transparent), transparent 60%),
+      color-mix(in srgb, var(--brand-main) 6%, var(--bg-matte-card));
+    border: 1.5px solid color-mix(in srgb, var(--brand-main) 22%, transparent);
+    box-shadow:
+      0 1px 2px color-mix(in srgb, black 8%, transparent),
+      0 4px 12px color-mix(in srgb, var(--brand-main) 12%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 12%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--brand-main) 8%, transparent);
+  }
+
+  .date-bullet-premium:hover {
+    box-shadow:
+      0 2px 4px color-mix(in srgb, black 10%, transparent),
+      0 6px 20px color-mix(in srgb, var(--brand-main) 20%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 15%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--brand-main) 12%, transparent);
+    border-color: color-mix(in srgb, var(--brand-main) 35%, transparent);
+  }
+
+  :is(.dark) .date-bullet-premium {
+    background:
+      radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--brand-main) 24%, transparent), transparent 70%),
+      radial-gradient(circle at 65% 70%, color-mix(in srgb, var(--brand-main) 14%, transparent), transparent 60%),
+      color-mix(in srgb, var(--brand-main) 8%, var(--bg-matte-card));
+    border-color: color-mix(in srgb, var(--brand-main) 30%, transparent);
+    box-shadow:
+      0 1px 3px color-mix(in srgb, black 20%, transparent),
+      0 4px 16px color-mix(in srgb, var(--brand-main) 16%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--brand-main) 10%, transparent);
   }
 
   .animate-premium-in {

@@ -47,8 +47,8 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
           <button
             type="button"
             className={cn(
-              "group list-item-matte list-item-matte-hover",
-              "flex items-start gap-4 text-left sm:gap-5"
+              "group list-item-blue list-item-blue-hover",
+              "flex items-center gap-4 text-left sm:gap-5"
             )}
             onClick={() => navigate({ to: "/news/$id", params: { id: String(n.id) } })}
             title={n.title}
@@ -56,11 +56,11 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
             style={{ "--stagger-i": idx } as React.CSSProperties}
           >
             <DateBullet date={n.created_at} locale={locale} />
-            <div className="flex flex-col gap-1">
-              <span className="text-base font-bold leading-snug text-text-primary">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-base font-bold leading-snug text-text-primary line-clamp-2">
                 {n.title}
               </span>
-              <span className="text-sm text-(--text-secondary) leading-relaxed">
+              <span className="text-sm text-(--text-secondary) leading-relaxed line-clamp-2">
                 {(n.content || "").slice(0, 110)}
                 {(n.content || "").length > 110 ? "…" : ""}
               </span>

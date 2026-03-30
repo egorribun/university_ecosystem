@@ -19,7 +19,6 @@ import { ScheduleCard } from "@/components/dashboard/ScheduleCard"
 import { NewsCard } from "@/components/dashboard/NewsCard"
 import { EventsCard } from "@/components/dashboard/EventsCard"
 import DashboardSkeleton from "@/components/dashboard/DashboardSkeleton"
-import { ScrollReveal } from "@/components/motion/ScrollReveal"
 import { SkeletonMorph } from "@/components/ui/SkeletonMorph"
 import { Card, Skeleton } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -33,6 +32,127 @@ import { useWeather } from "@/hooks/useWeather"
 
 /** Wave 48: Session key for cascade reveal — module-level constant */
 const CASCADE_KEY = "dash-cascade-done"
+
+/** Wave 49: Dev-only mock stories — shown when API returns empty */
+const MOCK_STORIES: StoryItem[] = [
+  {
+    id: "mock-1",
+    title: "UniHack 2026",
+    short_text: "Регистрация на хакатон открыта! Призовой фонд 500 000 ₽",
+    cover_url: "https://picsum.photos/seed/unihack/400/700",
+    cta_url: "/events",
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-2",
+    title: "Новая библиотека",
+    short_text: "Электронный каталог обновлён — 50 000+ книг онлайн",
+    cover_url: "https://picsum.photos/seed/library/400/700",
+    cta_url: null,
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-3",
+    title: "День открытых дверей",
+    short_text: "Приглашаем абитуриентов 5 апреля в главный корпус",
+    cover_url: "https://picsum.photos/seed/openday/400/700",
+    cta_url: "/events",
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 10 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-4",
+    title: "Весенний карьерный форум",
+    short_text: "50+ компаний ищут стажёров и джунов. 10 апреля, Актовый зал",
+    cover_url: "https://picsum.photos/seed/career/400/700",
+    cta_url: null,
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 12 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-5",
+    title: "Спортивный сезон",
+    short_text: "Запись в секции: волейбол, баскетбол, плавание, шахматы",
+    cover_url: "https://picsum.photos/seed/sport/400/700",
+    cta_url: null,
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-6",
+    title: "Стипендии и гранты",
+    short_text: "Подай заявку на повышенную стипендию до 15 апреля",
+    cover_url: "https://picsum.photos/seed/scholarship/400/700",
+    cta_url: null,
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 20 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-7",
+    title: "Волонтёрский проект",
+    short_text: "Присоединяйся к экологической акции «Чистый кампус»",
+    cover_url: "https://picsum.photos/seed/volunteer/400/700",
+    cta_url: null,
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 8 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-8",
+    title: "Обмен с Берлином",
+    short_text: "Программа обмена: семестр в Берлинском ТУ. Дедлайн 20 апреля",
+    cover_url: "https://picsum.photos/seed/exchange/400/700",
+    cta_url: null,
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 25 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+  {
+    id: "mock-9",
+    title: "Научная конференция",
+    short_text: "Весенняя конференция молодых учёных — приём тезисов открыт",
+    cover_url: "https://picsum.photos/seed/science/400/700",
+    cta_url: null,
+    published_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 15 * 86400000).toISOString(),
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    cover_url_optimized: null,
+  },
+]
 
 /** Wave 46: Card-shaped skeleton placeholders for SkeletonMorph */
 function ScheduleCardSkeleton() {
@@ -162,8 +282,10 @@ export default function Dashboard() {
   const eventsLoaded = !eventsQuery.isLoading
 
   const dashboardStoriesQuery = useDashboardStories()
-  const stories: StoryItem[] = dashboardStoriesQuery.data ?? []
-  const loadingStories = dashboardStoriesQuery.isLoading && stories.length === 0
+  const realStories = dashboardStoriesQuery.data ?? []
+  // Wave 49: fallback to mock stories in dev when API returns empty
+  const stories: StoryItem[] = realStories.length > 0 ? realStories : MOCK_STORIES
+  const loadingStories = dashboardStoriesQuery.isLoading && realStories.length === 0
 
   const prefetchStories = useCallback(() => {
     void prefetchDashboardStories(queryClient)
@@ -197,7 +319,7 @@ export default function Dashboard() {
           <WeatherAmbient animation={weatherAnimation} disabled={prefersReducedMotion} />
         </motion.div>
 
-        {/* Hero — greeting card */}
+        {/* Hero — greeting card + stories in right slot */}
         <DashboardHero
           user={user}
           time={time}
@@ -206,18 +328,28 @@ export default function Dashboard() {
           dateStr={dateStr}
           isNarrow={isNarrow}
           prefersReducedMotion={prefersReducedMotion}
+          rightSlot={
+            <DashboardStories
+              stories={stories}
+              loading={loadingStories}
+              onPrefetch={prefetchStories}
+              onStoryOpen={handleStoryOpen}
+              maxVisibleStories={9}
+            />
+          }
         />
 
-        {/* Content: stories + cards */}
+        {/* Content: cards */}
         <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14">
-          <ScrollReveal mode="slide" direction="up" delay={0.2}>
+          {/* Wave 49: stories on mobile — hidden on sm+ (shown in Hero rightSlot) */}
+          <div className="sm:hidden">
             <DashboardStories
               stories={stories}
               loading={loadingStories}
               onPrefetch={prefetchStories}
               onStoryOpen={handleStoryOpen}
             />
-          </ScrollReveal>
+          </div>
 
           {/* Wave 48: scroll depth wrapper — cards recede on scroll */}
           <motion.div

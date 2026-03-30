@@ -95,9 +95,9 @@ export function ScheduleTimeline({
       {/* Scrollable timeline container */}
       <div
         ref={scrollRef}
-        className="overflow-x-auto scroll-smooth scrollbar-thin scrollbar-thumb-brand/(--opacity-dim) scrollbar-track-transparent"
+        className="overflow-x-auto scroll-smooth scrollbar-none"
       >
-        <div className="relative min-w-[480px]" style={{ height: "5.5rem" }}>
+        <div className="relative" style={{ height: "5.5rem", minWidth: "100%" }}>
           {/* Track background */}
           <div
             className="absolute left-0 right-0 rounded-xl bg-(--bg-matte-list) border border-(--border-matte)"

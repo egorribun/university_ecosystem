@@ -32,10 +32,9 @@ export const StoryCircle = <T extends ElementType = "div">({
       className={cn(
         "group/story relative inline-flex items-center justify-center overflow-visible rounded-full text-white",
         "bg-linear-to-br from-(--primary-main) to-(--primary-main) shadow-lg",
-        "transition-all duration-base ease-premium transform-gpu",
-        "hover:shadow-xl hover:-translate-y-0.5",
+        "transition-opacity duration-base ease-premium",
+        "hover:opacity-80",
         "focus-visible:outline-(--primary-main) focus-visible:ring-1 focus-visible:ring-(--primary-main)/(--opacity-dim)",
-        "motion-reduce:hover:translate-y-0",
         size === "sm" &&
           "h-(--size-story-sm) w-(--size-story-sm) min-h-(--size-story-sm) min-w-(--size-story-sm)",
         size === "md" &&

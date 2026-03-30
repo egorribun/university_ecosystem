@@ -1,5 +1,4 @@
 import type { User } from "@/types/User"
-// useNavigate removed — profile button removed (accessible via navbar)
 import { useTranslation } from "react-i18next"
 import { useMemo } from "react"
 import { motion } from "framer-motion"
@@ -8,21 +7,16 @@ import WeatherWidget from "@/components/ui/WeatherWidget"
 import { ScrollReveal } from "@/components/motion/ScrollReveal"
 import { cn } from "@/utils/cn"
 import { Sparkles } from "lucide-react"
-import { useGreeting, type GreetingKey } from "@/hooks/useGreeting"
+import { useGreeting } from "@/hooks/useGreeting"
+import { nowParity } from "@/utils/scheduleUtils"
 
-/** Wave 48: Day progress ring gradient colors per greeting palette */
-const RING_COLORS: Record<GreetingKey, [string, string]> = {
-  morning: ["#f59e0b", "#fbbf24"],   // amber
-  afternoon: ["#38bdf8", "#0ea5e9"], // sky
-  evening: ["#8b5cf6", "#a78bfa"],   // violet
-  night: ["#64748b", "#94a3b8"],     // slate
+/** Wave 49: Calculate ISO week number */
+function getISOWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7))
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil(((+d - +yearStart) / 86400000 + 1) / 7)
 }
-
-/** SVG ring constants */
-const RING_SIZE = 22
-const RING_STROKE = 2.5
-const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
 
 interface DashboardHeroProps {
   user: User | null
@@ -32,6 +26,8 @@ interface DashboardHeroProps {
   dateStr: string
   isNarrow: boolean
   prefersReducedMotion: boolean
+  /** Wave 49: Slot for stories or other content on the right side of Hero */
+  rightSlot?: React.ReactNode
 }
 
 export function DashboardHero({
@@ -42,17 +38,14 @@ export function DashboardHero({
   dateStr,
   isNarrow,
   prefersReducedMotion,
+  rightSlot,
 }: DashboardHeroProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const { greeting, greetingKey, specialKey, emoji } = useGreeting(time)
 
-  // Wave 48: Day progress (0% at 00:00 → 100% at 23:59)
-  const dayProgress = useMemo(() => {
-    const totalMinutes = time.getHours() * 60 + time.getMinutes()
-    return totalMinutes / 1440 // 24*60
-  }, [time])
-  const ringOffset = RING_CIRCUMFERENCE * (1 - dayProgress)
-  const [ringColor1, ringColor2] = RING_COLORS[greetingKey]
+  // Wave 49: Academic week number + parity (replaces day progress ring)
+  const weekNumber = useMemo(() => getISOWeekNumber(time), [time])
+  const parity = useMemo(() => nowParity(), [])
 
   const showHeaderMotion = !prefersReducedMotion && !isNarrow
 
@@ -97,8 +90,8 @@ export function DashboardHero({
               <div className="pointer-events-none absolute left-[-8%] top-[-25%] h-[8rem] w-[8rem] animate-[spin_40s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-soft blur-3xl will-change-transform" />
             )}
 
-            <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-4">
+            <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-8">
+              <div className="shrink-0 space-y-4">
                 {/* Inline fontSize — CSS var override unreliable across @layer boundaries */}
                 <h1
                   className="font-display font-extrabold leading-[1.15] tracking-tight"
@@ -146,52 +139,19 @@ export function DashboardHero({
                       <span>{mm}</span>
                     </span>
                   </Badge>
-                  {/* Wave 48: Day progress ring — replaces time-of-day icon */}
-                  <motion.span
-                    className="inline-flex items-center shrink-0"
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    aria-label={t("common:ariaDayProgress", { defaultValue: `${Math.round(dayProgress * 100)}% of day` })}
-                  >
-                    <svg
-                      width={RING_SIZE}
-                      height={RING_SIZE}
-                      viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
-                      className="block -rotate-90"
-                      aria-hidden="true"
-                    >
-                      <defs>
-                        <linearGradient id="day-ring-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor={ringColor1} />
-                          <stop offset="100%" stopColor={ringColor2} />
-                        </linearGradient>
-                      </defs>
-                      {/* Track */}
-                      <circle
-                        cx={RING_SIZE / 2}
-                        cy={RING_SIZE / 2}
-                        r={RING_RADIUS}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={RING_STROKE}
-                        className="text-(--text-tertiary) opacity-dim"
-                      />
-                      {/* Progress arc */}
-                      <circle
-                        cx={RING_SIZE / 2}
-                        cy={RING_SIZE / 2}
-                        r={RING_RADIUS}
-                        fill="none"
-                        stroke="url(#day-ring-grad)"
-                        strokeWidth={RING_STROKE}
-                        strokeLinecap="round"
-                        strokeDasharray={RING_CIRCUMFERENCE}
-                        strokeDashoffset={ringOffset}
-                        className="transition-all duration-slow"
-                      />
-                    </svg>
-                  </motion.span>
+                  {/* Wave 49: Academic week — same visual weight as date */}
+                  <span className="shrink-0 text-base font-medium opacity-heavy">
+                    {t("dashboard:academicWeek", {
+                      week: weekNumber,
+                      defaultValue: "{{week}} нед.",
+                    })}
+                    {" · "}
+                    <span className="text-brand">
+                      {parity === "even"
+                        ? t("dashboard:parityEven", { defaultValue: "чётная" })
+                        : t("dashboard:parityOdd", { defaultValue: "нечётная" })}
+                    </span>
+                  </span>
                   <WeatherWidget className="shrink-0" />
                   <span className="text-base font-medium opacity-heavy">
                     {dateStr}
@@ -199,7 +159,12 @@ export function DashboardHero({
                 </div>
               </div>
 
-              {/* Profile button removed — accessible via navbar */}
+              {/* Wave 49: Right slot — stories or other content */}
+              {rightSlot && (
+                <div className="hidden sm:flex shrink-0 items-center">
+                  {rightSlot}
+                </div>
+              )}
             </div>
           </header>
         </ScrollReveal>

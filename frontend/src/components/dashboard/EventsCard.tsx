@@ -13,6 +13,7 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Event } from "@/types/Event"
 import { formatDate, toDate } from "@/utils/date"
+import { DateBullet } from "./DateBullet"
 
 interface EventsCardProps {
   className?: string
@@ -184,46 +185,44 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                   <button
                     type="button"
                     className={cn(
-                      "group list-item-matte list-item-matte-hover",
-                      "flex min-h-18 flex-col justify-center gap-2 sm:gap-3",
+                      "group list-item-blue list-item-blue-hover",
+                      "flex items-center gap-4 sm:gap-5",
                       "active:scale-(--scale-active)"
                     )}
                     onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                     style={{ "--stagger-i": idx } as React.CSSProperties}
                   >
-                    <span className="flex w-full items-start justify-between gap-3">
+                    <DateBullet date={e.starts_at ?? undefined} locale={language} size="compact" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
                       <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                         {e.title}
                       </span>
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand transition-all duration-base group-hover:bg-brand/(--opacity-faint) group-hover:border-brand/(--opacity-soft)">
-                        <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+                      <span className="flex flex-wrap items-center gap-2">
+                        {!isNaN(e.d.getTime()) && (
+                          <span className="font-mono text-sm font-medium text-brand">
+                            {formatDate(e.d, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })}
+                          </span>
+                        )}
+                        {!!e.location && (
+                          <Badge
+                            size="sm"
+                            variant="outline"
+                            className="max-w-32 truncate text-[0.625rem]"
+                            label={e.location}
+                          />
+                        )}
                       </span>
                     </span>
-                    <span className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
-                      <Badge
-                        size="sm"
-                        className="border-brand/(--opacity-dim) bg-brand/(--opacity-faint) font-mono text-xs font-medium text-brand dark:bg-brand/(--opacity-subtle)"
-                        label={
-                          !isNaN(e.d.getTime())
-                            ? formatDate(e.d, {
-                                day: "2-digit",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                hour12: false,
-                              })
-                            : ""
-                        }
-                      />
-                      {!!e.location && (
-                        <Badge
-                          size="sm"
-                          variant="outline"
-                          className="max-w-32 truncate"
-                          label={e.location}
-                        />
-                      )}
+                    <span
+                      aria-hidden="true"
+                      className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:bg-brand/(--opacity-faint) group-hover:border-brand/(--opacity-soft)"
+                    >
+                      <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                     </span>
                   </button>
                 </motion.li>
