@@ -400,7 +400,7 @@ dev = [
   "pytest-xdist>=3.5",
   # RZ-30-05: ruff v0.15.x has regression (strips except parens → SyntaxError).
   # Pin to 0.14.x until upstream fix lands.  Pre-commit already pins 0.14.14.
-  "ruff>=0.14.14,<0.15",
+  "ruff>=0.14.14,<0.16",
   "types-aiofiles>=25.1.0.20251011",
   # RZ-11 (audit 2026-03-05): virtualenv belongs here — it is developer tooling,
   # not a production runtime dependency.
