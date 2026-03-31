@@ -3,9 +3,9 @@ module github.com/university-ecosystem/gateway
 go 1.26.1
 
 require (
-	github.com/getsentry/sentry-go v0.43.0
-	github.com/getsentry/sentry-go/gin v0.43.0
-	github.com/gin-contrib/cors v1.7.6
+	github.com/getsentry/sentry-go v0.44.1
+	github.com/getsentry/sentry-go/gin v0.44.1
+	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -78,7 +78,7 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
