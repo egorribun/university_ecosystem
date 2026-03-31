@@ -52,6 +52,24 @@
     --w-story-card: min(92vw, 420px);
     --w-story-card-md: 420px;
     --w-mobile-menu: 300px;
+
+    /* Morphing Navbar — Wave 50 */
+    --navbar-pill-max-w: 780px;
+    --navbar-pill-h: 52px;
+    --navbar-pill-radius: 1.75rem;
+    --navbar-pill-mt: 12px;
+    --navbar-pill-px: 1.25rem;
+    --navbar-pill-icon-size: 20px;
+    --navbar-pill-active-dot: 5px;
+
+    /* Mobile Drawer — Wave 50 */
+    --drawer-w: 320px;
+    --drawer-w-max: 85vw;
+
+    /* Bottom Nav — Wave 50 */
+    --bottom-nav-h: 64px;
+    --bottom-nav-pill-h: 40px;
+    --bottom-nav-pill-radius: 1.25rem;
     --h-news-card-mobile: 400px;
     --h-news-card-desktop: 480px;
     --h-news-hero: 380px;

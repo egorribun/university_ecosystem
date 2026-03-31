@@ -8,9 +8,9 @@ import {
   User as PersonIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import { springBouncy, springSoft } from "@/utils/animations"
-
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { markIfFromBottom, smoothToTop, getScrollRoot } from "@/utils/scrollUtils"
 
 function samePath(a: string, b: string) {
@@ -22,6 +22,7 @@ function samePath(a: string, b: string) {
 export default function MobileBottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const { t } = useTranslation(["navigation"])
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   useLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
@@ -35,12 +36,12 @@ export default function MobileBottomNav() {
       {
         to: "/dashboard",
         label: t("navigation:menu.dashboard"),
-        icon: <DashboardIcon size={22} />,
+        icon: DashboardIcon,
       },
-      { to: "/news", label: t("navigation:menu.news"), icon: <ArticleIcon size={22} /> },
-      { to: "/events", label: t("navigation:menu.events"), icon: <EventNoteIcon size={22} /> },
-      { to: "/schedule", label: t("navigation:menu.schedule"), icon: <TodayIcon size={22} /> },
-      { to: "/profile", label: t("navigation:menu.profile"), icon: <PersonIcon size={22} /> },
+      { to: "/news", label: t("navigation:menu.news"), icon: ArticleIcon },
+      { to: "/events", label: t("navigation:menu.events"), icon: EventNoteIcon },
+      { to: "/schedule", label: t("navigation:menu.schedule"), icon: TodayIcon },
+      { to: "/profile", label: t("navigation:menu.profile"), icon: PersonIcon },
     ],
     [t]
   )
@@ -52,16 +53,13 @@ export default function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-navbar flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
-        style={{
-          transitionDuration: "600ms",
-          transitionTimingFunction: "var(--ease-premium)",
-        }}
+        className="fixed bottom-0 left-0 right-0 z-(--z-navbar) flex h-(--bottom-nav-h) w-full items-center justify-around bottom-nav-glass border-t border-glass-border pb-(--safe-area-bottom) shadow-up transition-all md:hidden"
         role="navigation"
         aria-label={t("navigation:aria.mainNavigation")}
       >
         {items.map((it) => {
           const isActive = pathname.startsWith(it.to) && (it.to !== "/" || pathname === "/")
+          const Icon = it.icon
           return (
             <Link
               key={it.to}
@@ -73,51 +71,68 @@ export default function MobileBottomNav() {
                   smoothToTop(getScrollRoot())
                 }
               }}
-              className={
-                "group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none " +
-                (isActive
-                  ? "active text-brand font-bold scale-110"
-                  : "opacity-strong hover:opacity-100")
-              }
+              className="group relative flex flex-1 flex-col items-center justify-center py-1 text-text-primary transition-all outline-none select-none"
               aria-label={it.label}
             >
-              <div className="relative">
-                {isActive && (
-                  <motion.div
-                    layoutId="bottom-nav-active-glow"
-                    className="absolute inset-(calc(var(--space-4)*-1)) rounded-full bg-brand opacity-subtle blur-glass z-negative"
-                    transition={springBouncy}
-                  />
-                )}
+              {/* Morphing pill indicator */}
+              {isActive && (
+                <motion.div
+                  layoutId="bottom-nav-pill"
+                  className="absolute inset-x-2 top-1 bottom-1 rounded-(--bottom-nav-pill-radius) bottom-nav-pill z-negative"
+                  transition={prefersReducedMotion ? { duration: 0 } : springBouncy}
+                />
+              )}
+
+              <div className="relative z-surface">
                 <motion.span
-                  className="block z-decor"
+                  className="block"
                   animate={{
-                    y: isActive ? -2 : 0,
-                    scale: isActive ? 1.15 : 1,
+                    y: isActive ? -1 : 0,
+                    scale: isActive ? 1.1 : 1,
                   }}
-                  whileTap={{ scale: 0.9 }}
-                  transition={springSoft}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
+                  transition={prefersReducedMotion ? { duration: 0 } : springSoft}
                 >
-                  {it.icon}
+                  <Icon
+                    size={20}
+                    className={
+                      isActive
+                        ? "text-(--nav-active-color)"
+                        : "text-(--text-secondary) group-hover:text-(--text-primary)"
+                    }
+                  />
                 </motion.span>
               </div>
-              <motion.span
-                className="z-decor text-label-xs font-black uppercase tracking-tight"
-                animate={{
-                  opacity: isActive ? 1 : 0.7,
-                }}
-                transition={springSoft}
-              >
-                {it.label}
-              </motion.span>
+
+              {/* Label — visible when active, hidden otherwise for space saving */}
+              <AnimatePresence mode="wait">
+                {isActive && (
+                  <motion.span
+                    key={`label-${it.to}`}
+                    initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                    className="z-surface text-[10px] font-bold uppercase tracking-tight text-(--nav-active-color) mt-0.5 leading-tight"
+                  >
+                    {it.label}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+
+              {/* Dot for inactive items */}
+              {!isActive && (
+                <span className="h-1 w-1 rounded-full bg-(--text-tertiary) mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+              )}
             </Link>
           )
         })}
       </nav>
+
       {/* Spacer for bottom nav */}
       {!pathname.startsWith("/messenger") && (
         <span
-          className="h-navbar-height bg-transparent transition-colors duration-slow md:hidden relative z-decor"
+          className="h-(--bottom-nav-h) bg-transparent md:hidden relative z-decor"
           aria-hidden="true"
         />
       )}

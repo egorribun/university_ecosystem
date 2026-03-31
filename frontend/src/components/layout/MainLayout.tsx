@@ -20,11 +20,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {t("navigation:aria.skipLink")}
       </a>
 
-      {!isCompactPage && (
-        <div className="vt-navbar">
-          <Navbar />
-        </div>
-      )}
+      {!isCompactPage && <Navbar />}
 
       <main
         id="main-content"

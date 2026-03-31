@@ -1,14 +1,13 @@
-import { motion } from "framer-motion"
-import { springSoft, springBouncy } from "@/utils/animations"
+import { useMemo } from "react"
 import NotificationsBell from "@/components/feedback/NotificationsBell"
 import MessengerButton from "@/components/layout/MessengerButton"
 import SmartImage from "@/components/media/SmartImage"
 import { Settings as SettingsIcon } from "lucide-react"
-import { type User } from "@/types/User" // Assuming User type location, will verify imports
-import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders" // Verify import
+import { type User } from "@/types/User"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { parseCacheVersion } from "@/utils/cache"
-import { useMemo } from "react"
 import { Skeleton } from "@/components/ui"
+import { cn } from "@/utils/cn"
 
 interface UserMenuProps {
   user: User | null
@@ -16,9 +15,23 @@ interface UserMenuProps {
   loading: boolean
   go: (to: string) => void
   t: (key: string) => string
+  isCompact?: boolean
+  prefersReducedMotion?: boolean
 }
 
-export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
+/**
+ * UserMenu — all transitions use CSS only.
+ * Every child shares 500ms ease-premium timing with the pill container.
+ */
+export const UserMenu = ({
+  user,
+  isAuth,
+  loading,
+  go,
+  t,
+  isCompact = false,
+  prefersReducedMotion = false,
+}: UserMenuProps) => {
   const avatarCacheV = useMemo(() => {
     const raw = user?.avatar_updated_at ?? user?.avatar_version ?? user?.updated_at ?? undefined
     return parseCacheVersion(raw)
@@ -27,22 +40,18 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
   const avatarSource = user?.avatar_url || ""
   const hasAvatar = Boolean(avatarSource)
   const profileAlt = user?.full_name
-    ? t("navigation:aria.profileAvatarNamed") // We can't interpolate here easily if t signature is simple, let's fix this in usage or assume t handles it.
-    : // Actually, t functions usually return string. We should pass the translated string or the t function.
-      // Passing t is fine.
-      t("navigation:aria.profileAvatar")
-
-  // NOTE: In the original code: t("navigation:aria.profileAvatarNamed", { name: user.full_name })
-  // We will handle the string construction inside the component if we have access to t, or pass ready strings.
-  // Let's pass 't' and handle it.
-
+    ? t("navigation:aria.profileAvatarNamed")
+    : t("navigation:aria.profileAvatar")
   const profileTitle = t("navigation:aria.openProfile")
+
+  const dur = prefersReducedMotion ? "duration-0" : "duration-500"
+  const ease = "ease-[var(--ease-premium)]"
 
   if (loading) {
     return (
-      <div className="ml-auto flex items-center gap-4" aria-hidden="true">
-        <Skeleton className="rounded-full w-10 h-10 bg-brand/(--opacity-dim)" />
-        <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />
+      <div className="ml-auto flex items-center gap-3" aria-hidden="true">
+        <Skeleton className="rounded-full w-9 h-9 bg-brand/(--opacity-dim)" />
+        {!isCompact && <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />}
       </div>
     )
   }
@@ -50,57 +59,79 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
   if (!isAuth || !user) return null
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: 0.4, ...springSoft }}
-      className="ml-auto flex min-w-0 items-center gap-4 whitespace-nowrap"
+    <div
+      className={cn(
+        "ml-auto flex min-w-0 items-center whitespace-nowrap",
+        "transition-[gap]", dur, ease,
+        isCompact ? "gap-2" : "gap-3"
+      )}
     >
       <MessengerButton />
       <NotificationsBell />
-      <div className="flex h-10 items-center gap-3 pl-4 border-l border-(--glass-border) ml-2">
-        <motion.div
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          transition={springBouncy}
-        >
-          <SmartImage
-            srcRaw={hasAvatar ? avatarSource : AVATAR_PLACEHOLDER_URL}
-            cacheV={hasAvatar ? avatarCacheV : undefined}
-            fallback={AVATAR_PLACEHOLDER_URL}
-            alt={profileAlt} // If t requires params, this might be broken. We'll fix in next step if needed.
-            title={profileTitle}
-            className="block h-9 w-9 cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface-raised) object-cover shadow-sm hover:shadow-md transition-all duration-base"
-            onClick={() => go("/profile")}
-          />
-        </motion.div>
-        <button
-          type="button"
-          onClick={() => go("/profile")}
-          aria-label={profileTitle}
+
+      <div
+        className={cn(
+          "flex items-center border-l border-(--glass-border)",
+          "transition-[gap,padding,height]", dur, ease,
+          isCompact ? "gap-2 pl-2 ml-1 h-8" : "gap-3 pl-4 ml-2 h-10"
+        )}
+      >
+        {/* Avatar */}
+        <SmartImage
+          srcRaw={hasAvatar ? avatarSource : AVATAR_PLACEHOLDER_URL}
+          cacheV={hasAvatar ? avatarCacheV : undefined}
+          fallback={AVATAR_PLACEHOLDER_URL}
+          alt={profileAlt}
           title={profileTitle}
-          className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-text-primary tracking-tight text-base hover:text-brand transition-colors"
+          className={cn(
+            "block cursor-pointer rounded-full border bg-(--bg-surface-raised) object-cover",
+            "transition-[width,height,box-shadow]", dur, ease,
+            isCompact ? "h-7 w-7" : "h-9 w-9",
+            "border-(--border-subtle)",
+            "hover:shadow-[var(--avatar-ring-glow)]",
+            !prefersReducedMotion && "hover:scale-[1.05] active:scale-[0.95]"
+          )}
+          onClick={() => go("/profile")}
+        />
+
+        {/* User name — instant hide/show, no visible fade */}
+        <div
+          className={cn(
+            "overflow-hidden",
+            isCompact ? "max-w-0 opacity-0" : "max-w-48 opacity-100"
+          )}
         >
-          {user.full_name}
-        </button>
-        <motion.button
+          <button
+            type="button"
+            onClick={() => go("/profile")}
+            aria-label={profileTitle}
+            title={profileTitle}
+            className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-text-primary tracking-tight text-base hover:text-brand transition-colors whitespace-nowrap"
+          >
+            {user.full_name}
+          </button>
+        </div>
+
+        {/* Settings gear */}
+        <button
           id="navbar-settings-btn"
-          whileHover={{
-            rotate: 90,
-            scale: 1.1,
-            backgroundColor: "var(--bg-surface-hover)",
-          }}
-          whileTap={{ scale: 0.9 }}
-          transition={springSoft}
           type="button"
-          className="flex items-center justify-center w-10 h-10 rounded-2xl text-text-primary transition-colors"
+          className={cn(
+            "flex items-center justify-center rounded-2xl text-text-primary cursor-pointer border-none bg-transparent",
+            "transition-[width,height,transform]", dur, ease,
+            isCompact ? "w-8 h-8" : "w-10 h-10",
+            !prefersReducedMotion && "hover:rotate-90 hover:scale-110 active:scale-90"
+          )}
           onClick={() => go("/settings")}
           aria-label={t("navigation:menu.settings")}
           title={t("navigation:menu.settings")}
         >
-          <SettingsIcon className="h-6 w-6" />
-        </motion.button>
+          <SettingsIcon className={cn(
+            "transition-[width,height]", dur, ease,
+            isCompact ? "h-4 w-4" : "h-5 w-5"
+          )} />
+        </button>
       </div>
-    </motion.div>
+    </div>
   )
 }

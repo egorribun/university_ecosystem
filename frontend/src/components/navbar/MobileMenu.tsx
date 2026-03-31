@@ -1,10 +1,15 @@
 import { createPortal } from "react-dom"
-import { useEffect } from "react"
+import { useEffect, useCallback } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
-import { Settings } from "lucide-react"
+import { X } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { useAppShell } from "@/contexts/AppShellContext"
+import { useSwipeGesture } from "@/hooks/useSwipeGesture"
+import { MobileDrawerProfile } from "./MobileDrawerProfile"
+import { MobileDrawerQuickActions } from "./MobileDrawerQuickActions"
+import { springSoft } from "@/utils/animations"
 import type { User } from "@/types/User"
 
 interface MenuLink {
@@ -25,6 +30,13 @@ interface MobileMenuProps {
   drawerTrapRef: React.RefObject<HTMLDivElement | null>
 }
 
+const drawerSpring = {
+  type: "spring" as const,
+  stiffness: 300,
+  damping: 28,
+  mass: 0.8,
+}
+
 export function MobileMenu({
   isOpen,
   onClose,
@@ -38,6 +50,15 @@ export function MobileMenu({
 }: MobileMenuProps) {
   const { t } = useTranslation(["navigation"])
   const { setOverlayState } = useAppShell()
+
+  const handleClose = useCallback(() => onClose(), [onClose])
+
+  const { dragOffset, handlers } = useSwipeGesture({
+    direction: "right",
+    threshold: 80,
+    onSwipeClose: handleClose,
+    enabled: isOpen,
+  })
 
   // Prevent scrolling and manage overlay blur
   useEffect(() => {
@@ -65,105 +86,152 @@ export function MobileMenu({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, onClose])
 
+  const handleSearch = () => {
+    onClose()
+    // Trigger Cmd+K search dialog
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))
+  }
+
   return createPortal(
-    <>
-      <button
-        type="button"
-        className={cn(
-          "mobile-drawer-backdrop fixed inset-0 z-overlay h-full w-full border-none p-0 cursor-default outline-none",
-          isOpen
-            ? "pointer-events-auto bg-black/(--opacity-dim)"
-            : "pointer-events-none bg-transparent",
-          !prefersReducedMotion && "transition-colors duration-fast"
-        )}
-        onClick={onClose}
-        aria-label={t("navigation:aria.closeMenu")}
-        data-testid="mobile-menu-backdrop"
-        tabIndex={-1}
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.button
+            type="button"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
+            className="fixed inset-0 z-overlay h-full w-full border-none p-0 cursor-default outline-none bg-(--drawer-overlay)"
+            onClick={onClose}
+            aria-label={t("navigation:aria.closeMenu")}
+            data-testid="mobile-menu-backdrop"
+            tabIndex={-1}
+          />
 
-      <div
-        id="mobile-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("navigation:aria.mobileMenu")}
-        ref={drawerTrapRef}
-        className={cn(
-          "fixed inset-y-0 left-0 z-overlay flex h-full w-(--mobile-menu-w) max-w-(--w-drawer-mobile-max) flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-slow ease-premium",
-          "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-        tabIndex={-1}
-      >
-        <div className="flex-1 overflow-y-auto px-4 py-8">
-          <ul className="flex flex-col gap-2">
-            {menuLinks.map((item) => {
-              const Icon = item.icon
-              const active = isActive(item.to)
-              return (
-                <li key={item.to}>
-                  <Link
-                    id={`mobile-nav-link-${item.to.replace(/\//g, "") || "home"}`}
-                    to={item.to}
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-base",
-                      active
-                        ? "bg-(--primary-main)/(--opacity-subtle) text-(--primary-main) shadow-sm"
-                        : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
-                    )}
-                  >
-                    {Icon && (
-                      <Icon
-                        className={cn(
-                          "text-icon-lg transition-colors",
-                          active ? "text-(--primary-main)" : "text-(--text-secondary)"
-                        )}
-                      />
-                    )}
-                    {item.label}
-                  </Link>
-                </li>
-              )
-            })}
-            {isAuth && user && (
-              <li className="mt-4 pt-4 border-t border-(--glass-border)">
-                <button
-                  id="mobile-nav-link-settings"
-                  type="button"
-                  className={cn(
-                    "flex w-full items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-base",
-                    isActive("/settings")
-                      ? "bg-(--primary-main)/(--opacity-subtle) text-(--primary-main) shadow-sm"
-                      : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onClose()
-                    go("/settings")
-                  }}
-                  aria-label={t("navigation:menu.settings")}
-                >
-                  <Settings
-                    className={cn(
-                      "text-icon-lg transition-colors",
-                      isActive("/settings") ? "text-(--primary-main)" : "text-(--text-secondary)"
-                    )}
-                  />
-                  {t("navigation:menu.settings")}
-                </button>
-              </li>
+          {/* Drawer — slides from RIGHT */}
+          <motion.div
+            id="mobile-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("navigation:aria.mobileMenu")}
+            ref={drawerTrapRef}
+            initial={{ x: "100%" }}
+            animate={{ x: dragOffset > 0 ? dragOffset : 0 }}
+            exit={{ x: "100%" }}
+            transition={prefersReducedMotion ? { duration: 0 } : drawerSpring}
+            className={cn(
+              "fixed inset-y-0 right-0 z-overlay flex h-full flex-col",
+              "w-(--drawer-w) max-w-(--drawer-w-max)",
+              "drawer-glass glass-noise",
+              "shadow-glass-strong"
             )}
-          </ul>
-        </div>
+            tabIndex={-1}
+            {...handlers}
+          >
+            {/* Close button */}
+            <div className="flex items-center justify-end px-4 pt-4 pb-1">
+              <motion.button
+                type="button"
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
+                transition={prefersReducedMotion ? { duration: 0 } : springSoft}
+                onClick={onClose}
+                className="flex items-center justify-center size-10 rounded-xl text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-surface-hover)/(--opacity-soft) transition-all duration-200 cursor-pointer border-none bg-transparent"
+                aria-label={t("navigation:aria.closeMenu")}
+              >
+                <X size={20} />
+              </motion.button>
+            </div>
 
-        <div className="border-t border-(--glass-border) p-8">
-          <div className="text-center text-xs font-medium text-(--text-secondary) opacity-medium">
-            © {new Date().getFullYear()} {t("navigation:brandName")}
-          </div>
-        </div>
-      </div>
-    </>,
+            {/* Profile card */}
+            {isAuth && user && (
+              <div className="px-2 pb-2">
+                <MobileDrawerProfile
+                  user={user}
+                  onProfileClick={() => {
+                    onClose()
+                    go("/profile")
+                  }}
+                  t={t}
+                />
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <MobileDrawerQuickActions
+              onSearch={handleSearch}
+              onNotifications={() => {
+                onClose()
+                // Notifications are handled inline via NotificationsBell
+              }}
+              onSettings={() => {
+                onClose()
+                go("/settings")
+              }}
+              prefersReducedMotion={prefersReducedMotion}
+              t={t}
+            />
+
+            {/* Separator */}
+            <div className="mx-4 my-2 h-px bg-(--glass-border)" />
+
+            {/* Navigation items */}
+            <div className="flex-1 overflow-y-auto px-3 py-2">
+              <ul className="flex flex-col gap-1">
+                {menuLinks.map((item, index) => {
+                  const Icon = item.icon
+                  const active = isActive(item.to)
+                  return (
+                    <motion.li
+                      key={item.to}
+                      initial={prefersReducedMotion ? false : { opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={
+                        prefersReducedMotion
+                          ? { duration: 0 }
+                          : { delay: 0.05 + index * 0.03, ...springSoft }
+                      }
+                    >
+                      <Link
+                        id={`mobile-nav-link-${item.to.replace(/\//g, "") || "home"}`}
+                        to={item.to}
+                        onClick={onClose}
+                        className={cn(
+                          "flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-semibold transition-all",
+                          prefersReducedMotion ? "duration-0" : "duration-200",
+                          active
+                            ? "bg-(--nav-active-glow) text-(--nav-active-color) shadow-sm"
+                            : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-soft) hover:text-(--text-primary)"
+                        )}
+                      >
+                        {Icon && (
+                          <Icon
+                            className={cn(
+                              "shrink-0 transition-colors",
+                              active ? "text-(--nav-active-color)" : "text-(--text-tertiary)"
+                            )}
+                            size={18}
+                          />
+                        )}
+                        {item.label}
+                      </Link>
+                    </motion.li>
+                  )
+                })}
+              </ul>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-(--glass-border) px-6 py-4">
+              <div className="text-center text-xs font-medium text-(--text-tertiary)">
+                © {new Date().getFullYear()} {t("navigation:brandName")}
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>,
     document.body
   )
 }

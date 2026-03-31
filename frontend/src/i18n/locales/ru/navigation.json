@@ -13,7 +13,15 @@
     "notificationsAdmin": "Очередь уведомлений",
     "users": "Пользователи",
     "profile": "Профиль",
-    "settings": "Настройки"
+    "settings": "Настройки",
+    "search": "Поиск",
+    "notifications": "Уведомления",
+    "featureFlags": "Флаги",
+    "audit": "Аудит"
+  },
+  "role": {
+    "admin": "Администратор",
+    "student": "Студент"
   },
   "aria": {
     "homeLink": "Перейти на главную",

@@ -13,7 +13,15 @@
     "notificationsAdmin": "Notification queue",
     "users": "Users",
     "profile": "Profile",
-    "settings": "Settings"
+    "settings": "Settings",
+    "search": "Search",
+    "notifications": "Notifications",
+    "featureFlags": "Feature flags",
+    "audit": "Audit"
+  },
+  "role": {
+    "admin": "Administrator",
+    "student": "Student"
   },
   "aria": {
     "homeLink": "Go to home page",

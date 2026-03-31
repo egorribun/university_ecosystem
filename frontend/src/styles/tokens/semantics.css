@@ -190,6 +190,38 @@
       color-mix(in srgb, var(--color-slate-900) var(--opacity-strong), transparent) 95%
     );
 
+    /* Morphing Navbar Pill — Wave 50 (Light) */
+    --pill-bg: color-mix(in srgb, var(--color-white) 82%, transparent);
+    --pill-border: color-mix(in srgb, var(--color-white) 40%, transparent);
+    --pill-shadow:
+      0 4px 24px color-mix(in srgb, var(--color-slate-400) 18%, transparent),
+      0 1px 4px color-mix(in srgb, black 6%, transparent);
+    --pill-shadow-breathe:
+      0 4px 24px color-mix(in srgb, var(--color-slate-400) 18%, transparent),
+      0 1px 4px color-mix(in srgb, black 6%, transparent),
+      0 0 20px color-mix(in srgb, var(--color-blue-500) 10%, transparent);
+    --pill-glow: color-mix(in srgb, var(--color-blue-500) 10%, transparent);
+
+    /* Active Indicator — Wave 50 (Light) */
+    --nav-active-color: var(--color-blue-600);
+    --nav-active-glow: color-mix(in srgb, var(--color-blue-600) 15%, transparent);
+
+    /* Avatar Ring — Wave 50 (Light) */
+    --avatar-ring-glow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 30%, transparent);
+
+    /* Mobile Drawer — Wave 50 (Light) */
+    --drawer-bg: color-mix(in srgb, var(--color-white) 92%, transparent);
+    --drawer-overlay: color-mix(in srgb, black 20%, transparent);
+
+    /* Bottom Nav Pill — Wave 50 (Light) */
+    --bottom-pill-bg: var(--color-blue-50);
+    --bottom-pill-border: color-mix(in srgb, var(--color-blue-600) 20%, transparent);
+    --bottom-nav-bg: color-mix(in srgb, var(--color-white) 90%, transparent);
+
+    /* Notification Badge — Wave 50 (Light) */
+    --notif-badge: var(--color-red-500);
+    --notif-badge-glow: none;
+
     /* UI Specialty Colors (Light) */
     --bg-nav-light: color-mix(in srgb, var(--color-white) var(--opacity-heavy), transparent);
     --bg-nav-dark: color-mix(in srgb, var(--color-slate-950) var(--opacity-heavy), transparent);
@@ -287,6 +319,38 @@
       var(--color-emerald-400) var(--opacity-soft),
       transparent
     );
+
+    /* Morphing Navbar Pill — Wave 50 (Dark) */
+    --pill-bg: color-mix(in srgb, var(--color-slate-900) 85%, transparent);
+    --pill-border: color-mix(in srgb, var(--color-white) 14%, transparent);
+    --pill-shadow:
+      0 4px 24px color-mix(in srgb, black 30%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+    --pill-shadow-breathe:
+      0 4px 24px color-mix(in srgb, black 30%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent),
+      0 0 20px color-mix(in srgb, var(--color-sky-400) 8%, transparent);
+    --pill-glow: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
+
+    /* Active Indicator — Wave 50 (Dark) */
+    --nav-active-color: var(--color-sky-400);
+    --nav-active-glow: color-mix(in srgb, var(--color-sky-400) 20%, transparent);
+
+    /* Avatar Ring — Wave 50 (Dark) */
+    --avatar-ring-glow: 0 0 0 3px color-mix(in srgb, var(--color-sky-400) 25%, transparent);
+
+    /* Mobile Drawer — Wave 50 (Dark) */
+    --drawer-bg: color-mix(in srgb, var(--color-slate-900) 88%, transparent);
+    --drawer-overlay: color-mix(in srgb, black 40%, transparent);
+
+    /* Bottom Nav Pill — Wave 50 (Dark) */
+    --bottom-pill-bg: color-mix(in srgb, var(--color-sky-950) 80%, transparent);
+    --bottom-pill-border: color-mix(in srgb, var(--color-sky-400) 20%, transparent);
+    --bottom-nav-bg: color-mix(in srgb, var(--color-slate-950) 88%, transparent);
+
+    /* Notification Badge — Wave 50 (Dark) */
+    --notif-badge: var(--color-red-400);
+    --notif-badge-glow: 0 0 8px color-mix(in srgb, var(--color-red-400) 30%, transparent);
 
     /* Messenger Semantic Colors (Dark) */
     --msg-sidebar-bg: var(--color-slate-900);
