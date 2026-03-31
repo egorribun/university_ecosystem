@@ -53,8 +53,9 @@
     --w-story-card-md: 420px;
     --w-mobile-menu: 300px;
 
-    /* Morphing Navbar — Wave 50 */
+    /* Morphing Navbar — Wave 51 */
     --navbar-pill-max-w: 780px;
+    --navbar-pill-max-w-xl: 920px;
     --navbar-pill-h: 52px;
     --navbar-pill-radius: 1.75rem;
     --navbar-pill-mt: 12px;

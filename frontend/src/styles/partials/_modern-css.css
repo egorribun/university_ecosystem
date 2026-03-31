@@ -270,8 +270,13 @@
     var(--motion-duration-base) var(--ease-premium) both slide-in-up;
 }
 
-/* Navbar persists across transitions (no animation) */
-::view-transition-old(navbar),
+/* Navbar persists across transitions — old snapshot hidden instantly,
+   new snapshot shown instantly. Prevents glow doubling and stale active state. */
+::view-transition-old(navbar) {
+  animation: none;
+  display: none;
+}
+
 ::view-transition-new(navbar) {
   animation: none;
 }

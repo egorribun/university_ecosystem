@@ -44,16 +44,26 @@ export const NavbarLogo = ({
       onPointerDown={markScrollFromBottom}
       onClick={onLogoClick}
     >
-      {/* Logo circle — CSS transition synced with pill */}
+      {/* Logo circle — CSS transition synced with pill + shimmer on load */}
       <div
         className={cn(
           "flex items-center justify-center shrink-0 rounded-full",
           "bg-(--bg-surface-raised) shadow-sm border border-border-subtle",
-          "transition-[width,height]", dur, ease,
+          "transition-[width,height,transform,box-shadow]", dur, ease,
           isCompact ? "w-8 h-8" : "w-11 h-11",
-          "hover:scale-[1.03] active:scale-[0.97]",
-          !prefersReducedMotion && "hover:transition-transform hover:duration-200"
+          "hover:scale-105 hover:shadow-[var(--nav-link-hover-glow)] active:scale-95",
+          !prefersReducedMotion && "hover:transition-transform hover:duration-200",
+          !prefersReducedMotion && "animate-logo-shimmer",
         )}
+        style={
+          !prefersReducedMotion
+            ? {
+                backgroundImage:
+                  "linear-gradient(90deg, transparent 30%, color-mix(in srgb, white 20%, transparent) 50%, transparent 70%)",
+                backgroundSize: "200% 100%",
+              }
+            : undefined
+        }
       >
         <SmartImage
           srcRaw={guuLogo}
@@ -74,7 +84,7 @@ export const NavbarLogo = ({
           isCompact ? "max-w-0 opacity-0" : "max-w-40 opacity-100"
         )}
       >
-        <span className="whitespace-nowrap font-black tracking-tight text-lg leading-tight text-brand">
+        <span className="whitespace-nowrap font-black tracking-tight text-lg leading-tight text-text-primary">
           {t("navigation:brandName")}
         </span>
       </div>

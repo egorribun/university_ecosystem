@@ -130,8 +130,15 @@ export function MobileMenu({
             tabIndex={-1}
             {...handlers}
           >
+            {/* Decorative accent gradient line */}
+            <div
+              className="h-0.5 w-full shrink-0"
+              style={{ background: "var(--drawer-accent-gradient)" }}
+              aria-hidden="true"
+            />
+
             {/* Close button */}
-            <div className="flex items-center justify-end px-4 pt-4 pb-1">
+            <div className="flex items-center justify-end px-4 pt-3 pb-1">
               <motion.button
                 type="button"
                 whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
@@ -173,8 +180,13 @@ export function MobileMenu({
               t={t}
             />
 
-            {/* Separator */}
-            <div className="mx-4 my-2 h-px bg-(--glass-border)" />
+            {/* Separator — gradient fade */}
+            <div
+              className="mx-4 my-2 h-px"
+              style={{
+                background: "linear-gradient(90deg, transparent, var(--glass-border), transparent)",
+              }}
+            />
 
             {/* Navigation items */}
             <div className="flex-1 overflow-y-auto px-3 py-2">
@@ -197,20 +209,12 @@ export function MobileMenu({
                         id={`mobile-nav-link-${item.to.replace(/\//g, "") || "home"}`}
                         to={item.to}
                         onClick={onClose}
-                        className={cn(
-                          "flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-semibold transition-all",
-                          prefersReducedMotion ? "duration-0" : "duration-200",
-                          active
-                            ? "bg-(--nav-active-glow) text-(--nav-active-color) shadow-sm"
-                            : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-soft) hover:text-(--text-primary)"
-                        )}
+                        className="mobile-nav-link"
+                        data-active={active || undefined}
                       >
                         {Icon && (
                           <Icon
-                            className={cn(
-                              "shrink-0 transition-colors",
-                              active ? "text-(--nav-active-color)" : "text-(--text-tertiary)"
-                            )}
+                            className="mobile-nav-link-icon shrink-0"
                             size={18}
                           />
                         )}

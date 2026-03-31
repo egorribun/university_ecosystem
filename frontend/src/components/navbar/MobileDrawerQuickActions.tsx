@@ -23,7 +23,7 @@ export function MobileDrawerQuickActions({
   ]
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2">
+    <div className="grid grid-cols-3 gap-2 px-3 py-2">
       {actions.map((action) => {
         const Icon = action.icon
         return (
@@ -34,16 +34,22 @@ export function MobileDrawerQuickActions({
             aria-label={action.label}
             title={action.label}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3",
+              "flex flex-col items-center justify-center gap-1 rounded-xl py-3 px-1",
               "border border-(--glass-border) bg-(--bg-surface-hover)/(--opacity-subtle)",
-              "text-(--text-secondary) text-xs font-medium",
-              "transition-all hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:text-(--text-primary)",
+              "text-(--text-primary) text-[11px] font-medium leading-tight",
+              "transition-all hover:bg-(--bg-surface-hover)/(--opacity-dim)",
               prefersReducedMotion ? "duration-0" : "duration-200",
-              "cursor-pointer"
+              "cursor-pointer",
+              !prefersReducedMotion && "active:scale-[0.97]"
             )}
           >
-            <Icon size={16} aria-hidden="true" />
-            <span className="hidden min-[360px]:inline">{action.label}</span>
+            <span
+              className="flex shrink-0 items-center justify-center rounded-lg p-1.5"
+              style={{ backgroundColor: "var(--quick-action-icon-bg)" }}
+            >
+              <Icon size={16} aria-hidden="true" />
+            </span>
+            <span className="text-center">{action.label}</span>
           </button>
         )
       })}

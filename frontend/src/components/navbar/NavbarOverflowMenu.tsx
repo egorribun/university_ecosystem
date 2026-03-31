@@ -77,6 +77,7 @@ export function NavbarOverflowMenu({
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             className="absolute right-0 top-full mt-2 min-w-48 rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-glass backdrop-blur-xl z-dropdown"
+            style={{ boxShadow: "var(--pill-shadow), var(--pill-inner-glow)" }}
           >
             {items.map((item) => {
               const Icon = item.icon
@@ -89,13 +90,8 @@ export function NavbarOverflowMenu({
                     setOpen(false)
                     go(item.to)
                   }}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
-                    prefersReducedMotion ? "duration-0" : "duration-150",
-                    active
-                      ? "text-(--nav-active-color) bg-(--nav-active-glow)"
-                      : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-surface-hover)/(--opacity-soft)"
-                  )}
+                  className="mobile-nav-link text-sm"
+                  data-active={active || undefined}
                 >
                   <Icon size={16} aria-hidden="true" />
                   {item.label}

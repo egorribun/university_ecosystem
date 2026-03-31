@@ -71,12 +71,12 @@ export const UserMenu = ({
 
       <div
         className={cn(
-          "flex items-center border-l border-(--glass-border)",
+          "flex items-center",
           "transition-[gap,padding,height]", dur, ease,
-          isCompact ? "gap-2 pl-2 ml-1 h-8" : "gap-3 pl-4 ml-2 h-10"
+          isCompact ? "gap-2 ml-1 h-8" : "gap-3 ml-3 h-10"
         )}
       >
-        {/* Avatar */}
+        {/* Avatar — premium ring glow on hover */}
         <SmartImage
           srcRaw={hasAvatar ? avatarSource : AVATAR_PLACEHOLDER_URL}
           cacheV={hasAvatar ? avatarCacheV : undefined}
@@ -85,11 +85,11 @@ export const UserMenu = ({
           title={profileTitle}
           className={cn(
             "block cursor-pointer rounded-full border bg-(--bg-surface-raised) object-cover",
-            "transition-[width,height,box-shadow]", dur, ease,
+            "transition-[width,height,box-shadow,transform]", dur, ease,
             isCompact ? "h-7 w-7" : "h-9 w-9",
             "border-(--border-subtle)",
             "hover:shadow-[var(--avatar-ring-glow)]",
-            !prefersReducedMotion && "hover:scale-[1.05] active:scale-[0.95]"
+            !prefersReducedMotion && "hover:scale-105 active:scale-95"
           )}
           onClick={() => go("/profile")}
         />
@@ -112,16 +112,18 @@ export const UserMenu = ({
           </button>
         </div>
 
-        {/* Settings gear */}
+        {/* Settings gear — smooth rotation with will-change */}
         <button
           id="navbar-settings-btn"
           type="button"
           className={cn(
-            "flex items-center justify-center rounded-2xl text-text-primary cursor-pointer border-none bg-transparent",
-            "transition-[width,height,transform]", dur, ease,
+            "flex items-center justify-center rounded-2xl text-text-primary cursor-pointer border-none",
+            "transition-[width,height,transform,background]", dur, ease,
             isCompact ? "w-8 h-8" : "w-10 h-10",
-            !prefersReducedMotion && "hover:rotate-90 hover:scale-110 active:scale-90"
+            "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+            !prefersReducedMotion && "hover:rotate-90 hover:scale-110 active:scale-90",
           )}
+          style={{ willChange: "transform", backgroundColor: "transparent" }}
           onClick={() => go("/settings")}
           aria-label={t("navigation:menu.settings")}
           title={t("navigation:menu.settings")}

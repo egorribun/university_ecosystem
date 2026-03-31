@@ -53,25 +53,17 @@ const Navbar = () => {
           "h-(--navbar-height)",
           "flex items-center justify-center",
           // Only visual properties transition (no height, no padding)
-          "transition-[background,border-color,backdrop-filter,box-shadow]",
+          "transition-[background,backdrop-filter,box-shadow]",
           dur, ease,
           showPill
-            ? [
-                // Desktop scrolled: transparent shell, pill provides visual bg
-                "bg-transparent border-b border-transparent",
-              ]
+            ? "bg-transparent"
             : isScrolled && isMobile
-              ? [
-                  // Mobile scrolled: glass bg on full-width nav
-                  "bg-(--pill-bg) backdrop-blur-xl backdrop-saturate-[1.4]",
-                  "border-b border-(--pill-border) shadow-[var(--pill-shadow)]",
-                ]
-              : [
-                  // Default: full-width glass nav
-                  "bg-nav/(--opacity-hover) backdrop-blur-(--blur-xl)",
-                  "border-b border-glass-border",
-                ]
+              ? "bg-(--pill-bg) backdrop-blur-xl backdrop-saturate-[1.4]"
+              : "bg-nav/(--opacity-hover) backdrop-blur-(--blur-xl)"
         )}
+        style={{
+          boxShadow: "0 1px 0 var(--nav-glow-line), 0 8px 30px 0px var(--nav-glow-spread)",
+        }}
       >
         <NavbarPill isCompact={showPill} prefersReducedMotion={prefersReducedMotion}>
           <NavbarLogo

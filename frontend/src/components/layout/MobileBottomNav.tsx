@@ -93,26 +93,32 @@ export default function MobileBottomNav() {
                   whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                   transition={prefersReducedMotion ? { duration: 0 } : springSoft}
                 >
-                  <Icon
-                    size={20}
-                    className={
-                      isActive
-                        ? "text-(--nav-active-color)"
-                        : "text-(--text-secondary) group-hover:text-(--text-primary)"
-                    }
-                  />
+                  {/* Active icon gets colored circular background */}
+                  {isActive ? (
+                    <span
+                      className="flex items-center justify-center rounded-lg p-0.5"
+                      style={{ backgroundColor: "var(--nav-active-glow)" }}
+                    >
+                      <Icon size={20} className="text-(--nav-active-color)" />
+                    </span>
+                  ) : (
+                    <Icon
+                      size={20}
+                      className="text-(--text-secondary) group-hover:text-(--text-primary)"
+                    />
+                  )}
                 </motion.span>
               </div>
 
-              {/* Label — visible when active, hidden otherwise for space saving */}
+              {/* Label — spring scale entry for premium feel */}
               <AnimatePresence mode="wait">
                 {isActive && (
                   <motion.span
                     key={`label-${it.to}`}
-                    initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                    initial={prefersReducedMotion ? false : { opacity: 0, height: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, height: "auto", scale: 1 }}
+                    exit={{ opacity: 0, height: 0, scale: 0.8 }}
+                    transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                     className="z-surface text-[10px] font-bold uppercase tracking-tight text-(--nav-active-color) mt-0.5 leading-tight"
                   >
                     {it.label}
@@ -120,9 +126,9 @@ export default function MobileBottomNav() {
                 )}
               </AnimatePresence>
 
-              {/* Dot for inactive items */}
+              {/* Dot for inactive items — slightly larger for visibility */}
               {!isActive && (
-                <span className="h-1 w-1 rounded-full bg-(--text-tertiary) mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                <span className="h-1 w-1.5 rounded-full bg-(--text-tertiary) mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
               )}
             </Link>
           )

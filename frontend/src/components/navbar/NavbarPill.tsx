@@ -7,14 +7,18 @@ interface NavbarPillProps {
 }
 
 /**
- * NavbarPill — morphing inner container.
+ * NavbarPill — morphing inner container (Wave 51: premium glass).
  *
  * The parent <nav> has FIXED height (64px always, no layout shift).
  * This container fills that height and transitions visual properties:
  * - Expanded: full width, no border-radius, transparent bg
- * - Compact: max-width 780px, pill shape, glass bg, margin to shrink inside nav
+ * - Compact: max-width pill, glass bg, layered shadows, inner glow, gradient overlay
  *
- * Uses `my-auto` + fixed pill height so it floats centered inside the 64px nav.
+ * Premium features (compact only):
+ * - 3-layer box-shadow + inner glow for realistic depth
+ * - ::after gradient overlay for directional lighting (lighter top edge)
+ * - glass-noise texture for frosted glass feel
+ * - 6s breathing animation (slower, more organic)
  */
 export function NavbarPill({ isCompact, prefersReducedMotion, children }: NavbarPillProps) {
   const dur = prefersReducedMotion ? "duration-0" : "duration-500"
@@ -28,12 +32,14 @@ export function NavbarPill({ isCompact, prefersReducedMotion, children }: Navbar
         dur, ease,
         isCompact
           ? [
-              // Compact pill: centered, rounded, glass bg, shorter
-              "mx-auto h-(--navbar-pill-h)",
+              // Compact pill: centered, rounded, premium glass
+              "relative mx-auto h-(--navbar-pill-h)",
               "max-w-(--navbar-pill-max-w) rounded-[var(--navbar-pill-radius)]",
-              "bg-(--pill-bg) border border-(--pill-border) shadow-[var(--pill-shadow)]",
+              "bg-(--pill-bg) border border-(--pill-border)",
+              "shadow-[var(--pill-shadow),var(--pill-inner-glow)]",
               "backdrop-blur-xl backdrop-saturate-[1.4]",
               "px-(--navbar-pill-px)",
+              "glass-noise",
               !prefersReducedMotion && "animate-pill-breathe",
             ]
           : [
@@ -44,7 +50,18 @@ export function NavbarPill({ isCompact, prefersReducedMotion, children }: Navbar
             ]
       )}
     >
-      {children}
+      {/* Directional gradient overlay — top-edge light reflection */}
+      {isCompact && (
+        <div
+          className="pointer-events-none absolute inset-0 rounded-[inherit] z-0"
+          style={{ background: "var(--pill-gradient)" }}
+          aria-hidden="true"
+        />
+      )}
+      {/* Content sits above the gradient overlay */}
+      <div className={cn("relative z-[1] flex w-full items-center", isCompact ? "gap-0" : "")}>
+        {children}
+      </div>
     </div>
   )
 }

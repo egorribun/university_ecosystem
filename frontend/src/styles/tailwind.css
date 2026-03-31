@@ -174,9 +174,13 @@
   --color-bottom-nav-bg: var(--bottom-nav-bg);
   --color-notif-badge: var(--notif-badge);
 
-  /* Animations — Wave 50 */
-  --animate-pill-breathe: pill-breathe 4s ease-in-out infinite;
+  /* Animations — Wave 51 */
+  --animate-pill-breathe: pill-breathe 6s ease-in-out infinite;
   --animate-bell-wobble: bell-wobble 0.5s ease-in-out;
+  --animate-logo-shimmer: logo-shimmer 1.5s ease-in-out 1;
+  --animate-nav-glow-pulse: nav-link-glow-pulse 4s ease-in-out infinite;
+  --animate-nav-bar-enter: nav-bar-enter 0.4s var(--ease-premium) both;
+  --animate-nav-dot-enter: nav-dot-enter 0.3s var(--ease-premium) both;
 
   /* Gradients */
   --bg-linear-brand: var(--gradient-brand);
@@ -443,15 +447,60 @@
   }
 }
 
-/* Wave 50: Morphing Navbar keyframes */
+/* Wave 51: Morphing Navbar keyframes */
 @keyframes pill-breathe {
   0%,
   100% {
-    box-shadow: var(--pill-shadow);
+    box-shadow: var(--pill-shadow), var(--pill-inner-glow);
   }
 
   50% {
-    box-shadow: var(--pill-shadow-breathe);
+    box-shadow: var(--pill-shadow-breathe), var(--pill-inner-glow);
+  }
+}
+
+@keyframes logo-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes nav-link-glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px var(--nav-active-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 16px var(--nav-active-glow);
+  }
+}
+
+@keyframes nav-bar-enter {
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes nav-dot-enter {
+  0% {
+    transform: translateX(-50%) scale(0);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
   }
 }
 
@@ -487,8 +536,130 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-pill-breathe,
-  .animate-bell-wobble {
+  .animate-bell-wobble,
+  .animate-logo-shimmer,
+  .animate-nav-glow-pulse,
+  .animate-nav-bar-enter,
+  .animate-nav-dot-enter {
     animation: none !important;
+  }
+}
+
+/* Wave 51: Premium nav link — glass capsule */
+.nav-link-premium {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  padding: 0.4rem 0.875rem;
+  text-decoration: none;
+  font-family: var(--font-ui);
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  transition: color 0.25s, background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.15s;
+}
+
+.nav-link-premium:hover {
+  color: var(--text-primary);
+  background: var(--nav-hover-bg);
+  border-color: var(--nav-hover-border);
+}
+
+.nav-link-premium:active {
+  transform: scale(0.97);
+}
+
+.nav-link-premium[data-active] {
+  color: var(--text-primary);
+  background-image: var(--nav-capsule-bg);
+  border-top-color: var(--nav-capsule-border-top);
+  border-left-color: var(--nav-capsule-border-side);
+  border-right-color: var(--nav-capsule-border-side);
+  border-bottom-color: var(--nav-capsule-border-bottom);
+  box-shadow: var(--nav-capsule-shadow);
+}
+
+/* Specular highlight — top-edge radial glare like iOS glass */
+.nav-link-premium[data-active]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--nav-capsule-specular);
+  pointer-events: none;
+  z-index: 1;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .nav-link-premium[data-active] {
+    backdrop-filter: blur(16px) saturate(1.5);
+    -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  }
+}
+
+.nav-link-premium[data-active]:hover {
+  transform: none;
+}
+
+/* Wave 51: Mobile drawer nav link */
+.mobile-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-family: var(--font-ui);
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.mobile-nav-link:hover {
+  color: var(--text-primary);
+  background: var(--nav-hover-bg);
+}
+
+.mobile-nav-link[data-active] {
+  position: relative;
+  color: var(--text-primary);
+  background-image: var(--nav-capsule-bg);
+  border: 1px solid var(--nav-capsule-border-side);
+  border-top-color: var(--nav-capsule-border-top);
+  border-bottom-color: var(--nav-capsule-border-bottom);
+  box-shadow: var(--nav-capsule-shadow);
+}
+
+.mobile-nav-link[data-active]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--nav-capsule-specular);
+  pointer-events: none;
+}
+
+.mobile-nav-link-icon {
+  color: var(--text-tertiary);
+  transition: color 0.2s;
+}
+
+.mobile-nav-link[data-active] .mobile-nav-link-icon {
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-link-premium,
+  .mobile-nav-link {
+    transition: none;
+  }
+
+  .nav-link-premium:hover {
+    transform: none;
   }
 }
 
@@ -508,12 +679,12 @@
   }
 }
 
-/* Wave 50: Navbar pill glass surface */
+/* Wave 51: Navbar pill glass surface (premium) */
 @utility navbar-pill-glass {
   background: var(--pill-bg);
   border: 1px solid var(--pill-border);
-  box-shadow: var(--pill-shadow);
-  animation: pill-breathe 4s ease-in-out infinite;
+  box-shadow: var(--pill-shadow), var(--pill-inner-glow);
+  animation: pill-breathe 6s ease-in-out infinite;
 
   @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
     backdrop-filter: blur(24px) saturate(1.4);
@@ -544,10 +715,11 @@
   }
 }
 
-/* Wave 50: Bottom nav pill indicator */
+/* Wave 51: Bottom nav pill indicator (premium) */
 @utility bottom-nav-pill {
-  background: var(--bottom-pill-bg);
+  background: var(--bottom-nav-pill-gradient), var(--bottom-pill-bg);
   border: 1px solid var(--bottom-pill-border);
+  box-shadow: var(--bottom-nav-pill-glow);
 }
 
 /* Wave 50: Bottom nav glass bar */
@@ -582,6 +754,13 @@
   &:hover {
     opacity: 1;
     transform: translateX(0.1875rem);
+  }
+}
+
+/* Wave 51: Ultra-wide pill scaling */
+@media (min-width: 120rem) {
+  :root {
+    --navbar-pill-max-w: var(--navbar-pill-max-w-xl);
   }
 }
 
