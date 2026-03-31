@@ -222,6 +222,7 @@ export default function Dashboard() {
   const { t } = useTranslation(["dashboard", "common"])
   const { user, loading: authLoading } = useAuth()
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
+  const isStoriesInHero = useMediaQuery(`(min-width: ${breakpoints.storiesInHero})`)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
@@ -319,7 +320,7 @@ export default function Dashboard() {
           <WeatherAmbient animation={weatherAnimation} disabled={prefersReducedMotion} />
         </motion.div>
 
-        {/* Hero — greeting card + stories in right slot */}
+        {/* Hero — greeting card + stories inside hero at ≥1220px */}
         <DashboardHero
           user={user}
           time={time}
@@ -328,33 +329,37 @@ export default function Dashboard() {
           dateStr={dateStr}
           isNarrow={isNarrow}
           prefersReducedMotion={prefersReducedMotion}
-          rightSlot={
-            <DashboardStories
-              stories={stories}
-              loading={loadingStories}
-              onPrefetch={prefetchStories}
-              onStoryOpen={handleStoryOpen}
-              maxVisibleStories={9}
-            />
+          storiesSlot={
+            isStoriesInHero ? (
+              <DashboardStories
+                stories={stories}
+                loading={loadingStories}
+                onPrefetch={prefetchStories}
+                onStoryOpen={handleStoryOpen}
+                maxVisibleStories={9}
+              />
+            ) : undefined
           }
         />
 
         {/* Content: cards */}
         <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14">
-          {/* Wave 49: stories on mobile — hidden on sm+ (shown in Hero rightSlot) */}
-          <div className="sm:hidden">
-            <DashboardStories
-              stories={stories}
-              loading={loadingStories}
-              onPrefetch={prefetchStories}
-              onStoryOpen={handleStoryOpen}
-            />
-          </div>
+          {/* Wave 53: stories below hero when viewport < 1220px */}
+          {!isStoriesInHero && (
+            <div className="mb-2">
+              <DashboardStories
+                stories={stories}
+                loading={loadingStories}
+                onPrefetch={prefetchStories}
+                onStoryOpen={handleStoryOpen}
+              />
+            </div>
+          )}
 
           {/* Wave 48: scroll depth wrapper — cards recede on scroll */}
           <motion.div
             ref={cardGridRef}
-            className="mt-4 grid w-full grid-cols-12 gap-3 md:mt-5 md:gap-3.5 lg:gap-4 pb-10"
+            className="mt-4 grid w-full grid-cols-12 gap-4 md:mt-5 md:gap-3.5 lg:gap-4 pb-24 md:pb-10"
             style={prefersReducedMotion ? undefined : { scale: depthScale, opacity: depthOpacity }}
           >
             {/* Schedule card */}

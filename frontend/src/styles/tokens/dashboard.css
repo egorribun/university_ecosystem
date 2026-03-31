@@ -1,7 +1,7 @@
 @layer base {
   .dashboard-theme {
     /* Wave 45: Bold typography — confident, institutional */
-    --fs-hero: clamp(2.25rem, 4vw, 3.75rem);
+    --fs-hero: clamp(1.75rem, 3vw, 2.75rem);
     --fs-card-title: clamp(1.35rem, 2.5vw, 1.75rem);
 
     /* Dashboard conic gradient palette */

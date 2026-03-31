@@ -26,8 +26,8 @@ interface DashboardHeroProps {
   dateStr: string
   isNarrow: boolean
   prefersReducedMotion: boolean
-  /** Wave 49: Slot for stories or other content on the right side of Hero */
-  rightSlot?: React.ReactNode
+  /** Wave 53: Stories slot — rendered inside hero card at ≥1220px */
+  storiesSlot?: React.ReactNode
 }
 
 export function DashboardHero({
@@ -38,7 +38,7 @@ export function DashboardHero({
   dateStr,
   isNarrow,
   prefersReducedMotion,
-  rightSlot,
+  storiesSlot,
 }: DashboardHeroProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const { greeting, greetingKey, specialKey, emoji } = useGreeting(time)
@@ -55,7 +55,7 @@ export function DashboardHero({
         <ScrollReveal mode="pop" delay={0.1} width="100%">
           <header
             className={cn(
-              "group glass-noise relative rounded-xl transition-all duration-slow ease-back-out",
+              "group glass-noise relative overflow-clip rounded-xl transition-all duration-slow ease-back-out",
               "border border-(--dash-border)",
               "hover:-translate-y-0.5 motion-reduce:hover:transform-none",
               "px-8 py-8 md:px-10 md:py-9",
@@ -90,12 +90,13 @@ export function DashboardHero({
               <div className="pointer-events-none absolute left-[-8%] top-[-25%] h-[8rem] w-[8rem] animate-[spin_40s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-soft blur-3xl will-change-transform" />
             )}
 
-            <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-8">
+            {/* Wave 53: flex-row at ≥1220px — greeting left, stories right, same level */}
+            <div className="relative flex flex-col gap-4 min-[1220px]:flex-row min-[1220px]:items-center min-[1220px]:gap-6">
               <div className="shrink-0 space-y-4">
                 {/* Inline fontSize — CSS var override unreliable across @layer boundaries */}
                 <h1
                   className="font-display font-extrabold leading-[1.15] tracking-tight"
-                  style={{ fontSize: "clamp(2.25rem, 4vw, 3.75rem)" }}
+                  style={{ fontSize: "clamp(1.75rem, 3vw, 2.75rem)" }}
                 >
                   {/* Wave 47: Sparkle icon on special days */}
                   {specialKey && (
@@ -159,10 +160,10 @@ export function DashboardHero({
                 </div>
               </div>
 
-              {/* Wave 49: Right slot — stories or other content */}
-              {rightSlot && (
-                <div className="hidden sm:flex shrink-0 items-center">
-                  {rightSlot}
+              {/* Wave 53: Stories column — right side at ≥1220px, constrained width so greeting isn't compressed */}
+              {storiesSlot && (
+                <div className="relative z-10 min-[1220px]:flex-1 min-[1220px]:min-w-0 min-[1220px]:overflow-hidden min-[1220px]:self-center">
+                  {storiesSlot}
                 </div>
               )}
             </div>

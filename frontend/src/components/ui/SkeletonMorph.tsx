@@ -29,15 +29,17 @@ interface SkeletonMorphProps {
 export function SkeletonMorph({ loaded, skeleton, children, className }: SkeletonMorphProps) {
   return (
     <div className={cn("skeleton-morph-container relative", className)}>
+      {/* When loaded: skeleton exits normal flow (absolute) so content height wins */}
       <div
-        className="skeleton-morph-skeleton"
+        className={cn("skeleton-morph-skeleton", loaded && "absolute inset-0")}
         data-loaded={loaded}
         aria-hidden={loaded}
       >
         {skeleton}
       </div>
+      {/* When not loaded: content is absolute (no height contribution) */}
       <div
-        className="skeleton-morph-content absolute inset-0"
+        className={cn("skeleton-morph-content", !loaded && "absolute inset-0")}
         data-loaded={loaded}
       >
         {loaded ? children : null}
