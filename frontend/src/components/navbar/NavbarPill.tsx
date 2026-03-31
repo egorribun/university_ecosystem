@@ -28,7 +28,7 @@ export function NavbarPill({ isCompact, prefersReducedMotion, children }: Navbar
     <div
       className={cn(
         "flex w-full items-center box-border",
-        "transition-[max-width,height,border-radius,background,border-color,box-shadow,backdrop-filter,padding,margin]",
+        "transition-[max-width,height,border-radius,background,border-color,box-shadow,backdrop-filter]",
         dur, ease,
         isCompact
           ? [

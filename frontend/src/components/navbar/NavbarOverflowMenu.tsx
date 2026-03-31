@@ -76,6 +76,8 @@ export function NavbarOverflowMenu({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            role="menu"
+            aria-label="More navigation"
             className="absolute right-0 top-full mt-2 min-w-48 rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-glass backdrop-blur-xl z-dropdown"
             style={{ boxShadow: "var(--pill-shadow), var(--pill-inner-glow)" }}
           >

@@ -115,35 +115,33 @@ export default function NotificationsBell() {
 
   return (
     <>
-      <motion.button
+      <button
         ref={buttonRef}
         id="global-notifications-btn"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "relative flex items-center justify-center p-2 rounded-xl transition-all",
+          "relative nav-action-btn group",
           isOpen
-            ? "bg-(--primary-main)/(--opacity-subtle) border-(--glass-border) shadow-sm"
-            : "hover:bg-(--glass-tint-2) hover:border-(--glass-border)",
-          isOpen ? "text-(--primary-main)" : "text-(--nav-text)"
+            ? "bg-(--primary-main)/(--opacity-subtle) !border-(--primary-main)/(--opacity-soft) shadow-sm text-(--primary-main)"
+            : "text-text-primary hover:text-(--primary-main)"
         )}
+        data-unread={unreadCount ? "" : undefined}
         aria-label={t("system:notificationsBell.open")}
       >
         <Bell
           className={cn(
-            "w-(--size-icon-fluid) h-(--size-icon-fluid) transition-transform duration-slow",
+            "nav-action-icon bell-wiggle",
             isOpen && "rotate-[-10deg]"
           )}
-          strokeWidth={1.8}
+          strokeWidth={2}
         />
         {unreadCount ? (
-          <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-strong" />
+          <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center">
+            <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-error-border opacity-strong" />
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-(--error-text) border-2 border-(--bg-surface) dark:border-(--bg-page)" />
           </span>
         ) : null}
-      </motion.button>
+      </button>
 
       {createPortal(
         <AnimatePresence>

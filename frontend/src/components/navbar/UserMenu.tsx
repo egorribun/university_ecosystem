@@ -49,7 +49,7 @@ export const UserMenu = ({
 
   if (loading) {
     return (
-      <div className="ml-auto flex items-center gap-3" aria-hidden="true">
+      <div className="ml-auto flex items-center gap-3" aria-busy="true" aria-label="Loading user menu">
         <Skeleton className="rounded-full w-9 h-9 bg-brand/(--opacity-dim)" />
         {!isCompact && <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />}
       </div>
@@ -123,7 +123,7 @@ export const UserMenu = ({
             "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
             !prefersReducedMotion && "hover:rotate-90 hover:scale-110 active:scale-90",
           )}
-          style={{ willChange: "transform", backgroundColor: "transparent" }}
+          style={{ willChange: "transform" }}
           onClick={() => go("/settings")}
           aria-label={t("navigation:menu.settings")}
           title={t("navigation:menu.settings")}

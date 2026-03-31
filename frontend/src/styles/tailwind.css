@@ -101,6 +101,10 @@
   /* Touch Targets */
   --size-touch: var(--size-touch-target);
 
+  /* Navbar Action Buttons — fluid (Wave 52) */
+  --size-nav-action: var(--nav-action-size);
+  --spacing-nav-action-gap: var(--nav-action-gap);
+
   /* Typography Scale (Fluid) */
   --font-size-xs: var(--fs-xs);
   --font-size-sm: var(--fs-sm);
@@ -139,6 +143,7 @@
   --font-size-icon-lg: var(--fs-icon-lg);
 
   /* Shadows */
+  --shadow-xs: var(--raw-shadow-xs);
   --shadow-sm: var(--raw-shadow-sm);
   --shadow-md: var(--raw-shadow-md);
   --shadow-premium: var(--raw-shadow-premium);
@@ -176,7 +181,6 @@
 
   /* Animations — Wave 51 */
   --animate-pill-breathe: pill-breathe 6s ease-in-out infinite;
-  --animate-bell-wobble: bell-wobble 0.5s ease-in-out;
   --animate-logo-shimmer: logo-shimmer 1.5s ease-in-out 1;
   --animate-nav-glow-pulse: nav-link-glow-pulse 4s ease-in-out infinite;
   --animate-nav-bar-enter: nav-bar-enter 0.4s var(--ease-premium) both;
@@ -504,44 +508,86 @@
   }
 }
 
-@keyframes bell-wobble {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  15% {
-    transform: rotate(15deg);
-  }
-
-  30% {
-    transform: rotate(-12deg);
-  }
-
-  45% {
-    transform: rotate(8deg);
-  }
-
-  60% {
-    transform: rotate(-5deg);
-  }
-
-  75% {
-    transform: rotate(2deg);
-  }
-
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .animate-pill-breathe,
-  .animate-bell-wobble,
   .animate-logo-shimmer,
   .animate-nav-glow-pulse,
   .animate-nav-bar-enter,
   .animate-nav-dot-enter {
     animation: none !important;
+  }
+}
+
+/* Wave 52: Navbar action button — fluid circle for mobile harmony */
+.nav-action-btn {
+  width: var(--nav-action-size);
+  height: var(--nav-action-size);
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-subtle), transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-xs);
+  transition: background 200ms var(--ease-premium),
+              border-color 200ms var(--ease-premium),
+              box-shadow 200ms var(--ease-premium),
+              transform 200ms var(--ease-premium);
+}
+.nav-action-btn:hover {
+  background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-dim), transparent);
+  border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
+  box-shadow: var(--shadow-sm);
+}
+.nav-action-btn:active {
+  transform: scale(0.93);
+}
+/* Icon inside nav-action-btn */
+.nav-action-btn > svg,
+.nav-action-btn .nav-action-icon {
+  width: var(--nav-action-icon);
+  height: var(--nav-action-icon);
+  flex-shrink: 0;
+}
+/* Optical size compensation — Bell has more whitespace in its viewBox than
+   MessageSquare, so it appears smaller at the same pixel size. Scaling up
+   by ~12% matches perceived visual weight. Same technique as SF Symbols. */
+.nav-action-btn .bell-wiggle {
+  width: calc(var(--nav-action-icon) * 1.12);
+  height: calc(var(--nav-action-icon) * 1.12);
+}
+
+/* Unread state — subtle brand glow on the button itself */
+.nav-action-btn[data-unread] {
+  border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-main) var(--opacity-faint), transparent),
+              var(--shadow-xs);
+}
+
+/* Bell wiggle on hover — playful micro-interaction */
+@keyframes bell-wiggle {
+  0%   { transform: rotate(0deg); }
+  20%  { transform: rotate(12deg); }
+  40%  { transform: rotate(-10deg); }
+  60%  { transform: rotate(6deg); }
+  80%  { transform: rotate(-3deg); }
+  100% { transform: rotate(0deg); }
+}
+.nav-action-btn:hover .bell-wiggle {
+  animation: bell-wiggle 0.5s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-action-btn,
+  .nav-action-btn:hover,
+  .nav-action-btn:active {
+    transition-duration: 0ms;
+    transform: none;
+  }
+  .nav-action-btn:hover .bell-wiggle {
+    animation: none;
   }
 }
 

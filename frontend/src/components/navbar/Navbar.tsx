@@ -62,7 +62,9 @@ const Navbar = () => {
               : "bg-nav/(--opacity-hover) backdrop-blur-(--blur-xl)"
         )}
         style={{
-          boxShadow: "0 1px 0 var(--nav-glow-line), 0 8px 30px 0px var(--nav-glow-spread)",
+          boxShadow: showPill
+            ? "none"
+            : "0 1px 0 var(--nav-glow-line), 0 8px 30px 0px var(--nav-glow-spread)",
         }}
       >
         <NavbarPill isCompact={showPill} prefersReducedMotion={prefersReducedMotion}>
@@ -70,6 +72,7 @@ const Navbar = () => {
             t={t}
             isMobile={isMobile}
             isCompact={showPill}
+            isPhone={morph.isPhone}
             prefersReducedMotion={prefersReducedMotion}
             onLogoClick={(e) => {
               if (isSameTarget("/dashboard")) {

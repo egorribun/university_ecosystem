@@ -47,12 +47,10 @@ export const DesktopNav = ({
                 }
               }}
             >
-              {/* Icon — crossfade during morph */}
+              {/* Icon — instant swap, no crossfade (prevents flash during pill morph) */}
               <span
                 className={cn(
                   "flex items-center justify-center",
-                  "transition-opacity",
-                  prefersReducedMotion ? "duration-0" : "duration-300",
                   isCompact
                     ? "relative opacity-100"
                     : "absolute inset-0 opacity-0 pointer-events-none"
@@ -61,12 +59,10 @@ export const DesktopNav = ({
                 <Icon size={18} aria-hidden="true" />
               </span>
 
-              {/* Text — crossfade during morph */}
+              {/* Text — instant swap */}
               <span
                 className={cn(
                   "whitespace-nowrap",
-                  "transition-opacity",
-                  prefersReducedMotion ? "duration-0" : "duration-300",
                   isCompact
                     ? "absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none"
                     : "relative opacity-100"

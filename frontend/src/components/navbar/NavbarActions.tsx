@@ -42,7 +42,7 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
 
   if (isMobile) {
     return (
-      <div className="ml-auto flex items-center gap-(--fluid-gap)">
+      <div className="ml-auto flex items-center gap-(--nav-action-gap)">
         <MessengerButton />
         <NotificationsBell />
         {isAuth && user && !loading ? (
@@ -55,25 +55,23 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               fallback={avatarFallback}
               alt={profileAlt}
               title={profileTitle}
-              className="block cursor-pointer rounded-full border-2 border-brand/(--opacity-medium) shadow-sm object-cover w-9 h-9 shrink-0"
+              className="block cursor-pointer rounded-full border-2 border-brand/(--opacity-medium) shadow-sm object-cover shrink-0 w-8 h-8"
               onClick={() => go("/profile")}
             />
           </motion.div>
         ) : (
-          <div className="rounded-full shrink-0 w-9 h-9 bg-brand/(--opacity-soft) animate-pulse" />
+          <div className="rounded-full shrink-0 bg-brand/(--opacity-soft) animate-pulse w-8 h-8" />
         )}
-        <motion.button
-          whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
-          transition={prefersReducedMotion ? { duration: 0 } : springSoft}
+        <button
           type="button"
-          className="flex shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-(--glass-border) bg-(--bg-surface-hover)/(--opacity-subtle) p-0 shadow-sm backdrop-blur-md transition-all duration-base hover:bg-(--bg-surface-hover)/(--opacity-dim) size-touch text-text-primary"
+          className="nav-action-btn cursor-pointer text-text-primary"
           onClick={() => setMobileMenu((v) => !v)}
           aria-label={mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")}
           aria-expanded={mobileMenu}
           aria-controls="mobile-drawer"
           ref={burgerBtnRef}
         >
-          <div className="relative w-6 h-6 flex items-center justify-center">
+          <div className="relative flex items-center justify-center nav-action-icon">
             <motion.div
               initial={false}
               animate={{
@@ -84,7 +82,7 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
               className="absolute inset-0 flex items-center justify-center"
             >
-              <Menu className="w-6 h-6 stroke-(--text-primary)" strokeWidth={2.5} />
+              <Menu className="nav-action-icon stroke-(--text-primary)" strokeWidth={2.5} />
             </motion.div>
             <motion.div
               initial={false}
@@ -96,10 +94,10 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
               className="absolute inset-0 flex items-center justify-center"
             >
-              <X className="w-6 h-6 stroke-(--text-primary)" strokeWidth={2.5} />
+              <X className="nav-action-icon stroke-(--text-primary)" strokeWidth={2.5} />
             </motion.div>
           </div>
-        </motion.button>
+        </button>
       </div>
     )
   }

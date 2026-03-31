@@ -9,6 +9,7 @@ interface NavbarLogoProps {
   t: TFunction
   isMobile: boolean
   isCompact: boolean
+  isPhone: boolean
   prefersReducedMotion: boolean
   onLogoClick: (e: React.MouseEvent) => void
   markScrollFromBottom: () => void
@@ -23,6 +24,7 @@ export const NavbarLogo = ({
   t,
   isMobile,
   isCompact,
+  isPhone,
   prefersReducedMotion,
   onLogoClick,
   markScrollFromBottom,
@@ -39,7 +41,7 @@ export const NavbarLogo = ({
         "inline-flex min-w-0 items-center rounded-2xl no-underline group",
         "transition-[gap,padding]", dur, ease,
         "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
-        isCompact ? "gap-0 px-1 py-1" : isMobile ? "gap-fluid-gap px-3 py-1.5" : "gap-3 px-3 py-1.5"
+        isCompact ? "gap-0 px-1 py-1" : isPhone ? "gap-0 px-1 py-1" : isMobile ? "gap-fluid-gap px-3 py-1.5" : "gap-3 px-3 py-1.5"
       )}
       onPointerDown={markScrollFromBottom}
       onClick={onLogoClick}
@@ -48,9 +50,9 @@ export const NavbarLogo = ({
       <div
         className={cn(
           "flex items-center justify-center shrink-0 rounded-full",
-          "bg-(--bg-surface-raised) shadow-sm border border-border-subtle",
+          "bg-(--bg-surface-raised) dark:bg-(--bg-surface-hover) shadow-sm border border-border-subtle",
           "transition-[width,height,transform,box-shadow]", dur, ease,
-          isCompact ? "w-8 h-8" : "w-11 h-11",
+          isCompact ? "w-8 h-8" : isPhone ? "w-(--nav-action-size) h-(--nav-action-size)" : "w-11 h-11",
           "hover:scale-105 hover:shadow-[var(--nav-link-hover-glow)] active:scale-95",
           !prefersReducedMotion && "hover:transition-transform hover:duration-200",
           !prefersReducedMotion && "animate-logo-shimmer",
@@ -68,7 +70,7 @@ export const NavbarLogo = ({
         <SmartImage
           srcRaw={guuLogo}
           alt={t("navigation:brandAlt")}
-          className="object-contain w-2/3 h-2/3"
+          className="object-contain w-3/4 h-3/4"
           loading="eager"
           fetchPriority="high"
           sizes={`(min-width: ${breakpoints.wide}) 2.75rem, (min-width: ${breakpoints.mobile}) 2.25rem, 1.625rem`}
@@ -81,7 +83,7 @@ export const NavbarLogo = ({
       <div
         className={cn(
           "overflow-hidden",
-          isCompact ? "max-w-0 opacity-0" : "max-w-40 opacity-100"
+          isCompact || isPhone ? "max-w-0 opacity-0" : "max-w-40 opacity-100"
         )}
       >
         <span className="whitespace-nowrap font-black tracking-tight text-lg leading-tight text-text-primary">

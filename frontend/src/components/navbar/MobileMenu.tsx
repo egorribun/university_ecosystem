@@ -103,7 +103,7 @@ export function MobileMenu({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
-            className="fixed inset-0 z-overlay h-full w-full border-none p-0 cursor-default outline-none bg-(--drawer-overlay)"
+            className="fixed inset-0 z-overlay h-full w-full border-none p-0 cursor-default outline-none bg-(--drawer-overlay) backdrop-blur-sm"
             onClick={onClose}
             aria-label={t("navigation:aria.closeMenu")}
             data-testid="mobile-menu-backdrop"
@@ -190,7 +190,7 @@ export function MobileMenu({
 
             {/* Navigation items */}
             <div className="flex-1 overflow-y-auto px-3 py-2">
-              <ul className="flex flex-col gap-1">
+              <ul className="flex flex-col gap-1" role="navigation" aria-label={t("navigation:aria.mobileMenu")}>
                 {menuLinks.map((item, index) => {
                   const Icon = item.icon
                   const active = isActive(item.to)
