@@ -26,6 +26,7 @@
     --color-blue-500: #3b82f6;
     --color-blue-600: #2563eb;
     --color-blue-700: #1d4ed8;
+    --color-sky-100: #e0f2fe;
     --color-sky-300: #7dd3fc;
     --color-sky-400: #38bdf8;
     --color-sky-500: #0ea5e9;
@@ -37,9 +38,12 @@
     --color-green-500: #22c55e;
     --color-green-800: #166534;
     --color-amber-100: #fef3c7;
+    --color-amber-300: #fcd34d;
     --color-amber-400: #fbbf24;
     --color-amber-500: #f59e0b;
     --color-amber-700: #b45309;
+    --color-orange-400: #fb923c;
+    --color-yellow-400: #facc15;
     --color-red-400: #f87171;
     --color-red-600: #dc2626;
     --color-indigo-400: #818cf8;
@@ -48,6 +52,8 @@
     /* Extended Decorative Palette */
     --color-purple-400: #c084fc;
     --color-purple-500: #a855f7;
+    --color-violet-300: #c4b5fd;
+    --color-violet-400: #a78bfa;
     --color-violet-500: #8b5cf6;
     --color-pink-400: #f472b6;
     --color-rose-500: #f43f5e;

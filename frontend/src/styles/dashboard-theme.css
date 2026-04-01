@@ -279,18 +279,5 @@
       transparent
     );
 
-    /* Dashboard Backdrop Extracted Gradients */
-    --grad-dash-radial-top: radial-gradient(
-      circle at top,
-      var(--dash-hero-radial-top),
-      transparent 78%
-    );
-    --grad-dash-radial-bottom: radial-gradient(
-      circle at bottom,
-      var(--dash-hero-radial-bottom),
-      transparent 78%
-    );
-    --grad-dash-orb: radial-gradient(circle, var(--dash-hero-orb), transparent);
-    --grad-dash-pulse: radial-gradient(circle, var(--dash-hero-pulse), transparent);
   }
 }

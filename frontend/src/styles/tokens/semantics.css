@@ -38,6 +38,8 @@
     --motion-slide-lg: 50px;
     --motion-scale-in: 0.95;
     --motion-scale-out: 1.05;
+    --motion-stagger-delay: 0.06s;
+    --motion-stagger-medium: 0.08s;
 
     /* Semantic Color Mixtures */
     --text-session-revoked: color-mix(in srgb, var(--text-primary) 64%, white 36%);

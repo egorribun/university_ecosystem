@@ -33,6 +33,16 @@ import { useWeather } from "@/hooks/useWeather"
 /** Wave 48: Session key for cascade reveal — module-level constant */
 const CASCADE_KEY = "dash-cascade-done"
 
+/** Wave 54: Cascade reveal props — extracted to avoid 3x copy-paste (DESIGN-54-05) */
+function cascadeProps(delay: number, active: boolean, reduced: boolean) {
+  if (!active || reduced) return {}
+  return {
+    initial: { opacity: 0, scale: 0.92, filter: "blur(8px)" },
+    animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
+    transition: { duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] },
+  } as const
+}
+
 /** Wave 49: Dev-only mock stories — shown when API returns empty */
 const MOCK_STORIES: StoryItem[] = [
   {
@@ -216,9 +226,9 @@ function EventsCardSkeleton() {
   )
 }
 
-// eslint-disable-next-line react-compiler/react-compiler
+/* eslint-disable react-compiler/react-compiler -- useTilt reads refs during render; directive needed for prod build */
 export default function Dashboard() {
-  "use no memo" // Wave 48: opt out of React Compiler — Framer Motion useScroll reads refs during render
+  "use no memo"
   const { t } = useTranslation(["dashboard", "common"])
   const { user, loading: authLoading } = useAuth()
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
@@ -284,7 +294,7 @@ export default function Dashboard() {
 
   const dashboardStoriesQuery = useDashboardStories()
   const realStories = dashboardStoriesQuery.data ?? []
-  // Wave 49: fallback to mock stories in dev when API returns empty
+  // Mock stories as placeholder while stories API is being populated
   const stories: StoryItem[] = realStories.length > 0 ? realStories : MOCK_STORIES
   const loadingStories = dashboardStoriesQuery.isLoading && realStories.length === 0
 
@@ -365,11 +375,7 @@ export default function Dashboard() {
             {/* Schedule card */}
             <motion.div
               className="col-span-12 lg:col-span-4"
-              {...(showCascade && !prefersReducedMotion ? {
-                initial: { opacity: 0, scale: 0.92, filter: "blur(8px)" },
-                animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
-                transition: { duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] },
-              } : {})}
+              {...cascadeProps(0.1, showCascade, prefersReducedMotion)}
             >
               <div
                 ref={tiltSchedule.ref}
@@ -387,11 +393,7 @@ export default function Dashboard() {
             {/* News card */}
             <motion.div
               className="col-span-12 lg:col-span-4"
-              {...(showCascade && !prefersReducedMotion ? {
-                initial: { opacity: 0, scale: 0.92, filter: "blur(8px)" },
-                animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
-                transition: { duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] },
-              } : {})}
+              {...cascadeProps(0.2, showCascade, prefersReducedMotion)}
             >
               <div
                 ref={tiltNews.ref}
@@ -409,11 +411,7 @@ export default function Dashboard() {
             {/* Events card */}
             <motion.div
               className="col-span-12 lg:col-span-4"
-              {...(showCascade && !prefersReducedMotion ? {
-                initial: { opacity: 0, scale: 0.92, filter: "blur(8px)" },
-                animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
-                transition: { duration: 0.5, delay: 0.3, ease: [0.16, 1, 0.3, 1] },
-              } : {})}
+              {...cascadeProps(0.3, showCascade, prefersReducedMotion)}
             >
               <div
                 ref={tiltEvents.ref}

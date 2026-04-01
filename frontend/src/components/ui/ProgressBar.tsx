@@ -8,6 +8,8 @@ type ProgressBarProps = {
   className?: string
   barClassName?: string
   ariaLabel?: string
+  /** Wave 54: Only set aria-live on active bars to avoid screen reader flood (A11Y-54-01) */
+  liveRegion?: boolean
 } & Omit<HTMLAttributes<HTMLDivElement>, "role">
 
 export function ProgressBar({
@@ -17,18 +19,20 @@ export function ProgressBar({
   className,
   barClassName,
   ariaLabel,
+  liveRegion = false,
   ...rest
 }: ProgressBarProps) {
+  const safeMax = max > 0 ? max : 100
   const normalized =
-    typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(value, 0), max) : null
-  const percent = normalized === null ? 0 : (normalized / max) * 100
+    typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(value, 0), safeMax) : null
+  const percent = normalized === null ? 0 : (normalized / safeMax) * 100
 
   return (
     <div
       role="progressbar"
-      aria-live="polite"
+      aria-live={liveRegion ? "polite" : undefined}
       aria-valuemin={0}
-      aria-valuemax={max}
+      aria-valuemax={safeMax}
       aria-valuenow={normalized ?? undefined}
       aria-label={ariaLabel}
       className={cn(

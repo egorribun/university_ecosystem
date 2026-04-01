@@ -26,7 +26,7 @@ interface DashboardHeroProps {
   dateStr: string
   isNarrow: boolean
   prefersReducedMotion: boolean
-  /** Wave 53: Stories slot — rendered inside hero card at ≥1220px */
+  /** Wave 54: Stories slot — rendered inside hero flex-row at ≥1220px */
   storiesSlot?: React.ReactNode
 }
 
@@ -55,7 +55,8 @@ export function DashboardHero({
         <ScrollReveal mode="pop" delay={0.1} width="100%">
           <header
             className={cn(
-              "group glass-noise relative overflow-clip rounded-xl transition-all duration-slow ease-back-out",
+              // Wave 54: removed overflow-clip — decorative elements contained by inner wrapper (FIX-54-01)
+              "group glass-noise relative rounded-xl transition-all duration-slow ease-back-out",
               "border border-(--dash-border)",
               "hover:-translate-y-0.5 motion-reduce:hover:transform-none",
               "px-8 py-8 md:px-10 md:py-9",
@@ -63,42 +64,40 @@ export function DashboardHero({
             )}
             style={{
               background: "var(--hero-card-bg)",
-              /* Wave 47: ambient glow — colored outer shadow from greeting palette */
               boxShadow: "0 1px 3px color-mix(in srgb, black 8%, transparent), 0 4px 16px color-mix(in srgb, black 6%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent), 0 8px 48px color-mix(in srgb, var(--hero-grad-start) 18%, transparent)",
             }}
           >
-            {/* Blue accent line at top */}
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-[20%] top-0 z-10 h-px"
-              style={{ background: "var(--dash-accent-line)", opacity: 0.5 }}
-            />
-
-            {/* Shimmer on hover */}
-            {showHeaderMotion && (
+            {/* Wave 54: Decorative clip wrapper — contains shimmer/flare overflow without clipping stories scroll (FIX-54-01) */}
+            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]" aria-hidden="true">
+              {/* Blue accent line at top */}
               <span
-                aria-hidden="true"
-                className="pointer-events-none absolute -inset-y-24 -left-1 w-[170%] skew-x-[-18deg] bg-linear-to-r from-transparent via-white/(--opacity-dim) to-transparent opacity-0 transition-all duration-slower ease-out group-hover:translate-x-[35%] group-hover:opacity-soft"
+                className="absolute inset-x-[20%] top-0 z-10 h-px"
+                style={{ background: "var(--dash-accent-line)", opacity: 0.5 }}
               />
-            )}
 
-            {/* Decorative flare — top right corner glow */}
-            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-(--flare-highlight) blur-3xl opacity-soft" />
+              {/* Shimmer on hover */}
+              {showHeaderMotion && (
+                <span
+                  className="absolute -inset-y-24 -left-1 w-[170%] skew-x-[-18deg] bg-linear-to-r from-transparent via-white/(--opacity-dim) to-transparent opacity-0 transition-all duration-slower ease-out group-hover:translate-x-[35%] group-hover:opacity-soft"
+                />
+              )}
 
-            {/* Spinning conic gradient orb */}
-            {showHeaderMotion && (
-              <div className="pointer-events-none absolute left-[-8%] top-[-25%] h-[8rem] w-[8rem] animate-[spin_40s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-soft blur-3xl will-change-transform" />
-            )}
+              {/* Decorative flare — top right corner glow */}
+              <div className="-right-16 -top-16 absolute h-48 w-48 rounded-full bg-(--flare-highlight) blur-3xl opacity-soft" />
 
-            {/* Wave 53: flex-row at ≥1220px — greeting left, stories right, same level */}
+              {/* Spinning conic gradient orb */}
+              {showHeaderMotion && (
+                <div className="absolute left-[-8%] top-[-25%] h-[8rem] w-[8rem] animate-[spin_40s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-soft blur-3xl will-change-transform" />
+              )}
+            </div>
+
+            {/* Wave 54: flex-row at ≥1220px — greeting left, stories right */}
             <div className="relative flex flex-col gap-4 min-[1220px]:flex-row min-[1220px]:items-center min-[1220px]:gap-6">
               <div className="shrink-0 space-y-4">
-                {/* Inline fontSize — CSS var override unreliable across @layer boundaries */}
                 <h1
                   className="font-display font-extrabold leading-[1.15] tracking-tight"
                   style={{ fontSize: "clamp(1.75rem, 3vw, 2.75rem)" }}
                 >
-                  {/* Wave 47: Sparkle icon on special days */}
                   {specialKey && (
                     <motion.span
                       initial={{ opacity: 0, scale: 0 }}
@@ -111,7 +110,6 @@ export function DashboardHero({
                   )}
                   {greeting}
                   {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
-                  {/* Wave 48: Contextual emoji */}
                   {emoji && (
                     <motion.span
                       initial={{ opacity: 0, scale: 0.5 }}
@@ -140,7 +138,6 @@ export function DashboardHero({
                       <span>{mm}</span>
                     </span>
                   </Badge>
-                  {/* Wave 49: Academic week — same visual weight as date */}
                   <span className="shrink-0 text-base font-medium opacity-heavy">
                     {t("dashboard:academicWeek", {
                       week: weekNumber,
@@ -160,9 +157,9 @@ export function DashboardHero({
                 </div>
               </div>
 
-              {/* Wave 53: Stories column — right side at ≥1220px, constrained width so greeting isn't compressed */}
+              {/* Wave 54: Stories — flex-1 with min-w-0 for scroll, NO overflow-hidden (FIX-54-01) */}
               {storiesSlot && (
-                <div className="relative z-10 min-[1220px]:flex-1 min-[1220px]:min-w-0 min-[1220px]:overflow-hidden min-[1220px]:self-center">
+                <div className="relative z-10 min-[1220px]:flex-1 min-[1220px]:min-w-0 min-[1220px]:self-center">
                   {storiesSlot}
                 </div>
               )}
