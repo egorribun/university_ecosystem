@@ -4,6 +4,8 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useDebounced } from "@/hooks/useDebounced"
+import { useBookmarks } from "@/hooks/useBookmarks"
+import { useNewsKeyboardNav } from "@/hooks/useNewsKeyboardNav"
 import { useNewsListQuery } from "@/api/hooks/news"
 import { resetEtagCache } from "@/api/client"
 import { NewsHeader } from "./components/NewsHeader"
@@ -29,10 +31,11 @@ export const NewsFeature = () => {
   } = useNewsListQuery({ language })
 
   const [addOpen, setAddOpen] = useState(false)
-  const [activeCategory, setActiveCategory] = useState<NewsCategory | "all">("all")
+  const [activeCategory, setActiveCategory] = useState<NewsCategory | "all" | "saved">("all")
   const [sortMode, setSortMode] = useState<SortMode>("newest")
   const [searchQuery, setSearchQuery] = useState("")
   const debouncedSearch = useDebounced(searchQuery, "search")
+  const { bookmarks, bookmarkCount } = useBookmarks()
 
   const refreshNews = useCallback(() => {
     resetEtagCache()
@@ -54,7 +57,9 @@ export const NewsFeature = () => {
       )
     }
 
-    if (activeCategory !== "all") {
+    if (activeCategory === "saved") {
+      list = list.filter((n) => bookmarks.has(n.id))
+    } else if (activeCategory !== "all") {
       list = list.filter((n) => inferCategory(n.title, n.content) === activeCategory)
     }
 
@@ -63,7 +68,10 @@ export const NewsFeature = () => {
     }
 
     return list
-  }, [rawNewsList, debouncedSearch, activeCategory, sortMode])
+  }, [rawNewsList, debouncedSearch, activeCategory, sortMode, bookmarks])
+
+  /* ── Keyboard navigation ── */
+  const { activeIndex, registerRef } = useNewsKeyboardNav(filteredNews)
 
   return (
     <div className="news-theme w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14">
@@ -77,6 +85,7 @@ export const NewsFeature = () => {
         onCategoryChange={setActiveCategory}
         sortMode={sortMode}
         onSortChange={setSortMode}
+        bookmarkCount={bookmarkCount}
       />
 
       <NewsList
@@ -90,6 +99,8 @@ export const NewsFeature = () => {
         onAddClick={() => setAddOpen(true)}
         isAdmin={user?.role === "admin"}
         isOnline={isOnline}
+        activeKeyboardIndex={activeIndex}
+        registerCardRef={registerRef}
       />
 
       <NewsFormDialog

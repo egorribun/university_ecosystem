@@ -3,6 +3,6 @@ import { lazy } from "react"
 
 const News = lazy(() => import("@/pages/News"))
 
-export const Route = createFileRoute("/_auth/news")({
+export const Route = createFileRoute("/_auth/news/")({
   component: News,
 })

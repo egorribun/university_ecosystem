@@ -211,6 +211,8 @@ class NewsCommentUpdate(BaseModel):
 
 
 class NewsInteractionsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     likes_count: int
     is_liked: bool
     comments: list[NewsCommentOut]

@@ -45,6 +45,17 @@
     --cat-slate-bg: color-mix(in srgb, var(--color-slate-400) 12%, transparent);
     --cat-slate-text: var(--color-slate-600);
 
+    /* ── Editorial typography (Wave 57) ────────────────── */
+    --fs-news-dropcap: 3.5em;
+    --news-body-max-width: 65ch;
+    --news-paragraph-spacing: 1.75em;
+    --news-pullquote-border: 3px solid var(--color-brand);
+    --news-pullquote-fs: clamp(1.125rem, 1.6vw, 1.375rem);
+
+    /* ── Sticky category nav (Wave 57) ────────────────── */
+    --news-sticky-top: 64px;
+    --news-sticky-blur: 16px;
+
     /* ── Featured card gradient mesh ───────────────────── */
     --news-featured-mesh: radial-gradient(
       ellipse at 20% 50%,
@@ -98,5 +109,85 @@
       color-mix(in srgb, var(--color-indigo-400) 10%, transparent) 0%,
       transparent 50%
     );
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     EDITORIAL TYPOGRAPHY (Wave 57)
+     ═══════════════════════════════════════════════════════ */
+
+  /* Article body — optimal reading width + premium typography */
+  .news-article-body {
+    max-width: var(--news-body-max-width);
+    font-feature-settings: "kern", "liga", "calt";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .news-article-body p {
+    margin-block: var(--news-paragraph-spacing);
+  }
+
+  .news-article-body p:first-of-type {
+    margin-block-start: 0;
+  }
+
+  /* Drop cap — first letter of first paragraph */
+  .news-article-body .news-dropcap::first-letter {
+    float: left;
+    font-size: var(--fs-news-dropcap);
+    line-height: 0.8;
+    padding-right: 0.1em;
+    font-weight: 800;
+    color: var(--color-brand);
+  }
+
+  /* Pull-quote blockquote */
+  .news-pullquote {
+    border-left: var(--news-pullquote-border);
+    padding-left: var(--space-5, 1.25rem);
+    margin-block: var(--news-paragraph-spacing);
+    font-size: var(--news-pullquote-fs);
+    font-style: italic;
+    line-height: 1.6;
+    color: var(--text-primary);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     STICKY CATEGORY NAV (Wave 57)
+     ═══════════════════════════════════════════════════════ */
+
+  .news-sticky-categories {
+    position: sticky;
+    top: var(--news-sticky-top);
+    z-index: var(--z-surface, 10);
+    transition:
+      backdrop-filter var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
+      background-color var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
+      box-shadow var(--motion-duration-base, 0.3s) var(--ease-premium, ease);
+  }
+
+  .news-sticky-categories[data-stuck="true"] {
+    backdrop-filter: blur(var(--news-sticky-blur)) saturate(1.3);
+    background-color: var(--bg-surface, #fff);
+    box-shadow: 0 1px 0 var(--glass-border);
+    padding-block: var(--space-2, 0.5rem);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   VIEW TRANSITIONS — NEWS CARDS (Wave 57)
+   ═══════════════════════════════════════════════════════ */
+
+/* Reduced motion: instant transitions */
+@media (prefers-reduced-motion: reduce) {
+  .news-article-body .news-dropcap::first-letter {
+    float: none;
+    font-size: inherit;
+    line-height: inherit;
+    padding-right: 0;
+  }
+
+  .news-sticky-categories[data-stuck="true"] {
+    transition: none;
   }
 }

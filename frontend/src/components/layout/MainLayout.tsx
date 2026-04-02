@@ -26,7 +26,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         id="main-content"
         className={cn(
           "vt-page-content flex-1 w-full outline-none",
-          isMessenger ? "overflow-hidden" : "overflow-y-auto"
+          isMessenger && "overflow-hidden"
         )}
       >
         {children}

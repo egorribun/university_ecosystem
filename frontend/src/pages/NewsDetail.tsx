@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { useNavigate, useParams } from "@tanstack/react-router"
+import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useScroll, useTransform, motion } from "framer-motion"
+
 import {
   ArrowLeft as ArrowBackIcon,
+  Bookmark as BookmarkIcon,
+  BookmarkCheck as BookmarkCheckIcon,
   Edit2 as EditIcon,
   Trash2 as DeleteIcon,
   Camera as PhotoCamera,
@@ -25,14 +27,18 @@ import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { useShare } from "@/hooks/useShare"
 import { formatDate, toDate } from "@/utils/date"
 import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
-import Layout from "@/components/Layout"
+
 import { SEO } from "@/components/ui/SEO"
 import SmartImage from "@/components/media/SmartImage"
 import { Button, Input, Textarea, ConfirmDialog, Skeleton } from "@/components/ui"
 import { NewsComments } from "@/components/news/NewsComments"
+import { RelatedNews } from "@/components/news/RelatedNews"
 import { NewsBackdrop } from "@/components/news/NewsBackdrop"
-import PageFadeIn from "@/components/motion/PageFadeIn"
-import { ScrollReveal } from "@/components/motion/ScrollReveal"
+import { useBookmarks } from "@/hooks/useBookmarks"
+import { useRelatedNews } from "@/hooks/useRelatedNews"
+import { useArticleNavigation } from "@/hooks/useArticleNavigation"
+import { useSwipe } from "@/hooks/useSwipe"
+import { inferCategory } from "@/features/news/categories"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
@@ -86,24 +92,6 @@ const getMoscowDate = (dateStr: string) =>
     timeZone: "Europe/Moscow",
   })
 
-/* ── Reading progress bar ── */
-function ReadingProgressBar() {
-  const { scrollYProgress } = useScroll()
-  const scaleX = useTransform(scrollYProgress, [0, 1], [0, 1])
-  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
-
-  if (prefersReduced) return null
-
-  return (
-    <motion.div
-      className="fixed top-0 left-0 right-0 h-0.5 bg-brand origin-left z-offline"
-      style={{ scaleX }}
-      role="progressbar"
-      aria-label="Reading progress"
-    />
-  )
-}
-
 /* ══════════════════════════════════════════════════════════
    NEWS DETAIL PAGE
    ══════════════════════════════════════════════════════════ */
@@ -116,6 +104,28 @@ export default function NewsDetail() {
   const queryClient = useQueryClient()
   const isNarrow = useMediaQuery("(max-width: 768px)")
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+
+  /* ── Bookmarks ── */
+  const { isBookmarked, toggleBookmark } = useBookmarks()
+  const bookmarked = isBookmarked(id)
+  const handleToggleBookmark = useCallback(() => toggleBookmark(id), [id, toggleBookmark])
+
+  /* ── Article navigation (prev/next) ── */
+  const { prevId, nextId, prevTitle, nextTitle } = useArticleNavigation(id)
+
+  const goToArticle = useCallback(
+    (articleId: string | null) => {
+      if (articleId) void navigate({ to: "/news/$id", params: { id: articleId } })
+    },
+    [navigate]
+  )
+
+  const swipeHandlers = useSwipe({
+    onSwipeLeft: () => goToArticle(nextId),
+    onSwipeRight: () => goToArticle(prevId),
+    threshold: 48,
+    timeout: 500,
+  })
 
   /* ── State ── */
   const [editOpen, setEditOpen] = useState(false)
@@ -339,6 +349,13 @@ export default function NewsDetail() {
   const createdAtIso = useMemo(() => createdAt ? toDate(createdAt).toISOString() : "", [createdAt])
   const createdAtLabel = useMemo(() => createdAt ? getMoscowDate(createdAt) : "", [createdAt])
 
+  /* ── Related articles ── */
+  const category = useMemo(
+    () => query.data ? inferCategory(query.data.title, query.data.content) : "general" as const,
+    [query.data]
+  )
+  const relatedArticles = useRelatedNews(id, category, 3)
+
   const readingTimeMinutes = useMemo(() => {
     const text = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
     if (!text) return null
@@ -351,30 +368,28 @@ export default function NewsDetail() {
      ══════════════════════════════════════════════════════ */
   if (query.isLoading) {
     return (
-      <Layout>
-        <div className="news-theme aurora-mesh relative min-h-screen">
-          <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-          <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14 py-8">
-            <div className="max-w-4xl space-y-6">
-              <Skeleton width="6rem" height="2.5rem" rounded="9999rem" />
-              <Skeleton width="65%" height="2.75rem" />
-              <div className="flex flex-wrap gap-3">
-                <Skeleton width="10rem" height="1.75rem" rounded="9999rem" />
-                <Skeleton width="7rem" height="1.75rem" rounded="9999rem" />
-              </div>
-              <div className="rounded-2xl overflow-hidden glass-layer-elevated glass-noise">
-                <Skeleton className="w-full" height="22rem" rounded={false} />
-              </div>
-              <div className="glass-layer-surface glass-noise rounded-2xl p-8 space-y-4">
-                <Skeleton width="100%" height="1rem" />
-                <Skeleton width="96%" height="1rem" />
-                <Skeleton width="90%" height="1rem" />
-                <Skeleton width="80%" height="1rem" />
-              </div>
+      <div className="news-theme aurora-mesh relative min-h-screen">
+        <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+        <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14 py-8">
+          <div className="max-w-4xl space-y-6">
+            <Skeleton width="6rem" height="2.5rem" rounded="9999rem" />
+            <Skeleton width="65%" height="2.75rem" />
+            <div className="flex flex-wrap gap-3">
+              <Skeleton width="10rem" height="1.75rem" rounded="9999rem" />
+              <Skeleton width="7rem" height="1.75rem" rounded="9999rem" />
+            </div>
+            <div className="rounded-2xl overflow-hidden glass-layer-elevated glass-noise">
+              <Skeleton className="w-full" height="22rem" rounded={false} />
+            </div>
+            <div className="glass-layer-surface glass-noise rounded-2xl p-8 space-y-4">
+              <Skeleton width="100%" height="1rem" />
+              <Skeleton width="96%" height="1rem" />
+              <Skeleton width="90%" height="1rem" />
+              <Skeleton width="80%" height="1rem" />
             </div>
           </div>
         </div>
-      </Layout>
+      </div>
     )
   }
 
@@ -383,19 +398,17 @@ export default function NewsDetail() {
      ══════════════════════════════════════════════════════ */
   if (query.isError || !query.data) {
     return (
-      <Layout>
-        <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
-          <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-          <div className="relative z-base glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
-            <p className="text-lg font-semibold text-(--error-text)">
-              {t("news:states.loadError")}
-            </p>
-            <Button variant="glass" onClick={handleBack}>
-              {t("common:buttons.back")}
-            </Button>
-          </div>
+      <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
+        <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+        <div className="relative z-base glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+          <p className="text-lg font-semibold text-(--error-text)">
+            {t("news:states.loadError")}
+          </p>
+          <Button variant="glass" onClick={handleBack}>
+            {t("common:buttons.back")}
+          </Button>
         </div>
-      </Layout>
+      </div>
     )
   }
 
@@ -403,11 +416,8 @@ export default function NewsDetail() {
      MAIN RENDER
      ══════════════════════════════════════════════════════ */
   return (
-    <Layout>
-      <ReadingProgressBar />
-
-      <PageFadeIn effect="soft-blur">
-        <div className="news-theme aurora-mesh relative min-h-screen">
+    <>
+        <div className="news-theme aurora-mesh relative min-h-screen overflow-clip touch-pan-y" {...swipeHandlers}>
           {/* ── Backdrop ── */}
           <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
@@ -488,6 +498,31 @@ export default function NewsDetail() {
                     <span className="tabular-nums">{likesCount}</span>
                   </Button>
 
+                  {/* Bookmark */}
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={handleToggleBookmark}
+                    leadingIcon={
+                      bookmarked
+                        ? <BookmarkCheckIcon size={16} className="fill-brand text-brand" />
+                        : <BookmarkIcon size={16} />
+                    }
+                    className={cn(
+                      "transition-colors duration-fast",
+                      bookmarked && "border-brand/(--opacity-dim) bg-brand/(--opacity-subtle)"
+                    )}
+                    aria-label={bookmarked
+                      ? t("news:actions.removeBookmark", { defaultValue: "Remove bookmark" })
+                      : t("news:actions.bookmark", { defaultValue: "Bookmark" })
+                    }
+                  >
+                    {bookmarked
+                      ? t("news:actions.saved", { defaultValue: "Saved" })
+                      : t("news:actions.bookmark", { defaultValue: "Save" })
+                    }
+                  </Button>
+
                   {/* Admin actions */}
                   {user?.role === "admin" && (
                     <>
@@ -515,7 +550,6 @@ export default function NewsDetail() {
               </header>
 
               {/* ─── HERO IMAGE ─── */}
-              <ScrollReveal mode="fade">
                 <figure className="overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft) shadow-glass">
                   <div
                     className={cn(
@@ -542,21 +576,35 @@ export default function NewsDetail() {
                     </figcaption>
                   )}
                 </figure>
-              </ScrollReveal>
 
               {/* ─── ARTICLE BODY ─── */}
-              <ScrollReveal mode="fade" delay={0.1}>
-                <section className="glass-layer-surface glass-noise rounded-2xl p-6 sm:p-8 md:p-10 space-y-5 text-body leading-relaxed text-(--text-secondary)">
-                  {content?.split(/\n{2,}/).map((chunk: string, idx: number) => {
-                    const text = chunk.trim()
-                    if (!text) return null
-                    return <p key={`p-${idx}`}>{text}</p>
-                  })}
+                <section className="glass-layer-surface glass-noise rounded-2xl p-6 sm:p-8 md:p-10">
+                  <div className="news-article-body text-body leading-relaxed text-(--text-secondary)">
+                    {content?.split(/\n{2,}/).map((chunk: string, idx: number) => {
+                      const text = chunk.trim()
+                      if (!text) return null
+
+                      // Pull-quote: lines starting with >
+                      if (text.startsWith(">")) {
+                        return (
+                          <blockquote key={`q-${idx}`} className="news-pullquote">
+                            {text.replace(/^>\s*/, "")}
+                          </blockquote>
+                        )
+                      }
+
+                      // Drop cap on first paragraph (only if long enough)
+                      const isDropCap = idx === 0 && text.length > 200
+                      return (
+                        <p key={`p-${idx}`} className={isDropCap ? "news-dropcap" : undefined}>
+                          {text}
+                        </p>
+                      )
+                    })}
+                  </div>
                 </section>
-              </ScrollReveal>
 
               {/* ─── COMMENTS ─── */}
-              <ScrollReveal mode="slide" delay={0.15}>
                 <NewsComments
                   comments={comments}
                   user={user as { id: string; role: string } | null}
@@ -567,11 +615,56 @@ export default function NewsDetail() {
                   t={t}
                   getMoscowDate={getMoscowDate}
                 />
-              </ScrollReveal>
+
+              {/* ─── RELATED ARTICLES ─── */}
+              {relatedArticles.length > 0 && (
+                <RelatedNews items={relatedArticles} />
+              )}
+
+              {/* ─── PREV / NEXT NAVIGATION ─── */}
+              {(prevId || nextId) && (
+                  <nav
+                    className="flex items-stretch gap-4 border-t border-glass-border/(--opacity-soft) pt-6"
+                    aria-label={t("news:navigation.label", { defaultValue: "Article navigation" })}
+                  >
+                    {prevId ? (
+                      <Link
+                        to="/news/$id"
+                        params={{ id: prevId }}
+                        className="group flex flex-1 flex-col gap-1 rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) p-4 transition hover:shadow-glass hover:-translate-y-0.5"
+                      >
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">
+                          {t("news:navigation.prev", { defaultValue: "Previous" })}
+                        </span>
+                        <span className="text-sm font-semibold text-text-primary line-clamp-1 group-hover:text-brand transition-colors">
+                          {prevTitle}
+                        </span>
+                      </Link>
+                    ) : (
+                      <div className="flex-1" />
+                    )}
+
+                    {nextId ? (
+                      <Link
+                        to="/news/$id"
+                        params={{ id: nextId }}
+                        className="group flex flex-1 flex-col gap-1 rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) p-4 text-right transition hover:shadow-glass hover:-translate-y-0.5"
+                      >
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">
+                          {t("news:navigation.next", { defaultValue: "Next" })}
+                        </span>
+                        <span className="text-sm font-semibold text-text-primary line-clamp-1 group-hover:text-brand transition-colors">
+                          {nextTitle}
+                        </span>
+                      </Link>
+                    ) : (
+                      <div className="flex-1" />
+                    )}
+                  </nav>
+              )}
             </article>
           </div>
         </div>
-      </PageFadeIn>
 
       {/* ═══ SHARE DIALOG ═══ */}
       <Dialog
@@ -780,6 +873,6 @@ export default function NewsDetail() {
           </Alert>
         </Snackbar>
       )}
-    </Layout>
+    </>
   )
 }

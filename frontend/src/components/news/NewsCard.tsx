@@ -1,6 +1,7 @@
 import { useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
+import { useBookmarks } from "@/hooks/useBookmarks"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { inferCategory } from "@/features/news/categories"
 import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
@@ -71,6 +72,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const commentsCount = interactions?.comments_count ?? initialComments
 
   const spotlight = useSpotlight()
+  const { isBookmarked, toggleBookmark } = useBookmarks()
+  const handleToggleBookmark = useCallback(() => toggleBookmark(id), [id, toggleBookmark])
 
   const localizedTitle = useMemo(() => {
     const english = title_en ?? ""
@@ -132,6 +135,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       isLiked={isLiked}
       likesCount={likesCount}
       commentsCount={commentsCount}
+      isBookmarked={isBookmarked(id)}
       isAdmin={user?.role === "admin"}
       loading={loading}
       error={error}
@@ -143,6 +147,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       editData={editData}
       spotlight={spotlight}
       onToggleLike={toggleLike}
+      onToggleBookmark={handleToggleBookmark}
       onEditOpen={openEdit}
       onEditClose={closeEdit}
       onDeleteOpen={openDeletePrompt}

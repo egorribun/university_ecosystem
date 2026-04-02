@@ -1,9 +1,11 @@
-import { Plus, Search, X, ArrowUpDown } from "lucide-react"
+import { Plus, Search, X, ArrowUpDown, Bookmark as BookmarkIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { useRef, useEffect, useState } from "react"
 import FadeSection from "@/components/motion/FadeSection"
 import { Button } from "@/components/ui"
 import { ALL_CATEGORIES, type NewsCategory } from "@/features/news/categories"
 import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import type { SortMode } from "@/features/news/NewsFeature"
 
 interface NewsHeaderProps {
@@ -12,10 +14,11 @@ interface NewsHeaderProps {
   newsCount?: number
   searchQuery: string
   onSearchChange: (q: string) => void
-  activeCategory: NewsCategory | "all"
-  onCategoryChange: (c: NewsCategory | "all") => void
+  activeCategory: NewsCategory | "all" | "saved"
+  onCategoryChange: (c: NewsCategory | "all" | "saved") => void
   sortMode: SortMode
   onSortChange: (s: SortMode) => void
+  bookmarkCount?: number
 }
 
 export const NewsHeader = ({
@@ -28,8 +31,27 @@ export const NewsHeader = ({
   onCategoryChange,
   sortMode,
   onSortChange,
+  bookmarkCount = 0,
 }: NewsHeaderProps) => {
   const { t } = useTranslation(["news", "common"])
+  const isDesktop = useMediaQuery("(min-width: 768px)")
+
+  /* ── Sticky detection via IntersectionObserver ── */
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const stickyRef = useRef<HTMLDivElement>(null)
+  const [isStuck, setIsStuck] = useState(false)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry) setIsStuck(!entry.isIntersecting) },
+      { threshold: 0 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <header className="mb-6 sm:mb-8 space-y-4">
@@ -84,63 +106,97 @@ export const NewsHeader = ({
         )}
       </FadeSection>
 
-      {/* Row 2: Category pills + sort toggle */}
-      <FadeSection delay="100ms" className="flex items-center gap-2 flex-wrap">
-        {/* "All" pill */}
-        <button
-          type="button"
-          onClick={() => onCategoryChange("all")}
-          className={cn(
-            "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border",
-            activeCategory === "all"
-              ? "bg-brand text-white border-brand shadow-sm"
-              : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
-          )}
-        >
-          {t("news:categories.all", { defaultValue: "All" })}
-        </button>
+      {/* Sentinel for sticky detection */}
+      <div ref={sentinelRef} className="h-0" aria-hidden />
 
-        {/* Category pills */}
-        {ALL_CATEGORIES.map((cat) => (
+      {/* Row 2: Category pills + sort toggle — sticky on scroll */}
+      <div
+        ref={stickyRef}
+        className="news-sticky-categories"
+        data-stuck={isStuck}
+      >
+        <FadeSection delay="100ms" className="flex items-center gap-2 flex-wrap">
+          {/* "All" pill */}
           <button
-            key={cat.id}
             type="button"
-            onClick={() => onCategoryChange(cat.id)}
+            onClick={() => onCategoryChange("all")}
             className={cn(
               "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border",
-              activeCategory === cat.id
-                ? "shadow-sm"
+              activeCategory === "all"
+                ? "bg-brand text-white border-brand shadow-sm"
                 : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
             )}
-            style={
-              activeCategory === cat.id
-                ? {
-                    backgroundColor: `var(--cat-${cat.color}-bg)`,
-                    color: `var(--cat-${cat.color}-text)`,
-                    borderColor: `var(--cat-${cat.color}-text)`,
-                  }
-                : undefined
-            }
           >
-            {t(cat.labelKey, { defaultValue: cat.id })}
+            {t("news:categories.all", { defaultValue: "All" })}
           </button>
-        ))}
 
-        {/* Sort toggle */}
-        <button
-          type="button"
-          onClick={() => onSortChange(sortMode === "newest" ? "popular" : "newest")}
-          className="ml-auto flex items-center gap-1.5 rounded-full glass-layer-surface border border-glass-border/(--opacity-soft) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-text-primary transition-colors shrink-0"
-          aria-label={t("news:sort.label", { defaultValue: "Sort" })}
-        >
-          <ArrowUpDown size={13} />
-          <span>
-            {sortMode === "newest"
-              ? t("news:sort.newest", { defaultValue: "Newest" })
-              : t("news:sort.popular", { defaultValue: "Popular" })}
-          </span>
-        </button>
-      </FadeSection>
+          {/* Category pills */}
+          {ALL_CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => onCategoryChange(cat.id)}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border",
+                activeCategory === cat.id
+                  ? "shadow-sm"
+                  : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
+              )}
+              style={
+                activeCategory === cat.id
+                  ? {
+                      backgroundColor: `var(--cat-${cat.color}-bg)`,
+                      color: `var(--cat-${cat.color}-text)`,
+                      borderColor: `var(--cat-${cat.color}-text)`,
+                    }
+                  : undefined
+              }
+            >
+              {t(cat.labelKey, { defaultValue: cat.id })}
+            </button>
+          ))}
+
+          {/* Saved/bookmark filter — only shown when bookmarks exist */}
+          {bookmarkCount > 0 && (
+            <button
+              type="button"
+              onClick={() => onCategoryChange("saved")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border flex items-center gap-1.5",
+                activeCategory === "saved"
+                  ? "bg-brand text-white border-brand shadow-sm"
+                  : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
+              )}
+            >
+              <BookmarkIcon size={12} />
+              <span>{t("news:categories.saved", { defaultValue: "Saved" })}</span>
+              <span className="tabular-nums">({bookmarkCount})</span>
+            </button>
+          )}
+
+          {/* Sort toggle */}
+          <button
+            type="button"
+            onClick={() => onSortChange(sortMode === "newest" ? "popular" : "newest")}
+            className="ml-auto flex items-center gap-1.5 rounded-full glass-layer-surface border border-glass-border/(--opacity-soft) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-text-primary transition-colors shrink-0"
+            aria-label={t("news:sort.label", { defaultValue: "Sort" })}
+          >
+            <ArrowUpDown size={13} />
+            <span>
+              {sortMode === "newest"
+                ? t("news:sort.newest", { defaultValue: "Newest" })
+                : t("news:sort.popular", { defaultValue: "Popular" })}
+            </span>
+          </button>
+
+          {/* Keyboard hint — desktop only */}
+          {isDesktop && (
+            <span className="text-[10px] font-mono tracking-wider text-(--text-secondary)/(--opacity-medium) shrink-0" aria-hidden>
+              J/K
+            </span>
+          )}
+        </FadeSection>
+      </div>
     </header>
   )
 }

@@ -8,6 +8,7 @@ import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { Button } from "@/components/ui"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { type NewsItem as News } from "@/api/news"
+import { cn } from "@/utils/cn"
 
 interface NewsListProps {
   newsList: News[]
@@ -20,6 +21,8 @@ interface NewsListProps {
   onAddClick: () => void
   isAdmin: boolean
   isOnline: boolean
+  activeKeyboardIndex?: number
+  registerCardRef?: (index: number, el: HTMLElement | null) => void
 }
 
 const SKELETON_COUNT = 6
@@ -36,6 +39,8 @@ export const NewsList = ({
   onAddClick,
   isAdmin,
   isOnline,
+  activeKeyboardIndex = -1,
+  registerCardRef,
 }: NewsListProps) => {
   const { t } = useTranslation(["news", "common"])
   const showEmptyState = !isInitialLoading && newsList.length === 0
@@ -118,16 +123,16 @@ export const NewsList = ({
           {newsList.map((news, index) => (
             <motion.div
               key={news.id}
+              ref={(el) => registerCardRef?.(index, el)}
               layout
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className={
-                index === 0
-                  ? "sm:col-span-2 lg:col-span-2 lg:row-span-2"
-                  : undefined
-              }
+              className={cn(
+                index === 0 && "sm:col-span-2 lg:col-span-2 lg:row-span-2",
+                activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
+              )}
             >
               <NewsCard
                 {...news}

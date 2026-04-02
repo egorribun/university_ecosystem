@@ -26,6 +26,7 @@ export interface NewsCardViewProps {
   isLiked: boolean
   likesCount: number
   commentsCount: number
+  isBookmarked: boolean
   isAdmin: boolean
   loading: boolean
   error: string
@@ -47,6 +48,7 @@ export interface NewsCardViewProps {
     onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void
   }
   onToggleLike: () => void
+  onToggleBookmark: () => void
   onEditOpen: () => void
   onEditClose: () => void
   onDeleteOpen: () => void
@@ -71,6 +73,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   isLiked,
   likesCount,
   commentsCount,
+  isBookmarked,
   isAdmin,
   loading,
   error,
@@ -82,6 +85,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   editData,
   spotlight,
   onToggleLike,
+  onToggleBookmark,
   onEditOpen,
   onEditClose,
   onDeleteOpen,
@@ -179,10 +183,11 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
         />
       </div>
 
-      {/* Content */}
+      {/* Content — no `relative` here: Link's before:absolute before:inset-0
+           must reach <article> to make the entire card clickable (FIX-57-02) */}
       <div
         className={cn(
-          "relative flex flex-1 flex-col",
+          "flex flex-1 flex-col",
           featured && "lg:justify-center"
         )}
       >
@@ -193,7 +198,9 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           isLiked={isLiked}
           likesCount={likesCount}
           commentsCount={commentsCount}
+          isBookmarked={isBookmarked}
           onToggleLike={onToggleLike}
+          onToggleBookmark={onToggleBookmark}
           hoveringDisabled={hoveringDisabled}
           featured={featured}
         />

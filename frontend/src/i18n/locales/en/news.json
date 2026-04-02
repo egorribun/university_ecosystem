@@ -10,7 +10,15 @@
     "edit": "Edit news",
     "delete": "Delete news",
     "back": "Back",
-    "share": "Share"
+    "share": "Share",
+    "bookmark": "Save",
+    "saved": "Saved",
+    "removeBookmark": "Remove bookmark"
+  },
+  "navigation": {
+    "label": "Article navigation",
+    "prev": "Previous",
+    "next": "Next"
   },
   "form": {
     "title": "Title",
@@ -67,10 +75,36 @@
     "preview": "Preview of the news image",
     "newCover": "Preview of the new cover"
   },
+  "categories": {
+    "all": "All",
+    "education": "Education",
+    "sport": "Sport",
+    "science": "Science",
+    "events": "Events",
+    "campus": "Campus",
+    "general": "General",
+    "saved": "Saved"
+  },
+  "sort": {
+    "label": "Sort",
+    "newest": "Newest",
+    "popular": "Popular"
+  },
+  "search": {
+    "placeholder": "Search news..."
+  },
+  "related": {
+    "title": "Related articles"
+  },
+  "keyboard": {
+    "hint": "J/K — navigate"
+  },
   "aria": {
     "cardActions": "News actions",
     "editNews": "Edit news",
     "deleteNews": "Delete news",
-    "shareNews": "Share this news"
+    "shareNews": "Share this news",
+    "bookmarkNews": "Bookmark this news",
+    "removeBookmark": "Remove bookmark"
   }
 }

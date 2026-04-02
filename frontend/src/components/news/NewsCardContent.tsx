@@ -2,6 +2,8 @@ import { cn } from "@/utils/cn"
 import { motion } from "framer-motion"
 import {
   ArrowUpRight as ArrowIcon,
+  Bookmark as BookmarkIcon,
+  BookmarkCheck as BookmarkCheckIcon,
   MessageCircle as CommentIcon,
   Heart as HeartIcon,
 } from "lucide-react"
@@ -15,7 +17,9 @@ interface NewsCardContentProps {
   isLiked: boolean
   likesCount: number
   commentsCount: number
+  isBookmarked?: boolean
   onToggleLike: () => void
+  onToggleBookmark?: () => void
   hoveringDisabled: boolean
   featured?: boolean
 }
@@ -27,7 +31,9 @@ const NewsCardContent = ({
   isLiked,
   likesCount,
   commentsCount,
+  isBookmarked = false,
   onToggleLike,
+  onToggleBookmark,
   hoveringDisabled,
   featured,
 }: NewsCardContentProps) => {
@@ -105,6 +111,37 @@ const NewsCardContent = ({
             <CommentIcon size={16} />
             <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
           </div>
+
+          {/* Bookmark */}
+          {onToggleBookmark && (
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.85 }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleBookmark()
+              }}
+              className={cn(
+                "flex items-center transition-colors duration-fast",
+                isBookmarked
+                  ? "text-brand"
+                  : "text-(--text-secondary) hover:text-brand/(--opacity-hover)"
+              )}
+              aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}
+            >
+              {isBookmarked ? (
+                <motion.span
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                >
+                  <BookmarkCheckIcon size={16} fill="currentColor" />
+                </motion.span>
+              ) : (
+                <BookmarkIcon size={16} />
+              )}
+            </motion.button>
+          )}
         </div>
 
         {/* CTA — reveals on hover */}
