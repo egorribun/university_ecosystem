@@ -2,7 +2,7 @@ import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
 import { getMoscowDate } from "@/utils/date"
-import { getNewsHeroId, clearNewsHeroId } from "@/utils/newsTransition"
+import { getNewsHeroId } from "@/utils/newsTransition"
 import { Cloud, FileText as ArticleIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -25,14 +25,6 @@ const NewsCardHero = ({ id, image_url, title, created_at, featured, transitionin
 
   const src = useMemo(() => image_url || "", [image_url])
   useEffect(() => { setReady(!src) }, [src])
-
-  // Clear hero transition ID after this render cycle (snapshot already taken)
-  useEffect(() => {
-    if (id && getNewsHeroId() === id) {
-      const timer = requestAnimationFrame(() => clearNewsHeroId())
-      return () => cancelAnimationFrame(timer)
-    }
-  }, [id])
   const onLoad = useCallback(() => setReady(true), [])
 
   const isoDate = useMemo(

@@ -9,6 +9,7 @@ import NewsCardHero from "./NewsCardHero"
 import { NewsQuickView } from "./NewsQuickView"
 import { NewsCategoryBadge } from "./NewsCategoryBadge"
 import type { NewsCategory } from "@/features/news/categories"
+import { clearNewsHeroId } from "@/utils/newsTransition"
 
 const NewsCardActions = lazy(() =>
   import("./NewsCardActions").then((m) => ({ default: m.NewsCardActions }))
@@ -105,7 +106,10 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   /* ── View Transition: mark hero for morphing on navigation ── */
   const [transitioning, setTransitioning] = useState(false)
   const handlePointerDown = useCallback(() => {
-    if (!hoveringDisabled) setTransitioning(true)
+    if (!hoveringDisabled) {
+      clearNewsHeroId() // Prevent duplicate VT name with stale back-nav ID
+      setTransitioning(true)
+    }
   }, [hoveringDisabled])
   // Reset if user cancels (e.g., right-click, drag, pointerleave without click)
   const handleTransitionReset = useCallback(() => setTransitioning(false), [])
