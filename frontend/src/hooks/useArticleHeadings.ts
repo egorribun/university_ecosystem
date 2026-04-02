@@ -1,0 +1,43 @@
+import { useMemo } from "react"
+import { marked } from "marked"
+
+export interface TocEntry {
+  id: string
+  text: string
+  level: number
+}
+
+/**
+ * Extracts heading entries from Markdown content for Table of Contents.
+ * Uses marked.lexer() to parse tokens without rendering — lightweight.
+ */
+export function useArticleHeadings(content: string): TocEntry[] {
+  return useMemo(() => {
+    if (!content.trim()) return []
+
+    try {
+      const tokens = marked.lexer(content)
+      const headings: TocEntry[] = []
+
+      for (const token of tokens) {
+        if (token.type === "heading" && (token.depth === 2 || token.depth === 3)) {
+          const text = token.text.replace(/<[^>]+>/g, "").trim()
+          if (!text) continue
+
+          const id = text
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}\s-]/gu, "")
+            .replace(/\s+/g, "-")
+            .replace(/-+/g, "-")
+            .slice(0, 64)
+
+          headings.push({ id, text, level: token.depth })
+        }
+      }
+
+      return headings
+    } catch {
+      return []
+    }
+  }, [content])
+}
