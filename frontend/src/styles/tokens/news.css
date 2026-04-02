@@ -376,10 +376,36 @@
    VIEW TRANSITIONS — NEWS CARDS (Wave 57 + 58)
    ═══════════════════════════════════════════════════════ */
 
-/* Morph news card hero → detail page hero */
+/* Morph news card hero → detail page hero.
+   Only ONE card has view-transition-name: news-hero at a time (set on pointerdown).
+   The detail page hero always has view-transition-name: news-hero. */
 ::view-transition-group(news-hero) {
-  animation-duration: 0.3s;
+  animation-duration: 0.4s;
   animation-timing-function: var(--ease-premium, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+::view-transition-old(news-hero) {
+  animation: 0.3s var(--ease-premium) both news-hero-out;
+}
+
+::view-transition-new(news-hero) {
+  animation: 0.4s var(--ease-premium) both news-hero-in;
+}
+
+@keyframes news-hero-out {
+  to {
+    opacity: 0;
+    transform: scale(1.03);
+    filter: blur(4px);
+  }
+}
+
+@keyframes news-hero-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(4px);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════

@@ -102,11 +102,20 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   }, [hoveringDisabled, featured])
   const hideQuickView = useCallback(() => setQuickViewVisible(false), [])
 
+  /* ── View Transition: mark hero for morphing on navigation ── */
+  const [transitioning, setTransitioning] = useState(false)
+  const handlePointerDown = useCallback(() => {
+    if (!hoveringDisabled) setTransitioning(true)
+  }, [hoveringDisabled])
+  // Reset if user cancels (e.g., right-click, drag, pointerleave without click)
+  const handleTransitionReset = useCallback(() => setTransitioning(false), [])
+
   return (
     <motion.article
       onMouseMove={spotlight.onMouseMove}
       onMouseEnter={showQuickView}
-      onMouseLeave={hideQuickView}
+      onMouseLeave={() => { hideQuickView(); handleTransitionReset() }}
+      onPointerDown={handlePointerDown}
       whileHover={!hoveringDisabled ? { y: -4 } : undefined}
       transition={{ duration: motionTokens.durationMedium, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
@@ -176,11 +185,11 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
         )}
       >
         <NewsCardHero
-          id={id}
           image_url={image_url}
           title={title}
           created_at={created_at}
           featured={featured}
+          transitioning={transitioning}
         />
       </div>
 

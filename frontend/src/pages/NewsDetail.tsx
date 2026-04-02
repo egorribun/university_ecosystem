@@ -276,7 +276,7 @@ export default function NewsDetail() {
               onDeleteOpen={() => setConfirmDeleteOpen(true)}
             />
 
-            <NewsDetailHero id={id} imageUrl={imageUrl} displayTitle={displayTitle} />
+            <NewsDetailHero imageUrl={imageUrl} displayTitle={displayTitle} />
             <NewsDetailBody content={content} />
 
             <NewsComments

@@ -6,12 +6,11 @@ import { X as CloseIcon, ZoomIn } from "lucide-react"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface NewsDetailHeroProps {
-  id?: string
   imageUrl: string
   displayTitle: string
 }
 
-export function NewsDetailHero({ id, imageUrl, displayTitle }: NewsDetailHeroProps) {
+export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) {
   const { t } = useTranslation(["news", "common"])
   const [heroRatio, setHeroRatio] = useState<number | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -73,7 +72,7 @@ export function NewsDetailHero({ id, imageUrl, displayTitle }: NewsDetailHeroPro
     <>
     <figure
       className="relative overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft) shadow-glass"
-      style={id ? { viewTransitionName: `news-hero-${id}` } : undefined}
+      style={{ viewTransitionName: "news-hero" }}
     >
       <div
         className={cn(

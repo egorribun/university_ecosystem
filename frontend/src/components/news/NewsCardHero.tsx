@@ -7,14 +7,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface NewsCardHeroProps {
-  id?: string
   image_url?: string
   title?: string
   created_at: string
   featured?: boolean
+  /** Set by parent on pointerdown to enable view-transition morphing */
+  transitioning?: boolean
 }
 
-const NewsCardHero = ({ id, image_url, title, created_at, featured }: NewsCardHeroProps) => {
+const NewsCardHero = ({ image_url, title, created_at, featured, transitioning }: NewsCardHeroProps) => {
   const { t } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
   const [ready, setReady] = useState(!image_url)
@@ -62,7 +63,7 @@ const NewsCardHero = ({ id, image_url, title, created_at, featured }: NewsCardHe
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand/(--opacity-subtle) to-transparent"
-      style={id ? { viewTransitionName: `news-hero-${id}` } : undefined}
+      style={transitioning ? { viewTransitionName: "news-hero" } : undefined}
     >
       {/* Loading shimmer */}
       <div
