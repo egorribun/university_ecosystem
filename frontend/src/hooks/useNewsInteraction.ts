@@ -80,7 +80,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       const res = await api.get<NewsInteractions>(`/news/${newsId}/interactions`)
       return res.data
     },
-    staleTime: 0, // Always refresh interactions on mount to ensure latest counts/comments
+    staleTime: 30_000, // 30s cache — optimistic updates handle local state immediately
     initialData: options.initialData
       ? {
           likes_count: options.initialData.likes_count ?? 0,

@@ -3,6 +3,7 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { useBookmarks } from "@/hooks/useBookmarks"
 import { sanitizeNewsText } from "@/utils/sanitize"
+import { localizeField } from "@/utils/localize"
 import { inferCategory } from "@/features/news/categories"
 import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
@@ -75,17 +76,15 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const { isBookmarked, toggleBookmark } = useBookmarks()
   const handleToggleBookmark = useCallback(() => toggleBookmark(id), [id, toggleBookmark])
 
-  const localizedTitle = useMemo(() => {
-    const english = title_en ?? ""
-    if (language === "en" && english.trim()) return english
-    return title || english
-  }, [language, title, title_en])
+  const localizedTitle = useMemo(
+    () => localizeField(title, title_en, language),
+    [language, title, title_en]
+  )
 
-  const localizedContent = useMemo(() => {
-    const english = content_en ?? ""
-    if (language === "en" && english.trim()) return english
-    return content || english
-  }, [language, content, content_en])
+  const localizedContent = useMemo(
+    () => localizeField(content, content_en, language),
+    [language, content, content_en]
+  )
 
   const category = useMemo(() => inferCategory(title, content), [title, content])
 

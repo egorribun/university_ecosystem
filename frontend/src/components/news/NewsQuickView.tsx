@@ -75,7 +75,7 @@ export function NewsQuickView({
                 {commentsCount}
               </span>
               <span className="ml-auto text-brand font-semibold">
-                {t("news:quickView.clickToRead", { defaultValue: "Click to read" })}
+                {t("news:quickView.readMore", { defaultValue: "Read full article" })}
               </span>
             </div>
           </div>

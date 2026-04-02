@@ -89,7 +89,7 @@ const NewsCardContent = ({
                 ? "text-error-text"
                 : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
             )}
-            aria-label={isLiked ? "Unlike" : "Like"}
+            aria-label={isLiked ? t("common:aria.unlike", { defaultValue: "Unlike" }) : t("common:aria.like", { defaultValue: "Like" })}
           >
             {isLiked ? (
               <motion.span
@@ -127,7 +127,7 @@ const NewsCardContent = ({
                   ? "text-brand"
                   : "text-(--text-secondary) hover:text-brand/(--opacity-hover)"
               )}
-              aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}
+              aria-label={isBookmarked ? t("common:aria.removeBookmark", { defaultValue: "Remove bookmark" }) : t("common:aria.addBookmark", { defaultValue: "Bookmark" })}
             >
               {isBookmarked ? (
                 <motion.span

@@ -45,6 +45,15 @@
     "generic": "Произошла ошибка",
     "featureUnavailable": "{{feature}} недоступен"
   },
+  "aria": {
+    "like": "Нравится",
+    "unlike": "Убрать лайк",
+    "addBookmark": "Сохранить",
+    "removeBookmark": "Убрать из сохранённых"
+  },
+  "cta": {
+    "learnMore": "Подробнее"
+  },
   "pagination": {
     "rowsPerPage": "Строк на странице",
     "firstPage": "В начало",

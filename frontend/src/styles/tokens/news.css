@@ -175,10 +175,107 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   VIEW TRANSITIONS — NEWS CARDS (Wave 57)
+   READING PROGRESS INDICATOR (Wave 58)
+   CSS scroll-driven animation — zero JS, GPU-composited.
    ═══════════════════════════════════════════════════════ */
 
-/* Reduced motion: instant transitions */
+.news-reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--color-brand);
+  transform-origin: left;
+  transform: scaleX(0);
+  z-index: var(--z-navbar, 50);
+  pointer-events: none;
+  animation: news-reading-progress linear;
+  animation-timeline: scroll();
+}
+
+@keyframes news-reading-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   VIEW TRANSITIONS — NEWS CARDS (Wave 57 + 58)
+   ═══════════════════════════════════════════════════════ */
+
+/* Morph news card hero → detail page hero */
+::view-transition-group(news-hero) {
+  animation-duration: 0.3s;
+  animation-timing-function: var(--ease-premium, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTAINER QUERIES — NEWS CARDS (Wave 58)
+   ═══════════════════════════════════════════════════════ */
+
+.news-card-container {
+  container-type: inline-size;
+  container-name: news-card;
+}
+
+@container news-card (max-width: 280px) {
+  .news-card-title { font-size: 0.875rem; }
+  .news-card-preview { display: none; }
+  .news-card-footer { gap: 0.5rem; }
+}
+
+@container news-card (min-width: 400px) {
+  .news-card-title { font-size: 1.25rem; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT STYLESHEET (Wave 58)
+   ═══════════════════════════════════════════════════════ */
+
+@media print {
+  .news-theme {
+    background: white !important;
+    color: black !important;
+  }
+
+  .news-theme .aurora-mesh,
+  .news-theme [aria-hidden="true"],
+  .news-reading-progress,
+  .news-sticky-categories {
+    display: none !important;
+  }
+
+  .news-article-body {
+    max-width: 100%;
+    font-size: 12pt;
+    line-height: 1.6;
+    color: black;
+  }
+
+  .news-article-body .news-dropcap::first-letter {
+    color: black;
+  }
+
+  .news-pullquote {
+    border-left-color: #333;
+    color: #333;
+  }
+
+  /* Hide non-content sections */
+  .glass-layer-surface,
+  .glass-layer-elevated,
+  .glass-layer-floating {
+    backdrop-filter: none !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION (Wave 57 + 58)
+   ═══════════════════════════════════════════════════════ */
+
 @media (prefers-reduced-motion: reduce) {
   .news-article-body .news-dropcap::first-letter {
     float: none;
@@ -189,5 +286,9 @@
 
   .news-sticky-categories[data-stuck="true"] {
     transition: none;
+  }
+
+  .news-reading-progress {
+    display: none;
   }
 }

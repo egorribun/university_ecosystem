@@ -169,6 +169,13 @@
 - Frontend dashboard orbs: CSS `@keyframes` (orb-breathe, orb-drift, orb-drift-alt, orb-pulse-opacity, orb-sway) replace Framer Motion infinite loops — zero JS overhead (PERF-43-01)
 - Frontend component org: root-level components moved to `feedback/`, `motion/`, `media/`, `search/`, `pwa/` feature folders with barrel index.ts (INFRA-43-01)
 - CI: token sync gate in `reusable-frontend-tests.yml` — `npm run tokens:sync && git diff --exit-code` fails if CSS/TS drift (MOD-43-01)
+- TanStack Router: `news.tsx` = layout route (needs Outlet), `news.index.tsx` = index route (exact match). Missing `.index` breaks child routes (FIX-57-03)
+- `view-transition-name` creates `contain: layout` → becomes containing block. Never on elements with `before:absolute` Link overlay (FIX-57-01)
+- `overflow-x: hidden` auto-sets `overflow-y: auto` (CSS BFC spec). Use `overflow: clip` to clip without scrollbar
+- NewsDetail: NO `<Layout>` wrapper — MainLayout already provides `<main>`. Double `<main>` = double scrollbar
+- `NewsInteractionsOut`: requires `ConfigDict(from_attributes=True)` for DTO→Pydantic model_validate
+- WASM sanitizer (`strip_html`/`sanitize_rich_text`): try-catch with regex fallback when wasm-sanitizer pkg not built
+- useBookmarks: `useSyncExternalStore` + module-level Set + BroadcastChannel("ecosystem.news.bookmarks")
 - StoryList: drag-to-scroll mouse-only (`pointerType === "mouse"`), touch uses native `overflow-x: auto` — never set `touchAction: "pan-y"` (DESIGN-54-03)
 - StoryList: `scroll-snap-type` disabled via inline style during drag, re-enabled on pointer up — snap fights `scrollLeft` assignment (DESIGN-54-03)
 - DashboardHero: decoratives in `overflow-hidden rounded-[inherit]` wrapper, header itself has NO overflow-clip — stories must scroll (FIX-54-01)
@@ -200,6 +207,7 @@
 - Docker: NATS config uses `sed` instead of `envsubst` (not in alpine) (FIX-40-06)
 
 ## Audit Trail
+- Wave 57: News editorial premium — bookmarks (useBookmarks: localStorage+BroadcastChannel+useSyncExternalStore), J/K keyboard nav (useNewsKeyboardNav), related articles (useRelatedNews), mobile swipe (useArticleNavigation+useSwipe), editorial typography (drop caps, pull-quotes, 65ch), sticky category nav, prev/next nav bar. Fixes: card click (content wrapper relative→removed, FIX-57-02), route news.tsx→news.index.tsx (FIX-57-03), WASM sanitizer fallback, double scrollbar (overflow-clip), NewsInteractionsOut from_attributes, removed nested Layout. 21 files +951/-229
 - Wave 54: Stories scroll + polish — decorative clip wrapper, circular thumbnails, scroll snap (drag-pause), edge fade masks, wheel→horizontal, mouse-only drag / native touch, velocity swipe, ProgressBar liveRegion, cascadeProps helper, timer drift fix, css-scale-in viewer, 6 missing color primitives, dead CSS vars removed. 10 files +210/-122
 - Wave 33: 7 commits, ~145 files, 1 CRITICAL + 11 HIGH + ~115 MEDIUM + ~80 LOW — ALL code-level backend issues closed. Recovery code hash bug (RZ-33-01), 6 DCL singletons (RZ-33-29), DI dedup (TD-33-08), cache SCAN (TD-33-10), Go stale tests (TD-33-11/12), Pyroscope 1.18.1, test quality (7 files). Full report in `memory/audit_wave33_2026_03_26.md`
 - Wave 40 (Docker): rust-optimizer removed, Garage→MinIO, gateway gin route conflict fixed (unified wildcard), WebSocketProvider added to AppProviders, NATS envsubst→sed, .env.docker BOM fix, pgvector tag fix, depends_on relaxed. ~14 GB old images cleaned.

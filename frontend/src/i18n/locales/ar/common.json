@@ -25,5 +25,14 @@
     "loading": "Loading…",
     "uploading": "Uploading…",
     "publishing": "Publishing…"
+  },
+  "aria": {
+    "like": "إعجاب",
+    "unlike": "إلغاء الإعجاب",
+    "addBookmark": "حفظ",
+    "removeBookmark": "إزالة من المحفوظات"
+  },
+  "cta": {
+    "learnMore": "اقرأ المزيد"
   }
 }

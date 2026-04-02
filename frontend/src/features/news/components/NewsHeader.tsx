@@ -115,13 +115,14 @@ export const NewsHeader = ({
         className="news-sticky-categories"
         data-stuck={isStuck}
       >
-        <FadeSection delay="100ms" className="flex items-center gap-2 flex-wrap">
+        <FadeSection delay="100ms" className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4">
           {/* "All" pill */}
           <button
             type="button"
             onClick={() => onCategoryChange("all")}
+            aria-current={activeCategory === "all" ? "page" : undefined}
             className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border",
+              "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border whitespace-nowrap",
               activeCategory === "all"
                 ? "bg-brand text-white border-brand shadow-sm"
                 : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
@@ -136,8 +137,9 @@ export const NewsHeader = ({
               key={cat.id}
               type="button"
               onClick={() => onCategoryChange(cat.id)}
+              aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border",
+                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border whitespace-nowrap",
                 activeCategory === cat.id
                   ? "shadow-sm"
                   : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
@@ -161,8 +163,9 @@ export const NewsHeader = ({
             <button
               type="button"
               onClick={() => onCategoryChange("saved")}
+              aria-current={activeCategory === "saved" ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border flex items-center gap-1.5",
+                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border flex items-center gap-1.5 whitespace-nowrap",
                 activeCategory === "saved"
                   ? "bg-brand text-white border-brand shadow-sm"
                   : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"

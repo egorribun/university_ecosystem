@@ -6,17 +6,12 @@ import {
   Send as SendIcon,
 } from "lucide-react"
 import { Button, Textarea, ConfirmDialog } from "@/components/ui"
+import type { NewsComment } from "@/hooks/useNewsInteraction"
 
-interface Comment {
-  id: number
-  user_id: string
-  user_name: string
-  content: string
-  created_at: string
-}
+const COMMENT_MAX_LENGTH = 500
 
 interface NewsCommentsProps {
-  comments: Comment[]
+  comments: NewsComment[]
   user?: { id: string; role: string } | null
   isCommenting: boolean
   addComment: (content: string) => void
@@ -170,8 +165,14 @@ export function NewsComments({
             placeholder={t("news:form.commentPlaceholder", {
               defaultValue: "Write something...",
             })}
+            maxLength={COMMENT_MAX_LENGTH}
             className="min-h-24"
           />
+          <div className="flex justify-end">
+            <span className="text-[11px] tabular-nums text-(--text-secondary)/(--opacity-medium)">
+              {commentText.length}/{COMMENT_MAX_LENGTH}
+            </span>
+          </div>
           <div className="flex justify-end">
             <Button
               onClick={handlePostComment}

@@ -110,7 +110,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
       whileHover={!hoveringDisabled ? { y: -4 } : undefined}
       transition={{ duration: motionTokens.durationMedium, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        "relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-shadow duration-base",
+        "news-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-shadow duration-base",
         hoveringDisabled
           ? "cursor-default"
           : "cursor-pointer hover:shadow-premium-lift",
@@ -171,11 +171,12 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
         className={cn(
           "relative shrink-0 overflow-hidden",
           featured
-            ? "lg:w-[55%] lg:min-h-full h-56 sm:h-64"
+            ? "lg:w-[55%] lg:min-h-full h-64 sm:h-72"
             : "h-48 sm:h-52"
         )}
       >
         <NewsCardHero
+          id={id}
           image_url={image_url}
           title={title}
           created_at={created_at}

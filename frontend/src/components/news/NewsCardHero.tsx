@@ -7,13 +7,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface NewsCardHeroProps {
+  id?: string
   image_url?: string
   title?: string
   created_at: string
   featured?: boolean
 }
 
-const NewsCardHero = ({ image_url, title, created_at, featured }: NewsCardHeroProps) => {
+const NewsCardHero = ({ id, image_url, title, created_at, featured }: NewsCardHeroProps) => {
   const { t } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
   const [ready, setReady] = useState(!image_url)
@@ -61,6 +62,7 @@ const NewsCardHero = ({ image_url, title, created_at, featured }: NewsCardHeroPr
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand/(--opacity-subtle) to-transparent"
+      style={id ? { viewTransitionName: `news-hero-${id}` } : undefined}
     >
       {/* Loading shimmer */}
       <div

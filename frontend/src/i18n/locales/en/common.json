@@ -51,5 +51,14 @@
   },
   "select": {
     "placeholder": "Select..."
+  },
+  "aria": {
+    "like": "Like",
+    "unlike": "Unlike",
+    "addBookmark": "Bookmark",
+    "removeBookmark": "Remove bookmark"
+  },
+  "cta": {
+    "learnMore": "Learn more"
   }
 }

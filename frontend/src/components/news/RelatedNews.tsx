@@ -2,12 +2,15 @@ import { type NewsItem } from "@/api/news"
 
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
+import { localizeField } from "@/utils/localize"
 import { Link } from "@tanstack/react-router"
 import { ArrowUpRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useMemo } from "react"
 import { getMoscowDate } from "@/utils/date"
+import { NewsCategoryBadge } from "./NewsCategoryBadge"
+import { inferCategory } from "@/features/news/categories"
 
 interface RelatedNewsProps {
   items: NewsItem[]
@@ -37,11 +40,15 @@ export function RelatedNews({ items }: RelatedNewsProps) {
 function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
   const { t } = useTranslation(["news", "common"])
 
-  const title = useMemo(() => {
-    const en = item.title_en ?? ""
-    if (language === "en" && en.trim()) return en
-    return item.title || en
-  }, [language, item.title, item.title_en])
+  const title = useMemo(
+    () => localizeField(item.title, item.title_en, language),
+    [language, item.title, item.title_en]
+  )
+
+  const category = useMemo(
+    () => inferCategory(item.title, item.content),
+    [item.title, item.content]
+  )
 
   const dateLabel = useMemo(
     () => item.created_at ? getMoscowDate(item.created_at) : "",
@@ -72,6 +79,10 @@ function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
             <ArrowUpRight size={24} className="text-brand/(--opacity-medium)" />
           </div>
         )}
+        {/* Category badge */}
+        <div className="absolute left-2 top-2 z-surface">
+          <NewsCategoryBadge category={category} size="sm" />
+        </div>
       </div>
 
       {/* Content */}
