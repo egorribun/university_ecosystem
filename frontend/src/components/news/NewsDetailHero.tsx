@@ -3,6 +3,7 @@ import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, ZoomIn } from "lucide-react"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface NewsDetailHeroProps {
   id?: string
@@ -14,6 +15,11 @@ export function NewsDetailHero({ id, imageUrl, displayTitle }: NewsDetailHeroPro
   const { t } = useTranslation(["news", "common"])
   const [heroRatio, setHeroRatio] = useState<number | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
+
+  const lightboxRef = useFocusTrap<HTMLDivElement>({
+    active: lightboxOpen,
+    onDeactivate: () => setLightboxOpen(false),
+  })
 
   useEffect(() => { setHeroRatio(null) }, [imageUrl])
 
@@ -107,34 +113,32 @@ export function NewsDetailHero({ id, imageUrl, displayTitle }: NewsDetailHeroPro
       )}
     </figure>
 
-    {/* Lightbox overlay */}
+    {/* Lightbox — focus-trapped modal */}
     {lightboxOpen && imageUrl && (
-      /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */
       <div
+        ref={lightboxRef}
         className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
-        onClick={() => setLightboxOpen(false)}
-        onKeyDown={(e) => { if (e.key === "Escape") setLightboxOpen(false) }}
         role="dialog"
         aria-modal
         aria-label={t("news:actions.zoomImage", { defaultValue: "Full image view" })}
         tabIndex={-1}
       >
+        {/* Backdrop click to close */}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <div className="absolute inset-0" onClick={() => setLightboxOpen(false)} />
+
         <button
           type="button"
           onClick={() => setLightboxOpen(false)}
           className="absolute top-4 right-4 z-surface inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-white transition hover:bg-white/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
           aria-label={t("common:buttons.close", { defaultValue: "Close" })}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
         >
           <CloseIcon size={20} />
         </button>
-        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
         <img
           src={imageUrl}
           alt={displayTitle || t("news:alt.heroFallback")}
-          className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg select-none"
-          onClick={(e) => e.stopPropagation()}
+          className="relative z-base max-h-[90vh] max-w-[90vw] object-contain rounded-lg select-none"
           draggable={false}
         />
       </div>

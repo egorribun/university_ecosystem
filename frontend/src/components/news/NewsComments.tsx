@@ -198,7 +198,7 @@ export function NewsComments({
         cancelText={t("common:buttons.cancel")}
         variant="danger"
         onConfirm={() => {
-          if (deleteConfirmationId) {
+          if (deleteConfirmationId !== null) {
             void deleteComment(deleteConfirmationId)
             setDeleteConfirmationId(null)
           }

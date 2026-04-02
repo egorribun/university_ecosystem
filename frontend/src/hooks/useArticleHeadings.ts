@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { marked } from "marked"
+import { slugify } from "@/utils/slugify"
 
 export interface TocEntry {
   id: string
@@ -10,6 +11,7 @@ export interface TocEntry {
 /**
  * Extracts heading entries from Markdown content for Table of Contents.
  * Uses marked.lexer() to parse tokens without rendering — lightweight.
+ * Shares slugify() with the heading renderer for guaranteed ID match.
  */
 export function useArticleHeadings(content: string): TocEntry[] {
   return useMemo(() => {
@@ -23,15 +25,7 @@ export function useArticleHeadings(content: string): TocEntry[] {
         if (token.type === "heading" && (token.depth === 2 || token.depth === 3)) {
           const text = token.text.replace(/<[^>]+>/g, "").trim()
           if (!text) continue
-
-          const id = text
-            .toLowerCase()
-            .replace(/[^\p{L}\p{N}\s-]/gu, "")
-            .replace(/\s+/g, "-")
-            .replace(/-+/g, "-")
-            .slice(0, 64)
-
-          headings.push({ id, text, level: token.depth })
+          headings.push({ id: slugify(text), text, level: token.depth })
         }
       }
 

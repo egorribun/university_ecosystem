@@ -153,7 +153,7 @@ export default function NewsDetail() {
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
       if (window.history.length > 1) window.history.back()
-      else navigate({ to: "/news" })
+      else void navigate({ to: "/news" })
     } catch {
       setSnackbar(t("news:notifications.deleteError"))
     } finally {
@@ -240,7 +240,11 @@ export default function NewsDetail() {
         <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
         <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14 pb-20 pt-6 sm:pt-8">
-          <SEO title={displayTitle} description={content.slice(0, 160)} image={imageUrl} />
+          <SEO
+            title={displayTitle}
+            description={content.replace(/[#*_`[\]!|>-]/g, "").replace(/\s+/g, " ").trim().slice(0, 160)}
+            image={imageUrl}
+          />
 
           <Button
             variant="glass"

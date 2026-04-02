@@ -1,6 +1,7 @@
 import { useMemo } from "react"
-import { marked, type MarkedExtension, type Tokens } from "marked"
-import { SafeHtml } from "@/components/ui"
+import { Marked, type Tokens } from "marked"
+import { sanitizeArticleHtml } from "@/utils/sanitizeArticleHtml"
+import { slugify } from "@/utils/slugify"
 import { useArticleHeadings } from "@/hooks/useArticleHeadings"
 import { NewsTableOfContents } from "./NewsTableOfContents"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -10,30 +11,17 @@ interface NewsDetailBodyProps {
   content: string
 }
 
-/* ── Custom heading renderer — adds id slugs for ToC linking ── */
-const headingExtension: MarkedExtension = {
-  renderer: {
-    heading({ text, depth }: Tokens.Heading) {
-      const slug = text
-        .replace(/<[^>]+>/g, "")
-        .trim()
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}\s-]/gu, "")
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-")
-        .slice(0, 64)
-
-      const tag = `h${depth}`
-      return `<${tag} id="${slug}" class="news-heading news-heading-${depth}">${text}</${tag}>\n`
-    },
-  },
-}
-
-/* ── Configure marked once ── */
-marked.use({
+/* ── Isolated marked instance — does NOT mutate the global singleton ── */
+const articleMarked = new Marked({
   gfm: true,
   breaks: false,
-  ...headingExtension,
+  renderer: {
+    heading({ text, depth }: Tokens.Heading) {
+      const slug = slugify(text)
+      const tag = `h${depth}`
+      return `<${tag} id="${slug}">${text}</${tag}>\n`
+    },
+  },
 })
 
 /**
@@ -42,15 +30,15 @@ marked.use({
  * (drop-cap on first paragraph, > pull-quotes).
  */
 function hasMarkdownSyntax(text: string): boolean {
-  return /^#{1,6}\s/m.test(text) ||       // headings
-    /\*\*[^*]+\*\*/m.test(text) ||          // bold
-    /\*[^*]+\*/m.test(text) ||              // italic
-    /^[-*+]\s/m.test(text) ||               // unordered list
-    /^\d+\.\s/m.test(text) ||               // ordered list
-    /\[.+\]\(.+\)/m.test(text) ||           // links
-    /^```/m.test(text) ||                    // code blocks
-    /\|.*\|.*\|/m.test(text) ||             // tables
-    /^---+$/m.test(text)                     // horizontal rules
+  return /^#{1,6}\s/m.test(text) ||
+    /\*\*[^*]+\*\*/m.test(text) ||
+    /\*[^*]+\*/m.test(text) ||
+    /^[-*+]\s/m.test(text) ||
+    /^\d+\.\s/m.test(text) ||
+    /\[.+\]\(.+\)/m.test(text) ||
+    /^```/m.test(text) ||
+    /\|.*\|.*\|/m.test(text) ||
+    /^---+$/m.test(text)
 }
 
 /**
@@ -65,14 +53,12 @@ function renderPlainText(content: string): string {
     const text = chunks[i]?.trim()
     if (!text) continue
 
-    // Pull-quote: lines starting with >
     if (text.startsWith(">")) {
       const quote = text.replace(/^>\s*/, "")
       parts.push(`<blockquote class="news-pullquote">${escapeHtml(quote)}</blockquote>`)
       continue
     }
 
-    // Drop cap on first visible paragraph (only if long enough)
     const isFirst = parts.length === 0
     const isDropCap = isFirst && text.length > 200
     parts.push(
@@ -100,10 +86,10 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
     if (!content?.trim()) return ""
 
     if (hasMarkdownSyntax(content)) {
-      return marked.parse(content) as string
+      const raw = articleMarked.parse(content) as string
+      return sanitizeArticleHtml(raw)
     }
 
-    // Legacy plain-text rendering
     return renderPlainText(content)
   }, [content])
 
@@ -114,7 +100,6 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
         showToc && isDesktop && "flex gap-8"
       )}
     >
-      {/* Table of Contents — sidebar on desktop, inline on mobile */}
       {showToc && isDesktop && (
         <aside className="shrink-0 w-56 sticky top-24 self-start">
           <NewsTableOfContents headings={headings} />
@@ -122,16 +107,16 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
       )}
 
       <div className="flex-1 min-w-0">
-        {/* Mobile ToC — above article */}
         {showToc && !isDesktop && (
           <div className="mb-6">
             <NewsTableOfContents headings={headings} />
           </div>
         )}
 
-        <div className="news-article-body text-body leading-relaxed text-(--text-secondary)">
-          <SafeHtml html={html} className="news-markdown" />
-        </div>
+        <div
+          className="news-article-body text-body leading-relaxed text-(--text-secondary)"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       </div>
     </section>
   )

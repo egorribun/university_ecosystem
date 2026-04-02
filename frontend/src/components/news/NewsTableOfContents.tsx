@@ -16,6 +16,9 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
   const observerRef = useRef<IntersectionObserver | null>(null)
   const isDesktop = useMediaQuery("(min-width: 1024px)")
 
+  // Reset collapsed state when headings change (article navigation)
+  useEffect(() => { setCollapsed(true) }, [headings])
+
   // On desktop, always show expanded
   const isExpanded = isDesktop || !collapsed
 
