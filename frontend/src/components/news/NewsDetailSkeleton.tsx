@@ -10,7 +10,7 @@ export function NewsDetailSkeleton({ isNarrow, prefersReducedMotion }: NewsDetai
   return (
     <div className="news-theme aurora-mesh relative min-h-screen">
       <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-      <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14 py-8">
+      <div className="relative z-[1] px-4 sm:px-6 md:px-10 lg:px-14 py-8">
         <div className="max-w-4xl space-y-6">
           <Skeleton width="6rem" height="2.5rem" rounded="9999rem" />
           <Skeleton width="65%" height="2.75rem" />

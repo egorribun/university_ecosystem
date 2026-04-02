@@ -37,6 +37,7 @@ import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { TIMEOUTS } from "@/config/timeouts"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { setNewsHeroId } from "@/utils/newsTransition"
 
 /* ── Data fetcher ── */
 async function fetchNews(id: string): Promise<NewsItem> {
@@ -136,6 +137,9 @@ export default function NewsDetail() {
   const likesCount = interactions?.likes_count ?? 0
   const comments = interactions?.comments ?? []
 
+  /* ── Store hero ID for back-navigation view transition ── */
+  useEffect(() => { setNewsHeroId(id) }, [id])
+
   /* ── Side-effects ── */
   useEffect(() => {
     if (!snackbar) return
@@ -218,7 +222,7 @@ export default function NewsDetail() {
     return (
       <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
         <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-        <div className="relative z-base glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+        <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
           <p className="text-lg font-semibold text-(--error-text)">
             {t("news:states.loadError")}
           </p>
@@ -239,7 +243,7 @@ export default function NewsDetail() {
       <div className="news-theme aurora-mesh relative min-h-screen overflow-clip touch-pan-y" {...swipeHandlers}>
         <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
-        <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14 pb-20 pt-6 sm:pt-8">
+        <div className="relative z-[1] px-4 sm:px-6 md:px-10 lg:px-14 pb-20 pt-6 sm:pt-8">
           <SEO
             title={displayTitle}
             description={content.replace(/[#*_`[\]!|>-]/g, "").replace(/\s+/g, " ").trim().slice(0, 160)}

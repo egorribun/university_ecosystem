@@ -2,20 +2,22 @@ import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
 import { getMoscowDate } from "@/utils/date"
+import { getNewsHeroId, clearNewsHeroId } from "@/utils/newsTransition"
 import { Cloud, FileText as ArticleIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface NewsCardHeroProps {
+  id?: string
   image_url?: string
   title?: string
   created_at: string
   featured?: boolean
-  /** Set by parent on pointerdown to enable view-transition morphing */
+  /** Set by parent on pointerdown for forward view-transition morphing */
   transitioning?: boolean
 }
 
-const NewsCardHero = ({ image_url, title, created_at, featured, transitioning }: NewsCardHeroProps) => {
+const NewsCardHero = ({ id, image_url, title, created_at, featured, transitioning }: NewsCardHeroProps) => {
   const { t } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
   const [ready, setReady] = useState(!image_url)
@@ -23,6 +25,14 @@ const NewsCardHero = ({ image_url, title, created_at, featured, transitioning }:
 
   const src = useMemo(() => image_url || "", [image_url])
   useEffect(() => { setReady(!src) }, [src])
+
+  // Clear hero transition ID after this render cycle (snapshot already taken)
+  useEffect(() => {
+    if (id && getNewsHeroId() === id) {
+      const timer = requestAnimationFrame(() => clearNewsHeroId())
+      return () => cancelAnimationFrame(timer)
+    }
+  }, [id])
   const onLoad = useCallback(() => setReady(true), [])
 
   const isoDate = useMemo(
@@ -63,7 +73,13 @@ const NewsCardHero = ({ image_url, title, created_at, featured, transitioning }:
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand/(--opacity-subtle) to-transparent"
-      style={transitioning ? { viewTransitionName: "news-hero" } : undefined}
+      style={
+        // Forward: user clicked this card (transitioning=true)
+        // Back: returning from detail page (heroId matches this card's id)
+        transitioning || (id && getNewsHeroId() === id)
+          ? { viewTransitionName: "news-hero" }
+          : undefined
+      }
     >
       {/* Loading shimmer */}
       <div

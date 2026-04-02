@@ -185,6 +185,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
         )}
       >
         <NewsCardHero
+          id={id}
           image_url={image_url}
           title={title}
           created_at={created_at}

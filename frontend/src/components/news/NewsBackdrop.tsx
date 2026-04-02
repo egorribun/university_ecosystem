@@ -11,7 +11,7 @@ interface NewsBackdropProps {
 
 export function NewsBackdrop({ isNarrow, prefersReducedMotion = false }: NewsBackdropProps) {
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden -z-1">
       {/* Primary hero glow — large radial at top center */}
       <div
         className="absolute left-1/2 top-0 -translate-x-1/2"
