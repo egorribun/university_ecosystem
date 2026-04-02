@@ -102,11 +102,9 @@ services:
       - event_net
       - internal
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -fsS http://127.0.0.1:8000/healthz >/dev/null || exit 1",
-        ]
+      # NOTE: curl is not installed in the image (security — fewer CVE-prone binaries).
+      # Use Python stdlib urllib instead (same as backend.Dockerfile HEALTHCHECK).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
       interval: 10s
       timeout: 5s
       start_period: 60s
@@ -203,11 +201,7 @@ services:
       - event_net
       - service_net
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -fsS http://127.0.0.1:9101/healthz >/dev/null || exit 1",
-        ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9101/healthz', timeout=4)"]
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -359,7 +353,7 @@ services:
           memory: 512M
 
   imgproxy:
-    image: darthsim/imgproxy:v3.24.0
+    image: darthsim/imgproxy:v3.28.0
     # Internal only — access via backend/gateway
     environment:
       IMGPROXY_KEY: ${IMGPROXY_KEY}
@@ -385,7 +379,7 @@ services:
     # HIGH-6 FIX: Use PostgreSQL-backed server instead of ephemeral dev SQLite.
     # Dev-mode stored workflows in /tmp/temporal.db which was wiped on every restart,
     # causing silent workflow state loss.
-    image: temporalio/server:1.27.2
+    image: temporalio/server:1.30.2
     container_name: temporal
     ports:
       # RZ-8 (audit 2026-03-05): Bind to localhost only — Temporal gRPC has no
@@ -426,7 +420,7 @@ services:
           memory: 1G
 
   temporal-ui:
-    image: temporalio/ui:2.34.0
+    image: temporalio/ui:2.48.1
     container_name: temporal-ui
     ports:
       # MOD-9: Temporal UI is admin-only. Expose on localhost only to prevent
@@ -475,7 +469,7 @@ services:
           memory: 512M
 
   spicedb:
-    image: authzed/spicedb:v1.36.0
+    image: authzed/spicedb:v1.51.0
     container_name: spicedb
     # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
     # and `docker inspect` expose full command including secrets. The
@@ -508,7 +502,7 @@ services:
 
 
   pyroscope:
-    image: grafana/pyroscope:1.7.1
+    image: grafana/pyroscope:1.18.1
     container_name: pyroscope
     ports:
       # RZ-9 (audit 2026-03-05): Bind to localhost only — Pyroscope CPU flame graphs
@@ -525,7 +519,7 @@ services:
   tempo:
     # MOD-06 (audit 2026-03-11): Grafana Tempo for distributed tracing via OTLP.
     # Backend sends traces to tempo:4317 (gRPC) via OTEL_EXPORTER_OTLP_ENDPOINT.
-    image: grafana/tempo:2.6.1
+    image: grafana/tempo:2.10.3
     container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:

@@ -78,7 +78,7 @@ services:
       - public
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
       interval: 30s
@@ -121,6 +121,13 @@ services:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
+    # Override Dockerfile HEALTHCHECK — worker listens on :9101, not :8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9101/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     networks:
       - internal
     deploy:
@@ -164,9 +171,12 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7.4.2-alpine
+    # Switched from Redis 7.4 to Valkey 8 (Linux Foundation fork) — Redis 8.x
+    # changed license to RSALv2/SSPL. Production compose already uses Valkey.
+    # Python `redis` client is fully compatible (same RESP protocol).
+    image: valkey/valkey:8.1-alpine
     command:
-      - "redis-server"
+      - "valkey-server"
       - "--save"
       - ""
       - "--appendonly"
@@ -182,7 +192,7 @@ services:
       - "--requirepass"
       - "${REDIS_PASSWORD:-DevRedisPass2024x}"
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-DevRedisPass2024x}", "--no-auth-warning", "ping" ]
+      test: [ "CMD", "valkey-cli", "-a", "${REDIS_PASSWORD:-DevRedisPass2024x}", "--no-auth-warning", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -197,7 +207,8 @@ services:
 
   # ── S3-compatible object storage (MinIO) ──────────────────────────────────
   minio:
-    image: minio/minio:RELEASE.2025-03-12T18-04-18Z
+    # NOTE: minio/minio repo archived Feb 2026. This is the last published tag.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -243,7 +254,7 @@ services:
     restart: on-failure
 
   nats:
-    image: nats:2.10.25-alpine
+    image: nats:2.12.6-alpine
     # TD-09 (audit 2026-03-06): credentials via config file, not CLI args.
     # --user/--pass appear in `docker ps` output and /proc/<pid>/cmdline.
     # envsubst renders the template at startup; generated file lives in /tmp (not persisted).
@@ -361,7 +372,7 @@ services:
     restart: unless-stopped
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.1
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.12
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
@@ -389,7 +400,7 @@ services:
     # P1-06 (audit 2026-03-06): Fixed hardcoded "dev-key" + memory datastore.
     # memory datastore → ACLs lost on restart; "dev-key" → brute-forceable.
     # Now uses env var (invisible to `docker ps`) and PostgreSQL for persistence.
-    image: authzed/spicedb:v1.36.0
+    image: authzed/spicedb:v1.51.0
     command: >-
       serve
       --datastore-engine postgres
@@ -417,9 +428,10 @@ services:
         limits:
           cpus: '0.25'
           memory: 256M
+    restart: unless-stopped
 
   temporal:
-    image: temporalio/admin-tools:1.26.2
+    image: temporalio/admin-tools:1.30.2
     container_name: temporal
     ports:
       - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
@@ -429,7 +441,7 @@ services:
     # P0-03 (audit 2026-03-06): Bind to 127.0.0.1 — Temporal dev-server has no auth.
     # Without this, ALL containers on the `internal` network can execute arbitrary
     # Workflows/Activities without authentication (full code execution vector).
-    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 127.0.0.1 --ui-port 8233 --db-filename /tmp/temporal.db" ]
+    entrypoint: [ "/bin/sh", "-c", "temporal server start-dev --ip 127.0.0.1 --ui-port 8233 --db-filename /tmp/temporal.db" ]
     networks:
       - internal
     healthcheck:
@@ -445,7 +457,7 @@ services:
     restart: unless-stopped
 
   imgproxy:
-    image: darthsim/imgproxy:v3.15.0
+    image: darthsim/imgproxy:v3.28.0
     ports:
       - "8082:8080"
     environment:
@@ -465,7 +477,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:11.5.1
+    image: grafana/grafana:12.3.6
     ports:
       - "127.0.0.1:3000:3000"  # localhost only; access via SSH tunnel in production
     environment:
@@ -484,7 +496,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.10.0
     ports:
       # P1-07 (audit 2026-03-06): Bind to localhost — unauthenticated Prometheus
       # exposes latency histograms, queue depths, internal IPs.
@@ -499,7 +511,7 @@ services:
     restart: unless-stopped
 
   tempo:
-    image: grafana/tempo:2.7.1
+    image: grafana/tempo:2.10.3
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
@@ -513,7 +525,7 @@ services:
     restart: unless-stopped
 
   loki:
-    image: grafana/loki:3.4.1
+    image: grafana/loki:3.7.1
     command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
       - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
@@ -527,7 +539,7 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2.9.1-alpine
+    image: caddy:2.11.2-alpine
     ports:
       - "80:80"
       - "443:443"

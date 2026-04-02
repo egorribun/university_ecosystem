@@ -118,8 +118,6 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $redisPassword     = New-Secret -Length 24
     $elasticPassword   = New-Secret -Length 24
     $natsPassword      = New-Secret -Length 24
-    $garageRpcSecret   = New-HexSecret -Length 32
-    $garageAdminToken  = New-Secret -Length 32
     $spicedbKey        = New-Secret -Length 32
     $wsHubSecret       = New-Secret -Length 32
     $grafanaPassword   = New-Secret -Length 24
@@ -137,8 +135,6 @@ MINIO_ROOT_PASSWORD=$minioPassword
 ELASTIC_PASSWORD=$elasticPassword
 NATS_USER=app
 NATS_PASSWORD=$natsPassword
-GARAGE_RPC_SECRET=$garageRpcSecret
-GARAGE_ADMIN_TOKEN=$garageAdminToken
 SPICEDB_PRESHARED_KEY=$spicedbKey
 WS_HUB_INTERNAL_SECRET=$wsHubSecret
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
@@ -254,6 +250,18 @@ if ($LASTEXITCODE -ne 0) {
 Write-Status "Ensuring SpiceDB database exists..."
 docker compose -f $ComposeFile --env-file $EnvFile exec -T postgres psql -U postgres -c "CREATE DATABASE spicedb" 2>$null
 # Ignore errors — database may already exist
+
+# SpiceDB needs migrations after fresh DB creation
+Write-Status "Running SpiceDB migrations..."
+$pgPass = (Select-String -Path $EnvFile -Pattern "^POSTGRES_PASSWORD=(.+)$").Matches.Groups[1].Value
+$projectName = (Split-Path $ProjectRoot -Leaf).ToLower() -replace '[^a-z0-9]', '_'
+$network = "${projectName}_internal"
+docker run --rm --network $network authzed/spicedb:v1.51.0 migrate head --datastore-engine postgres --datastore-conn-uri "postgres://postgres:${pgPass}@postgres:5432/spicedb?sslmode=disable" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Ok "SpiceDB migrations applied"
+} else {
+    Write-Warn "SpiceDB migration failed or already up-to-date"
+}
 
 # MinIO bucket (wait for MinIO to be healthy, then create via minio/mc container)
 Write-Status "Ensuring MinIO 'uploads' bucket exists..."

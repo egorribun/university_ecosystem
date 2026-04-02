@@ -1,8 +1,8 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.12
 
 # Rust toolchain stage — provides a known-good Cargo/rustc for maturin builds.
 # Rust 1.85 is the first stable release supporting edition 2024 and Cargo.lock v4.
-FROM rust:1.85-slim-bookworm@sha256:9f841bbe9e7d8e37ceb96ed907265a3a0df7f44e3737d0b100e7907a679acb36 AS rust-toolchain
+FROM rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec AS rust-toolchain
 
 # Stage 1: Builder
 # MOD-21-08 (Wave 21): Updated to Python 3.14 for free-threading support,
@@ -11,7 +11,7 @@ FROM python:3.14-slim-bookworm AS builder
 
 # Pin uv to an exact version for reproducible builds.
 # Use 0.10.8 for proven stability in current scan environments.
-COPY --from=ghcr.io/astral-sh/uv:0.10.8 /uv /uv/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.2 /uv /uv/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

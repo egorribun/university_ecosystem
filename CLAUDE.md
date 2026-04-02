@@ -69,7 +69,7 @@
 - `cached()` decorator: `_l1_ttl` param now forwarded to TieredCache L1 layer (TD-33-09)
 - `RedisClusterCache.invalidate()`: supports glob patterns via SCAN (TD-33-10)
 - Go file-processor: env vars require `FP_` prefix (e.g. `FP_GRPC_PORT`) per `SetEnvPrefix("FP")`
-- Pyroscope: `grafana/pyroscope:1.18.1` in docker-compose.observability.yml
+- Pyroscope: `grafana/pyroscope:1.19.1` in docker-compose.observability.yml
 - Tests: S105/S106 (hardcoded password) suppressed in `tests/` via pyproject.toml per-file-ignores
 
 ## Gotchas
@@ -136,7 +136,7 @@
 - Ruff: dev dep pinned `>=0.14.14,<0.15` — v0.15.x strips except parens (RZ-30-05)
 - NATS retry: exponential backoff with jitter on `cache.invalidate` publish (TD-30-06)
 - Kyverno: Policy 9 `disallow-latest-tag` rejects empty/latest image tags (MOD-30-02)
-- Dockerfile.test: Rust toolchain from `rust:1.85-slim-bookworm` image, not curl|sh (MOD-30-05)
+- Dockerfile.test: Rust toolchain from `rust:1.94.1-slim-bookworm` image, not curl|sh (MOD-30-05)
 - Gateway: no `os.Exit` in goroutines — use channel-based error propagation (RZ-31-01)
 - ws-hub handleMessage: oversized messages notify client with `message_too_large` error frame (RZ-31-02)
 - Frontend localStorage: always wrap in try-catch for Safari private browsing (RZ-31-03)
