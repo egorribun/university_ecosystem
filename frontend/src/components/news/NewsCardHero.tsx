@@ -2,9 +2,9 @@ import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
 import { getMoscowDate } from "@/utils/date"
-import { getNewsHeroId } from "@/utils/newsTransition"
+import { getNewsHeroId, clearNewsHeroId } from "@/utils/newsTransition"
 import { Cloud, FileText as ArticleIcon } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface NewsCardHeroProps {
@@ -25,6 +25,20 @@ const NewsCardHero = ({ id, image_url, title, created_at, featured, transitionin
 
   const src = useMemo(() => image_url || "", [image_url])
   useEffect(() => { setReady(!src) }, [src])
+
+  /* ── Back-nav view transition: set VT name via DOM ref in layout phase ──
+     useLayoutEffect fires synchronously after DOM commit but before paint/snapshot.
+     Only the FIRST matching card gets the name — clearNewsHeroId() prevents duplicates. */
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    if (!el || !id) return
+    const heroId = getNewsHeroId()
+    if (heroId !== id) return
+
+    el.style.viewTransitionName = "news-hero"
+    clearNewsHeroId()
+    return () => { el.style.viewTransitionName = "" }
+  }, [id])
   const onLoad = useCallback(() => setReady(true), [])
 
   const isoDate = useMemo(
@@ -65,13 +79,7 @@ const NewsCardHero = ({ id, image_url, title, created_at, featured, transitionin
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand/(--opacity-subtle) to-transparent"
-      style={
-        // Forward: user clicked this card (transitioning=true)
-        // Back: returning from detail page (heroId matches this card's id)
-        transitioning || (id && getNewsHeroId() === id)
-          ? { viewTransitionName: "news-hero" }
-          : undefined
-      }
+      style={transitioning ? { viewTransitionName: "news-hero" } : undefined}
     >
       {/* Loading shimmer */}
       <div
