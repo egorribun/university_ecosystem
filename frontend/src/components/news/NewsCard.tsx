@@ -2,6 +2,7 @@ import { useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { sanitizeNewsText } from "@/utils/sanitize"
+import { inferCategory } from "@/features/news/categories"
 import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
@@ -20,6 +21,7 @@ export type NewsCardProps = {
   likes_count?: number
   comments_count?: number
   is_liked?: boolean
+  featured?: boolean
   onChange?: () => void
 }
 
@@ -34,6 +36,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   likes_count: initialLikes = 0,
   comments_count: initialComments = 0,
   is_liked: initialIsLiked = false,
+  featured = false,
   onChange,
 }) => {
   const { user } = useAuth()
@@ -80,6 +83,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     if (language === "en" && english.trim()) return english
     return content || english
   }, [language, content, content_en])
+
+  const category = useMemo(() => inferCategory(title, content), [title, content])
 
   const [sanitizedPreview, setSanitizedPreview] = useState("")
 
@@ -131,6 +136,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       loading={loading}
       error={error}
       hoveringDisabled={editOpen}
+      featured={featured}
+      category={category}
       editOpen={editOpen}
       confirmDeleteOpen={confirmDeleteOpen}
       editData={editData}
@@ -161,6 +168,7 @@ const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.content_en === next.content_en &&
   prev.created_at === next.created_at &&
   prev.image_url === next.image_url &&
+  prev.featured === next.featured &&
   prev.onChange === next.onChange
 
 // PERF-27-02-KEPT: custom areEqual comparator

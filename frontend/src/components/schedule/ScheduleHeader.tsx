@@ -102,7 +102,7 @@ export function ScheduleHeader({
       </FadeSection>
 
       {(user?.role === "teacher" || user?.role === "admin") && (
-        <FadeSection delay="var(--motion-duration-base)" className="mb-6 max-w-sm">
+        <FadeSection delay="var(--motion-duration-base)" className="mb-6 max-w-[24rem]">
           <label className="mb-2 block text-sm font-semibold">
             {t("schedule:form.groupLabel")}
           </label>

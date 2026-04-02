@@ -61,7 +61,7 @@ function PageErrorFallback({
       role="alert"
       className="flex min-h-(--h-hero-sm) flex-col items-center justify-center gap-6 p-8 text-center"
     >
-      <div className="max-w-md">
+      <div className="max-w-[28rem]">
         <h1 className="mb-2 text-2xl font-bold text-text-primary">
           {t("system:pageError.title", "Page Error")}
         </h1>

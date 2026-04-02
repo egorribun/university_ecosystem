@@ -169,6 +169,12 @@
 - Frontend dashboard orbs: CSS `@keyframes` (orb-breathe, orb-drift, orb-drift-alt, orb-pulse-opacity, orb-sway) replace Framer Motion infinite loops — zero JS overhead (PERF-43-01)
 - Frontend component org: root-level components moved to `feedback/`, `motion/`, `media/`, `search/`, `pwa/` feature folders with barrel index.ts (INFRA-43-01)
 - CI: token sync gate in `reusable-frontend-tests.yml` — `npm run tokens:sync && git diff --exit-code` fails if CSS/TS drift (MOD-43-01)
+- StoryList: drag-to-scroll mouse-only (`pointerType === "mouse"`), touch uses native `overflow-x: auto` — never set `touchAction: "pan-y"` (DESIGN-54-03)
+- StoryList: `scroll-snap-type` disabled via inline style during drag, re-enabled on pointer up — snap fights `scrollLeft` assignment (DESIGN-54-03)
+- DashboardHero: decoratives in `overflow-hidden rounded-[inherit]` wrapper, header itself has NO overflow-clip — stories must scroll (FIX-54-01)
+- Dashboard.tsx: `"use no memo"` required — `useTilt` reads refs during render, React Compiler panics without it. ESLint needs file-level disable (FIX-54-01)
+- ProgressBar: `liveRegion` prop (default false) — only set `aria-live` on active bar in multi-bar contexts (A11Y-54-01)
+- useSwipe: velocity-based detection (`minVelocity: 0.3 px/ms`) — catches fast short swipes below distance threshold
 - Frontend routing: TanStack Router (file-based) replaces React Router DOM 7 — routes in `frontend/src/routes/` (INFRA-37-01)
 - Frontend route guards: `beforeLoad` in `_auth.tsx`, `_public.tsx`, `_admin.tsx` replaces RouteGuards.tsx (INFRA-37-02)
 - Frontend search params: Valibot `validateSearch` in route files replaces useSearchParams (INFRA-37-03)
@@ -194,6 +200,7 @@
 - Docker: NATS config uses `sed` instead of `envsubst` (not in alpine) (FIX-40-06)
 
 ## Audit Trail
+- Wave 54: Stories scroll + polish — decorative clip wrapper, circular thumbnails, scroll snap (drag-pause), edge fade masks, wheel→horizontal, mouse-only drag / native touch, velocity swipe, ProgressBar liveRegion, cascadeProps helper, timer drift fix, css-scale-in viewer, 6 missing color primitives, dead CSS vars removed. 10 files +210/-122
 - Wave 33: 7 commits, ~145 files, 1 CRITICAL + 11 HIGH + ~115 MEDIUM + ~80 LOW — ALL code-level backend issues closed. Recovery code hash bug (RZ-33-01), 6 DCL singletons (RZ-33-29), DI dedup (TD-33-08), cache SCAN (TD-33-10), Go stale tests (TD-33-11/12), Pyroscope 1.18.1, test quality (7 files). Full report in `memory/audit_wave33_2026_03_26.md`
 - Wave 40 (Docker): rust-optimizer removed, Garage→MinIO, gateway gin route conflict fixed (unified wildcard), WebSocketProvider added to AppProviders, NATS envsubst→sed, .env.docker BOM fix, pgvector tag fix, depends_on relaxed. ~14 GB old images cleaned.
 - Wave 39: CSS modernization — @container queries (3 container types, 5 query breakpoints), @starting-style (7 entrance animations), View Transitions API (defaultViewTransition in router, view-transition-name on navbar/content). All progressive enhancement with reduced-motion support.

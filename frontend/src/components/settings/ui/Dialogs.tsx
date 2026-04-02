@@ -32,11 +32,11 @@ export function Dialog({
   const maxWidthClasses =
     {
       xs: "max-w-xs",
-      sm: "max-w-sm",
-      md: "max-w-md",
-      lg: "max-w-lg",
-      xl: "max-w-xl",
-    }[maxWidth] || "max-w-md"
+      sm: "max-w-[24rem]",
+      md: "max-w-[28rem]",
+      lg: "max-w-[32rem]",
+      xl: "max-w-[36rem]",
+    }[maxWidth] || "max-w-[28rem]"
 
   // Check if document is available (SSR check)
   if (typeof document === "undefined") return null

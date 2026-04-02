@@ -39,7 +39,7 @@ export function MfaChallengeView({
     <div className="fixed inset-0 min-h-screen w-full bg-linear-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
       <ParticleAuthBackground />
       <div className="relative z-navbar flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-        <div className="w-full max-w-2xl rounded-4xl glass-high-fidelity p-8">
+        <div className="w-full max-w-[42rem] rounded-4xl glass-high-fidelity p-8">
           <div className="flex flex-col items-center gap-6 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-surface-hover/(--opacity-subtle) px-4 py-1 text-sm font-semibold tracking-wide text-text-primary">
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />

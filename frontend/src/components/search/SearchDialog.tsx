@@ -172,7 +172,7 @@ export function SearchDialog() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -20 }}
           transition={{ type: "spring" as const, stiffness: 400, damping: 30 }}
-          className="glass-layer-floating w-full max-w-xl rounded-2xl overflow-hidden"
+          className="glass-layer-floating w-full max-w-[36rem] rounded-2xl overflow-hidden"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"

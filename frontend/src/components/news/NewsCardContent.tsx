@@ -1,10 +1,9 @@
-import { ContentCard } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import { motion } from "framer-motion"
 import {
-  ArrowUpRight as ArrowOutwardIcon,
-  MessageCircle as ChatBubbleOutlineIcon,
-  Heart as FavoriteIcon,
+  ArrowUpRight as ArrowIcon,
+  MessageCircle as CommentIcon,
+  Heart as HeartIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
@@ -18,6 +17,7 @@ interface NewsCardContentProps {
   commentsCount: number
   onToggleLike: () => void
   hoveringDisabled: boolean
+  featured?: boolean
 }
 
 const NewsCardContent = ({
@@ -29,75 +29,93 @@ const NewsCardContent = ({
   commentsCount,
   onToggleLike,
   hoveringDisabled,
+  featured,
 }: NewsCardContentProps) => {
   const { t } = useTranslation(["common"])
 
   return (
-    <ContentCard.Body className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-base ease-out group-hover:-translate-y-px group-focus-visible/content:-translate-y-px md:gap-3">
-      <ContentCard.Title className="text-fluid-h3 font-semibold line-clamp-none">
+    <div className={cn("flex flex-1 flex-col gap-3 p-5", featured && "sm:p-6 lg:p-8")}>
+      {/* Title */}
+      <h3
+        className={cn(
+          "font-semibold leading-snug text-text-primary",
+          featured
+            ? "text-lg sm:text-xl lg:text-2xl line-clamp-3"
+            : "text-base line-clamp-2"
+        )}
+      >
         <Link
           to="/news/$id"
           params={{ id: String(id) }}
           className={cn(
-            "before:absolute before:inset-0 focus:outline-none line-clamp-2",
+            "before:absolute before:inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium) focus-visible:ring-offset-2",
             hoveringDisabled && "pointer-events-none"
           )}
         >
           {title}
         </Link>
-      </ContentCard.Title>
+      </h3>
 
-      <p className="min-h-12 text-sm text-(--text-secondary) line-clamp-2 md:min-h-18 md:line-clamp-3">
+      {/* Preview */}
+      <p
+        className={cn(
+          "text-sm leading-relaxed text-(--text-secondary)",
+          featured ? "line-clamp-4 lg:line-clamp-5" : "line-clamp-2"
+        )}
+      >
         {preview}
       </p>
 
-      <div className="relative z-deep flex items-center gap-4 mt-1 border-t border-glass-border pt-3">
-        <motion.button
-          type="button"
-          whileTap={{ scale: 0.85 }}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleLike()
-          }}
-          className={cn(
-            "flex items-center gap-1.5 transition-colors duration-fast",
-            isLiked
-              ? "text-error-text"
-              : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
-          )}
-        >
-          <div className="relative">
+      {/* Footer — likes, comments, CTA */}
+      <div className="mt-auto flex items-center justify-between pt-3 border-t border-glass-border/(--opacity-soft)">
+        <div className="relative z-deep flex items-center gap-4">
+          {/* Like */}
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.85 }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleLike()
+            }}
+            className={cn(
+              "flex items-center gap-1.5 transition-colors duration-fast",
+              isLiked
+                ? "text-error-text"
+                : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
+            )}
+            aria-label={isLiked ? "Unlike" : "Like"}
+          >
             {isLiked ? (
-              <motion.div
+              <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                className="heart-pulse"
               >
-                <FavoriteIcon size={18} fill="currentColor" />
-              </motion.div>
+                <HeartIcon size={16} fill="currentColor" />
+              </motion.span>
             ) : (
-              <FavoriteIcon size={18} />
+              <HeartIcon size={16} />
             )}
-          </div>
-          <span className="text-xs font-bold tabular-nums">{likesCount}</span>
-        </motion.button>
+            <span className="text-xs font-bold tabular-nums">{likesCount}</span>
+          </motion.button>
 
-        <div className="flex items-center gap-1.5 text-(--text-secondary)">
-          <ChatBubbleOutlineIcon size={18} />
-          <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
+          {/* Comments */}
+          <div className="flex items-center gap-1.5 text-(--text-secondary)">
+            <CommentIcon size={16} />
+            <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
+          </div>
+        </div>
+
+        {/* CTA — reveals on hover */}
+        <div className="flex items-center gap-1 text-brand opacity-0 translate-x-1 transition duration-base ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0">
+          <span className="text-xs font-semibold tracking-wide hidden sm:inline">
+            {t("common:cta.learnMore", { defaultValue: "Learn more" })}
+          </span>
+          <ArrowIcon size={14} />
         </div>
       </div>
-
-      <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
-        <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-base ease-out group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
-          {t("common:cta.learnMore", { defaultValue: "Learn more" })}
-        </span>
-        <ArrowOutwardIcon
-          size={16}
-          className="translate-x-0 text-(--primary-main) opacity-0 transition duration-base ease-out group-focus-within:translate-x-1 group-focus-within:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
-        />
-      </div>
-    </ContentCard.Body>
+    </div>
   )
 }
 

@@ -9,9 +9,9 @@ const isBrowser = typeof document !== "undefined"
 type DialogSize = "sm" | "md" | "lg"
 
 const sizeClassMap: Record<DialogSize, string> = {
-  sm: "sm:max-w-sm",
-  md: "sm:max-w-lg",
-  lg: "sm:max-w-2xl",
+  sm: "sm:max-w-[24rem]",
+  md: "sm:max-w-[32rem]",
+  lg: "sm:max-w-[42rem]",
 }
 
 export type DialogProps = {

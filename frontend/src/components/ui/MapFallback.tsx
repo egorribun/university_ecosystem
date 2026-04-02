@@ -99,7 +99,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
         "text-text-primary"
       )}
     >
-      <div className="w-full max-w-2xl flex flex-col gap-10">
+      <div className="w-full max-w-[42rem] flex flex-col gap-10">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <h2 id={titleId} className="text-2xl font-black tracking-tight sf-pro">

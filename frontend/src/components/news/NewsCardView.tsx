@@ -1,11 +1,14 @@
-import { ContentCard, Snackbar, ConfirmDialog } from "@/components/ui"
+import { Snackbar, ConfirmDialog } from "@/components/ui"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 import { motion, MotionValue } from "framer-motion"
-import { FC, Suspense, lazy } from "react"
+import { FC, Suspense, lazy, useState, useCallback } from "react"
 import NewsCardContent from "./NewsCardContent"
 import NewsCardHero from "./NewsCardHero"
+import { NewsQuickView } from "./NewsQuickView"
+import { NewsCategoryBadge } from "./NewsCategoryBadge"
+import type { NewsCategory } from "@/features/news/categories"
 
 const NewsCardActions = lazy(() =>
   import("./NewsCardActions").then((m) => ({ default: m.NewsCardActions }))
@@ -20,19 +23,15 @@ export interface NewsCardViewProps {
   created_at: string
   image_url?: string
   previewText: string
-
-  // Interaction State
   isLiked: boolean
   likesCount: number
   commentsCount: number
-
-  // Container State
   isAdmin: boolean
   loading: boolean
   error: string
   hoveringDisabled: boolean
-
-  // Dialog State
+  featured: boolean
+  category: NewsCategory
   editOpen: boolean
   confirmDeleteOpen: boolean
   editData: {
@@ -42,15 +41,11 @@ export interface NewsCardViewProps {
     content_en: string
     image_url: string
   }
-
-  // Spotlight
   spotlight: {
     mouseX: MotionValue<number>
     mouseY: MotionValue<number>
     onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void
   }
-
-  // Handlers
   onToggleLike: () => void
   onEditOpen: () => void
   onEditClose: () => void
@@ -59,8 +54,6 @@ export interface NewsCardViewProps {
   onDeleteConfirm: () => void
   onEditSuccess: () => void
   onErrorClose: () => void
-
-  // Translations
   t: {
     deleteTitle: string
     deleteDesc: string
@@ -82,6 +75,8 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   loading,
   error,
   hoveringDisabled,
+  featured,
+  category,
   editOpen,
   confirmDeleteOpen,
   editData,
@@ -96,82 +91,138 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   onErrorClose,
   t,
 }) => {
+  /* ── Quick-view hover state ── */
+  const [quickViewVisible, setQuickViewVisible] = useState(false)
+  const showQuickView = useCallback(() => {
+    if (!hoveringDisabled && !featured) setQuickViewVisible(true)
+  }, [hoveringDisabled, featured])
+  const hideQuickView = useCallback(() => setQuickViewVisible(false), [])
+
   return (
     <motion.article
-      layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
       onMouseMove={spotlight.onMouseMove}
-      transition={{ duration: motionTokens.durationMedium, ease: [0.22, 1, 0.36, 1] }}
+      onMouseEnter={showQuickView}
+      onMouseLeave={hideQuickView}
       whileHover={!hoveringDisabled ? { y: -4 } : undefined}
-      className={cn("h-full outline-none", hoveringDisabled ? "cursor-default" : "cursor-pointer")}
+      transition={{ duration: motionTokens.durationMedium, ease: [0.16, 1, 0.3, 1] }}
+      className={cn(
+        "relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-shadow duration-base",
+        hoveringDisabled
+          ? "cursor-default"
+          : "cursor-pointer hover:shadow-premium-lift",
+        featured && "lg:flex lg:flex-row"
+      )}
+      data-testid="news-card"
     >
-      <ContentCard
-        data-testid="news-card"
-        hoverable={!hoveringDisabled}
+      {/* Quick-view popover (non-featured only) */}
+      {!featured && (
+        <NewsQuickView
+          visible={quickViewVisible}
+          title={title}
+          preview={previewText}
+          created_at={created_at}
+          likesCount={likesCount}
+          commentsCount={commentsCount}
+          category={category}
+        />
+      )}
+
+      {/* Spotlight */}
+      <SpotlightOverlay
+        mouseX={spotlight.mouseX}
+        mouseY={spotlight.mouseY}
+        className="z-hide"
+      />
+
+      {/* Featured card gradient mesh overlay */}
+      {featured && (
+        <div
+          className="absolute inset-0 pointer-events-none z-hide"
+          style={{ background: "var(--news-featured-mesh)" }}
+          aria-hidden
+        />
+      )}
+
+      {/* Admin menu */}
+      {isAdmin && (
+        <div className="absolute right-3 top-3 z-surface">
+          <Suspense fallback={null}>
+            <NewsCardActions
+              id={id}
+              onEdit={onEditOpen}
+              onDelete={onDeleteOpen}
+              isDisabled={loading}
+            />
+          </Suspense>
+        </div>
+      )}
+
+      {/* Category badge — top-left */}
+      <div className="absolute left-3 top-3 z-surface">
+        <NewsCategoryBadge category={category} size={featured ? "md" : "sm"} />
+      </div>
+
+      {/* Image */}
+      <div
         className={cn(
-          "card-news group h-full",
-          hoveringDisabled ? "cursor-default" : "card-interactive"
+          "relative shrink-0 overflow-hidden",
+          featured
+            ? "lg:w-[55%] lg:min-h-full h-56 sm:h-64"
+            : "h-48 sm:h-52"
         )}
       >
-        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
-
-        {isAdmin && (
-          <ContentCard.Actions className="absolute right-2 top-2 z-surface">
-            <Suspense fallback={null}>
-              <NewsCardActions
-                id={id}
-                onEdit={onEditOpen}
-                onDelete={onDeleteOpen}
-                isDisabled={loading}
-              />
-            </Suspense>
-          </ContentCard.Actions>
-        )}
-
-        <div
-          className={cn(
-            "group/content relative flex h-full flex-1 flex-col text-left",
-            hoveringDisabled ? "opacity-100" : ""
-          )}
-        >
-          <NewsCardHero image_url={image_url} title={title} created_at={created_at} />
-
-          <NewsCardContent
-            id={id}
-            title={title}
-            preview={previewText}
-            isLiked={isLiked}
-            likesCount={likesCount}
-            commentsCount={commentsCount}
-            onToggleLike={onToggleLike}
-            hoveringDisabled={hoveringDisabled}
-          />
-        </div>
-
-        <Suspense fallback={null}>
-          <NewsCardEditDialog
-            id={id}
-            open={editOpen}
-            onClose={onEditClose}
-            initialData={editData}
-            onSuccess={onEditSuccess}
-          />
-        </Suspense>
-
-        <ConfirmDialog
-          open={confirmDeleteOpen}
-          title={t.deleteTitle}
-          message={t.deleteDesc}
-          confirmText={t.confirm}
-          cancelText={t.cancel}
-          variant="danger"
-          onConfirm={onDeleteConfirm}
-          onCancel={onDeleteClose}
-          isLoading={loading}
+        <NewsCardHero
+          image_url={image_url}
+          title={title}
+          created_at={created_at}
+          featured={featured}
         />
-        <Snackbar open={!!error} message={error} onClose={onErrorClose} />
-      </ContentCard>
+      </div>
+
+      {/* Content */}
+      <div
+        className={cn(
+          "relative flex flex-1 flex-col",
+          featured && "lg:justify-center"
+        )}
+      >
+        <NewsCardContent
+          id={id}
+          title={title}
+          preview={previewText}
+          isLiked={isLiked}
+          likesCount={likesCount}
+          commentsCount={commentsCount}
+          onToggleLike={onToggleLike}
+          hoveringDisabled={hoveringDisabled}
+          featured={featured}
+        />
+      </div>
+
+      {/* Dialogs */}
+      <Suspense fallback={null}>
+        <NewsCardEditDialog
+          id={id}
+          open={editOpen}
+          onClose={onEditClose}
+          initialData={editData}
+          onSuccess={onEditSuccess}
+        />
+      </Suspense>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title={t.deleteTitle}
+        message={t.deleteDesc}
+        confirmText={t.confirm}
+        cancelText={t.cancel}
+        variant="danger"
+        onConfirm={onDeleteConfirm}
+        onCancel={onDeleteClose}
+        isLoading={loading}
+      />
+
+      <Snackbar open={!!error} message={error} onClose={onErrorClose} />
     </motion.article>
   )
 }

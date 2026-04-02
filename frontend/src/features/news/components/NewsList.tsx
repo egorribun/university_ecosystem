@@ -1,6 +1,7 @@
+import { useRef, useEffect, useCallback } from "react"
 import { Newspaper as ArticleIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import FadeSection from "@/components/motion/FadeSection"
+import { AnimatePresence, motion } from "framer-motion"
 import NewsCard from "@/components/news/NewsCard"
 import NewsCardSkeleton from "@/components/ui/NewsCardSkeleton"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
@@ -11,7 +12,7 @@ import { type NewsItem as News } from "@/api/news"
 interface NewsListProps {
   newsList: News[]
   isInitialLoading: boolean
-  isFetching: boolean // used for empty state check context
+  isFetching: boolean
   isFetchingNextPage: boolean
   hasNextPage: boolean
   fetchNextPage: () => void
@@ -21,10 +22,13 @@ interface NewsListProps {
   isOnline: boolean
 }
 
+const SKELETON_COUNT = 6
+const NEXT_PAGE_SKELETON_COUNT = 3
+
 export const NewsList = ({
   newsList,
   isInitialLoading,
-  isFetching,
+  isFetching: _isFetching,
   isFetchingNextPage,
   hasNextPage,
   fetchNextPage,
@@ -34,78 +38,118 @@ export const NewsList = ({
   isOnline,
 }: NewsListProps) => {
   const { t } = useTranslation(["news", "common"])
-  const skeletonCount = 6
-  const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
+  const showEmptyState = !isInitialLoading && newsList.length === 0
 
-  return (
-    <>
-      <section aria-label={t("news:pageTitle")}>
-        <FadeSection delay="200ms" className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {isInitialLoading
-            ? Array.from({ length: skeletonCount }).map((_, index) => (
-                <div key={`news-skeleton-${index}`} className="flex h-full w-full">
-                  <NewsCardSkeleton />
-                </div>
-              ))
-            : newsList.map((news) => (
-                <div key={news.id} className="flex h-full w-full">
-                  <NewsCard
-                    {...news}
-                    image_url={news.image_url ?? undefined}
-                    onChange={() => {
-                      void refreshNews()
-                    }}
-                  />
-                </div>
-              ))}
+  /* ── Infinite scroll ── */
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-          {showEmptyState && (
-            <div className="col-span-full mt-12 flex w-full justify-center">
-              {!isOnline && newsList.length === 0 ? (
-                <OfflineFallback onRetry={refreshNews} />
-              ) : (
-                <EmptyState
-                  icon={<ArticleIcon className="h-8 w-8" />}
-                  title={t("news:states.empty")}
-                  description={t("news:states.checkLater", {
-                    defaultValue: "Check back later for updates",
-                  })}
-                  action={
-                    isAdmin ? (
-                      <Button
-                        id="news-empty-add-btn"
-                        size="lg"
-                        onClick={onAddClick}
-                        className="px-6"
-                      >
-                        {t("news:actions.add")}
-                      </Button>
-                    ) : undefined
-                  }
-                />
-              )}
-            </div>
-          )}
-        </FadeSection>
-      </section>
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel || !hasNextPage || isFetchingNextPage) return
 
-      {/* Load more */}
-      {hasNextPage && (
-        <div className="mt-8 mb-8 flex justify-center">
-          <Button
-            id="news-load-more-btn"
-            variant="outline"
-            size="lg"
-            onClick={() => void fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="px-6"
-          >
-            {isFetchingNextPage
-              ? t("common:statuses.loading")
-              : t("common:buttons.loadMore", { defaultValue: "Load more" })}
-          </Button>
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          void fetchNextPage()
+        }
+      },
+      { rootMargin: "300px" }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  const handleRetry = useCallback(() => refreshNews(), [refreshNews])
+
+  /* ── Loading skeleton ── */
+  if (isInitialLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="sm:col-span-2 lg:col-span-2 lg:row-span-2">
+          <NewsCardSkeleton featured />
         </div>
-      )}
-    </>
+        {Array.from({ length: SKELETON_COUNT - 1 }).map((_, i) => (
+          <div key={`skel-${i}`}>
+            <NewsCardSkeleton />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  /* ── Empty state ── */
+  if (showEmptyState) {
+    return (
+      <div className="w-full flex justify-center py-20">
+        {!isOnline ? (
+          <OfflineFallback onRetry={handleRetry} />
+        ) : (
+          <EmptyState
+            icon={<ArticleIcon className="h-8 w-8" />}
+            title={t("news:states.empty")}
+            description={t("news:states.checkLater", {
+              defaultValue: "Check back later for updates",
+            })}
+            action={
+              isAdmin ? (
+                <Button
+                  id="news-empty-add-btn"
+                  variant="glass"
+                  size="lg"
+                  onClick={onAddClick}
+                  className="px-6"
+                >
+                  {t("news:actions.add")}
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+      </div>
+    )
+  }
+
+  /* ── Card grid ── */
+  return (
+    <section aria-label={t("news:pageTitle")}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <AnimatePresence mode="popLayout">
+          {newsList.map((news, index) => (
+            <motion.div
+              key={news.id}
+              layout
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              className={
+                index === 0
+                  ? "sm:col-span-2 lg:col-span-2 lg:row-span-2"
+                  : undefined
+              }
+            >
+              <NewsCard
+                {...news}
+                image_url={news.image_url ?? undefined}
+                featured={index === 0}
+                onChange={handleRetry}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {/* Next-page loading skeletons */}
+        {isFetchingNextPage &&
+          Array.from({ length: NEXT_PAGE_SKELETON_COUNT }).map((_, i) => (
+            <div key={`next-skel-${i}`}>
+              <NewsCardSkeleton />
+            </div>
+          ))}
+      </div>
+
+      {/* Infinite scroll sentinel */}
+      {hasNextPage && <div ref={sentinelRef} className="h-1" aria-hidden />}
+    </section>
   )
 }

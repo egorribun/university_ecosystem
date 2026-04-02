@@ -163,7 +163,7 @@ export const StepUpDialog = ({
         className="fixed inset-0 z-overlay flex items-center justify-center pointer-events-none"
       >
         <div
-          className="bg-card rounded-2xl shadow-2xl w-full max-w-sm pointer-events-auto"
+          className="bg-card rounded-2xl shadow-2xl w-full max-w-[24rem] pointer-events-auto"
           // Removed onKeyDown, handled by useEffect
           tabIndex={-1}
         >

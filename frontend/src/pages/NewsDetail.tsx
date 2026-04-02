@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useScroll, useTransform, motion } from "framer-motion"
 import {
   ArrowLeft as ArrowBackIcon,
   Edit2 as EditIcon,
   Trash2 as DeleteIcon,
   Camera as PhotoCamera,
-  Share2 as IosShareIcon,
-  Copy as ContentCopyIcon,
-  Heart as FavoriteIcon,
+  Share2 as ShareIcon,
+  Copy as CopyIcon,
+  Heart as HeartIcon,
+  Clock,
+  Calendar,
 } from "lucide-react"
 import {
   Alert,
@@ -25,19 +28,23 @@ import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem }
 import Layout from "@/components/Layout"
 import { SEO } from "@/components/ui/SEO"
 import SmartImage from "@/components/media/SmartImage"
-import { Button, Input, Textarea, ConfirmDialog } from "@/components/ui"
+import { Button, Input, Textarea, ConfirmDialog, Skeleton } from "@/components/ui"
 import { NewsComments } from "@/components/news/NewsComments"
+import { NewsBackdrop } from "@/components/news/NewsBackdrop"
+import PageFadeIn from "@/components/motion/PageFadeIn"
+import { ScrollReveal } from "@/components/motion/ScrollReveal"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { TIMEOUTS } from "@/config/timeouts"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
-// dayjs extensions removed
+/* ── Shared styles ── */
+const iconBtnClass =
+  "inline-flex h-10 w-10 items-center justify-center rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) text-(--text-secondary) shadow-sm transition hover:text-text-primary hover:shadow-glass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
-const iconButtonClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
-
+/* ── Form field helper ── */
 type FieldProps = {
   label: ReactNode
   htmlFor: string
@@ -50,27 +57,26 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="flex flex-col gap-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)"
+        className="text-sm font-semibold tracking-wide text-(--text-secondary)"
       >
         {label}
-        {required ? <span className="ml-1 text-(--error-text)">*</span> : null}
+        {required && <span className="ml-1 text-(--error-text)">*</span>}
       </label>
       {children}
     </div>
   )
 }
 
+/* ── Data fetcher ── */
 async function fetchNews(id: string): Promise<NewsItem> {
   const response = await fetchNewsItem(id)
-  if (response.status === 304) {
-    throw new Error("Not modified")
-  }
+  if (response.status === 304) throw new Error("Not modified")
   if (!response.data) throw new Error("Item not found")
   return response.data
 }
 
-const getMoscowDate = (dateStr: string) => {
-  return formatDate(dateStr, {
+const getMoscowDate = (dateStr: string) =>
+  formatDate(dateStr, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -79,8 +85,28 @@ const getMoscowDate = (dateStr: string) => {
     hour12: false,
     timeZone: "Europe/Moscow",
   })
+
+/* ── Reading progress bar ── */
+function ReadingProgressBar() {
+  const { scrollYProgress } = useScroll()
+  const scaleX = useTransform(scrollYProgress, [0, 1], [0, 1])
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
+
+  if (prefersReduced) return null
+
+  return (
+    <motion.div
+      className="fixed top-0 left-0 right-0 h-0.5 bg-brand origin-left z-offline"
+      style={{ scaleX }}
+      role="progressbar"
+      aria-label="Reading progress"
+    />
+  )
 }
 
+/* ══════════════════════════════════════════════════════════
+   NEWS DETAIL PAGE
+   ══════════════════════════════════════════════════════════ */
 export default function NewsDetail() {
   const { id = "" } = useParams({ strict: false })
   const navigate = useNavigate()
@@ -88,7 +114,10 @@ export default function NewsDetail() {
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
+  const isNarrow = useMediaQuery("(max-width: 768px)")
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
+  /* ── State ── */
   const [editOpen, setEditOpen] = useState(false)
   const [editData, setEditData] = useState({
     title: "",
@@ -107,6 +136,7 @@ export default function NewsDetail() {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
 
+  /* ── Queries ── */
   const { data: newsItem } = useQuery<NewsItem>({ queryKey: ["news", id, language] })
 
   const {
@@ -146,13 +176,12 @@ export default function NewsDetail() {
   const likesCount = interactions?.likes_count ?? 0
   const comments = interactions?.comments ?? []
 
+  /* ── Hero image aspect ratio detection ── */
   const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
     const img = event.currentTarget
-    const width = img.naturalWidth || 0
-    const height = img.naturalHeight || 0
-    if (!width || !height) return
-
-    setHeroRatio(width / height)
+    const w = img.naturalWidth || 0
+    const h = img.naturalHeight || 0
+    if (w && h) setHeroRatio(w / h)
   }, [])
 
   const heroFrame = useMemo(() => {
@@ -164,36 +193,28 @@ export default function NewsDetail() {
         backdrop: "bg-(--bg-surface)/(--opacity-dim)",
       }
     }
-
-    const ratio = Math.min(Math.max(heroRatio, 0.35), 4)
-
-    if (ratio < 0.82) {
+    const r = Math.min(Math.max(heroRatio, 0.35), 4)
+    if (r < 0.82)
       return {
         container: "min-h-(--min-h-hero-lg) max-h-(--h-hero-max-portrait) aspect-3/4",
         image: "object-contain object-center",
         imageStyle: { objectPosition: "center" },
         backdrop: "bg-black/(--opacity-soft)",
       }
-    }
-
-    if (ratio < 1.18) {
+    if (r < 1.18)
       return {
         container: "min-h-(--min-h-hero-md) max-h-(--h-hero-max-square) aspect-5/4",
         image: "object-cover",
         imageStyle: { objectPosition: "50% 38%" },
         backdrop: "bg-(--bg-surface)/(--opacity-dim)",
       }
-    }
-
-    if (ratio > 2.6) {
+    if (r > 2.6)
       return {
         container: "min-h-(--min-h-hero-xs) max-h-(--h-hero-md) aspect-21/9",
         image: "object-cover",
         imageStyle: { objectPosition: "50% 46%" },
         backdrop: "bg-black/(--opacity-dim)",
       }
-    }
-
     return {
       container: "min-h-(--min-h-hero-sm) max-h-(--h-hero-max-landscape) aspect-video",
       image: "object-cover",
@@ -210,23 +231,18 @@ export default function NewsDetail() {
     retry: 1,
   })
 
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-    }
-  }, [previewUrl])
+  /* ── Side-effects ── */
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
   useEffect(() => {
     if (!snackbar) return
-    const timeout = window.setTimeout(() => setSnackbar(""), TIMEOUTS.TOAST_SHORT)
-    return () => window.clearTimeout(timeout)
+    const t = window.setTimeout(() => setSnackbar(""), TIMEOUTS.TOAST_SHORT)
+    return () => window.clearTimeout(t)
   }, [snackbar])
 
+  /* ── Handlers ── */
   const resetPreview = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl)
-      setPreviewUrl(null)
-    }
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
     if (imageInputRef.current) imageInputRef.current.value = ""
     setNewImage(null)
   }
@@ -244,10 +260,7 @@ export default function NewsDetail() {
     setEditOpen(true)
   }
 
-  const closeEdit = () => {
-    resetPreview()
-    setEditOpen(false)
-  }
+  const closeEdit = () => { resetPreview(); setEditOpen(false) }
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -262,18 +275,14 @@ export default function NewsDetail() {
     setSaving(true)
     try {
       let imageUrl = editData.image_url
-      if (newImage) {
-        const uploaded = await uploadNewsImage(newImage)
-        imageUrl = uploaded
-      }
-      const payload = {
+      if (newImage) imageUrl = await uploadNewsImage(newImage)
+      const { data } = await updateNews(query.data.id, {
         title: editData.title,
         content: editData.content,
         title_en: editData.title_en,
         content_en: editData.content_en,
         image_url: imageUrl,
-      }
-      const { data } = await updateNews(query.data.id, payload)
+      })
       queryClient.setQueryData(["news", id, language], data)
       await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
       setSnackbar(t("news:notifications.savedError"))
@@ -305,228 +314,266 @@ export default function NewsDetail() {
     else navigate({ to: "/news" })
   }
 
+  /* ── Derived data ── */
   const rawImageUrl = useMemo(
     () => (editOpen ? editData.image_url : query.data?.image_url) || "",
     [editData.image_url, editOpen, query.data?.image_url]
   )
+  const imageUrl = useMemo(() => previewUrl || rawImageUrl, [previewUrl, rawImageUrl])
 
-  const imageUrl = useMemo(() => {
-    if (previewUrl) return previewUrl
-    return rawImageUrl
-  }, [previewUrl, rawImageUrl])
-
-  useEffect(() => {
-    setHeroRatio(null)
-  }, [imageUrl])
+  useEffect(() => { setHeroRatio(null) }, [imageUrl])
 
   const displayTitle = useMemo(() => {
-    const localized = query.data?.title ?? ""
-    const english = query.data?.title_en ?? ""
-    if (language === "en" && english.trim()) return english
-    return localized || english
+    const loc = query.data?.title ?? ""
+    const en = query.data?.title_en ?? ""
+    return language === "en" && en.trim() ? en : loc || en
   }, [language, query.data?.title, query.data?.title_en])
 
   const content = useMemo(() => {
-    const localized = query.data?.content ?? ""
-    const english = query.data?.content_en ?? ""
-    if (language === "en" && english.trim()) return english
-    return localized || english
+    const loc = query.data?.content ?? ""
+    const en = query.data?.content_en ?? ""
+    return language === "en" && en.trim() ? en : loc || en
   }, [language, query.data?.content, query.data?.content_en])
+
   const createdAt = query.data?.created_at
-  const createdAtIso = useMemo(
-    () => (createdAt ? toDate(createdAt).toISOString() : ""),
-    [createdAt]
-  )
-  const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
+  const createdAtIso = useMemo(() => createdAt ? toDate(createdAt).toISOString() : "", [createdAt])
+  const createdAtLabel = useMemo(() => createdAt ? getMoscowDate(createdAt) : "", [createdAt])
 
   const readingTimeMinutes = useMemo(() => {
-    const text = content
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
+    const text = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
     if (!text) return null
-
     const words = text.split(/\s+/).filter(Boolean).length
-    if (!words) return null
-
-    const wordsPerMinute = 220
-    return Math.max(1, Math.round(words / wordsPerMinute))
+    return words ? Math.max(1, Math.round(words / 220)) : null
   }, [content])
 
+  /* ══════════════════════════════════════════════════════
+     LOADING STATE
+     ══════════════════════════════════════════════════════ */
   if (query.isLoading) {
     return (
       <Layout>
-        <div className="flex min-h-(--h-hero-lg) items-center justify-center">
-          <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/(--opacity-soft) border-t-(--brand-main)" />
+        <div className="news-theme aurora-mesh relative min-h-screen">
+          <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+          <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14 py-8">
+            <div className="max-w-4xl space-y-6">
+              <Skeleton width="6rem" height="2.5rem" rounded="9999rem" />
+              <Skeleton width="65%" height="2.75rem" />
+              <div className="flex flex-wrap gap-3">
+                <Skeleton width="10rem" height="1.75rem" rounded="9999rem" />
+                <Skeleton width="7rem" height="1.75rem" rounded="9999rem" />
+              </div>
+              <div className="rounded-2xl overflow-hidden glass-layer-elevated glass-noise">
+                <Skeleton className="w-full" height="22rem" rounded={false} />
+              </div>
+              <div className="glass-layer-surface glass-noise rounded-2xl p-8 space-y-4">
+                <Skeleton width="100%" height="1rem" />
+                <Skeleton width="96%" height="1rem" />
+                <Skeleton width="90%" height="1rem" />
+                <Skeleton width="80%" height="1rem" />
+              </div>
+            </div>
+          </div>
         </div>
       </Layout>
     )
   }
 
-  if (query.isError || !query.data)
+  /* ══════════════════════════════════════════════════════
+     ERROR STATE
+     ══════════════════════════════════════════════════════ */
+  if (query.isError || !query.data) {
     return (
       <Layout>
-        <div className="px-4 py-10">
-          <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
+        <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
+          <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+          <div className="relative z-base glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+            <p className="text-lg font-semibold text-(--error-text)">
+              {t("news:states.loadError")}
+            </p>
+            <Button variant="glass" onClick={handleBack}>
+              {t("common:buttons.back")}
+            </Button>
+          </div>
         </div>
       </Layout>
     )
+  }
 
+  /* ══════════════════════════════════════════════════════
+     MAIN RENDER
+     ══════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="flex w-full flex-col gap-(--fluid-gap) px-(--fluid-px) pb-16 pt-6 sm:gap-8 sm:pt-8 lg:px-(--fluid-px)">
-        <Button
-          variant="outline"
-          onClick={handleBack}
-          leadingIcon={<ArrowBackIcon className="text-lg" />}
-          className="w-fit justify-start border-white/(--opacity-dim) text-base"
-        >
-          {t("common:buttons.back")}
-        </Button>
+      <ReadingProgressBar />
 
-        <article className="flex w-full flex-col items-start gap-8">
-          <header className="flex w-full flex-col gap-4 text-left">
-            <h1 className="max-w-5xl text-fluid-h1 font-extrabold tracking-tight text-text-primary">
-              {displayTitle}
-            </h1>
+      <PageFadeIn effect="soft-blur">
+        <div className="news-theme aurora-mesh relative min-h-screen">
+          {/* ── Backdrop ── */}
+          <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
+          {/* ── Content ── */}
+          <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14 pb-20 pt-6 sm:pt-8">
             <SEO title={displayTitle} description={content.slice(0, 160)} image={imageUrl} />
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
-                {createdAt ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
-                    <span>{t("news:meta.published")}</span>
-                    <span aria-hidden>•</span>
-                    <time dateTime={createdAtIso} className="text-text-primary">
-                      {createdAtLabel}
-                    </time>
-                  </span>
-                ) : null}
-
-                {readingTimeMinutes !== null && (
-                  <span className="inline-flex items-center gap-2 rounded-pill border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-medium tracking-wide text-text-primary">
-                    {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
-                  </span>
-                )}
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void handleShare()
-                  }}
-                  leadingIcon={<IosShareIcon size={16} />}
-                  className="w-full basis-full sm:w-auto sm:basis-auto"
-                  loading={sharing}
-                  aria-label={t("news:aria.shareNews") ?? ""}
-                >
-                  {t("news:actions.share")}
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleLike()}
-                  leadingIcon={
-                    <FavoriteIcon
-                      className={cn(
-                        "h-4 w-4",
-                        isLiked
-                          ? "fill-(--error-text) text-(--error-text)"
-                          : "text-(--text-secondary)"
-                      )}
-                    />
-                  }
-                  className={cn(
-                    "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-fast",
-                    isLiked
-                      ? "border-(--error-text)/(--opacity-dim) bg-(--error-text)/(--opacity-subtle)"
-                      : "border-(--glass-border)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium)"
-                  )}
-                >
-                  <span className="tabular-nums">{likesCount}</span>
-                </Button>
-              </div>
-            </div>
-
-            {user?.role === "admin" ? (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={openEdit}
-                  className={iconButtonClass}
-                  aria-label={t("news:aria.editNews") ?? ""}
-                  disabled={saving || deleting}
-                >
-                  <EditIcon size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDeleteOpen(true)}
-                  className={cn(
-                    iconButtonClass,
-                    "text-(--error-text) hover:text-(--error-text)/(--opacity-hover)"
-                  )}
-                  aria-label={t("news:aria.deleteNews") ?? ""}
-                  disabled={deleting || saving}
-                >
-                  <DeleteIcon className="h-5 w-5" />
-                </button>
-              </div>
-            ) : null}
-          </header>
-
-          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-lg border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
-            <div
-              className={cn(
-                "flex w-full items-center justify-center overflow-hidden",
-                heroFrame.container,
-                heroFrame.backdrop
-              )}
+            {/* Back button */}
+            <Button
+              variant="glass"
+              onClick={handleBack}
+              leadingIcon={<ArrowBackIcon size={18} />}
+              className="mb-6"
             >
-              <SmartImage
-                srcRaw={imageUrl}
-                alt={
-                  displayTitle
-                    ? t("news:alt.hero", { title: displayTitle })
-                    : t("news:alt.heroFallback")
-                }
-                onLoad={handleHeroLoad}
-                className={cn("h-full w-full", heroFrame.image)}
-                style={heroFrame.imageStyle}
-              />
-            </div>
-            {displayTitle ? null : (
-              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
-                {t("news:alt.heroFallback")}
-              </figcaption>
-            )}
-          </figure>
+              {t("common:buttons.back")}
+            </Button>
 
-          <section className="max-w-4xl self-start space-y-(--fluid-gap) text-body leading-relaxed text-(--text-secondary)">
-            {content?.split(/\n{2,}/).map((chunk: string, index: number) => {
-              const text = chunk.trim()
+            <article className="max-w-4xl space-y-8">
+              {/* ─── HEADER ─── */}
+              <header className="space-y-4">
+                <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary leading-tight">
+                  {displayTitle}
+                </h1>
 
-              if (!text) return null
+                {/* Meta pills */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {createdAt && (
+                    <span className="inline-flex items-center gap-2 rounded-full glass-layer-surface border border-glass-border/(--opacity-soft) px-3 py-1.5 text-xs font-semibold shadow-sm">
+                      <Calendar size={13} className="text-brand" />
+                      <time dateTime={createdAtIso} className="text-text-primary uppercase tracking-wide">
+                        {createdAtLabel}
+                      </time>
+                    </span>
+                  )}
 
-              return <p key={`news-detail-paragraph-${index}`}>{text}</p>
-            })}
-          </section>
+                  {readingTimeMinutes !== null && (
+                    <span className="inline-flex items-center gap-2 rounded-full glass-layer-surface border border-glass-border/(--opacity-soft) px-3 py-1.5 text-xs font-medium shadow-sm">
+                      <Clock size={13} className="text-brand" />
+                      <span className="text-text-primary">
+                        {t("news:meta.readingTime", { count: readingTimeMinutes })}
+                      </span>
+                    </span>
+                  )}
+                </div>
 
-          <NewsComments
-            comments={comments}
-            user={user as { id: string; role: string } | null}
-            isCommenting={isCommenting}
-            addComment={addComment}
-            updateComment={updateComment}
-            deleteComment={deleteComment}
-            t={t}
-            getMoscowDate={getMoscowDate}
-          />
-        </article>
-      </div>
+                {/* Action buttons */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={() => { void handleShare() }}
+                    leadingIcon={<ShareIcon size={16} />}
+                    loading={sharing}
+                    aria-label={t("news:aria.shareNews") ?? ""}
+                  >
+                    {t("news:actions.share")}
+                  </Button>
 
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={() => toggleLike()}
+                    leadingIcon={
+                      <HeartIcon
+                        size={16}
+                        className={cn(
+                          isLiked
+                            ? "fill-(--error-text) text-(--error-text)"
+                            : "text-(--text-secondary)"
+                        )}
+                      />
+                    }
+                    className={cn(
+                      "transition-colors duration-fast",
+                      isLiked && "border-(--error-text)/(--opacity-dim) bg-(--error-text)/(--opacity-subtle)"
+                    )}
+                  >
+                    <span className="tabular-nums">{likesCount}</span>
+                  </Button>
+
+                  {/* Admin actions */}
+                  {user?.role === "admin" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={openEdit}
+                        className={iconBtnClass}
+                        aria-label={t("news:aria.editNews") ?? ""}
+                        disabled={saving || deleting}
+                      >
+                        <EditIcon size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteOpen(true)}
+                        className={cn(iconBtnClass, "text-(--error-text) hover:text-(--error-text)")}
+                        aria-label={t("news:aria.deleteNews") ?? ""}
+                        disabled={deleting || saving}
+                      >
+                        <DeleteIcon size={16} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </header>
+
+              {/* ─── HERO IMAGE ─── */}
+              <ScrollReveal mode="fade">
+                <figure className="overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft) shadow-glass">
+                  <div
+                    className={cn(
+                      "flex w-full items-center justify-center overflow-hidden",
+                      heroFrame.container,
+                      heroFrame.backdrop
+                    )}
+                  >
+                    <SmartImage
+                      srcRaw={imageUrl}
+                      alt={
+                        displayTitle
+                          ? t("news:alt.hero", { title: displayTitle })
+                          : t("news:alt.heroFallback")
+                      }
+                      onLoad={handleHeroLoad}
+                      className={cn("h-full w-full", heroFrame.image)}
+                      style={heroFrame.imageStyle}
+                    />
+                  </div>
+                  {!displayTitle && (
+                    <figcaption className="border-t border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
+                      {t("news:alt.heroFallback")}
+                    </figcaption>
+                  )}
+                </figure>
+              </ScrollReveal>
+
+              {/* ─── ARTICLE BODY ─── */}
+              <ScrollReveal mode="fade" delay={0.1}>
+                <section className="glass-layer-surface glass-noise rounded-2xl p-6 sm:p-8 md:p-10 space-y-5 text-body leading-relaxed text-(--text-secondary)">
+                  {content?.split(/\n{2,}/).map((chunk: string, idx: number) => {
+                    const text = chunk.trim()
+                    if (!text) return null
+                    return <p key={`p-${idx}`}>{text}</p>
+                  })}
+                </section>
+              </ScrollReveal>
+
+              {/* ─── COMMENTS ─── */}
+              <ScrollReveal mode="slide" delay={0.15}>
+                <NewsComments
+                  comments={comments}
+                  user={user as { id: string; role: string } | null}
+                  isCommenting={isCommenting}
+                  addComment={addComment}
+                  updateComment={updateComment}
+                  deleteComment={deleteComment}
+                  t={t}
+                  getMoscowDate={getMoscowDate}
+                />
+              </ScrollReveal>
+            </article>
+          </div>
+        </div>
+      </PageFadeIn>
+
+      {/* ═══ SHARE DIALOG ═══ */}
       <Dialog
         open={shareDialogOpen}
         onClose={() => setShareDialogOpen(false)}
@@ -538,18 +585,17 @@ export default function NewsDetail() {
           <p className="text-base leading-relaxed text-(--text-secondary)">
             {t("news:shareDialog.description")}
           </p>
-
           <div className="grid gap-3 sm:grid-cols-3">
             {shareOptions.map((option) => {
               const Icon = option.icon
               return (
                 <a
-                  key={`share-option-${option.id}`}
+                  key={`share-${option.id}`}
                   href={option.href}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setShareDialogOpen(false)}
-                  className="group flex items-center gap-3 rounded-md border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
+                  className="group flex items-center gap-3 rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) px-4 py-3 transition hover:border-glass-border hover:shadow-sm"
                 >
                   <span
                     className={cn(
@@ -559,7 +605,9 @@ export default function NewsDetail() {
                   >
                     <Icon className="h-5 w-5" />
                   </span>
-                  <span className="text-sm font-semibold text-text-primary">{option.label}</span>
+                  <span className="text-sm font-semibold text-text-primary">
+                    {option.label}
+                  </span>
                 </a>
               )
             })}
@@ -568,20 +616,21 @@ export default function NewsDetail() {
         <DialogActions className="p-6">
           <Button
             variant="solid"
-            onClick={() => {
-              void handleCopyLink()
-            }}
+            onClick={() => { void handleCopyLink() }}
             disabled={copyingLink}
             className="w-full sm:w-auto"
           >
             <div className="flex items-center gap-2">
-              <ContentCopyIcon className="h-4 w-4" />
-              {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
+              <CopyIcon className="h-4 w-4" />
+              {copiedLink
+                ? t("news:shareDialog.copySuccess")
+                : t("news:shareDialog.copy")}
             </div>
           </Button>
         </DialogActions>
       </Dialog>
 
+      {/* ═══ EDIT DIALOG ═══ */}
       <Dialog open={editOpen} onClose={closeEdit} maxWidth="lg" fullWidth>
         <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
         <DialogContent className="space-y-6 pt-4">
@@ -599,7 +648,6 @@ export default function NewsDetail() {
                   maxLength={100}
                 />
               </Field>
-
               <Field label={t("news:form.content") ?? ""} htmlFor="edit-content" required>
                 <Textarea
                   id="edit-content"
@@ -612,7 +660,6 @@ export default function NewsDetail() {
                 />
               </Field>
             </div>
-
             <div className="space-y-4">
               <Field
                 label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
@@ -628,7 +675,6 @@ export default function NewsDetail() {
                   maxLength={100}
                 />
               </Field>
-
               <Field
                 label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
                 htmlFor="edit-content-en"
@@ -643,7 +689,6 @@ export default function NewsDetail() {
                   rows={6}
                 />
               </Field>
-
               <div className="space-y-3">
                 <label className="block text-sm font-semibold text-(--text-secondary)">
                   {t("news:form.image", { defaultValue: "Cover Image" })}
@@ -651,13 +696,15 @@ export default function NewsDetail() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Button
                     as="label"
-                    variant="outline"
-                    className="w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border"
+                    variant="glass"
+                    className="w-full sm:w-auto"
                     disabled={saving}
                   >
                     <div className="flex items-center gap-2">
                       <PhotoCamera className="h-4 w-4" />
-                      {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                      {newImage
+                        ? t("common:buttons.changePhoto")
+                        : t("common:buttons.uploadPhoto")}
                     </div>
                     <input
                       type="file"
@@ -667,16 +714,15 @@ export default function NewsDetail() {
                       onChange={handleImageChange}
                     />
                   </Button>
-
-                  {imageUrl ? (
-                    <div className="overflow-hidden rounded-sm border border-glass-border shadow-sm">
+                  {imageUrl && (
+                    <div className="overflow-hidden rounded-lg border border-glass-border/(--opacity-soft) shadow-sm">
                       <SmartImage
                         srcRaw={imageUrl}
                         alt={t("news:alt.editPreview")}
                         className="h-14 w-28 object-cover"
                       />
                     </div>
-                  ) : null}
+                  )}
                 </div>
                 {previewUrl && (
                   <Button
@@ -707,6 +753,7 @@ export default function NewsDetail() {
         </DialogActions>
       </Dialog>
 
+      {/* ═══ CONFIRM DELETE ═══ */}
       <ConfirmDialog
         open={confirmDeleteOpen}
         title={t("news:dialogs.delete.title")}
@@ -719,6 +766,7 @@ export default function NewsDetail() {
         isLoading={deleting}
       />
 
+      {/* ═══ SNACKBAR ═══ */}
       {snackbar && (
         <Snackbar
           open={!!snackbar}

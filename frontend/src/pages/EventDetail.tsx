@@ -174,7 +174,7 @@ export default function EventDetail() {
   if (!event) {
     return (
       <Layout>
-        <div className="mx-auto max-w-2xl px-4 py-12 text-center">
+        <div className="mx-auto max-w-[42rem] px-4 py-12 text-center">
           <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-text-secondary">
             <InfoIcon size={32} />
           </div>

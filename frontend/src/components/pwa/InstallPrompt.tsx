@@ -231,12 +231,12 @@ export default function InstallPrompt() {
             initial={ANIMATION_VARIANTS.initial}
             animate={ANIMATION_VARIANTS.animate}
             exit={ANIMATION_VARIANTS.exit}
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-sm"
+            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem]"
           >
             <GlassCard
               intensity="high"
               radius="lg"
-              className="z-toast w-auto max-w-sm border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6"
+              className="z-toast w-auto max-w-[24rem] border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6"
             >
               <div
                 className={cn(
@@ -430,7 +430,7 @@ export default function InstallPrompt() {
             initial={FEEDBACK_VARIANTS.initial}
             animate={FEEDBACK_VARIANTS.animate}
             exit={FEEDBACK_VARIANTS.exit}
-            className="fixed top-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-sm px-6"
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-[24rem] px-6"
           >
             <div
               className={cn(
@@ -462,7 +462,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-md px-6"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-[28rem] px-6"
           >
             <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/(--opacity-dim) bg-brand/(--opacity-faint) backdrop-blur-2xl shadow-2xl text-brand">
               <RefreshCw className="h-6 w-6 animate-spin-slow" />

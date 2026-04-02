@@ -1,0 +1,102 @@
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     NEWS PAGE TOKENS
+     Scoped under .news-theme — mirrors dashboard.css structure.
+     ═══════════════════════════════════════════════════════ */
+  .news-theme {
+    /* ── Typography ─────────────────────────────────────── */
+    --fs-news-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-news-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-news-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
+
+    /* ── Gradients & Flares ────────────────────────────── */
+    --grad-news-conic: conic-gradient(
+      from 140deg at 50% 50%,
+      var(--news-orb-1),
+      var(--news-orb-2),
+      transparent 85%
+    );
+
+    /* ── Light Theme ───────────────────────────────────── */
+    --news-hero-orb: color-mix(in srgb, var(--color-sky-400) 10%, transparent);
+    --news-hero-highlight: color-mix(in srgb, var(--color-indigo-500) 6%, transparent);
+    --news-orb-1: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
+    --news-orb-2: color-mix(in srgb, var(--color-indigo-400) 8%, transparent);
+    --news-orb-3: color-mix(in srgb, var(--color-purple-400) 6%, transparent);
+    --news-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-sky-400) 50%,
+      transparent 90%
+    );
+    --news-card-glow: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
+
+    /* ── Category badge colors ─────────────────────────── */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
+    --cat-blue-text: var(--color-blue-600);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-500) 12%, transparent);
+    --cat-emerald-text: var(--color-emerald-600);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-500) 12%, transparent);
+    --cat-purple-text: var(--color-purple-600);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-500) 12%, transparent);
+    --cat-amber-text: var(--color-amber-700);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-500) 12%, transparent);
+    --cat-sky-text: var(--color-sky-600);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-400) 12%, transparent);
+    --cat-slate-text: var(--color-slate-600);
+
+    /* ── Featured card gradient mesh ───────────────────── */
+    --news-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-sky-400) 8%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-indigo-400) 6%, transparent) 0%,
+      transparent 50%
+    );
+  }
+
+  .dark .news-theme {
+    /* ── Dark Theme — Brighter orbs for visibility ────── */
+    --news-hero-orb: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
+    --news-hero-highlight: color-mix(in srgb, var(--color-indigo-400) 10%, transparent);
+    --news-orb-1: color-mix(in srgb, var(--color-sky-400) 18%, transparent);
+    --news-orb-2: color-mix(in srgb, var(--color-indigo-400) 14%, transparent);
+    --news-orb-3: color-mix(in srgb, var(--color-purple-400) 10%, transparent);
+    --news-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-sky-500) 50%,
+      transparent 90%
+    );
+    --news-card-glow: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
+
+    /* ── Category badge colors (dark) ──────────────────── */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
+    --cat-blue-text: var(--color-blue-400);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-400) 16%, transparent);
+    --cat-emerald-text: var(--color-emerald-400);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-400) 16%, transparent);
+    --cat-purple-text: var(--color-purple-400);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+    --cat-amber-text: var(--color-amber-400);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
+    --cat-sky-text: var(--color-sky-400);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-500) 16%, transparent);
+    --cat-slate-text: var(--color-slate-400);
+
+    /* ── Featured card gradient mesh (dark — brighter) ─── */
+    --news-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-sky-400) 12%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-indigo-400) 10%, transparent) 0%,
+      transparent 50%
+    );
+  }
+}

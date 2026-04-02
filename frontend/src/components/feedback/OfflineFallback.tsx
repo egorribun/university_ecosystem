@@ -36,7 +36,7 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="mb-10 max-w-md leading-relaxed text-(--text-secondary)"
+        className="mb-10 max-w-[28rem] leading-relaxed text-(--text-secondary)"
       >
         {t("offlineFallback.description")}
       </motion.p>

@@ -219,7 +219,7 @@ const Events = () => {
       {/* Tabs */}
       <FadeSection
         delay={ANIMATION_DELAYS.tabs}
-        className="w-full max-w-md z-content"
+        className="w-full max-w-[28rem] z-content"
         role="tablist"
       >
         <div
