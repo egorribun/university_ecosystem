@@ -1,7 +1,6 @@
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router"
 import type { RouterContext } from "@/router"
 import MainLayout from "@/components/layout/MainLayout"
-import BackToTop from "@/components/motion/BackToTop"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
 import LivePushToasts from "@/components/feedback/LivePushToasts"
 import OfflineIndicator from "@/components/feedback/OfflineIndicator"
@@ -20,7 +19,6 @@ function RootComponent() {
       </PageErrorBoundary>
 
       <SearchDialog />
-      <BackToTop />
       <LivePushToasts />
       <OfflineIndicator />
       <InstallPrompt />

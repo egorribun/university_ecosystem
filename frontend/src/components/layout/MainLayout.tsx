@@ -2,6 +2,7 @@ import React from "react"
 import { useRouteType } from "@/hooks/useRouteType"
 import Navbar from "@/components/navbar"
 import Footer from "@/components/layout/Footer"
+import BackToTop from "@/components/motion/BackToTop"
 import MobileBottomNav from "@/components/layout/MobileBottomNav"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -33,6 +34,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       </main>
 
       {!isCompactPage && !hideFooter && <Footer />}
+      {!isCompactPage && <BackToTop />}
       {!isCompactPage && <MobileBottomNav />}
     </div>
   )
