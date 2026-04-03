@@ -15,14 +15,18 @@ export function NewsCategoryBadge({ category, size = "sm" }: NewsCategoryBadgePr
     <span
       className={
         size === "sm"
-          ? "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-          : "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wider"
+          ? "news-badge-matte inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          : "news-badge-matte inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider"
       }
       style={{
-        backgroundColor: `var(--cat-${color}-bg)`,
-        color: `var(--cat-${color}-text)`,
-      }}
+        "--_badge-accent": `var(--cat-${color}-text)`,
+      } as React.CSSProperties}
     >
+      <span
+        className="mr-1 inline-block h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: `var(--cat-${color}-text)` }}
+        aria-hidden
+      />
       {t(labelKey, { defaultValue: category })}
     </span>
   )

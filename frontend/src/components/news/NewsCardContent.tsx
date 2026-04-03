@@ -1,12 +1,13 @@
 import { cn } from "@/utils/cn"
-import { motion } from "framer-motion"
 import {
   ArrowUpRight as ArrowIcon,
   Bookmark as BookmarkIcon,
   BookmarkCheck as BookmarkCheckIcon,
+  Clock as ClockIcon,
   MessageCircle as CommentIcon,
   Heart as HeartIcon,
 } from "lucide-react"
+import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 
@@ -18,6 +19,7 @@ interface NewsCardContentProps {
   likesCount: number
   commentsCount: number
   isBookmarked?: boolean
+  readingTime?: number | null
   onToggleLike: () => void
   onToggleBookmark?: () => void
   hoveringDisabled: boolean
@@ -31,11 +33,22 @@ const NewsCardContent = ({
   likesCount,
   commentsCount,
   isBookmarked = false,
+  readingTime,
   onToggleLike,
   onToggleBookmark,
   hoveringDisabled,
 }: NewsCardContentProps) => {
   const { t } = useTranslation(["common"])
+  const [celebrating, setCelebrating] = useState(false)
+
+  const handleLike = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!isLiked) {
+      setCelebrating(true)
+      setTimeout(() => setCelebrating(false), 400)
+    }
+    onToggleLike()
+  }, [isLiked, onToggleLike])
 
   return (
     <div className="flex flex-1 flex-col gap-3 p-5">
@@ -63,35 +76,22 @@ const NewsCardContent = ({
       <div className="mt-auto flex items-center justify-between pt-3 border-t border-glass-border/(--opacity-soft)">
         <div className="relative z-deep flex items-center gap-4">
           {/* Like */}
-          <motion.button
+          <button
             type="button"
-            whileTap={{ scale: 0.85 }}
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleLike()
-            }}
+            onClick={handleLike}
             className={cn(
-              "flex items-center gap-1.5 transition-colors duration-fast",
+              "flex items-center gap-1.5 transition-colors duration-fast active:scale-90 transition-transform",
               isLiked
                 ? "text-error-text"
                 : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
             )}
             aria-label={isLiked ? t("common:aria.unlike", { defaultValue: "Unlike" }) : t("common:aria.like", { defaultValue: "Like" })}
           >
-            {isLiked ? (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                className="heart-pulse"
-              >
-                <HeartIcon size={16} fill="currentColor" />
-              </motion.span>
-            ) : (
-              <HeartIcon size={16} />
-            )}
+            <span className={cn(celebrating && "news-heart-celebrate")}>
+              <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} />
+            </span>
             <span className="text-xs font-bold tabular-nums">{likesCount}</span>
-          </motion.button>
+          </button>
 
           {/* Comments */}
           <div className="flex items-center gap-1.5 text-(--text-secondary)">
@@ -99,17 +99,24 @@ const NewsCardContent = ({
             <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
           </div>
 
+          {/* Reading time (W59-10) */}
+          {readingTime != null && (
+            <div className="flex items-center gap-1 text-(--text-secondary)">
+              <ClockIcon size={14} />
+              <span className="text-[11px] font-medium tabular-nums">{readingTime} min</span>
+            </div>
+          )}
+
           {/* Bookmark */}
           {onToggleBookmark && (
-            <motion.button
+            <button
               type="button"
-              whileTap={{ scale: 0.85 }}
               onClick={(e) => {
                 e.stopPropagation()
                 onToggleBookmark()
               }}
               className={cn(
-                "flex items-center transition-colors duration-fast",
+                "flex items-center transition-[color,transform] duration-fast active:scale-90",
                 isBookmarked
                   ? "text-brand"
                   : "text-(--text-secondary) hover:text-brand/(--opacity-hover)"
@@ -117,17 +124,11 @@ const NewsCardContent = ({
               aria-label={isBookmarked ? t("common:aria.removeBookmark", { defaultValue: "Remove bookmark" }) : t("common:aria.addBookmark", { defaultValue: "Bookmark" })}
             >
               {isBookmarked ? (
-                <motion.span
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                >
-                  <BookmarkCheckIcon size={16} fill="currentColor" />
-                </motion.span>
+                <BookmarkCheckIcon size={16} fill="currentColor" />
               ) : (
                 <BookmarkIcon size={16} />
               )}
-            </motion.button>
+            </button>
           )}
         </div>
 

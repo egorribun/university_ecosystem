@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft as ArrowBackIcon, Copy as CopyIcon } from "lucide-react"
@@ -35,6 +35,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import { estimateReadingTime } from "@/utils/readingTime"
 import { TIMEOUTS } from "@/config/timeouts"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { setNewsHeroId } from "@/utils/newsTransition"
@@ -147,6 +148,26 @@ export default function NewsDetail() {
     return () => window.clearTimeout(timer)
   }, [snackbar])
 
+  /* ── Firefox fallback: JS-driven reading progress bar ── */
+  const progressRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        if (progressRef.current) {
+          const max = document.documentElement.scrollHeight - window.innerHeight
+          const pct = max > 0 ? Math.min(window.scrollY / max, 1) : 0
+          progressRef.current.style.transform = `scaleX(${pct})`
+        }
+        ticking = false
+      })
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [])
+
   /* ── Handlers ── */
   const handleDelete = async () => {
     if (!query.data) return
@@ -194,12 +215,7 @@ export default function NewsDetail() {
   )
   const relatedArticles = useRelatedNews(id, category, 3)
 
-  const readingTimeMinutes = useMemo(() => {
-    const text = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-    if (!text) return null
-    const words = text.split(/\s+/).filter(Boolean).length
-    return words ? Math.max(1, Math.round(words / 220)) : null
-  }, [content])
+  const readingTimeMinutes = useMemo(() => estimateReadingTime(content), [content])
 
   const editInitialData = useMemo(
     () => ({
@@ -237,8 +253,8 @@ export default function NewsDetail() {
   /* ══════════════ MAIN RENDER ══════════════ */
   return (
     <>
-      {/* Reading progress — CSS scroll-driven animation */}
-      <div className="news-reading-progress" aria-hidden />
+      {/* Reading progress — CSS scroll-driven animation (JS fallback for Firefox via W59-19) */}
+      <div ref={progressRef} className="news-reading-progress" aria-hidden />
 
       <div className="news-theme aurora-mesh relative min-h-screen overflow-clip touch-pan-y" {...swipeHandlers}>
         <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
@@ -259,7 +275,7 @@ export default function NewsDetail() {
             {t("common:buttons.back")}
           </Button>
 
-          <article className="max-w-4xl space-y-8">
+          <article className="max-w-4xl 2xl:max-w-5xl space-y-8">
             <NewsDetailHeader
               displayTitle={displayTitle}
               createdAt={createdAt}
@@ -285,7 +301,7 @@ export default function NewsDetail() {
 
             <NewsComments
               comments={comments}
-              user={user as { id: string; role: string } | null}
+              user={user}
               isCommenting={isCommenting}
               addComment={addComment}
               updateComment={updateComment}
@@ -318,7 +334,7 @@ export default function NewsDetail() {
           <p className="text-base leading-relaxed text-(--text-secondary)">
             {t("news:shareDialog.description")}
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
             {shareOptions.map((option) => {
               const Icon = option.icon
               return (

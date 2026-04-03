@@ -1,7 +1,7 @@
 import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
-import { getMoscowDate } from "@/utils/date"
+import { getMoscowDate, formatRelativeTime } from "@/utils/date"
 import { getNewsHeroId, clearNewsHeroId } from "@/utils/newsTransition"
 import { Cloud, FileText as ArticleIcon } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
@@ -17,7 +17,7 @@ interface NewsCardHeroProps {
 }
 
 const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsCardHeroProps) => {
-  const { t } = useTranslation(["news", "common"])
+  const { t, i18n } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
   const [ready, setReady] = useState(!image_url)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -52,6 +52,10 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsC
     () => (created_at ? getMoscowDate(created_at) : ""),
     [created_at]
   )
+  const relativeLabel = useMemo(
+    () => (created_at ? formatRelativeTime(created_at, i18n.language === "ru" ? "ru-RU" : "en-US") : ""),
+    [created_at, i18n.language]
+  )
 
   /* ── Parallax on scroll — image shifts 15% vertically ── */
   useEffect(() => {
@@ -71,7 +75,7 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsC
         const shift = (1 - entry.intersectionRatio * 2) * 8
         img.style.transform = `translateY(${shift}%) scale(1.12)`
       },
-      { threshold: Array.from({ length: 20 }, (_, i) => i / 19) }
+      { threshold: [0, 0.25, 0.5, 0.75, 1] }
     )
 
     observer.observe(container)
@@ -124,9 +128,10 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsC
         {isoDate && (
           <time
             dateTime={isoDate}
-            className="rounded-full bg-black/(--opacity-strong) backdrop-blur-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/(--opacity-heavy) shadow-sm"
+            title={label}
+            className="news-badge-matte rounded-full px-3 py-1 text-[11px] font-semibold tracking-wider"
           >
-            {label}
+            {relativeLabel}
           </time>
         )}
         {!isOnline && (

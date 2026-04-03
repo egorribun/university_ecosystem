@@ -1,4 +1,4 @@
-import { Plus, Search, X, ArrowUpDown, Bookmark as BookmarkIcon } from "lucide-react"
+import { Newspaper, Plus, Search, X, ArrowUpDown, Bookmark as BookmarkIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useRef, useEffect, useState } from "react"
 import FadeSection from "@/components/motion/FadeSection"
@@ -54,11 +54,22 @@ export const NewsHeader = ({
     <header className="mb-6 sm:mb-8 space-y-4">
       {/* Row 1: Title + search + admin button */}
       <FadeSection delay="60ms" className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary shrink-0">
-          {t("news:pageTitle")}
-        </h1>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="news-badge-matte flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-xl text-text-primary">
+            <Newspaper size={20} strokeWidth={2.2} />
+          </div>
+          <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary">
+            {t("news:pageTitle")}
+          </h1>
+        </div>
         {newsCount != null && (
-          <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand shrink-0">
+          <span
+            className="news-badge-matte rounded-full px-2.5 py-1 text-xs font-bold tabular-nums shrink-0"
+            style={{
+              minWidth: 32,
+              textAlign: "center",
+            }}
+          >
             {newsCount}
           </span>
         )}
@@ -70,7 +81,7 @@ export const NewsHeader = ({
             className="absolute left-3 top-1/2 -translate-y-1/2 text-(--text-secondary) pointer-events-none"
           />
           <input
-            type="search"
+            type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("news:search.placeholder", { defaultValue: "Search news..." })}

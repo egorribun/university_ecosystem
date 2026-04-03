@@ -207,6 +207,7 @@ export const useNewsListQuery = (
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => lastPage?.next_cursor ?? null,
     queryFn,
+    staleTime: 30_000, // 30s — matches interaction query; prevents refetch on mount/focus
     placeholderData,
     ...rest,
   })

@@ -8,6 +8,7 @@ import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { Button } from "@/components/ui"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { type NewsItem as News } from "@/api/news"
+import { FeatureErrorBoundary } from "@/components/error"
 import { cn } from "@/utils/cn"
 
 interface NewsListProps {
@@ -70,7 +71,7 @@ export const NewsList = ({
   /* ── Loading skeleton ── */
   if (isInitialLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
         {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
           <div key={`skel-${i}`}>
             <NewsCardSkeleton />
@@ -121,26 +122,32 @@ export const NewsList = ({
       {showRefetchBar && (
         <div className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse" aria-hidden />
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
         <AnimatePresence mode="popLayout">
           {newsList.map((news, index) => (
             <motion.div
               key={news.id}
               ref={(el) => registerCardRef?.(index, el)}
               layout
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{
+                layout: { duration: 0.4, ease: [0.25, 1, 0.5, 1] },
+                opacity: { duration: 0.25 },
+                y: { duration: 0.3, ease: [0.25, 1, 0.5, 1] },
+              }}
               className={cn(
                 activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
               )}
             >
-              <NewsCard
-                {...news}
-                image_url={news.image_url ?? undefined}
-                onChange={handleRetry}
-              />
+              <FeatureErrorBoundary>
+                <NewsCard
+                  {...news}
+                  image_url={news.image_url ?? undefined}
+                  onChange={handleRetry}
+                />
+              </FeatureErrorBoundary>
             </motion.div>
           ))}
         </AnimatePresence>

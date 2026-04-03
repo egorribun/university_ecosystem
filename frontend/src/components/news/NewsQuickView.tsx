@@ -18,6 +18,8 @@ interface NewsQuickViewProps {
   likesCount: number
   commentsCount: number
   category?: NewsCategory
+  /** Position relative to card. Default "top" (above card). */
+  position?: "top" | "bottom"
 }
 
 export function NewsQuickView({
@@ -28,6 +30,7 @@ export function NewsQuickView({
   likesCount,
   commentsCount,
   category,
+  position = "top",
 }: NewsQuickViewProps) {
   const { t } = useTranslation(["news"])
   const dateLabel = created_at ? getMoscowDate(created_at) : ""
@@ -36,11 +39,11 @@ export function NewsQuickView({
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ opacity: 0, y: 8, scale: 0.96 }}
+          initial={{ opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 4, scale: 0.98 }}
+          exit={{ opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute left-0 right-0 bottom-full mb-2 z-floating pointer-events-none"
+          className={`absolute left-0 right-0 z-floating pointer-events-none ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}
         >
           <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/(--opacity-soft) max-w-[24rem] mx-auto">
             {/* Category + date */}

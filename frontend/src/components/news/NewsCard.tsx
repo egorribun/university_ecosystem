@@ -5,6 +5,7 @@ import { useBookmarks } from "@/hooks/useBookmarks"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { localizeField } from "@/utils/localize"
 import { inferCategory } from "@/features/news/categories"
+import { estimateReadingTime } from "@/utils/readingTime"
 import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
@@ -85,6 +86,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   )
 
   const category = useMemo(() => inferCategory(title, content), [title, content])
+  const readingTime = useMemo(() => estimateReadingTime(localizedContent), [localizedContent])
 
   const [sanitizedPreview, setSanitizedPreview] = useState("")
 
@@ -137,6 +139,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       loading={loading}
       error={error}
       hoveringDisabled={editOpen}
+      readingTime={readingTime}
       category={category}
       editOpen={editOpen}
       confirmDeleteOpen={confirmDeleteOpen}

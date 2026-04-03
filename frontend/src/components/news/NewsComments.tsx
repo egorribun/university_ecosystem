@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { cn } from "@/utils/cn"
 import {
   MessageSquare as CommentIcon,
   Edit2 as EditIcon,
@@ -7,12 +8,13 @@ import {
 } from "lucide-react"
 import { Button, Textarea, ConfirmDialog } from "@/components/ui"
 import type { NewsComment } from "@/hooks/useNewsInteraction"
+import type { User } from "@/types/User"
 
 const COMMENT_MAX_LENGTH = 500
 
 interface NewsCommentsProps {
   comments: NewsComment[]
-  user?: { id: string; role: string } | null
+  user?: Pick<User, "id" | "role"> | null
   isCommenting: boolean
   addComment: (content: string) => void
   updateComment: (id: number, content: string) => void
@@ -124,11 +126,24 @@ export function NewsComments({
                 <div className="flex flex-col gap-3 mt-1">
                   <Textarea
                     value={editingCommentText}
-                    onChange={(event) => setEditingCommentText(event.target.value)}
+                    onChange={(event) => setEditingCommentText(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
                     className="min-h-20 text-sm"
+                    maxLength={COMMENT_MAX_LENGTH}
                     // eslint-disable-next-line jsx-a11y/no-autofocus
                     autoFocus
                   />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn(
+                      "text-[11px] tabular-nums transition-colors",
+                      editingCommentText.length >= COMMENT_MAX_LENGTH * 0.95
+                        ? "text-(--error-text) font-bold"
+                        : editingCommentText.length >= COMMENT_MAX_LENGTH * 0.8
+                          ? "text-warning-text font-semibold"
+                          : "text-(--text-secondary)/(--opacity-medium)"
+                    )}>
+                      {editingCommentText.length}/{COMMENT_MAX_LENGTH}
+                    </span>
+                  </div>
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="glass"
@@ -169,7 +184,14 @@ export function NewsComments({
             className="min-h-24"
           />
           <div className="flex justify-end">
-            <span className="text-[11px] tabular-nums text-(--text-secondary)/(--opacity-medium)">
+            <span className={cn(
+              "text-[11px] tabular-nums transition-colors",
+              commentText.length >= COMMENT_MAX_LENGTH * 0.95
+                ? "text-(--error-text) font-bold"
+                : commentText.length >= COMMENT_MAX_LENGTH * 0.8
+                  ? "text-warning-text font-semibold"
+                  : "text-(--text-secondary)/(--opacity-medium)"
+            )}>
               {commentText.length}/{COMMENT_MAX_LENGTH}
             </span>
           </div>

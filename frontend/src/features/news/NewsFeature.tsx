@@ -11,6 +11,7 @@ import { resetEtagCache } from "@/api/client"
 import { NewsHeader } from "./components/NewsHeader"
 import { NewsList } from "./components/NewsList"
 import { NewsFormDialog } from "./components/NewsFormDialog"
+import { NewsShortcutsOverlay } from "./components/NewsShortcutsOverlay"
 import { inferCategory, type NewsCategory } from "./categories"
 
 export type SortMode = "newest" | "popular"
@@ -108,6 +109,8 @@ export const NewsFeature = () => {
         onClose={() => setAddOpen(false)}
         onSuccess={refreshNews}
       />
+
+      <NewsShortcutsOverlay />
     </div>
   )
 }

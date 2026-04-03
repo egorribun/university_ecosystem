@@ -59,11 +59,7 @@ function renderPlainText(content: string): string {
       continue
     }
 
-    const isFirst = parts.length === 0
-    const isDropCap = isFirst && text.length > 200
-    parts.push(
-      `<p${isDropCap ? ' class="news-dropcap"' : ""}>${escapeHtml(text)}</p>`
-    )
+    parts.push(`<p>${escapeHtml(text)}</p>`)
   }
 
   return parts.join("\n")

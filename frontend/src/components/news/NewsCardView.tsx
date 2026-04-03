@@ -1,9 +1,8 @@
 import { Snackbar, ConfirmDialog } from "@/components/ui"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
-import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 import { motion, MotionValue } from "framer-motion"
-import { FC, Suspense, lazy, useState, useCallback } from "react"
+import { FC, Suspense, lazy, useState, useCallback, useRef } from "react"
 import NewsCardContent from "./NewsCardContent"
 import NewsCardHero from "./NewsCardHero"
 import { NewsQuickView } from "./NewsQuickView"
@@ -32,6 +31,7 @@ export interface NewsCardViewProps {
   loading: boolean
   error: string
   hoveringDisabled: boolean
+  readingTime: number | null
   category: NewsCategory
   editOpen: boolean
   confirmDeleteOpen: boolean
@@ -78,6 +78,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   loading,
   error,
   hoveringDisabled,
+  readingTime,
   category,
   editOpen,
   confirmDeleteOpen,
@@ -95,9 +96,15 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   t,
 }) => {
   /* ── Quick-view hover state ── */
+  const articleRef = useRef<HTMLElement>(null)
   const [quickViewVisible, setQuickViewVisible] = useState(false)
+  const [quickViewPosition, setQuickViewPosition] = useState<"top" | "bottom">("top")
   const showQuickView = useCallback(() => {
-    if (!hoveringDisabled) setQuickViewVisible(true)
+    if (hoveringDisabled) return
+    // Show below card if it's near the top of viewport (prevent clipping)
+    const rect = articleRef.current?.getBoundingClientRect()
+    setQuickViewPosition(rect && rect.top < 280 ? "bottom" : "top")
+    setQuickViewVisible(true)
   }, [hoveringDisabled])
   const hideQuickView = useCallback(() => setQuickViewVisible(false), [])
 
@@ -114,17 +121,16 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
 
   return (
     <motion.article
+      ref={articleRef}
       onMouseMove={spotlight.onMouseMove}
       onMouseEnter={showQuickView}
       onMouseLeave={() => { hideQuickView(); handleTransitionReset() }}
       onPointerDown={handlePointerDown}
-      whileHover={!hoveringDisabled ? { y: -4 } : undefined}
-      transition={{ duration: motionTokens.durationMedium, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        "news-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-shadow duration-base",
+        "news-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-[transform,box-shadow] duration-slower ease-premium",
         hoveringDisabled
           ? "cursor-default"
-          : "cursor-pointer hover:shadow-premium-lift"
+          : "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:duration-instant"
       )}
       data-testid="news-card"
     >
@@ -137,6 +143,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           likesCount={likesCount}
           commentsCount={commentsCount}
           category={category}
+          position={quickViewPosition}
         />
 
       {/* Spotlight */}
@@ -187,6 +194,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           likesCount={likesCount}
           commentsCount={commentsCount}
           isBookmarked={isBookmarked}
+          readingTime={readingTime}
           onToggleLike={onToggleLike}
           onToggleBookmark={onToggleBookmark}
           hoveringDisabled={hoveringDisabled}
