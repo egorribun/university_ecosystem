@@ -28,7 +28,9 @@ const NewsCardHero = ({ id, image_url, title, created_at, featured, transitionin
 
   /* ── Back-nav view transition: set VT name via DOM ref in layout phase ──
      useLayoutEffect fires synchronously after DOM commit but before paint/snapshot.
-     Only the FIRST matching card gets the name — clearNewsHeroId() prevents duplicates. */
+     Only the FIRST matching card gets the name — clearNewsHeroId() prevents duplicates.
+     setTimeout(0) removes name AFTER VT snapshot is captured — prevents stale
+     names from colliding with forward-nav transitioning prop. */
   useLayoutEffect(() => {
     const el = containerRef.current
     if (!el || !id) return
@@ -37,7 +39,9 @@ const NewsCardHero = ({ id, image_url, title, created_at, featured, transitionin
 
     el.style.viewTransitionName = "news-hero"
     clearNewsHeroId()
-    return () => { el.style.viewTransitionName = "" }
+
+    const cleanup = setTimeout(() => { el.style.viewTransitionName = "" }, 0)
+    return () => { clearTimeout(cleanup); el.style.viewTransitionName = "" }
   }, [id])
   const onLoad = useCallback(() => setReady(true), [])
 
