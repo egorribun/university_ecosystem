@@ -71,10 +71,7 @@ export const NewsList = ({
   if (isInitialLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-        <div className="sm:col-span-2 lg:col-span-2 lg:row-span-2">
-          <NewsCardSkeleton featured />
-        </div>
-        {Array.from({ length: SKELETON_COUNT - 1 }).map((_, i) => (
+        {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
           <div key={`skel-${i}`}>
             <NewsCardSkeleton />
           </div>
@@ -136,14 +133,12 @@ export const NewsList = ({
               exit={{ opacity: 0, scale: 0.96 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
               className={cn(
-                index === 0 && "sm:col-span-2 lg:col-span-2 lg:row-span-2",
                 activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
               )}
             >
               <NewsCard
                 {...news}
                 image_url={news.image_url ?? undefined}
-                featured={index === 0}
                 onChange={handleRetry}
               />
             </motion.div>

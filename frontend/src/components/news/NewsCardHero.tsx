@@ -12,12 +12,11 @@ interface NewsCardHeroProps {
   image_url?: string
   title?: string
   created_at: string
-  featured?: boolean
   /** Set by parent on pointerdown for forward view-transition morphing */
   transitioning?: boolean
 }
 
-const NewsCardHero = ({ id, image_url, title, created_at, featured, transitioning }: NewsCardHeroProps) => {
+const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsCardHeroProps) => {
   const { t } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
   const [ready, setReady] = useState(!image_url)
@@ -100,11 +99,7 @@ const NewsCardHero = ({ id, image_url, title, created_at, featured, transitionin
             data-parallax-img
             srcRaw={src}
             alt={title ? t("news:alt.hero", { title }) : t("news:alt.heroFallback")}
-            sizes={
-              featured
-                ? "(min-width: 1024px) 55vw, 100vw"
-                : "(min-width: 75rem) 33vw, (min-width: 40rem) 50vw, 100vw"
-            }
+            sizes="(min-width: 75rem) 33vw, (min-width: 40rem) 50vw, 100vw"
             className="absolute inset-0 h-full w-full object-cover will-change-transform transition-transform duration-slower ease-out scale-[1.12] group-hover:scale-[1.16]"
             onLoad={onLoad}
             onError={onLoad}

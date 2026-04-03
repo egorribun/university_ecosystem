@@ -21,7 +21,6 @@ interface NewsCardContentProps {
   onToggleLike: () => void
   onToggleBookmark?: () => void
   hoveringDisabled: boolean
-  featured?: boolean
 }
 
 const NewsCardContent = ({
@@ -35,20 +34,13 @@ const NewsCardContent = ({
   onToggleLike,
   onToggleBookmark,
   hoveringDisabled,
-  featured,
 }: NewsCardContentProps) => {
   const { t } = useTranslation(["common"])
 
   return (
-    <div className={cn("flex flex-1 flex-col gap-3 p-5", featured && "sm:p-6 lg:p-8")}>
+    <div className="flex flex-1 flex-col gap-3 p-5">
       {/* Title */}
-      <h3
-        className={cn(
-          "font-semibold leading-snug text-text-primary",
-          featured
-            ? "text-lg sm:text-xl lg:text-2xl line-clamp-3"
-            : "text-base line-clamp-2"
-        )}
+      <h3 className="font-semibold leading-snug text-text-primary text-base line-clamp-2"
       >
         <Link
           to="/news/$id"
@@ -63,12 +55,7 @@ const NewsCardContent = ({
       </h3>
 
       {/* Preview */}
-      <p
-        className={cn(
-          "text-sm leading-relaxed text-(--text-secondary)",
-          featured ? "line-clamp-4 lg:line-clamp-5" : "line-clamp-2"
-        )}
-      >
+      <p className="text-sm leading-relaxed text-(--text-secondary) line-clamp-2">
         {preview}
       </p>
 

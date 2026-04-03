@@ -32,7 +32,6 @@ export interface NewsCardViewProps {
   loading: boolean
   error: string
   hoveringDisabled: boolean
-  featured: boolean
   category: NewsCategory
   editOpen: boolean
   confirmDeleteOpen: boolean
@@ -79,7 +78,6 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   loading,
   error,
   hoveringDisabled,
-  featured,
   category,
   editOpen,
   confirmDeleteOpen,
@@ -99,8 +97,8 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   /* ── Quick-view hover state ── */
   const [quickViewVisible, setQuickViewVisible] = useState(false)
   const showQuickView = useCallback(() => {
-    if (!hoveringDisabled && !featured) setQuickViewVisible(true)
-  }, [hoveringDisabled, featured])
+    if (!hoveringDisabled) setQuickViewVisible(true)
+  }, [hoveringDisabled])
   const hideQuickView = useCallback(() => setQuickViewVisible(false), [])
 
   /* ── View Transition: mark hero for morphing on navigation ── */
@@ -126,14 +124,12 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
         "news-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-shadow duration-base",
         hoveringDisabled
           ? "cursor-default"
-          : "cursor-pointer hover:shadow-premium-lift",
-        featured && "lg:flex lg:flex-row"
+          : "cursor-pointer hover:shadow-premium-lift"
       )}
       data-testid="news-card"
     >
-      {/* Quick-view popover (non-featured only) */}
-      {!featured && (
-        <NewsQuickView
+      {/* Quick-view popover */}
+      <NewsQuickView
           visible={quickViewVisible}
           title={title}
           preview={previewText}
@@ -142,7 +138,6 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           commentsCount={commentsCount}
           category={category}
         />
-      )}
 
       {/* Spotlight */}
       <SpotlightOverlay
@@ -150,15 +145,6 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
         mouseY={spotlight.mouseY}
         className="z-hide"
       />
-
-      {/* Featured card gradient mesh overlay */}
-      {featured && (
-        <div
-          className="absolute inset-0 pointer-events-none z-hide"
-          style={{ background: "var(--news-featured-mesh)" }}
-          aria-hidden
-        />
-      )}
 
       {/* Admin menu */}
       {isAdmin && (
@@ -176,36 +162,23 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
 
       {/* Category badge — top-left */}
       <div className="absolute left-3 top-3 z-surface">
-        <NewsCategoryBadge category={category} size={featured ? "md" : "sm"} />
+        <NewsCategoryBadge category={category} size="sm" />
       </div>
 
       {/* Image */}
-      <div
-        className={cn(
-          "relative shrink-0 overflow-hidden",
-          featured
-            ? "lg:w-[55%] lg:min-h-full h-64 sm:h-72"
-            : "h-48 sm:h-52"
-        )}
-      >
+      <div className="relative shrink-0 overflow-hidden h-48 sm:h-52">
         <NewsCardHero
           id={id}
           image_url={image_url}
           title={title}
           created_at={created_at}
-          featured={featured}
           transitioning={transitioning}
         />
       </div>
 
       {/* Content — no `relative` here: Link's before:absolute before:inset-0
            must reach <article> to make the entire card clickable (FIX-57-02) */}
-      <div
-        className={cn(
-          "flex flex-1 flex-col",
-          featured && "lg:justify-center"
-        )}
-      >
+      <div className="flex flex-1 flex-col">
         <NewsCardContent
           id={id}
           title={title}
@@ -217,7 +190,6 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           onToggleLike={onToggleLike}
           onToggleBookmark={onToggleBookmark}
           hoveringDisabled={hoveringDisabled}
-          featured={featured}
         />
       </div>
 

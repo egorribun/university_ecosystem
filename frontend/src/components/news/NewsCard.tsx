@@ -23,7 +23,6 @@ export type NewsCardProps = {
   likes_count?: number
   comments_count?: number
   is_liked?: boolean
-  featured?: boolean
   onChange?: () => void
 }
 
@@ -38,7 +37,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   likes_count: initialLikes = 0,
   comments_count: initialComments = 0,
   is_liked: initialIsLiked = false,
-  featured = false,
   onChange,
 }) => {
   const { user } = useAuth()
@@ -139,7 +137,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       loading={loading}
       error={error}
       hoveringDisabled={editOpen}
-      featured={featured}
       category={category}
       editOpen={editOpen}
       confirmDeleteOpen={confirmDeleteOpen}
@@ -172,7 +169,6 @@ const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.content_en === next.content_en &&
   prev.created_at === next.created_at &&
   prev.image_url === next.image_url &&
-  prev.featured === next.featured &&
   prev.onChange === next.onChange
 
 // PERF-27-02-KEPT: custom areEqual comparator
