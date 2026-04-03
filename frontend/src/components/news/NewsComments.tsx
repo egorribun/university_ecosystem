@@ -17,8 +17,8 @@ interface NewsCommentsProps {
   user?: Pick<User, "id" | "role"> | null
   isCommenting: boolean
   addComment: (content: string) => void
-  updateComment: (id: number, content: string) => void
-  deleteComment: (id: number) => void
+  updateComment: (id: string, content: string) => void
+  deleteComment: (id: string) => void
   t: (key: string, options?: Record<string, unknown>) => string
   getMoscowDate: (date: string) => string
 }
@@ -33,10 +33,10 @@ export function NewsComments({
   t,
   getMoscowDate,
 }: NewsCommentsProps) {
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentText, setEditingCommentText] = useState("")
   const [commentText, setCommentText] = useState("")
-  const [deleteConfirmationId, setDeleteConfirmationId] = useState<number | null>(null)
+  const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null)
 
   const handlePostComment = () => {
     if (commentText.trim()) {
@@ -45,7 +45,7 @@ export function NewsComments({
     }
   }
 
-  const handleUpdateComment = (id: number) => {
+  const handleUpdateComment = (id: string) => {
     if (editingCommentText.trim()) {
       updateComment(id, editingCommentText)
       setEditingCommentId(null)
@@ -53,13 +53,13 @@ export function NewsComments({
   }
 
   return (
-    <footer className="w-full glass-layer-surface glass-noise rounded-2xl p-6 sm:p-8">
+    <section aria-labelledby="comments-heading" className="w-full glass-layer-surface glass-noise rounded-2xl p-6 sm:p-8">
       {/* ── Section header ── */}
       <div className="flex items-center gap-3 mb-8">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-brand">
           <CommentIcon size={20} />
         </div>
-        <h2 className="text-xl sm:text-2xl font-extrabold text-text-primary">
+        <h2 id="comments-heading" className="text-xl sm:text-2xl font-extrabold text-text-primary">
           {t("news:sections.comments", { defaultValue: "Comments" })}
         </h2>
         <span className="px-2.5 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
@@ -127,6 +127,7 @@ export function NewsComments({
                   <Textarea
                     value={editingCommentText}
                     onChange={(event) => setEditingCommentText(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
+                    aria-label={t("news:form.editCommentAriaLabel", { defaultValue: "Edit comment" })}
                     className="min-h-20 text-sm"
                     maxLength={COMMENT_MAX_LENGTH}
                     // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -180,6 +181,7 @@ export function NewsComments({
             placeholder={t("news:form.commentPlaceholder", {
               defaultValue: "Write something...",
             })}
+            aria-label={t("news:form.commentAriaLabel", { defaultValue: "Write a new comment" })}
             maxLength={COMMENT_MAX_LENGTH}
             className="min-h-24"
           />
@@ -227,6 +229,6 @@ export function NewsComments({
         }}
         onCancel={() => setDeleteConfirmationId(null)}
       />
-    </footer>
+    </section>
   )
 }

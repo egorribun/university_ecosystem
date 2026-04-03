@@ -254,7 +254,7 @@ export default function NewsDetail() {
   return (
     <>
       {/* Reading progress — CSS scroll-driven animation (JS fallback for Firefox via W59-19) */}
-      <div ref={progressRef} className="news-reading-progress" aria-hidden />
+      <div ref={progressRef} className="news-reading-progress" aria-hidden="true" />
 
       <div className="news-theme aurora-mesh relative min-h-screen overflow-clip touch-pan-y" {...swipeHandlers}>
         <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />

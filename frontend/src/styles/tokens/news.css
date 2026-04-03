@@ -424,6 +424,12 @@
   .news-card-footer { gap: 0.5rem; }
 }
 
+/* Intermediate — preview visible but clamped */
+@container news-card (min-width: 281px) and (max-width: 399px) {
+  .news-card-title { font-size: 1rem; }
+  .news-card-preview { -webkit-line-clamp: 2; }
+}
+
 @container news-card (min-width: 400px) {
   .news-card-title { font-size: 1.25rem; }
 }
@@ -468,9 +474,7 @@
   animation: news-heart-celebrate 0.35s var(--ease-premium) both;
 }
 
-/* Scroll-to-top FAB visual styles now inline via CSS vars
-   (--news-fab-bg, --news-fab-color, --news-fab-shadow)
-   defined at :root level above @layer base. */
+/* Scroll-to-top FAB visual styles in tailwind.css (.back-to-top-fab) — Wave 60 */
 
 /* ═══════════════════════════════════════════════════════
    FIREFOX SCROLL-DRIVEN FALLBACK (Wave 59, W59-19)
@@ -486,6 +490,13 @@
 /* ═══════════════════════════════════════════════════════
    PRINT STYLESHEET (Wave 58)
    ═══════════════════════════════════════════════════════ */
+
+/* Page geometry — standalone at-rule (not nested in @media print) */
+@page {
+  margin: 2cm 1.5cm;
+  orphans: 3;
+  widows: 3;
+}
 
 @media print {
   .news-theme {
@@ -514,6 +525,27 @@
   .news-pullquote {
     border-left-color: #333;
     color: #333;
+  }
+
+  /* Code blocks visible on paper */
+  .news-article-body pre,
+  .news-article-body code {
+    background: #f5f5f5 !important;
+    border: 1px solid #ccc !important;
+  }
+
+  /* Prevent breaking inside block-level elements */
+  .news-article-body img,
+  .news-article-body blockquote,
+  .news-article-body table,
+  .news-article-body pre {
+    break-inside: avoid;
+  }
+
+  .news-article-body h2,
+  .news-article-body h3,
+  .news-article-body h4 {
+    break-after: avoid;
   }
 
   /* Hide non-content sections */
@@ -545,5 +577,9 @@
 
   .news-reading-progress {
     display: none;
+  }
+
+  .news-heart-celebrate {
+    animation: none;
   }
 }

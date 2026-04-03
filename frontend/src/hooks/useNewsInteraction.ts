@@ -11,7 +11,7 @@ const CLICK_DB_NAME = "notification-interactions"
 const CLICK_DB_VERSION = 3
 
 export type NewsComment = {
-  id: number
+  id: string
   content: string
   user_id: string
   user_name: string
@@ -159,7 +159,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       if (previous) {
         // Optimistic comment
         const optimisticComment: NewsComment = {
-          id: -Date.now(),
+          id: "optimistic-" + Date.now(),
           content,
           user_id: user?.id ?? "",
           user_name: user?.full_name ?? "You",
@@ -184,7 +184,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   })
 
   const updateCommentMutation = useMutation({
-    mutationFn: async ({ commentId, content }: { commentId: number; content: string }) => {
+    mutationFn: async ({ commentId, content }: { commentId: string; content: string }) => {
       try {
         const res = await api.patch(`/news/comments/${commentId}`, { content })
         return res.data
@@ -214,7 +214,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   })
 
   const deleteCommentMutation = useMutation({
-    mutationFn: async (commentId: number) => {
+    mutationFn: async (commentId: string) => {
       try {
         await api.delete(`/news/comments/${commentId}`)
       } catch (error: unknown) {
@@ -252,11 +252,11 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       [commentMutation]
     ),
     updateComment: useCallback(
-      (commentId: number, content: string) => updateCommentMutation.mutate({ commentId, content }),
+      (commentId: string, content: string) => updateCommentMutation.mutate({ commentId, content }),
       [updateCommentMutation]
     ),
     deleteComment: useCallback(
-      (commentId: number) => deleteCommentMutation.mutate(commentId),
+      (commentId: string) => deleteCommentMutation.mutate(commentId),
       [deleteCommentMutation]
     ),
     isLiking: likeMutation.isPending,

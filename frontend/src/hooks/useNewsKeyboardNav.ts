@@ -64,7 +64,7 @@ export function useNewsKeyboardNav(items: NewsItem[]) {
             const item = items[activeIndex]
             if (item) {
               e.preventDefault()
-              void navigate({ to: "/news/$id", params: { id: String(item.id) } })
+              void navigate({ to: "/news/$id", params: { id: item.id } })
             }
           }
           break

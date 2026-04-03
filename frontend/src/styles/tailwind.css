@@ -879,6 +879,41 @@
   }
 }
 
+/* Wave 60: Scroll-to-top FAB — theme-reactive via CSS vars, no JS theme detection */
+.back-to-top-wrap {
+  transition: bottom 0.2s var(--ease-premium, ease);
+}
+
+.back-to-top-fab {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--text-primary);
+  color: var(--bg-page);
+  box-shadow:
+    0 4px 14px color-mix(in srgb, var(--text-primary) 25%, transparent),
+    0 2px 4px color-mix(in srgb, var(--text-primary) 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 15%, transparent);
+}
+
+.dark .back-to-top-fab {
+  box-shadow:
+    0 4px 16px color-mix(in srgb, black 50%, transparent),
+    0 2px 4px color-mix(in srgb, black 30%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 40%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back-to-top-wrap {
+    transition: none;
+  }
+}
+
 @utility glass-high-fidelity {
   @apply border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-3xl;
 

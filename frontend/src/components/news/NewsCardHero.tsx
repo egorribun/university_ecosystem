@@ -94,7 +94,7 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsC
           "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-base",
           ready ? "opacity-0 pointer-events-none" : "opacity-100"
         )}
-        aria-hidden
+        aria-hidden="true"
       />
 
       {src ? (
@@ -112,7 +112,7 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsC
           {/* Bottom gradient */}
           <div
             className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/(--opacity-heavy) to-transparent"
-            aria-hidden
+            aria-hidden="true"
           />
         </>
       ) : (

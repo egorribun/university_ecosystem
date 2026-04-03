@@ -118,7 +118,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
         ref={lightboxRef}
         className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
         role="dialog"
-        aria-modal
+        aria-modal="true"
         aria-label={t("news:actions.zoomImage", { defaultValue: "Full image view" })}
         tabIndex={-1}
       >

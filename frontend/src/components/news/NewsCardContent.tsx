@@ -57,7 +57,7 @@ const NewsCardContent = ({
       >
         <Link
           to="/news/$id"
-          params={{ id: String(id) }}
+          params={{ id }}
           className={cn(
             "before:absolute before:inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium) focus-visible:ring-offset-2",
             hoveringDisabled && "pointer-events-none"
@@ -80,7 +80,7 @@ const NewsCardContent = ({
             type="button"
             onClick={handleLike}
             className={cn(
-              "flex items-center gap-1.5 transition-colors duration-fast active:scale-90 transition-transform",
+              "flex items-center gap-1.5 transition-[color,transform] duration-fast active:scale-90",
               isLiked
                 ? "text-error-text"
                 : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
@@ -103,7 +103,7 @@ const NewsCardContent = ({
           {readingTime != null && (
             <div className="flex items-center gap-1 text-(--text-secondary)">
               <ClockIcon size={14} />
-              <span className="text-[11px] font-medium tabular-nums">{readingTime} min</span>
+              <span className="text-[11px] font-medium tabular-nums">{readingTime} {t("common:time.minuteShort", { defaultValue: "min" })}</span>
             </div>
           )}
 

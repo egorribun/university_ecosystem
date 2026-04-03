@@ -25,7 +25,7 @@ export function NewsCategoryBadge({ category, size = "sm" }: NewsCategoryBadgePr
       <span
         className="mr-1 inline-block h-1.5 w-1.5 rounded-full"
         style={{ backgroundColor: `var(--cat-${color}-text)` }}
-        aria-hidden
+        aria-hidden="true"
       />
       {t(labelKey, { defaultValue: category })}
     </span>

@@ -58,7 +58,7 @@ function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
   return (
     <Link
       to="/news/$id"
-      params={{ id: String(item.id) }}
+      params={{ id: item.id }}
       className={cn(
         "group flex flex-col rounded-xl overflow-hidden card-matte glass-noise",
         "border border-glass-border/(--opacity-soft)",

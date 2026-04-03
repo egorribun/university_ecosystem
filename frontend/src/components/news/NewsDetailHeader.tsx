@@ -146,7 +146,7 @@ export function NewsDetailHeader({
         {/* Admin actions — separated by border */}
         {isAdmin && (
           <>
-            <span className="h-6 w-px bg-glass-border/(--opacity-soft) mx-1 hidden sm:block" aria-hidden />
+            <span className="h-6 w-px bg-glass-border/(--opacity-soft) mx-1 hidden sm:block" aria-hidden="true" />
             <button
               type="button"
               onClick={onEditOpen}

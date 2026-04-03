@@ -115,7 +115,7 @@ export const NewsHeader = ({
       </FadeSection>
 
       {/* Sentinel for sticky detection */}
-      <div ref={sentinelRef} className="h-0" aria-hidden />
+      <div ref={sentinelRef} className="h-0" aria-hidden="true" />
 
       {/* Row 2: Category pills + sort toggle — sticky on scroll */}
       <div

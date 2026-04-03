@@ -1,21 +1,49 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowUp } from "lucide-react"
 import Magnetic from "./Magnetic"
-import { useTheme } from "@/contexts/ThemeContext"
+
+const BASE_BOTTOM = 24 // px — default distance from viewport bottom
+const FOOTER_GAP = 16 // px — gap between FAB and footer top edge
 
 export default function BackToTop() {
   const { t } = useTranslation(["common"])
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
 
   const [show, setShow] = useState(false)
+  const [footerOffset, setFooterOffset] = useState(0)
+  const observerRef = useRef<IntersectionObserver | null>(null)
+
+  // Show/hide based on scroll position
   useEffect(() => {
     const onScroll = () => setShow(window.scrollY > 420)
     onScroll()
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
+  }, [])
+
+  // Observe footer to shift FAB above it
+  useEffect(() => {
+    const footer = document.querySelector<HTMLElement>('[role="contentinfo"]')
+    if (!footer) return
+
+    const thresholds = Array.from({ length: 21 }, (_, i) => i / 20)
+
+    observerRef.current = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry || !entry.isIntersecting) {
+          setFooterOffset(0)
+          return
+        }
+        // How many px of footer are visible in the viewport
+        const visiblePx = window.innerHeight - entry.boundingClientRect.top
+        setFooterOffset(Math.max(0, visiblePx + FOOTER_GAP))
+      },
+      { threshold: thresholds }
+    )
+
+    observerRef.current.observe(footer)
+    return () => observerRef.current?.disconnect()
   }, [])
 
   const onClick = useCallback(() => {
@@ -30,8 +58,11 @@ export default function BackToTop() {
     <AnimatePresence>
       {show && (
         <div
-          className="fixed bottom-6 right-6 z-tooltip"
-          style={{ pointerEvents: "auto" }}
+          className="fixed right-6 z-tooltip back-to-top-wrap"
+          style={{
+            bottom: BASE_BOTTOM + footerOffset,
+            pointerEvents: "auto",
+          }}
         >
           <Magnetic strength={0.3}>
             <motion.button
@@ -40,21 +71,7 @@ export default function BackToTop() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.5, y: 20 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: "50%",
-                border: "none",
-                backgroundColor: isDark ? "#f0f0f0" : "#1a1a1a",
-                color: isDark ? "#1a1a1a" : "#ffffff",
-                boxShadow: isDark
-                  ? "0 4px 16px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.5)"
-                  : "0 4px 14px rgba(0,0,0,0.25), 0 2px 4px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.15)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              className="back-to-top-fab"
               whileHover={{ scale: 1.1, y: -3 }}
               whileTap={{ scale: 0.92 }}
               aria-label={t("common:buttons.backToTop")}

@@ -39,6 +39,8 @@ export function NewsQuickView({
     <AnimatePresence>
       {visible && (
         <motion.div
+          role="tooltip"
+          aria-hidden="true"
           initial={{ opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 }}
