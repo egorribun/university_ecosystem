@@ -5,7 +5,6 @@ import FadeSection from "@/components/motion/FadeSection"
 import { Button } from "@/components/ui"
 import { ALL_CATEGORIES, type NewsCategory } from "@/features/news/categories"
 import { cn } from "@/utils/cn"
-import useMediaQuery from "@/hooks/useMediaQuery"
 import type { SortMode } from "@/features/news/NewsFeature"
 
 interface NewsHeaderProps {
@@ -34,8 +33,6 @@ export const NewsHeader = ({
   bookmarkCount = 0,
 }: NewsHeaderProps) => {
   const { t } = useTranslation(["news", "common"])
-  const isDesktop = useMediaQuery("(min-width: 768px)")
-
   /* ── Sticky detection via IntersectionObserver ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
   const stickyRef = useRef<HTMLDivElement>(null)
@@ -192,12 +189,6 @@ export const NewsHeader = ({
             </span>
           </button>
 
-          {/* Keyboard hint — desktop only */}
-          {isDesktop && (
-            <span className="text-[10px] font-mono tracking-wider text-(--text-secondary)/(--opacity-medium) shrink-0" aria-hidden>
-              J/K
-            </span>
-          )}
         </FadeSection>
       </div>
     </header>
