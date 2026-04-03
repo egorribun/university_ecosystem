@@ -50,7 +50,7 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
               "group list-item-blue list-item-blue-hover",
               "flex items-center gap-4 text-left sm:gap-5"
             )}
-            onClick={() => navigate({ to: "/news/$id", params: { id: String(n.id) } })}
+            onClick={() => navigate({ to: "/news/$id", params: { id: n.id } })}
             title={n.title}
             aria-label={t("dashboard:aria.newsItem", { title: n.title })}
             style={{ "--stagger-i": idx } as React.CSSProperties}
