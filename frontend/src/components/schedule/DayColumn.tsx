@@ -9,6 +9,9 @@ import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { type Lesson, minutesDiff } from "./scheduleUtils"
 import { LessonCard } from "./LessonCard"
 
+/** Heatmap thresholds for day load intensity (lesson count) */
+const HEAT_THRESHOLDS = { heavy: 5, medium: 3, light: 1 } as const
+
 interface DayColumnProps {
   day: string
   label: string
@@ -54,11 +57,11 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
 
     // Heatmap: color intensity based on lesson count
     const heatClass =
-      lessons.length >= 5
+      lessons.length >= HEAT_THRESHOLDS.heavy
         ? "sched-heat-heavy"
-        : lessons.length >= 3
+        : lessons.length >= HEAT_THRESHOLDS.medium
           ? "sched-heat-medium"
-          : lessons.length >= 1
+          : lessons.length >= HEAT_THRESHOLDS.light
             ? "sched-heat-light"
             : ""
 
@@ -66,7 +69,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       <div
         ref={ref}
         className={cn(
-          "group relative isolate mb-2 rounded-2xl border border-glass-border shadow-premium backdrop-blur-md glass-noise transition-all duration-base",
+          "sched-day-column-container group relative isolate mb-2 rounded-2xl border border-glass-border shadow-premium backdrop-blur-md glass-noise transition-all duration-base",
           "[content-visibility:auto] [contain-intrinsic-size:auto_12rem]",
           compact ? "p-3 sm:p-4" : "p-4 sm:p-6",
           isToday

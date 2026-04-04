@@ -5,7 +5,8 @@ import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"
 import { type Lesson, getTimeStr } from "@/components/schedule/scheduleUtils"
-import { useScheduleDisplayPreferences } from "@/stores/scheduleUIStore"
+import { useScheduleDisplayPreferences, useScheduleUIActions } from "@/stores/scheduleUIStore"
+import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/utils/cn"
 
 type ScheduleMobileViewProps = Pick<
@@ -27,6 +28,7 @@ type ScheduleMobileViewProps = Pick<
   isOnline: boolean
   onDeleteLesson: (id: string) => void
   getLessonTypeColor: (type?: string | null) => string
+  getLessonTypeLabel?: (val?: string | null) => string
 }
 
 export function ScheduleMobileView({
@@ -45,17 +47,27 @@ export function ScheduleMobileView({
   isOnline,
   onDeleteLesson,
   getLessonTypeColor,
+  getLessonTypeLabel: getLessonTypeLabelProp,
   currentLesson,
 }: ScheduleMobileViewProps) {
   const { t } = useTranslation(["schedule"])
   const { openDialog, setAddDay } = useSchedulePage()
   const { compactMode } = useScheduleDisplayPreferences()
+  const { nextWeek, previousWeek } = useScheduleUIActions()
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  const getLessonTypeLabel = useCallback(
+  // Swipe between weeks on mobile
+  const swipeHandlers = useSwipe({
+    onSwipeLeft: nextWeek,
+    onSwipeRight: previousWeek,
+  })
+
+  // Use prop if provided, otherwise compute from lessonTypeLabels map
+  const getLessonTypeLabelFallback = useCallback(
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
     [lessonTypeLabels],
   )
+  const getLessonTypeLabel = getLessonTypeLabelProp ?? getLessonTypeLabelFallback
 
   const lessonsByDay = useMemo(() => {
     const map = new Map<string, Lesson[]>()
@@ -75,13 +87,32 @@ export function ScheduleMobileView({
     dayCardRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [])
 
+  // Arrow key navigation between day tabs
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault()
+      const tabs = e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')
+      const current = document.activeElement
+      const idx = Array.from(tabs).indexOf(current as HTMLElement)
+      if (idx < 0) return
+      const next =
+        e.key === "ArrowRight"
+          ? (idx + 1) % tabs.length
+          : (idx - 1 + tabs.length) % tabs.length
+      tabs[next]?.focus()
+      scrollToDay(next)
+    }
+  }, [scrollToDay])
+
   return (
-    <div className="mt-2 flex w-full flex-col gap-4">
+    <div className="mt-2 flex w-full flex-col gap-4" {...swipeHandlers}>
       {/* ── Day navigation chips ──────────────────────── */}
+      {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus managed via child tab buttons */}
       <div
         role="tablist"
         aria-label={t("schedule:title.default")}
         className="scrollbar-hide flex gap-2 overflow-x-auto px-1 pb-2"
+        onKeyDown={handleTabKeyDown}
       >
         {weekdayBackend.map((day, i) => {
           const count = lessonsByDay.get(day)?.length ?? 0

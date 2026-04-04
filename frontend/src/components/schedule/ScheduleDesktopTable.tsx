@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react"
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Plus as AddIcon, Calendar as TodayIcon } from "lucide-react"
 import { Fragment } from "react"
@@ -23,11 +23,11 @@ type ScheduleDesktopTableProps = Pick<
   | "user"
   | "rawSchedule"
   | "refresh"
-  | "lessonTypeLabels"
   | "currentLesson"
 > & {
   isOnline: boolean
   getLessonTypeColor: (type?: string | null) => string
+  getLessonTypeLabel: (val?: string | null) => string
   onDeleteLesson: (id: string) => void
 }
 
@@ -42,8 +42,8 @@ export function ScheduleDesktopTable({
   rawSchedule,
   refresh,
   isOnline,
-  lessonTypeLabels,
   getLessonTypeColor,
+  getLessonTypeLabel,
   onDeleteLesson,
   currentLesson,
 }: ScheduleDesktopTableProps) {
@@ -51,11 +51,6 @@ export function ScheduleDesktopTable({
   const { openDialog, setAddDay } = useSchedulePage()
   const hiddenWeekdays = useHiddenWeekdays()
   const { compactMode } = useScheduleDisplayPreferences()
-
-  const getLessonTypeLabel = useCallback(
-    (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
-    [lessonTypeLabels],
-  )
 
   /* ── Filter visible weekdays ──────────────────────────── */
   const visibleDays = useMemo(() => {
@@ -188,11 +183,13 @@ export function ScheduleDesktopTable({
                     return (
                       <div
                         key={`empty-${rowIdx}-${colI}`}
+                        id={`sched-cell-${rowIdx}-${colI}`}
                         role="gridcell"
+                        tabIndex={-1}
                         aria-rowindex={rowIdx + 2}
                         aria-colindex={colI + 2}
                         className={cn(
-                          "sched-grid-cell flex items-center justify-center border-b border-glass-border/(--opacity-soft)",
+                          "sched-grid-cell flex items-center justify-center border-b border-glass-border/(--opacity-soft) outline-none",
                           isTodayCol && "sched-today-col"
                         )}
                       >
@@ -214,11 +211,13 @@ export function ScheduleDesktopTable({
                   return (
                     <div
                       key={lesson.id}
+                      id={`sched-cell-${rowIdx}-${colI}`}
                       role="gridcell"
+                      tabIndex={-1}
                       aria-rowindex={rowIdx + 2}
                       aria-colindex={colI + 2}
                       className={cn(
-                        "sched-grid-cell relative border-b border-glass-border/(--opacity-soft)",
+                        "sched-grid-cell relative border-b border-glass-border/(--opacity-soft) outline-none",
                         isTodayCol && "sched-today-col"
                       )}
                     >

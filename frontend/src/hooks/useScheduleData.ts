@@ -34,10 +34,17 @@ export function useScheduleData() {
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
   const [nowTick, setNowTick] = useState(new Date())
 
-  // Update time ticker
-  // Update time ticker
+  // Update time ticker — only when minute changes to avoid unnecessary re-renders
   useEffect(() => {
-    const id = setInterval(() => setNowTick(new Date()), TICKER_INTERVAL_MS)
+    const id = setInterval(() => {
+      setNowTick((prev) => {
+        const now = new Date()
+        if (now.getMinutes() === prev.getMinutes() && now.getHours() === prev.getHours()) {
+          return prev // same minute — no state update, no re-render
+        }
+        return now
+      })
+    }, TICKER_INTERVAL_MS)
     return () => clearInterval(id)
   }, [])
 

@@ -30,6 +30,8 @@ type ScheduleHeaderProps = Pick<
   | "currentProgress"
 > & {
   onExportIcs?: () => void
+  isExporting?: boolean
+  onOpenSettings?: () => void
 }
 
 export function ScheduleHeader({
@@ -44,6 +46,8 @@ export function ScheduleHeader({
   timeLeftText,
   currentProgress,
   onExportIcs,
+  isExporting,
+  onOpenSettings,
 }: ScheduleHeaderProps) {
   const { t } = useTranslation(["schedule", "common"])
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.ultrawide})`)
@@ -59,18 +63,9 @@ export function ScheduleHeader({
         className="sched-aurora-hero pointer-events-none absolute inset-0 -z-1 overflow-hidden rounded-3xl"
         aria-hidden="true"
       >
-        <div
-          className="absolute -left-20 -top-20 h-72 w-72 rounded-full opacity-70 blur-3xl"
-          style={{ background: "var(--sched-orb-1)" }}
-        />
-        <div
-          className="absolute -right-16 top-8 h-56 w-56 rounded-full opacity-55 blur-3xl"
-          style={{ background: "var(--sched-orb-2)" }}
-        />
-        <div
-          className="absolute -bottom-12 left-1/3 h-48 w-48 rounded-full opacity-45 blur-3xl"
-          style={{ background: "var(--sched-orb-3)" }}
-        />
+        <div className="sched-orb-1 absolute -left-20 -top-20 h-72 w-72 rounded-full opacity-70 blur-3xl" />
+        <div className="sched-orb-2 absolute -right-16 top-8 h-56 w-56 rounded-full opacity-55 blur-3xl" />
+        <div className="sched-orb-3 absolute -bottom-12 left-1/3 h-48 w-48 rounded-full opacity-45 blur-3xl" />
       </div>
 
       {/* ── Title + Group badge ─────────────────────────── */}
@@ -96,7 +91,7 @@ export function ScheduleHeader({
 
       {/* ── Toolbar (week nav + view mode + actions) ────── */}
       <FadeSection delay="var(--motion-duration-rapid)" className="mb-6">
-        <ScheduleToolbar onExportIcs={onExportIcs} />
+        <ScheduleToolbar onExportIcs={onExportIcs} isExporting={isExporting} onOpenSettings={onOpenSettings} />
       </FadeSection>
 
       {/* ── Week parity selector ────────────────────────── */}

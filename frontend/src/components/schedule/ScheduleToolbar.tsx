@@ -22,6 +22,7 @@ import type { ScheduleViewMode } from "@/stores/types"
 interface ScheduleToolbarProps {
   onExportIcs?: () => void
   onOpenSettings?: () => void
+  isExporting?: boolean
 }
 
 const VIEW_MODES: { id: ScheduleViewMode; icon: typeof LayoutGrid; labelKey: string }[] = [
@@ -30,7 +31,7 @@ const VIEW_MODES: { id: ScheduleViewMode; icon: typeof LayoutGrid; labelKey: str
   { id: "list", icon: List, labelKey: "schedule:toolbar.list" },
 ]
 
-export function ScheduleToolbar({ onExportIcs, onOpenSettings }: ScheduleToolbarProps) {
+export function ScheduleToolbar({ onExportIcs, onOpenSettings, isExporting }: ScheduleToolbarProps) {
   const { t } = useTranslation(["schedule"])
   const weekOffset = useWeekOffset()
   const viewMode = useViewMode()
@@ -122,10 +123,15 @@ export function ScheduleToolbar({ onExportIcs, onOpenSettings }: ScheduleToolbar
             variant="ghost"
             size="sm"
             onClick={onExportIcs}
+            disabled={isExporting}
             aria-label={t("schedule:toolbar.export")}
             className="gap-1.5"
           >
-            <Download size={15} aria-hidden="true" />
+            {isExporting ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden="true" />
+            ) : (
+              <Download size={15} aria-hidden="true" />
+            )}
             <span className="hidden sm:inline">{t("schedule:toolbar.export")}</span>
           </Button>
         )}

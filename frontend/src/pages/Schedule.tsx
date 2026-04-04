@@ -1,5 +1,6 @@
 import { useCallback, useState, useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { AnimatePresence, motion } from "framer-motion"
 import { PageLayout } from "@/components/layout/PageLayout"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -11,10 +12,13 @@ import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageCo
 import { ScheduleHeader } from "@/components/schedule/ScheduleHeader"
 import { ScheduleDesktopTable } from "@/components/schedule/ScheduleDesktopTable"
 import { ScheduleMobileView } from "@/components/schedule/ScheduleMobileView"
+import { ScheduleListView } from "@/components/schedule/ScheduleListView"
 import { ScheduleDialogs } from "@/components/schedule/ScheduleDialogs"
 import { ScheduleShortcutsOverlay } from "@/components/schedule/ScheduleShortcutsOverlay"
 import { ScheduleMiniCalendar } from "@/components/schedule/ScheduleMiniCalendar"
 import { LessonSlideOver } from "@/components/schedule/LessonSlideOver"
+import { ScheduleSettingsPanel } from "@/components/schedule/ScheduleSettingsPanel"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { Alert, Snackbar } from "@/components/settings"
 import { SEO } from "@/components/ui/SEO"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
@@ -29,7 +33,7 @@ import api from "@/api/client"
 function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])
   const isOnline = useOnlineStatus()
-  const isMobile = useMediaQuery(`(max-width: ${breakpoints.ultrawide})`)
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   const viewMode = useViewMode()
   const { showPastLessons } = useScheduleDisplayPreferences()
 
@@ -56,6 +60,11 @@ function ScheduleContent() {
 
   const { snackbarMessage, hideSnackbar, showSnackbar, openDialog, closeDialog, selectedLesson, activeDialog } =
     useSchedulePage()
+
+  /* ── Confirm dialog + export state ─────────────────────── */
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   /* ── Past lessons filter ──────────────────────────────── */
   const displaySchedule = useMemo(() => {
@@ -107,6 +116,7 @@ function ScheduleContent() {
   /* ── iCalendar export ─────────────────────────────────── */
   const handleExportIcs = useCallback(async () => {
     if (!selectedGroup) return
+    setIsExporting(true)
     try {
       const res = await api.get(`/schedule/ics`, {
         params: { group: selectedGroup },
@@ -120,6 +130,8 @@ function ScheduleContent() {
       URL.revokeObjectURL(url)
     } catch {
       showSnackbar(t("schedule:snackbar.deleteError"))
+    } finally {
+      setIsExporting(false)
     }
   }, [selectedGroup, showSnackbar, t])
 
@@ -128,25 +140,31 @@ function ScheduleContent() {
     [lessonTypeLabels],
   )
 
-  const handleDeleteLesson = useCallback(
-    async (id: string) => {
-      const backup = [...rawSchedule]
-      applyScheduleUpdate((prev) => prev.filter((l) => l.id !== id))
-      try {
-        if (isOnline) {
-          await api.delete(`/schedule/${id}`)
-          showSnackbar(t("schedule:snackbar.deleted"))
-          refresh()
-        } else {
-          throw new Error("Offline")
-        }
-      } catch {
-        showSnackbar(t("schedule:snackbar.deleteError"))
-        applyScheduleUpdate(() => backup)
+  /* ── Deletion with confirmation ────────────────────────── */
+  const requestDeleteLesson = useCallback((id: string) => {
+    setPendingDeleteId(id)
+  }, [])
+
+  const confirmDeleteLesson = useCallback(async () => {
+    const id = pendingDeleteId
+    if (!id) return
+    setPendingDeleteId(null)
+
+    const backup = [...rawSchedule]
+    applyScheduleUpdate((prev) => prev.filter((l) => l.id !== id))
+    try {
+      if (isOnline) {
+        await api.delete(`/schedule/${id}`)
+        showSnackbar(t("schedule:snackbar.deleted"))
+        refresh()
+      } else {
+        throw new Error("Offline")
       }
-    },
-    [rawSchedule, applyScheduleUpdate, isOnline, showSnackbar, t, refresh],
-  )
+    } catch {
+      showSnackbar(t("schedule:snackbar.deleteError"))
+      applyScheduleUpdate(() => backup)
+    }
+  }, [pendingDeleteId, rawSchedule, applyScheduleUpdate, isOnline, showSnackbar, t, refresh])
 
   if (isLoading) {
     return (
@@ -161,6 +179,23 @@ function ScheduleContent() {
   /* ── Determine which view to render ───────────────────── */
   const useMobileLayout = isMobile || viewMode === "day"
 
+  const sharedViewProps = {
+    schedule: displaySchedule,
+    weekdayBackend,
+    weekdayLabels,
+    hasToday,
+    todayIdx,
+    rawSchedule,
+    refresh,
+    user,
+    conflictedIds,
+    lessonTypeLabels,
+    isOnline,
+    onDeleteLesson: requestDeleteLesson,
+    getLessonTypeColor,
+    currentLesson,
+  }
+
   return (
     <PageLayout variant="wide">
       <SEO title={t("schedule:title.default")} />
@@ -168,49 +203,42 @@ function ScheduleContent() {
         <ScheduleHeader
           {...scheduleData}
           onExportIcs={selectedGroup ? handleExportIcs : undefined}
+          isExporting={isExporting}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         <div className="flex gap-6 max-w-(--layout-max-ultrawide)">
           {/* ── Main content ──────────────────────────────── */}
           <section aria-label={t("schedule:title.default")} className="min-w-0 flex-1">
             <FadeSection delay="var(--motion-duration-base)">
-              {useMobileLayout ? (
-                <ScheduleMobileView
-                  schedule={displaySchedule}
-                  weekdayBackend={weekdayBackend}
-                  weekdayLabels={weekdayLabels}
-                  weekdayShort={weekdayShort}
-                  hasToday={hasToday}
-                  todayIdx={todayIdx}
-                  getDayLabel={getDayLabel}
-                  rawSchedule={rawSchedule}
-                  refresh={refresh}
-                  user={user}
-                  conflictedIds={conflictedIds}
-                  lessonTypeLabels={lessonTypeLabels}
-                  isOnline={isOnline}
-                  onDeleteLesson={handleDeleteLesson}
-                  getLessonTypeColor={getLessonTypeColor}
-                  currentLesson={currentLesson}
-                />
-              ) : (
-                <ScheduleDesktopTable
-                  schedule={displaySchedule}
-                  weekdayBackend={weekdayBackend}
-                  weekdayLabels={weekdayLabels}
-                  hasToday={hasToday}
-                  todayIdx={todayIdx}
-                  conflictedIds={conflictedIds}
-                  user={user}
-                  rawSchedule={rawSchedule}
-                  refresh={refresh}
-                  isOnline={isOnline}
-                  lessonTypeLabels={lessonTypeLabels}
-                  getLessonTypeColor={getLessonTypeColor}
-                  onDeleteLesson={handleDeleteLesson}
-                  currentLesson={currentLesson}
-                />
-              )}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={viewMode}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {viewMode === "list" ? (
+                    <ScheduleListView
+                      {...sharedViewProps}
+                      getLessonTypeLabel={getLessonTypeLabel}
+                    />
+                  ) : useMobileLayout ? (
+                    <ScheduleMobileView
+                      {...sharedViewProps}
+                      weekdayShort={weekdayShort}
+                      getDayLabel={getDayLabel}
+                      getLessonTypeLabel={getLessonTypeLabel}
+                    />
+                  ) : (
+                    <ScheduleDesktopTable
+                      {...sharedViewProps}
+                      getLessonTypeLabel={getLessonTypeLabel}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
             </FadeSection>
           </section>
 
@@ -231,7 +259,7 @@ function ScheduleContent() {
             open={activeDialog === "details"}
             onClose={closeDialog}
             onEdit={() => openDialog("edit", selectedLesson)}
-            onDelete={() => handleDeleteLesson(selectedLesson.id)}
+            onDelete={() => requestDeleteLesson(selectedLesson.id)}
             canEdit={user?.role === "admin" || user?.role === "teacher"}
             getLessonTypeColor={getLessonTypeColor}
             getLessonTypeLabel={getLessonTypeLabel}
@@ -242,6 +270,30 @@ function ScheduleContent() {
           open={shortcutsOpen}
           onClose={() => setShortcutsOpen(false)}
         />
+
+        {/* ── Settings panel ─────────────────────────────── */}
+        <ScheduleSettingsPanel
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          weekdayLabels={weekdayLabels}
+        />
+
+        {/* ── Confirm deletion dialog ────────────────────── */}
+        <ConfirmDialog
+          open={pendingDeleteId !== null}
+          title={t("schedule:confirm.deleteTitle")}
+          message={t("schedule:confirm.deleteMessage")}
+          confirmText={t("schedule:confirm.deleteConfirm")}
+          cancelText={t("common:buttons.cancel", { defaultValue: "Cancel" })}
+          variant="danger"
+          onConfirm={confirmDeleteLesson}
+          onCancel={() => setPendingDeleteId(null)}
+        />
+
+        {/* ── View mode announcement (a11y) ──────────────── */}
+        <div className="sr-only" role="status" aria-live="polite">
+          {t(`schedule:toolbar.${viewMode}`)} {t("schedule:toolbar.viewMode")}
+        </div>
 
         <Snackbar
           open={!!snackbarMessage}

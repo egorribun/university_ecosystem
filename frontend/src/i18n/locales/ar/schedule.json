@@ -163,6 +163,20 @@
     "close": "Close",
     "add": "Add lesson"
   },
+  "confirm": {
+    "deleteTitle": "Delete lesson",
+    "deleteMessage": "Are you sure you want to delete this lesson? This action cannot be undone.",
+    "deleteConfirm": "Delete"
+  },
+  "settings": {
+    "title": "Schedule settings",
+    "hiddenDays": "Visible days",
+    "compactMode": "Compact cards",
+    "showPast": "Show past lessons"
+  },
+  "list": {
+    "noLessons": "No lessons this week"
+  },
   "snackbar": {
     "updated": "Changes saved",
     "updateError": "Couldn't save changes",
