@@ -1,15 +1,43 @@
+/* ═══════════════════════════════════════════════════════
+   @property REGISTRATIONS — enable smooth CSS transitions
+   between dark↔light theme (DESIGN-63-01).
+   ═══════════════════════════════════════════════════════ */
+
+@property --sched-orb-1 {
+  syntax: "<color>";
+  initial-value: transparent;
+  inherits: true;
+}
+
+@property --sched-orb-2 {
+  syntax: "<color>";
+  initial-value: transparent;
+  inherits: true;
+}
+
+@property --sched-orb-3 {
+  syntax: "<color>";
+  initial-value: transparent;
+  inherits: true;
+}
+
+@property --sched-current-glow {
+  syntax: "<color>";
+  initial-value: transparent;
+  inherits: true;
+}
+
 @layer base {
   /* ═══════════════════════════════════════════════════════
-     SCHEDULE PAGE TOKENS
-     Scoped under .schedule-theme — mirrors news.css structure.
-     Sky/Blue palette consistent with News page.
+     SCHEDULE PAGE TOKENS — Wave 64 Premium Redesign
+     Matte card system aligned with Dashboard/News palette.
      ═══════════════════════════════════════════════════════ */
   .schedule-theme {
     /* ── Typography ─────────────────────────────────────── */
     --fs-sched-hero: clamp(1.875rem, 3.2vw, 2.75rem);
     --fs-sched-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
-    --fs-sched-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
-    --fs-sched-time: clamp(0.75rem, 0.85vw, 0.875rem);
+    --fs-sched-card-title: clamp(0.9375rem, 1.6vw, 1.125rem);
+    --fs-sched-time: clamp(0.6875rem, 0.8vw, 0.8125rem);
 
     /* ── Orbs / Gradients ──────────────────────────────── */
     --sched-orb-1: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
@@ -34,29 +62,46 @@
       transparent 50%
     );
 
-    /* ── Lesson type accent borders (left stripe) ──────── */
-    --lt-lecture-border: var(--color-blue-500);
-    --lt-practice-border: var(--color-emerald-500);
-    --lt-lab-border: var(--color-amber-500);
-    --lt-project-border: var(--color-indigo-500);
+    /* ── MATTE CARD SYSTEM (aligned with dashboard.css) ── */
+    --sched-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-slate-100) 5%);
+    --sched-card-border: color-mix(in srgb, var(--color-slate-300) 40%, transparent);
+    --sched-card-shadow:
+      0 1px 3px color-mix(in srgb, black 6%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent);
+    --sched-card-shadow-hover:
+      0 2px 6px color-mix(in srgb, black 8%, transparent),
+      0 8px 24px color-mix(in srgb, black 6%, transparent);
+    --sched-card-inner-glow: inset 0 1px 0 rgb(255 255 255 / 0.6);
 
-    --lt-lecture-bg: color-mix(in srgb, var(--color-blue-500) 8%, transparent);
-    --lt-practice-bg: color-mix(in srgb, var(--color-emerald-500) 8%, transparent);
-    --lt-lab-bg: color-mix(in srgb, var(--color-amber-500) 8%, transparent);
-    --lt-project-bg: color-mix(in srgb, var(--color-indigo-500) 8%, transparent);
+    /* ── Lesson type — TOP accent + tinted background ──── */
+    --lt-lecture-accent: var(--color-blue-500);
+    --lt-practice-accent: var(--color-emerald-500);
+    --lt-lab-accent: var(--color-amber-500);
+    --lt-project-accent: var(--color-violet-500);
+
+    --lt-lecture-bg: color-mix(in srgb, var(--color-blue-500) 5%, var(--sched-card-bg));
+    --lt-practice-bg: color-mix(in srgb, var(--color-emerald-500) 5%, var(--sched-card-bg));
+    --lt-lab-bg: color-mix(in srgb, var(--color-amber-500) 5%, var(--sched-card-bg));
+    --lt-project-bg: color-mix(in srgb, var(--color-violet-500) 5%, var(--sched-card-bg));
+
+    /* Badge colors — solid matte fills */
+    --lt-lecture-badge: var(--color-blue-500);
+    --lt-practice-badge: var(--color-emerald-600);
+    --lt-lab-badge: var(--color-amber-600);
+    --lt-project-badge: var(--color-violet-500);
 
     /* ── Current lesson glow ───────────────────────────── */
     --sched-current-border: var(--color-sky-400);
     --sched-current-glow: color-mix(in srgb, var(--color-sky-400) 25%, transparent);
-    --sched-current-bg: color-mix(in srgb, var(--color-sky-400) 6%, transparent);
+    --sched-current-bg: color-mix(in srgb, var(--color-sky-400) 8%, var(--sched-card-bg));
 
     /* ── Conflict visual ───────────────────────────────── */
-    --sched-conflict-border: var(--color-red-500);
-    --sched-conflict-bg: color-mix(in srgb, var(--color-red-500) 6%, transparent);
+    --sched-conflict-border: var(--color-rose-500);
+    --sched-conflict-bg: color-mix(in srgb, var(--color-rose-500) 8%, var(--sched-card-bg));
 
     /* ── Today column highlight ─────────────────────────── */
-    --sched-today-bg: color-mix(in srgb, var(--color-sky-400) 5%, transparent);
-    --sched-today-border: color-mix(in srgb, var(--color-sky-400) 20%, transparent);
+    --sched-today-bg: color-mix(in srgb, var(--color-sky-400) 4%, transparent);
+    --sched-today-border: color-mix(in srgb, var(--color-sky-400) 18%, transparent);
 
     /* ── Progress bar ──────────────────────────────────── */
     --sched-progress-track: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
@@ -66,6 +111,15 @@
     /* ── Toolbar / Segment control ─────────────────────── */
     --sched-segment-bg: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
     --sched-segment-active: var(--color-brand);
+
+    /* ── Grid ────────────────────────────────────────────── */
+    --sched-grid-col-min: 176px;
+    --sched-grid-header-w: 2.75rem;
+    --sched-grid-border: color-mix(in srgb, var(--color-slate-300) 30%, transparent);
+
+    /* ── Empty cell ──────────────────────────────────────── */
+    --sched-empty-bg: color-mix(in srgb, var(--color-slate-200) 20%, transparent);
+    --sched-empty-border: color-mix(in srgb, var(--color-slate-300) 20%, transparent);
   }
 
   /* ─── Dark Theme Overrides ───────────────────────────── */
@@ -85,36 +139,113 @@
       transparent 50%
     );
 
-    --lt-lecture-border: var(--color-blue-400);
-    --lt-practice-border: var(--color-emerald-400);
-    --lt-lab-border: var(--color-amber-400);
-    --lt-project-border: var(--color-indigo-400);
+    /* Matte card — dark navy like dashboard */
+    --sched-card-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-800) 10%);
+    --sched-card-border: color-mix(in srgb, var(--color-slate-600) 30%, transparent);
+    --sched-card-shadow:
+      0 1px 3px color-mix(in srgb, black 15%, transparent),
+      0 4px 12px color-mix(in srgb, black 12%, transparent);
+    --sched-card-shadow-hover:
+      0 2px 8px color-mix(in srgb, black 20%, transparent),
+      0 8px 28px color-mix(in srgb, black 15%, transparent);
+    --sched-card-inner-glow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
-    --lt-lecture-bg: color-mix(in srgb, var(--color-blue-400) 12%, transparent);
-    --lt-practice-bg: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
-    --lt-lab-bg: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
-    --lt-project-bg: color-mix(in srgb, var(--color-indigo-400) 12%, transparent);
+    --lt-lecture-accent: var(--color-blue-400);
+    --lt-practice-accent: var(--color-emerald-400);
+    --lt-lab-accent: var(--color-amber-400);
+    --lt-project-accent: var(--color-violet-400);
+
+    --lt-lecture-bg: color-mix(in srgb, var(--color-blue-400) 8%, var(--sched-card-bg));
+    --lt-practice-bg: color-mix(in srgb, var(--color-emerald-400) 8%, var(--sched-card-bg));
+    --lt-lab-bg: color-mix(in srgb, var(--color-amber-400) 8%, var(--sched-card-bg));
+    --lt-project-bg: color-mix(in srgb, var(--color-violet-400) 8%, var(--sched-card-bg));
+
+    --lt-lecture-badge: var(--color-blue-400);
+    --lt-practice-badge: var(--color-emerald-400);
+    --lt-lab-badge: var(--color-amber-400);
+    --lt-project-badge: var(--color-violet-400);
 
     --sched-current-border: var(--color-sky-300);
     --sched-current-glow: color-mix(in srgb, var(--color-sky-400) 30%, transparent);
-    --sched-current-bg: color-mix(in srgb, var(--color-sky-400) 10%, transparent);
+    --sched-current-bg: color-mix(in srgb, var(--color-sky-400) 10%, var(--sched-card-bg));
 
-    --sched-conflict-border: var(--color-red-400);
-    --sched-conflict-bg: color-mix(in srgb, var(--color-red-400) 10%, transparent);
+    --sched-conflict-border: var(--color-rose-400);
+    --sched-conflict-bg: color-mix(in srgb, var(--color-rose-400) 10%, var(--sched-card-bg));
 
-    --sched-today-bg: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
-    --sched-today-border: color-mix(in srgb, var(--color-sky-400) 25%, transparent);
+    --sched-today-bg: color-mix(in srgb, var(--color-sky-400) 6%, transparent);
+    --sched-today-border: color-mix(in srgb, var(--color-sky-400) 22%, transparent);
 
     --sched-progress-track: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
     --sched-progress-glow: var(--color-sky-300);
 
     --sched-segment-bg: color-mix(in srgb, var(--color-slate-600) 20%, transparent);
+
+    --sched-grid-border: color-mix(in srgb, var(--color-slate-600) 25%, transparent);
+
+    --sched-empty-bg: color-mix(in srgb, var(--color-slate-700) 15%, transparent);
+    --sched-empty-border: color-mix(in srgb, var(--color-slate-600) 15%, transparent);
   }
 }
 
 /* ═══════════════════════════════════════════════════════
+   LESSON CARD — PREMIUM MATTE CARD (Wave 64)
+   Top accent gradient + opaque matte bg + multi-layer shadow.
+   Replaces old border-left-only system.
+   ═══════════════════════════════════════════════════════ */
+
+.sched-card-matte {
+  position: relative;
+  background: var(--sched-card-bg);
+  border: 1px solid var(--sched-card-border);
+  border-radius: 0.875rem;
+  box-shadow: var(--sched-card-shadow), var(--sched-card-inner-glow);
+  transition:
+    box-shadow 0.25s var(--ease-premium, ease),
+    border-color 0.25s var(--ease-premium, ease),
+    transform 0.25s var(--ease-premium, ease);
+  overflow: hidden;
+}
+
+/* Top accent gradient line */
+.sched-card-matte::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--_accent, var(--sched-card-border));
+  border-radius: 0.875rem 0.875rem 0 0;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.sched-card-matte:hover {
+  box-shadow: var(--sched-card-shadow-hover), var(--sched-card-inner-glow);
+  border-color: color-mix(in srgb, var(--_accent, var(--color-brand)) 20%, var(--sched-card-border));
+  transform: translateY(-2px);
+}
+
+.sched-card-matte:hover::before {
+  opacity: 1;
+}
+
+/* Lesson type accent colors via CSS custom property */
+.sched-accent-lecture { --_accent: var(--lt-lecture-accent); background: var(--lt-lecture-bg); }
+.sched-accent-practice { --_accent: var(--lt-practice-accent); background: var(--lt-practice-bg); }
+.sched-accent-lab { --_accent: var(--lt-lab-accent); background: var(--lt-lab-bg); }
+.sched-accent-project { --_accent: var(--lt-project-accent); background: var(--lt-project-bg); }
+.sched-accent-default { --_accent: var(--sched-card-border); }
+
+/* Conflict state — pulsing rose border */
+.sched-conflict {
+  --_accent: var(--sched-conflict-border);
+  background: var(--sched-conflict-bg);
+  border-color: color-mix(in srgb, var(--sched-conflict-border) 40%, var(--sched-card-border));
+}
+
+/* ═══════════════════════════════════════════════════════
    CURRENT LESSON — PULSING GLOW
-   CSS-only infinite animation (zero JS overhead).
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-pulse-glow {
@@ -122,20 +253,22 @@
     box-shadow:
       0 0 0 1px var(--sched-current-border),
       0 0 12px var(--sched-current-glow),
-      0 4px 16px color-mix(in srgb, var(--sched-current-glow) 40%, transparent);
+      0 4px 16px color-mix(in srgb, var(--sched-current-glow) 40%, transparent),
+      var(--sched-card-inner-glow);
   }
   50% {
     box-shadow:
       0 0 0 2px var(--sched-current-border),
       0 0 20px var(--sched-current-glow),
-      0 4px 24px color-mix(in srgb, var(--sched-current-glow) 60%, transparent);
+      0 4px 24px color-mix(in srgb, var(--sched-current-glow) 60%, transparent),
+      var(--sched-card-inner-glow);
   }
 }
 
 .sched-current-glow {
   animation: sched-pulse-glow 2.5s ease-in-out infinite;
-  background: var(--sched-current-bg);
-  border-color: var(--sched-current-border);
+  background: var(--sched-current-bg) !important;
+  border-color: var(--sched-current-border) !important;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -176,13 +309,13 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   CARD ENTRANCE — stagger + fade
+   CARD ENTRANCE — stagger + fade + blur
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-card-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
     filter: blur(2px);
   }
   to {
@@ -192,17 +325,10 @@
   }
 }
 
-@keyframes sched-card-exit {
-  to {
-    opacity: 0;
-    transform: translateX(30px) scale(0.95);
-  }
-}
-
 @keyframes sched-column-enter {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -212,39 +338,23 @@
 
 .sched-card-item {
   animation: sched-card-enter 0.35s var(--ease-premium, ease) both;
-  animation-delay: calc(var(--sched-stagger-i, 0) * 60ms);
+  animation-delay: calc(var(--sched-stagger-i, 0) * 50ms);
 }
 
 .sched-column-item {
   animation: sched-column-enter 0.4s var(--ease-premium, ease) both;
-  animation-delay: calc(var(--sched-col-i, 0) * 80ms);
+  animation-delay: calc(var(--sched-col-i, 0) * 70ms);
 }
 
 /* ═══════════════════════════════════════════════════════
-   LESSON CARD — LEFT ACCENT BORDER
-   ═══════════════════════════════════════════════════════ */
-
-.sched-accent-lecture { border-left: 3px solid var(--lt-lecture-border); }
-.sched-accent-practice { border-left: 3px solid var(--lt-practice-border); }
-.sched-accent-lab { border-left: 3px solid var(--lt-lab-border); }
-.sched-accent-project { border-left: 3px solid var(--lt-project-border); }
-.sched-accent-default { border-left: 3px solid var(--glass-border, #e2e8f0); }
-
-/* Conflict state — overrides accent */
-.sched-conflict {
-  border-left: 3px solid var(--sched-conflict-border);
-  background: var(--sched-conflict-bg);
-}
-
-/* ═══════════════════════════════════════════════════════
-   MATTE BADGE (reused from News, scoped for schedule)
+   MATTE BADGE (volumetric, with inner highlight)
    ═══════════════════════════════════════════════════════ */
 
 .sched-badge-matte {
   background: var(--bg-surface, #fff);
   color: var(--text-primary, #1a1a1a);
   box-shadow:
-    0 1px 3px rgb(0 0 0 / 0.12),
+    0 1px 3px rgb(0 0 0 / 0.1),
     0 0 0 1px var(--glass-border, rgb(0 0 0 / 0.06)),
     inset 0 1px 0 rgb(255 255 255 / 0.6);
   transition: box-shadow 0.2s, transform 0.2s;
@@ -252,9 +362,41 @@
 
 .dark .sched-badge-matte {
   box-shadow:
-    0 1px 4px rgb(0 0 0 / 0.4),
+    0 1px 4px rgb(0 0 0 / 0.35),
     0 0 0 1px rgb(255 255 255 / 0.06),
     inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+/* Type badge — solid color, compact */
+.sched-type-badge {
+  font-weight: 600;
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.3125rem;
+  color: white;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    0 1px 2px rgb(0 0 0 / 0.1);
+}
+
+/* Time badge — subtle matte pill, compact */
+.sched-time-badge {
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  background: color-mix(in srgb, var(--color-slate-200) 35%, transparent);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.3125rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  white-space: nowrap;
+}
+
+.dark .sched-time-badge {
+  background: color-mix(in srgb, var(--color-slate-700) 35%, transparent);
 }
 
 .sched-segment-btn {
@@ -274,7 +416,8 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   CONTAINER QUERIES — SCHEDULE GRID
+   DESKTOP GRID — HORIZONTAL SCROLL (Wave 64)
+   Min-width per column + scroll-snap + sticky headers.
    ═══════════════════════════════════════════════════════ */
 
 .schedule-grid-container {
@@ -282,27 +425,58 @@
   container-name: sched-grid;
 }
 
-/* Compact: ≤600px — hide room column, reduce padding */
-@container sched-grid (max-width: 600px) {
-  .sched-grid-room { display: none; }
-  .sched-grid-cell { padding: 0.375rem; }
-  .sched-card-title { font-size: 0.875rem; }
+.sched-scroll-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-slate-400) 30%, transparent) transparent;
+  border-radius: 1rem;
 }
 
-/* Standard: 601–899px */
-@container sched-grid (min-width: 601px) and (max-width: 899px) {
-  .sched-grid-cell { padding: 0.5rem; }
-  .sched-card-title { font-size: 1rem; }
+.sched-scroll-wrapper::-webkit-scrollbar {
+  height: 6px;
 }
 
-/* Wide: ≥900px — full layout */
-@container sched-grid (min-width: 900px) {
-  .sched-grid-cell { padding: 0.75rem; }
-  .sched-card-title { font-size: var(--fs-sched-card-title); }
+.sched-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-slate-400) 30%, transparent);
+  border-radius: 3px;
 }
 
-/* ── Today header (kept separate from column) ──────── */
+.sched-scroll-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
 
+/* Sticky row-number column */
+.sched-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--sched-card-bg);
+  backdrop-filter: blur(12px);
+}
+
+/* Sticky header row */
+.sched-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+/* Individual column snap */
+.sched-day-snap {
+  scroll-snap-align: start;
+}
+
+/* Grid cell — prevent overflow, tight padding */
+.sched-grid-cell {
+  padding: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Today header ──────── */
 .sched-today-header {
   background: var(--sched-today-bg);
   border-bottom: 2px solid var(--sched-current-border);
@@ -322,27 +496,58 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   EMPTY CELL — dashed placeholder
+   EMPTY CELL — subtle dot pattern
    ═══════════════════════════════════════════════════════ */
 
 .sched-empty-cell {
-  border: 1px dashed color-mix(in srgb, var(--glass-border, #e2e8f0) 60%, transparent);
-  border-radius: var(--radius-lg, 0.5rem);
-  min-height: 5rem;
+  border: 1px solid var(--sched-empty-border);
+  border-radius: 0.75rem;
+  min-height: 4.5rem;
+  background:
+    var(--sched-empty-bg)
+    radial-gradient(circle, color-mix(in srgb, var(--color-slate-400) 12%, transparent) 1px, transparent 1px);
+  background-size: auto, 12px 12px;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.sched-empty-cell:hover {
+  border-color: color-mix(in srgb, var(--color-brand) 25%, var(--sched-empty-border));
+  background-color: color-mix(in srgb, var(--color-brand) 3%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════
-   TIMELINE CONNECTOR (mobile break indicator)
+   BREAK INDICATOR — compact centered pill
+   ═══════════════════════════════════════════════════════ */
+
+.sched-break-pill {
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-amber-500) 10%, var(--sched-card-bg));
+  color: var(--color-amber-600);
+  border: 1px solid color-mix(in srgb, var(--color-amber-500) 20%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3);
+}
+
+.dark .sched-break-pill {
+  background: color-mix(in srgb, var(--color-amber-400) 12%, var(--sched-card-bg));
+  color: var(--color-amber-400);
+  border-color: color-mix(in srgb, var(--color-amber-400) 18%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TIMELINE CONNECTOR (mobile/list break indicator)
    ═══════════════════════════════════════════════════════ */
 
 .sched-timeline-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-warning-text, #d97706), var(--color-amber-400, #fbbf24));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-warning-text, #d97706) 15%, transparent),
-    0 0 8px color-mix(in srgb, var(--color-warning-text, #d97706) 20%, transparent);
+  background: var(--color-amber-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-amber-500) 15%, transparent);
+  flex-shrink: 0;
 }
 
 .sched-timeline-line {
@@ -350,15 +555,14 @@
   flex: 1;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--glass-border, #e2e8f0) 30%, transparent),
-    var(--glass-border, #e2e8f0),
-    color-mix(in srgb, var(--glass-border, #e2e8f0) 30%, transparent)
+    color-mix(in srgb, var(--sched-grid-border) 20%, transparent),
+    var(--sched-grid-border),
+    color-mix(in srgb, var(--sched-grid-border) 20%, transparent)
   );
 }
 
 /* ═══════════════════════════════════════════════════════
    AURORA MESH HERO BACKGROUND
-   Animated gradient mesh — 20s CSS animation, zero JS.
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-aurora-shift {
@@ -383,7 +587,6 @@
 
 /* ═══════════════════════════════════════════════════════
    TODAY COLUMN — ENHANCED GLOW
-   Top gradient accent + animated "today" badge
    ═══════════════════════════════════════════════════════ */
 
 .sched-today-col {
@@ -483,7 +686,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   AURORA ORB CLASSES (replace inline styles)
+   AURORA ORB CLASSES
    ═══════════════════════════════════════════════════════ */
 
 .sched-orb-1 { background: var(--sched-orb-1); }
@@ -501,21 +704,21 @@
 
 @container sched-day (max-width: 320px) {
   .sched-card-title { font-size: 0.875rem; }
-  .chip-type { font-size: 0.625rem; padding: 0.125rem 0.375rem; }
-  .chip-time { font-size: 0.625rem; }
+  .sched-type-badge { font-size: 0.5625rem; padding: 0.125rem 0.375rem; }
+  .sched-time-badge { font-size: 0.5625rem; }
 }
 
 /* ═══════════════════════════════════════════════════════
    HEATMAP — DAY LOAD INTENSITY COLORS
    ═══════════════════════════════════════════════════════ */
 
-.sched-heat-light { background: color-mix(in srgb, var(--color-emerald-400) 6%, transparent); }
-.sched-heat-medium { background: color-mix(in srgb, var(--color-amber-400) 8%, transparent); }
-.sched-heat-heavy { background: color-mix(in srgb, var(--color-red-400) 6%, transparent); }
+.sched-heat-light { background: color-mix(in srgb, var(--color-emerald-400) 5%, transparent); }
+.sched-heat-medium { background: color-mix(in srgb, var(--color-amber-400) 6%, transparent); }
+.sched-heat-heavy { background: color-mix(in srgb, var(--color-red-400) 5%, transparent); }
 
-.dark .sched-heat-light { background: color-mix(in srgb, var(--color-emerald-400) 10%, transparent); }
-.dark .sched-heat-medium { background: color-mix(in srgb, var(--color-amber-400) 12%, transparent); }
-.dark .sched-heat-heavy { background: color-mix(in srgb, var(--color-red-400) 10%, transparent); }
+.dark .sched-heat-light { background: color-mix(in srgb, var(--color-emerald-400) 8%, transparent); }
+.dark .sched-heat-medium { background: color-mix(in srgb, var(--color-amber-400) 10%, transparent); }
+.dark .sched-heat-heavy { background: color-mix(in srgb, var(--color-red-400) 8%, transparent); }
 
 /* ═══════════════════════════════════════════════════════
    MINI-CALENDAR — DOT INDICATORS
@@ -638,13 +841,15 @@
     animation: none !important;
   }
 
-  .schedule-theme .glass-layer-surface,
-  .schedule-theme .glass-layer-elevated,
-  .schedule-theme .glass-layer-floating {
-    backdrop-filter: none !important;
-    background: transparent !important;
-    border: none !important;
+  .sched-card-matte {
     box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+  }
+
+  .sched-card-matte::before {
+    height: 3px;
+    opacity: 1;
   }
 
   .sched-card-item,
@@ -663,8 +868,6 @@
     position: static !important;
     break-after: avoid;
   }
-
-  /* Accent borders stay for print — they help distinguish lesson types */
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -674,7 +877,7 @@
 @media (prefers-reduced-motion: reduce) {
   .sched-current-glow {
     animation: none;
-    box-shadow: 0 0 0 2px var(--sched-current-border);
+    box-shadow: 0 0 0 2px var(--sched-current-border), var(--sched-card-inner-glow);
   }
 
   .sched-progress-fill {
@@ -691,6 +894,10 @@
     opacity: 1;
     transform: none;
     filter: none;
+  }
+
+  .sched-card-matte {
+    transition: none;
   }
 
   .sched-badge-matte {
@@ -734,5 +941,9 @@
 
   .sched-timeline-dot {
     box-shadow: none;
+  }
+
+  .sched-empty-cell {
+    transition: none;
   }
 }

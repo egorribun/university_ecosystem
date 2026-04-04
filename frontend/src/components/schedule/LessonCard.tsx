@@ -1,13 +1,11 @@
 import {
   Trash2 as DeleteIcon,
-  Info as InfoOutlinedIcon,
   Clock as AccessTimeIcon,
   MapPin as RoomIcon,
   User as TeacherIcon,
   AlertTriangle as ConflictIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { Badge, Tooltip, GlassCard } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import { type Lesson, getTimeStr, getEndTimeStr } from "./scheduleUtils"
 
@@ -61,7 +59,7 @@ export function LessonCard({
   const accentClass = isConflict ? "sched-conflict" : getAccentClass(lesson.lesson_type)
 
   return (
-    <GlassCard
+    <div
       id={`lesson-card-${lesson.id}`}
       onClick={onOpen}
       onKeyDown={(e) => {
@@ -72,47 +70,37 @@ export function LessonCard({
       }}
       role="button"
       tabIndex={0}
-      intensity="elevated"
-      radius="2xl"
       aria-current={isCurrent ? "time" : undefined}
       className={cn(
-        "sched-card-item group relative flex h-full flex-col transition-all duration-base",
-        "glass-noise dash-border-shimmer",
+        "sched-card-matte sched-card-item sched-lesson-card group relative flex h-full min-w-0 cursor-pointer flex-col overflow-hidden glass-noise",
         accentClass,
-        compact ? "min-h-16 gap-1 p-2" : "min-h-32 gap-2 p-3 sm:min-h-(--h-card-lesson-min)",
-        hasBreakBefore && "mt-6",
+        compact ? "gap-1 p-2.5" : "gap-1.5 p-3",
+        hasBreakBefore && "mt-5",
         isCurrent && "sched-current-glow",
-        "hover:-translate-y-1 hover:shadow-glass hover:border-brand-subtle",
-        "dark:shadow-premium dark:hover:shadow-glass-strong",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       )}
       style={{ "--sched-stagger-i": index } as React.CSSProperties}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
-      {/* ── Top row: type badge + time ──────────────────── */}
-      <div className="flex items-center justify-between gap-2">
-        <Badge
-          size="xs"
-          className="chip-type h-6 px-2.5 font-semibold text-white shadow-sm"
+      {/* ── Type badge ─────────────────────────────────── */}
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span
+          className="sched-type-badge shrink-0"
           style={{ background: getLessonTypeColor(lesson.lesson_type) }}
         >
           {getLessonTypeLabel(lesson.lesson_type)}
-        </Badge>
-        <Badge
-          size="xs"
-          variant="outline"
-          className="chip-time font-medium"
-          leadingIcon={<AccessTimeIcon size={14} aria-hidden="true" />}
-        >
+        </span>
+        <span className="sched-time-badge ml-auto shrink-0">
+          <AccessTimeIcon size={10} aria-hidden="true" className="opacity-50" />
           {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
-        </Badge>
+        </span>
       </div>
 
       {/* ── Subject ─────────────────────────────────────── */}
       <h3
         className={cn(
-          "sched-card-title font-extrabold text-text-primary leading-tight tracking-tight",
-          compact ? "text-sm line-clamp-1" : "text-base line-clamp-2"
+          "sched-card-title min-w-0 font-bold text-text-primary leading-snug tracking-tight",
+          compact ? "text-xs line-clamp-1" : "text-sm line-clamp-2"
         )}
       >
         {lesson.subject}
@@ -120,42 +108,29 @@ export function LessonCard({
 
       {/* ── Details row (hidden in compact mode) ────────── */}
       {!compact && (
-        <div className="flex flex-wrap gap-2">
-          <Badge
-            size="xs"
-            variant="outline"
-            leadingIcon={<TeacherIcon size={14} className="text-(--primary-main)" aria-hidden="true" />}
-            className="badge-glass"
-          >
-            {lesson.teacher || "—"}
-          </Badge>
-          <Badge
-            size="xs"
-            variant="outline"
-            leadingIcon={<RoomIcon size={14} className="text-(--primary-main) sched-grid-room" aria-hidden="true" />}
-            className="badge-glass sched-grid-room"
-          >
-            {lesson.room || "—"}
-          </Badge>
+        <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.6875rem] text-text-secondary">
+          {lesson.teacher && (
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <TeacherIcon size={10} className="shrink-0 text-brand opacity-60" aria-hidden="true" />
+              <span className="truncate">{lesson.teacher}</span>
+            </span>
+          )}
+          {lesson.room && (
+            <span className="sched-grid-room inline-flex items-center gap-1">
+              <RoomIcon size={10} className="shrink-0 text-brand opacity-60" aria-hidden="true" />
+              <span>{lesson.room}</span>
+            </span>
+          )}
         </div>
       )}
 
       {/* ── Conflict indicator ──────────────────────────── */}
       {isConflict && (
-        <div className="mt-auto flex items-center gap-1 text-xs font-semibold text-error">
-          <ConflictIcon size={14} aria-hidden="true" />
+        <div className="flex items-center gap-1 text-[0.625rem] font-semibold text-error">
+          <ConflictIcon size={10} aria-hidden="true" />
           <span>{t("schedule:lesson.conflict")}</span>
         </div>
       )}
-
-      {/* ── Info icon (hover reveal) ───────────────────── */}
-      <Tooltip content={t("schedule:lesson.details")}>
-        <InfoOutlinedIcon
-          size={18}
-          aria-hidden="true"
-          className="absolute bottom-3 right-3 text-text-muted-subtle opacity-0 transition-opacity duration-fast group-hover:opacity-100"
-        />
-      </Tooltip>
 
       {/* ── Delete button (hover reveal) ────────────────── */}
       {canEdit && (
@@ -166,12 +141,12 @@ export function LessonCard({
             e.stopPropagation()
             onDelete()
           }}
-          className="button-icon-glass absolute right-3 top-3 opacity-0 transition-opacity duration-fast group-hover:opacity-100"
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded bg-surface/(--opacity-strong) text-text-secondary opacity-0 shadow-sm transition-all duration-fast hover:bg-error hover:text-white group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand"
         >
-          <DeleteIcon size={16} aria-hidden="true" />
+          <DeleteIcon size={11} aria-hidden="true" />
         </button>
       )}
-    </GlassCard>
+    </div>
   )
 }
 

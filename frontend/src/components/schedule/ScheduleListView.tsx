@@ -90,7 +90,7 @@ export function ScheduleListView({
 
   if (totalLessons === 0) {
     return (
-      <div className="flex items-center justify-center px-6 py-16">
+      <div className="flex items-center justify-center rounded-xl border border-glass-border/(--opacity-soft) bg-surface/(--opacity-dim) px-6 py-16 glass-noise">
         <EmptyState
           icon={
             <div className="sched-empty-icon relative">
@@ -105,7 +105,16 @@ export function ScheduleListView({
     )
   }
 
-  let globalIndex = 0
+  // Pre-compute cumulative lesson counts per day for stable stagger index
+  const dayCumulativeCounts = useMemo(() => {
+    const counts: number[] = []
+    let total = 0
+    for (const day of weekdayBackend) {
+      counts.push(total)
+      total += (lessonsByDay.get(day)?.length ?? 0)
+    }
+    return counts
+  }, [weekdayBackend, lessonsByDay])
 
   return (
     <div className="schedule-list-container mx-auto w-full max-w-4xl space-y-6">
@@ -113,6 +122,7 @@ export function ScheduleListView({
         const label = weekdayLabels[dayIdx] ?? day
         const lessons = lessonsByDay.get(day) ?? []
         const isToday = hasToday && dayIdx === todayIdx
+        const baseIndex = dayCumulativeCounts[dayIdx] ?? 0
 
         return (
           <section
@@ -171,22 +181,19 @@ export function ScheduleListView({
                   const gap = prev ? minutesDiff(prev.end_time, lesson.start_time) : 0
                   const isConflict = conflictedIds.has(lesson.id)
                   const isCurrent = lesson.id === currentLesson?.id
-                  const cardIndex = globalIndex++
+                  const cardIndex = baseIndex + idx
 
                   return (
                     <div key={lesson.id}>
                       {/* ── Break connector ─────────────── */}
                       {idx > 0 && gap > 0 && (
-                        <div className="mb-2 flex items-center gap-2 px-2">
+                        <div className="mb-2.5 flex items-center gap-2 px-1">
                           <div className="sched-timeline-dot" />
-                          <div className="sched-timeline-line h-px flex-1" />
-                          <Badge
-                            size="xs"
-                            className="chip-break font-medium bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text"
-                          >
+                          <div className="sched-timeline-line flex-1" />
+                          <span className="sched-break-pill">
                             {t("schedule:break", { minutes: gap })}
-                          </Badge>
-                          <div className="sched-timeline-line h-px flex-1" />
+                          </span>
+                          <div className="sched-timeline-line flex-1" />
                           <div className="sched-timeline-dot" />
                         </div>
                       )}

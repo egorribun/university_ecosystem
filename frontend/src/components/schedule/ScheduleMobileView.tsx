@@ -1,5 +1,6 @@
-import { useRef, useMemo, useCallback } from "react"
+import { useRef, useMemo, useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { motion } from "framer-motion"
 import { Badge } from "@/components/ui"
 import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
@@ -55,6 +56,7 @@ export function ScheduleMobileView({
   const { compactMode } = useScheduleDisplayPreferences()
   const { nextWeek, previousWeek } = useScheduleUIActions()
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [activeDayIdx, setActiveDayIdx] = useState(() => (hasToday && todayIdx >= 0 ? todayIdx : 0))
 
   // Swipe between weeks on mobile
   const swipeHandlers = useSwipe({
@@ -84,6 +86,7 @@ export function ScheduleMobileView({
 
   /* ── Scroll to day section ───────────────────────────── */
   const scrollToDay = useCallback((idx: number) => {
+    setActiveDayIdx(idx)
     dayCardRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [])
 
@@ -117,24 +120,38 @@ export function ScheduleMobileView({
         {weekdayBackend.map((day, i) => {
           const count = lessonsByDay.get(day)?.length ?? 0
           const isToday = hasToday && i === todayIdx
+          const isActive = i === activeDayIdx
           return (
             <Badge
               key={day}
+              id={`day-tab-${day}`}
               as="button"
               role="tab"
               aria-controls={`day-panel-${day}`}
-              variant={isToday ? "solid" : "outline"}
-              tone={isToday ? "primary" : "default"}
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              variant={isActive ? "solid" : "outline"}
+              tone={isActive ? "primary" : "default"}
               className={cn(
-                "sched-badge-matte shrink-0 font-semibold transition-all duration-fast hover:scale-105",
-                isToday && "shadow-glow-primary"
+                "relative shrink-0 font-semibold transition-all duration-fast hover:scale-105",
+                isActive ? "text-white" : "sched-badge-matte",
+                isToday && !isActive && "ring-1 ring-brand/(--opacity-dim)"
               )}
               onClick={() => scrollToDay(i)}
             >
-              {weekdayShort[i] ?? getDayLabel(day)}
-              {count > 0 && (
-                <sup className="ml-0.5 text-[0.625rem] font-bold opacity-70">{count}</sup>
+              {isActive && (
+                <motion.span
+                  layoutId="schedule-mobile-day"
+                  className="absolute inset-0 rounded-full bg-brand shadow-glow-primary"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
               )}
+              <span className="relative z-surface flex items-center gap-0.5">
+                {weekdayShort[i] ?? getDayLabel(day)}
+                {count > 0 && (
+                  <sup className="text-[0.625rem] font-bold opacity-70">{count}</sup>
+                )}
+              </span>
             </Badge>
           )
         })}

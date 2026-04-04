@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import useFocusTrap from "@/hooks/useFocusTrap"
 import { useTranslation } from "react-i18next"
 import {
   X as CloseIcon,
@@ -34,9 +35,13 @@ export function LessonSlideOver({
   getLessonTypeLabel,
 }: LessonSlideOverProps) {
   const { t } = useTranslation(["schedule", "common"])
-  const panelRef = useRef<HTMLDivElement>(null)
-  const closeRef = useRef<HTMLButtonElement>(null)
   const [isClosing, setIsClosing] = useState(false)
+  // Retain last lesson during exit animation so content doesn't disappear
+  const [lastLesson, setLastLesson] = useState<Lesson | null>(null)
+  useEffect(() => {
+    if (lesson) setLastLesson(lesson)
+  }, [lesson])
+  const displayLesson = lesson ?? lastLesson
 
   const handleClose = useCallback(() => {
     setIsClosing(true)
@@ -46,22 +51,12 @@ export function LessonSlideOver({
     }, 250)
   }, [onClose])
 
-  // Focus trap + Escape
-  useEffect(() => {
-    if (!open) return
-    closeRef.current?.focus()
+  const panelRef = useFocusTrap<HTMLDivElement>({
+    active: open && !!displayLesson,
+    onDeactivate: handleClose,
+  })
 
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        handleClose()
-      }
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  }, [open, handleClose])
-
-  if (!open || !lesson) return null
+  if ((!open && !isClosing) || !displayLesson) return null
 
   return (
     <>
@@ -90,7 +85,6 @@ export function LessonSlideOver({
             {t("schedule:lesson.details")}
           </h2>
           <button
-            ref={closeRef}
             onClick={handleClose}
             aria-label={t("common:buttons.close", { defaultValue: "Close" })}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
@@ -108,7 +102,7 @@ export function LessonSlideOver({
               {t("schedule:form.subject")}
             </div>
             <h3 className="text-xl font-extrabold text-text-primary tracking-tight">
-              {lesson.subject || "—"}
+              {displayLesson.subject || "—"}
             </h3>
           </div>
 
@@ -119,9 +113,9 @@ export function LessonSlideOver({
             </div>
             <Badge
               className="text-white font-semibold shadow-sm"
-              style={{ background: getLessonTypeColor(lesson.lesson_type) }}
+              style={{ background: getLessonTypeColor(displayLesson.lesson_type) }}
             >
-              {getLessonTypeLabel(lesson.lesson_type)}
+              {getLessonTypeLabel(displayLesson.lesson_type)}
             </Badge>
           </div>
 
@@ -136,14 +130,14 @@ export function LessonSlideOver({
                   {t("schedule:dialog.timeLabel")}
                 </div>
                 <div className="text-base font-bold text-text-primary">
-                  {`${getTimeStr(lesson)} – ${getEndTimeStr(lesson)}`}
+                  {`${getTimeStr(displayLesson)} – ${getEndTimeStr(displayLesson)}`}
                 </div>
               </div>
             </div>
           </div>
 
           {/* Teacher */}
-          {lesson.teacher && (
+          {displayLesson.teacher && (
             <div className="rounded-xl border border-glass-border/(--opacity-soft) bg-surface/(--opacity-dim) p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand">
@@ -154,7 +148,7 @@ export function LessonSlideOver({
                     {t("schedule:dialog.teacherLabel")}
                   </div>
                   <div className="text-base font-bold text-text-primary">
-                    {lesson.teacher}
+                    {displayLesson.teacher}
                   </div>
                 </div>
               </div>
@@ -162,7 +156,7 @@ export function LessonSlideOver({
           )}
 
           {/* Room */}
-          {lesson.room && (
+          {displayLesson.room && (
             <div className="rounded-xl border border-glass-border/(--opacity-soft) bg-surface/(--opacity-dim) p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand">
@@ -173,7 +167,7 @@ export function LessonSlideOver({
                     {t("schedule:dialog.roomLabel")}
                   </div>
                   <div className="text-base font-bold text-text-primary">
-                    {lesson.room}
+                    {displayLesson.room}
                   </div>
                 </div>
               </div>
@@ -197,6 +191,7 @@ export function LessonSlideOver({
               variant="ghost"
               size="sm"
               onClick={onDelete}
+              aria-label={t("schedule:aria.deleteLesson")}
               className="text-error hover:bg-error/(--opacity-subtle)"
             >
               <DeleteIcon size={14} aria-hidden="true" />

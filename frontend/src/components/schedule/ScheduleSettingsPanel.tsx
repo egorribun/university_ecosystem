@@ -1,4 +1,5 @@
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useCallback, useState } from "react"
+import useFocusTrap from "@/hooks/useFocusTrap"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, Eye as VisibleIcon, EyeOff as HiddenIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -20,7 +21,6 @@ export function ScheduleSettingsPanel({
   weekdayLabels,
 }: ScheduleSettingsPanelProps) {
   const { t } = useTranslation(["schedule", "common"])
-  const closeRef = useRef<HTMLButtonElement>(null)
   const [isClosing, setIsClosing] = useState(false)
 
   const hiddenWeekdays = useHiddenWeekdays()
@@ -35,20 +35,10 @@ export function ScheduleSettingsPanel({
     }, 250)
   }, [onClose])
 
-  // Focus trap + Escape
-  useEffect(() => {
-    if (!open) return
-    closeRef.current?.focus()
-
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        handleClose()
-      }
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  }, [open, handleClose])
+  const panelRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    onDeactivate: handleClose,
+  })
 
   if (!open) return null
 
@@ -63,6 +53,7 @@ export function ScheduleSettingsPanel({
 
       {/* Panel */}
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-panel-title"
@@ -78,7 +69,6 @@ export function ScheduleSettingsPanel({
             {t("schedule:settings.title")}
           </h2>
           <button
-            ref={closeRef}
             onClick={handleClose}
             aria-label={t("common:buttons.close", { defaultValue: "Close" })}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"

@@ -50,7 +50,7 @@ export function ScheduleHeader({
   onOpenSettings,
 }: ScheduleHeaderProps) {
   const { t } = useTranslation(["schedule", "common"])
-  const isMobile = useMediaQuery(`(max-width: ${breakpoints.ultrawide})`)
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   const activeGroupName = useMemo(
     () => groups.find((g) => g.id === selectedGroup)?.name || "",
     [groups, selectedGroup],

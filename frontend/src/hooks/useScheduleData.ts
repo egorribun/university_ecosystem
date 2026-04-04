@@ -362,6 +362,33 @@ export function useScheduleData() {
     [filteredSchedule],
   )
 
+  // Compute which days-of-month have lessons (for MiniCalendar dot indicators)
+  // Uses nowTick to recompute on month boundary crossing
+  const lessonDays = useMemo(() => {
+    const days = new Set<number>()
+    const year = nowTick.getFullYear()
+    const month = nowTick.getMonth()
+    const firstDay = new Date(year, month, 1).getDay()
+    // Map weekday string → day-of-week offset (Mon=0..Sun=6)
+    const weekdayToOffset = new Map<string, number>()
+    for (let i = 0; i < weekdayBackend.length; i++) {
+      weekdayToOffset.set(weekdayBackend[i], i)
+    }
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    for (const lesson of filteredSchedule) {
+      const offset = weekdayToOffset.get(lesson.weekday)
+      if (offset === undefined) continue
+      // Walk through the month finding all dates matching this weekday
+      // First occurrence: offset matches Monday-based index
+      const jsDay = offset === 6 ? 0 : offset + 1 // Convert Mon=0..Sun=6 to JS Sun=0..Sat=6
+      let firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
+      for (let d = firstOccurrence; d <= daysInMonth; d += 7) {
+        days.add(d)
+      }
+    }
+    return days
+  }, [filteredSchedule, weekdayBackend, nowTick])
+
   const toBackendLessonType = useCallback(
     (value?: string | null) => {
       if (!value) return ""
@@ -466,6 +493,7 @@ export function useScheduleData() {
     currentLesson,
     nextLesson,
     conflictedIds,
+    lessonDays,
     timeLeftText,
     currentProgress,
   }

@@ -68,13 +68,13 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
     return (
       <div
         ref={ref}
+        id={`day-panel-${day}`}
+        role="tabpanel"
+        aria-labelledby={`day-tab-${day}`}
         className={cn(
-          "sched-day-column-container group relative isolate mb-2 rounded-2xl border border-glass-border shadow-premium backdrop-blur-md glass-noise transition-all duration-base",
-          "[content-visibility:auto] [contain-intrinsic-size:auto_12rem]",
-          compact ? "p-3 sm:p-4" : "p-4 sm:p-6",
-          isToday
-            ? "sched-today-col ring-2 ring-brand/(--opacity-dim)"
-            : "bg-(--bg-surface)/(--opacity-hover) dark:bg-(--bg-surface)/(--opacity-heavy) shadow-md dark:shadow-xl",
+          "sched-card-matte sched-day-column-container group relative isolate mb-3 glass-noise",
+          compact ? "p-4 sm:p-5" : "p-5 sm:p-6",
+          isToday && "sched-today-col ring-2 ring-brand/(--opacity-dim)",
           !isToday && heatClass
         )}
       >
@@ -127,7 +127,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3.5">
             {lessons.map((lesson, idx) => {
               const prev = lessons[idx - 1]
               const gap = prev ? minutesDiff(prev.end_time, lesson.start_time) : 0
@@ -138,16 +138,13 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
                 <div key={lesson.id}>
                   {/* ── Break timeline connector ────────────── */}
                   {idx > 0 && gap > 0 && (
-                    <div className="mb-2 flex items-center gap-2 px-2">
+                    <div className="mb-2.5 flex items-center gap-2 px-1">
                       <div className="sched-timeline-dot" />
-                      <div className="sched-timeline-line h-px flex-1" />
-                      <Badge
-                        size="xs"
-                        className="chip-break font-medium bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text"
-                      >
+                      <div className="sched-timeline-line flex-1" />
+                      <span className="sched-break-pill">
                         {t("schedule:break", { minutes: gap })}
-                      </Badge>
-                      <div className="sched-timeline-line h-px flex-1" />
+                      </span>
+                      <div className="sched-timeline-line flex-1" />
                       <div className="sched-timeline-dot" />
                     </div>
                   )}
