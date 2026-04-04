@@ -62,7 +62,7 @@
       "project": {
         "backend": ["Проектная деятельность", "Project work", "Project"],
         "label": "Project work",
-        "color": "var(--badge-project)"
+        "color": "var(--badge-proj)"
       }
     }
   },
@@ -107,7 +107,36 @@
     "next": "Next"
   },
   "summary": {
-    "noMoreToday": "No more lessons today"
+    "noMoreToday": "No more lessons today",
+    "progress": "completed"
+  },
+  "toolbar": {
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "thisWeek": "This week",
+    "goToToday": "Go to current week",
+    "weekOffset": "Week {{offset}}",
+    "viewMode": "View mode",
+    "week": "Week",
+    "day": "Day",
+    "list": "List",
+    "export": "Export .ics",
+    "settings": "Settings"
+  },
+  "empty": {
+    "selectGroup": "Select a group to view schedule",
+    "noSchedule": "No schedule added yet"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "arrowNav": "Navigate cells",
+    "enter": "Open lesson details",
+    "edit": "Edit lesson",
+    "delete": "Delete lesson",
+    "today": "Jump to today",
+    "nextLesson": "Next lesson",
+    "help": "Show keyboard shortcuts",
+    "escape": "Close / Deselect"
   },
   "form": {
     "groupLabel": "Group",

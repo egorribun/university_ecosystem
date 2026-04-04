@@ -20,6 +20,7 @@ import {
   getTodayIdx,
   getTimeStr,
 } from "@/components/schedule/scheduleUtils"
+import { detectConflicts } from "@/utils/scheduleConflicts"
 
 const QUERY_STALE_TIME_MS = 60_000
 const QUERY_GC_TIME_MS = 5 * 60_000
@@ -348,34 +349,11 @@ export function useScheduleData() {
     return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
   }, [todayLessons, currentLesson, minutesNow, hasToday])
 
-  // Conflict detection
-  const conflictedIds = useMemo(() => {
-    const byDay = new Map<string, Lesson[]>()
-    for (const l of filteredSchedule) {
-      const arr = byDay.get(l.weekday) ?? []
-      arr.push(l)
-      byDay.set(l.weekday, arr)
-    }
-    const set = new Set<string>()
-    for (const [, arr] of byDay) {
-      arr.sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
-      for (let i = 0; i < arr.length; i++) {
-        for (let j = i + 1; j < arr.length; j++) {
-          const s1 = parseMinutes(arr[i].start_time),
-            e1 = parseMinutes(arr[i].end_time)
-          const s2 = parseMinutes(arr[j].start_time),
-            e2 = parseMinutes(arr[j].end_time)
-          if (s1 == null || e1 == null || s2 == null || e2 == null) continue
-          const overlap = Math.max(s1, s2) < Math.min(e1, e2)
-          if (overlap) {
-            set.add(arr[i].id)
-            set.add(arr[j].id)
-          }
-        }
-      }
-    }
-    return set
-  }, [filteredSchedule])
+  // Conflict detection (extracted to pure function for testability)
+  const conflictedIds = useMemo(
+    () => detectConflicts(filteredSchedule),
+    [filteredSchedule],
+  )
 
   const toBackendLessonType = useCallback(
     (value?: string | null) => {

@@ -1,0 +1,112 @@
+import { useEffect, useRef } from "react"
+import { useTranslation } from "react-i18next"
+import { X as CloseIcon, Keyboard as KeyboardIcon } from "lucide-react"
+import { AnimatePresence, motion } from "framer-motion"
+
+interface ScheduleShortcutsOverlayProps {
+  open: boolean
+  onClose: () => void
+}
+
+const SHORTCUTS = [
+  { keys: ["←", "→", "↑", "↓"], labelKey: "schedule:shortcuts.arrowNav" },
+  { keys: ["Enter"], labelKey: "schedule:shortcuts.enter" },
+  { keys: ["E"], labelKey: "schedule:shortcuts.edit" },
+  { keys: ["Del"], labelKey: "schedule:shortcuts.delete" },
+  { keys: ["T"], labelKey: "schedule:shortcuts.today" },
+  { keys: ["?"], labelKey: "schedule:shortcuts.help" },
+  { keys: ["Esc"], labelKey: "schedule:shortcuts.escape" },
+] as const
+
+export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOverlayProps) {
+  const { t } = useTranslation(["schedule"])
+  const closeRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      closeRef.current?.focus()
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "?") {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [open, onClose])
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-modal flex items-center justify-center p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={onClose}
+            aria-hidden="true"
+          />
+
+          {/* Dialog */}
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sched-shortcuts-title"
+            className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-glass-border bg-surface/(--opacity-heavy) p-6 shadow-glass-strong backdrop-blur-xl glass-noise"
+            initial={{ scale: 0.95, y: 8 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.95, y: 8 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          >
+            {/* Header */}
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyboardIcon size={18} className="text-brand" aria-hidden="true" />
+                <h2 id="sched-shortcuts-title" className="text-lg font-bold text-text-primary">
+                  {t("schedule:shortcuts.title")}
+                </h2>
+              </div>
+              <button
+                ref={closeRef}
+                onClick={onClose}
+                aria-label={t("common:buttons.close", { defaultValue: "Close" })}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <CloseIcon size={16} aria-hidden="true" />
+              </button>
+            </div>
+
+            {/* Shortcut list */}
+            <div className="space-y-3">
+              {SHORTCUTS.map(({ keys, labelKey }) => (
+                <div key={labelKey} className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-text-secondary">{t(labelKey)}</span>
+                  <div className="flex items-center gap-1">
+                    {keys.map((key) => (
+                      <kbd
+                        key={key}
+                        className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-glass-border bg-surface/(--opacity-dim) px-1.5 text-xs font-semibold text-text-primary shadow-sm"
+                      >
+                        {key}
+                      </kbd>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
