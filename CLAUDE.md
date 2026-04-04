@@ -156,6 +156,12 @@
 - Frontend WCAG 2.2: ChatWindow has `role="log"` + `aria-live="polite"` (A11Y-35-06)
 - Frontend WCAG 2.2: Global CSS `scroll-margin-top` on `:focus-visible` for Focus Not Obscured (A11Y-35-07)
 - Frontend: useEventRegistration uses `useOptimistic` + `useTransition` for instant RSVP feedback (PERF-35-01)
+- Schedule cards: `.sched-card-matte` (opaque matte, NOT GlassCard) — `--_accent` CSS var scopes lesson-type color to `::before` top gradient (DESIGN-64-01)
+- Schedule grid: `minmax(176px, 1fr)` + `overflow-x: auto` + `scroll-snap-type: x proximity` + sticky row numbers (DESIGN-64-04)
+- Schedule page: `variant="full"` + own `px-4 sm:px-6 md:px-8 lg:px-10` — no max-width constraint (DESIGN-64-09)
+- Schedule snackbar: `showSnackbar(msg, severity)` — severity "success"|"error" maps to Alert color (FIX-63-02)
+- Schedule focus traps: `useFocusTrap` in LessonSlideOver + ScheduleSettingsPanel — `onDeactivate` = `handleClose` (A11Y-63-02)
+- LessonSlideOver: always mounted on desktop, `displayLesson` via `useState+useEffect` retains data during exit animation — NO `useRef.current` during render (React Compiler) (FIX-64-01)
 - Frontend glass layers: `glass-layer-surface`, `glass-layer-elevated`, `glass-layer-floating` — depth hierarchy with noise texture (DESIGN-36-01)
 - Frontend glass noise: `glass-noise` class adds SVG feTurbulence frosted texture (pure CSS, 0 JS) (DESIGN-36-02)
 - Frontend aurora: `aurora-mesh` class adds animated gradient mesh background (20s CSS animation) (DESIGN-36-03)
@@ -212,6 +218,9 @@
 - Docker: NATS config uses `sed` instead of `envsubst` (not in alpine) (FIX-40-06)
 
 ## Audit Trail
+- Wave 63-64: Schedule premium overhaul — 9 bug fixes (breakpoint, snackbar severity, nowTick filter, CSS token, ARIA tab/panel, keyboard nav guard, useFocusTrap, content-visibility, onDelete wired) + visual redesign (GlassCard→sched-card-matte opaque system, top gradient accent, minmax(176px,1fr) horizontal scroll + sticky headers, compact volumetric badges, matte break pills, dot-pattern empty cells, variant=full layout, @property registrations, SkeletonMorph loading, mobile sliding tab indicator, lessonDays MiniCalendar, exit animation fix). 13 files +738/-428
+- Wave 62: Schedule perfection — ScheduleListView (chronological flat list), ScheduleSettingsPanel (slide-over with weekday/compact/past toggles), ConfirmDialog before deletion, keyboard nav cell IDs fixed, MiniCalendar i18n (Intl.DateTimeFormat) + interactive day clicks, export loading spinner, mobile swipe (useSwipe) + tab Arrow keys, badge matte CSS vars, aurora orb CSS classes, breakpoint 1730→1280px, AnimatePresence view transitions, container queries for day columns, premium timeline connectors, getLessonTypeLabel dedup, time ticker minute-only updates. 16 files +788/-139
+- Wave 61: Schedule premium polish — CSS Grid, aurora mesh, keyboard nav (←→↑↓?), 12 visual upgrades, Zustand wired, useShallow fix. 20 files +2227/-401
 - Wave 58: News premium polish — decompose NewsDetail (879→302 lines, 6 extracted components), Markdown engine (marked v17 + sanitizeArticleHtml + auto-ToC + 150 lines editorial CSS), bidirectional view-transition morph (forward: pointerDown state, back: useLayoutEffect+setTimeout(0)), 14 bug fixes (FIX-58-01 critical snackbar, duplicate useQuery, missing catch, a11y aria-labels, staleTime, refetch indicator, localizeField dedup, etc.), uniform card grid (removed featured variant), image lightbox (focus-trapped), reading progress bar (CSS scroll-driven), mobile category pill scroll, container queries, print stylesheet, backdrop z-index isolation. 10 commits, 33 files +2322/-733
 - Wave 57: News editorial premium — bookmarks, J/K keyboard nav, related articles, mobile swipe, editorial typography, sticky category nav, prev/next nav. Fixes: card click (FIX-57-02), route news.tsx→news.index.tsx (FIX-57-03), WASM sanitizer fallback, double scrollbar, NewsInteractionsOut from_attributes. 21 files +951/-229
 - Wave 54: Stories scroll + polish — decorative clip wrapper, circular thumbnails, scroll snap (drag-pause), edge fade masks, wheel→horizontal, mouse-only drag / native touch, velocity swipe, ProgressBar liveRegion, cascadeProps helper, timer drift fix, css-scale-in viewer, 6 missing color primitives, dead CSS vars removed. 10 files +210/-122
