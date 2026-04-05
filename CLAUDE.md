@@ -161,7 +161,21 @@
 - Schedule page: `variant="full"` + own `px-4 sm:px-6 md:px-8 lg:px-10` — no max-width constraint (DESIGN-64-09)
 - Schedule snackbar: `showSnackbar(msg, severity)` — severity "success"|"error" maps to Alert color (FIX-63-02)
 - Schedule focus traps: `useFocusTrap` in LessonSlideOver + ScheduleSettingsPanel — `onDeactivate` = `handleClose` (A11Y-63-02)
-- LessonSlideOver: always mounted on desktop, `displayLesson` via `useState+useEffect` retains data during exit animation — NO `useRef.current` during render (React Compiler) (FIX-64-01)
+- LessonSlideOver / LessonBottomSheet: removed from Schedule.tsx (Wave 69) — card click no longer opens detail overlay. Components still exist for potential future use.
+- LessonCard `onOpen` is optional — when absent, card has no cursor-pointer/role="button"/tabIndex (FIX-69-card)
+- SkeletonMorph: skeleton wrapper gets `overflow-hidden` when `loaded=true` — prevents absolute skeleton from inflating page scrollHeight (FIX-69-10)
+- Schedule skeleton: NO `min-h-screen` — causes empty space below schedule via absolute SkeletonMorph wrapper (FIX-69-10)
+- WeekSelector: `role="radiogroup"` + `role="radio"` + `aria-checked` (not aria-pressed buttons) (FIX-69-05)
+- Schedule Framer Motion: all spring animations use `useReducedMotion()` guard — `prefersReduced ? { duration: 0 } : { type: "spring", ... }` (FIX-69-a11y)
+- Schedule hardcoded white text: use `text-[var(--sched-on-accent)]` token, not `text-white` on colored backgrounds
+- Schedule touch targets: toolbar buttons min-h-[44px] min-w-[44px] for WCAG 2.5.8 (FIX-69-touch)
+- Schedule toolbar: `ScheduleToolbar` accepts `children` slot between week-nav and actions — `<ScheduleToolbar><WeekSelector/></ScheduleToolbar>` (Wave 70)
+- Schedule page padding: `px-4 sm:px-6 md:px-10 lg:px-14` — matches news page, no `max-w` constraint (Wave 70)
+- Schedule mobile swipe: `variants` + `custom` pattern for directional animation — `swipeDir` as state (not ref — React Compiler forbids ref access during render) (FIX-70-SWIPE)
+- Schedule perf: NO `AnimatePresence key={weekOffset}` — causes full re-mount of all cards. Use `animate` prop changes instead (PERF-70-01)
+- Schedule perf: NO `filter: blur()` in Framer transitions — GPU-expensive, imperceptible at 200ms (PERF-70-02)
+- Schedule CSS: `.sched-current-glow.sched-current-glow` double-class specificity — no `!important` (THEME-70-01)
+- Schedule CSS: `.sched-card-item` stagger capped at 300ms via `min()` — prevents 1s+ animation pile-up (PERF-70-03)
 - Frontend glass layers: `glass-layer-surface`, `glass-layer-elevated`, `glass-layer-floating` — depth hierarchy with noise texture (DESIGN-36-01)
 - Frontend glass noise: `glass-noise` class adds SVG feTurbulence frosted texture (pure CSS, 0 JS) (DESIGN-36-02)
 - Frontend aurora: `aurora-mesh` class adds animated gradient mesh background (20s CSS animation) (DESIGN-36-03)
@@ -218,6 +232,8 @@
 - Docker: NATS config uses `sed` instead of `envsubst` (not in alpine) (FIX-40-06)
 
 ## Audit Trail
+- Wave 70: Schedule page polish — 31 fixes across 18 files (+367/-209). Performance: removed AnimatePresence key-swap re-mount (PERF-70-01), removed GPU blur transitions (PERF-70-02), capped stagger 300ms (PERF-70-03), stabilized nowTick/lessonDays deps (PERF-70-04/07), eliminated duplicate buildTable (PERF-70-05), conditional DndContext (PERF-70-06), will-change hints (PERF-70-08). Code quality: useMemo→useCallback, ACCENT_MAP→Map, impure showCountdown fix, currentProgress to desktop, mobile map-filter optimized. Theme: removed !important (double-class specificity), ProgressRing stroke CSS-only, skeleton #f0f0f0→color-mix, content-visibility on grid cells, calendar today on-accent token. Responsive: mini-calendar on tablets (md:block), scroll overflow indicator (ResizeObserver). A11y: day-complete sr-only announcement, dt/dd semantics, AddLesson id. Layout: toolbar+parity merged via children slot, page padding matched news, mobile week swipe spring animation (variants+custom). Audit round: text-white→on-accent (5 files), LessonDetailsDialog text-brand, DraggableLessonCard type=button, table №→i18n.
+- Wave 69: Schedule final perfection — 3 memory leak fixes (FIX-69-01 setTimeout cleanup), console→logError (4 files), useReducedMotion (4 components), text-white→--sched-on-accent (6 files), radiogroup+dl semantics, touch targets 44px, Russian→EN fallbacks (4 files), landscape+safe-area bottom sheet, card hover glow (FIX-69-07), current lesson bloom (FIX-69-08), 4th orb, frosted timeline (FIX-69-09), empty space fix (FIX-69-10 SkeletonMorph overflow-hidden + removed min-h-screen), removed lesson detail dialog on card click. 22 files +179/-128
 - Wave 63-64: Schedule premium overhaul — 9 bug fixes (breakpoint, snackbar severity, nowTick filter, CSS token, ARIA tab/panel, keyboard nav guard, useFocusTrap, content-visibility, onDelete wired) + visual redesign (GlassCard→sched-card-matte opaque system, top gradient accent, minmax(176px,1fr) horizontal scroll + sticky headers, compact volumetric badges, matte break pills, dot-pattern empty cells, variant=full layout, @property registrations, SkeletonMorph loading, mobile sliding tab indicator, lessonDays MiniCalendar, exit animation fix). 13 files +738/-428
 - Wave 62: Schedule perfection — ScheduleListView (chronological flat list), ScheduleSettingsPanel (slide-over with weekday/compact/past toggles), ConfirmDialog before deletion, keyboard nav cell IDs fixed, MiniCalendar i18n (Intl.DateTimeFormat) + interactive day clicks, export loading spinner, mobile swipe (useSwipe) + tab Arrow keys, badge matte CSS vars, aurora orb CSS classes, breakpoint 1730→1280px, AnimatePresence view transitions, container queries for day columns, premium timeline connectors, getLessonTypeLabel dedup, time ticker minute-only updates. 16 files +788/-139
 - Wave 61: Schedule premium polish — CSS Grid, aurora mesh, keyboard nav (←→↑↓?), 12 visual upgrades, Zustand wired, useShallow fix. 20 files +2227/-401
