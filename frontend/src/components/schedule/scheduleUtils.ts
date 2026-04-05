@@ -136,22 +136,34 @@ export const writeToStorage = <T>(
 // TIME UTILITIES
 // ============================================================================
 
+/** Regex to extract HH:MM from various backend time formats (FIX-68-02). */
+const TIME_RE = /(\d{2}):(\d{2})/
+
+/** Safely extract HH:MM string from a lesson time field. Returns "" if invalid. */
+function extractHHMM(raw: string | null | undefined): string {
+  if (!raw) return ""
+  const match = TIME_RE.exec(raw)
+  return match ? `${match[1]}:${match[2]}` : ""
+}
+
 export function getTimeStr(lesson: Lesson): string {
-  if (!lesson?.start_time) return ""
-  if (lesson.start_time.length >= 16 && lesson.start_time[10] === "T")
-    return lesson.start_time.slice(11, 16)
-  return lesson.start_time.slice(0, 5)
+  return extractHHMM(lesson?.start_time)
 }
 
 export function getEndTimeStr(lesson: Lesson): string {
-  if (!lesson?.end_time) return ""
-  if (lesson.end_time.length >= 16 && lesson.end_time[10] === "T")
-    return lesson.end_time.slice(11, 16)
-  return lesson.end_time.slice(0, 5)
+  return extractHHMM(lesson?.end_time)
 }
 
 export function parseMinutes(s?: string | null): number | null {
   if (!s) return null
+  // Fast path: extract HH:MM via regex (FIX-68-02)
+  const match = TIME_RE.exec(s)
+  if (match) {
+    const h = Number(match[1])
+    const m = Number(match[2])
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) return h * 60 + m
+  }
+  // Fallback: full date parse
   const d = toDate(s)
   if (!d || isNaN(d.getTime())) return null
   return d.getHours() * 60 + d.getMinutes()

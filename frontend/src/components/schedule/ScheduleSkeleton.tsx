@@ -1,20 +1,25 @@
 import { Skeleton } from "@/components/ui"
 
+/** Shimmer skeleton block — uses CSS animation instead of static gray (FIX-68-16) */
+function ShimmerBlock({ className }: { className?: string }) {
+  return <div className={`sched-skeleton-shimmer ${className ?? ""}`} />
+}
+
 export function ScheduleSkeleton() {
   return (
     <div className="skeleton-morph-container w-full min-h-screen py-8 sm:py-10">
       <div className="px-2 md:px-4">
         {/* Header Skeleton */}
         <div className="mb-6 flex flex-wrap items-center gap-4 sm:gap-5">
-          <Skeleton width={48} height={48} rounded="full" />
-          <Skeleton width={200} height={40} />
-          <Skeleton width={100} height={28} rounded="full" />
+          <ShimmerBlock className="h-12 w-12 !rounded-full" />
+          <ShimmerBlock className="h-10 w-[200px]" />
+          <ShimmerBlock className="h-7 w-[100px] !rounded-full" />
         </div>
 
         {/* Toolbar Skeleton */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          <Skeleton width={200} height={36} rounded="xl" />
-          <Skeleton width={160} height={36} rounded="xl" />
+          <ShimmerBlock className="h-9 w-[200px] !rounded-xl" />
+          <ShimmerBlock className="h-9 w-[160px] !rounded-xl" />
         </div>
 
         {/* Week Selector Skeleton */}

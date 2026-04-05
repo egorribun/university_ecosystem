@@ -441,8 +441,8 @@
    ═══════════════════════════════════════════════════════ */
 
 .news-badge-matte {
-  background: #fff;
-  color: #1a1a1a;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   box-shadow:
     0 1px 3px rgb(0 0 0 / 0.12),
     0 0 0 1px rgb(0 0 0 / 0.06),
@@ -451,8 +451,8 @@
 }
 
 .dark .news-badge-matte {
-  background: #2a2a2e;
-  color: #f0f0f0;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   box-shadow:
     0 1px 4px rgb(0 0 0 / 0.4),
     0 0 0 1px rgb(255 255 255 / 0.06),
@@ -523,15 +523,15 @@
   }
 
   .news-pullquote {
-    border-left-color: #333;
-    color: #333;
+    border-left-color: var(--text-primary, #333);
+    color: var(--text-primary, #333);
   }
 
   /* Code blocks visible on paper */
   .news-article-body pre,
   .news-article-body code {
-    background: #f5f5f5 !important;
-    border: 1px solid #ccc !important;
+    background: var(--bg-matte-list, #f5f5f5) !important;
+    border: 1px solid var(--glass-border, #ccc) !important;
   }
 
   /* Prevent breaking inside block-level elements */

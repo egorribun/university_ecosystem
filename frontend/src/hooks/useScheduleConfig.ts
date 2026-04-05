@@ -14,6 +14,16 @@ import {
   defaultLessonTypeColor,
 } from "@/components/schedule/scheduleUtils"
 
+/**
+ * Safely cast i18n returnObjects result to a Record. Returns empty object if
+ * the value is not a plain object — prevents runtime crashes from unexpected
+ * i18n structure (FIX-68-08).
+ */
+function asRecord(val: unknown): Record<string, unknown> {
+  if (val && typeof val === "object" && !Array.isArray(val)) return val as Record<string, unknown>
+  return {}
+}
+
 export function useScheduleConfig() {
   const { t } = useTranslation(["schedule"])
 
@@ -22,12 +32,8 @@ export function useScheduleConfig() {
   // ============================================================================
 
   const weekdayConfigs = useMemo(() => {
-    const rawItems = t("schedule:weekdays.items", { returnObjects: true }) as unknown
-    const rawOrder = t("schedule:weekdays.order", { returnObjects: true }) as unknown
-    const items =
-      rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
-        ? (rawItems as Record<string, unknown>)
-        : {}
+    const items = asRecord(t("schedule:weekdays.items", { returnObjects: true }))
+    const rawOrder = t("schedule:weekdays.order", { returnObjects: true })
     const fallbackById = new Map(minimalWeekdayFallback.map((item) => [item.id, item]))
     const baseOrder =
       Array.isArray(rawOrder) && rawOrder.length > 0
@@ -131,12 +137,8 @@ export function useScheduleConfig() {
   // ============================================================================
 
   const lessonTypeConfigs = useMemo(() => {
-    const rawItems = t("schedule:lessonTypes.items", { returnObjects: true }) as unknown
-    const rawOrder = t("schedule:lessonTypes.order", { returnObjects: true }) as unknown
-    const items =
-      rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
-        ? (rawItems as Record<string, unknown>)
-        : {}
+    const items = asRecord(t("schedule:lessonTypes.items", { returnObjects: true }))
+    const rawOrder = t("schedule:lessonTypes.order", { returnObjects: true })
     const baseOrder =
       Array.isArray(rawOrder) && rawOrder.length > 0
         ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)

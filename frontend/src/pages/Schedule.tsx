@@ -17,12 +17,14 @@ import { ScheduleDialogs } from "@/components/schedule/ScheduleDialogs"
 import { ScheduleShortcutsOverlay } from "@/components/schedule/ScheduleShortcutsOverlay"
 import { ScheduleMiniCalendar } from "@/components/schedule/ScheduleMiniCalendar"
 import { LessonSlideOver } from "@/components/schedule/LessonSlideOver"
+import { LessonBottomSheet } from "@/components/schedule/LessonBottomSheet"
 import { ScheduleSettingsPanel } from "@/components/schedule/ScheduleSettingsPanel"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { Alert, Snackbar } from "@/components/settings"
 import { SEO } from "@/components/ui/SEO"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 import { useScheduleKeyboardNav } from "@/hooks/useScheduleKeyboardNav"
+import { useScrollToElement } from "@/hooks/useScrollToElement"
 import {
   useWeekOffset,
   useScheduleDisplayPreferences,
@@ -58,10 +60,15 @@ function ScheduleContent() {
     getLessonTypeColor,
     applyScheduleUpdate,
     currentLesson,
+    nextLesson,
     nowTick,
     lessonDays,
     lessonTypeLabels,
+    todayLessons,
   } = scheduleData
+
+  /* ── Day complete flag for confetti (FIX-68-23) ── */
+  const todayComplete = hasToday && !currentLesson && !nextLesson && todayLessons.length > 0
 
   /* ── Lesson notes map for card indicators (FIX-67-02) ── */
   const lessonIds = useMemo(() => schedule.map((l) => l.id), [schedule])
@@ -74,6 +81,11 @@ function ScheduleContent() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
+
+  /* ── Week navigation direction for slide animation (FIX-68-12) ── */
+  const prevWeekOffsetRef = useRef(weekOffset)
+  const slideDirection = weekOffset > prevWeekOffsetRef.current ? 1 : weekOffset < prevWeekOffsetRef.current ? -1 : 0
+  useEffect(() => { prevWeekOffsetRef.current = weekOffset }, [weekOffset])
 
   /* ── Past lessons filter ──────────────────────────────── */
   const displaySchedule = useMemo(() => {
@@ -164,16 +176,11 @@ function ScheduleContent() {
   /* ── "All lessons filtered" detection (FIX-65-05) ──── */
   const allFilteredOut = displaySchedule.length === 0 && schedule.length > 0
 
-  /* ── Scroll to current lesson on initial load (FIX-67-07) ── */
-  const scrolledRef = useRef(false)
-  useEffect(() => {
-    if (isLoading || scrolledRef.current || !currentLesson) return
-    scrolledRef.current = true
-    requestAnimationFrame(() => {
-      const el = document.getElementById(`lesson-card-${currentLesson.id}`)
-      el?.scrollIntoView({ behavior: "smooth", block: "center" })
-    })
-  }, [isLoading, currentLesson])
+  /* ── Scroll to current lesson on initial load (FIX-67-07, FIX-68-06) ── */
+  useScrollToElement(
+    !isLoading && currentLesson ? `lesson-card-${currentLesson.id}` : null,
+    { behavior: "smooth", block: "center" },
+  )
 
   const sharedViewProps = {
     schedule: displaySchedule,
@@ -190,6 +197,7 @@ function ScheduleContent() {
     getLessonTypeColor,
     currentLesson,
     notesMap,
+    todayComplete,
   }
 
   return (
@@ -240,14 +248,14 @@ function ScheduleContent() {
                     </button>
                   </div>
                 )}
-                {/* Week slide animation: key on weekOffset triggers re-mount */}
-                <AnimatePresence mode="wait">
+                {/* Week slide animation: directional crossfade (FIX-68-12) */}
+                <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={weekOffset}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    initial={{ opacity: 0, x: slideDirection * 30, filter: "blur(2px)" }}
+                    animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, x: slideDirection * -30, filter: "blur(2px)" }}
+                    transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
                   >
                     {isMobile ? (
                       <ScheduleMobileView
@@ -278,9 +286,20 @@ function ScheduleContent() {
           )}
         </div>
 
-        {/* ── Slide-over panel (desktop) — always mounted for exit animation ── */}
-        {!isMobile && (
+        {/* ── Lesson detail: slide-over (desktop) / bottom sheet (mobile) ── */}
+        {!isMobile ? (
           <LessonSlideOver
+            lesson={selectedLesson}
+            open={activeDialog === "details" && selectedLesson !== null}
+            onClose={closeDialog}
+            onEdit={() => selectedLesson && openDialog("edit", selectedLesson)}
+            onDelete={() => selectedLesson && requestDeleteLesson(selectedLesson.id)}
+            canEdit={user?.role === "admin" || user?.role === "teacher"}
+            getLessonTypeColor={getLessonTypeColor}
+            getLessonTypeLabel={getLessonTypeLabel}
+          />
+        ) : (
+          <LessonBottomSheet
             lesson={selectedLesson}
             open={activeDialog === "details" && selectedLesson !== null}
             onClose={closeDialog}

@@ -75,14 +75,23 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
     return result === "granted"
   }, [])
 
-  // Schedule reminders for today's lessons
+  // Schedule reminders for today's lessons.
+  // Timer lifecycle: when deps change (prefs, lessons, permission), the cleanup
+  // function clears ALL pending timers before the effect re-runs and schedules
+  // new ones. This prevents the race condition where old timers fire after a
+  // preference change (FIX-68-04).
   useEffect(() => {
-    // Clear previous timers
+    // Clear previous timers — ensures no stale reminders fire
     for (const timer of timersRef.current) clearTimeout(timer)
     timersRef.current = []
 
     if (prefs.minutesBefore === 0) return
-    if (permission !== "granted") return
+    if (permission !== "granted") {
+      if (prefs.minutesBefore > 0 && todayLessons.length > 0) {
+        console.warn("[schedule:reminders] Reminders enabled but notification permission denied")
+      }
+      return
+    }
     if (todayLessons.length === 0) return
 
     const now = new Date()

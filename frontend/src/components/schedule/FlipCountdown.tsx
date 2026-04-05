@@ -94,6 +94,7 @@ export function FlipCountdown({
   const secs = secondsLeft % 60
   const minStr = padTwo(mins)
   const secStr = padTwo(secs)
+  const isUrgent = secondsLeft > 0 && secondsLeft <= 300 // Last 5 minutes (FIX-68-17)
 
   return (
     <div
@@ -101,6 +102,7 @@ export function FlipCountdown({
       role="timer"
       aria-live="polite"
       aria-label={t("schedule:countdown.ariaLabel", { mins, secs })}
+      data-urgent={isUrgent || undefined}
     >
       <FlipDigit value={minStr[0]} label={t("schedule:countdown.tensOfMinutes")} />
       <FlipDigit value={minStr[1]} label={t("schedule:countdown.unitMinutes")} />

@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from "react"
+import { forwardRef, useMemo, useRef, useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
@@ -25,6 +25,8 @@ interface DayColumnProps {
   conflictedIds: Set<string>
   compact?: boolean
   currentLessonId?: string
+  /** All today's lessons are past — triggers celebration (FIX-68-23) */
+  dayComplete?: boolean
   /** Map of lessonId → hasNote for note indicators (FIX-67-02) */
   notesMap?: Map<string, boolean>
   /** Called when a lesson is reordered via drag-drop (FIX-67-DND) */
@@ -50,6 +52,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       conflictedIds,
       compact = false,
       currentLessonId,
+      dayComplete = false,
       notesMap,
       onLessonReorder,
       onAdd,
@@ -65,6 +68,18 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
 
     const canEdit = userRole === "admin" || userRole === "teacher"
     const lessonIds = useMemo(() => lessons.map((l) => l.id), [lessons])
+
+    // Celebration: show confetti once when today's lessons are all done (FIX-68-23)
+    const celebratedRef = useRef(false)
+    const [showConfetti, setShowConfetti] = useState(false)
+    useEffect(() => {
+      if (dayComplete && isToday && !celebratedRef.current && lessons.length > 0) {
+        celebratedRef.current = true
+        setShowConfetti(true)
+        const timer = setTimeout(() => setShowConfetti(false), 2000)
+        return () => clearTimeout(timer)
+      }
+    }, [dayComplete, isToday, lessons.length])
 
     const handleDragEnd = useMemo(() => {
       if (!onLessonReorder) return undefined
@@ -101,6 +116,14 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       >
         {/* ── Day header ──────────────────────────────────── */}
         <div className="mb-4 flex items-center gap-2">
+          {/* Confetti burst (FIX-68-23) */}
+          {showConfetti && (
+            <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <span key={i} className="sched-confetti-dot" style={{ "--_i": i } as React.CSSProperties} />
+              ))}
+            </div>
+          )}
           <h3
             className={cn(
               "text-lg font-extrabold tracking-tight text-text-primary transition-colors duration-fast",

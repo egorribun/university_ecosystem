@@ -12,7 +12,6 @@ import {
   Image,
   FileDown,
 } from "lucide-react"
-import { Button } from "@/components/ui"
 
 interface ExportDropdownProps {
   isExporting?: boolean
@@ -70,7 +69,10 @@ export function ExportDropdown({
     setExporting("png")
     try {
       const { exportScheduleAsPng } = await import("@/utils/scheduleExport")
-      await exportScheduleAsPng(gridRef.current)
+      const result = await exportScheduleAsPng(gridRef.current)
+      if (!result.success) {
+        console.error("[schedule:export:png]", result.error)
+      }
     } catch (err) {
       console.error("[schedule:export:png]", err)
     } finally {
@@ -84,7 +86,10 @@ export function ExportDropdown({
     setExporting("pdf")
     try {
       const { exportScheduleAsPdf } = await import("@/utils/scheduleExport")
-      await exportScheduleAsPdf(gridRef.current, t("schedule:title.default"))
+      const result = await exportScheduleAsPdf(gridRef.current, t("schedule:title.default"))
+      if (!result.success) {
+        console.error("[schedule:export:pdf]", result.error)
+      }
     } catch (err) {
       console.error("[schedule:export:pdf]", err)
     } finally {
@@ -122,22 +127,22 @@ export function ExportDropdown({
 
   return (
     <div ref={dropdownRef} className={`relative ${className ?? ""}`}>
-      <Button
-        variant="ghost"
-        size="sm"
+      {/* FIX-68-27: plain button — no Button wrapper to avoid gap/wrap issues */}
+      <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="gap-1.5"
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         {isExporting || exporting ? (
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden="true" />
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden="true" />
         ) : (
-          <Download size={15} aria-hidden="true" />
+          <Download size={14} aria-hidden="true" className="shrink-0" />
         )}
-        <span className="hidden sm:inline">{t("schedule:toolbar.export")}</span>
-        <ChevronDown size={12} aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`} />
-      </Button>
+        {t("schedule:toolbar.export")}
+        <ChevronDown size={11} aria-hidden="true" className={`shrink-0 opacity-50 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
 
       <AnimatePresence>
         {open && (

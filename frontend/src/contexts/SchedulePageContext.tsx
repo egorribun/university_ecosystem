@@ -4,6 +4,24 @@ import type { Lesson } from "@/components/schedule/scheduleUtils"
 type DialogType = "details" | "edit" | "add" | null
 type SnackbarSeverity = "success" | "error"
 
+/** Stable view data shared across schedule components (FIX-68-07: reduces prop drilling). */
+export interface ScheduleViewData {
+  schedule: Lesson[]
+  weekdayBackend: readonly string[]
+  weekdayLabels: readonly string[]
+  hasToday: boolean
+  todayIdx: number
+  rawSchedule: Lesson[]
+  refresh: () => void
+  user: { role?: string; group_id?: string | null } | null
+  conflictedIds: Set<string>
+  isOnline: boolean
+  onDeleteLesson: (id: string) => void
+  getLessonTypeColor: (type?: string | null) => string
+  currentLesson: Lesson | null
+  notesMap: Map<string, boolean>
+}
+
 interface SchedulePageContextType {
   // Dialog State
   activeDialog: DialogType
@@ -89,3 +107,4 @@ export function useSchedulePage() {
   }
   return context
 }
+

@@ -1,6 +1,6 @@
 import { useRef, useMemo, useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import { Badge } from "@/components/ui"
 import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
@@ -31,6 +31,8 @@ type ScheduleMobileViewProps = Pick<
   getLessonTypeLabel: (val?: string | null) => string
   /** Lesson note indicators (FIX-67-02) */
   notesMap?: Map<string, boolean>
+  /** All today's lessons are past (FIX-68-23) */
+  todayComplete?: boolean
 }
 
 export function ScheduleMobileView({
@@ -51,6 +53,7 @@ export function ScheduleMobileView({
   getLessonTypeLabel,
   currentLesson,
   notesMap,
+  todayComplete,
 }: ScheduleMobileViewProps) {
   const { t } = useTranslation(["schedule"])
   const { openDialog, setAddDay } = useSchedulePage()
@@ -103,9 +106,10 @@ export function ScheduleMobileView({
 
   return (
     <div className="mt-2 flex w-full flex-col gap-4" {...swipeHandlers}>
-      {/* ── Day navigation chips (FIX-65-RESP-03: edge fade masks) ── */}
+      {/* ── Day navigation chips ── */}
+      {/* FIX-68-26: removed left edge fade — it darkened the first tab (Пн).
+          Right fade kept to indicate more tabs beyond the scroll edge. */}
       <div className="relative">
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-4 bg-gradient-to-r from-page to-transparent" />
         <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-4 bg-gradient-to-l from-page to-transparent" />
         {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus managed via child tab buttons */}
         <div
@@ -155,41 +159,53 @@ export function ScheduleMobileView({
         </div>
       </div>
 
-      {/* ── Day content panels ────────────────────────── */}
-      {weekdayBackend.map((day, dayIdx) => {
-        const label = weekdayLabels[dayIdx] ?? day
-        const lessons = lessonsByDay.get(day) ?? []
-        const isToday = hasToday && dayIdx === todayIdx
+      {/* ── Day content panels with crossfade (FIX-68-20) ── */}
+      <AnimatePresence mode="wait" initial={false}>
+        {weekdayBackend.map((day, dayIdx) => {
+          // Only render active day panel for smooth crossfade
+          if (dayIdx !== activeDayIdx) return null
+          const label = weekdayLabels[dayIdx] ?? day
+          const lessons = lessonsByDay.get(day) ?? []
+          const isToday = hasToday && dayIdx === todayIdx
 
-        return (
-          <DayColumn
-            key={day}
-            ref={(el) => {
-              dayCardRefs.current[dayIdx] = el
-            }}
-            day={day}
-            label={label}
-            lessons={lessons}
-            isToday={isToday}
-            isOnline={isOnline}
-            hasSchedule={rawSchedule.length > 0}
-            userRole={user?.role}
-            conflictedIds={conflictedIds}
-            compact={compactMode}
-            currentLessonId={currentLesson?.id}
-            notesMap={notesMap}
-            onAdd={() => {
-              setAddDay(day)
-              openDialog("add")
-            }}
-            onLessonOpen={(l) => openDialog("details", l)}
-            onLessonDelete={onDeleteLesson}
-            onRetry={refresh}
-            getLessonTypeColor={getLessonTypeColor}
-            getLessonTypeLabel={getLessonTypeLabel}
-          />
-        )
-      })}
+          return (
+            <motion.div
+              key={day}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+            >
+              <DayColumn
+                ref={(el) => {
+                  dayCardRefs.current[dayIdx] = el
+                }}
+                day={day}
+                label={label}
+                lessons={lessons}
+                isToday={isToday}
+                isOnline={isOnline}
+                hasSchedule={rawSchedule.length > 0}
+                userRole={user?.role}
+                conflictedIds={conflictedIds}
+                compact={compactMode}
+                currentLessonId={currentLesson?.id}
+                dayComplete={isToday && todayComplete}
+                notesMap={notesMap}
+                onAdd={() => {
+                  setAddDay(day)
+                  openDialog("add")
+                }}
+                onLessonOpen={(l) => openDialog("details", l)}
+                onLessonDelete={onDeleteLesson}
+                onRetry={refresh}
+                getLessonTypeColor={getLessonTypeColor}
+                getLessonTypeLabel={getLessonTypeLabel}
+              />
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
     </div>
   )
 }

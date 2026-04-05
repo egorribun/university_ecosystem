@@ -9,6 +9,34 @@
  */
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 
+export interface ExportResult {
+  success: boolean
+  error?: string
+}
+
+const IMAGE_LOAD_TIMEOUT_MS = 10_000
+
+/** Load an image from dataUrl with a timeout to prevent hangs (FIX-68-01). */
+function loadImageWithTimeout(src: string, timeoutMs = IMAGE_LOAD_TIMEOUT_MS): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const timer = setTimeout(() => {
+      img.onload = null
+      img.onerror = null
+      reject(new Error("Image load timed out"))
+    }, timeoutMs)
+    img.onload = () => {
+      clearTimeout(timer)
+      resolve(img)
+    }
+    img.onerror = () => {
+      clearTimeout(timer)
+      reject(new Error("Image load failed"))
+    }
+    img.src = src
+  })
+}
+
 /**
  * Export schedule grid as PNG image.
  * Dynamically imports html-to-image to keep bundle size small.
@@ -16,13 +44,20 @@ import type { Lesson } from "@/components/schedule/scheduleUtils"
 export async function exportScheduleAsPng(
   gridElement: HTMLElement,
   filename = "schedule.png",
-): Promise<void> {
-  const { toPng } = await import("html-to-image")
-  const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
-  const a = document.createElement("a")
-  a.href = dataUrl
-  a.download = filename
-  a.click()
+): Promise<ExportResult> {
+  try {
+    const { toPng } = await import("html-to-image")
+    const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
+    const a = document.createElement("a")
+    a.href = dataUrl
+    a.download = filename
+    a.click()
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "PNG export failed"
+    console.warn("[scheduleExport] PNG export failed:", message)
+    return { success: false, error: message }
+  }
 }
 
 /**
@@ -39,48 +74,50 @@ export async function exportScheduleAsPdf(
   gridElement: HTMLElement,
   title = "Schedule",
   filename = "schedule.pdf",
-): Promise<void> {
-  const [{ toPng }, { jsPDF }] = await Promise.all([
-    import("html-to-image"),
-    import("jspdf"),
-  ])
+): Promise<ExportResult> {
+  try {
+    const [{ toPng }, { jsPDF }] = await Promise.all([
+      import("html-to-image"),
+      import("jspdf"),
+    ])
 
-  const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
+    const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
 
-  // Load image to get dimensions
-  const img = new Image()
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve()
-    img.onerror = reject
-    img.src = dataUrl
-  })
+    // Load image with timeout to prevent hangs (FIX-68-01)
+    const img = await loadImageWithTimeout(dataUrl)
 
-  // A4 landscape for wide schedule grids
-  const pdf = new jsPDF({
-    orientation: img.width > img.height ? "landscape" : "portrait",
-    unit: "mm",
-    format: "a4",
-  })
+    // A4 landscape for wide schedule grids
+    const pdf = new jsPDF({
+      orientation: img.width > img.height ? "landscape" : "portrait",
+      unit: "mm",
+      format: "a4",
+    })
 
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
 
-  // Title
-  pdf.setFontSize(14)
-  pdf.text(title, 10, 12)
-  pdf.setFontSize(8)
-  pdf.text(new Date().toLocaleDateString(), 10, 17)
+    // Title
+    pdf.setFontSize(14)
+    pdf.text(title, 10, 12)
+    pdf.setFontSize(8)
+    pdf.text(new Date().toLocaleDateString(), 10, 17)
 
-  // Scale image to fit page with margins
-  const margin = 10
-  const availableWidth = pageWidth - margin * 2
-  const availableHeight = pageHeight - 25 - margin // 25mm for header
-  const scale = Math.min(availableWidth / img.width, availableHeight / img.height)
-  const scaledWidth = img.width * scale
-  const scaledHeight = img.height * scale
+    // Scale image to fit page with margins
+    const margin = 10
+    const availableWidth = pageWidth - margin * 2
+    const availableHeight = pageHeight - 25 - margin // 25mm for header
+    const scale = Math.min(availableWidth / img.width, availableHeight / img.height)
+    const scaledWidth = img.width * scale
+    const scaledHeight = img.height * scale
 
-  pdf.addImage(dataUrl, "PNG", margin, 22, scaledWidth, scaledHeight)
-  pdf.save(filename)
+    pdf.addImage(dataUrl, "PNG", margin, 22, scaledWidth, scaledHeight)
+    pdf.save(filename)
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "PDF export failed"
+    console.warn("[scheduleExport] PDF export failed:", message)
+    return { success: false, error: message }
+  }
 }
 
 /**

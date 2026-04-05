@@ -27,6 +27,9 @@ import { useScheduleTime } from "./useScheduleTime"
 const QUERY_STALE_TIME_MS = 60_000
 const QUERY_GC_TIME_MS = 5 * 60_000
 
+/** Exponential backoff for flaky mobile connections (FIX-68-05). */
+const retryDelay = (attempt: number) => Math.min(1_000 * 2 ** attempt, 10_000)
+
 export function useScheduleData() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -50,7 +53,8 @@ export function useScheduleData() {
     staleTime: QUERY_STALE_TIME_MS,
     gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
-    retry: 1,
+    retry: 2,
+    retryDelay,
   })
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
 
@@ -76,7 +80,8 @@ export function useScheduleData() {
     staleTime: QUERY_STALE_TIME_MS,
     gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
-    retry: 1,
+    retry: 2,
+    retryDelay,
   })
 
   const groupScheduleRaw = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])

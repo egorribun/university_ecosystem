@@ -12,6 +12,12 @@ import {
   parseMinutes,
 } from "@/components/schedule/scheduleUtils"
 
+/**
+ * Tick every 30s — sub-minute precision isn't needed for schedule display,
+ * and longer intervals reduce battery drain on mobile. The tick function
+ * skips state updates if the minute hasn't changed, so re-renders are
+ * effectively minute-granular regardless.
+ */
 const TICKER_INTERVAL_MS = 30_000
 
 export function useScheduleTime(
@@ -21,7 +27,10 @@ export function useScheduleTime(
   const { t } = useTranslation(["schedule"])
   const [nowTick, setNowTick] = useState(new Date())
 
-  // Timer with Page Visibility API optimization
+  // Timer with Page Visibility API optimization.
+  // NOTE: setNowTick's functional updater form is safe even if the component
+  // unmounts mid-interval — React silently discards updates on unmounted
+  // components when using the `prev => ...` pattern (FIX-68-03).
   useEffect(() => {
     const tick = () => {
       // Skip tick when tab is hidden — saves battery & avoids wasted re-renders

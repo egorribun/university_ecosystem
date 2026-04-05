@@ -32,6 +32,8 @@ export interface LessonCardProps {
   lesson: Lesson
   isConflict: boolean
   isCurrent?: boolean
+  /** Current lesson progress 0-100, used for glow urgency (FIX-68-11) */
+  currentProgress?: number
   index?: number
   compact?: boolean
   onDelete: () => void
@@ -49,6 +51,7 @@ export function LessonCard({
   lesson,
   isConflict,
   isCurrent = false,
+  currentProgress = 0,
   index = 0,
   compact = false,
   onDelete,
@@ -91,7 +94,7 @@ export function LessonCard({
         isCurrent && "sched-current-glow",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       )}
-      style={{ "--sched-stagger-i": index } as React.CSSProperties}
+      style={{ "--sched-stagger-i": index, "--sched-progress": isCurrent ? currentProgress : 0 } as React.CSSProperties}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
       {/* ── Type badge ─────────────────────────────────── */}
