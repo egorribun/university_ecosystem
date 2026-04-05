@@ -79,10 +79,11 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
 
             {/* Shortcut list — semantic <dl> (FIX-69-04) */}
             <dl className="space-y-3">
+              {/* FIX-70-DL: corrected dt/dd order — dt=term (description), dd=definition (keys) */}
               {SHORTCUTS.map(({ keys, labelKey }) => (
                 <div key={labelKey} className="flex items-center justify-between gap-4">
-                  <dd className="text-sm text-text-secondary">{t(labelKey)}</dd>
-                  <dt className="flex items-center gap-1">
+                  <dt className="text-sm text-text-secondary">{t(labelKey)}</dt>
+                  <dd className="flex items-center gap-1">
                     {keys.map((key) => (
                       <kbd
                         key={key}
@@ -91,7 +92,7 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
                         {key}
                       </kbd>
                     ))}
-                  </dt>
+                  </dd>
                 </div>
               ))}
             </dl>

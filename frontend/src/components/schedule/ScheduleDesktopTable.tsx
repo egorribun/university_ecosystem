@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useRef, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Plus as AddIcon, Calendar as TodayIcon } from "lucide-react"
 import { Fragment } from "react"
@@ -23,6 +23,7 @@ type ScheduleDesktopTableProps = Pick<
   | "rawSchedule"
   | "refresh"
   | "currentLesson"
+  | "currentProgress"
 > & {
   isOnline: boolean
   getLessonTypeColor: (type?: string | null) => string
@@ -47,6 +48,7 @@ export function ScheduleDesktopTable({
   getLessonTypeLabel,
   onDeleteLesson,
   currentLesson,
+  currentProgress,
   notesMap,
 }: ScheduleDesktopTableProps) {
   const { t } = useTranslation(["schedule", "common"])
@@ -71,10 +73,29 @@ export function ScheduleDesktopTable({
   const colCount = visibleDays.length + 1
   const isEmpty = tableRows.length === 0
 
+  // RESP-70-02: detect horizontal overflow for scroll indicator
+  const containerRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const checkOverflow = useCallback(() => {
+    const el = scrollRef.current
+    const container = containerRef.current
+    if (!el || !container) return
+    const overflows = el.scrollWidth > el.clientWidth
+    container.toggleAttribute("data-overflows", overflows)
+  }, [])
+  useEffect(() => {
+    checkOverflow()
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(checkOverflow)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [checkOverflow, visibleDays.length])
+
   return (
-    <div className="schedule-grid-container mx-auto w-full">
+    <div ref={containerRef} className="schedule-grid-container mx-auto w-full">
       {/* ── Scrollable wrapper ──────────────────────────── */}
-      <div className="sched-scroll-wrapper">
+      <div ref={scrollRef} className="sched-scroll-wrapper">
         <div
           role="grid"
           aria-label={t("schedule:title.default")}
@@ -94,7 +115,7 @@ export function ScheduleDesktopTable({
             className="sched-sticky-col sched-sticky-header flex items-center justify-center border-b border-r px-2 py-3 text-xs font-bold text-text-secondary"
             style={{ borderColor: "var(--sched-grid-border)" }}
           >
-            №
+            {t("schedule:table.rowNumber", { defaultValue: "№" })}
           </div>
           {visibleDays.map(({ day, idx, label }, colI) => {
             const isTodayCol = hasToday && idx === todayIdx
@@ -248,6 +269,7 @@ export function ScheduleDesktopTable({
                         lesson={lesson}
                         isConflict={isConflict}
                         isCurrent={isCurrent}
+                        currentProgress={isCurrent ? currentProgress : 0}
                         index={rowIdx * visibleDays.length + colI}
                         compact={compactMode}
                         hasNote={notesMap?.get(lesson.id) ?? false}

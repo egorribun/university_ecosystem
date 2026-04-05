@@ -12,8 +12,8 @@ export const WeekSelector = ({ currentParity, setCurrentParity }: WeekSelectorPr
   const prefersReduced = useReducedMotion()
 
   return (
-    <div className="flex flex-wrap items-center gap-5">
-      <span id="week-parity-label" className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)">
+    <div className="flex items-center gap-2.5">
+      <span id="week-parity-label" className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover) hidden sm:inline">
         {t("schedule:week.label")}
       </span>
       {/* FIX-69-05: radiogroup semantics for exclusive selection */}
@@ -29,7 +29,7 @@ export const WeekSelector = ({ currentParity, setCurrentParity }: WeekSelectorPr
           aria-checked={currentParity === "odd"}
           aria-label={t("schedule:week.odd")}
           className={cn(
-            "relative min-w-18 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-rapid",
+            "relative rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-colors duration-rapid sm:px-3",
             currentParity === "odd"
               ? "text-[var(--sched-on-accent)]"
               : "text-(--text-secondary)/(--opacity-hover) hover:bg-surface-elevated/(--opacity-dim) dark:text-(--text-secondary)/(--opacity-strong) dark:hover:bg-surface-elevated/(--opacity-dim)"
@@ -51,7 +51,7 @@ export const WeekSelector = ({ currentParity, setCurrentParity }: WeekSelectorPr
           aria-checked={currentParity === "even"}
           aria-label={t("schedule:week.even")}
           className={cn(
-            "relative min-w-18 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-rapid",
+            "relative rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-colors duration-rapid sm:px-3",
             currentParity === "even"
               ? "text-[var(--sched-on-accent)]"
               : "text-(--text-secondary)/(--opacity-hover) hover:bg-surface-elevated/(--opacity-dim) dark:text-(--text-secondary)/(--opacity-strong) dark:hover:bg-surface-elevated/(--opacity-dim)"

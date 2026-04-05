@@ -1,4 +1,4 @@
-import { forwardRef, useMemo, useRef, useState, useEffect } from "react"
+import { forwardRef, useCallback, useMemo, useRef, useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
@@ -9,10 +9,92 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 
 import { type Lesson, minutesDiff } from "./scheduleUtils"
+import { LessonCard } from "./LessonCard"
 import { DraggableLessonCard } from "./DraggableLessonCard"
 
 /** Heatmap thresholds for day load intensity (lesson count) */
 const HEAT_THRESHOLDS = { heavy: 5, medium: 3, light: 1 } as const
+
+/** PERF-70-06: extracted so DndContext only mounts when canEdit */
+function LessonList({
+  lessons,
+  canEdit,
+  compact,
+  conflictedIds,
+  currentLessonId,
+  notesMap,
+  onLessonDelete,
+  getLessonTypeColor,
+  getLessonTypeLabel,
+  handleDragEnd,
+  lessonIds,
+  t,
+}: {
+  lessons: Lesson[]
+  canEdit: boolean
+  compact: boolean
+  conflictedIds: Set<string>
+  currentLessonId?: string
+  notesMap?: Map<string, boolean>
+  onLessonDelete: (id: string) => void
+  getLessonTypeColor: (val?: string | null) => string
+  getLessonTypeLabel: (val?: string | null) => string
+  handleDragEnd: (event: DragEndEvent) => void
+  lessonIds: string[]
+  t: (key: string, opts?: Record<string, unknown>) => string
+}) {
+  const cardElements = lessons.map((lesson, idx) => {
+    const prev = lessons[idx - 1]
+    const gap = prev ? minutesDiff(prev.end_time, lesson.start_time) : 0
+    const isConflict = conflictedIds.has(lesson.id)
+    const isCurrent = lesson.id === currentLessonId
+    const sharedProps = {
+      lesson,
+      isConflict,
+      isCurrent,
+      index: idx,
+      compact,
+      hasNote: notesMap?.get(lesson.id) ?? false,
+      onDelete: () => onLessonDelete(lesson.id),
+      canEdit,
+      getLessonTypeColor,
+      getLessonTypeLabel,
+    }
+
+    return (
+      <div key={lesson.id}>
+        {idx > 0 && gap > 0 && (
+          <div className="mb-2.5 flex items-center gap-2 px-1">
+            <div className="sched-timeline-dot" />
+            <div className="sched-timeline-line flex-1" />
+            <span className="sched-break-pill">
+              {t("schedule:break", { minutes: gap })}
+            </span>
+            <div className="sched-timeline-line flex-1" />
+            <div className="sched-timeline-dot" />
+          </div>
+        )}
+        {canEdit ? (
+          <DraggableLessonCard dragId={lesson.id} dragEnabled {...sharedProps} />
+        ) : (
+          <LessonCard {...sharedProps} />
+        )}
+      </div>
+    )
+  })
+
+  if (!canEdit) {
+    return <div className="flex flex-col gap-3.5">{cardElements}</div>
+  }
+
+  return (
+    <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={lessonIds} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col gap-3.5">{cardElements}</div>
+      </SortableContext>
+    </DndContext>
+  )
+}
 
 /**
  * DayColumn — Single-day vertical card stack for mobile schedule view.
@@ -87,15 +169,17 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       }
     }, [dayComplete, isToday, lessons.length])
 
-    const handleDragEnd = useMemo(() => {
-      if (!onLessonReorder) return undefined
-      return (event: DragEndEvent) => {
+    // FIX-70-01: useCallback (not useMemo) — correct hook for function identity
+    const handleDragEnd = useCallback(
+      (event: DragEndEvent) => {
+        if (!onLessonReorder) return
         const { active, over } = event
         if (!over || active.id === over.id) return
         const newIdx = lessons.findIndex((l) => l.id === over.id)
         if (newIdx >= 0) onLessonReorder(String(active.id), newIdx)
-      }
-    }, [lessons, onLessonReorder])
+      },
+      [lessons, onLessonReorder],
+    )
 
     // Heatmap: color intensity based on lesson count
     const heatClass =
@@ -124,11 +208,17 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
         <div className="mb-4 flex items-center gap-2">
           {/* Confetti burst (FIX-68-23) */}
           {showConfetti && (
-            <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <span key={i} className="sched-confetti-dot" style={{ "--_i": i } as React.CSSProperties} />
-              ))}
-            </div>
+            <>
+              <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <span key={i} className="sched-confetti-dot" style={{ "--_i": i } as React.CSSProperties} />
+                ))}
+              </div>
+              {/* A11Y-70-01: screen reader announcement for day completion */}
+              <div className="sr-only" role="status" aria-live="assertive">
+                {t("schedule:dayComplete")}
+              </div>
+            </>
           )}
           <h3
             className={cn(
@@ -146,7 +236,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
           {(userRole === "admin" || userRole === "teacher") && (
             <button
               id={`add-lesson-${day}`}
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-brand/(--opacity-dim) bg-brand/(--opacity-subtle) text-brand transition-all duration-fast hover:border-brand hover:bg-brand hover:text-white hover:shadow-sm hover:scale-110 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-brand/(--opacity-dim) bg-brand/(--opacity-subtle) text-brand transition-all duration-fast hover:border-brand hover:bg-brand hover:text-[var(--sched-on-accent)] hover:shadow-sm hover:scale-110 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
               onClick={(e) => {
                 e.stopPropagation()
                 onAdd()
@@ -177,49 +267,21 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
             )}
           </div>
         ) : (
-          <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={lessonIds} strategy={verticalListSortingStrategy}>
-              <div className="flex flex-col gap-3.5">
-                {lessons.map((lesson, idx) => {
-                  const prev = lessons[idx - 1]
-                  const gap = prev ? minutesDiff(prev.end_time, lesson.start_time) : 0
-                  const isConflict = conflictedIds.has(lesson.id)
-                  const isCurrent = lesson.id === currentLessonId
-
-                  return (
-                    <div key={lesson.id}>
-                      {/* ── Break timeline connector ────────────── */}
-                      {idx > 0 && gap > 0 && (
-                        <div className="mb-2.5 flex items-center gap-2 px-1">
-                          <div className="sched-timeline-dot" />
-                          <div className="sched-timeline-line flex-1" />
-                          <span className="sched-break-pill">
-                            {t("schedule:break", { minutes: gap })}
-                          </span>
-                          <div className="sched-timeline-line flex-1" />
-                          <div className="sched-timeline-dot" />
-                        </div>
-                      )}
-                      <DraggableLessonCard
-                        dragId={lesson.id}
-                        dragEnabled={canEdit}
-                        lesson={lesson}
-                        isConflict={isConflict}
-                        isCurrent={isCurrent}
-                        index={idx}
-                        compact={compact}
-                        hasNote={notesMap?.get(lesson.id) ?? false}
-                        onDelete={() => onLessonDelete(lesson.id)}
-                        canEdit={canEdit}
-                        getLessonTypeColor={getLessonTypeColor}
-                        getLessonTypeLabel={getLessonTypeLabel}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-            </SortableContext>
-          </DndContext>
+          /* PERF-70-06: DndContext only rendered when canEdit — avoids pointer listeners + collision setup for viewers */
+          <LessonList
+            lessons={lessons}
+            canEdit={canEdit}
+            compact={compact}
+            conflictedIds={conflictedIds}
+            currentLessonId={currentLessonId}
+            notesMap={notesMap}
+            onLessonDelete={onLessonDelete}
+            getLessonTypeColor={getLessonTypeColor}
+            getLessonTypeLabel={getLessonTypeLabel}
+            handleDragEnd={handleDragEnd}
+            lessonIds={lessonIds}
+            t={t}
+          />
         )}
       </div>
     )

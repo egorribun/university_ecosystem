@@ -19,16 +19,18 @@ interface ScheduleToolbarProps {
   isExporting?: boolean
   /** Ref to the grid element for canvas-based export */
   gridRef?: React.RefObject<HTMLElement | null>
+  /** Slot rendered between week nav and actions (e.g. WeekSelector) */
+  children?: React.ReactNode
 }
 
-export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: ScheduleToolbarProps) {
+export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef, children }: ScheduleToolbarProps) {
   const { t } = useTranslation(["schedule"])
   const weekOffset = useWeekOffset()
   const { nextWeek, previousWeek, goToCurrentWeek } = useScheduleUIActions()
   const prefersReduced = useReducedMotion()
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
       {/* ── Week navigation ────────────────────────────── */}
       <div className="flex items-center gap-1 rounded-xl border border-glass-border bg-glass-subtle p-1 shadow-sm">
         <button
@@ -80,7 +82,10 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: Schedu
         )}
       </div>
 
-      {/* ── Action buttons ─────────────────────────────── */}
+      {/* ── Slot: parity selector or other controls ──── */}
+      {children}
+
+      {/* ── Action buttons — pushed to far right ──────── */}
       <div className="ml-auto flex items-center gap-2">
         <ExportDropdown
           isExporting={isExporting}

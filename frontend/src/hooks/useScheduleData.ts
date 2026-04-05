@@ -135,16 +135,17 @@ export function useScheduleData() {
   )
 
   // ── Lesson days for MiniCalendar ───────────────────
+  // PERF-70-07: use year/month primitives — only recalculates on month change, not every 30s tick
+  const calYear = time.nowTick.getFullYear()
+  const calMonth = time.nowTick.getMonth()
   const lessonDays = useMemo(() => {
     const days = new Set<number>()
-    const year = time.nowTick.getFullYear()
-    const month = time.nowTick.getMonth()
-    const firstDay = new Date(year, month, 1).getDay()
+    const firstDay = new Date(calYear, calMonth, 1).getDay()
     const weekdayToOffset = new Map<string, number>()
     for (let i = 0; i < weekdayBackend.length; i++) {
       weekdayToOffset.set(weekdayBackend[i], i)
     }
-    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
     for (const lesson of filteredSchedule) {
       const offset = weekdayToOffset.get(lesson.weekday)
       if (offset === undefined) continue
@@ -155,7 +156,7 @@ export function useScheduleData() {
       }
     }
     return days
-  }, [filteredSchedule, weekdayBackend, time.nowTick])
+  }, [filteredSchedule, weekdayBackend, calYear, calMonth])
 
   // ── Optimistic updates ─────────────────────────────
   const applyScheduleUpdate = useCallback(

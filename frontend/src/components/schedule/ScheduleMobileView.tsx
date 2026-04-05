@@ -6,7 +6,7 @@ import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"
 import { type Lesson, getTimeStr } from "@/components/schedule/scheduleUtils"
-import { useScheduleDisplayPreferences, useScheduleUIActions } from "@/stores/scheduleUIStore"
+import { useScheduleDisplayPreferences, useScheduleUIActions, useWeekOffset } from "@/stores/scheduleUIStore"
 import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/utils/cn"
 
@@ -15,8 +15,9 @@ import { cn } from "@/utils/cn"
  *
  * Renders horizontally-scrollable day chips (tab bar) with a Framer Motion
  * layoutId pill indicator. Supports left/right swipe gestures (via useSwipe)
- * for week navigation, arrow-key tab switching for a11y, and delegates each
- * day's content to DayColumn. Only one day visible at a time.
+ * for week navigation with directional slide animation, arrow-key tab
+ * switching for a11y, and delegates each day's content to DayColumn.
+ * Only one day visible at a time.
  */
 type ScheduleMobileViewProps = Pick<
   ReturnType<typeof useScheduleData>,
@@ -68,13 +69,36 @@ export function ScheduleMobileView({
   const { compactMode } = useScheduleDisplayPreferences()
   const prefersReduced = useReducedMotion()
   const { nextWeek, previousWeek } = useScheduleUIActions()
+  const weekOffset = useWeekOffset()
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
   const [activeDayIdx, setActiveDayIdx] = useState(() => (hasToday && todayIdx >= 0 ? todayIdx : 0))
 
-  // Swipe between weeks on mobile
+  /* ── Week swipe direction tracking (FIX-70-SWIPE) ────
+     React-safe derived state pattern: setState during render is allowed
+     when conditional (React docs: "Adjusting state during rendering").
+     This ensures direction is correct on the FIRST frame — unlike useEffect
+     which fires after paint, causing wrong-direction flicker. ──────────── */
+  const [swipeDir, setSwipeDir] = useState<1 | -1>(1)
+  const [prevWeek, setPrevWeek] = useState(weekOffset)
+
+  if (weekOffset !== prevWeek) {
+    setSwipeDir(weekOffset > prevWeek ? 1 : -1)
+    setPrevWeek(weekOffset)
+  }
+
+  const handleSwipeLeft = useCallback(() => {
+    setSwipeDir(1) // content slides left → new week from right
+    nextWeek()
+  }, [nextWeek])
+
+  const handleSwipeRight = useCallback(() => {
+    setSwipeDir(-1) // content slides right → new week from left
+    previousWeek()
+  }, [previousWeek])
+
   const swipeHandlers = useSwipe({
-    onSwipeLeft: nextWeek,
-    onSwipeRight: previousWeek,
+    onSwipeLeft: handleSwipeLeft,
+    onSwipeRight: handleSwipeRight,
   })
 
   const lessonsByDay = useMemo(() => {
@@ -113,14 +137,24 @@ export function ScheduleMobileView({
     }
   }, [scrollToDay])
 
+  /* ── Animation variants for week/day transitions ── */
+  const slideX = 100 // px — wide enough to clearly show direction
+  const panelVariants = {
+    enter: (d: number) =>
+      prefersReduced
+        ? { opacity: 0 }
+        : { opacity: 0, x: d * slideX, scale: 0.97 },
+    center: { opacity: 1, x: 0, scale: 1 },
+    exit: (d: number) =>
+      prefersReduced
+        ? { opacity: 0 }
+        : { opacity: 0, x: d * -slideX, scale: 0.97 },
+  }
+
   return (
     <div className="mt-2 flex w-full flex-col gap-4" {...swipeHandlers}>
       {/* ── Day navigation chips ── */}
-      {/* FIX-68-26: removed left edge fade — it darkened the first tab (Пн).
-          Right fade kept to indicate more tabs beyond the scroll edge. */}
       <div className="relative">
-        {/* FIX-69-06: mask-image instead of gradient-to-transparent (avoids gray tint in dark mode) */}
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-[var(--bg-page)]" style={{ maskImage: "linear-gradient(to left, black, transparent)" }} />
         {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus managed via child tab buttons */}
         <div
           role="tablist"
@@ -169,51 +203,47 @@ export function ScheduleMobileView({
         </div>
       </div>
 
-      {/* ── Day content panels with crossfade (FIX-68-20) ── */}
-      <AnimatePresence mode="wait" initial={false}>
-        {weekdayBackend.map((day, dayIdx) => {
-          // Only render active day panel for smooth crossfade
-          if (dayIdx !== activeDayIdx) return null
-          const label = weekdayLabels[dayIdx] ?? day
-          const lessons = lessonsByDay.get(day) ?? []
-          const isToday = hasToday && dayIdx === todayIdx
-
-          return (
-            <motion.div
-              key={day}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
-            >
-              <DayColumn
-                ref={(el) => {
-                  dayCardRefs.current[dayIdx] = el
-                }}
-                day={day}
-                label={label}
-                lessons={lessons}
-                isToday={isToday}
-                isOnline={isOnline}
-                hasSchedule={rawSchedule.length > 0}
-                userRole={user?.role}
-                conflictedIds={conflictedIds}
-                compact={compactMode}
-                currentLessonId={currentLesson?.id}
-                dayComplete={isToday && todayComplete}
-                notesMap={notesMap}
-                onAdd={() => {
-                  setAddDay(day)
-                  openDialog("add")
-                }}
-                onLessonDelete={onDeleteLesson}
-                onRetry={refresh}
-                getLessonTypeColor={getLessonTypeColor}
-                getLessonTypeLabel={getLessonTypeLabel}
-              />
-            </motion.div>
-          )
-        })}
+      {/* ── Active day panel — directional horizontal slide on week/day switch ── */}
+      <AnimatePresence mode="wait" initial={false} custom={swipeDir}>
+        <motion.div
+          key={`${weekOffset}-${weekdayBackend[activeDayIdx]}`}
+          custom={swipeDir}
+          variants={panelVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={
+            prefersReduced
+              ? { duration: 0 }
+              : { type: "spring", stiffness: 260, damping: 26, mass: 0.9 }
+          }
+        >
+          <DayColumn
+            ref={(el) => {
+              dayCardRefs.current[activeDayIdx] = el
+            }}
+            day={weekdayBackend[activeDayIdx]}
+            label={weekdayLabels[activeDayIdx] ?? weekdayBackend[activeDayIdx]}
+            lessons={lessonsByDay.get(weekdayBackend[activeDayIdx]) ?? []}
+            isToday={hasToday && activeDayIdx === todayIdx}
+            isOnline={isOnline}
+            hasSchedule={rawSchedule.length > 0}
+            userRole={user?.role}
+            conflictedIds={conflictedIds}
+            compact={compactMode}
+            currentLessonId={currentLesson?.id}
+            dayComplete={hasToday && activeDayIdx === todayIdx && todayComplete}
+            notesMap={notesMap}
+            onAdd={() => {
+              setAddDay(weekdayBackend[activeDayIdx])
+              openDialog("add")
+            }}
+            onLessonDelete={onDeleteLesson}
+            onRetry={refresh}
+            getLessonTypeColor={getLessonTypeColor}
+            getLessonTypeLabel={getLessonTypeLabel}
+          />
+        </motion.div>
       </AnimatePresence>
     </div>
   )

@@ -157,6 +157,7 @@ export function AddLessonDialog({
                   {t("schedule:form.startTime")}
                 </label>
                 <Input
+                  id="add-lesson-start-time"
                   type="time"
                   value={addFields.startTime}
                   onChange={(event) =>

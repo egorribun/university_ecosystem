@@ -55,6 +55,7 @@ export function DraggableLessonCard({
     >
       {/* Drag handle — top-left grip icon */}
       <button
+        type="button"
         {...attributes}
         {...listeners}
         className="absolute -left-1 top-1/2 -translate-y-1/2 z-10 flex h-6 w-4 items-center justify-center rounded text-text-secondary opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 cursor-grab active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-brand"

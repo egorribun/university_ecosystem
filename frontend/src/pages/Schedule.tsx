@@ -1,6 +1,6 @@
-import { useCallback, useState, useMemo, useRef, useEffect } from "react"
+import { useCallback, useState, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import { PageLayout } from "@/components/layout/PageLayout"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -28,7 +28,6 @@ import {
   useScheduleDisplayPreferences,
   useScheduleUIActions,
 } from "@/stores/scheduleUIStore"
-import { buildTable } from "@/components/schedule/scheduleUtils"
 import { useLessonNotesMap } from "@/hooks/useLessonNotes"
 import api from "@/api/client"
 
@@ -80,16 +79,11 @@ function ScheduleContent() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
 
-  /* ── Week navigation direction for slide animation (FIX-68-12) ── */
-  const prevWeekOffsetRef = useRef(weekOffset)
-  const slideDirection = weekOffset > prevWeekOffsetRef.current ? 1 : weekOffset < prevWeekOffsetRef.current ? -1 : 0
-  useEffect(() => { prevWeekOffsetRef.current = weekOffset }, [weekOffset])
-
   /* ── Past lessons filter ──────────────────────────────── */
+  // PERF-70-04: use primitive minutesNow instead of Date object to stabilize dependency
+  const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
   const displaySchedule = useMemo(() => {
     if (showPastLessons) return schedule
-    // Only filter on today's column — use nowTick from useScheduleData ticker
-    const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
     const todayDay = hasToday ? weekdayBackend[todayIdx] : null
     return schedule.filter((l) => {
       if (l.weekday !== todayDay) return true
@@ -99,15 +93,18 @@ function ScheduleContent() {
       if (isNaN(h) || isNaN(m)) return true
       return h * 60 + m > minutesNow
     })
-  }, [schedule, showPastLessons, hasToday, todayIdx, weekdayBackend, nowTick])
+  }, [schedule, showPastLessons, hasToday, todayIdx, weekdayBackend, minutesNow])
 
   /* ── Keyboard navigation ──────────────────────────────── */
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
-  const tableRows = useMemo(
-    () => buildTable(displaySchedule, weekdayBackend),
-    [displaySchedule, weekdayBackend],
-  )
+  // PERF-70-05: compute rowCount inline — avoids duplicate buildTable() call (also in DesktopTable)
+  const rowCount = useMemo(() => {
+    const counts = weekdayBackend.map(
+      (day) => displaySchedule.filter((l) => l.weekday === day).length,
+    )
+    return Math.max(...counts, 0)
+  }, [displaySchedule, weekdayBackend])
 
   const handleKbEdit = useCallback(() => {
     if (selectedLesson && (user?.role === "admin" || user?.role === "teacher")) {
@@ -130,7 +127,7 @@ function ScheduleContent() {
 
   useScheduleKeyboardNav({
     colCount: weekdayBackend.length,
-    rowCount: tableRows.length,
+    rowCount,
     todayColIdx: todayIdx,
     enabled: !isMobile && !shortcutsOpen && activeDialog === null && !settingsOpen && pendingDeleteId === null,
     onEdit: handleKbEdit,
@@ -138,12 +135,11 @@ function ScheduleContent() {
     onToggleShortcuts: handleToggleShortcuts,
   })
 
-
-
   const getLessonTypeLabel = useCallback(
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
     [lessonTypeLabels],
   )
+  const prefersReduced = useReducedMotion()
 
   const confirmDeleteLesson = useCallback(async () => {
     const id = pendingDeleteId
@@ -189,6 +185,7 @@ function ScheduleContent() {
     onDeleteLesson: requestDeleteLesson,
     getLessonTypeColor,
     currentLesson,
+    currentProgress: scheduleData.currentProgress, // FIX-70-05: was missing — glow urgency on desktop
     notesMap,
     todayComplete,
   }
@@ -196,7 +193,7 @@ function ScheduleContent() {
   return (
     <PageLayout variant="full">
       <SEO title={t("schedule:title.default")} />
-      <div className="schedule-theme relative w-full px-4 sm:px-6 md:px-8 lg:px-10 py-6 text-text-primary xl:mx-auto xl:max-w-[96rem]">
+      <div className="schedule-theme relative w-full py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 text-text-primary">
         {/* ── Page-level aurora backdrop (DESIGN-63-02) ───── */}
         <div className="pointer-events-none absolute inset-0 -z-1 overflow-hidden" aria-hidden="true">
           <div className="sched-orb-1 absolute -left-32 top-40 h-48 w-48 rounded-full opacity-50 blur-[80px] sm:h-64 sm:w-64 lg:h-96 lg:w-96" />
@@ -207,6 +204,7 @@ function ScheduleContent() {
 
         <ScheduleHeader
           {...scheduleData}
+          nowTick={nowTick}
           onOpenSettings={() => setSettingsOpen(true)}
           gridRef={gridRef}
         />
@@ -223,7 +221,7 @@ function ScheduleContent() {
                     <button
                       type="button"
                       onClick={resetPreferences}
-                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       {t("schedule:empty.resetFilters", { defaultValue: "Reset filters" })}
                     </button>
@@ -236,43 +234,40 @@ function ScheduleContent() {
                     <button
                       type="button"
                       onClick={refresh}
-                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       {t("schedule:error.retry")}
                     </button>
                   </div>
                 )}
-                {/* Week slide animation: directional crossfade (FIX-68-12) */}
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={weekOffset}
-                    initial={{ opacity: 0, x: slideDirection * 30, filter: "blur(2px)" }}
-                    animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, x: slideDirection * -30, filter: "blur(2px)" }}
-                    transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-                  >
-                    {isMobile ? (
-                      <ScheduleMobileView
-                        {...sharedViewProps}
-                        weekdayShort={weekdayShort}
-                        getDayLabel={getDayLabel}
-                        getLessonTypeLabel={getLessonTypeLabel}
-                      />
-                    ) : (
-                      <ScheduleDesktopTable
-                        {...sharedViewProps}
-                        getLessonTypeLabel={getLessonTypeLabel}
-                      />
-                    )}
-                  </motion.div>
-                </AnimatePresence>
+                {/* PERF-70-01: replaced AnimatePresence key-swap with animate prop —
+                   avoids full unmount/remount of all cards on week navigation.
+                   PERF-70-02: removed filter:blur — GPU-expensive, imperceptible at 200ms. */}
+                <motion.div
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={prefersReduced ? { duration: 0 } : { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                >
+                  {isMobile ? (
+                    <ScheduleMobileView
+                      {...sharedViewProps}
+                      weekdayShort={weekdayShort}
+                      getDayLabel={getDayLabel}
+                      getLessonTypeLabel={getLessonTypeLabel}
+                    />
+                  ) : (
+                    <ScheduleDesktopTable
+                      {...sharedViewProps}
+                      getLessonTypeLabel={getLessonTypeLabel}
+                    />
+                  )}
+                </motion.div>
               </FadeSection>
             </SkeletonMorph>
           </section>
 
           {/* ── Mini-calendar sidebar (desktop only) ──────── */}
           {!isMobile && (
-            <aside className="hidden w-56 shrink-0 lg:block">
+            <aside className="hidden w-56 shrink-0 md:block">
               <FadeSection delay="var(--motion-duration-slow)">
                 <ScheduleMiniCalendar className="sticky top-20" lessonDays={lessonDays} isLoading={isLoading} />
               </FadeSection>

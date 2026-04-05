@@ -97,6 +97,7 @@
     "currentProgress": "Прогресс текущего занятия"
   },
   "table": {
+    "rowNumber": "№",
     "noLessons": "Занятия не запланированы"
   },
   "mobile": {
@@ -106,6 +107,7 @@
     "current": "Сейчас",
     "next": "Далее"
   },
+  "dayComplete": "Все занятия на сегодня завершены!",
   "summary": {
     "noMoreToday": "Сегодня больше нет занятий",
     "progress": "пройдено"

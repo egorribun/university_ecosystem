@@ -33,6 +33,7 @@ type ScheduleHeaderProps = Pick<
   | "timeLeftText"
   | "currentProgress"
   | "todayLessons"
+  | "nowTick"
 > & {
   isExporting?: boolean
   onOpenSettings?: () => void
@@ -48,10 +49,10 @@ function ProgressRing({ progress, size = 80, stroke = 6 }: { progress: number; s
   return (
     <svg width={size} height={size} className="sched-progress-ring" aria-hidden="true">
       <circle className="sched-progress-ring-bg" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke} />
+      {/* THEME-70-02: removed inline stroke — CSS class is single source of truth */}
       <circle
         className="sched-progress-ring-fill"
         cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
-        stroke="var(--color-brand)"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
       />
@@ -66,7 +67,7 @@ function useDayStats(lessons: Lesson[]) {
     const totalMinutes = lessons.reduce((acc, l) => {
       const s = parseMinutes(l.start_time)
       const e = parseMinutes(l.end_time)
-      return acc + (s != null && e != null ? e - s : 90)
+      return acc + (s != null && e != null && e > s ? e - s : 90)
     }, 0)
     const hours = Math.floor(totalMinutes / 60)
     const mins = totalMinutes % 60
@@ -87,6 +88,7 @@ export function ScheduleHeader({
   timeLeftText,
   currentProgress,
   todayLessons,
+  nowTick,
 
   isExporting,
   onOpenSettings,
@@ -107,13 +109,13 @@ export function ScheduleHeader({
     return parseMinutes(lesson.start_time)
   }, [currentLesson, nextLesson])
 
+  // FIX-70-03: use nowTick from time ticker instead of impure new Date() inside useMemo
+  const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
   const showCountdown = useMemo(() => {
     if (nextStartMinutes == null) return false
-    const now = new Date()
-    const nowMin = now.getHours() * 60 + now.getMinutes()
-    const diff = nextStartMinutes - nowMin
+    const diff = nextStartMinutes - minutesNow
     return diff > 0 && diff <= 30
-  }, [nextStartMinutes])
+  }, [nextStartMinutes, minutesNow])
 
   return (
     <header className="relative mb-6 mt-0">
@@ -148,14 +150,11 @@ export function ScheduleHeader({
         )}
       </FadeSection>
 
-      {/* ── Toolbar (week nav + view mode + actions) ────── */}
+      {/* ── Controls bar — week nav + parity + actions in one row (wraps on mobile) ── */}
       <FadeSection delay="var(--motion-duration-rapid)" className="mb-6">
-        <ScheduleToolbar isExporting={isExporting} onOpenSettings={onOpenSettings} gridRef={gridRef} />
-      </FadeSection>
-
-      {/* ── Week parity selector ────────────────────────── */}
-      <FadeSection delay="var(--motion-duration-rapid)" className="mb-6">
-        <WeekSelector currentParity={currentParity} setCurrentParity={setCurrentParity} />
+        <ScheduleToolbar isExporting={isExporting} onOpenSettings={onOpenSettings} gridRef={gridRef}>
+          <WeekSelector currentParity={currentParity} setCurrentParity={setCurrentParity} />
+        </ScheduleToolbar>
       </FadeSection>
 
       {/* ── Current / Next lesson status card (Wave 66 redesign) ── */}

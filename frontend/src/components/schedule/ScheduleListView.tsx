@@ -165,7 +165,7 @@ export function ScheduleListView({
                   type="button"
                   onClick={() => handleAdd(day)}
                   aria-label={t("schedule:actions.addLesson", { day: label, defaultValue: `Add lesson for ${label}` })}
-                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-surface/(--opacity-strong) text-brand transition-all duration-fast hover:bg-brand hover:text-white hover:shadow-sm focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-surface/(--opacity-strong) text-brand transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] hover:shadow-sm focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                 >
                   <span className="text-sm font-bold" aria-hidden="true">+</span>
                 </button>

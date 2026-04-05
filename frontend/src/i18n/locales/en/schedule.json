@@ -97,6 +97,7 @@
     "currentProgress": "Progress of the current lesson"
   },
   "table": {
+    "rowNumber": "№",
     "noLessons": "No lessons scheduled"
   },
   "mobile": {
@@ -106,6 +107,7 @@
     "current": "Now",
     "next": "Next"
   },
+  "dayComplete": "All lessons for today are complete!",
   "summary": {
     "noMoreToday": "No more lessons today",
     "progress": "completed"

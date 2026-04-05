@@ -299,11 +299,13 @@
 /* FIX-68-11: Glow breathes faster as lesson nears end (urgency feel).
    --sched-progress CSS var (0-100) set by React controls animation speed.
    At 0% progress: 2.5s period (relaxed). At 90%+: 1.2s (urgent). */
-.sched-current-glow {
+/* THEME-70-01: removed !important — double-class specificity wins over accent classes */
+.sched-current-glow.sched-current-glow {
   --_glow-speed: max(1.2s, calc(2.5s - var(--sched-progress, 0) * 0.014s));
   animation: sched-pulse-glow var(--_glow-speed) ease-in-out infinite;
-  background: var(--sched-current-bg) !important;
-  border-color: var(--sched-current-border) !important;
+  background: var(--sched-current-bg);
+  border-color: var(--sched-current-border);
+  will-change: box-shadow; /* PERF-70-08: compositor hint for continuous glow animation */
 }
 
 /* FIX-69-08: radial bloom behind current lesson card for extra emphasis */
@@ -383,14 +385,16 @@
   }
 }
 
+/* PERF-70-03: cap stagger at 300ms to prevent 1s+ animation pile-up on large schedules */
 .sched-card-item {
   animation: sched-card-enter 0.35s var(--ease-premium, ease) both;
-  animation-delay: calc(var(--sched-stagger-i, 0) * 50ms);
+  animation-delay: min(calc(var(--sched-stagger-i, 0) * 50ms), 300ms);
+  will-change: opacity, transform; /* PERF-70-08: compositor hint for entrance animation */
 }
 
 .sched-column-item {
   animation: sched-column-enter 0.4s var(--ease-premium, ease) both;
-  animation-delay: calc(var(--sched-col-i, 0) * 70ms);
+  animation-delay: min(calc(var(--sched-col-i, 0) * 70ms), 300ms);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -506,6 +510,29 @@
   background: transparent;
 }
 
+/* RESP-70-02: right-edge gradient fade when grid overflows horizontally */
+.schedule-grid-container {
+  position: relative;
+}
+.schedule-grid-container::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  background: linear-gradient(to left, var(--sched-card-bg), transparent);
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+/* Only show when content overflows — JS sets data-overflows via ResizeObserver or scroll detection.
+   Fallback: always hidden unless explicitly toggled. Pure CSS can't detect overflow. */
+.schedule-grid-container[data-overflows]::after {
+  opacity: 1;
+}
+
 /* Sticky row-number column */
 .sched-sticky-col {
   position: sticky;
@@ -532,6 +559,8 @@
   padding: 0.25rem;
   min-width: 0;
   overflow: visible;
+  content-visibility: auto; /* THEME-70-04: skip rendering off-screen cells */
+  contain-intrinsic-size: auto 6rem;
 }
 
 /* ── Today header ──────── */
@@ -1006,8 +1035,10 @@
   fill: none;
 }
 
+/* THEME-70-02: stroke defined here (single source of truth, removed inline attribute) */
 .sched-progress-ring-fill {
   fill: none;
+  stroke: var(--color-brand);
   stroke-linecap: round;
   transition: stroke-dashoffset 0.6s var(--ease-premium, ease);
 }
@@ -1165,9 +1196,10 @@
   transform: scale(0.95);
 }
 
+/* FIX-70-CAL: use on-accent token instead of hardcoded white */
 .sched-cal-day[data-today="true"] {
   background: var(--color-brand);
-  color: white;
+  color: var(--sched-on-accent);
   font-weight: 700;
   box-shadow: 0 0 8px color-mix(in srgb, var(--color-brand) 40%, transparent);
 }
@@ -1348,12 +1380,13 @@
   100% { background-position: 200% 0; }
 }
 
+/* FIX-70-SKEL: replaced hardcoded #f0f0f0 with color-mix token */
 .sched-skeleton-shimmer {
   background: linear-gradient(
     90deg,
-    var(--bg-matte-list, #f0f0f0) 25%,
+    color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-200)) 25%,
     color-mix(in srgb, var(--bg-surface) 60%, transparent) 50%,
-    var(--bg-matte-list, #f0f0f0) 75%
+    color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-200)) 75%
   );
   background-size: 200% 100%;
   animation: sched-shimmer 1.5s ease-in-out infinite;
@@ -1433,6 +1466,7 @@
   .sched-current-glow {
     animation: none;
     box-shadow: 0 0 0 2px var(--sched-current-border), var(--sched-card-inner-glow);
+    will-change: auto;
   }
 
   .sched-progress-fill {
@@ -1449,6 +1483,7 @@
     opacity: 1;
     transform: none;
     filter: none;
+    will-change: auto; /* PERF-70-08: release compositor layer when not animating */
   }
 
   .sched-card-matte {

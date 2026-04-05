@@ -11,18 +11,20 @@ import { cn } from "@/utils/cn"
 import { type Lesson, getTimeStr, getEndTimeStr } from "./scheduleUtils"
 import { parseBuildingRoom } from "@/utils/buildingIcons"
 
-/* ── Lesson-type → CSS accent class mapping ─────────── */
-const ACCENT_MAP: Record<string, string> = {
-  lecture: "sched-accent-lecture",
-  practice: "sched-accent-practice",
-  lab: "sched-accent-lab",
-  project: "sched-accent-project",
-}
+/* ── Lesson-type → CSS accent class mapping (FIX-70-02: Map for O(1) direct lookup) ── */
+const ACCENT_MAP = new Map<string, string>([
+  ["lecture", "sched-accent-lecture"],
+  ["practice", "sched-accent-practice"],
+  ["lab", "sched-accent-lab"],
+  ["project", "sched-accent-project"],
+])
 
 function getAccentClass(lessonType?: string | null): string {
   if (!lessonType) return "sched-accent-default"
   const key = lessonType.toLowerCase()
-  for (const [k, cls] of Object.entries(ACCENT_MAP)) {
+  const direct = ACCENT_MAP.get(key)
+  if (direct) return direct
+  for (const [k, cls] of ACCENT_MAP) {
     if (key.includes(k)) return cls
   }
   return "sched-accent-default"
@@ -155,7 +157,7 @@ export function LessonCard({
           {/* Note indicator */}
           {hasNote && (
             <span title={t("schedule:notes.hasNote", { defaultValue: "Has note" })}>
-              <NoteIcon size={10} className="shrink-0 text-amber-500 opacity-60" aria-hidden="true" />
+              <NoteIcon size={10} className="shrink-0 text-[var(--lt-lab-accent)] opacity-60" aria-hidden="true" />
             </span>
           )}
         </div>
@@ -178,7 +180,7 @@ export function LessonCard({
             e.stopPropagation()
             onDelete()
           }}
-          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded bg-surface/(--opacity-strong) text-text-secondary opacity-0 shadow-sm transition-all duration-fast hover:bg-error hover:text-white group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand"
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded bg-surface/(--opacity-strong) text-text-secondary opacity-0 shadow-sm transition-all duration-fast hover:bg-error hover:text-[var(--sched-on-accent)] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand"
         >
           <DeleteIcon size={11} aria-hidden="true" />
         </button>
