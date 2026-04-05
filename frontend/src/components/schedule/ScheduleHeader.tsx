@@ -5,16 +5,20 @@ import {
   Clock as ClockIcon,
   MapPin as RoomIcon,
   User as TeacherIcon,
+  BookOpen,
 } from "lucide-react"
 import { Badge, Select } from "@/components/ui"
 import FadeSection from "@/components/motion/FadeSection"
 import { WeekSelector } from "@/components/schedule/WeekSelector"
 import { ScheduleToolbar } from "@/components/schedule/ScheduleToolbar"
+import { FlipCountdown } from "@/components/schedule/FlipCountdown"
 import { cn } from "@/utils/cn"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import { getTimeStr, getEndTimeStr } from "./scheduleUtils"
+import { getTimeStr, getEndTimeStr, parseMinutes } from "./scheduleUtils"
+import { uniqueBuildings } from "@/utils/buildingIcons"
+import type { Lesson } from "./scheduleUtils"
 
 type ScheduleHeaderProps = Pick<
   ReturnType<typeof useScheduleData>,
@@ -28,10 +32,48 @@ type ScheduleHeaderProps = Pick<
   | "nextLesson"
   | "timeLeftText"
   | "currentProgress"
+  | "todayLessons"
 > & {
   onExportIcs?: () => void
   isExporting?: boolean
   onOpenSettings?: () => void
+  /** Ref for grid element (export) */
+  gridRef?: React.RefObject<HTMLElement | null>
+}
+
+/** SVG Circular Progress Ring */
+function ProgressRing({ progress, size = 80, stroke = 6 }: { progress: number; size?: number; stroke?: number }) {
+  const radius = (size - stroke) / 2
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (progress / 100) * circumference
+  return (
+    <svg width={size} height={size} className="sched-progress-ring" aria-hidden="true">
+      <circle className="sched-progress-ring-bg" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke} />
+      <circle
+        className="sched-progress-ring-fill"
+        cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
+        stroke="var(--color-brand)"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+      />
+    </svg>
+  )
+}
+
+/** Compute day statistics from lessons */
+function useDayStats(lessons: Lesson[]) {
+  return useMemo(() => {
+    const totalLessons = lessons.length
+    const totalMinutes = lessons.reduce((acc, l) => {
+      const s = parseMinutes(l.start_time)
+      const e = parseMinutes(l.end_time)
+      return acc + (s != null && e != null ? e - s : 90)
+    }, 0)
+    const hours = Math.floor(totalMinutes / 60)
+    const mins = totalMinutes % 60
+    const buildings = uniqueBuildings(lessons)
+    return { totalLessons, hours, mins, buildings }
+  }, [lessons])
 }
 
 export function ScheduleHeader({
@@ -45,9 +87,11 @@ export function ScheduleHeader({
   nextLesson,
   timeLeftText,
   currentProgress,
+  todayLessons,
   onExportIcs,
   isExporting,
   onOpenSettings,
+  gridRef,
 }: ScheduleHeaderProps) {
   const { t } = useTranslation(["schedule", "common"])
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
@@ -55,6 +99,14 @@ export function ScheduleHeader({
     () => groups.find((g) => g.id === selectedGroup)?.name || "",
     [groups, selectedGroup],
   )
+  const dayStats = useDayStats(todayLessons ?? [])
+
+  // Flip countdown: show when next lesson starts in < 30 min
+  const nextStartMinutes = useMemo(() => {
+    const lesson = currentLesson ? null : nextLesson
+    if (!lesson) return null
+    return parseMinutes(lesson.start_time)
+  }, [currentLesson, nextLesson])
 
   return (
     <header className="relative mb-6 mt-0">
@@ -91,7 +143,7 @@ export function ScheduleHeader({
 
       {/* ── Toolbar (week nav + view mode + actions) ────── */}
       <FadeSection delay="var(--motion-duration-rapid)" className="mb-6">
-        <ScheduleToolbar onExportIcs={onExportIcs} isExporting={isExporting} onOpenSettings={onOpenSettings} />
+        <ScheduleToolbar onExportIcs={onExportIcs} isExporting={isExporting} onOpenSettings={onOpenSettings} gridRef={gridRef} />
       </FadeSection>
 
       {/* ── Week parity selector ────────────────────────── */}
@@ -99,60 +151,70 @@ export function ScheduleHeader({
         <WeekSelector currentParity={currentParity} setCurrentParity={setCurrentParity} />
       </FadeSection>
 
-      {/* ── Current / Next lesson status card ───────────── */}
+      {/* ── Current / Next lesson status card (Wave 66 redesign) ── */}
       <FadeSection
         delay="var(--motion-duration-fast)"
         className={cn("no-print mb-6", !isMobile && "max-w-4xl")}
       >
         {currentLesson ? (
           <div className="sched-current-glow glass-noise relative isolate overflow-hidden rounded-xl border border-glass-border bg-surface/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
-            <div className="relative z-base">
-              <div className="mb-3 flex flex-wrap items-center gap-3">
-                <Badge size="sm" tone="primary" className="sched-badge-matte font-semibold">
-                  {t("schedule:chips.current")}
-                </Badge>
-                <h3 className="text-lg font-extrabold tracking-tight">{currentLesson.subject}</h3>
+            <div className="relative z-base flex items-center gap-5">
+              {/* Circular progress ring */}
+              <div className="relative shrink-0">
+                <ProgressRing progress={currentProgress} size={isMobile ? 64 : 80} />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-lg font-extrabold text-brand tabular-nums">
+                    {Math.max(0, 100 - currentProgress)}%
+                  </span>
+                </div>
               </div>
-              <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-                {currentLesson.teacher && (
-                  <span className="flex items-center gap-1">
-                    <TeacherIcon size={14} className="text-brand" aria-hidden="true" />
-                    {currentLesson.teacher}
-                  </span>
-                )}
-                {currentLesson.room && (
-                  <span className="flex items-center gap-1">
-                    <RoomIcon size={14} className="text-brand" aria-hidden="true" />
-                    {currentLesson.room}
-                  </span>
-                )}
-                <span className="flex items-center gap-1">
-                  <ClockIcon size={14} className="text-brand" aria-hidden="true" />
-                  {`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
-                </span>
-                {timeLeftText && (
-                  <Badge size="xs" variant="outline" aria-live="polite">
-                    {timeLeftText}
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Badge size="sm" tone="primary" className="sched-badge-matte font-semibold">
+                    {t("schedule:chips.current")}
                   </Badge>
-                )}
+                  {timeLeftText && (
+                    <Badge size="xs" variant="outline" aria-live="polite">
+                      {timeLeftText}
+                    </Badge>
+                  )}
+                </div>
+                <h3 className="mb-1.5 text-lg font-extrabold tracking-tight">{currentLesson.subject}</h3>
+                <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
+                  {currentLesson.teacher && (
+                    <span className="flex items-center gap-1">
+                      <TeacherIcon size={14} className="text-brand" aria-hidden="true" />
+                      {currentLesson.teacher}
+                    </span>
+                  )}
+                  {currentLesson.room && (
+                    <span className="flex items-center gap-1">
+                      <RoomIcon size={14} className="text-brand" aria-hidden="true" />
+                      {currentLesson.room}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <ClockIcon size={14} className="text-brand" aria-hidden="true" />
+                    {`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
+                  </span>
+                </div>
               </div>
-              {/* ── Progress bar with glowing head ──────── */}
-              <div className="sched-progress-bar h-2.5 w-full rounded-full">
-                <div
-                  className="sched-progress-fill"
-                  style={{ width: `${currentProgress}%` }}
-                  role="progressbar"
-                  aria-valuenow={currentProgress}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={`${currentProgress}% ${t("schedule:summary.progress", { defaultValue: "" })}`}
-                />
-              </div>
+            </div>
+            {/* Progress bar */}
+            <div className="mt-4 sched-progress-bar h-2 w-full rounded-full">
+              <div
+                className="sched-progress-fill"
+                style={{ width: `${currentProgress}%` }}
+                role="progressbar"
+                aria-valuenow={currentProgress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              />
             </div>
           </div>
         ) : nextLesson ? (
           <div className="glass-noise relative overflow-hidden rounded-xl border border-glass-border bg-surface/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
-            <div className="relative z-base flex flex-wrap items-center gap-3">
+            <div className="relative z-base flex flex-wrap items-center gap-4">
               <Badge size="sm" variant="outline" tone="primary" className="sched-badge-matte font-semibold">
                 {t("schedule:chips.next")}
               </Badge>
@@ -162,11 +224,47 @@ export function ScheduleHeader({
                   {timeLeftText}
                 </Badge>
               )}
+              {/* Flip countdown when < 30 min until next lesson */}
+              {nextStartMinutes != null && (() => {
+                const now = new Date()
+                const nowMin = now.getHours() * 60 + now.getMinutes()
+                const diff = nextStartMinutes - nowMin
+                return diff > 0 && diff <= 30 ? (
+                  <FlipCountdown targetMinutes={nextStartMinutes} className="ml-auto" />
+                ) : null
+              })()}
             </div>
           </div>
         ) : (
-          <div className="rounded-xl border border-glass-border/(--opacity-soft) bg-surface/(--opacity-dim) p-5 text-center text-sm text-text-secondary">
-            {t("schedule:summary.noMoreToday")}
+          /* Day stats when no more lessons */
+          <div className="rounded-xl border border-glass-border/(--opacity-soft) bg-surface/(--opacity-dim) p-5">
+            {dayStats.totalLessons > 0 ? (
+              <div className="flex items-center justify-center gap-4 text-sm text-text-secondary">
+                <span className="flex items-center gap-1.5">
+                  <BookOpen size={14} className="text-brand" aria-hidden="true" />
+                  <span className="font-semibold text-text-primary">{dayStats.totalLessons}</span>
+                  {t("schedule:stats.lessons", { defaultValue: "пар" })}
+                </span>
+                <span className="text-text-muted-subtle">·</span>
+                <span>
+                  <span className="font-semibold text-text-primary">{dayStats.hours}</span>ч
+                  {dayStats.mins > 0 && <> <span className="font-semibold text-text-primary">{dayStats.mins}</span>мин</>}
+                </span>
+                {dayStats.buildings.length > 0 && (
+                  <>
+                    <span className="text-text-muted-subtle">·</span>
+                    <span>
+                      {t("schedule:stats.buildings", { defaultValue: "корпуса" })}{" "}
+                      <span className="font-semibold text-text-primary">{dayStats.buildings.join(", ")}</span>
+                    </span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="text-center text-sm text-text-secondary">
+                {t("schedule:summary.noMoreToday")}
+              </p>
+            )}
           </div>
         )}
       </FadeSection>

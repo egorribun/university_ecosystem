@@ -22,7 +22,6 @@ type ScheduleListViewProps = Pick<
   | "refresh"
   | "user"
   | "conflictedIds"
-  | "lessonTypeLabels"
   | "currentLesson"
 > & {
   isOnline: boolean
@@ -80,6 +79,18 @@ export function ScheduleListView({
     [setAddDay, openDialog],
   )
 
+  // Pre-compute cumulative lesson counts per day for stable stagger index
+  // FIX-65-LINT: moved before early returns to satisfy rules-of-hooks
+  const dayCumulativeCounts = useMemo(() => {
+    const counts: number[] = []
+    let total = 0
+    for (const day of weekdayBackend) {
+      counts.push(total)
+      total += (lessonsByDay.get(day)?.length ?? 0)
+    }
+    return counts
+  }, [weekdayBackend, lessonsByDay])
+
   if (!isOnline && rawSchedule.length === 0) {
     return (
       <div className="flex items-center justify-center px-6 py-16">
@@ -105,19 +116,8 @@ export function ScheduleListView({
     )
   }
 
-  // Pre-compute cumulative lesson counts per day for stable stagger index
-  const dayCumulativeCounts = useMemo(() => {
-    const counts: number[] = []
-    let total = 0
-    for (const day of weekdayBackend) {
-      counts.push(total)
-      total += (lessonsByDay.get(day)?.length ?? 0)
-    }
-    return counts
-  }, [weekdayBackend, lessonsByDay])
-
   return (
-    <div className="schedule-list-container mx-auto w-full max-w-4xl space-y-6">
+    <div className="schedule-list-container mx-auto w-full max-w-5xl space-y-6">
       {weekdayBackend.map((day, dayIdx) => {
         const label = weekdayLabels[dayIdx] ?? day
         const lessons = lessonsByDay.get(day) ?? []

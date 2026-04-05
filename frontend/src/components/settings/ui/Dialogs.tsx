@@ -2,7 +2,9 @@ import React, { useEffect } from "react"
 import ReactDOM from "react-dom"
 import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
+// A11Y-65-01: Added useFocusTrap — traps Tab inside dialog, Escape calls onClose
 export function Dialog({
   open,
   onClose,
@@ -26,6 +28,11 @@ export function Dialog({
       document.body.style.overflow = ""
     }
   }, [open])
+
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    onDeactivate: onClose,
+  })
 
   if (!open) return null
 
@@ -54,6 +61,7 @@ export function Dialog({
         onClick={onClose}
       />
       <motion.div
+        ref={dialogRef}
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}

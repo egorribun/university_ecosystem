@@ -39,10 +39,10 @@
     --fs-sched-card-title: clamp(0.9375rem, 1.6vw, 1.125rem);
     --fs-sched-time: clamp(0.6875rem, 0.8vw, 0.8125rem);
 
-    /* ── Orbs / Gradients ──────────────────────────────── */
-    --sched-orb-1: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
-    --sched-orb-2: color-mix(in srgb, var(--color-blue-400) 8%, transparent);
-    --sched-orb-3: color-mix(in srgb, var(--color-indigo-400) 6%, transparent);
+    /* ── Orbs / Gradients (FIX-65-01: increased light opacity for visibility parity with dark) ── */
+    --sched-orb-1: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
+    --sched-orb-2: color-mix(in srgb, var(--color-blue-400) 12%, transparent);
+    --sched-orb-3: color-mix(in srgb, var(--color-indigo-400) 9%, transparent);
 
     --grad-sched-conic: conic-gradient(
       from 120deg at 50% 50%,
@@ -71,7 +71,7 @@
     --sched-card-shadow-hover:
       0 2px 6px color-mix(in srgb, black 8%, transparent),
       0 8px 24px color-mix(in srgb, black 6%, transparent);
-    --sched-card-inner-glow: inset 0 1px 0 rgb(255 255 255 / 0.6);
+    --sched-card-inner-glow: inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
 
     /* ── Lesson type — TOP accent + tinted background ──── */
     --lt-lecture-accent: var(--color-blue-500);
@@ -111,6 +111,7 @@
     /* ── Toolbar / Segment control ─────────────────────── */
     --sched-segment-bg: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
     --sched-segment-active: var(--color-brand);
+    --sched-segment-active-text: white;
 
     /* ── Grid ────────────────────────────────────────────── */
     --sched-grid-col-min: 176px;
@@ -148,7 +149,7 @@
     --sched-card-shadow-hover:
       0 2px 8px color-mix(in srgb, black 20%, transparent),
       0 8px 28px color-mix(in srgb, black 15%, transparent);
-    --sched-card-inner-glow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+    --sched-card-inner-glow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
 
     --lt-lecture-accent: var(--color-blue-400);
     --lt-practice-accent: var(--color-emerald-400);
@@ -193,6 +194,8 @@
    Replaces old border-left-only system.
    ═══════════════════════════════════════════════════════ */
 
+/* FIX-65-CLIP: overflow:clip clips ::before accent to border-radius
+   without creating a scroll container that hides card content */
 .sched-card-matte {
   position: relative;
   background: var(--sched-card-bg);
@@ -203,7 +206,7 @@
     box-shadow 0.25s var(--ease-premium, ease),
     border-color 0.25s var(--ease-premium, ease),
     transform 0.25s var(--ease-premium, ease);
-  overflow: hidden;
+  overflow: clip;
 }
 
 /* Top accent gradient line */
@@ -350,24 +353,25 @@
    MATTE BADGE (volumetric, with inner highlight)
    ═══════════════════════════════════════════════════════ */
 
+/* FIX-65-02: replaced hardcoded rgb/hex with color-mix tokens */
 .sched-badge-matte {
-  background: var(--bg-surface, #fff);
-  color: var(--text-primary, #1a1a1a);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   box-shadow:
-    0 1px 3px rgb(0 0 0 / 0.1),
-    0 0 0 1px var(--glass-border, rgb(0 0 0 / 0.06)),
-    inset 0 1px 0 rgb(255 255 255 / 0.6);
+    0 1px 3px color-mix(in srgb, black 10%, transparent),
+    0 0 0 1px var(--glass-border),
+    inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
   transition: box-shadow 0.2s, transform 0.2s;
 }
 
 .dark .sched-badge-matte {
   box-shadow:
-    0 1px 4px rgb(0 0 0 / 0.35),
-    0 0 0 1px rgb(255 255 255 / 0.06),
-    inset 0 1px 0 rgb(255 255 255 / 0.08);
+    0 1px 4px color-mix(in srgb, black 35%, transparent),
+    0 0 0 1px color-mix(in srgb, white 6%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
 }
 
-/* Type badge — solid color, compact */
+/* Type badge — solid color, compact (FIX-65-02: color-mix shadows) */
 .sched-type-badge {
   font-weight: 600;
   font-size: 0.625rem;
@@ -377,15 +381,15 @@
   color: white;
   white-space: nowrap;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.2),
-    0 1px 2px rgb(0 0 0 / 0.1);
+    inset 0 1px 0 color-mix(in srgb, white 20%, transparent),
+    0 1px 2px color-mix(in srgb, black 10%, transparent);
 }
 
-/* Time badge — subtle matte pill, compact */
+/* Time badge — subtle matte pill, compact (FIX-65-02: removed hex fallback) */
 .sched-time-badge {
-  font-size: 0.625rem;
+  font-size: var(--fs-sched-time);
   font-weight: 500;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
   background: color-mix(in srgb, var(--color-slate-200) 35%, transparent);
   padding: 0.125rem 0.375rem;
   border-radius: 0.3125rem;
@@ -399,20 +403,21 @@
   background: color-mix(in srgb, var(--color-slate-700) 35%, transparent);
 }
 
+/* FIX-65-02: removed hex fallbacks, wired --sched-segment-active token */
 .sched-segment-btn {
   position: relative;
   padding: 0.375rem 0.75rem;
   border-radius: var(--radius-lg, 0.5rem);
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
   transition: color var(--motion-duration-rapid, 0.15s);
   cursor: pointer;
   user-select: none;
 }
 
 .sched-segment-btn[data-active="true"] {
-  color: white;
+  color: var(--sched-segment-active-text);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -469,11 +474,11 @@
   scroll-snap-align: start;
 }
 
-/* Grid cell — prevent overflow, tight padding */
+/* Grid cell — tight padding, allow content to size naturally (FIX-65-CLIP) */
 .sched-grid-cell {
   padding: 0.25rem;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* ── Today header ──────── */
@@ -486,11 +491,12 @@
    KEYBOARD NAV — CELL FOCUS RING
    ═══════════════════════════════════════════════════════ */
 
+/* FIX-65-02: removed #2563eb fallback — --color-brand always set in .schedule-theme */
 [id^="sched-cell-"]:focus-visible {
   outline: none;
   box-shadow:
-    inset 0 0 0 2px var(--color-brand, #2563eb),
-    inset 0 0 8px color-mix(in srgb, var(--color-brand, #2563eb) 15%, transparent);
+    inset 0 0 0 2px var(--color-brand),
+    inset 0 0 8px color-mix(in srgb, var(--color-brand) 15%, transparent);
   border-radius: var(--radius-lg, 0.5rem);
   z-index: 1;
 }
@@ -519,6 +525,7 @@
    BREAK INDICATOR — compact centered pill
    ═══════════════════════════════════════════════════════ */
 
+/* FIX-65-02: color-mix inner glow */
 .sched-break-pill {
   font-size: 0.625rem;
   font-weight: 600;
@@ -527,14 +534,14 @@
   background: color-mix(in srgb, var(--color-amber-500) 10%, var(--sched-card-bg));
   color: var(--color-amber-600);
   border: 1px solid color-mix(in srgb, var(--color-amber-500) 20%, transparent);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
 }
 
 .dark .sched-break-pill {
   background: color-mix(in srgb, var(--color-amber-400) 12%, var(--sched-card-bg));
   color: var(--color-amber-400);
   border-color: color-mix(in srgb, var(--color-amber-400) 18%, transparent);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -624,23 +631,24 @@
    TOOLBAR — GLASS INSET (iOS style)
    ═══════════════════════════════════════════════════════ */
 
+/* FIX-65-02: removed #e2e8f0 fallback, replaced rgb with color-mix */
 .sched-segment {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-xl, 0.75rem);
   background: var(--sched-segment-bg);
-  border: 1px solid var(--glass-border, #e2e8f0);
+  border: 1px solid var(--glass-border);
   box-shadow:
-    inset 0 1px 3px rgb(0 0 0 / 0.08),
-    0 1px 0 rgb(255 255 255 / 0.5);
+    inset 0 1px 3px color-mix(in srgb, black 8%, transparent),
+    0 1px 0 color-mix(in srgb, white 50%, transparent);
   backdrop-filter: blur(8px) saturate(1.2);
 }
 
 .dark .sched-segment {
   box-shadow:
-    inset 0 1px 4px rgb(0 0 0 / 0.3),
-    0 1px 0 rgb(255 255 255 / 0.04);
+    inset 0 1px 4px color-mix(in srgb, black 30%, transparent),
+    0 1px 0 color-mix(in srgb, white 4%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -663,6 +671,7 @@
   animation: sched-empty-float 4s ease-in-out infinite;
 }
 
+/* FIX-65-02: removed #2563eb fallback */
 .sched-empty-icon::before {
   content: "";
   position: absolute;
@@ -670,11 +679,20 @@
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--color-brand, #2563eb) 8%, transparent) 0%,
+    color-mix(in srgb, var(--color-brand) 8%, transparent) 0%,
     transparent 70%
   );
   animation: sched-empty-float 6s ease-in-out infinite reverse;
   pointer-events: none;
+}
+
+/* FIX-65-14: dark override for empty icon glow */
+.dark .sched-empty-icon::before {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-brand) 12%, transparent) 0%,
+    transparent 70%
+  );
 }
 
 .sched-empty-ring {
@@ -692,6 +710,256 @@
 .sched-orb-1 { background: var(--sched-orb-1); }
 .sched-orb-2 { background: var(--sched-orb-2); }
 .sched-orb-3 { background: var(--sched-orb-3); }
+
+/* ═══════════════════════════════════════════════════════
+   FLIP-CLOCK COUNTDOWN — Wave 66 (Idea #13)
+   CSS 3D card-flip digits for MM:SS countdown.
+   ═══════════════════════════════════════════════════════ */
+
+.sched-flip-countdown {
+  perspective: 400px;
+}
+
+.sched-flip-digit-group {
+  perspective: 200px;
+}
+
+.sched-flip-digit {
+  position: relative;
+  width: 2rem;
+  height: 3rem;
+  border-radius: var(--radius-lg, 0.5rem);
+  overflow: hidden;
+  background: var(--sched-card-bg);
+  border: 1px solid var(--sched-card-border);
+  box-shadow: var(--sched-card-shadow);
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.sched-flip-top,
+.sched-flip-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sched-flip-top {
+  top: 0;
+  border-bottom: 1px solid var(--sched-grid-border);
+}
+
+.sched-flip-top span {
+  transform: translateY(25%);
+}
+
+.sched-flip-bottom {
+  bottom: 0;
+}
+
+.sched-flip-bottom span {
+  transform: translateY(-25%);
+}
+
+/* Flap animations */
+.sched-flip-top-flap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--sched-card-bg);
+  border-bottom: 1px solid var(--sched-grid-border);
+  transform-origin: bottom;
+  animation: sched-flip-top-anim 0.5s ease-in forwards;
+  backface-visibility: hidden;
+  z-index: 2;
+}
+
+.sched-flip-top-flap span {
+  transform: translateY(25%);
+}
+
+.sched-flip-bottom-flap {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--sched-card-bg);
+  transform-origin: top;
+  animation: sched-flip-bottom-anim 0.5s ease-out 0.25s forwards;
+  backface-visibility: hidden;
+  z-index: 1;
+  transform: rotateX(90deg);
+}
+
+.sched-flip-bottom-flap span {
+  transform: translateY(-25%);
+}
+
+@keyframes sched-flip-top-anim {
+  from { transform: rotateX(0deg); }
+  to { transform: rotateX(-90deg); }
+}
+
+@keyframes sched-flip-bottom-anim {
+  from { transform: rotateX(90deg); }
+  to { transform: rotateX(0deg); }
+}
+
+.sched-flip-colon {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-brand);
+  animation: sched-colon-blink 1s step-end infinite;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes sched-colon-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ── Building badge — colored dot + letter ──────────── */
+.sched-building-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  box-shadow: 0 1px 2px color-mix(in srgb, black 15%, transparent);
+}
+
+/* ── Circular progress ring ────────────────────────── */
+.sched-progress-ring {
+  transform: rotate(-90deg);
+}
+
+.sched-progress-ring-bg {
+  stroke: var(--sched-progress-track);
+  fill: none;
+}
+
+.sched-progress-ring-fill {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s var(--ease-premium, ease);
+}
+
+/* ── Smart empty cell — window indicator ────────────── */
+.sched-window-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px dashed var(--sched-empty-border);
+  background: var(--sched-empty-bg);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  transition: all 0.2s var(--ease-premium, ease);
+  cursor: default;
+  text-align: center;
+  min-height: 4rem;
+  justify-content: center;
+}
+
+.sched-window-pill:hover {
+  border-color: color-mix(in srgb, var(--color-brand) 25%, var(--sched-empty-border));
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--sched-empty-bg));
+}
+
+.sched-window-pill svg {
+  opacity: 0.4;
+}
+
+/* ── Scroll-driven compact header — Wave 66 (Idea #20) ── */
+.sched-header-compact {
+  animation: sched-header-shrink linear;
+  animation-timeline: scroll();
+  animation-range: 0 200px;
+}
+
+@keyframes sched-header-shrink {
+  from {
+    padding-block: 1.5rem;
+    opacity: 1;
+  }
+  to {
+    padding-block: 0.5rem;
+    opacity: 0.85;
+  }
+}
+
+@supports not (animation-timeline: scroll()) {
+  .sched-header-compact {
+    animation: none;
+  }
+}
+
+/* ── Drag-and-drop — Wave 66 (Idea #18) ──────────────── */
+.sched-dragging {
+  opacity: 0.6;
+  transform: rotate(2deg) scale(1.03);
+  box-shadow:
+    0 8px 32px color-mix(in srgb, black 20%, transparent),
+    0 0 0 2px var(--color-brand);
+  z-index: 100;
+}
+
+.sched-drop-target {
+  outline: 2px dashed var(--color-brand);
+  outline-offset: 2px;
+  animation: sched-drop-pulse 1s ease-in-out infinite;
+}
+
+@keyframes sched-drop-pulse {
+  0%, 100% { outline-color: var(--color-brand); }
+  50% { outline-color: color-mix(in srgb, var(--color-brand) 40%, transparent); }
+}
+
+/* ── Export dropdown ──────────────────────────────────── */
+.sched-export-dropdown {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  min-width: 12rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-xl, 0.75rem);
+  z-index: var(--z-dropdown, 1000);
+}
+
+/* ═══════════════════════════════════════════════════════
+   FLUID TYPOGRAPHY WIRING (FIX-65-16)
+   Cards use these classes so tokens flow through CSS.
+   ═══════════════════════════════════════════════════════ */
+
+.sched-card-title {
+  font-size: var(--fs-sched-card-title);
+}
 
 /* ═══════════════════════════════════════════════════════
    DAY COLUMN CONTAINER QUERIES
@@ -818,6 +1086,55 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   @starting-style — NATIVE CSS OPEN TRANSITIONS (Phase 6)
+   Progressive enhancement: browsers without support ignore.
+   ═══════════════════════════════════════════════════════ */
+
+@starting-style {
+  .sched-slideover {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  .sched-card-matte {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   @supports FALLBACK — CONTAINER QUERIES (Phase 4)
+   Browsers without container query support get viewport
+   media query fallbacks instead.
+   ═══════════════════════════════════════════════════════ */
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 320px) {
+    .sched-card-title { font-size: 0.875rem; }
+    .sched-type-badge { font-size: 0.5625rem; padding: 0.125rem 0.375rem; }
+    .sched-time-badge { font-size: 0.5625rem; }
+  }
+
+  @media (max-width: 480px) {
+    .sched-list-day-header { padding: 0.5rem 0.75rem; }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   TABLET VIEWPORT — GRID ADJUSTMENTS (Phase 4)
+   ═══════════════════════════════════════════════════════ */
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .schedule-grid-container {
+    --sched-grid-col-min: 140px;
+  }
+
+  .sched-grid-cell {
+    padding: 0.1875rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
    PRINT STYLESHEET
    ═══════════════════════════════════════════════════════ */
 
@@ -833,7 +1150,8 @@
     color: black !important;
   }
 
-  .schedule-theme .aurora-mesh,
+  /* FIX-65-12: fixed selector .aurora-mesh → .sched-aurora-hero */
+  .schedule-theme .sched-aurora-hero,
   .schedule-theme [aria-hidden="true"]:not([role]),
   .schedule-theme .sched-current-glow,
   .schedule-theme .sched-progress-fill::after {
@@ -841,9 +1159,10 @@
     animation: none !important;
   }
 
+  /* FIX-65-11: replaced hardcoded #ddd with token */
   .sched-card-matte {
     box-shadow: none !important;
-    border: 1px solid #ddd !important;
+    border: 1px solid var(--sched-card-border, #ddd) !important;
     break-inside: avoid;
   }
 
@@ -944,6 +1263,34 @@
   }
 
   .sched-empty-cell {
+    transition: none;
+  }
+
+  /* Wave 66 animations — reduced motion */
+  .sched-flip-top-flap,
+  .sched-flip-bottom-flap {
+    animation: none;
+    transform: none;
+  }
+
+  .sched-flip-colon {
+    animation: none;
+    opacity: 1;
+  }
+
+  .sched-drop-target {
+    animation: none;
+  }
+
+  .sched-header-compact {
+    animation: none;
+  }
+
+  .sched-window-pill {
+    transition: none;
+  }
+
+  .sched-progress-ring-fill {
     transition: none;
   }
 }

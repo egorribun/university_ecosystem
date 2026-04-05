@@ -23,13 +23,12 @@ type ScheduleMobileViewProps = Pick<
   | "refresh"
   | "user"
   | "conflictedIds"
-  | "lessonTypeLabels"
   | "currentLesson"
 > & {
   isOnline: boolean
   onDeleteLesson: (id: string) => void
   getLessonTypeColor: (type?: string | null) => string
-  getLessonTypeLabel?: (val?: string | null) => string
+  getLessonTypeLabel: (val?: string | null) => string
 }
 
 export function ScheduleMobileView({
@@ -44,11 +43,10 @@ export function ScheduleMobileView({
   refresh,
   user,
   conflictedIds,
-  lessonTypeLabels,
   isOnline,
   onDeleteLesson,
   getLessonTypeColor,
-  getLessonTypeLabel: getLessonTypeLabelProp,
+  getLessonTypeLabel,
   currentLesson,
 }: ScheduleMobileViewProps) {
   const { t } = useTranslation(["schedule"])
@@ -63,13 +61,6 @@ export function ScheduleMobileView({
     onSwipeLeft: nextWeek,
     onSwipeRight: previousWeek,
   })
-
-  // Use prop if provided, otherwise compute from lessonTypeLabels map
-  const getLessonTypeLabelFallback = useCallback(
-    (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
-    [lessonTypeLabels],
-  )
-  const getLessonTypeLabel = getLessonTypeLabelProp ?? getLessonTypeLabelFallback
 
   const lessonsByDay = useMemo(() => {
     const map = new Map<string, Lesson[]>()
@@ -109,14 +100,17 @@ export function ScheduleMobileView({
 
   return (
     <div className="mt-2 flex w-full flex-col gap-4" {...swipeHandlers}>
-      {/* ── Day navigation chips ──────────────────────── */}
-      {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus managed via child tab buttons */}
-      <div
-        role="tablist"
-        aria-label={t("schedule:title.default")}
-        className="scrollbar-hide flex gap-2 overflow-x-auto px-1 pb-2"
-        onKeyDown={handleTabKeyDown}
-      >
+      {/* ── Day navigation chips (FIX-65-RESP-03: edge fade masks) ── */}
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-4 bg-gradient-to-r from-page to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-4 bg-gradient-to-l from-page to-transparent" />
+        {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus managed via child tab buttons */}
+        <div
+          role="tablist"
+          aria-label={t("schedule:title.default")}
+          className="scrollbar-hide flex gap-2 overflow-x-auto px-1 pb-2"
+          onKeyDown={handleTabKeyDown}
+        >
         {weekdayBackend.map((day, i) => {
           const count = lessonsByDay.get(day)?.length ?? 0
           const isToday = hasToday && i === todayIdx
@@ -155,6 +149,7 @@ export function ScheduleMobileView({
             </Badge>
           )
         })}
+        </div>
       </div>
 
       {/* ── Day content panels ────────────────────────── */}

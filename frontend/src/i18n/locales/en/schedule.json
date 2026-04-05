@@ -125,7 +125,9 @@
   },
   "empty": {
     "selectGroup": "Select a group to view schedule",
-    "noSchedule": "No schedule added yet"
+    "noSchedule": "No schedule added yet",
+    "allFiltered": "All lessons are hidden by current filters",
+    "resetFilters": "Reset filters"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -184,6 +186,57 @@
     "added": "Lesson added",
     "addError": "Couldn't add the lesson",
     "deleted": "Lesson removed",
-    "deleteError": "Couldn't remove the lesson"
+    "deleteError": "Couldn't remove the lesson",
+    "exportError": "Failed to export schedule"
+  },
+  "parity": {
+    "odd": "Odd week",
+    "even": "Even week"
+  },
+  "export": {
+    "ics": "iCalendar (.ics)",
+    "pdf": "PDF document",
+    "png": "Image (PNG)",
+    "googleCalendar": "Google Calendar"
+  },
+  "notes": {
+    "title": "Notes",
+    "placeholder": "Add a note for this lesson...",
+    "hasNote": "Has a note",
+    "charCount": "{{count}} / {{max}}"
+  },
+  "reminder": {
+    "title": "Upcoming lesson",
+    "enable": "Remind me",
+    "timing": "Remind before",
+    "off": "Off",
+    "min5": "5 min",
+    "min10": "10 min",
+    "min15": "15 min",
+    "min30": "30 min"
+  },
+  "stats": {
+    "lessons": "lessons",
+    "buildings": "buildings"
+  },
+  "window": {
+    "coffee": "Coffee break",
+    "study": "Time to study",
+    "long": "Long break"
+  },
+  "quickInfo": {
+    "timeUntil": "Starts in {{duration}}",
+    "buildingChange": "Move: {{from}} → {{to}} (~{{minutes}} min)",
+    "everyWeek": "Every week",
+    "oddOnly": "Odd weeks only",
+    "evenOnly": "Even weeks only"
+  },
+  "drag": {
+    "moved": "Lesson moved",
+    "undo": "Undo"
+  },
+  "offline": {
+    "badge": "Offline · data from {{time}}",
+    "synced": "Data synced"
   }
 }

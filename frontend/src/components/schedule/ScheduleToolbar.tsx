@@ -4,13 +4,14 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCcw,
-  Download,
   Settings2,
   LayoutGrid,
   CalendarDays,
   List,
+  Printer,
 } from "lucide-react"
 import { Button } from "@/components/ui"
+import { ExportDropdown } from "@/components/schedule/ExportDropdown"
 import { cn } from "@/utils/cn"
 import {
   useWeekOffset,
@@ -23,6 +24,8 @@ interface ScheduleToolbarProps {
   onExportIcs?: () => void
   onOpenSettings?: () => void
   isExporting?: boolean
+  /** Ref to the grid element for canvas-based export */
+  gridRef?: React.RefObject<HTMLElement | null>
 }
 
 const VIEW_MODES: { id: ScheduleViewMode; icon: typeof LayoutGrid; labelKey: string }[] = [
@@ -31,7 +34,7 @@ const VIEW_MODES: { id: ScheduleViewMode; icon: typeof LayoutGrid; labelKey: str
   { id: "list", icon: List, labelKey: "schedule:toolbar.list" },
 ]
 
-export function ScheduleToolbar({ onExportIcs, onOpenSettings, isExporting }: ScheduleToolbarProps) {
+export function ScheduleToolbar({ onExportIcs, onOpenSettings, isExporting, gridRef }: ScheduleToolbarProps) {
   const { t } = useTranslation(["schedule"])
   const weekOffset = useWeekOffset()
   const viewMode = useViewMode()
@@ -118,23 +121,22 @@ export function ScheduleToolbar({ onExportIcs, onOpenSettings, isExporting }: Sc
 
       {/* ── Action buttons ─────────────────────────────── */}
       <div className="ml-auto flex items-center gap-2">
-        {onExportIcs && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onExportIcs}
-            disabled={isExporting}
-            aria-label={t("schedule:toolbar.export")}
-            className="gap-1.5"
-          >
-            {isExporting ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden="true" />
-            ) : (
-              <Download size={15} aria-hidden="true" />
-            )}
-            <span className="hidden sm:inline">{t("schedule:toolbar.export")}</span>
-          </Button>
-        )}
+        {/* Export dropdown (Wave 66: multi-format) */}
+        <ExportDropdown
+          onExportIcs={onExportIcs}
+          isExporting={isExporting}
+          gridRef={gridRef}
+        />
+        {/* Print button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => window.print()}
+          aria-label={t("schedule:toolbar.print", { defaultValue: "Print schedule" })}
+          className="no-print"
+        >
+          <Printer size={15} aria-hidden="true" />
+        </Button>
         {onOpenSettings && (
           <Button
             variant="ghost"

@@ -40,7 +40,8 @@ export function ScheduleSettingsPanel({
     onDeactivate: handleClose,
   })
 
-  if (!open) return null
+  // FIX-65-03: match LessonSlideOver pattern — allow exit animation to play
+  if (!open && !isClosing) return null
 
   return (
     <>

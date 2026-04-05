@@ -1,258 +1,46 @@
+/**
+ * useScheduleData — Orchestrator hook for the Schedule page.
+ * Wave 65: Split into useScheduleConfig (i18n config) + useScheduleTime (ticker).
+ *
+ * Public API is UNCHANGED — all consumers still import `useScheduleData`
+ * and destructure the same fields.
+ */
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   type Lesson,
   type ScheduleGroup,
-  type WeekdayConfig,
-  type LessonTypeConfig,
   scheduleGroupsQueryKey,
   scheduleQueryKey,
-  minimalWeekdayFallback,
-  minimalLessonTypeFallback,
-  defaultLessonTypeColor,
   type ScheduleGroupsQueryKey,
   type ActiveScheduleQueryKey,
   type InactiveScheduleQueryKey,
-  parseMinutes,
   getTodayIdx,
   getTimeStr,
 } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
+import { useScheduleConfig } from "./useScheduleConfig"
+import { useScheduleTime } from "./useScheduleTime"
 
 const QUERY_STALE_TIME_MS = 60_000
 const QUERY_GC_TIME_MS = 5 * 60_000
-const TICKER_INTERVAL_MS = 30_000
 
 export function useScheduleData() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const { t } = useTranslation(["schedule", "common"])
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
-  const [nowTick, setNowTick] = useState(new Date())
 
-  // Update time ticker — only when minute changes to avoid unnecessary re-renders
-  useEffect(() => {
-    const id = setInterval(() => {
-      setNowTick((prev) => {
-        const now = new Date()
-        if (now.getMinutes() === prev.getMinutes() && now.getHours() === prev.getHours()) {
-          return prev // same minute — no state update, no re-render
-        }
-        return now
-      })
-    }, TICKER_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [])
+  // ── Config (i18n weekdays + lesson types) ──────────
+  const config = useScheduleConfig()
+  const {
+    weekdayBackend,
+    normalizeLessons,
+  } = config
 
-  const minutesNow = useMemo(() => nowTick.getHours() * 60 + nowTick.getMinutes(), [nowTick])
-
-  // ============================================================================
-  // CONFIGURATION (Weekdays & Lesson Types)
-  // ============================================================================
-
-  const weekdayConfigs = useMemo(() => {
-    const rawItems = t("schedule:weekdays.items", { returnObjects: true }) as unknown
-    const rawOrder = t("schedule:weekdays.order", { returnObjects: true }) as unknown
-    const items =
-      rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
-        ? (rawItems as Record<string, unknown>)
-        : {}
-    const fallbackById = new Map(minimalWeekdayFallback.map((item) => [item.id, item]))
-    const baseOrder =
-      Array.isArray(rawOrder) && rawOrder.length > 0
-        ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
-        : (Object.keys(items) as string[])
-
-    const configs: WeekdayConfig[] = []
-    const seen = new Set<string>()
-
-    const toConfig = (id: string, value?: unknown): WeekdayConfig => {
-      const fallback = fallbackById.get(id) ?? {
-        id,
-        backend: [id],
-        long: id,
-        short: id.slice(0, 3),
-      }
-      const entry =
-        value && typeof value === "object" && !Array.isArray(value)
-          ? (value as Record<string, unknown>)
-          : undefined
-      let backend: string[] = []
-      if (Array.isArray(entry?.backend)) {
-        backend = entry.backend.filter(
-          (item): item is string => typeof item === "string" && item.length > 0
-        )
-      } else if (typeof entry?.backend === "string" && entry.backend.length > 0) {
-        backend = [entry.backend]
-      }
-      if (backend.length === 0) backend = [...fallback.backend]
-      const long =
-        typeof entry?.long === "string" && entry.long.length > 0 ? entry.long : fallback.long
-      const short =
-        typeof entry?.short === "string" && entry.short.length > 0 ? entry.short : fallback.short
-      return { id, backend, long, short }
-    }
-
-    for (const id of baseOrder) {
-      seen.add(id)
-      configs.push(toConfig(id, items[id]))
-    }
-    for (const [id, value] of Object.entries(items)) {
-      if (seen.has(id)) continue
-      configs.push(toConfig(id, value))
-    }
-    if (configs.length === 0) return [...minimalWeekdayFallback]
-    return configs
-  }, [t])
-
-  const weekdayBackend = useMemo(
-    () => weekdayConfigs.map((config) => config.backend[0] ?? config.id),
-    [weekdayConfigs]
-  )
-  const weekdayLabels = useMemo(() => weekdayConfigs.map((config) => config.long), [weekdayConfigs])
-  const weekdayShort = useMemo(() => weekdayConfigs.map((config) => config.short), [weekdayConfigs])
-
-  const weekdayLabelMap = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const config of weekdayConfigs) {
-      map.set(config.id, config.long)
-      for (const backend of config.backend) {
-        map.set(backend, config.long)
-      }
-    }
-    return map
-  }, [weekdayConfigs])
-
-  const getDayLabel = useCallback(
-    (value: string) => weekdayLabelMap.get(value) ?? value,
-    [weekdayLabelMap]
-  )
-
-  const weekdayCanonicalMap = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const config of weekdayConfigs) {
-      const primary = config.backend[0] ?? config.id
-      map.set(config.id, primary)
-      for (const backend of config.backend) {
-        map.set(backend, primary)
-      }
-    }
-    return map
-  }, [weekdayConfigs])
-
-  const normalizeLessons = useCallback(
-    (lessons: Lesson[]) => {
-      let changed = false
-      const normalized = lessons.map((lesson) => {
-        if (!lesson || typeof lesson.weekday !== "string") return lesson
-        const canonical = weekdayCanonicalMap.get(lesson.weekday)
-        if (!canonical || canonical === lesson.weekday) return lesson
-        changed = true
-        return { ...lesson, weekday: canonical }
-      })
-      return changed ? normalized : lessons
-    },
-    [weekdayCanonicalMap]
-  )
-
-  const lessonTypeConfigs = useMemo(() => {
-    const rawItems = t("schedule:lessonTypes.items", { returnObjects: true }) as unknown
-    const rawOrder = t("schedule:lessonTypes.order", { returnObjects: true }) as unknown
-    const items =
-      rawItems && typeof rawItems === "object" && !Array.isArray(rawItems)
-        ? (rawItems as Record<string, unknown>)
-        : {}
-    const baseOrder =
-      Array.isArray(rawOrder) && rawOrder.length > 0
-        ? rawOrder.filter((id): id is string => typeof id === "string" && id.length > 0)
-        : (Object.keys(items) as string[])
-    const configs: LessonTypeConfig[] = []
-    const seen = new Set<string>()
-    const toConfig = (id: string, value?: unknown): LessonTypeConfig => {
-      const fallback = {
-        id,
-        backend: [id],
-        label: id,
-        color: defaultLessonTypeColor,
-      }
-      const entry =
-        value && typeof value === "object" && !Array.isArray(value)
-          ? (value as Record<string, unknown>)
-          : undefined
-      let backend: string[] = []
-      if (Array.isArray(entry?.backend)) {
-        backend = entry.backend.filter(
-          (item): item is string => typeof item === "string" && item.length > 0
-        )
-      } else if (typeof entry?.backend === "string" && entry.backend.length > 0) {
-        backend = [entry.backend]
-      }
-      if (backend.length === 0) backend = [...fallback.backend]
-      const label =
-        typeof entry?.label === "string" && entry.label.length > 0 ? entry.label : fallback.label
-      const color =
-        typeof entry?.color === "string" && entry.color.length > 0 ? entry.color : fallback.color
-      return { id, backend, label, color }
-    }
-    for (const id of baseOrder) {
-      seen.add(id)
-      configs.push(toConfig(id, items[id]))
-    }
-    for (const [id, value] of Object.entries(items)) {
-      if (seen.has(id)) continue
-      configs.push(toConfig(id, value))
-    }
-    if (configs.length === 0) return [minimalLessonTypeFallback]
-    return configs
-  }, [t])
-
-  const lessonTypeById = useMemo(
-    () => new Map(lessonTypeConfigs.map((config) => [config.id, config])),
-    [lessonTypeConfigs]
-  )
-  const lessonTypeByBackend = useMemo(() => {
-    const map = new Map<string, LessonTypeConfig>()
-    for (const config of lessonTypeConfigs) {
-      for (const backend of config.backend) {
-        map.set(backend, config)
-      }
-    }
-    return map
-  }, [lessonTypeConfigs])
-
-  const lessonTypeLabels = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const config of lessonTypeConfigs) {
-      map.set(config.id, config.label)
-      for (const backend of config.backend) {
-        map.set(backend, config.label)
-      }
-    }
-    return map
-  }, [lessonTypeConfigs])
-
-  const lessonTypeOptions = useMemo(
-    () => lessonTypeConfigs.map((config) => ({ value: config.id, label: config.label })),
-    [lessonTypeConfigs]
-  )
-  const defaultLessonType = lessonTypeOptions[0]?.value ?? minimalLessonTypeFallback.id ?? ""
-
-  const getLessonTypeColor = useCallback(
-    (value?: string | null) => {
-      if (!value) return defaultLessonTypeColor
-      const match = lessonTypeById.get(value) ?? lessonTypeByBackend.get(value)
-      return match?.color ?? defaultLessonTypeColor
-    },
-    [lessonTypeByBackend, lessonTypeById]
-  )
-
-  // ============================================================================
-  // ============================================================================
-
+  // ── TanStack Query: Groups ─────────────────────────
   const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
     queryKey: scheduleGroupsQueryKey,
     queryFn: async () => {
@@ -266,6 +54,7 @@ export function useScheduleData() {
   })
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
 
+  // ── TanStack Query: Schedule ───────────────────────
   const activeGroupId = selectedGroup
   const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
 
@@ -296,34 +85,30 @@ export function useScheduleData() {
     [groupScheduleRaw, normalizeLessons]
   )
 
-  // Select group based on user role
+  // ── Auto-select group based on user role ───────────
   useEffect(() => {
     if (!user) return
     if (groups.length === 0) return
 
     if (user.role === "student" && user.group_id) {
-      // Check if user's group exists in available groups
       const userGroupExists = groups.some((g) => g.id === user.group_id)
       if (userGroupExists) {
         setSelectedGroup((prev) => prev ?? user.group_id ?? null)
       } else {
-        // Fallback to first available group if user's group doesn't exist
         setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
       }
-    } else if (user.role === "teacher" || user.role === "admin") {
-      setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
     } else {
-      // Fallback for any other case (e.g., student without group_id)
       setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
     }
   }, [user, groups])
 
-  // Filter schedule
+  // ── Parity filter ──────────────────────────────────
   const filteredSchedule = useMemo(
     () => groupSchedule.filter((l) => l.parity === "both" || l.parity === currentParity),
     [groupSchedule, currentParity]
   )
 
+  // ── Today + time calculations ──────────────────────
   const todayIdx = getTodayIdx()
   const hasToday = todayIdx >= 0 && todayIdx < weekdayBackend.length
 
@@ -336,40 +121,20 @@ export function useScheduleData() {
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   }, [filteredSchedule, hasToday, todayIdx, weekdayBackend])
 
-  const currentLesson = useMemo(() => {
-    if (!hasToday) return null
-    return (
-      todayLessons.find((l) => {
-        const s = parseMinutes(l.start_time) ?? -1
-        const e = parseMinutes(l.end_time) ?? -1
-        return minutesNow >= s && minutesNow < e
-      }) || null
-    )
-  }, [todayLessons, minutesNow, hasToday])
+  const time = useScheduleTime(todayLessons, hasToday)
 
-  const nextLesson = useMemo(() => {
-    if (!hasToday) return null
-    if (currentLesson) {
-      const endM = parseMinutes(currentLesson.end_time) ?? 0
-      return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > endM) || null
-    }
-    return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
-  }, [todayLessons, currentLesson, minutesNow, hasToday])
-
-  // Conflict detection (extracted to pure function for testability)
+  // ── Conflict detection ─────────────────────────────
   const conflictedIds = useMemo(
     () => detectConflicts(filteredSchedule),
     [filteredSchedule],
   )
 
-  // Compute which days-of-month have lessons (for MiniCalendar dot indicators)
-  // Uses nowTick to recompute on month boundary crossing
+  // ── Lesson days for MiniCalendar ───────────────────
   const lessonDays = useMemo(() => {
     const days = new Set<number>()
-    const year = nowTick.getFullYear()
-    const month = nowTick.getMonth()
+    const year = time.nowTick.getFullYear()
+    const month = time.nowTick.getMonth()
     const firstDay = new Date(year, month, 1).getDay()
-    // Map weekday string → day-of-week offset (Mon=0..Sun=6)
     const weekdayToOffset = new Map<string, number>()
     for (let i = 0; i < weekdayBackend.length; i++) {
       weekdayToOffset.set(weekdayBackend[i], i)
@@ -378,80 +143,26 @@ export function useScheduleData() {
     for (const lesson of filteredSchedule) {
       const offset = weekdayToOffset.get(lesson.weekday)
       if (offset === undefined) continue
-      // Walk through the month finding all dates matching this weekday
-      // First occurrence: offset matches Monday-based index
-      const jsDay = offset === 6 ? 0 : offset + 1 // Convert Mon=0..Sun=6 to JS Sun=0..Sat=6
-      let firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
+      const jsDay = offset === 6 ? 0 : offset + 1
+      const firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
       for (let d = firstOccurrence; d <= daysInMonth; d += 7) {
         days.add(d)
       }
     }
     return days
-  }, [filteredSchedule, weekdayBackend, nowTick])
+  }, [filteredSchedule, weekdayBackend, time.nowTick])
 
-  const toBackendLessonType = useCallback(
-    (value?: string | null) => {
-      if (!value) return ""
-      const match = lessonTypeById.get(value)
-      if (match) return match.backend[0] ?? value
-      return value
-    },
-    [lessonTypeById]
-  )
-
+  // ── Optimistic updates ─────────────────────────────
   const applyScheduleUpdate = useCallback(
     (updater: (prev: Lesson[]) => Lesson[]) => {
       if (!scheduleKey || activeGroupId == null) return
       queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
         const base = Array.isArray(prev) ? [...prev] : []
-        const next = normalizeLessons(updater(base))
-        return next
+        return normalizeLessons(updater(base))
       })
     },
     [scheduleKey, activeGroupId, queryClient, normalizeLessons]
   )
-
-  const formatDuration = useCallback(
-    (hours: number, minutes: number) => {
-      const parts: string[] = []
-      if (hours > 0) {
-        parts.push(t("schedule:time.hours", { count: hours }))
-      }
-      if (minutes > 0 || hours === 0) {
-        parts.push(t("schedule:time.minutes", { count: minutes }))
-      }
-      return parts.join(" ")
-    },
-    [t]
-  )
-
-  const timeLeftText = useMemo(() => {
-    let text = ""
-    if (currentLesson) {
-      const end = parseMinutes(currentLesson.end_time) ?? 0
-      const left = Math.max(0, end - (nowTick.getHours() * 60 + nowTick.getMinutes()))
-      const h = Math.floor(left / 60)
-      const m = left % 60
-      text = t("schedule:timeLeft.current", { duration: formatDuration(h, m) })
-    } else if (nextLesson) {
-      const start = parseMinutes(nextLesson.start_time) ?? 0
-      const left = Math.max(0, start - (nowTick.getHours() * 60 + nowTick.getMinutes()))
-      const h = Math.floor(left / 60)
-      const m = left % 60
-      text = t("schedule:timeLeft.next", { duration: formatDuration(h, m) })
-    }
-    return text
-  }, [currentLesson, nextLesson, nowTick, t, formatDuration])
-
-  const currentProgress = useMemo(() => {
-    if (!currentLesson) return 0
-    const s = parseMinutes(currentLesson.start_time)
-    const e = parseMinutes(currentLesson.end_time)
-    if (s == null || e == null || e <= s) return 0
-    const span = e - s
-    const passed = Math.min(Math.max(minutesNow - s, 0), span)
-    return Math.round((passed / span) * 100)
-  }, [currentLesson, minutesNow])
 
   const refresh = useCallback(() => {
     if (scheduleKey) {
@@ -459,6 +170,7 @@ export function useScheduleData() {
     }
   }, [queryClient, scheduleKey])
 
+  // ── Public API (unchanged from pre-refactor) ───────
   return {
     user,
     groups,
@@ -472,29 +184,29 @@ export function useScheduleData() {
     refresh,
     applyScheduleUpdate,
 
-    // Config
-    weekdayConfigs,
-    weekdayBackend,
-    weekdayLabels,
-    weekdayShort,
-    getDayLabel,
-    lessonTypeConfigs,
-    lessonTypeOptions,
-    lessonTypeLabels,
-    defaultLessonType,
-    getLessonTypeColor,
-    toBackendLessonType,
+    // Config (from useScheduleConfig)
+    weekdayConfigs: config.weekdayConfigs,
+    weekdayBackend: config.weekdayBackend,
+    weekdayLabels: config.weekdayLabels,
+    weekdayShort: config.weekdayShort,
+    getDayLabel: config.getDayLabel,
+    lessonTypeConfigs: config.lessonTypeConfigs,
+    lessonTypeOptions: config.lessonTypeOptions,
+    lessonTypeLabels: config.lessonTypeLabels,
+    defaultLessonType: config.defaultLessonType,
+    getLessonTypeColor: config.getLessonTypeColor,
+    toBackendLessonType: config.toBackendLessonType,
 
-    // Time/State
+    // Time/State (from useScheduleTime)
     todayIdx,
     hasToday,
-    nowTick,
+    nowTick: time.nowTick,
     todayLessons,
-    currentLesson,
-    nextLesson,
+    currentLesson: time.currentLesson,
+    nextLesson: time.nextLesson,
     conflictedIds,
     lessonDays,
-    timeLeftText,
-    currentProgress,
+    timeLeftText: time.timeLeftText,
+    currentProgress: time.currentProgress,
   }
 }

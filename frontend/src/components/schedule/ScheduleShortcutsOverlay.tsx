@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react"
+import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, Keyboard as KeyboardIcon } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface ScheduleShortcutsOverlayProps {
   open: boolean
@@ -18,27 +19,16 @@ const SHORTCUTS = [
   { keys: ["Esc"], labelKey: "schedule:shortcuts.escape" },
 ] as const
 
+// A11Y-65-01: Added useFocusTrap — replaces manual focus + keydown listener
 export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOverlayProps) {
   const { t } = useTranslation(["schedule"])
-  const closeRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    if (open) {
-      closeRef.current?.focus()
-    }
-  }, [open])
+  const handleClose = useCallback(() => onClose(), [onClose])
 
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "?") {
-        e.preventDefault()
-        onClose()
-      }
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  }, [open, onClose])
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    onDeactivate: handleClose,
+  })
 
   return (
     <AnimatePresence>
@@ -59,6 +49,7 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
 
           {/* Dialog */}
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="sched-shortcuts-title"
@@ -77,7 +68,6 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
                 </h2>
               </div>
               <button
-                ref={closeRef}
                 onClick={onClose}
                 aria-label={t("common:buttons.close", { defaultValue: "Close" })}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"

@@ -4,10 +4,12 @@ import {
   MapPin as RoomIcon,
   User as TeacherIcon,
   AlertTriangle as ConflictIcon,
+  StickyNote as NoteIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { type Lesson, getTimeStr, getEndTimeStr } from "./scheduleUtils"
+import { parseBuildingRoom } from "@/utils/buildingIcons"
 
 /* ── Lesson-type → CSS accent class mapping ─────────── */
 const ACCENT_MAP: Record<string, string> = {
@@ -38,6 +40,8 @@ export interface LessonCardProps {
   getLessonTypeColor: (value?: string | null) => string
   getLessonTypeLabel: (value?: string | null) => string
   canEdit?: boolean
+  /** Whether this lesson has a note attached (for indicator icon) */
+  hasNote?: boolean
 }
 
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
@@ -53,10 +57,12 @@ export function LessonCard({
   getLessonTypeColor,
   getLessonTypeLabel,
   canEdit = false,
+  hasNote = false,
 }: LessonCardProps) {
   const { t } = useTranslation(["schedule"])
 
   const accentClass = isConflict ? "sched-conflict" : getAccentClass(lesson.lesson_type)
+  const buildingInfo = parseBuildingRoom(lesson.room)
 
   return (
     <div
@@ -71,8 +77,13 @@ export function LessonCard({
       role="button"
       tabIndex={0}
       aria-current={isCurrent ? "time" : undefined}
+      aria-label={
+        isConflict
+          ? `${lesson.subject ?? ""} — ${t("schedule:lesson.conflict")}`
+          : undefined
+      }
       className={cn(
-        "sched-card-matte sched-card-item sched-lesson-card group relative flex h-full min-w-0 cursor-pointer flex-col overflow-hidden glass-noise",
+        "sched-card-matte sched-card-item sched-lesson-card group relative flex min-w-0 cursor-pointer flex-col glass-noise",
         accentClass,
         compact ? "gap-1 p-2.5" : "gap-1.5 p-3",
         hasBreakBefore && "mt-5",
@@ -117,8 +128,29 @@ export function LessonCard({
           )}
           {lesson.room && (
             <span className="sched-grid-room inline-flex items-center gap-1">
-              <RoomIcon size={10} className="shrink-0 text-brand opacity-60" aria-hidden="true" />
-              <span>{lesson.room}</span>
+              {buildingInfo ? (
+                <>
+                  <span
+                    className="sched-building-badge"
+                    style={{ background: buildingInfo.colorVar }}
+                    aria-hidden="true"
+                  >
+                    {buildingInfo.building}
+                  </span>
+                  <span>{buildingInfo.room}</span>
+                </>
+              ) : (
+                <>
+                  <RoomIcon size={10} className="shrink-0 text-brand opacity-60" aria-hidden="true" />
+                  <span>{lesson.room}</span>
+                </>
+              )}
+            </span>
+          )}
+          {/* Note indicator */}
+          {hasNote && (
+            <span title={t("schedule:notes.hasNote", { defaultValue: "Есть заметка" })}>
+              <NoteIcon size={10} className="shrink-0 text-amber-500 opacity-60" aria-hidden="true" />
             </span>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from "react"
+import { useCallback, useState, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, motion } from "framer-motion"
 import { PageLayout } from "@/components/layout/PageLayout"
@@ -26,7 +26,9 @@ import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 import { useScheduleKeyboardNav } from "@/hooks/useScheduleKeyboardNav"
 import {
   useViewMode,
+  useWeekOffset,
   useScheduleDisplayPreferences,
+  useScheduleUIActions,
 } from "@/stores/scheduleUIStore"
 import { buildTable } from "@/components/schedule/scheduleUtils"
 import api from "@/api/client"
@@ -36,7 +38,9 @@ function ScheduleContent() {
   const isOnline = useOnlineStatus()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   const viewMode = useViewMode()
+  const weekOffset = useWeekOffset()
   const { showPastLessons } = useScheduleDisplayPreferences()
+  const { resetPreferences } = useScheduleUIActions()
 
   const scheduleData = useScheduleData()
   const {
@@ -68,6 +72,7 @@ function ScheduleContent() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const gridRef = useRef<HTMLDivElement>(null)
 
   /* ── Past lessons filter ──────────────────────────────── */
   const displaySchedule = useMemo(() => {
@@ -143,7 +148,7 @@ function ScheduleContent() {
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      showSnackbar(t("schedule:snackbar.deleteError"), "error")
+      showSnackbar(t("schedule:snackbar.exportError", { defaultValue: "Failed to export schedule" }), "error")
     } finally {
       setIsExporting(false)
     }
@@ -175,6 +180,9 @@ function ScheduleContent() {
     }
   }, [pendingDeleteId, rawSchedule, applyScheduleUpdate, isOnline, showSnackbar, t, refresh])
 
+  /* ── "All lessons filtered" detection (FIX-65-05) ──── */
+  const allFilteredOut = displaySchedule.length === 0 && schedule.length > 0
+
   /* ── Determine which view to render ───────────────────── */
   const useMobileLayout = isMobile || viewMode === "day"
 
@@ -192,8 +200,6 @@ function ScheduleContent() {
     onDeleteLesson: requestDeleteLesson,
     getLessonTypeColor,
     currentLesson,
-    // lessonTypeLabels needed by ScheduleMobileView (fallback when getLessonTypeLabel prop absent)
-    lessonTypeLabels,
   }
 
   return (
@@ -212,19 +218,34 @@ function ScheduleContent() {
           onExportIcs={selectedGroup ? handleExportIcs : undefined}
           isExporting={isExporting}
           onOpenSettings={() => setSettingsOpen(true)}
+          gridRef={gridRef}
         />
 
         <div className="flex gap-4 lg:gap-6">
           {/* ── Main content ──────────────────────────────── */}
-          <section aria-label={t("schedule:title.default")} className="min-w-0 flex-1">
+          <section ref={gridRef} aria-label={t("schedule:title.default")} className="min-w-0 flex-1">
             <SkeletonMorph loaded={!isLoading} skeleton={<ScheduleSkeleton />}>
               <FadeSection delay="var(--motion-duration-base)">
+                {/* ── All lessons filtered out — show reset action (FIX-65-05) ── */}
+                {allFilteredOut && (
+                  <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/(--opacity-dim) bg-amber-500/(--opacity-subtle) px-4 py-3 text-sm text-text-secondary">
+                    <span>{t("schedule:empty.allFiltered", { defaultValue: "All lessons are hidden by current filters" })}</span>
+                    <button
+                      type="button"
+                      onClick={resetPreferences}
+                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+                    >
+                      {t("schedule:empty.resetFilters", { defaultValue: "Reset filters" })}
+                    </button>
+                  </div>
+                )}
+                {/* Week slide animation: key on weekOffset triggers re-mount */}
                 <AnimatePresence mode="wait">
                   <motion.div
-                    key={viewMode}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
+                    key={`${viewMode}-${weekOffset}`}
+                    initial={{ opacity: 0, x: 0, y: viewMode !== (viewMode) ? 8 : 0 }}
+                    animate={{ opacity: 1, x: 0, y: 0 }}
+                    exit={{ opacity: 0, x: 0, y: 0 }}
                     transition={{ duration: 0.2 }}
                   >
                     {viewMode === "list" ? (
@@ -299,9 +320,13 @@ function ScheduleContent() {
           onCancel={() => setPendingDeleteId(null)}
         />
 
-        {/* ── View mode announcement (a11y) ──────────────── */}
+        {/* ── View mode + week/parity announcement (a11y, A11Y-65-05) ── */}
         <div className="sr-only" role="status" aria-live="polite">
-          {t(`schedule:toolbar.${viewMode}`)} {t("schedule:toolbar.viewMode")}
+          {t(`schedule:toolbar.${viewMode}`)} {t("schedule:toolbar.viewMode")}.{" "}
+          {weekOffset === 0
+            ? t("schedule:toolbar.thisWeek")
+            : t("schedule:toolbar.weekOffset", { offset: weekOffset > 0 ? `+${weekOffset}` : String(weekOffset) })}.{" "}
+          {t(`schedule:parity.${scheduleData.currentParity}`, { defaultValue: scheduleData.currentParity })}
         </div>
 
         <Snackbar
