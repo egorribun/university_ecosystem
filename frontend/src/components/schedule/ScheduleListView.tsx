@@ -1,11 +1,11 @@
 import { useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import { Calendar as TodayIcon } from "lucide-react"
+import { Calendar as TodayIcon, Plus as AddIcon } from "lucide-react"
 import { Badge } from "@/components/ui"
 import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { cn } from "@/utils/cn"
-import { type Lesson, getTimeStr, minutesDiff } from "@/components/schedule/scheduleUtils"
+import { buildLessonsByDay, minutesDiff } from "@/components/schedule/scheduleUtils"
 import { LessonCard } from "@/components/schedule/LessonCard"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"
@@ -23,13 +23,14 @@ type ScheduleListViewProps = Pick<
   | "user"
   | "conflictedIds"
   | "currentLesson"
+  | "currentProgress"
 > & {
   isOnline: boolean
   onDeleteLesson: (id: string) => void
   getLessonTypeColor: (type?: string | null) => string
   getLessonTypeLabel: (val?: string | null) => string
-  /** Lesson note indicators (FIX-67-02) */
-  notesMap?: Map<string, boolean>
+  /** Lesson note indicators (FIX-67-02). CQ-71-06: non-optional */
+  notesMap: Map<string, boolean>
 }
 
 export function ScheduleListView({
@@ -47,6 +48,7 @@ export function ScheduleListView({
   getLessonTypeColor,
   getLessonTypeLabel,
   currentLesson,
+  currentProgress,
   notesMap,
 }: ScheduleListViewProps) {
   const { t } = useTranslation(["schedule", "common"])
@@ -55,24 +57,14 @@ export function ScheduleListView({
 
   const canEdit = user?.role === "admin" || user?.role === "teacher"
 
-  /* ── Group lessons by day, sorted by time ────────────── */
-  const lessonsByDay = useMemo(() => {
-    const map = new Map<string, Lesson[]>()
-    for (const day of weekdayBackend) {
-      map.set(
-        day,
-        schedule
-          .filter((l) => l.weekday === day)
-          .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b))),
-      )
-    }
-    return map
-  }, [schedule, weekdayBackend])
-
-  const totalLessons = useMemo(
-    () => schedule.length,
-    [schedule],
+  /* ── Group lessons by day, sorted by time (CQ-71-05: shared utility) ── */
+  const lessonsByDay = useMemo(
+    () => buildLessonsByDay(schedule, weekdayBackend),
+    [schedule, weekdayBackend],
   )
+
+  // CQ-71-01: no useMemo needed for primitive .length access
+  const totalLessons = schedule.length
 
   const handleAdd = useCallback(
     (day: string) => {
@@ -113,7 +105,7 @@ export function ScheduleListView({
             </div>
           }
           title={t("schedule:list.noLessons", { defaultValue: t("schedule:table.noLessons") })}
-          description={t("schedule:empty.selectGroup", { defaultValue: "" })}
+          description={t("schedule:empty.selectGroup", { defaultValue: "Select a group to view the schedule" })}
         />
       </div>
     )
@@ -167,7 +159,8 @@ export function ScheduleListView({
                   aria-label={t("schedule:actions.addLesson", { day: label, defaultValue: `Add lesson for ${label}` })}
                   className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-surface/(--opacity-strong) text-brand transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] hover:shadow-sm focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                 >
-                  <span className="text-sm font-bold" aria-hidden="true">+</span>
+                  {/* A11Y-71-01: consistent SVG icon instead of text + */}
+                  <AddIcon size={14} aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -200,13 +193,15 @@ export function ScheduleListView({
                           <div className="sched-timeline-dot" />
                         </div>
                       )}
-                      <LessonCard
+                      {/* FIX-71-01: thread currentProgress for glow urgency */}
+                    <LessonCard
                         lesson={lesson}
                         isConflict={isConflict}
                         isCurrent={isCurrent}
+                        currentProgress={isCurrent ? (currentProgress ?? 0) : 0}
                         index={cardIndex}
                         compact={compactMode}
-                        hasNote={notesMap?.get(lesson.id) ?? false}
+                        hasNote={notesMap.get(lesson.id) ?? false}
                         onDelete={() => onDeleteLesson(lesson.id)}
                         canEdit={canEdit}
                         getLessonTypeColor={getLessonTypeColor}

@@ -99,7 +99,7 @@ export function LessonBottomSheet({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-overlay bg-black/30 dark:bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-overlay bg-[var(--sched-overlay-bg)] backdrop-blur-sm"
         onClick={handleClose}
         aria-hidden="true"
         style={{ opacity: dragY > 0 ? Math.max(0.2, 1 - dragY / 200) : undefined }}

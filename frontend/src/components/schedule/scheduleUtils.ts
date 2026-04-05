@@ -228,6 +228,27 @@ export const minimalWeekdayFallback: WeekdayConfig[] = [
 ]
 
 // ============================================================================
+// LESSON GROUPING (CQ-71-05: shared between MobileView + ListView)
+// ============================================================================
+
+/** Group lessons by weekday, sorted by start time within each day */
+export function buildLessonsByDay(
+  schedule: Lesson[],
+  weekdayBackend: string[],
+): Map<string, Lesson[]> {
+  const map = new Map<string, Lesson[]>()
+  for (const day of weekdayBackend) {
+    map.set(
+      day,
+      schedule
+        .filter((l) => l.weekday === day)
+        .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b))),
+    )
+  }
+  return map
+}
+
+// ============================================================================
 // QUERY KEYS
 // ============================================================================
 

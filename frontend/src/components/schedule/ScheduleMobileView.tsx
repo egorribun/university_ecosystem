@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui"
 import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"
-import { type Lesson, getTimeStr } from "@/components/schedule/scheduleUtils"
+import { buildLessonsByDay } from "@/components/schedule/scheduleUtils"
 import { useScheduleDisplayPreferences, useScheduleUIActions, useWeekOffset } from "@/stores/scheduleUIStore"
 import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/utils/cn"
@@ -33,13 +33,14 @@ type ScheduleMobileViewProps = Pick<
   | "user"
   | "conflictedIds"
   | "currentLesson"
+  | "currentProgress"
 > & {
   isOnline: boolean
   onDeleteLesson: (id: string) => void
   getLessonTypeColor: (type?: string | null) => string
   getLessonTypeLabel: (val?: string | null) => string
-  /** Lesson note indicators (FIX-67-02) */
-  notesMap?: Map<string, boolean>
+  /** Lesson note indicators (FIX-67-02). CQ-71-06: non-optional */
+  notesMap: Map<string, boolean>
   /** All today's lessons are past (FIX-68-23) */
   todayComplete?: boolean
 }
@@ -61,6 +62,7 @@ export function ScheduleMobileView({
   getLessonTypeColor,
   getLessonTypeLabel,
   currentLesson,
+  currentProgress,
   notesMap,
   todayComplete,
 }: ScheduleMobileViewProps) {
@@ -101,18 +103,11 @@ export function ScheduleMobileView({
     onSwipeRight: handleSwipeRight,
   })
 
-  const lessonsByDay = useMemo(() => {
-    const map = new Map<string, Lesson[]>()
-    for (const day of weekdayBackend) {
-      map.set(
-        day,
-        schedule
-          .filter((l) => l.weekday === day)
-          .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b))),
-      )
-    }
-    return map
-  }, [schedule, weekdayBackend])
+  // CQ-71-05: shared utility (also used by ScheduleListView)
+  const lessonsByDay = useMemo(
+    () => buildLessonsByDay(schedule, weekdayBackend),
+    [schedule, weekdayBackend],
+  )
 
   /* ── Scroll to day section ───────────────────────────── */
   const scrollToDay = useCallback((idx: number) => {
@@ -154,12 +149,13 @@ export function ScheduleMobileView({
   return (
     <div className="mt-2 flex w-full flex-col gap-4" {...swipeHandlers}>
       {/* ── Day navigation chips ── */}
-      <div className="relative">
+      {/* FEAT-71-06: scroll fade masks on edges */}
+      <div className="relative sched-chip-scroll">
         {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus managed via child tab buttons */}
         <div
           role="tablist"
           aria-label={t("schedule:title.default")}
-          className="scrollbar-hide flex gap-2 overflow-x-auto px-1 pb-2"
+          className="scrollbar-hide flex gap-2 overflow-x-auto px-3 pb-2"
           onKeyDown={handleTabKeyDown}
         >
         {weekdayBackend.map((day, i) => {
@@ -203,7 +199,9 @@ export function ScheduleMobileView({
         </div>
       </div>
 
-      {/* ── Active day panel — directional horizontal slide on week/day switch ── */}
+      {/* ── Active day panel — directional horizontal slide on week/day switch ──
+           PERF-71-01: AnimatePresence with key-swap is acceptable here (unlike desktop PERF-70-01)
+           because mobile shows only 1 DayColumn at a time — single remount is cheap. ──── */}
       <AnimatePresence mode="wait" initial={false} custom={swipeDir}>
         <motion.div
           key={`${weekOffset}-${weekdayBackend[activeDayIdx]}`}
@@ -232,6 +230,7 @@ export function ScheduleMobileView({
             conflictedIds={conflictedIds}
             compact={compactMode}
             currentLessonId={currentLesson?.id}
+            currentProgress={currentProgress}
             dayComplete={hasToday && activeDayIdx === todayIdx && todayComplete}
             notesMap={notesMap}
             onAdd={() => {

@@ -131,6 +131,10 @@
 
     /* ── On-accent text — named token for intentional white on colored bg (FIX-67-03) ── */
     --sched-on-accent: white;
+
+    /* ── THEME-71-01: Overlay backdrop — semantic tokens replace hardcoded bg-black ── */
+    --sched-overlay-bg: color-mix(in srgb, black 30%, transparent);
+    --sched-modal-overlay-bg: color-mix(in srgb, black 40%, transparent);
   }
 
   /* ─── Dark Theme Overrides ───────────────────────────── */
@@ -198,7 +202,161 @@
     --sched-empty-border: color-mix(in srgb, var(--color-slate-600) 15%, transparent);
 
     --sched-on-accent: white;
+
+    /* THEME-71-01: darker overlays in dark mode */
+    --sched-overlay-bg: color-mix(in srgb, black 50%, transparent);
+    --sched-modal-overlay-bg: color-mix(in srgb, black 60%, transparent);
   }
+}
+
+/* ═══════════════════════════════════════════════════════
+   HERO CARD — Premium header wrapper (Wave 71b)
+   Matches DashboardHero visual language: glass-noise,
+   4-layer shadow, accent line, decorative flare.
+   ═══════════════════════════════════════════════════════ */
+.sched-hero-card {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--sched-card-border);
+  border-radius: 1.25rem;
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 8%, transparent),
+    0 4px 16px color-mix(in srgb, black 6%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent),
+    0 8px 48px color-mix(in srgb, var(--color-sky-400) 8%, transparent);
+  overflow: hidden;
+}
+
+.dark .sched-hero-card {
+  background: linear-gradient(145deg, #111927, #0f1520);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 16%, transparent),
+    0 4px 16px color-mix(in srgb, black 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent),
+    0 8px 48px color-mix(in srgb, var(--color-sky-400) 10%, transparent);
+}
+
+/* Top accent line — gradient brand strip */
+.sched-hero-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-sky-400), var(--color-blue-500), var(--color-indigo-500));
+  opacity: 0.7;
+  z-index: 2;
+}
+
+/* Corner flare — subtle radial glow */
+.sched-hero-flare {
+  position: absolute;
+  top: -20%;
+  right: -10%;
+  width: 50%;
+  height: 80%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-sky-400) 6%, transparent), transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dark .sched-hero-flare {
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-sky-400) 10%, transparent), transparent 70%);
+}
+
+/* ── Status cards inside hero ── */
+.sched-status-card {
+  position: relative;
+  border-radius: 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--color-sky-400) 20%, var(--sched-card-border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-sky-400) 5%, var(--bg-surface)) 0%, var(--bg-surface) 100%);
+  box-shadow:
+    0 1px 4px color-mix(in srgb, black 6%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 40%, transparent);
+  overflow: hidden;
+}
+
+.dark .sched-status-card {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-sky-400) 8%, #0f1520) 0%, #0f1520 100%);
+  border-color: color-mix(in srgb, var(--color-sky-400) 15%, var(--sched-card-border));
+  box-shadow:
+    0 1px 4px color-mix(in srgb, black 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+}
+
+/* Accent left stripe on status card */
+.sched-status-card::before {
+  content: "";
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--color-sky-400), var(--color-blue-500));
+  opacity: 0.8;
+}
+
+/* Stats fallback card — lighter treatment */
+.sched-stats-card {
+  border-radius: 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--sched-card-border) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.dark .sched-stats-card {
+  background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+}
+
+/* ── THEME-71-02: Custom toggle switch (replaces native checkbox accent-brand) ────── */
+.sched-toggle-input {
+  position: relative;
+}
+
+.sched-toggle-input::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transform: translateY(-50%);
+  transition: transform 0.2s var(--ease-premium, ease), background 0.2s;
+}
+
+.sched-toggle-input:checked::after {
+  background: white;
+  transform: translateY(-50%) translateX(18px);
+}
+
+/* ── FEAT-71-06: Mobile day chip scroll fade masks ──────────────────────── */
+.sched-chip-scroll {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 0.75rem,
+    black calc(100% - 0.75rem),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 0.75rem,
+    black calc(100% - 0.75rem),
+    transparent
+  );
+}
+
+/* ── RESP-71-01: min-width fallback for grid container ──────────────────── */
+.schedule-grid-container .sched-scroll-wrapper > [role="grid"] {
+  min-width: 640px; /* fallback when CSS vars fail */
 }
 
 /* ═══════════════════════════════════════════════════════

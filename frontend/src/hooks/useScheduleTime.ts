@@ -109,6 +109,24 @@ export function useScheduleTime(
     return text
   }, [currentLesson, nextLesson, minutesNow, t, formatDuration])
 
+  // Wave 71b: compact duration — "7ч 22м" / "22м" for badge display
+  const timeLeftShort = useMemo(() => {
+    let mins = 0
+    if (currentLesson) {
+      const end = parseMinutes(currentLesson.end_time) ?? 0
+      mins = Math.max(0, end - minutesNow)
+    } else if (nextLesson) {
+      const start = parseMinutes(nextLesson.start_time) ?? 0
+      mins = Math.max(0, start - minutesNow)
+    }
+    if (mins <= 0 && !currentLesson && !nextLesson) return ""
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    if (h > 0 && m > 0) return `${h}${t("schedule:time.hoursShort", { defaultValue: "h" })} ${m}${t("schedule:time.minutesShort", { defaultValue: "m" })}`
+    if (h > 0) return `${h}${t("schedule:time.hoursShort", { defaultValue: "h" })}`
+    return `${m}${t("schedule:time.minutesShort", { defaultValue: "m" })}`
+  }, [currentLesson, nextLesson, minutesNow, t])
+
   const currentProgress = useMemo(() => {
     if (!currentLesson) return 0
     const s = parseMinutes(currentLesson.start_time)
@@ -124,6 +142,7 @@ export function useScheduleTime(
     currentLesson,
     nextLesson,
     timeLeftText,
+    timeLeftShort,
     currentProgress,
   }
 }

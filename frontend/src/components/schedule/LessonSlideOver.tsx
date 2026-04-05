@@ -68,7 +68,7 @@ export function LessonSlideOver({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-overlay bg-black/30 dark:bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-overlay bg-[var(--sched-overlay-bg)] backdrop-blur-sm"
         onClick={handleClose}
         aria-hidden="true"
       />

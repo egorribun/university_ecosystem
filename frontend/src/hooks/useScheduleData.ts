@@ -214,6 +214,7 @@ export function useScheduleData() {
     conflictedIds,
     lessonDays,
     timeLeftText: time.timeLeftText,
+    timeLeftShort: time.timeLeftShort,
     currentProgress: time.currentProgress,
   }
 }

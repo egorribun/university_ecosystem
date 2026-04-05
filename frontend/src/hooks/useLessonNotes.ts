@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react"
 import { get, set, del } from "idb-keyval"
+import { logError } from "@/app/logger"
 
 const KEY_PREFIX = "schedule:notes:"
 
@@ -45,9 +46,9 @@ export function useLessonNotes(lessonId: string | null | undefined) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         if (text.trim()) {
-          set(`${KEY_PREFIX}${lessonId}`, updated).catch((err) => console.warn("[schedule:notes]", err))
+          set(`${KEY_PREFIX}${lessonId}`, updated).catch((err) => logError("[schedule:notes]", err))
         } else {
-          del(`${KEY_PREFIX}${lessonId}`).catch((err) => console.warn("[schedule:notes]", err))
+          del(`${KEY_PREFIX}${lessonId}`).catch((err) => logError("[schedule:notes]", err))
         }
       }, 300)
     },
@@ -58,7 +59,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
   const clearNote = useCallback(() => {
     if (!lessonId) return
     setNoteState(null)
-    del(`${KEY_PREFIX}${lessonId}`).catch((err) => console.warn("[schedule:notes]", err))
+    del(`${KEY_PREFIX}${lessonId}`).catch((err) => logError("[schedule:notes]", err))
   }, [lessonId])
 
   // Cleanup debounce timer

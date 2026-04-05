@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react"
+import { useMemo, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -25,7 +25,9 @@ export function ScheduleMiniCalendar({
   className,
 }: ScheduleMiniCalendarProps) {
   const { t, i18n } = useTranslation(["common"])
-  const now = new Date()
+  // CQ-71-04: stable reference — avoid new Date() on every render
+  const nowRef = useRef(new Date())
+  const now = nowRef.current
 
   // Controlled + uncontrolled month support
   const [internalMonth, setInternalMonth] = useState(() => month ?? now)
@@ -104,6 +106,20 @@ export function ScheduleMiniCalendar({
         <span className="text-sm font-semibold capitalize text-text-primary">
           {monthLabel}
         </span>
+        {/* FEAT-71-05: quick-return to current month when navigated away */}
+        {!isCurrentMonth && (
+          <button
+            type="button"
+            onClick={() => {
+              const today = new Date()
+              setInternalMonth(today)
+              onMonthChange?.(today)
+            }}
+            className="ml-1 rounded-md bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            {t("common:today", { defaultValue: "Today" })}
+          </button>
+        )}
         <button
           onClick={() => changeMonth(1)}
           aria-label={t("common:next", { defaultValue: "Next" })}
@@ -131,7 +147,8 @@ export function ScheduleMiniCalendar({
         {isLoading ? (
           Array.from({ length: 35 }).map((_, i) => (
             <div key={`skel-${i}`} className="flex h-8 items-center justify-center" role="presentation">
-              <div className="h-6 w-6 animate-pulse rounded-full bg-surface-elevated/(--opacity-dim)" />
+              {/* THEME-71-03: use sched-skeleton-shimmer instead of Tailwind animate-pulse */}
+              <div className="h-6 w-6 sched-skeleton-shimmer rounded-full" />
             </div>
           ))
         ) : (<>

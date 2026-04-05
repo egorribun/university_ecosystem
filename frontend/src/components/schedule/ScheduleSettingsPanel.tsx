@@ -51,7 +51,7 @@ export function ScheduleSettingsPanel({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-overlay bg-black/30 dark:bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-overlay bg-[var(--sched-overlay-bg)] backdrop-blur-sm"
         onClick={handleClose}
         aria-hidden="true"
       />
@@ -132,7 +132,7 @@ export function ScheduleSettingsPanel({
                 type="checkbox"
                 checked={compactMode}
                 onChange={toggleCompactMode}
-                className="h-5 w-5 rounded border-glass-border text-brand accent-brand focus:ring-2 focus:ring-brand focus:ring-offset-1"
+                className="sched-toggle-input h-5 w-10 appearance-none rounded-full border border-glass-border bg-surface-elevated transition-colors checked:bg-brand checked:border-brand focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 cursor-pointer"
               />
             </label>
 
@@ -145,7 +145,7 @@ export function ScheduleSettingsPanel({
                 type="checkbox"
                 checked={showPastLessons}
                 onChange={togglePastLessons}
-                className="h-5 w-5 rounded border-glass-border text-brand accent-brand focus:ring-2 focus:ring-brand focus:ring-offset-1"
+                className="sched-toggle-input h-5 w-10 appearance-none rounded-full border border-glass-border bg-surface-elevated transition-colors checked:bg-brand checked:border-brand focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 cursor-pointer"
               />
             </label>
           </section>

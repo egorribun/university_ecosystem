@@ -159,6 +159,7 @@ export function ExportDropdown({
             {items.map(({ id, icon: Icon, label, onClick, disabled }) => (
               <button
                 key={id}
+                type="button"
                 role="menuitem"
                 disabled={disabled || exporting === id}
                 onClick={onClick}

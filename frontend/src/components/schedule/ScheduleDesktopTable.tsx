@@ -29,8 +29,8 @@ type ScheduleDesktopTableProps = Pick<
   getLessonTypeColor: (type?: string | null) => string
   getLessonTypeLabel: (val?: string | null) => string
   onDeleteLesson: (id: string) => void
-  /** Lesson note indicators (FIX-67-02) */
-  notesMap?: Map<string, boolean>
+  /** Lesson note indicators (FIX-67-02). CQ-71-06: non-optional — default empty Map at source */
+  notesMap: Map<string, boolean>
 }
 
 export function ScheduleDesktopTable({
@@ -83,8 +83,8 @@ export function ScheduleDesktopTable({
     const overflows = el.scrollWidth > el.clientWidth
     container.toggleAttribute("data-overflows", overflows)
   }, [])
+  // PERF-71-02: removed direct checkOverflow() call — ResizeObserver fires immediately on .observe()
   useEffect(() => {
-    checkOverflow()
     const el = scrollRef.current
     if (!el) return
     const ro = new ResizeObserver(checkOverflow)
@@ -112,7 +112,7 @@ export function ScheduleDesktopTable({
           <div
             role="columnheader"
             aria-colindex={1}
-            className="sched-sticky-col sched-sticky-header flex items-center justify-center border-b border-r px-2 py-3 text-xs font-bold text-text-secondary"
+            className="sched-sticky-col sched-sticky-header flex items-center justify-center border-b border-r px-2 py-3 text-xs font-bold text-text-muted-subtle"
             style={{ borderColor: "var(--sched-grid-border)" }}
           >
             {t("schedule:table.rowNumber", { defaultValue: "№" })}
@@ -178,7 +178,7 @@ export function ScheduleDesktopTable({
                     </div>
                   }
                   title={t("schedule:table.noLessons")}
-                  description={t("schedule:empty.selectGroup", { defaultValue: "" })}
+                  description={t("schedule:empty.selectGroup", { defaultValue: "Select a group to view the schedule" })}
                 />
               )}
             </div>
@@ -218,6 +218,7 @@ export function ScheduleDesktopTable({
                         tabIndex={-1}
                         aria-rowindex={rowIdx + 2}
                         aria-colindex={colI + 2}
+                        aria-label={t("schedule:table.emptyCell", { day: visibleDays[colI]?.label ?? "", row: rowIdx + 1, defaultValue: "Empty" })}
                         className={cn(
                           "sched-grid-cell sched-day-snap flex items-center justify-center border-b outline-none",
                           isTodayCol && "sched-today-col"
@@ -272,7 +273,7 @@ export function ScheduleDesktopTable({
                         currentProgress={isCurrent ? currentProgress : 0}
                         index={rowIdx * visibleDays.length + colI}
                         compact={compactMode}
-                        hasNote={notesMap?.get(lesson.id) ?? false}
+                        hasNote={notesMap.get(lesson.id) ?? false}
                         onDelete={() => onDeleteLesson(lesson.id)}
                         canEdit={canEdit}
                         getLessonTypeColor={getLessonTypeColor}

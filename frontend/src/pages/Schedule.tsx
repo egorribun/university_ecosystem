@@ -1,6 +1,6 @@
 import { useCallback, useState, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { motion, useReducedMotion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { PageLayout } from "@/components/layout/PageLayout"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -194,10 +194,8 @@ function ScheduleContent() {
     <PageLayout variant="full">
       <SEO title={t("schedule:title.default")} />
       <div className="schedule-theme relative w-full py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 text-text-primary">
-        {/* ── Page-level aurora backdrop (DESIGN-63-02) ───── */}
+        {/* ── Page-level aurora backdrop — lower orbs only (Wave 71b: orbs 1+2 moved into hero card) ── */}
         <div className="pointer-events-none absolute inset-0 -z-1 overflow-hidden" aria-hidden="true">
-          <div className="sched-orb-1 absolute -left-32 top-40 h-48 w-48 rounded-full opacity-50 blur-[80px] sm:h-64 sm:w-64 lg:h-96 lg:w-96" />
-          <div className="sched-orb-2 absolute -right-24 top-80 h-40 w-40 rounded-full opacity-40 blur-[60px] sm:h-56 sm:w-56 lg:h-80 lg:w-80" />
           <div className="sched-orb-3 absolute bottom-20 left-1/4 h-32 w-32 rounded-full opacity-30 blur-[70px] sm:h-48 sm:w-48 lg:h-64 lg:w-64" />
           <div className="sched-orb-4 absolute right-1/3 top-1/2 h-28 w-28 rounded-full opacity-25 blur-[60px] sm:h-40 sm:w-40 lg:h-56 lg:w-56" />
         </div>
@@ -243,31 +241,38 @@ function ScheduleContent() {
                 {/* PERF-70-01: replaced AnimatePresence key-swap with animate prop —
                    avoids full unmount/remount of all cards on week navigation.
                    PERF-70-02: removed filter:blur — GPU-expensive, imperceptible at 200ms. */}
-                <motion.div
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={prefersReduced ? { duration: 0 } : { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-                >
-                  {isMobile ? (
-                    <ScheduleMobileView
-                      {...sharedViewProps}
-                      weekdayShort={weekdayShort}
-                      getDayLabel={getDayLabel}
-                      getLessonTypeLabel={getLessonTypeLabel}
-                    />
-                  ) : (
-                    <ScheduleDesktopTable
-                      {...sharedViewProps}
-                      getLessonTypeLabel={getLessonTypeLabel}
-                    />
-                  )}
-                </motion.div>
+                {/* FEAT-71-02: animated view transition between desktop ↔ mobile */}
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={isMobile ? "mobile" : "desktop"}
+                    initial={prefersReduced ? false : { opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={prefersReduced ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
+                    transition={prefersReduced ? { duration: 0 } : { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                  >
+                    {isMobile ? (
+                      <ScheduleMobileView
+                        {...sharedViewProps}
+                        weekdayShort={weekdayShort}
+                        getDayLabel={getDayLabel}
+                        getLessonTypeLabel={getLessonTypeLabel}
+                      />
+                    ) : (
+                      <ScheduleDesktopTable
+                        {...sharedViewProps}
+                        getLessonTypeLabel={getLessonTypeLabel}
+                      />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
               </FadeSection>
             </SkeletonMorph>
           </section>
 
           {/* ── Mini-calendar sidebar (desktop only) ──────── */}
+          {/* RESP-71-02: adaptive width — w-48 on tablet, w-56 on large screens */}
           {!isMobile && (
-            <aside className="hidden w-56 shrink-0 md:block">
+            <aside className="hidden w-48 shrink-0 md:block lg:w-56">
               <FadeSection delay="var(--motion-duration-slow)">
                 <ScheduleMiniCalendar className="sticky top-20" lessonDays={lessonDays} isLoading={isLoading} />
               </FadeSection>

@@ -12,6 +12,8 @@ import { cn } from "@/utils/cn"
 import {
   useWeekOffset,
   useScheduleUIActions,
+  useHiddenWeekdays,
+  useScheduleDisplayPreferences,
 } from "@/stores/scheduleUIStore"
 
 interface ScheduleToolbarProps {
@@ -28,6 +30,11 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef, children
   const weekOffset = useWeekOffset()
   const { nextWeek, previousWeek, goToCurrentWeek } = useScheduleUIActions()
   const prefersReduced = useReducedMotion()
+
+  // FEAT-71-04: active filter count indicator on settings button
+  const hiddenWeekdays = useHiddenWeekdays()
+  const { compactMode, showPastLessons } = useScheduleDisplayPreferences()
+  const activeFilterCount = hiddenWeekdays.length + (compactMode ? 1 : 0) + (!showPastLessons ? 1 : 0)
 
   return (
     <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -92,14 +99,22 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef, children
           gridRef={gridRef}
         />
         {onOpenSettings && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenSettings}
-            aria-label={t("schedule:toolbar.settings")}
-          >
-            <Settings2 size={15} aria-hidden="true" />
-          </Button>
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onOpenSettings}
+              aria-label={t("schedule:toolbar.settings")}
+            >
+              <Settings2 size={15} aria-hidden="true" />
+            </Button>
+            {/* FEAT-71-04: active filter count badge */}
+            {activeFilterCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] shadow-sm">
+                {activeFilterCount}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>

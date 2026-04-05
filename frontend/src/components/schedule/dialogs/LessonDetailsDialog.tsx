@@ -89,6 +89,7 @@ export function LessonDetailsDialog({
       <DialogActions>
         {(userRole === "admin" || userRole === "teacher") && (
           <Button
+            type="button"
             id="lesson-details-edit"
             variant="outline"
             onClick={() => {
@@ -98,7 +99,7 @@ export function LessonDetailsDialog({
             {t("common:buttons.edit")}
           </Button>
         )}
-        <Button id="lesson-details-close" variant="ghost" onClick={closeDialog}>
+        <Button type="button" id="lesson-details-close" variant="ghost" onClick={closeDialog}>
           {t("common:buttons.close")}
         </Button>
       </DialogActions>
