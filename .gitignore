@@ -353,6 +353,18 @@ dev-dist/
 # Chromatic visual regression
 .chromatic/
 
+# Playwright test outputs (any location, not just root/frontend/)
+playwright-report/
+test-results/
+blob-report/
+
+# WASM build output (gitignored — rebuilt in Docker/CI)
+frontend/src/wasm-sanitizer/pkg/
+
+# Rust fuzz corpus & crash artifacts
+native/rust_ext/fuzz/corpus/
+native/rust_ext/fuzz/artifacts/
+
 # OS artifacts (beyond existing Thumbs.db/.DS_Store)
 *.Spotlight-V100
 *.Trashes
