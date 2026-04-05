@@ -120,7 +120,7 @@
     "week": "Неделя",
     "day": "День",
     "list": "Список",
-    "export": "Экспорт .ics",
+    "export": "Экспорт",
     "settings": "Настройки"
   },
   "empty": {
@@ -197,7 +197,10 @@
     "ics": "iCalendar (.ics)",
     "pdf": "PDF-документ",
     "png": "Изображение (PNG)",
-    "googleCalendar": "Google Календарь"
+    "googleCalendar": "Google Календарь",
+    "pdfTitle": "Расписание",
+    "lessonFallback": "Занятие",
+    "typePrefix": "Тип: {{type}}"
   },
   "notes": {
     "title": "Заметки",
@@ -213,11 +216,25 @@
     "min5": "5 мин",
     "min10": "10 мин",
     "min15": "15 мин",
-    "min30": "30 мин"
+    "min30": "30 мин",
+    "body": "{{subject}} — через {{minutes}} мин"
+  },
+  "error": {
+    "loadFailed": "Не удалось загрузить расписание",
+    "retry": "Повторить"
+  },
+  "countdown": {
+    "ariaLabel": "{{mins}} минут {{secs}} секунд до начала",
+    "tensOfMinutes": "десятки минут",
+    "unitMinutes": "минуты",
+    "tensOfSeconds": "десятки секунд",
+    "unitSeconds": "секунды"
   },
   "stats": {
     "lessons": "пар",
-    "buildings": "корпуса"
+    "buildings": "корпуса",
+    "hoursShort": "ч",
+    "minutesShort": "мин"
   },
   "window": {
     "coffee": "Кофе-брейк",
@@ -233,7 +250,8 @@
   },
   "drag": {
     "moved": "Занятие перемещено",
-    "undo": "Отменить"
+    "undo": "Отменить",
+    "handle": "Перетащить занятие"
   },
   "offline": {
     "badge": "Оффлайн · данные от {{time}}",

@@ -181,6 +181,7 @@ export function useScheduleData() {
     schedule: filteredSchedule,
     rawSchedule: groupSchedule,
     isLoading: groupsQuery.isLoading || scheduleQuery.isLoading,
+    error: groupsQuery.error ?? scheduleQuery.error ?? null,
     refresh,
     applyScheduleUpdate,
 

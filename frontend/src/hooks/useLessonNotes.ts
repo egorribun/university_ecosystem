@@ -45,9 +45,9 @@ export function useLessonNotes(lessonId: string | null | undefined) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         if (text.trim()) {
-          set(`${KEY_PREFIX}${lessonId}`, updated).catch(() => {})
+          set(`${KEY_PREFIX}${lessonId}`, updated).catch((err) => console.warn("[schedule:notes]", err))
         } else {
-          del(`${KEY_PREFIX}${lessonId}`).catch(() => {})
+          del(`${KEY_PREFIX}${lessonId}`).catch((err) => console.warn("[schedule:notes]", err))
         }
       }, 300)
     },
@@ -58,7 +58,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
   const clearNote = useCallback(() => {
     if (!lessonId) return
     setNoteState(null)
-    del(`${KEY_PREFIX}${lessonId}`).catch(() => {})
+    del(`${KEY_PREFIX}${lessonId}`).catch((err) => console.warn("[schedule:notes]", err))
   }, [lessonId])
 
   // Cleanup debounce timer

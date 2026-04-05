@@ -11,6 +11,8 @@ interface ScheduleMiniCalendarProps {
   onMonthChange?: (date: Date) => void
   /** Called when a day is clicked */
   onDayClick?: (date: Date) => void
+  /** Show loading skeleton (FIX-67-07) */
+  isLoading?: boolean
   className?: string
 }
 
@@ -19,6 +21,7 @@ export function ScheduleMiniCalendar({
   month,
   onMonthChange,
   onDayClick,
+  isLoading = false,
   className,
 }: ScheduleMiniCalendarProps) {
   const { t, i18n } = useTranslation(["common"])
@@ -124,6 +127,14 @@ export function ScheduleMiniCalendar({
 
       {/* ── Day grid ──────────────────────────────────── */}
       <div className="grid grid-cols-7 gap-0.5" role="grid" aria-label={monthLabel}>
+        {/* Loading skeleton (FIX-67-07) */}
+        {isLoading ? (
+          Array.from({ length: 35 }).map((_, i) => (
+            <div key={`skel-${i}`} className="flex h-8 items-center justify-center" role="presentation">
+              <div className="h-6 w-6 animate-pulse rounded-full bg-surface-elevated/(--opacity-dim)" />
+            </div>
+          ))
+        ) : (<>
         {/* Empty cells for offset */}
         {Array.from({ length: firstDayOffset }).map((_, i) => (
           <div key={`empty-${i}`} className="h-8" role="presentation" />
@@ -147,6 +158,7 @@ export function ScheduleMiniCalendar({
             </button>
           )
         })}
+        </>)}
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, useRef } from "react"
+import { useCallback, useState, useMemo, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, motion } from "framer-motion"
 import { PageLayout } from "@/components/layout/PageLayout"
@@ -13,7 +13,6 @@ import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageCo
 import { ScheduleHeader } from "@/components/schedule/ScheduleHeader"
 import { ScheduleDesktopTable } from "@/components/schedule/ScheduleDesktopTable"
 import { ScheduleMobileView } from "@/components/schedule/ScheduleMobileView"
-import { ScheduleListView } from "@/components/schedule/ScheduleListView"
 import { ScheduleDialogs } from "@/components/schedule/ScheduleDialogs"
 import { ScheduleShortcutsOverlay } from "@/components/schedule/ScheduleShortcutsOverlay"
 import { ScheduleMiniCalendar } from "@/components/schedule/ScheduleMiniCalendar"
@@ -25,19 +24,18 @@ import { SEO } from "@/components/ui/SEO"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 import { useScheduleKeyboardNav } from "@/hooks/useScheduleKeyboardNav"
 import {
-  useViewMode,
   useWeekOffset,
   useScheduleDisplayPreferences,
   useScheduleUIActions,
 } from "@/stores/scheduleUIStore"
 import { buildTable } from "@/components/schedule/scheduleUtils"
+import { useLessonNotesMap } from "@/hooks/useLessonNotes"
 import api from "@/api/client"
 
 function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])
   const isOnline = useOnlineStatus()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
-  const viewMode = useViewMode()
   const weekOffset = useWeekOffset()
   const { showPastLessons } = useScheduleDisplayPreferences()
   const { resetPreferences } = useScheduleUIActions()
@@ -45,6 +43,7 @@ function ScheduleContent() {
   const scheduleData = useScheduleData()
   const {
     isLoading,
+    error: scheduleError,
     schedule,
     weekdayBackend,
     weekdayLabels,
@@ -59,18 +58,20 @@ function ScheduleContent() {
     getLessonTypeColor,
     applyScheduleUpdate,
     currentLesson,
-    selectedGroup,
     nowTick,
     lessonDays,
     lessonTypeLabels,
   } = scheduleData
+
+  /* ── Lesson notes map for card indicators (FIX-67-02) ── */
+  const lessonIds = useMemo(() => schedule.map((l) => l.id), [schedule])
+  const notesMap = useLessonNotesMap(lessonIds)
 
   const { snackbarMessage, snackbarSeverity, hideSnackbar, showSnackbar, openDialog, closeDialog, selectedLesson, activeDialog } =
     useSchedulePage()
 
   /* ── Confirm dialog + export state ─────────────────────── */
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
 
@@ -132,27 +133,7 @@ function ScheduleContent() {
     onToggleShortcuts: handleToggleShortcuts,
   })
 
-  /* ── iCalendar export ─────────────────────────────────── */
-  const handleExportIcs = useCallback(async () => {
-    if (!selectedGroup) return
-    setIsExporting(true)
-    try {
-      const res = await api.get(`/schedule/ics`, {
-        params: { group: selectedGroup },
-        responseType: "blob",
-      })
-      const url = URL.createObjectURL(res.data as Blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = "schedule.ics"
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      showSnackbar(t("schedule:snackbar.exportError", { defaultValue: "Failed to export schedule" }), "error")
-    } finally {
-      setIsExporting(false)
-    }
-  }, [selectedGroup, showSnackbar, t])
+
 
   const getLessonTypeLabel = useCallback(
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
@@ -183,8 +164,16 @@ function ScheduleContent() {
   /* ── "All lessons filtered" detection (FIX-65-05) ──── */
   const allFilteredOut = displaySchedule.length === 0 && schedule.length > 0
 
-  /* ── Determine which view to render ───────────────────── */
-  const useMobileLayout = isMobile || viewMode === "day"
+  /* ── Scroll to current lesson on initial load (FIX-67-07) ── */
+  const scrolledRef = useRef(false)
+  useEffect(() => {
+    if (isLoading || scrolledRef.current || !currentLesson) return
+    scrolledRef.current = true
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`lesson-card-${currentLesson.id}`)
+      el?.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
+  }, [isLoading, currentLesson])
 
   const sharedViewProps = {
     schedule: displaySchedule,
@@ -200,23 +189,22 @@ function ScheduleContent() {
     onDeleteLesson: requestDeleteLesson,
     getLessonTypeColor,
     currentLesson,
+    notesMap,
   }
 
   return (
     <PageLayout variant="full">
       <SEO title={t("schedule:title.default")} />
-      <div className="schedule-theme relative w-full px-4 sm:px-6 md:px-8 lg:px-10 py-6 text-text-primary">
+      <div className="schedule-theme relative w-full px-4 sm:px-6 md:px-8 lg:px-10 py-6 text-text-primary xl:mx-auto xl:max-w-[96rem]">
         {/* ── Page-level aurora backdrop (DESIGN-63-02) ───── */}
         <div className="pointer-events-none absolute inset-0 -z-1 overflow-hidden" aria-hidden="true">
-          <div className="sched-orb-1 absolute -left-32 top-40 h-96 w-96 rounded-full opacity-50 blur-[80px]" />
-          <div className="sched-orb-2 absolute -right-24 top-80 h-80 w-80 rounded-full opacity-40 blur-[60px]" />
-          <div className="sched-orb-3 absolute bottom-20 left-1/4 h-64 w-64 rounded-full opacity-30 blur-[70px]" />
+          <div className="sched-orb-1 absolute -left-32 top-40 h-48 w-48 rounded-full opacity-50 blur-[80px] sm:h-64 sm:w-64 lg:h-96 lg:w-96" />
+          <div className="sched-orb-2 absolute -right-24 top-80 h-40 w-40 rounded-full opacity-40 blur-[60px] sm:h-56 sm:w-56 lg:h-80 lg:w-80" />
+          <div className="sched-orb-3 absolute bottom-20 left-1/4 h-32 w-32 rounded-full opacity-30 blur-[70px] sm:h-48 sm:w-48 lg:h-64 lg:w-64" />
         </div>
 
         <ScheduleHeader
           {...scheduleData}
-          onExportIcs={selectedGroup ? handleExportIcs : undefined}
-          isExporting={isExporting}
           onOpenSettings={() => setSettingsOpen(true)}
           gridRef={gridRef}
         />
@@ -239,21 +227,29 @@ function ScheduleContent() {
                     </button>
                   </div>
                 )}
+                {/* Error banner (FIX-67-06) */}
+                {scheduleError && !isLoading && (
+                  <div className="mb-4 flex items-center gap-3 rounded-xl border border-error/(--opacity-dim) bg-error/(--opacity-subtle) px-4 py-3 text-sm text-text-secondary">
+                    <span>{t("schedule:error.loadFailed")}</span>
+                    <button
+                      type="button"
+                      onClick={refresh}
+                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+                    >
+                      {t("schedule:error.retry")}
+                    </button>
+                  </div>
+                )}
                 {/* Week slide animation: key on weekOffset triggers re-mount */}
                 <AnimatePresence mode="wait">
                   <motion.div
-                    key={`${viewMode}-${weekOffset}`}
-                    initial={{ opacity: 0, x: 0, y: viewMode !== (viewMode) ? 8 : 0 }}
-                    animate={{ opacity: 1, x: 0, y: 0 }}
-                    exit={{ opacity: 0, x: 0, y: 0 }}
+                    key={weekOffset}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    {viewMode === "list" ? (
-                      <ScheduleListView
-                        {...sharedViewProps}
-                        getLessonTypeLabel={getLessonTypeLabel}
-                      />
-                    ) : useMobileLayout ? (
+                    {isMobile ? (
                       <ScheduleMobileView
                         {...sharedViewProps}
                         weekdayShort={weekdayShort}
@@ -276,7 +272,7 @@ function ScheduleContent() {
           {!isMobile && (
             <aside className="hidden w-56 shrink-0 lg:block">
               <FadeSection delay="var(--motion-duration-slow)">
-                <ScheduleMiniCalendar className="sticky top-20" lessonDays={lessonDays} />
+                <ScheduleMiniCalendar className="sticky top-20" lessonDays={lessonDays} isLoading={isLoading} />
               </FadeSection>
             </aside>
           )}
@@ -320,9 +316,8 @@ function ScheduleContent() {
           onCancel={() => setPendingDeleteId(null)}
         />
 
-        {/* ── View mode + week/parity announcement (a11y, A11Y-65-05) ── */}
+        {/* ── Week/parity announcement (a11y) ── */}
         <div className="sr-only" role="status" aria-live="polite">
-          {t(`schedule:toolbar.${viewMode}`)} {t("schedule:toolbar.viewMode")}.{" "}
           {weekOffset === 0
             ? t("schedule:toolbar.thisWeek")
             : t("schedule:toolbar.weekOffset", { offset: weekOffset > 0 ? `+${weekOffset}` : String(weekOffset) })}.{" "}

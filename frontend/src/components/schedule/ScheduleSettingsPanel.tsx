@@ -47,7 +47,7 @@ export function ScheduleSettingsPanel({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-overlay bg-black/30 backdrop-blur-sm"
+        className="fixed inset-0 z-overlay bg-black/30 dark:bg-black/50 backdrop-blur-sm"
         onClick={handleClose}
         aria-hidden="true"
       />

@@ -77,11 +77,12 @@ export function LessonCard({
       role="button"
       tabIndex={0}
       aria-current={isCurrent ? "time" : undefined}
-      aria-label={
-        isConflict
-          ? `${lesson.subject ?? ""} — ${t("schedule:lesson.conflict")}`
-          : undefined
-      }
+      aria-label={[
+        lesson.subject,
+        `${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`,
+        lesson.room,
+        isConflict ? t("schedule:lesson.conflict") : null,
+      ].filter(Boolean).join(", ")}
       className={cn(
         "sched-card-matte sched-card-item sched-lesson-card group relative flex min-w-0 cursor-pointer flex-col glass-noise",
         accentClass,

@@ -4,6 +4,7 @@
  * CSS 3D card-flip on digit change. Wave 66 (Idea #13).
  */
 import { useState, useEffect, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 
 interface FlipCountdownProps {
@@ -66,31 +67,27 @@ export function FlipCountdown({
   onComplete,
   className,
 }: FlipCountdownProps) {
+  const { t } = useTranslation(["schedule"])
   const [secondsLeft, setSecondsLeft] = useState(() => {
     const now = new Date()
     const nowSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
     return Math.max(0, targetMinutes * 60 - nowSecs)
   })
-  const rafRef = useRef<number>(0)
   const onCompleteRef = useRef(onComplete)
-  onCompleteRef.current = onComplete
+  useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
 
+  /* FIX-67-06: setInterval(1000) replaces rAF — countdown only needs 1fps.
+     Pauses when tab hidden (Page Visibility API) to save battery. */
   useEffect(() => {
-    let lastTick = performance.now()
-    const tick = (now: number) => {
-      // Update every ~1 second
-      if (now - lastTick >= 1000) {
-        lastTick = now
-        setSecondsLeft((prev) => {
-          const next = Math.max(0, prev - 1)
-          if (next === 0) onCompleteRef.current?.()
-          return next
-        })
-      }
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafRef.current)
+    const id = setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      setSecondsLeft((prev) => {
+        const next = Math.max(0, prev - 1)
+        if (next === 0) onCompleteRef.current?.()
+        return next
+      })
+    }, 1000)
+    return () => clearInterval(id)
   }, [targetMinutes])
 
   const mins = Math.floor(secondsLeft / 60)
@@ -103,13 +100,13 @@ export function FlipCountdown({
       className={cn("sched-flip-countdown inline-flex items-center gap-1", className)}
       role="timer"
       aria-live="polite"
-      aria-label={`${mins} минут ${secs} секунд`}
+      aria-label={t("schedule:countdown.ariaLabel", { mins, secs })}
     >
-      <FlipDigit value={minStr[0]} label="десятки минут" />
-      <FlipDigit value={minStr[1]} label="минуты" />
+      <FlipDigit value={minStr[0]} label={t("schedule:countdown.tensOfMinutes")} />
+      <FlipDigit value={minStr[1]} label={t("schedule:countdown.unitMinutes")} />
       <span className="sched-flip-colon">:</span>
-      <FlipDigit value={secStr[0]} label="десятки секунд" />
-      <FlipDigit value={secStr[1]} label="секунды" />
+      <FlipDigit value={secStr[0]} label={t("schedule:countdown.tensOfSeconds")} />
+      <FlipDigit value={secStr[1]} label={t("schedule:countdown.unitSeconds")} />
     </div>
   )
 }

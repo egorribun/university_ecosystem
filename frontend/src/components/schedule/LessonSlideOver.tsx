@@ -62,7 +62,7 @@ export function LessonSlideOver({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-overlay bg-black/30 backdrop-blur-sm"
+        className="fixed inset-0 z-overlay bg-black/30 dark:bg-black/50 backdrop-blur-sm"
         onClick={handleClose}
         aria-hidden="true"
       />
@@ -112,7 +112,8 @@ export function LessonSlideOver({
               {t("schedule:dialog.typeLabel")}
             </div>
             <Badge
-              className="text-white font-semibold shadow-sm"
+              className="font-semibold shadow-sm"
+              /* text color inherited from Badge tone — no hardcoded text-white */
               style={{ background: getLessonTypeColor(displayLesson.lesson_type) }}
             >
               {getLessonTypeLabel(displayLesson.lesson_type)}

@@ -1,6 +1,6 @@
 /**
  * ExportDropdown — Multi-format export menu for schedule.
- * Wave 66 (Idea #9). Supports .ics, PDF, PNG, Google Calendar.
+ * Wave 66 (Idea #9). Supports PDF, PNG, Google Calendar.
  */
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
@@ -10,13 +10,11 @@ import {
   ChevronDown,
   FileText,
   Image,
-  Calendar,
   FileDown,
 } from "lucide-react"
 import { Button } from "@/components/ui"
 
 interface ExportDropdownProps {
-  onExportIcs?: () => void
   isExporting?: boolean
   /** Ref to the grid element for canvas-based export */
   gridRef?: React.RefObject<HTMLElement | null>
@@ -24,7 +22,6 @@ interface ExportDropdownProps {
 }
 
 export function ExportDropdown({
-  onExportIcs,
   isExporting,
   gridRef,
   className,
@@ -46,11 +43,23 @@ export function ExportDropdown({
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
 
-  // Close on Escape
+  // Close on Escape + arrow-key navigation (FIX-67-05: menu a11y)
   useEffect(() => {
     if (!open) return
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
+      if (e.key === "Escape") { setOpen(false); return }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault()
+        const menu = dropdownRef.current?.querySelector('[role="menu"]')
+        if (!menu) return
+        const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'))
+        const focused = document.activeElement as HTMLElement
+        const idx = items.indexOf(focused)
+        const next = e.key === "ArrowDown"
+          ? items[(idx + 1) % items.length]
+          : items[(idx - 1 + items.length) % items.length]
+        next?.focus()
+      }
     }
     document.addEventListener("keydown", handleKey)
     return () => document.removeEventListener("keydown", handleKey)
@@ -62,8 +71,8 @@ export function ExportDropdown({
     try {
       const { exportScheduleAsPng } = await import("@/utils/scheduleExport")
       await exportScheduleAsPng(gridRef.current)
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("[schedule:export:png]", err)
     } finally {
       setExporting(null)
       setOpen(false)
@@ -76,27 +85,15 @@ export function ExportDropdown({
     try {
       const { exportScheduleAsPdf } = await import("@/utils/scheduleExport")
       await exportScheduleAsPdf(gridRef.current, t("schedule:title.default"))
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("[schedule:export:pdf]", err)
     } finally {
       setExporting(null)
       setOpen(false)
     }
   }, [gridRef, t])
 
-  const handleIcs = useCallback(() => {
-    onExportIcs?.()
-    setOpen(false)
-  }, [onExportIcs])
-
   const items = [
-    {
-      id: "ics",
-      icon: Calendar,
-      label: t("schedule:export.ics", { defaultValue: "iCalendar (.ics)" }),
-      onClick: handleIcs,
-      disabled: !onExportIcs || isExporting,
-    },
     {
       id: "pdf",
       icon: FileText,

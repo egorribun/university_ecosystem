@@ -29,6 +29,8 @@ type ScheduleDesktopTableProps = Pick<
   getLessonTypeColor: (type?: string | null) => string
   getLessonTypeLabel: (val?: string | null) => string
   onDeleteLesson: (id: string) => void
+  /** Lesson note indicators (FIX-67-02) */
+  notesMap?: Map<string, boolean>
 }
 
 export function ScheduleDesktopTable({
@@ -46,6 +48,7 @@ export function ScheduleDesktopTable({
   getLessonTypeLabel,
   onDeleteLesson,
   currentLesson,
+  notesMap,
 }: ScheduleDesktopTableProps) {
   const { t } = useTranslation(["schedule", "common"])
   const { openDialog, setAddDay } = useSchedulePage()
@@ -248,6 +251,7 @@ export function ScheduleDesktopTable({
                         isCurrent={isCurrent}
                         index={rowIdx * visibleDays.length + colI}
                         compact={compactMode}
+                        hasNote={notesMap?.get(lesson.id) ?? false}
                         onOpen={() => openDialog("details", lesson)}
                         onDelete={() => onDeleteLesson(lesson.id)}
                         canEdit={canEdit}

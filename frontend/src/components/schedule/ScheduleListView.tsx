@@ -28,6 +28,8 @@ type ScheduleListViewProps = Pick<
   onDeleteLesson: (id: string) => void
   getLessonTypeColor: (type?: string | null) => string
   getLessonTypeLabel: (val?: string | null) => string
+  /** Lesson note indicators (FIX-67-02) */
+  notesMap?: Map<string, boolean>
 }
 
 export function ScheduleListView({
@@ -45,6 +47,7 @@ export function ScheduleListView({
   getLessonTypeColor,
   getLessonTypeLabel,
   currentLesson,
+  notesMap,
 }: ScheduleListViewProps) {
   const { t } = useTranslation(["schedule", "common"])
   const { openDialog, setAddDay } = useSchedulePage()
@@ -203,6 +206,7 @@ export function ScheduleListView({
                         isCurrent={isCurrent}
                         index={cardIndex}
                         compact={compactMode}
+                        hasNote={notesMap?.get(lesson.id) ?? false}
                         onOpen={() => openDialog("details", lesson)}
                         onDelete={() => onDeleteLesson(lesson.id)}
                         canEdit={canEdit}

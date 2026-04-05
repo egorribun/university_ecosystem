@@ -38,7 +38,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       .then((stored) => {
         if (stored) setPrefsState(stored)
       })
-      .catch(() => {})
+      .catch((err) => console.warn("[schedule:reminders]", err))
 
     // Load already-reminded set for today
     const todayKey = new Date().toISOString().slice(0, 10)
@@ -46,7 +46,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       .then((ids) => {
         if (ids) remindedRef.current = new Set(ids)
       })
-      .catch(() => {})
+      .catch((err) => console.warn("[schedule:reminders]", err))
 
     // Check notification permission
     if ("Notification" in window) {
@@ -58,7 +58,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
   const setPrefs = useCallback(async (update: Partial<ReminderPrefs>) => {
     setPrefsState((prev) => {
       const next = { ...prev, ...update }
-      set(REMINDER_PREFS_KEY, next).catch(() => {})
+      set(REMINDER_PREFS_KEY, next).catch((err) => console.warn("[schedule:reminders]", err))
       return next
     })
   }, [])
@@ -106,11 +106,11 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       const timer = setTimeout(async () => {
         // Mark as reminded
         remindedRef.current.add(lesson.id)
-        set(`${REMINDED_TODAY_KEY}:${todayKey}`, [...remindedRef.current]).catch(() => {})
+        set(`${REMINDED_TODAY_KEY}:${todayKey}`, [...remindedRef.current]).catch((err) => console.warn("[schedule:reminders]", err))
 
         // Show notification
         const title = t("schedule:reminder.title", { defaultValue: "Скоро пара" })
-        const body = `${lesson.subject ?? ""} — через ${lessonMinutesBefore} мин`
+        const body = t("schedule:reminder.body", { subject: lesson.subject ?? "", minutes: lessonMinutesBefore })
         const options: NotificationOptions = {
           body,
           icon: "/assets/guu_logo.png",
@@ -125,8 +125,8 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
           } else {
             new Notification(title, options)
           }
-        } catch {
-          // Notification failed — silently ignore
+        } catch (err) {
+          console.warn("[schedule:reminders] Notification failed", err)
         }
       }, delayMs)
 

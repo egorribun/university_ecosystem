@@ -29,6 +29,8 @@ type ScheduleMobileViewProps = Pick<
   onDeleteLesson: (id: string) => void
   getLessonTypeColor: (type?: string | null) => string
   getLessonTypeLabel: (val?: string | null) => string
+  /** Lesson note indicators (FIX-67-02) */
+  notesMap?: Map<string, boolean>
 }
 
 export function ScheduleMobileView({
@@ -48,6 +50,7 @@ export function ScheduleMobileView({
   getLessonTypeColor,
   getLessonTypeLabel,
   currentLesson,
+  notesMap,
 }: ScheduleMobileViewProps) {
   const { t } = useTranslation(["schedule"])
   const { openDialog, setAddDay } = useSchedulePage()
@@ -174,6 +177,7 @@ export function ScheduleMobileView({
             conflictedIds={conflictedIds}
             compact={compactMode}
             currentLessonId={currentLesson?.id}
+            notesMap={notesMap}
             onAdd={() => {
               setAddDay(day)
               openDialog("add")

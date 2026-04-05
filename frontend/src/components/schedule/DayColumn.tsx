@@ -1,5 +1,7 @@
-import { forwardRef } from "react"
+import { forwardRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core"
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Plus as AddIcon, CalendarOff as EmptyDayIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { Badge } from "@/components/ui"
@@ -7,7 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 
 import { type Lesson, minutesDiff } from "./scheduleUtils"
-import { LessonCard } from "./LessonCard"
+import { DraggableLessonCard } from "./DraggableLessonCard"
 
 /** Heatmap thresholds for day load intensity (lesson count) */
 const HEAT_THRESHOLDS = { heavy: 5, medium: 3, light: 1 } as const
@@ -23,6 +25,10 @@ interface DayColumnProps {
   conflictedIds: Set<string>
   compact?: boolean
   currentLessonId?: string
+  /** Map of lessonId → hasNote for note indicators (FIX-67-02) */
+  notesMap?: Map<string, boolean>
+  /** Called when a lesson is reordered via drag-drop (FIX-67-DND) */
+  onLessonReorder?: (lessonId: string, newIndex: number) => void
   onAdd: () => void
   onLessonOpen: (lesson: Lesson) => void
   onLessonDelete: (id: string) => void
@@ -44,6 +50,8 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       conflictedIds,
       compact = false,
       currentLessonId,
+      notesMap,
+      onLessonReorder,
       onAdd,
       onLessonOpen,
       onLessonDelete,
@@ -54,6 +62,19 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
     ref,
   ) => {
     const { t } = useTranslation(["schedule", "common"])
+
+    const canEdit = userRole === "admin" || userRole === "teacher"
+    const lessonIds = useMemo(() => lessons.map((l) => l.id), [lessons])
+
+    const handleDragEnd = useMemo(() => {
+      if (!onLessonReorder) return undefined
+      return (event: DragEndEvent) => {
+        const { active, over } = event
+        if (!over || active.id === over.id) return
+        const newIdx = lessons.findIndex((l) => l.id === over.id)
+        if (newIdx >= 0) onLessonReorder(String(active.id), newIdx)
+      }
+    }, [lessons, onLessonReorder])
 
     // Heatmap: color intensity based on lesson count
     const heatClass =
@@ -127,43 +148,50 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-3.5">
-            {lessons.map((lesson, idx) => {
-              const prev = lessons[idx - 1]
-              const gap = prev ? minutesDiff(prev.end_time, lesson.start_time) : 0
-              const isConflict = conflictedIds.has(lesson.id)
-              const isCurrent = lesson.id === currentLessonId
+          <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={lessonIds} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-3.5">
+                {lessons.map((lesson, idx) => {
+                  const prev = lessons[idx - 1]
+                  const gap = prev ? minutesDiff(prev.end_time, lesson.start_time) : 0
+                  const isConflict = conflictedIds.has(lesson.id)
+                  const isCurrent = lesson.id === currentLessonId
 
-              return (
-                <div key={lesson.id}>
-                  {/* ── Break timeline connector ────────────── */}
-                  {idx > 0 && gap > 0 && (
-                    <div className="mb-2.5 flex items-center gap-2 px-1">
-                      <div className="sched-timeline-dot" />
-                      <div className="sched-timeline-line flex-1" />
-                      <span className="sched-break-pill">
-                        {t("schedule:break", { minutes: gap })}
-                      </span>
-                      <div className="sched-timeline-line flex-1" />
-                      <div className="sched-timeline-dot" />
+                  return (
+                    <div key={lesson.id}>
+                      {/* ── Break timeline connector ────────────── */}
+                      {idx > 0 && gap > 0 && (
+                        <div className="mb-2.5 flex items-center gap-2 px-1">
+                          <div className="sched-timeline-dot" />
+                          <div className="sched-timeline-line flex-1" />
+                          <span className="sched-break-pill">
+                            {t("schedule:break", { minutes: gap })}
+                          </span>
+                          <div className="sched-timeline-line flex-1" />
+                          <div className="sched-timeline-dot" />
+                        </div>
+                      )}
+                      <DraggableLessonCard
+                        dragId={lesson.id}
+                        dragEnabled={canEdit}
+                        lesson={lesson}
+                        isConflict={isConflict}
+                        isCurrent={isCurrent}
+                        index={idx}
+                        compact={compact}
+                        hasNote={notesMap?.get(lesson.id) ?? false}
+                        onOpen={() => onLessonOpen(lesson)}
+                        onDelete={() => onLessonDelete(lesson.id)}
+                        canEdit={canEdit}
+                        getLessonTypeColor={getLessonTypeColor}
+                        getLessonTypeLabel={getLessonTypeLabel}
+                      />
                     </div>
-                  )}
-                  <LessonCard
-                    lesson={lesson}
-                    isConflict={isConflict}
-                    isCurrent={isCurrent}
-                    index={idx}
-                    compact={compact}
-                    onOpen={() => onLessonOpen(lesson)}
-                    onDelete={() => onLessonDelete(lesson.id)}
-                    canEdit={userRole === "admin" || userRole === "teacher"}
-                    getLessonTypeColor={getLessonTypeColor}
-                    getLessonTypeLabel={getLessonTypeLabel}
-                  />
-                </div>
-              )
-            })}
-          </div>
+                  )
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     )

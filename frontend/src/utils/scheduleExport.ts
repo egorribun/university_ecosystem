@@ -1,59 +1,63 @@
 /**
  * scheduleExport.ts — Multi-format export utilities for schedule.
  * Wave 66 (Idea #9). Supports PDF, PNG, Google Calendar.
+ *
+ * FIX-67-EXPORT: Replaced html2canvas with html-to-image.
+ * html2canvas can't parse CSS Color Level 4 `color()` function
+ * (used by Tailwind v4). html-to-image uses SVG foreignObject —
+ * the browser renders CSS natively, no parser issues.
  */
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 
 /**
  * Export schedule grid as PNG image.
- * Dynamically imports html2canvas to keep bundle size small.
+ * Dynamically imports html-to-image to keep bundle size small.
  */
 export async function exportScheduleAsPng(
   gridElement: HTMLElement,
   filename = "schedule.png",
 ): Promise<void> {
-  const { default: html2canvas } = await import("html2canvas")
-  const canvas = await html2canvas(gridElement, {
-    backgroundColor: null,
-    scale: 2,
-    useCORS: true,
-    logging: false,
-  })
-  const url = canvas.toDataURL("image/png")
+  const { toPng } = await import("html-to-image")
+  const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
   const a = document.createElement("a")
-  a.href = url
+  a.href = dataUrl
   a.download = filename
   a.click()
 }
 
 /**
  * Export schedule grid as PDF document.
- * Dynamically imports html2canvas + jspdf.
+ * Dynamically imports html-to-image + jspdf.
  */
+export interface ScheduleExportLabels {
+  title?: string
+  lessonFallback?: string
+  typePrefix?: string
+}
+
 export async function exportScheduleAsPdf(
   gridElement: HTMLElement,
-  title = "Расписание",
+  title = "Schedule",
   filename = "schedule.pdf",
 ): Promise<void> {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas"),
+  const [{ toPng }, { jsPDF }] = await Promise.all([
+    import("html-to-image"),
     import("jspdf"),
   ])
 
-  const canvas = await html2canvas(gridElement, {
-    backgroundColor: "#0f172a", // dark bg for consistent rendering
-    scale: 2,
-    useCORS: true,
-    logging: false,
-  })
+  const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
 
-  const imgData = canvas.toDataURL("image/png")
-  const imgWidth = canvas.width
-  const imgHeight = canvas.height
+  // Load image to get dimensions
+  const img = new Image()
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = reject
+    img.src = dataUrl
+  })
 
   // A4 landscape for wide schedule grids
   const pdf = new jsPDF({
-    orientation: imgWidth > imgHeight ? "landscape" : "portrait",
+    orientation: img.width > img.height ? "landscape" : "portrait",
     unit: "mm",
     format: "a4",
   })
@@ -65,17 +69,17 @@ export async function exportScheduleAsPdf(
   pdf.setFontSize(14)
   pdf.text(title, 10, 12)
   pdf.setFontSize(8)
-  pdf.text(new Date().toLocaleDateString("ru-RU"), 10, 17)
+  pdf.text(new Date().toLocaleDateString(), 10, 17)
 
   // Scale image to fit page with margins
   const margin = 10
   const availableWidth = pageWidth - margin * 2
   const availableHeight = pageHeight - 25 - margin // 25mm for header
-  const scale = Math.min(availableWidth / imgWidth, availableHeight / imgHeight)
-  const scaledWidth = imgWidth * scale
-  const scaledHeight = imgHeight * scale
+  const scale = Math.min(availableWidth / img.width, availableHeight / img.height)
+  const scaledWidth = img.width * scale
+  const scaledHeight = img.height * scale
 
-  pdf.addImage(imgData, "PNG", margin, 22, scaledWidth, scaledHeight)
+  pdf.addImage(dataUrl, "PNG", margin, 22, scaledWidth, scaledHeight)
   pdf.save(filename)
 }
 
@@ -83,8 +87,12 @@ export async function exportScheduleAsPdf(
  * Generate a Google Calendar event creation URL for a lesson.
  * Opens in a new tab.
  */
-export function generateGoogleCalendarUrl(lesson: Lesson, date: Date): string {
-  const subject = lesson.subject ?? "Занятие"
+export function generateGoogleCalendarUrl(
+  lesson: Lesson,
+  date: Date,
+  labels?: ScheduleExportLabels,
+): string {
+  const subject = lesson.subject ?? labels?.lessonFallback ?? "Lesson"
   const teacher = lesson.teacher ? ` (${lesson.teacher})` : ""
   const title = `${subject}${teacher}`
   const location = lesson.room ?? ""
@@ -107,7 +115,9 @@ export function generateGoogleCalendarUrl(lesson: Lesson, date: Date): string {
     text: title,
     dates: `${startStr}/${endStr}`,
     location,
-    details: `Тип: ${lesson.lesson_type ?? ""}`,
+    details: labels?.typePrefix
+      ? labels.typePrefix.replace("{{type}}", lesson.lesson_type ?? "")
+      : lesson.lesson_type ?? "",
   })
 
   return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`

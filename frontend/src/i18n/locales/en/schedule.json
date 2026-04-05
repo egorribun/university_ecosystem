@@ -120,7 +120,7 @@
     "week": "Week",
     "day": "Day",
     "list": "List",
-    "export": "Export .ics",
+    "export": "Export",
     "settings": "Settings"
   },
   "empty": {
@@ -197,7 +197,10 @@
     "ics": "iCalendar (.ics)",
     "pdf": "PDF document",
     "png": "Image (PNG)",
-    "googleCalendar": "Google Calendar"
+    "googleCalendar": "Google Calendar",
+    "pdfTitle": "Schedule",
+    "lessonFallback": "Lesson",
+    "typePrefix": "Type: {{type}}"
   },
   "notes": {
     "title": "Notes",
@@ -213,11 +216,18 @@
     "min5": "5 min",
     "min10": "10 min",
     "min15": "15 min",
-    "min30": "30 min"
+    "min30": "30 min",
+    "body": "{{subject}} — in {{minutes}} min"
+  },
+  "error": {
+    "loadFailed": "Failed to load schedule",
+    "retry": "Retry"
   },
   "stats": {
     "lessons": "lessons",
-    "buildings": "buildings"
+    "buildings": "buildings",
+    "hoursShort": "h",
+    "minutesShort": "min"
   },
   "window": {
     "coffee": "Coffee break",
@@ -231,9 +241,17 @@
     "oddOnly": "Odd weeks only",
     "evenOnly": "Even weeks only"
   },
+  "countdown": {
+    "ariaLabel": "{{mins}} minutes {{secs}} seconds remaining",
+    "tensOfMinutes": "tens of minutes",
+    "unitMinutes": "minutes",
+    "tensOfSeconds": "tens of seconds",
+    "unitSeconds": "seconds"
+  },
   "drag": {
     "moved": "Lesson moved",
-    "undo": "Undo"
+    "undo": "Undo",
+    "handle": "Drag lesson"
   },
   "offline": {
     "badge": "Offline · data from {{time}}",

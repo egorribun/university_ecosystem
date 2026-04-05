@@ -5,40 +5,26 @@ import {
   ChevronRight,
   RotateCcw,
   Settings2,
-  LayoutGrid,
-  CalendarDays,
-  List,
-  Printer,
 } from "lucide-react"
 import { Button } from "@/components/ui"
 import { ExportDropdown } from "@/components/schedule/ExportDropdown"
 import { cn } from "@/utils/cn"
 import {
   useWeekOffset,
-  useViewMode,
   useScheduleUIActions,
 } from "@/stores/scheduleUIStore"
-import type { ScheduleViewMode } from "@/stores/types"
 
 interface ScheduleToolbarProps {
-  onExportIcs?: () => void
   onOpenSettings?: () => void
   isExporting?: boolean
   /** Ref to the grid element for canvas-based export */
   gridRef?: React.RefObject<HTMLElement | null>
 }
 
-const VIEW_MODES: { id: ScheduleViewMode; icon: typeof LayoutGrid; labelKey: string }[] = [
-  { id: "week", icon: LayoutGrid, labelKey: "schedule:toolbar.week" },
-  { id: "day", icon: CalendarDays, labelKey: "schedule:toolbar.day" },
-  { id: "list", icon: List, labelKey: "schedule:toolbar.list" },
-]
-
-export function ScheduleToolbar({ onExportIcs, onOpenSettings, isExporting, gridRef }: ScheduleToolbarProps) {
+export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: ScheduleToolbarProps) {
   const { t } = useTranslation(["schedule"])
   const weekOffset = useWeekOffset()
-  const viewMode = useViewMode()
-  const { nextWeek, previousWeek, goToCurrentWeek, setViewMode } = useScheduleUIActions()
+  const { nextWeek, previousWeek, goToCurrentWeek } = useScheduleUIActions()
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -93,50 +79,12 @@ export function ScheduleToolbar({ onExportIcs, onOpenSettings, isExporting, grid
         )}
       </div>
 
-      {/* ── View mode segment control ──────────────────── */}
-      <div className="sched-segment" role="radiogroup" aria-label={t("schedule:toolbar.viewMode")}>
-        {VIEW_MODES.map(({ id, icon: Icon, labelKey }) => (
-          <button
-            key={id}
-            role="radio"
-            aria-checked={viewMode === id}
-            data-active={viewMode === id}
-            className="sched-segment-btn"
-            onClick={() => setViewMode(id)}
-          >
-            {viewMode === id && (
-              <motion.span
-                layoutId="schedule-view-mode"
-                className="absolute inset-0 rounded-lg bg-brand shadow-glow-primary"
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              />
-            )}
-            <span className="relative z-surface flex items-center gap-1.5">
-              <Icon size={14} aria-hidden="true" />
-              <span className="hidden sm:inline">{t(labelKey)}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-
       {/* ── Action buttons ─────────────────────────────── */}
       <div className="ml-auto flex items-center gap-2">
-        {/* Export dropdown (Wave 66: multi-format) */}
         <ExportDropdown
-          onExportIcs={onExportIcs}
           isExporting={isExporting}
           gridRef={gridRef}
         />
-        {/* Print button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => window.print()}
-          aria-label={t("schedule:toolbar.print", { defaultValue: "Print schedule" })}
-          className="no-print"
-        >
-          <Printer size={15} aria-hidden="true" />
-        </Button>
         {onOpenSettings && (
           <Button
             variant="ghost"

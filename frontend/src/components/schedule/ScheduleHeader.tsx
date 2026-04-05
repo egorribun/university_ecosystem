@@ -34,7 +34,6 @@ type ScheduleHeaderProps = Pick<
   | "currentProgress"
   | "todayLessons"
 > & {
-  onExportIcs?: () => void
   isExporting?: boolean
   onOpenSettings?: () => void
   /** Ref for grid element (export) */
@@ -88,7 +87,7 @@ export function ScheduleHeader({
   timeLeftText,
   currentProgress,
   todayLessons,
-  onExportIcs,
+
   isExporting,
   onOpenSettings,
   gridRef,
@@ -101,12 +100,20 @@ export function ScheduleHeader({
   )
   const dayStats = useDayStats(todayLessons ?? [])
 
-  // Flip countdown: show when next lesson starts in < 30 min
+  // Flip countdown: show when next lesson starts in < 30 min (FIX-67-06: extracted from IIFE)
   const nextStartMinutes = useMemo(() => {
     const lesson = currentLesson ? null : nextLesson
     if (!lesson) return null
     return parseMinutes(lesson.start_time)
   }, [currentLesson, nextLesson])
+
+  const showCountdown = useMemo(() => {
+    if (nextStartMinutes == null) return false
+    const now = new Date()
+    const nowMin = now.getHours() * 60 + now.getMinutes()
+    const diff = nextStartMinutes - nowMin
+    return diff > 0 && diff <= 30
+  }, [nextStartMinutes])
 
   return (
     <header className="relative mb-6 mt-0">
@@ -143,7 +150,7 @@ export function ScheduleHeader({
 
       {/* ── Toolbar (week nav + view mode + actions) ────── */}
       <FadeSection delay="var(--motion-duration-rapid)" className="mb-6">
-        <ScheduleToolbar onExportIcs={onExportIcs} isExporting={isExporting} onOpenSettings={onOpenSettings} gridRef={gridRef} />
+        <ScheduleToolbar isExporting={isExporting} onOpenSettings={onOpenSettings} gridRef={gridRef} />
       </FadeSection>
 
       {/* ── Week parity selector ────────────────────────── */}
@@ -224,15 +231,10 @@ export function ScheduleHeader({
                   {timeLeftText}
                 </Badge>
               )}
-              {/* Flip countdown when < 30 min until next lesson */}
-              {nextStartMinutes != null && (() => {
-                const now = new Date()
-                const nowMin = now.getHours() * 60 + now.getMinutes()
-                const diff = nextStartMinutes - nowMin
-                return diff > 0 && diff <= 30 ? (
-                  <FlipCountdown targetMinutes={nextStartMinutes} className="ml-auto" />
-                ) : null
-              })()}
+              {/* Flip countdown when < 30 min until next lesson (FIX-67-06: removed IIFE) */}
+              {showCountdown && nextStartMinutes != null && (
+                <FlipCountdown targetMinutes={nextStartMinutes} className="ml-auto" />
+              )}
             </div>
           </div>
         ) : (
@@ -247,8 +249,8 @@ export function ScheduleHeader({
                 </span>
                 <span className="text-text-muted-subtle">·</span>
                 <span>
-                  <span className="font-semibold text-text-primary">{dayStats.hours}</span>ч
-                  {dayStats.mins > 0 && <> <span className="font-semibold text-text-primary">{dayStats.mins}</span>мин</>}
+                  <span className="font-semibold text-text-primary">{dayStats.hours}</span>{t("schedule:stats.hoursShort")}
+                  {dayStats.mins > 0 && <> <span className="font-semibold text-text-primary">{dayStats.mins}</span>{t("schedule:stats.minutesShort")}</>}
                 </span>
                 {dayStats.buildings.length > 0 && (
                   <>

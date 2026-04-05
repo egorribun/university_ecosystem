@@ -5,6 +5,7 @@
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { LessonCard, type LessonCardProps } from "./LessonCard"
 
@@ -37,6 +38,8 @@ export function DraggableLessonCard({
     transition,
   }
 
+  const { t } = useTranslation(["schedule"])
+
   if (!dragEnabled) {
     return <LessonCard {...cardProps} />
   }
@@ -55,7 +58,7 @@ export function DraggableLessonCard({
         {...attributes}
         {...listeners}
         className="absolute -left-1 top-1/2 -translate-y-1/2 z-10 flex h-6 w-4 items-center justify-center rounded text-text-secondary opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 cursor-grab active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-brand"
-        aria-label="Перетащить занятие"
+        aria-label={t("schedule:drag.handle", { defaultValue: "Drag lesson" })}
         tabIndex={-1}
       >
         <GripVertical size={12} aria-hidden="true" />
