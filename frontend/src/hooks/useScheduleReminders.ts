@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { get, set } from "idb-keyval"
 import { type Lesson, parseMinutes } from "@/components/schedule/scheduleUtils"
+import { logError } from "@/app/logger"
 
 const REMINDER_PREFS_KEY = "schedule:reminder-prefs"
 const REMINDED_TODAY_KEY = "schedule:reminded-today"
@@ -38,7 +39,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       .then((stored) => {
         if (stored) setPrefsState(stored)
       })
-      .catch((err) => console.warn("[schedule:reminders]", err))
+      .catch((err) => logError("[schedule:reminders]", err))
 
     // Load already-reminded set for today
     const todayKey = new Date().toISOString().slice(0, 10)
@@ -46,7 +47,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       .then((ids) => {
         if (ids) remindedRef.current = new Set(ids)
       })
-      .catch((err) => console.warn("[schedule:reminders]", err))
+      .catch((err) => logError("[schedule:reminders]", err))
 
     // Check notification permission
     if ("Notification" in window) {
@@ -58,7 +59,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
   const setPrefs = useCallback(async (update: Partial<ReminderPrefs>) => {
     setPrefsState((prev) => {
       const next = { ...prev, ...update }
-      set(REMINDER_PREFS_KEY, next).catch((err) => console.warn("[schedule:reminders]", err))
+      set(REMINDER_PREFS_KEY, next).catch((err) => logError("[schedule:reminders]", err))
       return next
     })
   }, [])
@@ -88,7 +89,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
     if (prefs.minutesBefore === 0) return
     if (permission !== "granted") {
       if (prefs.minutesBefore > 0 && todayLessons.length > 0) {
-        console.warn("[schedule:reminders] Reminders enabled but notification permission denied")
+        if (import.meta.env.DEV) logError("[schedule:reminders] Reminders enabled but notification permission denied")
       }
       return
     }
@@ -115,10 +116,10 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       const timer = setTimeout(async () => {
         // Mark as reminded
         remindedRef.current.add(lesson.id)
-        set(`${REMINDED_TODAY_KEY}:${todayKey}`, [...remindedRef.current]).catch((err) => console.warn("[schedule:reminders]", err))
+        set(`${REMINDED_TODAY_KEY}:${todayKey}`, [...remindedRef.current]).catch((err) => logError("[schedule:reminders]", err))
 
         // Show notification
-        const title = t("schedule:reminder.title", { defaultValue: "Скоро пара" })
+        const title = t("schedule:reminder.title", { defaultValue: "Lesson starting soon" })
         const body = t("schedule:reminder.body", { subject: lesson.subject ?? "", minutes: lessonMinutesBefore })
         const options: NotificationOptions = {
           body,
@@ -135,7 +136,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
             new Notification(title, options)
           }
         } catch (err) {
-          console.warn("[schedule:reminders] Notification failed", err)
+          logError("[schedule:reminders] Notification failed", err)
         }
       }, delayMs)
 

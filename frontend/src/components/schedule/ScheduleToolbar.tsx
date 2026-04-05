@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import {
   ChevronLeft,
   ChevronRight,
@@ -25,6 +25,7 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: Schedu
   const { t } = useTranslation(["schedule"])
   const weekOffset = useWeekOffset()
   const { nextWeek, previousWeek, goToCurrentWeek } = useScheduleUIActions()
+  const prefersReduced = useReducedMotion()
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -33,7 +34,7 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: Schedu
         <button
           onClick={previousWeek}
           aria-label={t("schedule:toolbar.prevWeek")}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+          className="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
         >
           <ChevronLeft size={16} aria-hidden="true" />
         </button>
@@ -42,7 +43,7 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: Schedu
           className={cn(
             "relative min-w-24 px-3 py-1.5 text-sm font-semibold transition-colors rounded-lg",
             weekOffset === 0
-              ? "text-white"
+              ? "text-[var(--sched-on-accent)]"
               : "text-text-secondary hover:bg-surface-elevated/(--opacity-dim)"
           )}
         >
@@ -50,7 +51,7 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: Schedu
             <motion.span
               layoutId="schedule-week-nav"
               className="absolute inset-0 rounded-lg bg-brand shadow-glow-primary"
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
             />
           )}
           <span className="relative z-surface">
@@ -64,7 +65,7 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: Schedu
         <button
           onClick={nextWeek}
           aria-label={t("schedule:toolbar.nextWeek")}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+          className="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
         >
           <ChevronRight size={16} aria-hidden="true" />
         </button>
@@ -72,7 +73,7 @@ export function ScheduleToolbar({ onOpenSettings, isExporting, gridRef }: Schedu
           <button
             onClick={goToCurrentWeek}
             aria-label={t("schedule:toolbar.goToToday")}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-brand transition-colors hover:bg-brand/(--opacity-subtle) focus-visible:ring-2 focus-visible:ring-brand"
+            className="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-brand transition-colors hover:bg-brand/(--opacity-subtle) focus-visible:ring-2 focus-visible:ring-brand"
           >
             <RotateCcw size={14} aria-hidden="true" />
           </button>

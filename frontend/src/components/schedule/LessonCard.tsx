@@ -37,7 +37,7 @@ export interface LessonCardProps {
   index?: number
   compact?: boolean
   onDelete: () => void
-  onOpen: () => void
+  onOpen?: () => void
   hasBreakBefore?: boolean
   getLessonTypeColor: (value?: string | null) => string
   getLessonTypeLabel: (value?: string | null) => string
@@ -71,14 +71,14 @@ export function LessonCard({
     <div
       id={`lesson-card-${lesson.id}`}
       onClick={onOpen}
-      onKeyDown={(e) => {
+      onKeyDown={onOpen ? (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
           onOpen()
         }
-      }}
-      role="button"
-      tabIndex={0}
+      } : undefined}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
       aria-current={isCurrent ? "time" : undefined}
       aria-label={[
         lesson.subject,
@@ -87,7 +87,8 @@ export function LessonCard({
         isConflict ? t("schedule:lesson.conflict") : null,
       ].filter(Boolean).join(", ")}
       className={cn(
-        "sched-card-matte sched-card-item sched-lesson-card group relative flex min-w-0 cursor-pointer flex-col glass-noise",
+        "sched-card-matte sched-card-item sched-lesson-card group relative flex min-w-0 flex-col glass-noise",
+        onOpen && "cursor-pointer",
         accentClass,
         compact ? "gap-1 p-2.5" : "gap-1.5 p-3",
         hasBreakBefore && "mt-5",
@@ -153,7 +154,7 @@ export function LessonCard({
           )}
           {/* Note indicator */}
           {hasNote && (
-            <span title={t("schedule:notes.hasNote", { defaultValue: "Есть заметка" })}>
+            <span title={t("schedule:notes.hasNote", { defaultValue: "Has note" })}>
               <NoteIcon size={10} className="shrink-0 text-amber-500 opacity-60" aria-hidden="true" />
             </span>
           )}

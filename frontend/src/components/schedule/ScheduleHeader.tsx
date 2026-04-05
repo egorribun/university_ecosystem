@@ -245,7 +245,7 @@ export function ScheduleHeader({
                 <span className="flex items-center gap-1.5">
                   <BookOpen size={14} className="text-brand" aria-hidden="true" />
                   <span className="font-semibold text-text-primary">{dayStats.totalLessons}</span>
-                  {t("schedule:stats.lessons", { defaultValue: "пар" })}
+                  {t("schedule:stats.lessons", { defaultValue: "lessons" })}
                 </span>
                 <span className="text-text-muted-subtle">·</span>
                 <span>
@@ -256,7 +256,7 @@ export function ScheduleHeader({
                   <>
                     <span className="text-text-muted-subtle">·</span>
                     <span>
-                      {t("schedule:stats.buildings", { defaultValue: "корпуса" })}{" "}
+                      {t("schedule:stats.buildings", { defaultValue: "buildings" })}{" "}
                       <span className="font-semibold text-text-primary">{dayStats.buildings.join(", ")}</span>
                     </span>
                   </>

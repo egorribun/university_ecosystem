@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useState, useEffect, useRef } from "react"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, Eye as VisibleIcon, EyeOff as HiddenIcon } from "lucide-react"
@@ -26,10 +26,14 @@ export function ScheduleSettingsPanel({
   const hiddenWeekdays = useHiddenWeekdays()
   const { showPastLessons, compactMode } = useScheduleDisplayPreferences()
   const { toggleWeekday, togglePastLessons, toggleCompactMode } = useScheduleUIActions()
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  // Cleanup exit-animation timer on unmount (FIX-69-01)
+  useEffect(() => () => clearTimeout(closeTimerRef.current), [])
 
   const handleClose = useCallback(() => {
     setIsClosing(true)
-    setTimeout(() => {
+    closeTimerRef.current = setTimeout(() => {
       setIsClosing(false)
       onClose()
     }, 250)

@@ -44,16 +44,21 @@ export function LessonBottomSheet({
   const [lastLesson, setLastLesson] = useState<Lesson | null>(null)
   const [dragY, setDragY] = useState(0)
   const dragStartRef = useRef<number | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
     if (lesson) setLastLesson(lesson)
   }, [lesson])
+
+  // Cleanup exit-animation timer on unmount (FIX-69-01)
+  useEffect(() => () => clearTimeout(closeTimerRef.current), [])
+
   const displayLesson = lesson ?? lastLesson
 
   const handleClose = useCallback(() => {
     setIsClosing(true)
     setDragY(0)
-    setTimeout(() => {
+    closeTimerRef.current = setTimeout(() => {
       setIsClosing(false)
       onClose()
     }, 250)
@@ -140,7 +145,8 @@ export function LessonBottomSheet({
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto px-5 pb-5 space-y-3" style={{ maxHeight: "50vh" }}>
+        {/* FIX-69-02: min(80vh, 600px) for landscape usability; safe-area for notched devices */}
+        <div className="overflow-y-auto px-5 pb-5 space-y-3" style={{ maxHeight: "min(80vh, 600px)", paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
           {/* Type + Time row */}
           <div className="flex items-center gap-2">
             <Badge

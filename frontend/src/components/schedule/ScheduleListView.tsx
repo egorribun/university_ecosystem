@@ -152,7 +152,7 @@ export function ScheduleListView({
               {isToday && (
                 <Badge
                   size="xs"
-                  className="sched-today-badge sched-badge-matte bg-brand text-white font-bold shadow-glow-primary"
+                  className="sched-today-badge sched-badge-matte bg-brand text-[var(--sched-on-accent)] font-bold shadow-glow-primary"
                 >
                   {t("schedule:toolbar.today", { defaultValue: "" })}
                 </Badge>
@@ -207,7 +207,6 @@ export function ScheduleListView({
                         index={cardIndex}
                         compact={compactMode}
                         hasNote={notesMap?.get(lesson.id) ?? false}
-                        onOpen={() => openDialog("details", lesson)}
                         onDelete={() => onDeleteLesson(lesson.id)}
                         canEdit={canEdit}
                         getLessonTypeColor={getLessonTypeColor}

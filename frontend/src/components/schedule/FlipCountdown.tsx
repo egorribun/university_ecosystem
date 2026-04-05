@@ -29,7 +29,9 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
       setPrevious(current)
       setCurrent(value)
       setFlipping(true)
-      const timer = setTimeout(() => setFlipping(false), 500)
+      // Duration synced with CSS --sched-flip-duration (FIX-69-03)
+      const FLIP_DURATION_MS = 500
+      const timer = setTimeout(() => setFlipping(false), FLIP_DURATION_MS)
       return () => clearTimeout(timer)
     }
   }, [value, current])

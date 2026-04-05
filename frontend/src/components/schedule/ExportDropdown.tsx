@@ -12,6 +12,8 @@ import {
   Image,
   FileDown,
 } from "lucide-react"
+import { logError } from "@/app/logger"
+import { cn } from "@/utils/cn"
 
 interface ExportDropdownProps {
   isExporting?: boolean
@@ -71,10 +73,10 @@ export function ExportDropdown({
       const { exportScheduleAsPng } = await import("@/utils/scheduleExport")
       const result = await exportScheduleAsPng(gridRef.current)
       if (!result.success) {
-        console.error("[schedule:export:png]", result.error)
+        logError("[schedule:export:png]", result.error)
       }
     } catch (err) {
-      console.error("[schedule:export:png]", err)
+      logError("[schedule:export:png]", err)
     } finally {
       setExporting(null)
       setOpen(false)
@@ -88,10 +90,10 @@ export function ExportDropdown({
       const { exportScheduleAsPdf } = await import("@/utils/scheduleExport")
       const result = await exportScheduleAsPdf(gridRef.current, t("schedule:title.default"))
       if (!result.success) {
-        console.error("[schedule:export:pdf]", result.error)
+        logError("[schedule:export:pdf]", result.error)
       }
     } catch (err) {
-      console.error("[schedule:export:pdf]", err)
+      logError("[schedule:export:pdf]", err)
     } finally {
       setExporting(null)
       setOpen(false)
@@ -126,7 +128,7 @@ export function ExportDropdown({
   ]
 
   return (
-    <div ref={dropdownRef} className={`relative ${className ?? ""}`}>
+    <div ref={dropdownRef} className={cn("relative", className)}>
       {/* FIX-68-27: plain button — no Button wrapper to avoid gap/wrap issues */}
       <button
         type="button"

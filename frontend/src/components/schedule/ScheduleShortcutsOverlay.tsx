@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, Keyboard as KeyboardIcon } from "lucide-react"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface ScheduleShortcutsOverlayProps {
@@ -22,6 +22,7 @@ const SHORTCUTS = [
 // A11Y-65-01: Added useFocusTrap — replaces manual focus + keydown listener
 export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOverlayProps) {
   const { t } = useTranslation(["schedule"])
+  const prefersReduced = useReducedMotion()
 
   const handleClose = useCallback(() => onClose(), [onClose])
 
@@ -54,10 +55,10 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
             aria-modal="true"
             aria-labelledby="sched-shortcuts-title"
             className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-glass-border bg-surface/(--opacity-heavy) p-6 shadow-glass-strong backdrop-blur-xl glass-noise"
-            initial={{ scale: 0.95, y: 8 }}
+            initial={prefersReduced ? false : { scale: 0.95, y: 8 }}
             animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.95, y: 8 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            exit={prefersReduced ? { opacity: 0 } : { scale: 0.95, y: 8 }}
+            transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
           >
             {/* Header */}
             <div className="mb-5 flex items-center justify-between">
@@ -76,12 +77,12 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
               </button>
             </div>
 
-            {/* Shortcut list */}
-            <div className="space-y-3">
+            {/* Shortcut list — semantic <dl> (FIX-69-04) */}
+            <dl className="space-y-3">
               {SHORTCUTS.map(({ keys, labelKey }) => (
                 <div key={labelKey} className="flex items-center justify-between gap-4">
-                  <span className="text-sm text-text-secondary">{t(labelKey)}</span>
-                  <div className="flex items-center gap-1">
+                  <dd className="text-sm text-text-secondary">{t(labelKey)}</dd>
+                  <dt className="flex items-center gap-1">
                     {keys.map((key) => (
                       <kbd
                         key={key}
@@ -90,10 +91,10 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
                         {key}
                       </kbd>
                     ))}
-                  </div>
+                  </dt>
                 </div>
               ))}
-            </div>
+            </dl>
           </motion.div>
         </motion.div>
       )}

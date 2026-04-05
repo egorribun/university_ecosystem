@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-// dayjs removal
 import api from "@/api/client"
+import { logError } from "@/app/logger"
 import { Button, Input, Select } from "@/components/ui"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import {
@@ -64,8 +64,9 @@ export function EditLessonDialog({
       })
       showSnackbar(t("schedule:snackbar.updated"))
       refresh()
-    } catch {
-      showSnackbar(t("schedule:snackbar.updateError"))
+    } catch (err) {
+      logError("Failed to update lesson", err)
+      showSnackbar(t("schedule:snackbar.updateError"), "error")
       // Revert optimistic update
       applyScheduleUpdate(() => backup)
     } finally {

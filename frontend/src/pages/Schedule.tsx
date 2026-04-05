@@ -16,8 +16,6 @@ import { ScheduleMobileView } from "@/components/schedule/ScheduleMobileView"
 import { ScheduleDialogs } from "@/components/schedule/ScheduleDialogs"
 import { ScheduleShortcutsOverlay } from "@/components/schedule/ScheduleShortcutsOverlay"
 import { ScheduleMiniCalendar } from "@/components/schedule/ScheduleMiniCalendar"
-import { LessonSlideOver } from "@/components/schedule/LessonSlideOver"
-import { LessonBottomSheet } from "@/components/schedule/LessonBottomSheet"
 import { ScheduleSettingsPanel } from "@/components/schedule/ScheduleSettingsPanel"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { Alert, Snackbar } from "@/components/settings"
@@ -74,7 +72,7 @@ function ScheduleContent() {
   const lessonIds = useMemo(() => schedule.map((l) => l.id), [schedule])
   const notesMap = useLessonNotesMap(lessonIds)
 
-  const { snackbarMessage, snackbarSeverity, hideSnackbar, showSnackbar, openDialog, closeDialog, selectedLesson, activeDialog } =
+  const { snackbarMessage, snackbarSeverity, hideSnackbar, showSnackbar, openDialog, selectedLesson, activeDialog } =
     useSchedulePage()
 
   /* ── Confirm dialog + export state ─────────────────────── */
@@ -111,10 +109,6 @@ function ScheduleContent() {
     [displaySchedule, weekdayBackend],
   )
 
-  const handleKbOpen = useCallback(() => {
-    if (selectedLesson) openDialog("details", selectedLesson)
-  }, [selectedLesson, openDialog])
-
   const handleKbEdit = useCallback(() => {
     if (selectedLesson && (user?.role === "admin" || user?.role === "teacher")) {
       openDialog("edit", selectedLesson)
@@ -139,7 +133,6 @@ function ScheduleContent() {
     rowCount: tableRows.length,
     todayColIdx: todayIdx,
     enabled: !isMobile && !shortcutsOpen && activeDialog === null && !settingsOpen && pendingDeleteId === null,
-    onOpen: handleKbOpen,
     onEdit: handleKbEdit,
     onDelete: handleKbDelete,
     onToggleShortcuts: handleToggleShortcuts,
@@ -209,6 +202,7 @@ function ScheduleContent() {
           <div className="sched-orb-1 absolute -left-32 top-40 h-48 w-48 rounded-full opacity-50 blur-[80px] sm:h-64 sm:w-64 lg:h-96 lg:w-96" />
           <div className="sched-orb-2 absolute -right-24 top-80 h-40 w-40 rounded-full opacity-40 blur-[60px] sm:h-56 sm:w-56 lg:h-80 lg:w-80" />
           <div className="sched-orb-3 absolute bottom-20 left-1/4 h-32 w-32 rounded-full opacity-30 blur-[70px] sm:h-48 sm:w-48 lg:h-64 lg:w-64" />
+          <div className="sched-orb-4 absolute right-1/3 top-1/2 h-28 w-28 rounded-full opacity-25 blur-[60px] sm:h-40 sm:w-40 lg:h-56 lg:w-56" />
         </div>
 
         <ScheduleHeader
@@ -286,30 +280,6 @@ function ScheduleContent() {
           )}
         </div>
 
-        {/* ── Lesson detail: slide-over (desktop) / bottom sheet (mobile) ── */}
-        {!isMobile ? (
-          <LessonSlideOver
-            lesson={selectedLesson}
-            open={activeDialog === "details" && selectedLesson !== null}
-            onClose={closeDialog}
-            onEdit={() => selectedLesson && openDialog("edit", selectedLesson)}
-            onDelete={() => selectedLesson && requestDeleteLesson(selectedLesson.id)}
-            canEdit={user?.role === "admin" || user?.role === "teacher"}
-            getLessonTypeColor={getLessonTypeColor}
-            getLessonTypeLabel={getLessonTypeLabel}
-          />
-        ) : (
-          <LessonBottomSheet
-            lesson={selectedLesson}
-            open={activeDialog === "details" && selectedLesson !== null}
-            onClose={closeDialog}
-            onEdit={() => selectedLesson && openDialog("edit", selectedLesson)}
-            onDelete={() => selectedLesson && requestDeleteLesson(selectedLesson.id)}
-            canEdit={user?.role === "admin" || user?.role === "teacher"}
-            getLessonTypeColor={getLessonTypeColor}
-            getLessonTypeLabel={getLessonTypeLabel}
-          />
-        )}
         <ScheduleDialogs {...scheduleData} getLessonTypeLabel={getLessonTypeLabel} />
         <ScheduleShortcutsOverlay
           open={shortcutsOpen}

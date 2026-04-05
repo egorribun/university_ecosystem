@@ -8,6 +8,7 @@
  * the browser renders CSS natively, no parser issues.
  */
 import type { Lesson } from "@/components/schedule/scheduleUtils"
+import { logError } from "@/app/logger"
 
 export interface ExportResult {
   success: boolean
@@ -55,7 +56,7 @@ export async function exportScheduleAsPng(
     return { success: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : "PNG export failed"
-    console.warn("[scheduleExport] PNG export failed:", message)
+    logError("[scheduleExport] PNG export failed:", message)
     return { success: false, error: message }
   }
 }
@@ -115,7 +116,7 @@ export async function exportScheduleAsPdf(
     return { success: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : "PDF export failed"
-    console.warn("[scheduleExport] PDF export failed:", message)
+    logError("[scheduleExport] PDF export failed:", message)
     return { success: false, error: message }
   }
 }

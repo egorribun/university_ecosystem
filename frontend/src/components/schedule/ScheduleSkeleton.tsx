@@ -1,13 +1,16 @@
 import { Skeleton } from "@/components/ui"
+import { cn } from "@/utils/cn"
 
 /** Shimmer skeleton block — uses CSS animation instead of static gray (FIX-68-16) */
 function ShimmerBlock({ className }: { className?: string }) {
-  return <div className={`sched-skeleton-shimmer ${className ?? ""}`} />
+  return <div className={cn("sched-skeleton-shimmer", className)} />
 }
 
+// FIX-69-10: removed min-h-screen — the skeleton-morph-skeleton wrapper is absolute,
+// so min-h-screen overflowed and inflated page scrollHeight (empty space below schedule).
 export function ScheduleSkeleton() {
   return (
-    <div className="skeleton-morph-container w-full min-h-screen py-8 sm:py-10">
+    <div className="skeleton-morph-container w-full py-8 sm:py-10">
       <div className="px-2 md:px-4">
         {/* Header Skeleton */}
         <div className="mb-6 flex flex-wrap items-center gap-4 sm:gap-5">

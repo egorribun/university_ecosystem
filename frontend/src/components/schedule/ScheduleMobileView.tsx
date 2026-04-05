@@ -1,6 +1,6 @@
 import { useRef, useMemo, useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { Badge } from "@/components/ui"
 import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
@@ -10,6 +10,14 @@ import { useScheduleDisplayPreferences, useScheduleUIActions } from "@/stores/sc
 import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/utils/cn"
 
+/**
+ * ScheduleMobileView — Swipeable day carousel for mobile viewports.
+ *
+ * Renders horizontally-scrollable day chips (tab bar) with a Framer Motion
+ * layoutId pill indicator. Supports left/right swipe gestures (via useSwipe)
+ * for week navigation, arrow-key tab switching for a11y, and delegates each
+ * day's content to DayColumn. Only one day visible at a time.
+ */
 type ScheduleMobileViewProps = Pick<
   ReturnType<typeof useScheduleData>,
   | "schedule"
@@ -58,6 +66,7 @@ export function ScheduleMobileView({
   const { t } = useTranslation(["schedule"])
   const { openDialog, setAddDay } = useSchedulePage()
   const { compactMode } = useScheduleDisplayPreferences()
+  const prefersReduced = useReducedMotion()
   const { nextWeek, previousWeek } = useScheduleUIActions()
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
   const [activeDayIdx, setActiveDayIdx] = useState(() => (hasToday && todayIdx >= 0 ? todayIdx : 0))
@@ -110,7 +119,8 @@ export function ScheduleMobileView({
       {/* FIX-68-26: removed left edge fade — it darkened the first tab (Пн).
           Right fade kept to indicate more tabs beyond the scroll edge. */}
       <div className="relative">
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-4 bg-gradient-to-l from-page to-transparent" />
+        {/* FIX-69-06: mask-image instead of gradient-to-transparent (avoids gray tint in dark mode) */}
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-[var(--bg-page)]" style={{ maskImage: "linear-gradient(to left, black, transparent)" }} />
         {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus managed via child tab buttons */}
         <div
           role="tablist"
@@ -135,7 +145,7 @@ export function ScheduleMobileView({
               tone={isActive ? "primary" : "default"}
               className={cn(
                 "relative shrink-0 font-semibold transition-all duration-fast hover:scale-105",
-                isActive ? "text-white" : "sched-badge-matte",
+                isActive ? "text-[var(--sched-on-accent)]" : "sched-badge-matte",
                 isToday && !isActive && "ring-1 ring-brand/(--opacity-dim)"
               )}
               onClick={() => scrollToDay(i)}
@@ -144,7 +154,7 @@ export function ScheduleMobileView({
                 <motion.span
                   layoutId="schedule-mobile-day"
                   className="absolute inset-0 rounded-full bg-brand shadow-glow-primary"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
                 />
               )}
               <span className="relative z-surface flex items-center gap-0.5">
@@ -196,7 +206,6 @@ export function ScheduleMobileView({
                   setAddDay(day)
                   openDialog("add")
                 }}
-                onLessonOpen={(l) => openDialog("details", l)}
                 onLessonDelete={onDeleteLesson}
                 onRetry={refresh}
                 getLessonTypeColor={getLessonTypeColor}

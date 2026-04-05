@@ -2,7 +2,6 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Plus as AddIcon, Calendar as TodayIcon } from "lucide-react"
 import { Fragment } from "react"
-// Badge removed — break indicators now use native .sched-break-pill class
 import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { cn } from "@/utils/cn"
@@ -118,7 +117,7 @@ export function ScheduleDesktopTable({
                   {label}
                 </span>
                 {isTodayCol && (
-                  <span className="sched-today-badge inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-white shadow-glow-primary">
+                  <span className="sched-today-badge inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] shadow-glow-primary">
                     <TodayIcon size={9} aria-hidden="true" />
                     {t("schedule:toolbar.today", { defaultValue: "" })}
                   </span>
@@ -127,7 +126,7 @@ export function ScheduleDesktopTable({
                   <button
                     type="button"
                     aria-label={t("schedule:actions.addLesson", { day: label })}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-white focus-visible:ring-2 focus-visible:ring-brand"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
                     onClick={(e) => {
                       e.stopPropagation()
                       setAddDay(day)
@@ -252,7 +251,6 @@ export function ScheduleDesktopTable({
                         index={rowIdx * visibleDays.length + colI}
                         compact={compactMode}
                         hasNote={notesMap?.get(lesson.id) ?? false}
-                        onOpen={() => openDialog("details", lesson)}
                         onDelete={() => onDeleteLesson(lesson.id)}
                         canEdit={canEdit}
                         getLessonTypeColor={getLessonTypeColor}

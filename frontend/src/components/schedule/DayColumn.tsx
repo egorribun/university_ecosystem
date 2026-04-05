@@ -14,6 +14,14 @@ import { DraggableLessonCard } from "./DraggableLessonCard"
 /** Heatmap thresholds for day load intensity (lesson count) */
 const HEAT_THRESHOLDS = { heavy: 5, medium: 3, light: 1 } as const
 
+/**
+ * DayColumn — Single-day vertical card stack for mobile schedule view.
+ *
+ * Renders lesson cards with @dnd-kit drag-to-reorder support, timeline
+ * connectors between lessons showing break duration, heatmap background
+ * based on lesson count, and a confetti burst when all lessons are past.
+ * Wraps each lesson in DraggableLessonCard for drag handle support.
+ */
 interface DayColumnProps {
   day: string
   label: string
@@ -32,7 +40,6 @@ interface DayColumnProps {
   /** Called when a lesson is reordered via drag-drop (FIX-67-DND) */
   onLessonReorder?: (lessonId: string, newIndex: number) => void
   onAdd: () => void
-  onLessonOpen: (lesson: Lesson) => void
   onLessonDelete: (id: string) => void
   onRetry: () => void
   getLessonTypeColor: (val?: string | null) => string
@@ -56,7 +63,6 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       notesMap,
       onLessonReorder,
       onAdd,
-      onLessonOpen,
       onLessonDelete,
       onRetry,
       getLessonTypeColor,
@@ -203,7 +209,6 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
                         index={idx}
                         compact={compact}
                         hasNote={notesMap?.get(lesson.id) ?? false}
-                        onOpen={() => onLessonOpen(lesson)}
                         onDelete={() => onLessonDelete(lesson.id)}
                         canEdit={canEdit}
                         getLessonTypeColor={getLessonTypeColor}

@@ -36,7 +36,7 @@ export function LessonDetailsDialog({
             <Badge
               style={{
                 background: getLessonTypeColor(lesson.lesson_type),
-                color: "white",
+                color: "var(--sched-on-accent)",
               }}
             >
               {getLessonTypeLabel(lesson.lesson_type)}

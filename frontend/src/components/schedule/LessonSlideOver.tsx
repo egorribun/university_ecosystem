@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import { useTranslation } from "react-i18next"
 import {
@@ -38,14 +38,20 @@ export function LessonSlideOver({
   const [isClosing, setIsClosing] = useState(false)
   // Retain last lesson during exit animation so content doesn't disappear
   const [lastLesson, setLastLesson] = useState<Lesson | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+
   useEffect(() => {
     if (lesson) setLastLesson(lesson)
   }, [lesson])
+
+  // Cleanup exit-animation timer on unmount (FIX-69-01)
+  useEffect(() => () => clearTimeout(closeTimerRef.current), [])
+
   const displayLesson = lesson ?? lastLesson
 
   const handleClose = useCallback(() => {
     setIsClosing(true)
-    setTimeout(() => {
+    closeTimerRef.current = setTimeout(() => {
       setIsClosing(false)
       onClose()
     }, 250)
