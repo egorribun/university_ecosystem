@@ -320,3 +320,40 @@ rustup-init.exe
 # Worktrees
 .worktrees/
 worktrees/
+
+# MCP tool artifacts (Playwright MCP, Chrome DevTools MCP snapshots)
+.playwright-mcp/
+
+# TanStack Router generated temp files
+frontend/.tanstack/
+
+# Heap snapshots and trace files (Chrome DevTools performance)
+*.heapsnapshot
+trace.json
+trace.json.gz
+
+# Storybook build output
+storybook-static/
+
+# Wrangler (Cloudflare) local state
+.wrangler/
+
+# Turbo cache
+.turbo/
+
+# SWC cache
+.swc/
+
+# PWA dev-dist (vite-plugin-pwa generated)
+dev-dist/
+
+# Sentry CLI artifacts
+.sentryclirc
+
+# Chromatic visual regression
+.chromatic/
+
+# OS artifacts (beyond existing Thumbs.db/.DS_Store)
+*.Spotlight-V100
+*.Trashes
+._*
