@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent 
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { Sparkles } from "lucide-react"
 
 import { Badge, Button, Card, Skeleton } from "@/components/ui"
@@ -28,6 +28,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
   const navigate = useNavigate()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
+  const prefersReduced = useReducedMotion()
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
   const dashboardEventsQuery = useDashboardEvents()
@@ -128,9 +129,9 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
               key={scope}
               type="button"
               className={cn(
-                "rounded-md px-4 py-1.5 text-sm font-semibold transition-all duration-base",
+                "rounded-md px-4 py-1.5 text-sm font-semibold transition-all duration-base focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
                 eventsScope === scope
-                  ? "bg-brand text-white shadow-sm"
+                  ? "bg-brand text-[var(--sched-on-accent,#fff)] shadow-sm"
                   : "text-text-secondary hover:text-text-primary"
               )}
               onClick={() => setEventsScope(scope)}
@@ -176,10 +177,10 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
               return (
                 <motion.li
                   key={`${eventsScope}-${e.id}`}
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={prefersReduced ? false : { opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.2, delay: idx * 0.04 }}
+                  exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                  transition={prefersReduced ? { duration: 0 } : { duration: 0.2, delay: idx * 0.04 }}
                   className="dash-list-item px-0 py-0"
                 >
                   <button

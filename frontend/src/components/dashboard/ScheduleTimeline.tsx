@@ -57,7 +57,7 @@ export function ScheduleTimeline({
       }
     }, 100)
     return () => clearTimeout(timer)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- mount-only scroll
+  }, [])
 
   // Position lessons on the timeline
   const positionedLessons = useMemo(() => {
@@ -151,7 +151,9 @@ export function ScheduleTimeline({
               onMouseLeave={() => setHoveredId(null)}
               onFocus={() => setHoveredId(l.id)}
               onBlur={() => setHoveredId(null)}
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focusable for keyboard tooltip reveal
               tabIndex={0}
+              role="img"
               aria-label={`${l.subject} ${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
             >
               {/* Lesson label (truncated) */}
@@ -254,10 +256,7 @@ function LessonCountLegend({ count }: { count: number }) {
         <span ref={countRef} className="opacity-dim tabular-nums">
           {animatedCount}
           {" "}
-          {t("dashboard:timeline.lessonCount", {
-            count,
-            defaultValue: "lessons",
-          })}
+          {t("dashboard:timeline.lessonCount", { count })}
         </span>
       )}
     </div>

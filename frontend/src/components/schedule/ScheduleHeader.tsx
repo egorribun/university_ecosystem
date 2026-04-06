@@ -129,7 +129,7 @@ export function ScheduleHeader({
             type="button"
             onClick={onOpenSettings}
             aria-label={t("schedule:toolbar.settings")}
-            className="sched-settings-btn ml-auto flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+            className="sched-settings-btn ml-auto flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
           >
             <ControlsIcon size={18} aria-hidden="true" />
           </button>

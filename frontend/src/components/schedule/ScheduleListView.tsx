@@ -157,7 +157,7 @@ export function ScheduleListView({
                   type="button"
                   onClick={() => handleAdd(day)}
                   aria-label={t("schedule:actions.addLesson", { day: label, defaultValue: `Add lesson for ${label}` })}
-                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg sched-settings-btn text-brand hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                  className="ml-auto flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg sched-settings-btn text-brand hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                 >
                   {/* A11Y-71-01: consistent SVG icon instead of text + */}
                   <AddIcon size={14} aria-hidden="true" />

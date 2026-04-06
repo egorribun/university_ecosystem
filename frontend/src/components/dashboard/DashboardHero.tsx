@@ -139,15 +139,12 @@ export function DashboardHero({
                     </span>
                   </Badge>
                   <span className="shrink-0 text-base font-medium opacity-heavy">
-                    {t("dashboard:academicWeek", {
-                      week: weekNumber,
-                      defaultValue: "{{week}} нед.",
-                    })}
+                    {t("dashboard:academicWeek", { week: weekNumber })}
                     {" · "}
                     <span className="text-brand">
                       {parity === "even"
-                        ? t("dashboard:parityEven", { defaultValue: "чётная" })
-                        : t("dashboard:parityOdd", { defaultValue: "нечётная" })}
+                        ? t("dashboard:parityEven")
+                        : t("dashboard:parityOdd")}
                     </span>
                   </span>
                   <WeatherWidget className="shrink-0" />

@@ -16,7 +16,7 @@ export function useRelatedNews(
 
   return useMemo(() => {
     // Pull from all cached news list queries
-    const queries = queryClient.getQueriesData<{ pages?: Array<{ data?: NewsItem[] }> }>({
+    const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: NewsItem[] }> }>({
       queryKey: ["news", "list"],
     })
 
@@ -24,7 +24,7 @@ export function useRelatedNews(
     for (const [, data] of queries) {
       if (data?.pages) {
         for (const page of data.pages) {
-          if (page.data) allItems.push(...page.data)
+          if (page.items) allItems.push(...page.items)
         }
       }
     }

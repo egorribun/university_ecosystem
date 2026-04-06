@@ -60,7 +60,7 @@ export function NewsComments({
           <CommentIcon size={20} />
         </div>
         <h2 id="comments-heading" className="text-xl sm:text-2xl font-extrabold text-text-primary">
-          {t("news:sections.comments", { defaultValue: "Comments" })}
+          {t("news:sections.comments")}
         </h2>
         <span className="px-2.5 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
           {comments.length}
@@ -71,9 +71,7 @@ export function NewsComments({
       <div className="flex flex-col gap-3 mb-8">
         {comments.length === 0 ? (
           <p className="text-(--text-secondary) italic py-6 text-center text-sm">
-            {t("news:states.noComments", {
-              defaultValue: "No comments yet. Be the first!",
-            })}
+            {t("news:states.noComments")}
           </p>
         ) : (
           comments.map((comment) => (
@@ -102,8 +100,8 @@ export function NewsComments({
                           setEditingCommentText(comment.content)
                         }}
                         className="p-1.5 rounded-lg hover:bg-(--bg-surface)/(--opacity-strong) text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
-                        title={t("news:actions.editComment", { defaultValue: "Edit" })}
-                        aria-label={t("news:actions.editComment", { defaultValue: "Edit comment" })}
+                        title={t("news:actions.editComment")}
+                        aria-label={t("news:actions.editComment")}
                       >
                         <EditIcon size={14} />
                       </button>
@@ -111,8 +109,8 @@ export function NewsComments({
                         type="button"
                         onClick={() => setDeleteConfirmationId(comment.id)}
                         className="p-1.5 rounded-lg hover:bg-(--error-text)/(--opacity-subtle) text-(--error-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-medium)"
-                        title={t("news:actions.deleteComment", { defaultValue: "Delete" })}
-                        aria-label={t("news:actions.deleteComment", { defaultValue: "Delete comment" })}
+                        title={t("news:actions.deleteComment")}
+                        aria-label={t("news:actions.deleteComment")}
                       >
                         <DeleteIcon size={14} />
                       </button>
@@ -127,7 +125,7 @@ export function NewsComments({
                   <Textarea
                     value={editingCommentText}
                     onChange={(event) => setEditingCommentText(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
-                    aria-label={t("news:form.editCommentAriaLabel", { defaultValue: "Edit comment" })}
+                    aria-label={t("news:form.editCommentAriaLabel")}
                     className="min-h-20 text-sm"
                     maxLength={COMMENT_MAX_LENGTH}
                     // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -178,10 +176,8 @@ export function NewsComments({
           <Textarea
             value={commentText}
             onChange={(event) => setCommentText(event.target.value)}
-            placeholder={t("news:form.commentPlaceholder", {
-              defaultValue: "Write something...",
-            })}
-            aria-label={t("news:form.commentAriaLabel", { defaultValue: "Write a new comment" })}
+            placeholder={t("news:form.commentPlaceholder")}
+            aria-label={t("news:form.commentAriaLabel")}
             maxLength={COMMENT_MAX_LENGTH}
             className="min-h-24"
           />
@@ -204,7 +200,7 @@ export function NewsComments({
               loading={isCommenting}
               leadingIcon={<SendIcon size={16} />}
             >
-              {t("news:actions.postComment", { defaultValue: "Submit" })}
+              {t("news:actions.postComment")}
             </Button>
           </div>
         </div>
@@ -213,11 +209,8 @@ export function NewsComments({
       {/* ── Delete confirmation ── */}
       <ConfirmDialog
         open={deleteConfirmationId !== null}
-        title={t("news:dialogs.deleteComment.title", { defaultValue: "Deleting comment" })}
-        message={t("news:dialogs.deleteComment.confirm", {
-          defaultValue:
-            "Are you sure you want to delete this comment? This action cannot be undone.",
-        })}
+        title={t("news:dialogs.deleteComment.title")}
+        message={t("news:dialogs.deleteComment.description")}
         confirmText={t("common:buttons.delete")}
         cancelText={t("common:buttons.cancel")}
         variant="danger"

@@ -105,7 +105,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           type="button"
           onClick={() => setLightboxOpen(true)}
           className="absolute bottom-3 right-3 z-surface inline-flex h-9 w-9 items-center justify-center rounded-xl bg-black/(--opacity-strong) backdrop-blur-sm text-white/(--opacity-heavy) shadow-sm transition hover:bg-black/(--opacity-heavy) hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
-          aria-label={t("news:actions.zoomImage", { defaultValue: "View full image" })}
+          aria-label={t("news:actions.zoomImage")}
         >
           <ZoomIn size={16} />
         </button>
@@ -119,7 +119,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
         className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
         role="dialog"
         aria-modal="true"
-        aria-label={t("news:actions.zoomImage", { defaultValue: "Full image view" })}
+        aria-label={t("news:actions.zoomImage")}
         tabIndex={-1}
       >
         {/* Backdrop click to close */}

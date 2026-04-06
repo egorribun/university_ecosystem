@@ -20,7 +20,7 @@ export function useArticleNavigation(currentId: string): ArticleNav {
     const fallback: ArticleNav = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
 
     // Pull from cached news list queries
-    const queries = queryClient.getQueriesData<{ pages?: Array<{ data?: NewsItem[] }> }>({
+    const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: NewsItem[] }> }>({
       queryKey: ["news", "list"],
     })
 
@@ -28,7 +28,7 @@ export function useArticleNavigation(currentId: string): ArticleNav {
     for (const [, data] of queries) {
       if (data?.pages) {
         for (const page of data.pages) {
-          if (page.data) allItems.push(...page.data)
+          if (page.items) allItems.push(...page.items)
         }
       }
     }

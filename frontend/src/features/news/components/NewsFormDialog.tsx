@@ -227,7 +227,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
 
             <div className="space-y-3">
               <label className="block text-sm font-semibold text-(--text-secondary)">
-                {t("news:form.image", { defaultValue: "Cover Image" })}
+                {t("news:form.image")}
               </label>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Controller

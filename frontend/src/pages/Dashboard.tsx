@@ -28,12 +28,15 @@ import { useDashboardSchedule } from "@/hooks/useDashboardSchedule"
 import { useDashboardNews } from "@/hooks/useDashboardNews"
 import { useDashboardEvents } from "@/hooks/useDashboardEvents"
 import { WeatherAmbient } from "@/components/dashboard/WeatherAmbient"
+import { WidgetErrorBoundary } from "@/components/error/WidgetErrorBoundary"
 import { useWeather } from "@/hooks/useWeather"
 
 /** Wave 48: Session key for cascade reveal — module-level constant */
 const CASCADE_KEY = "dash-cascade-done"
 
-/** Wave 54: Cascade reveal props — extracted to avoid 3x copy-paste (DESIGN-54-05) */
+/** Wave 54: Cascade reveal props — extracted to avoid 3x copy-paste (DESIGN-54-05)
+ *  Ease [0.16, 1, 0.3, 1] = expo-out — snappy deceleration, no bounce. Intentional
+ *  choice over spring for one-shot reveal (spring better suits interactive feedback). */
 function cascadeProps(delay: number, active: boolean, reduced: boolean) {
   if (!active || reduced) return {}
   return {
@@ -43,126 +46,36 @@ function cascadeProps(delay: number, active: boolean, reduced: boolean) {
   } as const
 }
 
-/** Wave 49: Dev-only mock stories — shown when API returns empty */
-const MOCK_STORIES: StoryItem[] = [
-  {
-    id: "mock-1",
-    title: "UniHack 2026",
-    short_text: "Регистрация на хакатон открыта! Призовой фонд 500 000 ₽",
-    cover_url: "https://picsum.photos/seed/unihack/400/700",
-    cta_url: "/events",
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+/** Wave 49: Dev-only mock stories — shown when API returns empty.
+ *  Wave 75: text moved to i18n (dashboard:mockStories.*). */
+const MOCK_STORY_DEFS = [
+  { id: "mock-1", key: "unihack",      seed: "unihack",     cta: "/events", days: 7  },
+  { id: "mock-2", key: "library",      seed: "library",     cta: null,      days: 14 },
+  { id: "mock-3", key: "openDay",      seed: "openday",     cta: "/events", days: 10 },
+  { id: "mock-4", key: "careerForum",  seed: "career",      cta: null,      days: 12 },
+  { id: "mock-5", key: "sports",       seed: "sport",       cta: null,      days: 30 },
+  { id: "mock-6", key: "scholarships", seed: "scholarship", cta: null,      days: 20 },
+  { id: "mock-7", key: "volunteer",    seed: "volunteer",   cta: null,      days: 8  },
+  { id: "mock-8", key: "exchange",     seed: "exchange",    cta: null,      days: 25 },
+  { id: "mock-9", key: "conference",   seed: "science",     cta: null,      days: 15 },
+] as const
+
+function buildMockStories(t: (key: string) => string): StoryItem[] {
+  const now = new Date().toISOString()
+  return MOCK_STORY_DEFS.map((def) => ({
+    id: def.id,
+    title: t(`dashboard:mockStories.${def.key}.title`),
+    short_text: t(`dashboard:mockStories.${def.key}.text`),
+    cover_url: `https://picsum.photos/seed/${def.seed}/400/700`,
+    cta_url: def.cta,
+    published_at: now,
+    expires_at: new Date(Date.now() + def.days * 86400000).toISOString(),
     is_active: true,
     created_by: null,
-    created_at: new Date().toISOString(),
+    created_at: now,
     cover_url_optimized: null,
-  },
-  {
-    id: "mock-2",
-    title: "Новая библиотека",
-    short_text: "Электронный каталог обновлён — 50 000+ книг онлайн",
-    cover_url: "https://picsum.photos/seed/library/400/700",
-    cta_url: null,
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 14 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-  {
-    id: "mock-3",
-    title: "День открытых дверей",
-    short_text: "Приглашаем абитуриентов 5 апреля в главный корпус",
-    cover_url: "https://picsum.photos/seed/openday/400/700",
-    cta_url: "/events",
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 10 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-  {
-    id: "mock-4",
-    title: "Весенний карьерный форум",
-    short_text: "50+ компаний ищут стажёров и джунов. 10 апреля, Актовый зал",
-    cover_url: "https://picsum.photos/seed/career/400/700",
-    cta_url: null,
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 12 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-  {
-    id: "mock-5",
-    title: "Спортивный сезон",
-    short_text: "Запись в секции: волейбол, баскетбол, плавание, шахматы",
-    cover_url: "https://picsum.photos/seed/sport/400/700",
-    cta_url: null,
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-  {
-    id: "mock-6",
-    title: "Стипендии и гранты",
-    short_text: "Подай заявку на повышенную стипендию до 15 апреля",
-    cover_url: "https://picsum.photos/seed/scholarship/400/700",
-    cta_url: null,
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 20 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-  {
-    id: "mock-7",
-    title: "Волонтёрский проект",
-    short_text: "Присоединяйся к экологической акции «Чистый кампус»",
-    cover_url: "https://picsum.photos/seed/volunteer/400/700",
-    cta_url: null,
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 8 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-  {
-    id: "mock-8",
-    title: "Обмен с Берлином",
-    short_text: "Программа обмена: семестр в Берлинском ТУ. Дедлайн 20 апреля",
-    cover_url: "https://picsum.photos/seed/exchange/400/700",
-    cta_url: null,
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 25 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-  {
-    id: "mock-9",
-    title: "Научная конференция",
-    short_text: "Весенняя конференция молодых учёных — приём тезисов открыт",
-    cover_url: "https://picsum.photos/seed/science/400/700",
-    cta_url: null,
-    published_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 15 * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: new Date().toISOString(),
-    cover_url_optimized: null,
-  },
-]
+  }))
+}
 
 /** Wave 46: Card-shaped skeleton placeholders for SkeletonMorph */
 function ScheduleCardSkeleton() {
@@ -295,7 +208,8 @@ export default function Dashboard() {
   const dashboardStoriesQuery = useDashboardStories()
   const realStories = dashboardStoriesQuery.data ?? []
   // Mock stories as placeholder while stories API is being populated
-  const stories: StoryItem[] = realStories.length > 0 ? realStories : MOCK_STORIES
+  const mockStories = buildMockStories(t)
+  const stories: StoryItem[] = realStories.length > 0 ? realStories : mockStories
   const loadingStories = dashboardStoriesQuery.isLoading && realStories.length === 0
 
   const prefetchStories = useCallback(() => {
@@ -384,9 +298,11 @@ export default function Dashboard() {
                 onMouseMove={tiltSchedule.onMouseMove}
                 onMouseLeave={tiltSchedule.onMouseLeave}
               >
-                <SkeletonMorph loaded={scheduleLoaded} skeleton={<ScheduleCardSkeleton />}>
-                  <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
-                </SkeletonMorph>
+                <WidgetErrorBoundary widgetName="ScheduleCard" showFallback>
+                  <SkeletonMorph loaded={scheduleLoaded} skeleton={<ScheduleCardSkeleton />}>
+                    <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
+                  </SkeletonMorph>
+                </WidgetErrorBoundary>
               </div>
             </motion.div>
 
@@ -402,9 +318,11 @@ export default function Dashboard() {
                 onMouseMove={tiltNews.onMouseMove}
                 onMouseLeave={tiltNews.onMouseLeave}
               >
-                <SkeletonMorph loaded={newsLoaded} skeleton={<NewsCardSkeleton />}>
-                  <NewsCard locale={locale} />
-                </SkeletonMorph>
+                <WidgetErrorBoundary widgetName="NewsCard" showFallback>
+                  <SkeletonMorph loaded={newsLoaded} skeleton={<NewsCardSkeleton />}>
+                    <NewsCard locale={locale} />
+                  </SkeletonMorph>
+                </WidgetErrorBoundary>
               </div>
             </motion.div>
 
@@ -420,9 +338,11 @@ export default function Dashboard() {
                 onMouseMove={tiltEvents.onMouseMove}
                 onMouseLeave={tiltEvents.onMouseLeave}
               >
-                <SkeletonMorph loaded={eventsLoaded} skeleton={<EventsCardSkeleton />}>
-                  <EventsCard />
-                </SkeletonMorph>
+                <WidgetErrorBoundary widgetName="EventsCard" showFallback>
+                  <SkeletonMorph loaded={eventsLoaded} skeleton={<EventsCardSkeleton />}>
+                    <EventsCard />
+                  </SkeletonMorph>
+                </WidgetErrorBoundary>
               </div>
             </motion.div>
           </motion.div>

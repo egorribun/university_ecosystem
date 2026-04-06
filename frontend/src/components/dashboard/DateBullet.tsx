@@ -10,16 +10,13 @@ interface DateBulletProps {
   size?: "default" | "compact"
 }
 
-const MONTH_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-]
-
 export function DateBullet({ date, locale, size = "default" }: DateBulletProps) {
   const { t } = useTranslation("common")
   const d = date ? new Date(date) : null
   const dd = d ? pad(d.getDate()) : "—"
-  const mmLabel = d ? MONTH_SHORT[d.getMonth()] ?? pad(d.getMonth() + 1) : "--"
+  const mmLabel = d
+    ? new Intl.DateTimeFormat(locale, { month: "short" }).format(d)
+    : "--"
   const fallback = t("dateUnknown")
   const full = d
     ? d.toLocaleString(locale, {
@@ -43,8 +40,9 @@ export function DateBullet({ date, locale, size = "default" }: DateBulletProps) 
           outerSize,
           // Premium layered background — radial gradient for depth
           "date-bullet-premium",
-          // Transition for hover lift
-          "transition-transform duration-base hover:scale-105"
+          // Transition for hover lift + keyboard focus ring
+          "transition-transform duration-base hover:scale-105",
+          "focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:rounded-full"
         )}
       >
         {/* Day number */}

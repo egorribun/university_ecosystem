@@ -95,7 +95,7 @@ export function ScheduleSettingsPanel({
                   type="button"
                   onClick={handleClose}
                   aria-label={t("common:buttons.close", { defaultValue: "Close" })}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+                  className="flex h-8 w-8 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <CloseIcon size={16} aria-hidden="true" />
                 </button>

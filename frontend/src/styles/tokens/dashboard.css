@@ -25,17 +25,17 @@
     --grad-schedule-flare: radial-gradient(circle at top, var(--dash-card-schedule-radial), transparent 72%);
     --flare-schedule-orb: radial-gradient(circle, var(--dash-card-schedule-orb), transparent);
 
-    /* ── Light Theme ─────────────────────────────────────── */
-    --hero-grad-start: #f0f4f8;
-    --hero-grad-end: #e8edf5;
+    /* ── Light Theme — must match dashboard-theme.css (no hardcoded hex) ── */
+    --hero-grad-start: var(--color-slate-50);
+    --hero-grad-end: var(--color-sky-100);
 
-    --dash-hero-radial-top: color-mix(in srgb, var(--color-sky-400) 10%, transparent);
-    --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
-    --dash-hero-highlight: color-mix(in srgb, var(--color-indigo-500) 6%, transparent);
-    --dash-hero-highlight-soft: color-mix(in srgb, var(--primary-main) 4%, transparent);
+    --dash-hero-radial-top: color-mix(in srgb, var(--color-sky-400) var(--opacity-dim), transparent);
+    --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) var(--glass-alpha-med), transparent);
+    --dash-hero-highlight: color-mix(in srgb, var(--color-indigo-500) var(--opacity-subtle), transparent);
+    --dash-hero-highlight-soft: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
 
-    --hero-card-bg: #ffffff;
-    --dash-card-bg: #ffffff;
+    --hero-card-bg: var(--bg-surface);
+    --dash-card-bg: var(--bg-surface);
     --dash-card-schedule-radial: color-mix(in srgb, var(--primary-main) 8%, transparent);
     --dash-card-schedule-orb: color-mix(in srgb, var(--primary-main) 12%, transparent);
     --dash-card-news-radial: color-mix(in srgb, var(--color-sky-400) 8%, transparent);

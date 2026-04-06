@@ -41,7 +41,7 @@ export function NewsShortcutsOverlay() {
       onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
       role="dialog"
       aria-modal="true"
-      aria-label={t("news:keyboard.overlayTitle", { defaultValue: "Keyboard shortcuts" })}
+      aria-label={t("news:keyboard.overlayTitle")}
       tabIndex={-1}
     >
       <div
@@ -49,7 +49,7 @@ export function NewsShortcutsOverlay() {
         role="document"
       >
         <h2 className="text-lg font-bold text-text-primary mb-4">
-          {t("news:keyboard.overlayTitle", { defaultValue: "Keyboard shortcuts" })}
+          {t("news:keyboard.overlayTitle")}
         </h2>
         <dl className="space-y-2.5">
           {shortcuts.map(({ key, action }) => (
@@ -66,7 +66,7 @@ export function NewsShortcutsOverlay() {
           ))}
         </dl>
         <p className="mt-4 text-[11px] text-(--text-secondary)/(--opacity-medium)">
-          {t("news:keyboard.pressToClose", { defaultValue: "Press ? or Esc to close" })}
+          {t("news:keyboard.pressToClose")}
         </p>
       </div>
     </div>

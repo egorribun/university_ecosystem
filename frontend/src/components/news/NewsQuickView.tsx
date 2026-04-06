@@ -3,7 +3,7 @@
  * Positioned above the card. Pointer-events-none so it doesn't block clicks.
  */
 
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { Calendar, MessageCircle, Heart } from "lucide-react"
 import { getMoscowDate } from "@/utils/date"
 import { useTranslation } from "react-i18next"
@@ -33,6 +33,7 @@ export function NewsQuickView({
   position = "top",
 }: NewsQuickViewProps) {
   const { t } = useTranslation(["news"])
+  const prefersReduced = useReducedMotion()
   const dateLabel = created_at ? getMoscowDate(created_at) : ""
 
   return (
@@ -41,10 +42,10 @@ export function NewsQuickView({
         <motion.div
           role="tooltip"
           aria-hidden="true"
-          initial={{ opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }}
+          initial={prefersReduced ? false : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 }}
-          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 }}
+          transition={prefersReduced ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className={`absolute left-0 right-0 z-floating pointer-events-none ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}
         >
           <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/(--opacity-soft) max-w-[24rem] mx-auto">
@@ -80,7 +81,7 @@ export function NewsQuickView({
                 {commentsCount}
               </span>
               <span className="ml-auto text-brand font-semibold">
-                {t("news:quickView.readMore", { defaultValue: "Read full article" })}
+                {t("news:quickView.readMore")}
               </span>
             </div>
           </div>

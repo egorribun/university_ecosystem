@@ -69,7 +69,7 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
           ? "glass-layer-surface glass-noise"
           : "glass-layer-surface"
       )}
-      aria-label={t("news:toc.label", { defaultValue: "Table of contents" })}
+      aria-label={t("news:toc.label")}
     >
       {/* Header — always visible */}
       <button
@@ -83,7 +83,7 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
         disabled={isDesktop}
       >
         <TocIcon size={16} className="text-brand shrink-0" />
-        <span>{t("news:toc.title", { defaultValue: "Contents" })}</span>
+        <span>{t("news:toc.title")}</span>
         <span className="ml-auto tabular-nums text-xs text-(--text-secondary)">
           {headings.length}
         </span>
