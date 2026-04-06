@@ -160,8 +160,8 @@
 - Schedule grid: `minmax(176px, 1fr)` + `overflow-x: auto` + `scroll-snap-type: x proximity` + sticky row numbers (DESIGN-64-04)
 - Schedule page: `variant="full"` + own `px-4 sm:px-6 md:px-8 lg:px-10` — no max-width constraint (DESIGN-64-09)
 - Schedule snackbar: `showSnackbar(msg, severity)` — severity "success"|"error" maps to Alert color (FIX-63-02)
-- Schedule focus traps: `useFocusTrap` in LessonSlideOver + ScheduleSettingsPanel — `onDeactivate` = `handleClose` (A11Y-63-02)
-- LessonSlideOver / LessonBottomSheet: removed from Schedule.tsx (Wave 69) — card click no longer opens detail overlay. Components still exist for potential future use.
+- Schedule focus traps: `useFocusTrap` in ScheduleSettingsPanel + ScheduleShortcutsOverlay — `onDeactivate` = `handleClose` (A11Y-63-02)
+- LessonSlideOver / LessonBottomSheet: deleted (Wave 74) — dead code, 0 imports since Wave 69
 - LessonCard `onOpen` is optional — when absent, card has no cursor-pointer/role="button"/tabIndex (FIX-69-card)
 - SkeletonMorph: skeleton wrapper gets `overflow-hidden` when `loaded=true` — prevents absolute skeleton from inflating page scrollHeight (FIX-69-10)
 - Schedule skeleton: NO `min-h-screen` — causes empty space below schedule via absolute SkeletonMorph wrapper (FIX-69-10)
@@ -178,7 +178,7 @@
 - Schedule CSS: `.sched-card-item` stagger capped at 300ms via `min()` — prevents 1s+ animation pile-up (PERF-70-03)
 - Schedule header: news-style layout (no hero-card/orbs/flare). Icon `hidden sm:flex`. Badge inline `<span>` in `<h1>` with `fontSize: 0.45em` (Wave 73)
 - Schedule controls: single `SlidersHorizontal` icon button in title row → opens `ScheduleSettingsPanel` (Wave 72)
-- Schedule dead code: `ScheduleToolbar.tsx` and `WeekSelector.tsx` deleted — functionality merged into `ScheduleSettingsPanel` (Wave 72)
+- Schedule dead code: `ScheduleToolbar.tsx`, `WeekSelector.tsx` (Wave 72), `LessonSlideOver.tsx`, `LessonBottomSheet.tsx` (Wave 74) — all deleted
 - ProgressRing: drain mode — ring depletes as lesson progresses, number inside shows remaining %. Progress bar removed (Wave 73)
 - Schedule status: `.sched-status-card` (left accent stripe, gradient bg) for current/next lesson cards (DESIGN-71-02)
 - Schedule overlays: `--sched-overlay-bg` (30%/50%) for panels, `--sched-modal-overlay-bg` (40%/60%) for centered modals (THEME-71-01)
@@ -192,7 +192,11 @@
 - Schedule dark hero/status: semantic `color-mix()` with `--bg-surface` + `--color-slate-*` — no hardcoded hex (FIX-72-01)
 - Schedule badge: all light-mode badges use 600-series (`--lt-*-badge`), dark-mode all 400-series (FIX-72-02)
 - ExportDropdown: `z-30` on wrapper div, `position: fixed` on mobile (<640px) to avoid parent stacking context clipping (FIX-72-07)
-- Schedule toolbar: removed — all controls moved to `ScheduleSettingsPanel` slide-over (Wave 72)
+- Schedule toolbar: removed — all controls moved to `ScheduleSettingsPanel` centered dialog (Wave 72→74)
+- Schedule settings: centered AnimatePresence dialog (not slide-over), solid matte bg, spring animation, responsive max-w-[28rem]/md:max-w-[32rem] (Wave 74)
+- Matte volumetric system: `.sched-settings-btn` (buttons), `.sched-matte-card` (containers), `.sched-settings-group` (recessed groups), `.matte-chip` + `.matte-input` (shared utilities in _glass-layers.css) — shadow-based depth, no borders, dark mode + reduced-motion (Wave 74)
+- Schedule stats: `sched-stats-card` uses shadow (not border), motivational "dayComplete" message with CircleCheckBig icon (Wave 74)
+- News matte: category chips, search input, sort button, detail header buttons/badges use `matte-chip`/`matte-input` (Wave 74)
 - Frontend glass layers: `glass-layer-surface`, `glass-layer-elevated`, `glass-layer-floating` — depth hierarchy with noise texture (DESIGN-36-01)
 - Frontend glass noise: `glass-noise` class adds SVG feTurbulence frosted texture (pure CSS, 0 JS) (DESIGN-36-02)
 - Frontend aurora: `aurora-mesh` class adds animated gradient mesh background (20s CSS animation) (DESIGN-36-03)
@@ -249,6 +253,7 @@
 - Docker: NATS config uses `sed` instead of `envsubst` (not in alpine) (FIX-40-06)
 
 ## Audit Trail
+- Wave 74: Settings dialog + matte volumetric system — 16 files (+536/-676). ScheduleSettingsPanel: slide-over→centered AnimatePresence dialog, solid matte bg with gradient tint, 4-layer shadow, accent line, corner flare, responsive width, 2-col weekday grid, grouped toggles. Matte system: .sched-settings-btn/.sched-matte-card/.matte-chip/.matte-input — shadow-based depth replacing all border-glass-border in active schedule components (0 remaining). Dead code deleted: LessonSlideOver + LessonBottomSheet. Stats card: border→shadow + CircleCheckBig + motivational dayComplete i18n. News page: chips/search/sort/detail buttons→matte. Critical fix: --bg-surface-elevated→--bg-surface-hover (undefined var).
 - Wave 73: Unified page headers — 2 files (+36/-65). ProgressRing drain mode (offset inverted), progress bar removed, sched-hero-card replaced with news-style clean layout, badges as inline spans (fontSize: 0.45em, align-middle), icon hidden on mobile (<sm), status card separated into own FadeSection.
 - Wave 72: Schedule page final polish — 10 fixes across 5 files (+73/-39). CSS: dark hex→semantic tokens (FIX-72-01), badge 500→600 standardized (FIX-72-02), heat map tokenized (FIX-72-03), print !important eliminated via doubled-class specificity (FIX-72-04), reduced-motion coverage documented (DOC-72-01), export dropdown mobile centered (FIX-72-07). Code: DashboardLesson.id number→string (FIX-72-05), ScheduleGroup index signature removed (FIX-72-06), useLessonNotesMap depKey extracted (CQ-72-01), nowParity stale memo removed (CQ-72-02).
 - Wave 71: Schedule final polish + premium header — 37 fixes across 20 files (+656/-400). Critical: currentProgress broken in mobile/list views (FIX-71-01/02). Code: forwardRef→React 19 ref prop (CQ-71-02), shared buildLessonsByDay (CQ-71-05), notesMap non-optional (CQ-71-06), t prop→useTranslation (CQ-71-03), Date memoized (CQ-71-04), console.warn→logError. Theme: --sched-overlay-bg/--sched-modal-overlay-bg tokens (4 overlays), sched-toggle-input CSS toggle, sched-skeleton-shimmer alignment, row header text-muted-subtle. Header redesign: sched-hero-card (4-layer shadow, accent line, corner flare, integrated orbs), sched-status-card (left accent stripe, gradient bg), compact timeLeftShort badge. Responsive: adaptive mini-cal w-48/w-56, chip scroll fade masks (CSS mask-image), grid min-width fallback. A11y: AddIcon consistency, empty cell aria-labels, confetti defaultValue, type=button audit (WeekSelector, LessonDetailsDialog, ExportDropdown). Perf: ResizeObserver double-call removed, AnimatePresence mobile documented. Features: filter count badge on settings, Today quick-return in MiniCalendar, AnimatePresence desktop↔mobile transition, WeekSelector className dedup.
