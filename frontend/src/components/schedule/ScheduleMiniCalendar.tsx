@@ -90,7 +90,7 @@ export function ScheduleMiniCalendar({
   return (
     <div
       className={cn(
-        "rounded-xl border border-glass-border bg-surface/(--opacity-medium) p-4 shadow-glass backdrop-blur-md glass-noise",
+        "sched-matte-card rounded-xl p-4",
         className,
       )}
     >

@@ -313,16 +313,23 @@
   opacity: 0.8;
 }
 
-/* Stats fallback card — lighter treatment */
+/* Stats fallback card — matte volumetric (Wave 74) */
 .sched-stats-card {
   border-radius: 0.875rem;
-  border: 1px solid color-mix(in srgb, var(--sched-card-border) 60%, transparent);
-  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
-  backdrop-filter: blur(8px);
+  border: none;
+  background: color-mix(in srgb, var(--bg-surface-hover) 60%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 6%, transparent),
+    0 2px 8px color-mix(in srgb, black 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
 }
 
 .dark .sched-stats-card {
-  background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+  background: color-mix(in srgb, var(--color-slate-700) 40%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 15%, transparent),
+    0 2px 8px color-mix(in srgb, black 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
 }
 
 /* ── THEME-71-02: Custom toggle switch (replaces native checkbox accent-brand) ────── */
@@ -1477,6 +1484,190 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   SETTINGS DIALOG — CENTERED MODAL (Wave 74)
+   Premium depth: 4-layer shadow, accent line, corner flare,
+   subtle diagonal gradient tint, responsive sizing.
+   ═══════════════════════════════════════════════════════ */
+
+.sched-settings-dialog {
+  /* Subtle gradient tint — 135° diagonal with sky warmth (matches sched-status-card) */
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-sky-400) 3%, var(--bg-surface)) 0%,
+      var(--bg-surface) 100%
+    );
+
+  /* 4-layer shadow: close + mid + inner highlight + colored glow */
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 8%, transparent),
+    0 4px 16px color-mix(in srgb, black 6%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+    0 8px 48px color-mix(in srgb, var(--color-sky-400) 8%, transparent);
+}
+
+/* Top accent gradient line — sky → blue → indigo */
+.sched-settings-dialog::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1rem 1rem 0 0;
+  background: linear-gradient(90deg, var(--color-sky-400), var(--color-blue-500), var(--color-indigo-500));
+  opacity: 0.7;
+  z-index: 1;
+}
+
+/* Corner flare — subtle radial glow top-right */
+.sched-settings-dialog::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 120px;
+  height: 120px;
+  border-radius: 0 1rem 0 0;
+  background: radial-gradient(
+    circle at 100% 0%,
+    color-mix(in srgb, var(--color-sky-400) 6%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Section divider — gradient fade */
+.sched-settings-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-sky-400) 20%, var(--glass-border)) 50%,
+    transparent
+  );
+}
+
+/* Dark mode — adjusted shadow intensities */
+.dark .sched-settings-dialog {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-sky-400) 2%, var(--bg-page)) 0%,
+      var(--bg-page) 100%
+    );
+
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 20%, transparent),
+    0 4px 16px color-mix(in srgb, black 15%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent),
+    0 12px 60px color-mix(in srgb, var(--color-sky-400) 5%, transparent);
+}
+
+.dark .sched-settings-divider {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-sky-400) 12%, var(--glass-border)) 50%,
+    transparent
+  );
+}
+
+/* Matte volumetric button — shadow depth instead of borders */
+.sched-settings-btn {
+  border: none;
+  background: color-mix(in srgb, var(--bg-surface-hover) 60%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 6%, transparent),
+    0 2px 6px color-mix(in srgb, black 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  transition: box-shadow 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.sched-settings-btn:hover {
+  background: color-mix(in srgb, var(--bg-surface-hover) 80%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 8%, transparent),
+    0 4px 12px color-mix(in srgb, black 5%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  transform: translateY(-1px);
+}
+
+.sched-settings-btn:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, black 8%, transparent),
+    inset 0 1px 3px color-mix(in srgb, black 4%, transparent);
+}
+
+/* Matte group card — recessed container */
+.sched-settings-group {
+  border: none;
+  background: color-mix(in srgb, var(--bg-surface-hover) 40%, transparent);
+  box-shadow:
+    inset 0 1px 3px color-mix(in srgb, black 5%, transparent),
+    0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+
+.sched-settings-group > * + * {
+  border-top: 1px solid color-mix(in srgb, var(--bg-surface-hover) 50%, transparent);
+}
+
+/* Dark mode matte overrides */
+.dark .sched-settings-btn {
+  background: color-mix(in srgb, var(--color-slate-700) 40%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 15%, transparent),
+    0 2px 6px color-mix(in srgb, black 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+
+.dark .sched-settings-btn:hover {
+  background: color-mix(in srgb, var(--color-slate-600) 50%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 18%, transparent),
+    0 4px 12px color-mix(in srgb, black 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+}
+
+.dark .sched-settings-btn:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, black 18%, transparent),
+    inset 0 1px 3px color-mix(in srgb, black 10%, transparent);
+}
+
+.dark .sched-settings-group {
+  background: color-mix(in srgb, var(--color-slate-800) 30%, transparent);
+  box-shadow:
+    inset 0 1px 3px color-mix(in srgb, black 12%, transparent),
+    0 1px 0 color-mix(in srgb, white 2%, transparent);
+}
+
+.dark .sched-settings-group > * + * {
+  border-color: color-mix(in srgb, var(--color-slate-700) 40%, transparent);
+}
+
+/* Matte container — static card (no hover lift, unlike sched-settings-btn) */
+.sched-matte-card {
+  border: none;
+  background: color-mix(in srgb, var(--bg-surface-hover) 60%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 6%, transparent),
+    0 2px 8px color-mix(in srgb, black 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+}
+
+.dark .sched-matte-card {
+  background: color-mix(in srgb, var(--color-slate-700) 40%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 15%, transparent),
+    0 2px 8px color-mix(in srgb, black 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
    LIST VIEW — CONTAINER + STICKY HEADERS
    ═══════════════════════════════════════════════════════ */
 
@@ -1625,6 +1816,7 @@
   }
 
   .schedule-theme.schedule-theme .sched-slideover,
+  .schedule-theme.schedule-theme .sched-settings-dialog,
   .schedule-theme.schedule-theme .sched-empty-ring,
   .schedule-theme.schedule-theme [role="tablist"] {
     display: none;
@@ -1790,5 +1982,16 @@
   .sched-confetti-dot {
     animation: none;
     display: none;
+  }
+
+  /* Wave 74 — matte volumetric classes */
+  .sched-settings-btn,
+  .sched-settings-btn:hover {
+    transition: none;
+    transform: none;
+  }
+
+  .sched-settings-dialog {
+    animation: none;
   }
 }

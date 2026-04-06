@@ -54,7 +54,7 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
             role="dialog"
             aria-modal="true"
             aria-labelledby="sched-shortcuts-title"
-            className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-glass-border bg-surface/(--opacity-heavy) p-6 shadow-glass-strong backdrop-blur-xl glass-noise"
+            className="sched-settings-dialog relative w-full max-w-sm overflow-hidden rounded-2xl p-6"
             initial={prefersReduced ? false : { scale: 0.95, y: 8 }}
             animate={{ scale: 1, y: 0 }}
             exit={prefersReduced ? { opacity: 0 } : { scale: 0.95, y: 8 }}
@@ -87,7 +87,7 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
                     {keys.map((key) => (
                       <kbd
                         key={key}
-                        className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-glass-border bg-surface/(--opacity-dim) px-1.5 text-xs font-semibold text-text-primary shadow-sm"
+                        className="inline-flex h-6 min-w-6 items-center justify-center rounded-md matte-chip px-1.5 text-xs font-semibold text-text-primary"
                       >
                         {key}
                       </kbd>

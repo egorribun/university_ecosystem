@@ -13,7 +13,7 @@ import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 
 const iconBtnClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) text-(--text-secondary) shadow-sm transition hover:text-text-primary hover:shadow-glass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+  "inline-flex h-10 w-10 items-center justify-center rounded-xl matte-chip text-(--text-secondary) transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
 interface NewsDetailHeaderProps {
   displayTitle: string
@@ -65,8 +65,8 @@ export function NewsDetailHeader({
       {/* Meta pills */}
       <div className="flex flex-wrap items-center gap-2">
         {createdAt && (
-          <span className="inline-flex items-center gap-2 rounded-full glass-layer-surface border border-glass-border/(--opacity-soft) px-3 py-1.5 text-xs font-semibold shadow-sm">
-            <Calendar size={13} className="text-brand" />
+          <span className="inline-flex items-center gap-2 rounded-full matte-chip px-3 py-1.5 text-xs font-semibold">
+            <Calendar size={13} className="text-brand" aria-hidden="true" />
             <time dateTime={createdAtIso} className="text-text-primary uppercase tracking-wide">
               {createdAtLabel}
             </time>
@@ -74,8 +74,8 @@ export function NewsDetailHeader({
         )}
 
         {readingTimeMinutes !== null && (
-          <span className="inline-flex items-center gap-2 rounded-full glass-layer-surface border border-glass-border/(--opacity-soft) px-3 py-1.5 text-xs font-medium shadow-sm">
-            <Clock size={13} className="text-brand" />
+          <span className="inline-flex items-center gap-2 rounded-full matte-chip px-3 py-1.5 text-xs font-medium">
+            <Clock size={13} className="text-brand" aria-hidden="true" />
             <span className="text-text-primary">
               {t("news:meta.readingTime", { count: readingTimeMinutes })}
             </span>

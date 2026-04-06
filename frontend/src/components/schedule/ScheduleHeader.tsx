@@ -5,7 +5,7 @@ import {
   Clock as ClockIcon,
   MapPin as RoomIcon,
   User as TeacherIcon,
-  Sparkles as CompleteIcon,
+  CircleCheckBig as CompleteIcon,
   SlidersHorizontal as ControlsIcon,
 } from "lucide-react"
 import { Badge, Select } from "@/components/ui"
@@ -129,7 +129,7 @@ export function ScheduleHeader({
             type="button"
             onClick={onOpenSettings}
             aria-label={t("schedule:toolbar.settings")}
-            className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-glass-border bg-surface/(--opacity-dim) text-text-secondary shadow-sm transition-all duration-fast hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+            className="sched-settings-btn ml-auto flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
           >
             <ControlsIcon size={18} aria-hidden="true" />
           </button>
@@ -157,7 +157,7 @@ export function ScheduleHeader({
                         {t("schedule:chips.current")}
                       </Badge>
                       {timeLeftShort && (
-                        <span className="inline-flex items-center gap-1 rounded-lg border border-glass-border bg-surface/(--opacity-dim) px-2 py-0.5 text-xs font-semibold font-mono tabular-nums text-text-secondary" aria-live="polite" aria-label={timeLeftText}>
+                        <span className="inline-flex items-center gap-1 rounded-lg matte-chip px-2 py-0.5 text-xs font-semibold font-mono tabular-nums text-text-secondary" aria-live="polite" aria-label={timeLeftText}>
                           <ClockIcon size={11} className="text-brand opacity-70" aria-hidden="true" />
                           {timeLeftShort}
                         </span>
@@ -211,7 +211,7 @@ export function ScheduleHeader({
                     {`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
                   </span>
                   {timeLeftShort && (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-surface/(--opacity-dim) px-1.5 py-0.5 text-[0.625rem] font-semibold font-mono tabular-nums text-text-secondary" aria-live="polite" aria-label={timeLeftText}>
+                    <span className="inline-flex items-center gap-1 rounded-md matte-chip px-1.5 py-0.5 text-[0.625rem] font-semibold font-mono tabular-nums text-text-secondary" aria-live="polite" aria-label={timeLeftText}>
                       <ClockIcon size={10} className="text-brand opacity-70" aria-hidden="true" />
                       {timeLeftShort}
                     </span>
@@ -222,35 +222,14 @@ export function ScheduleHeader({
                 </div>
               </div>
             ) : (
-              /* ── DAY STATS — when no more lessons ────────── */
+              /* ── DAY COMPLETE — warm motivational message ── */
               <div className="sched-stats-card p-5">
-                {dayStats.totalLessons > 0 ? (
-                  <div className="flex items-center justify-center gap-5 text-sm text-text-secondary">
-                    <span className="flex items-center gap-1.5">
-                      <CompleteIcon size={16} className="text-brand" aria-hidden="true" />
-                      <span className="font-semibold text-text-primary">{dayStats.totalLessons}</span>
-                      {t("schedule:stats.lessons", { defaultValue: "lessons" })}
-                    </span>
-                    <span className="h-4 w-px bg-glass-border" aria-hidden="true" />
-                    <span>
-                      <span className="font-semibold text-text-primary font-mono tabular-nums">{dayStats.hours}</span>{t("schedule:stats.hoursShort")}
-                      {dayStats.mins > 0 && <> <span className="font-semibold text-text-primary font-mono tabular-nums">{dayStats.mins}</span>{t("schedule:stats.minutesShort")}</>}
-                    </span>
-                    {dayStats.buildings.length > 0 && (
-                      <>
-                        <span className="h-4 w-px bg-glass-border" aria-hidden="true" />
-                        <span>
-                          {t("schedule:stats.buildings", { defaultValue: "buildings" })}{" "}
-                          <span className="font-semibold text-text-primary">{dayStats.buildings.join(", ")}</span>
-                        </span>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-center text-sm text-text-secondary">
-                    {t("schedule:summary.noMoreToday")}
-                  </p>
-                )}
+                <p className="text-center text-sm font-medium text-text-secondary">
+                  <CompleteIcon size={16} className="mr-1.5 inline-block align-[-0.15em] text-brand" aria-hidden="true" />
+                  {dayStats.totalLessons > 0
+                    ? t("schedule:dayComplete")
+                    : t("schedule:summary.noMoreToday")}
+                </p>
               </div>
             )}
         </div>

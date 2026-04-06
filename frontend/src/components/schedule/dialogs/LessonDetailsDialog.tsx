@@ -64,7 +64,7 @@ export function LessonDetailsDialog({
               <Badge
                 variant="outline"
                 leadingIcon={<RoomIcon size={16} className="text-brand" />}
-                className="font-medium text-text-primary border-glass-border bg-surface/(--opacity-dim)"
+                className="font-medium text-text-primary matte-chip"
               >
                 {lesson.room || "—"}
               </Badge>
@@ -78,7 +78,7 @@ export function LessonDetailsDialog({
               <Badge
                 variant="outline"
                 leadingIcon={<TeacherIcon size={16} className="text-brand" />}
-                className="font-medium text-text-primary border-glass-border bg-surface/(--opacity-dim)"
+                className="font-medium text-text-primary matte-chip"
               >
                 {lesson.teacher || "—"}
               </Badge>

@@ -96,7 +96,7 @@ export function ScheduleListView({
 
   if (totalLessons === 0) {
     return (
-      <div className="flex items-center justify-center rounded-xl border border-glass-border/(--opacity-soft) bg-surface/(--opacity-dim) px-6 py-16 glass-noise">
+      <div className="flex items-center justify-center rounded-xl sched-matte-card px-6 py-16">
         <EmptyState
           icon={
             <div className="sched-empty-icon relative">
@@ -129,8 +129,8 @@ export function ScheduleListView({
             {/* ── Sticky day header ──────────────────────── */}
             <div
               className={cn(
-                "sched-list-day-header sticky top-16 z-sticky mb-3 flex items-center gap-3 rounded-xl border border-glass-border px-4 py-3 backdrop-blur-xl glass-layer-matte glass-noise",
-                isToday && "sched-today-header border-brand/(--opacity-dim)"
+                "sched-list-day-header sticky top-16 z-sticky mb-3 flex items-center gap-3 rounded-xl sched-matte-card px-4 py-3 backdrop-blur-xl",
+                isToday && "sched-today-header"
               )}
             >
               <h3
@@ -157,7 +157,7 @@ export function ScheduleListView({
                   type="button"
                   onClick={() => handleAdd(day)}
                   aria-label={t("schedule:actions.addLesson", { day: label, defaultValue: `Add lesson for ${label}` })}
-                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-surface/(--opacity-strong) text-brand transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] hover:shadow-sm focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg sched-settings-btn text-brand hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                 >
                   {/* A11Y-71-01: consistent SVG icon instead of text + */}
                   <AddIcon size={14} aria-hidden="true" />
@@ -167,7 +167,7 @@ export function ScheduleListView({
 
             {/* ── Lesson list ────────────────────────────── */}
             {lessons.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-glass-border/(--opacity-soft) px-4 py-8 text-center text-sm text-text-secondary">
+              <div className="rounded-xl border border-dashed border-surface-elevated/(--opacity-medium) px-4 py-8 text-center text-sm text-text-secondary">
                 {t("schedule:mobile.noLessons")}
               </div>
             ) : (

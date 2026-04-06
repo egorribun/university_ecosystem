@@ -38,7 +38,7 @@ export function ScheduleSkeleton() {
 
         {/* Desktop Grid Skeleton */}
         <div className="hidden md:block">
-          <div className="overflow-hidden rounded-xl border border-glass-border bg-surface/(--opacity-medium) p-1 backdrop-blur-md shadow-glass">
+          <div className="overflow-hidden rounded-xl sched-matte-card p-1">
             {/* Header row */}
             <div className="mb-1 flex gap-1">
               <Skeleton className="w-14 h-12 shrink-0" rounded="lg" />
@@ -70,7 +70,7 @@ export function ScheduleSkeleton() {
           </div>
           {/* Day columns */}
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="space-y-3 rounded-2xl border border-glass-border p-4">
+            <div key={i} className="space-y-3 rounded-2xl sched-matte-card p-4">
               <Skeleton width={120} height={24} />
               <Skeleton width="100%" height={100} rounded="xl" />
               <Skeleton width="100%" height={100} rounded="xl" />

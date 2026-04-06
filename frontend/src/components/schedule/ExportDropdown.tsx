@@ -154,7 +154,7 @@ export function ExportDropdown({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="sched-export-dropdown border border-glass-border bg-surface/(--opacity-heavy) shadow-glass-strong backdrop-blur-xl glass-noise"
+            className="sched-export-dropdown sched-matte-card"
           >
             {items.map(({ id, icon: Icon, label, onClick, disabled }) => (
               <button

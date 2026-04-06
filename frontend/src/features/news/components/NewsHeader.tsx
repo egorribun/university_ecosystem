@@ -79,7 +79,7 @@ export const NewsHeader = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("news:search.placeholder", { defaultValue: "Search news..." })}
-            className="w-full rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) pl-9 pr-9 py-2 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium) transition-shadow"
+            className="w-full rounded-xl matte-input pl-9 pr-9 py-2 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none transition-shadow"
             aria-label={t("news:search.placeholder", { defaultValue: "Search news..." })}
           />
           {searchQuery && (
@@ -124,10 +124,10 @@ export const NewsHeader = ({
             onClick={() => onCategoryChange("all")}
             aria-current={activeCategory === "all" ? "page" : undefined}
             className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border whitespace-nowrap",
+              "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
               activeCategory === "all"
-                ? "bg-brand text-white border-brand shadow-sm"
-                : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
+                ? "bg-brand text-white shadow-sm"
+                : "matte-chip text-(--text-secondary)"
             )}
           >
             {t("news:categories.all", { defaultValue: "All" })}
@@ -141,17 +141,16 @@ export const NewsHeader = ({
               onClick={() => onCategoryChange(cat.id)}
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border whitespace-nowrap",
+                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
                 activeCategory === cat.id
                   ? "shadow-sm"
-                  : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
+                  : "matte-chip text-(--text-secondary)"
               )}
               style={
                 activeCategory === cat.id
                   ? {
                       backgroundColor: `var(--cat-${cat.color}-bg)`,
                       color: `var(--cat-${cat.color}-text)`,
-                      borderColor: `var(--cat-${cat.color}-text)`,
                     }
                   : undefined
               }
@@ -167,10 +166,10 @@ export const NewsHeader = ({
               onClick={() => onCategoryChange("saved")}
               aria-current={activeCategory === "saved" ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast border flex items-center gap-1.5 whitespace-nowrap",
+                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast flex items-center gap-1.5 whitespace-nowrap",
                 activeCategory === "saved"
-                  ? "bg-brand text-white border-brand shadow-sm"
-                  : "glass-layer-surface border-glass-border/(--opacity-soft) text-(--text-secondary) hover:text-text-primary hover:border-glass-border"
+                  ? "bg-brand text-white shadow-sm"
+                  : "matte-chip text-(--text-secondary)"
               )}
             >
               <BookmarkIcon size={12} />
@@ -183,7 +182,7 @@ export const NewsHeader = ({
           <button
             type="button"
             onClick={() => onSortChange(sortMode === "newest" ? "popular" : "newest")}
-            className="ml-auto flex items-center gap-1.5 rounded-full glass-layer-surface border border-glass-border/(--opacity-soft) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-text-primary transition-colors shrink-0"
+            className="ml-auto flex items-center gap-1.5 rounded-full matte-chip px-3 py-1.5 text-xs font-semibold text-(--text-secondary) shrink-0"
             aria-label={t("news:sort.label", { defaultValue: "Sort" })}
           >
             <ArrowUpDown size={13} />
