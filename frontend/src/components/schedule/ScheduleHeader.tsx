@@ -40,7 +40,7 @@ type ScheduleHeaderProps = Pick<
 function ProgressRing({ progress, size = 80, stroke = 6 }: { progress: number; size?: number; stroke?: number }) {
   const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
-  const offset = circumference - (progress / 100) * circumference
+  const offset = (progress / 100) * circumference
   return (
     <svg width={size} height={size} className="sched-progress-ring" aria-hidden="true">
       <circle className="sched-progress-ring-bg" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke} />
@@ -107,49 +107,38 @@ export function ScheduleHeader({
   }, [nextStartMinutes, minutesNow])
 
   return (
-    <header className="relative mb-6 mt-0">
-      {/* ═══ Premium hero card (Wave 71b) ═══════════════════ */}
-      <FadeSection delay="var(--motion-duration-instant)">
-        <div className="sched-hero-card glass-noise p-6 sm:p-8">
-          {/* ── Decorative layer (clipped to card) ────────── */}
-          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]" aria-hidden="true">
-            <div className="sched-hero-flare" />
-            {/* Aurora orbs inside hero */}
-            <div className="sched-orb-1 absolute -left-20 -top-20 h-48 w-48 rounded-full opacity-60 blur-3xl sm:h-64 sm:w-64" />
-            <div className="sched-orb-2 absolute -right-16 top-4 h-40 w-40 rounded-full opacity-45 blur-3xl sm:h-52 sm:w-52" />
+    <header className="relative mb-6 sm:mb-8 space-y-4">
+      {/* ── Title row (matches News page style) ──────────── */}
+      <FadeSection delay="60ms" className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="sched-badge-matte hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-primary shrink-0">
+            <CalendarIcon size={20} strokeWidth={2.2} aria-hidden="true" />
           </div>
-
-          {/* ── Title + Group badge + controls button ─────── */}
-          <div className="relative z-base mb-5 flex flex-wrap items-center gap-4 sm:gap-5">
-            <div className="sched-badge-matte flex h-12 w-12 items-center justify-center rounded-full text-brand">
-              <CalendarIcon className="h-7 w-7" aria-hidden="true" />
-            </div>
-            <h1
-              className="font-bold tracking-tight text-text-primary"
-              style={{ fontSize: "var(--fs-sched-hero)" }}
-            >
-              {user?.role === "student" ? t("schedule:title.student") : t("schedule:title.default")}
-            </h1>
+          <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary whitespace-nowrap">
+            {user?.role === "student" ? t("schedule:title.student") : t("schedule:title.default")}
             {activeGroupName && (
-              <Badge variant="outline" tone="primary" className="sched-badge-matte translate-y-0.5">
+              <span className="sched-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold leading-none" style={{ fontSize: "0.45em" }}>
                 {t("schedule:header.groupName", { name: activeGroupName })}
-              </Badge>
+              </span>
             )}
-            {/* ── Controls button — opens settings panel with all toolbar controls ── */}
-            {onOpenSettings && (
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                aria-label={t("schedule:toolbar.settings")}
-                className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-glass-border bg-surface/(--opacity-dim) text-text-secondary shadow-sm transition-all duration-fast hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                <ControlsIcon size={18} aria-hidden="true" />
-              </button>
-            )}
-          </div>
+          </h1>
+        </div>
+        {/* ── Controls button — opens settings panel ── */}
+        {onOpenSettings && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-label={t("schedule:toolbar.settings")}
+            className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-glass-border bg-surface/(--opacity-dim) text-text-secondary shadow-sm transition-all duration-fast hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <ControlsIcon size={18} aria-hidden="true" />
+          </button>
+        )}
+      </FadeSection>
 
-          {/* ── Status card: Current / Next / Stats ─────── */}
-          <div className={cn("relative z-base no-print", !isMobile && "max-w-4xl")}>
+      {/* ── Status card: Current / Next / Stats ─────── */}
+      <FadeSection delay="120ms">
+        <div className={cn("no-print", !isMobile && "max-w-4xl")}>
             {currentLesson ? (
               /* ── CURRENT LESSON — premium card with progress ring ── */
               <div className="sched-status-card sched-current-glow p-5 sm:p-6">
@@ -194,17 +183,6 @@ export function ScheduleHeader({
                       </span>
                     </div>
                   </div>
-                </div>
-                {/* Progress bar */}
-                <div className="mt-4 sched-progress-bar h-2 w-full rounded-full">
-                  <div
-                    className="sched-progress-fill"
-                    style={{ width: `${currentProgress}%` }}
-                    role="progressbar"
-                    aria-valuenow={currentProgress}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                  />
                 </div>
               </div>
             ) : nextLesson ? (
@@ -275,7 +253,6 @@ export function ScheduleHeader({
                 )}
               </div>
             )}
-          </div>
         </div>
       </FadeSection>
 
