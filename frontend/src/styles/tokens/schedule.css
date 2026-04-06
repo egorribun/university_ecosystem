@@ -91,11 +91,11 @@
     --lt-lab-bg: color-mix(in srgb, var(--color-amber-500) 5%, var(--sched-card-bg));
     --lt-project-bg: color-mix(in srgb, var(--color-violet-500) 5%, var(--sched-card-bg));
 
-    /* Badge colors — solid matte fills */
-    --lt-lecture-badge: var(--color-blue-500);
+    /* Badge colors — solid matte fills (FIX-72-02: standardized to 600-series for uniform contrast) */
+    --lt-lecture-badge: var(--color-blue-600);
     --lt-practice-badge: var(--color-emerald-600);
     --lt-lab-badge: var(--color-amber-600);
-    --lt-project-badge: var(--color-violet-500);
+    --lt-project-badge: var(--color-violet-600);
 
     /* ── Current lesson glow ───────────────────────────── */
     --sched-current-border: var(--color-sky-400);
@@ -131,6 +131,11 @@
 
     /* ── On-accent text — named token for intentional white on colored bg (FIX-67-03) ── */
     --sched-on-accent: white;
+
+    /* ── Heat map tokens (FIX-72-03: tokenized for reuse, was inline in class rules) ── */
+    --sched-heat-light-bg: color-mix(in srgb, var(--color-emerald-400) 5%, transparent);
+    --sched-heat-medium-bg: color-mix(in srgb, var(--color-amber-400) 6%, transparent);
+    --sched-heat-heavy-bg: color-mix(in srgb, var(--color-red-400) 5%, transparent);
 
     /* ── THEME-71-01: Overlay backdrop — semantic tokens replace hardcoded bg-black ── */
     --sched-overlay-bg: color-mix(in srgb, black 30%, transparent);
@@ -203,6 +208,11 @@
 
     --sched-on-accent: white;
 
+    /* FIX-72-03: dark heat map tokens — increased opacity for visibility */
+    --sched-heat-light-bg: color-mix(in srgb, var(--color-emerald-400) 8%, transparent);
+    --sched-heat-medium-bg: color-mix(in srgb, var(--color-amber-400) 10%, transparent);
+    --sched-heat-heavy-bg: color-mix(in srgb, var(--color-red-400) 8%, transparent);
+
     /* THEME-71-01: darker overlays in dark mode */
     --sched-overlay-bg: color-mix(in srgb, black 50%, transparent);
     --sched-modal-overlay-bg: color-mix(in srgb, black 60%, transparent);
@@ -228,7 +238,8 @@
 }
 
 .dark .sched-hero-card {
-  background: linear-gradient(145deg, #111927, #0f1520);
+  /* FIX-72-01: replaced hardcoded hex with semantic dark tokens */
+  background: linear-gradient(145deg, color-mix(in srgb, var(--bg-surface) 80%, var(--color-slate-900)), color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950)));
   box-shadow:
     0 1px 3px color-mix(in srgb, black 16%, transparent),
     0 4px 16px color-mix(in srgb, black 12%, transparent),
@@ -280,8 +291,9 @@
 }
 
 .dark .sched-status-card {
+  /* FIX-72-01: replaced hardcoded hex with semantic dark tokens */
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-sky-400) 8%, #0f1520) 0%, #0f1520 100%);
+    linear-gradient(135deg, color-mix(in srgb, var(--color-sky-400) 8%, color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950))) 0%, color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950)) 100%);
   border-color: color-mix(in srgb, var(--color-sky-400) 15%, var(--sched-card-border));
   box-shadow:
     0 1px 4px color-mix(in srgb, black 16%, transparent),
@@ -1286,6 +1298,17 @@
   z-index: var(--z-dropdown, 1000);
 }
 
+/* FIX-72-07: on mobile, use fixed positioning to avoid parent overflow */
+@media (max-width: 640px) {
+  .sched-export-dropdown {
+    position: fixed;
+    top: auto;
+    right: 1rem;
+    left: auto;
+    max-width: calc(100vw - 2rem);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════
    FLUID TYPOGRAPHY WIRING (FIX-65-16)
    Cards use these classes so tokens flow through CSS.
@@ -1314,13 +1337,10 @@
    HEATMAP — DAY LOAD INTENSITY COLORS
    ═══════════════════════════════════════════════════════ */
 
-.sched-heat-light { background: color-mix(in srgb, var(--color-emerald-400) 5%, transparent); }
-.sched-heat-medium { background: color-mix(in srgb, var(--color-amber-400) 6%, transparent); }
-.sched-heat-heavy { background: color-mix(in srgb, var(--color-red-400) 5%, transparent); }
-
-.dark .sched-heat-light { background: color-mix(in srgb, var(--color-emerald-400) 8%, transparent); }
-.dark .sched-heat-medium { background: color-mix(in srgb, var(--color-amber-400) 10%, transparent); }
-.dark .sched-heat-heavy { background: color-mix(in srgb, var(--color-red-400) 8%, transparent); }
+/* FIX-72-03: heat map colors now reference tokens (theme-aware via .schedule-theme) */
+.sched-heat-light { background: var(--sched-heat-light-bg); }
+.sched-heat-medium { background: var(--sched-heat-medium-bg); }
+.sched-heat-heavy { background: var(--sched-heat-heavy-bg); }
 
 /* ═══════════════════════════════════════════════════════
    MINI-CALENDAR — DOT INDICATORS
@@ -1571,53 +1591,60 @@
   widows: 3;
 }
 
+/* FIX-72-04: removed all !important — uses doubled-class specificity (THEME-70-01 pattern) */
 @media print {
-  .schedule-theme {
-    background: white !important;
-    color: black !important;
+  .schedule-theme.schedule-theme {
+    background: white;
+    color: black;
   }
 
   /* FIX-65-12: fixed selector .aurora-mesh → .sched-aurora-hero */
-  .schedule-theme .sched-aurora-hero,
-  .schedule-theme [aria-hidden="true"]:not([role]),
-  .schedule-theme .sched-current-glow,
-  .schedule-theme .sched-progress-fill::after {
-    display: none !important;
-    animation: none !important;
+  .schedule-theme.schedule-theme .sched-aurora-hero,
+  .schedule-theme.schedule-theme [aria-hidden="true"]:not([role]),
+  .schedule-theme.schedule-theme .sched-current-glow,
+  .schedule-theme.schedule-theme .sched-progress-fill::after {
+    display: none;
+    animation: none;
   }
 
-  /* FIX-65-11: replaced hardcoded #ddd with token */
-  .sched-card-matte {
-    box-shadow: none !important;
-    border: 1px solid var(--sched-card-border, #ddd) !important;
+  .schedule-theme.schedule-theme .sched-card-matte {
+    box-shadow: none;
+    border: 1px solid var(--sched-card-border, var(--color-slate-300));
     break-inside: avoid;
   }
 
-  .sched-card-matte::before {
+  .schedule-theme.schedule-theme .sched-card-matte::before {
     height: 3px;
     opacity: 1;
   }
 
-  .sched-card-item,
-  .sched-column-item {
-    animation: none !important;
-    opacity: 1 !important;
+  .schedule-theme.schedule-theme .sched-card-item,
+  .schedule-theme.schedule-theme .sched-column-item {
+    animation: none;
+    opacity: 1;
   }
 
-  .sched-slideover,
-  .sched-empty-ring,
-  [role="tablist"] {
-    display: none !important;
+  .schedule-theme.schedule-theme .sched-slideover,
+  .schedule-theme.schedule-theme .sched-empty-ring,
+  .schedule-theme.schedule-theme [role="tablist"] {
+    display: none;
   }
 
-  .sched-list-day-header {
-    position: static !important;
+  .schedule-theme.schedule-theme .sched-list-day-header {
+    position: static;
     break-after: avoid;
   }
 }
 
 /* ═══════════════════════════════════════════════════════
    REDUCED MOTION
+   DOC-72-01: Covers ALL schedule animations —
+   pulse glow, progress fill, card/column entrance, aurora,
+   empty state (icon/ring/orbit), today badge, slideover,
+   list headers, flip countdown (flaps+colon+urgent),
+   drop target, header compact, window pill, progress ring,
+   type badge, card hover, calendar hover, skeleton shimmer,
+   bottom sheet, confetti dots. Verified Wave 72 audit.
    ═══════════════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {

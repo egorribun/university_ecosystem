@@ -85,6 +85,10 @@ export function useLessonNotes(lessonId: string | null | undefined) {
 export function useLessonNotesMap(lessonIds: string[]) {
   const [notesMap, setNotesMap] = useState<Map<string, boolean>>(new Map())
 
+  // CQ-72-01: extract dep key — .join() produces a stable primitive string
+  // that React compares with ===, avoiding reference-equality issues from array deps
+  const depKey = lessonIds.join(",")
+
   useEffect(() => {
     if (lessonIds.length === 0) return
     const map = new Map<string, boolean>()
@@ -94,7 +98,7 @@ export function useLessonNotesMap(lessonIds: string[]) {
         map.set(id, !!stored?.text?.trim())
       }),
     ).then(() => setNotesMap(new Map(map)))
-  }, [lessonIds.join(",")]) // eslint-disable-line react-hooks/exhaustive-deps -- stable join key
+  }, [depKey]) // eslint-disable-line react-hooks/exhaustive-deps -- stable join key
 
   return notesMap
 }

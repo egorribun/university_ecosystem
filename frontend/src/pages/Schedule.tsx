@@ -204,7 +204,6 @@ function ScheduleContent() {
           {...scheduleData}
           nowTick={nowTick}
           onOpenSettings={() => setSettingsOpen(true)}
-          gridRef={gridRef}
         />
 
         <div className="flex gap-4 lg:gap-6">
@@ -291,6 +290,9 @@ function ScheduleContent() {
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           weekdayLabels={weekdayLabels}
+          currentParity={scheduleData.currentParity}
+          setCurrentParity={scheduleData.setCurrentParity}
+          gridRef={gridRef}
         />
 
         {/* ── Confirm deletion dialog ────────────────────── */}

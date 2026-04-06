@@ -38,10 +38,12 @@ export type AddLessonFields = {
   parity: LessonParity
 }
 
+/* FIX-72-06: tightened from index signature — matches GroupOut shape */
 export type ScheduleGroup = {
   id: string
   name: string
-  [key: string]: unknown
+  course?: number | null
+  faculty?: string | null
 }
 
 export type LessonTypeConfig = {

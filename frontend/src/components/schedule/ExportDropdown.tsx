@@ -128,7 +128,7 @@ export function ExportDropdown({
   ]
 
   return (
-    <div ref={dropdownRef} className={cn("relative", className)}>
+    <div ref={dropdownRef} className={cn("relative z-30", className)}>
       {/* FIX-68-27: plain button — no Button wrapper to avoid gap/wrap issues */}
       <button
         type="button"

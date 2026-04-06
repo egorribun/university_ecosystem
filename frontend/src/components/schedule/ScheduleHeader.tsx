@@ -6,11 +6,10 @@ import {
   MapPin as RoomIcon,
   User as TeacherIcon,
   Sparkles as CompleteIcon,
+  SlidersHorizontal as ControlsIcon,
 } from "lucide-react"
 import { Badge, Select } from "@/components/ui"
 import FadeSection from "@/components/motion/FadeSection"
-import { WeekSelector } from "@/components/schedule/WeekSelector"
-import { ScheduleToolbar } from "@/components/schedule/ScheduleToolbar"
 import { FlipCountdown } from "@/components/schedule/FlipCountdown"
 import { cn } from "@/utils/cn"
 import { useScheduleData } from "@/hooks/useScheduleData"
@@ -26,8 +25,6 @@ type ScheduleHeaderProps = Pick<
   | "groups"
   | "selectedGroup"
   | "setSelectedGroup"
-  | "currentParity"
-  | "setCurrentParity"
   | "currentLesson"
   | "nextLesson"
   | "timeLeftText"
@@ -36,9 +33,7 @@ type ScheduleHeaderProps = Pick<
   | "todayLessons"
   | "nowTick"
 > & {
-  isExporting?: boolean
   onOpenSettings?: () => void
-  gridRef?: React.RefObject<HTMLElement | null>
 }
 
 /** SVG Circular Progress Ring */
@@ -80,8 +75,6 @@ export function ScheduleHeader({
   groups,
   selectedGroup,
   setSelectedGroup,
-  currentParity,
-  setCurrentParity,
   currentLesson,
   nextLesson,
   timeLeftText,
@@ -89,9 +82,7 @@ export function ScheduleHeader({
   currentProgress,
   todayLessons,
   nowTick,
-  isExporting,
   onOpenSettings,
-  gridRef,
 }: ScheduleHeaderProps) {
   const { t } = useTranslation(["schedule", "common"])
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
@@ -128,7 +119,7 @@ export function ScheduleHeader({
             <div className="sched-orb-2 absolute -right-16 top-4 h-40 w-40 rounded-full opacity-45 blur-3xl sm:h-52 sm:w-52" />
           </div>
 
-          {/* ── Title + Group badge ─────────────────────────── */}
+          {/* ── Title + Group badge + controls button ─────── */}
           <div className="relative z-base mb-5 flex flex-wrap items-center gap-4 sm:gap-5">
             <div className="sched-badge-matte flex h-12 w-12 items-center justify-center rounded-full text-brand">
               <CalendarIcon className="h-7 w-7" aria-hidden="true" />
@@ -144,13 +135,17 @@ export function ScheduleHeader({
                 {t("schedule:header.groupName", { name: activeGroupName })}
               </Badge>
             )}
-          </div>
-
-          {/* ── Controls bar ──────────────────────────────── */}
-          <div className="relative z-base mb-5">
-            <ScheduleToolbar isExporting={isExporting} onOpenSettings={onOpenSettings} gridRef={gridRef}>
-              <WeekSelector currentParity={currentParity} setCurrentParity={setCurrentParity} />
-            </ScheduleToolbar>
+            {/* ── Controls button — opens settings panel with all toolbar controls ── */}
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                aria-label={t("schedule:toolbar.settings")}
+                className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-glass-border bg-surface/(--opacity-dim) text-text-secondary shadow-sm transition-all duration-fast hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <ControlsIcon size={18} aria-hidden="true" />
+              </button>
+            )}
           </div>
 
           {/* ── Status card: Current / Next / Stats ─────── */}

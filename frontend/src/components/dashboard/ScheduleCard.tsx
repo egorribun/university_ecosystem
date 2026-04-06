@@ -40,7 +40,9 @@ export function ScheduleCard({
     ? dashboardScheduleQuery.isLoading && schedule.length === 0
     : false
 
-  const parity = useMemo(nowParity, [])
+  // CQ-72-02: removed useMemo — nowParity() is microsecond-cheap (Date + arithmetic),
+  // and empty deps [] made it stale in long-lived tabs (wouldn't update after midnight)
+  const parity = nowParity()
   const todayIndex = time.getDay()
 
   const weekDaysDisplay = useMemo(() => {

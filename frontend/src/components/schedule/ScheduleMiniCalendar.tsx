@@ -97,6 +97,7 @@ export function ScheduleMiniCalendar({
       {/* ── Month navigation ──────────────────────────── */}
       <div className="mb-3 flex items-center justify-between">
         <button
+          type="button"
           onClick={() => changeMonth(-1)}
           aria-label={t("common:prev", { defaultValue: "Previous" })}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
@@ -121,6 +122,7 @@ export function ScheduleMiniCalendar({
           </button>
         )}
         <button
+          type="button"
           onClick={() => changeMonth(1)}
           aria-label={t("common:next", { defaultValue: "Next" })}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"

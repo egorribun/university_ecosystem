@@ -80,14 +80,14 @@ export function AddLessonDialog({
     try {
       setIsAdding(true)
       await api.post("/schedule", payload)
-      showSnackbar(t("schedule:snackbar.created"))
+      showSnackbar(t("schedule:snackbar.added"))
       closeDialog()
       refresh()
       // Reset fields partially?
       setAddFields((prev) => ({ ...prev, subject: "", teacher: "", room: "" }))
     } catch (e) {
       logError("Failed to add lesson", e)
-      showSnackbar(t("schedule:snackbar.createError"))
+      showSnackbar(t("schedule:snackbar.addError"))
     } finally {
       setIsAdding(false)
     }
