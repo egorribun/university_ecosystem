@@ -12,6 +12,8 @@ export const Route = createFileRoute("/_auth/events")({
         q: v.optional(v.string()),
         type: v.optional(v.string()),
         loc: v.optional(v.string()),
+        sort: v.optional(v.string()),
+        cat: v.optional(v.string()),
       }),
       search
     ),

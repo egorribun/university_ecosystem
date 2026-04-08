@@ -13,4 +13,5 @@
 @import "./tokens/components.css";
 @import "./tokens/dashboard.css";
 @import "./tokens/news.css";
+@import "./tokens/events.css";
 @import "./tokens/schedule.css";
