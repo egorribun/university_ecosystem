@@ -130,7 +130,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           type="button"
           onClick={() => setLightboxOpen(false)}
           className="absolute top-4 right-4 z-surface inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-white transition hover:bg-white/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
-          aria-label={t("common:buttons.close", { defaultValue: "Close" })}
+          aria-label={t("common:buttons.close")}
         >
           <CloseIcon size={20} />
         </button>

@@ -1,4 +1,4 @@
-import { useRef, useMemo } from "react"
+import { useRef, useMemo, useId, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Pencil as EditIcon, X as CloseIcon } from "lucide-react"
 import { Button } from "@/components/ui"
@@ -41,6 +41,7 @@ export function EventEditDialog({
   const { t, i18n } = useTranslation()
   const language = i18n.language
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const baseId = useId()
 
   const inputClass =
     "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-text-primary placeholder:text-(--input-placeholder) focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand transition-colors duration-fast"
@@ -63,7 +64,7 @@ export function EventEditDialog({
     }
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) setNewImage(file)
   }
@@ -110,12 +111,13 @@ export function EventEditDialog({
     >
       <div className="space-y-4">
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label htmlFor={`${baseId}-title`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.title_en")
               : t("events:form.title")}
           </label>
           <input
+            id={`${baseId}-title`}
             type="text"
             value={getLocalizedEditValue("title") || ""}
             onChange={(e) => updateLocalizedEditValue("title", e.target.value)}
@@ -123,12 +125,13 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label htmlFor={`${baseId}-desc`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.description_en")
               : t("events:form.description")}
           </label>
           <textarea
+            id={`${baseId}-desc`}
             value={getLocalizedEditValue("description") || ""}
             onChange={(e) => updateLocalizedEditValue("description", e.target.value)}
             rows={2}
@@ -136,12 +139,13 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label htmlFor={`${baseId}-type`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.type_en")
               : t("events:form.type")}
           </label>
           <input
+            id={`${baseId}-type`}
             type="text"
             value={getLocalizedEditValue("event_type") || ""}
             onChange={(e) => updateLocalizedEditValue("event_type", e.target.value)}
@@ -149,12 +153,13 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label htmlFor={`${baseId}-loc`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.location_en")
               : t("events:form.location")}
           </label>
           <input
+            id={`${baseId}-loc`}
             type="text"
             value={getLocalizedEditValue("location") || ""}
             onChange={(e) => updateLocalizedEditValue("location", e.target.value)}
@@ -162,10 +167,11 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label htmlFor={`${baseId}-start`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {t("events:form.start")}
           </label>
           <input
+            id={`${baseId}-start`}
             type="datetime-local"
             value={draft.starts_at?.slice(0, 16) || ""}
             onChange={(e) => setDraft({ ...draft, starts_at: e.target.value })}
@@ -173,10 +179,11 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label htmlFor={`${baseId}-end`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {t("events:form.end")}
           </label>
           <input
+            id={`${baseId}-end`}
             type="datetime-local"
             value={draft.ends_at?.slice(0, 16) || ""}
             onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })}
@@ -189,10 +196,11 @@ export function EventEditDialog({
           )}
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label htmlFor={`${baseId}-speaker`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {t("events:form.speaker")}
           </label>
           <input
+            id={`${baseId}-speaker`}
             type="text"
             value={draft.speaker || ""}
             onChange={(e) => setDraft({ ...draft, speaker: e.target.value })}

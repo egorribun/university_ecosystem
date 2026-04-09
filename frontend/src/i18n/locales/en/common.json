@@ -20,7 +20,8 @@
     "uploadPhoto": "Upload photo",
     "changePhoto": "Change photo",
     "loadMore": "Load more",
-    "backToTop": "Back to top"
+    "backToTop": "Back to top",
+    "close": "Close"
   },
   "statuses": {
     "loading": "Loading…",
@@ -28,7 +29,8 @@
     "publishing": "Publishing…",
     "error": "Something went wrong",
     "tryAgain": "Try again",
-    "live": "LIVE"
+    "live": "LIVE",
+    "cached": "Cached"
   },
   "errors": {
     "generic": "An error occurred",

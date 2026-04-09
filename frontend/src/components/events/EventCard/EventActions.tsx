@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import { useState, useEffect, type MouseEvent } from "react"
 import { Button, Tooltip } from "@/components/ui"
 import { Users as PeopleAltIcon, QrCode as QrCodeIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -12,14 +12,14 @@ interface EventActionsProps {
   participantCount: number
   qrToken?: string
   loading: boolean
-  onRegister: (e: React.MouseEvent) => void
-  onUnregister: (e: React.MouseEvent) => void
+  onRegister: (e: MouseEvent) => void
+  onUnregister: (e: MouseEvent) => void
   userRole?: string
 }
 
 const qrOpenKey = (eventId: string) => `event:qr_open:${eventId}`
 
-export const EventActions: React.FC<EventActionsProps> = ({
+export function EventActions({
   eventId,
   isActive,
   isEnded,
@@ -30,7 +30,7 @@ export const EventActions: React.FC<EventActionsProps> = ({
   onRegister,
   onUnregister,
   userRole,
-}) => {
+}: EventActionsProps) {
   const { t } = useTranslation(["events"])
   const [qrOpen, setQrOpen] = useState(false)
 

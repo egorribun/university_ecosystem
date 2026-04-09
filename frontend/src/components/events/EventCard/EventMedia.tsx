@@ -1,4 +1,3 @@
-import React from "react"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { useTranslation } from "react-i18next"
@@ -16,7 +15,7 @@ interface EventMediaProps {
   onImageClick?: () => void
 }
 
-export const EventMedia: React.FC<EventMediaProps> = ({
+export function EventMedia({
   imageUrl,
   alt,
   eventType,
@@ -24,7 +23,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
   isReady,
   onReady,
   onImageClick,
-}) => {
+}: EventMediaProps) {
   const { t } = useTranslation(["events"])
 
   return (

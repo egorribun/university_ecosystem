@@ -5,7 +5,7 @@
 
 import SmartImage from "@/components/media/SmartImage"
 import { ZoomIn, X } from "lucide-react"
-import { useState, useCallback, useEffect, useMemo, useRef } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef, type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import useFocusTrap from "@/hooks/useFocusTrap"
@@ -21,7 +21,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [aspectMode, setAspectMode] = useState<AspectMode>("landscape")
 
-  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageLoad = useCallback((e: SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
     const w = img.naturalWidth || 1
     const h = img.naturalHeight || 1
@@ -114,7 +114,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
             type="button"
             onClick={() => setLightboxOpen(false)}
             className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-[var(--text-inverse)] hover:bg-white/(--opacity-soft) transition-colors focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
-            aria-label={t("common:buttons.close", { defaultValue: "Close" })}
+            aria-label={t("common:buttons.close")}
           >
             <X size={20} />
           </button>

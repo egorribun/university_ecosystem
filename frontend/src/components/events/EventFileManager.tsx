@@ -1,4 +1,4 @@
-import { useState, useRef, useActionState, useOptimistic } from "react"
+import { useState, useRef, useActionState, useOptimistic, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Trash2 as DeleteIcon } from "lucide-react"
 import api from "@/api/client"
@@ -82,7 +82,7 @@ export function EventFileManager({
     { status: "idle" }
   )
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const nextFile = e.target.files?.[0] || null
     setSelectedFile(nextFile)
     if (isUploadErrorState(uploadState) && !uploadPending) {

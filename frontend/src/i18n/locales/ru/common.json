@@ -31,7 +31,8 @@
     "uploadPhoto": "Загрузить фото",
     "changePhoto": "Изменить фото",
     "loadMore": "Загрузить ещё",
-    "backToTop": "Наверх"
+    "backToTop": "Наверх",
+    "close": "Закрыть"
   },
   "statuses": {
     "loading": "Загрузка…",
@@ -39,7 +40,8 @@
     "publishing": "Публикация…",
     "error": "Что-то пошло не так",
     "tryAgain": "Попробовать снова",
-    "live": "В ЭФИРЕ"
+    "live": "В ЭФИРЕ",
+    "cached": "В кэше"
   },
   "errors": {
     "generic": "Произошла ошибка",

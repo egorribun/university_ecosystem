@@ -137,7 +137,7 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsC
         {!isOnline && (
           <div className="flex items-center gap-1 rounded-full bg-warning-bg/(--opacity-heavy) px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text backdrop-blur-sm">
             <Cloud size={11} />
-            <span>{t("common:statuses.cached", { defaultValue: "Cached" })}</span>
+            <span>{t("common:statuses.cached")}</span>
           </div>
         )}
       </div>

@@ -9,7 +9,7 @@ import { Snackbar, ConfirmDialog } from "@/components/ui"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { cn } from "@/utils/cn"
 import { motion, type MotionValue } from "framer-motion"
-import { FC, Suspense, lazy, useState, useCallback, useRef } from "react"
+import { FC, Suspense, lazy, useState, useCallback, useRef, type MouseEvent } from "react"
 import EventCardContent from "./EventCardContent"
 import EventCardHero from "./EventCardHero"
 import { EventQuickView } from "../EventQuickView"
@@ -48,7 +48,7 @@ export interface EventCardViewProps {
   spotlight: {
     mouseX: MotionValue<number>
     mouseY: MotionValue<number>
-    onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void
+    onMouseMove: (e: MouseEvent<HTMLDivElement>) => void
   }
   /* Edit/delete actions */
   menuAnchor: HTMLElement | null
