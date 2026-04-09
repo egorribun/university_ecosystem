@@ -129,9 +129,9 @@ export function EventDetailHeader({
           size="sm"
           onClick={onShare}
           leadingIcon={<Share2 size={15} />}
-          aria-label={t("events:detail.actions.share", { defaultValue: "Share" })}
+          aria-label={t("events:detail.actions.share")}
         >
-          {t("events:detail.actions.share", { defaultValue: "Share" })}
+          {t("events:detail.actions.share")}
         </Button>
 
         {/* Register / Unregister — aria-live for screen reader announcements */}

@@ -26,7 +26,7 @@ export function EventDetailNavigation({
 
   return (
     <nav
-      aria-label={t("events:detail.nav.label", { defaultValue: "Event navigation" })}
+      aria-label={t("events:detail.nav.label")}
       className="flex items-stretch gap-4 border-t border-glass-border/(--opacity-soft) pt-6 mt-8"
     >
       {/* Previous event */}
@@ -39,7 +39,7 @@ export function EventDetailNavigation({
           <ChevronLeft size={16} className="shrink-0 text-(--text-secondary)" />
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">
-              {t("events:detail.nav.prev", { defaultValue: "Previous" })}
+              {t("events:detail.nav.prev")}
             </div>
             <div className="text-sm font-semibold text-text-primary line-clamp-1">
               {prevTitle}
@@ -59,7 +59,7 @@ export function EventDetailNavigation({
         >
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">
-              {t("events:detail.nav.next", { defaultValue: "Next" })}
+              {t("events:detail.nav.next")}
             </div>
             <div className="text-sm font-semibold text-text-primary line-clamp-1">
               {nextTitle}

@@ -31,7 +31,7 @@ export function EventCategoryBadge({ category, size = "sm" }: EventCategoryBadge
         style={{ backgroundColor: `var(--cat-${color}-text)` }}
         aria-hidden="true"
       />
-      {t(labelKey, { defaultValue: category })}
+      {t(labelKey)}
     </span>
   )
 }

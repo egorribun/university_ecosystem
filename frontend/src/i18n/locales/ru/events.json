@@ -63,6 +63,8 @@
     "location": "Место",
     "location_en": "Место (английский)",
     "speaker": "Спикер",
+    "image": "Изображение",
+    "participants": "Участники",
     "uploadImage": "Загрузить изображение",
     "imageSelected": "Изображение выбрано",
     "start": "Начало",
@@ -100,7 +102,8 @@
       "live": "В ЭФИРЕ",
       "soon": "Скоро",
       "registered": "Вы записаны",
-      "open": "Открыто"
+      "open": "Открыто",
+      "in": "Через {{time}}"
     },
     "participants": "Участников: {{count}}",
     "messages": {

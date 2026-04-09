@@ -12,12 +12,11 @@ import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface EventDetailHeroProps {
   imageUrl: string
-  title: string
 }
 
 type AspectMode = "landscape" | "portrait" | "square"
 
-export function EventDetailHero({ imageUrl, title: _title }: EventDetailHeroProps) {
+export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
   const { t } = useTranslation(["events"])
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [aspectMode, setAspectMode] = useState<AspectMode>("landscape")
@@ -93,7 +92,7 @@ export function EventDetailHero({ imageUrl, title: _title }: EventDetailHeroProp
           type="button"
           onClick={() => setLightboxOpen(true)}
           className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/(--opacity-strong) text-[var(--text-inverse)] backdrop-blur-sm transition-transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-          aria-label={t("events:detail.actions.zoom", { defaultValue: "Zoom image" })}
+          aria-label={t("events:detail.actions.zoom")}
         >
           <ZoomIn size={16} />
         </button>
@@ -108,7 +107,7 @@ export function EventDetailHero({ imageUrl, title: _title }: EventDetailHeroProp
           onClick={() => setLightboxOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label={t("events:detail.actions.zoom", { defaultValue: "Zoom image" })}
+          aria-label={t("events:detail.actions.zoom")}
         >
           <button
             ref={closeButtonRef}

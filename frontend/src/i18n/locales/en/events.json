@@ -63,6 +63,8 @@
     "location": "Location",
     "location_en": "Location (English)",
     "speaker": "Speaker",
+    "image": "Image",
+    "participants": "Participants",
     "uploadImage": "Upload image",
     "imageSelected": "Image selected",
     "start": "Start",
@@ -100,7 +102,8 @@
       "live": "LIVE",
       "soon": "Soon",
       "registered": "Registered",
-      "open": "Open"
+      "open": "Open",
+      "in": "In {{time}}"
     },
     "participants": "Participants: {{count}}",
     "messages": {

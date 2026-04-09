@@ -4,7 +4,7 @@
  * Handles PATCH /events/{id} and image upload.
  */
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { EventEditDialog } from "./EventEditDialog"
@@ -17,7 +17,6 @@ interface EventDetailEditDialogProps {
   open: boolean
   onClose: () => void
   event: Event
-  language: "en" | "ru"
   onSuccess: (msg: string) => void
   onError: (msg: string) => void
 }
@@ -26,7 +25,6 @@ export function EventDetailEditDialog({
   open,
   onClose,
   event,
-  language: _language,
   onSuccess,
   onError,
 }: EventDetailEditDialogProps) {
@@ -60,6 +58,16 @@ export function EventDetailEditDialog({
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
+  // Create/revoke ObjectURL preview when user picks a new image
+  useEffect(() => {
+    if (newImage) {
+      const url = URL.createObjectURL(newImage)
+      setPreviewUrl(url)
+      return () => URL.revokeObjectURL(url)
+    }
+    setPreviewUrl(null)
+  }, [newImage])
+
   const handleSave = useCallback(async () => {
     setLoading(true)
     try {
@@ -86,17 +94,15 @@ export function EventDetailEditDialog({
     }
   }, [draft, newImage, event.id, queryClient, onSuccess, onError, onClose, t])
 
-  // Reset state when dialog opens
+  // Reset state when dialog closes
   const handleClose = useCallback(() => {
     setDraft(initialDraft)
-    setNewImage(null)
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPreviewUrl(null)
+    setNewImage(null) // triggers useEffect → revokes ObjectURL + clears previewUrl
     onClose()
-  }, [initialDraft, previewUrl, onClose])
+  }, [initialDraft, onClose])
 
-  const normalizedTitle = draft.title?.trim() || draft.title_en?.trim() || ""
-  const normalizedLocation = draft.location?.trim() || draft.location_en?.trim() || ""
+  const normalizedTitle = (draft.title ?? "").trim() || (draft.title_en ?? "").trim()
+  const normalizedLocation = (draft.location ?? "").trim() || (draft.location_en ?? "").trim()
 
   return (
     <EventEditDialog

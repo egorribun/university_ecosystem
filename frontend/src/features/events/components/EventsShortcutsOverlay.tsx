@@ -47,7 +47,7 @@ export function EventsShortcutsOverlay() {
       onClick={() => setOpen(false)}
       role="dialog"
       aria-modal="true"
-      aria-label={t("events:keyboard.overlayTitle", { defaultValue: "Keyboard shortcuts" })}
+      aria-label={t("events:keyboard.overlayTitle")}
       tabIndex={-1}
     >
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events -- stopPropagation on content panel */}
@@ -57,7 +57,7 @@ export function EventsShortcutsOverlay() {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold text-text-primary mb-4">
-          {t("events:keyboard.overlayTitle", { defaultValue: "Keyboard shortcuts" })}
+          {t("events:keyboard.overlayTitle")}
         </h2>
         <dl className="space-y-2.5">
           {shortcuts.map(({ key, action }) => (
@@ -74,7 +74,7 @@ export function EventsShortcutsOverlay() {
           ))}
         </dl>
         <p className="mt-4 text-[11px] text-(--text-secondary)/(--opacity-medium)">
-          {t("events:keyboard.pressToClose", { defaultValue: "Press ? or Esc to close" })}
+          {t("events:keyboard.pressToClose")}
         </p>
       </div>
     </div>

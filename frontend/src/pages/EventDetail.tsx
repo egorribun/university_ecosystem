@@ -6,7 +6,7 @@
  * Pattern source: pages/NewsDetail.tsx
  */
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useNavigate } from "@tanstack/react-router"
 import { Info as InfoIcon, ArrowLeft as ArrowBackIcon } from "lucide-react"
 import { useReducedMotion } from "framer-motion"
@@ -14,9 +14,9 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useTranslation } from "react-i18next"
 import { Button, ConfirmDialog } from "@/components/ui"
 import Snackbar from "@/components/ui/Snackbar"
+import { SEO } from "@/components/ui/SEO"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import { cn } from "@/utils/cn"
 import { useEventDetailQuery, useEventNavigation } from "@/api/hooks/events"
 import { useSwipe } from "@/hooks/useSwipe"
 import { useRelatedEvents } from "@/hooks/useRelatedEvents"
@@ -34,6 +34,7 @@ import { EventDetailBody } from "@/components/events/EventDetailBody"
 import { EventDetailNavigation } from "@/components/events/EventDetailNavigation"
 import { RelatedEvents } from "@/components/events/RelatedEvents"
 import { EventDetailSkeleton } from "@/components/events/EventDetailSkeleton"
+import { EventDetailEditDialog } from "@/components/events/EventDetailEditDialog"
 import { EventsBackdrop } from "@/components/events/EventsBackdrop"
 
 export default function EventDetail() {
@@ -80,7 +81,7 @@ export default function EventDetail() {
 
   /* ── Local state ── */
   const [snackbar, setSnackbar] = useState("")
-  const [_editOpen, setEditOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -89,6 +90,26 @@ export default function EventDetail() {
   const refreshEvent = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["events", "detail", id] })
   }, [queryClient, id])
+
+  /* ── Firefox fallback: JS-driven reading progress bar ── */
+  const progressRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        if (progressRef.current) {
+          const max = document.documentElement.scrollHeight - window.innerHeight
+          const pct = max > 0 ? Math.min(window.scrollY / max, 1) : 0
+          progressRef.current.style.transform = `scaleX(${pct})`
+        }
+        ticking = false
+      })
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [])
 
   /* ── Actions ── */
   const handleBack = () => {
@@ -109,7 +130,7 @@ export default function EventDetail() {
         })
       } else {
         await navigator.clipboard.writeText(window.location.href)
-        setSnackbar(t("events:detail.messages.linkCopied", { defaultValue: "Link copied" }))
+        setSnackbar(t("events:detail.messages.linkCopied"))
       }
     } catch {
       // User cancelled share or clipboard failed — silent
@@ -144,108 +165,121 @@ export default function EventDetail() {
   /* ── Error / not found state ── */
   if (error || !event) {
     return (
-      <div className="events-theme mx-auto max-w-[42rem] px-4 py-12 text-center">
-        <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-text-secondary">
-          <InfoIcon size={32} />
+      <div className="events-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
+        <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+        <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+          <div className="mb-2 inline-flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-text-secondary" aria-hidden="true">
+            <InfoIcon size={32} />
+          </div>
+          <p className="text-lg font-semibold text-text-primary">
+            {t("events:detail.messages.notFound")}
+          </p>
+          <Button variant="glass" onClick={() => navigate({ to: "/events" })}>
+            {t("common:buttons.back")}
+          </Button>
         </div>
-        <h2 className="mb-2 text-xl font-semibold text-text-primary">
-          {t("events:detail.messages.notFound")}
-        </h2>
-        <Button variant="outline" onClick={() => navigate({ to: "/events" })}>
-          {t("common:buttons.back")}
-        </Button>
       </div>
     )
   }
 
   /* ── Render ── */
   return (
-    <div className="events-theme aurora-mesh relative w-full min-h-(--h-screen-offset)">
-      {/* Reading progress bar (CSS scroll-driven + Firefox JS fallback) */}
-      <div className="events-reading-progress" />
+    <>
+      {/* Reading progress — CSS scroll-driven animation (JS fallback for Firefox) */}
+      <div ref={progressRef} className="events-reading-progress" aria-hidden="true" />
 
-      {/* Backdrop decoratives */}
-      <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-
-      {/* Content */}
-      <article
-        className="relative z-base max-w-4xl mx-auto px-4 py-6 sm:px-6 md:px-10 lg:px-14"
+      <div
+        className="events-theme aurora-mesh relative min-h-screen overflow-clip touch-pan-y"
         {...swipeHandlers}
       >
-        {/* Back button */}
-        <Button
-          onClick={handleBack}
-          leadingIcon={<ArrowBackIcon size={18} />}
-          variant="glass"
-          size="sm"
-          className={cn("mb-6 font-semibold", "md:sticky md:top-3 md:z-overlay")}
-        >
-          {t("common:buttons.back")}
-        </Button>
+        {/* Backdrop decoratives */}
+        <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
-        {/* Header — title, meta, actions */}
-        <EventDetailHeader
-          title={event.title ?? ""}
-          eventType={event.event_type ?? undefined}
-          eventTypeEn={event.event_type_en ?? undefined}
-          participantCount={registration.participantCount}
-          startsAt={event.starts_at ?? undefined}
-          endsAt={event.ends_at ?? undefined}
-          location={event.location ?? undefined}
-          speaker={event.speaker ?? undefined}
-          isRegistered={registration.isRegistered}
-          isEnded={!event.is_active}
-          isAdmin={isAdmin}
-          registering={registration.isLoading}
-          onShare={() => void handleShare()}
-          onRegister={registration.register}
-          onUnregister={registration.unregister}
-          onEditOpen={() => setEditOpen(true)}
-          onDeleteOpen={() => setConfirmDeleteOpen(true)}
-        />
-
-        {/* Hero image with view transition + lightbox */}
-        {event.image_url && (
-          <div className="mt-6">
-            <EventDetailHero
-              imageUrl={event.image_url}
-              title={event.title ?? ""}
-            />
-          </div>
-        )}
-
-        {/* Description */}
-        {event.description && (
-          <div className="mt-8">
-            <p className="whitespace-pre-line text-base leading-relaxed text-text-primary max-w-[65ch]">
-              {event.description}
-            </p>
-          </div>
-        )}
-
-        {/* Body — About editor + Files */}
-        <div className="mt-8">
-          <EventDetailBody
-            event={event}
-            language={language}
-            isAdmin={isAdmin}
-            onRefresh={refreshEvent}
-            onError={setSnackbar}
-            onSuccess={setSnackbar}
+        {/* Content */}
+        <div className="relative z-[1] px-4 sm:px-6 md:px-10 lg:px-14 pb-20 pt-6 sm:pt-8">
+          <SEO
+            title={event.title ?? ""}
+            description={(event.description ?? "").replace(/\s+/g, " ").trim().slice(0, 160)}
+            image={event.image_url ?? undefined}
           />
+
+          <Button
+            onClick={handleBack}
+            leadingIcon={<ArrowBackIcon size={18} />}
+            variant="glass"
+            className="mb-6"
+          >
+            {t("common:buttons.back")}
+          </Button>
+
+          <article className="max-w-4xl 2xl:max-w-5xl space-y-8">
+            {/* Header — title, meta, actions */}
+            <EventDetailHeader
+              title={event.title ?? ""}
+              eventType={event.event_type ?? undefined}
+              eventTypeEn={event.event_type_en ?? undefined}
+              participantCount={registration.participantCount}
+              startsAt={event.starts_at ?? undefined}
+              endsAt={event.ends_at ?? undefined}
+              location={event.location ?? undefined}
+              speaker={event.speaker ?? undefined}
+              isRegistered={registration.isRegistered}
+              isEnded={!event.is_active}
+              isAdmin={isAdmin}
+              registering={registration.isLoading}
+              onShare={() => void handleShare()}
+              onRegister={registration.register}
+              onUnregister={registration.unregister}
+              onEditOpen={() => setEditOpen(true)}
+              onDeleteOpen={() => setConfirmDeleteOpen(true)}
+            />
+
+            {/* Hero image with view transition + lightbox */}
+            {event.image_url && (
+              <EventDetailHero imageUrl={event.image_url} />
+            )}
+
+            {/* Description */}
+            {event.description && (
+              <p className="whitespace-pre-line text-base leading-relaxed text-text-primary max-w-[65ch]">
+                {event.description}
+              </p>
+            )}
+
+            {/* Body — About editor + Files */}
+            <EventDetailBody
+              event={event}
+              language={language}
+              isAdmin={isAdmin}
+              onRefresh={refreshEvent}
+              onError={setSnackbar}
+              onSuccess={setSnackbar}
+            />
+
+            {/* Related events */}
+            <RelatedEvents items={relatedEvents} />
+
+            {/* Prev/Next navigation */}
+            <EventDetailNavigation
+              prevId={prevId}
+              nextId={nextId}
+              prevTitle={prevTitle}
+              nextTitle={nextTitle}
+            />
+          </article>
         </div>
+      </div>
 
-        {/* Related events */}
-        <RelatedEvents items={relatedEvents} />
-
-        {/* Prev/Next navigation */}
-        <EventDetailNavigation
-          prevId={prevId}
-          nextId={nextId}
-          prevTitle={prevTitle}
-          nextTitle={nextTitle}
+      {/* Edit dialog (wired to editOpen state set by header's onEditOpen) */}
+      {isAdmin && (
+        <EventDetailEditDialog
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          event={event}
+          onSuccess={(msg) => setSnackbar(msg)}
+          onError={(msg) => setSnackbar(msg)}
         />
-      </article>
+      )}
 
       {/* Delete confirmation */}
       <ConfirmDialog
@@ -262,6 +296,6 @@ export default function EventDetail() {
 
       {/* Snackbar */}
       <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
-    </div>
+    </>
   )
 }

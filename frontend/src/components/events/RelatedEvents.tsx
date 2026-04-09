@@ -32,7 +32,7 @@ export function RelatedEvents({ items }: RelatedEventsProps) {
         className="text-lg font-bold text-text-primary mb-4"
         style={{ scrollMarginTop: "5rem" }}
       >
-        {t("events:detail.related.title", { defaultValue: "Related events" })}
+        {t("events:detail.related.title")}
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -44,7 +44,7 @@ export function RelatedEvents({ items }: RelatedEventsProps) {
   )
 }
 
-function RelatedEventCard({ event, language }: { event: Event; language: string }) {
+function RelatedEventCard({ event, language }: { event: Event; language: "en" | "ru" }) {
   const { t } = useTranslation(["events"])
 
   const localizedTitle = useMemo(
@@ -101,7 +101,7 @@ function RelatedEventCard({ event, language }: { event: Event; language: string 
           <span className="text-[11px] text-(--text-secondary)">{dateLabel}</span>
         )}
         <span className="mt-auto flex items-center gap-1 text-[11px] font-semibold text-brand opacity-0 group-hover:opacity-100 transition-opacity">
-          {t("events:quickView.viewDetails", { defaultValue: "View details" })}
+          {t("events:quickView.viewDetails")}
           <ArrowRight size={11} />
         </span>
       </div>

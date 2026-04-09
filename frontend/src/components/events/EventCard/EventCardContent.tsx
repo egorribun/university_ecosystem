@@ -118,11 +118,11 @@ const EventCardContent = ({
           </span>
         ) : isRegistered ? (
           <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-success-text">
-            {t("events:card.statuses.registered", { defaultValue: "Registered" })}
+            {t("events:card.statuses.registered")}
           </span>
         ) : (
           <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-brand">
-            {t("events:card.statuses.open", { defaultValue: "Open" })}
+            {t("events:card.statuses.open")}
           </span>
         )}
       </div>

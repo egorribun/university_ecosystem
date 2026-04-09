@@ -164,13 +164,13 @@ const EventCardHero = ({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-error-text opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-error-text" />
           </span>
-          {t("events:card.statuses.live", { defaultValue: "LIVE" })}
+          {t("events:card.statuses.live")}
         </div>
       )}
       {timeStatus === "soon" && (
         <div className="absolute top-3 right-3 z-surface flex items-center gap-1 rounded-full bg-warning-bg px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-warning-text shadow-sm">
           <Calendar size={10} />
-          {t("events:card.statuses.soon", { defaultValue: "Soon" })}
+          {t("events:card.statuses.soon")}
         </div>
       )}
 

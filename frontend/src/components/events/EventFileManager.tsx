@@ -2,6 +2,7 @@ import { useState, useRef, useActionState, useOptimistic } from "react"
 import { useTranslation } from "react-i18next"
 import { Trash2 as DeleteIcon } from "lucide-react"
 import api from "@/api/client"
+import { logError } from "@/app/logger"
 import { Button } from "@/components/ui"
 import { resolveMediaUrl } from "@/utils/media"
 
@@ -71,7 +72,8 @@ export function EventFileManager({
         if (fileInputRef.current) fileInputRef.current.value = ""
         await onUpdate()
         return { status: "success" }
-      } catch (_err) {
+      } catch (err) {
+        logError("[EventFileManager] Upload failed:", err)
         mutateFiles({ type: "remove", id: optimisticId })
         onError(t("events:detail.messages.fileAddFailed"))
         return { status: "error", error: t("events:detail.upload.errors.failed") }
@@ -95,7 +97,8 @@ export function EventFileManager({
     try {
       await api.delete(`/events/file/${fileId}`)
       onSuccess(t("events:detail.messages.fileDeleted"))
-    } catch {
+    } catch (err) {
+      logError("[EventFileManager] Delete failed:", err)
       onError(t("events:detail.messages.fileDeleteFailed"))
     } finally {
       await onUpdate()
@@ -141,7 +144,7 @@ export function EventFileManager({
 
       {optimisticFiles.length > 0 ? (
         <div>
-          <h3 className="mb-2 text-(--fs-base) font-semibold text-text-primary">
+          <h3 id="event-files-heading" className="mb-2 text-(--fs-base) font-semibold text-text-primary">
             {t("events:detail.sections.files.title")}
           </h3>
           <div className="space-y-2">
@@ -176,9 +179,9 @@ export function EventFileManager({
                       aria-label={t("events:detail.sections.files.deleteAria")}
                       disabled={isPendingFile}
                       className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-medium"
-                      onClick={async () => {
+                      onClick={() => {
                         if (!isPendingFile) {
-                          await handleDeleteFile(f.id)
+                          void handleDeleteFile(f.id)
                         }
                       }}
                     >

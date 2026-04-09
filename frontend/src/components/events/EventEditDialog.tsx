@@ -112,9 +112,7 @@ export function EventEditDialog({
         <div>
           <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
-              ? t("events:form.title_en", {
-                  defaultValue: `${t("events:form.title")} (English)`,
-                })
+              ? t("events:form.title_en")
               : t("events:form.title")}
           </label>
           <input
@@ -127,9 +125,7 @@ export function EventEditDialog({
         <div>
           <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
-              ? t("events:form.description_en", {
-                  defaultValue: `${t("events:form.description")} (English)`,
-                })
+              ? t("events:form.description_en")
               : t("events:form.description")}
           </label>
           <textarea
@@ -142,9 +138,7 @@ export function EventEditDialog({
         <div>
           <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
-              ? t("events:form.type_en", {
-                  defaultValue: `${t("events:form.type")} (English)`,
-                })
+              ? t("events:form.type_en")
               : t("events:form.type")}
           </label>
           <input
@@ -157,9 +151,7 @@ export function EventEditDialog({
         <div>
           <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
-              ? t("events:form.location_en", {
-                  defaultValue: `${t("events:form.location")} (English)`,
-                })
+              ? t("events:form.location_en")
               : t("events:form.location")}
           </label>
           <input

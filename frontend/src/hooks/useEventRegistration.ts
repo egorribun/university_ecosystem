@@ -9,7 +9,8 @@ import { useTranslation } from "react-i18next"
 const regKey = (eventId: string, userId: number | string | undefined) =>
   `event:reg:${eventId}:${userId ?? "anon"}`
 
-const qrKey = (eventId: string, user: User | null) => `event:qr:${eventId}:${user?.id ?? "anon"}`
+const qrKey = (eventId: string, userId: number | string | undefined) =>
+  `event:qr:${eventId}:${userId ?? "anon"}`
 
 interface UseEventRegistrationOptions {
   eventId: string
@@ -29,6 +30,7 @@ export function useEventRegistration({
   onNotify,
 }: UseEventRegistrationOptions) {
   const { t } = useTranslation(["events"])
+  const userId = user?.id
   const [isRegistered, setIsRegistered] = useState(initialRegistered)
   const [participantCount, setParticipantCount] = useState(initialParticipantCount)
   const [qrToken, setQrToken] = useState<string | undefined>(initialQrToken)
@@ -49,37 +51,37 @@ export function useEventRegistration({
 
   // Restore cached registration state on mount
   useEffect(() => {
-    if (!user?.id) return
+    if (!userId) return
     try {
-      const cached = localStorage.getItem(regKey(eventId, user.id))
+      const cached = localStorage.getItem(regKey(eventId, userId))
       if (cached === "1" && !initialRegistered) {
         setIsRegistered(true)
       }
     } catch {
       // ignore
     }
-  }, [eventId, user?.id, initialRegistered])
+  }, [eventId, userId, initialRegistered])
 
   // Persist registration state to localStorage
   useEffect(() => {
-    if (!user?.id) return
+    if (!userId) return
     try {
       if (isRegistered) {
-        localStorage.setItem(regKey(eventId, user.id), "1")
+        localStorage.setItem(regKey(eventId, userId), "1")
       } else {
-        localStorage.removeItem(regKey(eventId, user.id))
+        localStorage.removeItem(regKey(eventId, userId))
       }
     } catch {
       // ignore
     }
-  }, [isRegistered, eventId, user?.id])
+  }, [isRegistered, eventId, userId])
 
   // Sync QR token with registered state and localStorage
   useEffect(() => {
     if (!isRegistered) {
       setQrToken(undefined)
       try {
-        localStorage.removeItem(qrKey(eventId, user))
+        localStorage.removeItem(qrKey(eventId, userId))
       } catch {
         // ignore
       }
@@ -89,20 +91,20 @@ export function useEventRegistration({
     if (initialQrToken) {
       setQrToken(initialQrToken)
       try {
-        localStorage.setItem(qrKey(eventId, user), initialQrToken)
+        localStorage.setItem(qrKey(eventId, userId), initialQrToken)
       } catch {
         // ignore
       }
     } else {
       // Try to recover from localStorage
       try {
-        const stored = localStorage.getItem(qrKey(eventId, user))
+        const stored = localStorage.getItem(qrKey(eventId, userId))
         if (stored) setQrToken(stored)
       } catch {
         // ignore
       }
     }
-  }, [isRegistered, initialQrToken, eventId, user])
+  }, [isRegistered, initialQrToken, eventId, userId])
 
   const sync = useCallback(async (): Promise<"registered" | "unregistered" | null> => {
     try {
@@ -119,7 +121,7 @@ export function useEventRegistration({
         if (code) {
           setQrToken(code)
           try {
-            localStorage.setItem(qrKey(eventId, user), code)
+            localStorage.setItem(qrKey(eventId, userId), code)
           } catch {
             // ignore
           }
@@ -127,7 +129,7 @@ export function useEventRegistration({
       } else {
         setQrToken(undefined)
         try {
-          localStorage.removeItem(qrKey(eventId, user))
+          localStorage.removeItem(qrKey(eventId, userId))
         } catch {
           // ignore
         }
@@ -138,7 +140,7 @@ export function useEventRegistration({
     } catch {
       return null
     }
-  }, [eventId, user])
+  }, [eventId, userId])
 
   const register = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -155,7 +157,7 @@ export function useEventRegistration({
         setParticipantCount((c) => c + 1)
         onNotify?.(t("events:card.messages.registerSuccess"))
         try {
-          localStorage.setItem(qrKey(eventId, user), code)
+          localStorage.setItem(qrKey(eventId, userId), code)
         } catch {
           // ignore
         }
@@ -200,7 +202,7 @@ export function useEventRegistration({
         setParticipantCount((c) => Math.max(0, c - 1))
         onNotify?.(t("events:card.messages.unregisterSuccess"))
         try {
-          localStorage.removeItem(qrKey(eventId, user))
+          localStorage.removeItem(qrKey(eventId, userId))
         } catch {
           // ignore
         }

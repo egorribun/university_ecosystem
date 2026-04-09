@@ -44,7 +44,6 @@ export function EventQuickView({
     <AnimatePresence>
       {visible && (
         <motion.div
-          role="tooltip"
           aria-hidden="true"
           initial={
             prefersReduced
@@ -99,7 +98,7 @@ export function EventQuickView({
                 {participantCount}
               </span>
               <span className="ml-auto text-brand font-semibold">
-                {t("events:quickView.viewDetails", { defaultValue: "View details" })}
+                {t("events:quickView.viewDetails")}
               </span>
             </div>
           </div>

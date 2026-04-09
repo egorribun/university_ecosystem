@@ -249,7 +249,7 @@ export const EventsHeader = ({
                 : "matte-chip text-(--text-secondary)"
             )}
           >
-            {t("events:categories.all", { defaultValue: "All" })}
+            {t("events:categories.all")}
           </button>
 
           {/* Category pills */}
@@ -274,7 +274,7 @@ export const EventsHeader = ({
                   : undefined
               }
             >
-              {t(cat.labelKey, { defaultValue: cat.id })}
+              {t(cat.labelKey)}
             </button>
           ))}
 
@@ -283,21 +283,21 @@ export const EventsHeader = ({
             type="button"
             onClick={handleSortCycle}
             className="ml-auto flex items-center gap-1.5 rounded-full matte-chip px-3 py-2 text-xs font-semibold text-(--text-secondary) shrink-0 min-h-[44px] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
-            aria-label={`${t("events:sort.label", { defaultValue: "Sort" })}: ${
+            aria-label={`${t("events:sort.label")}: ${
               sortMode === "newest"
-                ? t("events:sort.newest", { defaultValue: "Newest" })
+                ? t("events:sort.newest")
                 : sortMode === "popular"
-                  ? t("events:sort.popular", { defaultValue: "Popular" })
-                  : t("events:sort.upcoming", { defaultValue: "Upcoming" })
+                  ? t("events:sort.popular")
+                  : t("events:sort.upcoming")
             }`}
           >
             <ArrowUpDown size={13} />
             <span>
               {sortMode === "newest"
-                ? t("events:sort.newest", { defaultValue: "Newest" })
+                ? t("events:sort.newest")
                 : sortMode === "popular"
-                  ? t("events:sort.popular", { defaultValue: "Popular" })
-                  : t("events:sort.upcoming", { defaultValue: "Upcoming" })}
+                  ? t("events:sort.popular")
+                  : t("events:sort.upcoming")}
             </span>
           </button>
         </FadeSection>
