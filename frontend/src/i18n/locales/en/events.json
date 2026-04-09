@@ -120,6 +120,9 @@
       "delete": {
         "title": "Delete event?",
         "description": "This action cannot be undone. Confirm deletion."
+      },
+      "qr": {
+        "title": "QR Code"
       }
     }
   },

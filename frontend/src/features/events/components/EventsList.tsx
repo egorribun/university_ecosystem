@@ -1,7 +1,6 @@
 import { useRef, useEffect, useCallback } from "react"
 import { Calendar as EventIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion } from "framer-motion"
 import EventCard from "@/components/events/EventCard/EventCard"
 import { EventCardSkeleton } from "@/components/events/EventCard/EventCardSkeleton"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
@@ -154,37 +153,26 @@ export const EventsList = ({
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
-        <AnimatePresence mode="popLayout">
-          {eventsList.map((event, index) => (
-            <motion.div
-              key={event.id}
-              ref={(el) => registerCardRef?.(index, el)}
-              style={{ "--stagger-i": Math.min(index, 12) } as React.CSSProperties}
-              layout
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{
-                layout: { duration: 0.4, ease: [0.25, 1, 0.5, 1] },
-                opacity: { duration: 0.25 },
-                y: { duration: 0.3, ease: [0.25, 1, 0.5, 1] },
-              }}
-              className={cn(
-                "css-stagger-item",
-                activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
-              )}
-            >
-              <FeatureErrorBoundary>
-                <EventCard
-                  {...event}
-                  onChange={handleRetry}
-                  maxWidth="100%"
-                  animationIndex={index}
-                />
-              </FeatureErrorBoundary>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+        {eventsList.map((event, index) => (
+          <div
+            key={event.id}
+            ref={(el) => registerCardRef?.(index, el)}
+            style={{ "--stagger-index": Math.min(index, 12) } as React.CSSProperties}
+            className={cn(
+              "css-stagger-item",
+              activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
+            )}
+          >
+            <FeatureErrorBoundary>
+              <EventCard
+                {...event}
+                onChange={handleRetry}
+                maxWidth="100%"
+                animationIndex={index}
+              />
+            </FeatureErrorBoundary>
+          </div>
+        ))}
 
         {/* Next-page loading skeletons */}
         {isFetchingNextPage &&

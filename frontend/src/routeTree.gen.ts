@@ -22,10 +22,10 @@ import { Route as AuthScheduleRouteImport } from "./routes/_auth/schedule"
 import { Route as AuthProfileRouteImport } from "./routes/_auth/profile"
 import { Route as AuthMessengerRouteImport } from "./routes/_auth/messenger"
 import { Route as AuthMapRouteImport } from "./routes/_auth/map"
-import { Route as AuthEventsRouteImport } from "./routes/_auth/events"
 import { Route as AuthDashboardRouteImport } from "./routes/_auth/dashboard"
 import { Route as AuthActivityRouteImport } from "./routes/_auth/activity"
 import { Route as AuthNewsIndexRouteImport } from "./routes/_auth/news.index"
+import { Route as AuthEventsIndexRouteImport } from "./routes/_auth/events.index"
 import { Route as PublicResetPasswordTokenRouteImport } from "./routes/_public/reset-password.$token"
 import { Route as AuthNewsIdRouteImport } from "./routes/_auth/news.$id"
 import { Route as AuthMessengerChatIdRouteImport } from "./routes/_auth/messenger.$chatId"
@@ -98,11 +98,6 @@ const AuthMapRoute = AuthMapRouteImport.update({
   path: "/map",
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthEventsRoute = AuthEventsRouteImport.update({
-  id: "/events",
-  path: "/events",
-  getParentRoute: () => AuthRoute,
-} as any)
 const AuthDashboardRoute = AuthDashboardRouteImport.update({
   id: "/dashboard",
   path: "/dashboard",
@@ -116,6 +111,11 @@ const AuthActivityRoute = AuthActivityRouteImport.update({
 const AuthNewsIndexRoute = AuthNewsIndexRouteImport.update({
   id: "/news/",
   path: "/news/",
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthEventsIndexRoute = AuthEventsIndexRouteImport.update({
+  id: "/events/",
+  path: "/events/",
   getParentRoute: () => AuthRoute,
 } as any)
 const PublicResetPasswordTokenRoute =
@@ -135,9 +135,9 @@ const AuthMessengerChatIdRoute = AuthMessengerChatIdRouteImport.update({
   getParentRoute: () => AuthMessengerRoute,
 } as any)
 const AuthEventsIdRoute = AuthEventsIdRouteImport.update({
-  id: "/$id",
-  path: "/$id",
-  getParentRoute: () => AuthEventsRoute,
+  id: "/events/$id",
+  path: "/events/$id",
+  getParentRoute: () => AuthRoute,
 } as any)
 const AdminAdminUsersRoute = AdminAdminUsersRouteImport.update({
   id: "/admin/users",
@@ -169,7 +169,6 @@ export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
   "/activity": typeof AuthActivityRoute
   "/dashboard": typeof AuthDashboardRoute
-  "/events": typeof AuthEventsRouteWithChildren
   "/map": typeof AuthMapRoute
   "/messenger": typeof AuthMessengerRouteWithChildren
   "/profile": typeof AuthProfileRoute
@@ -188,13 +187,13 @@ export interface FileRoutesByFullPath {
   "/messenger/$chatId": typeof AuthMessengerChatIdRoute
   "/news/$id": typeof AuthNewsIdRoute
   "/reset-password/$token": typeof PublicResetPasswordTokenRoute
+  "/events/": typeof AuthEventsIndexRoute
   "/news/": typeof AuthNewsIndexRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
   "/activity": typeof AuthActivityRoute
   "/dashboard": typeof AuthDashboardRoute
-  "/events": typeof AuthEventsRouteWithChildren
   "/map": typeof AuthMapRoute
   "/messenger": typeof AuthMessengerRouteWithChildren
   "/profile": typeof AuthProfileRoute
@@ -213,6 +212,7 @@ export interface FileRoutesByTo {
   "/messenger/$chatId": typeof AuthMessengerChatIdRoute
   "/news/$id": typeof AuthNewsIdRoute
   "/reset-password/$token": typeof PublicResetPasswordTokenRoute
+  "/events": typeof AuthEventsIndexRoute
   "/news": typeof AuthNewsIndexRoute
 }
 export interface FileRoutesById {
@@ -223,7 +223,6 @@ export interface FileRoutesById {
   "/_public": typeof PublicRouteWithChildren
   "/_auth/activity": typeof AuthActivityRoute
   "/_auth/dashboard": typeof AuthDashboardRoute
-  "/_auth/events": typeof AuthEventsRouteWithChildren
   "/_auth/map": typeof AuthMapRoute
   "/_auth/messenger": typeof AuthMessengerRouteWithChildren
   "/_auth/profile": typeof AuthProfileRoute
@@ -242,6 +241,7 @@ export interface FileRoutesById {
   "/_auth/messenger/$chatId": typeof AuthMessengerChatIdRoute
   "/_auth/news/$id": typeof AuthNewsIdRoute
   "/_public/reset-password/$token": typeof PublicResetPasswordTokenRoute
+  "/_auth/events/": typeof AuthEventsIndexRoute
   "/_auth/news/": typeof AuthNewsIndexRoute
 }
 export interface FileRouteTypes {
@@ -250,7 +250,6 @@ export interface FileRouteTypes {
     | "/"
     | "/activity"
     | "/dashboard"
-    | "/events"
     | "/map"
     | "/messenger"
     | "/profile"
@@ -269,13 +268,13 @@ export interface FileRouteTypes {
     | "/messenger/$chatId"
     | "/news/$id"
     | "/reset-password/$token"
+    | "/events/"
     | "/news/"
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
     | "/activity"
     | "/dashboard"
-    | "/events"
     | "/map"
     | "/messenger"
     | "/profile"
@@ -294,6 +293,7 @@ export interface FileRouteTypes {
     | "/messenger/$chatId"
     | "/news/$id"
     | "/reset-password/$token"
+    | "/events"
     | "/news"
   id:
     | "__root__"
@@ -303,7 +303,6 @@ export interface FileRouteTypes {
     | "/_public"
     | "/_auth/activity"
     | "/_auth/dashboard"
-    | "/_auth/events"
     | "/_auth/map"
     | "/_auth/messenger"
     | "/_auth/profile"
@@ -322,6 +321,7 @@ export interface FileRouteTypes {
     | "/_auth/messenger/$chatId"
     | "/_auth/news/$id"
     | "/_public/reset-password/$token"
+    | "/_auth/events/"
     | "/_auth/news/"
   fileRoutesById: FileRoutesById
 }
@@ -425,13 +425,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AuthMapRouteImport
       parentRoute: typeof AuthRoute
     }
-    "/_auth/events": {
-      id: "/_auth/events"
-      path: "/events"
-      fullPath: "/events"
-      preLoaderRoute: typeof AuthEventsRouteImport
-      parentRoute: typeof AuthRoute
-    }
     "/_auth/dashboard": {
       id: "/_auth/dashboard"
       path: "/dashboard"
@@ -451,6 +444,13 @@ declare module "@tanstack/react-router" {
       path: "/news"
       fullPath: "/news/"
       preLoaderRoute: typeof AuthNewsIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    "/_auth/events/": {
+      id: "/_auth/events/"
+      path: "/events"
+      fullPath: "/events/"
+      preLoaderRoute: typeof AuthEventsIndexRouteImport
       parentRoute: typeof AuthRoute
     }
     "/_public/reset-password/$token": {
@@ -476,10 +476,10 @@ declare module "@tanstack/react-router" {
     }
     "/_auth/events/$id": {
       id: "/_auth/events/$id"
-      path: "/$id"
+      path: "/events/$id"
       fullPath: "/events/$id"
       preLoaderRoute: typeof AuthEventsIdRouteImport
-      parentRoute: typeof AuthEventsRoute
+      parentRoute: typeof AuthRoute
     }
     "/_admin/admin/users": {
       id: "/_admin/admin/users"
@@ -537,18 +537,6 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
-interface AuthEventsRouteChildren {
-  AuthEventsIdRoute: typeof AuthEventsIdRoute
-}
-
-const AuthEventsRouteChildren: AuthEventsRouteChildren = {
-  AuthEventsIdRoute: AuthEventsIdRoute,
-}
-
-const AuthEventsRouteWithChildren = AuthEventsRoute._addFileChildren(
-  AuthEventsRouteChildren,
-)
-
 interface AuthMessengerRouteChildren {
   AuthMessengerChatIdRoute: typeof AuthMessengerChatIdRoute
 }
@@ -564,26 +552,28 @@ const AuthMessengerRouteWithChildren = AuthMessengerRoute._addFileChildren(
 interface AuthRouteChildren {
   AuthActivityRoute: typeof AuthActivityRoute
   AuthDashboardRoute: typeof AuthDashboardRoute
-  AuthEventsRoute: typeof AuthEventsRouteWithChildren
   AuthMapRoute: typeof AuthMapRoute
   AuthMessengerRoute: typeof AuthMessengerRouteWithChildren
   AuthProfileRoute: typeof AuthProfileRoute
   AuthScheduleRoute: typeof AuthScheduleRoute
   AuthSettingsRoute: typeof AuthSettingsRoute
+  AuthEventsIdRoute: typeof AuthEventsIdRoute
   AuthNewsIdRoute: typeof AuthNewsIdRoute
+  AuthEventsIndexRoute: typeof AuthEventsIndexRoute
   AuthNewsIndexRoute: typeof AuthNewsIndexRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthActivityRoute: AuthActivityRoute,
   AuthDashboardRoute: AuthDashboardRoute,
-  AuthEventsRoute: AuthEventsRouteWithChildren,
   AuthMapRoute: AuthMapRoute,
   AuthMessengerRoute: AuthMessengerRouteWithChildren,
   AuthProfileRoute: AuthProfileRoute,
   AuthScheduleRoute: AuthScheduleRoute,
   AuthSettingsRoute: AuthSettingsRoute,
+  AuthEventsIdRoute: AuthEventsIdRoute,
   AuthNewsIdRoute: AuthNewsIdRoute,
+  AuthEventsIndexRoute: AuthEventsIndexRoute,
   AuthNewsIndexRoute: AuthNewsIndexRoute,
 }
 

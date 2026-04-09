@@ -136,9 +136,7 @@ export function useEventCardLogic({
         setImageLoading(true)
         const data = new FormData()
         data.append("file", newImage)
-        const uploadRes = await api.post<{ url: string }>(`/events/upload_image`, data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        })
+        const uploadRes = await api.post<{ url: string }>(`/events/upload_image`, data)
         imgUrl = uploadRes.data.url
         setImageLoading(false)
       }

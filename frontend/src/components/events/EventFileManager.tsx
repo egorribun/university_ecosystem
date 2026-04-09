@@ -64,9 +64,7 @@ export function EventFileManager({
       try {
         const data = new FormData()
         data.append("file", file)
-        await api.post(`/events/${event.id}/upload_file`, data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        })
+        await api.post(`/events/${event.id}/upload_file`, data)
         mutateFiles({ type: "remove", id: optimisticId })
         onSuccess(t("events:detail.messages.fileAdded"))
         setSelectedFile(null)

@@ -13,7 +13,7 @@ export function EventQrDialog({ open, onClose, qr }: EventQrDialogProps) {
   const { t } = useTranslation()
 
   return (
-    <Dialog open={open} onClose={onClose} title="" size="sm">
+    <Dialog open={open} onClose={onClose} title={t("events:card.dialogs.qr.title", { defaultValue: "QR Code" })} size="sm">
       <div className="space-y-4">
         <div className="mx-auto w-full max-w-[min(80vw,80vh,25rem)] rounded-2xl bg-surface p-6 shadow-glass">
           <SmartImage

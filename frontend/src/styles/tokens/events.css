@@ -33,11 +33,21 @@
     );
     --events-card-glow: color-mix(in srgb, var(--color-amber-400) 8%, transparent);
 
-    /* ── Category badge colors ─────────────────────────── */
-    /* Inherits blue/emerald/purple/amber/sky/slate from news.css.
-       Adds rose for sport category. */
+    /* ── Category badge colors (all defined locally) ──── */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
+    --cat-blue-text: var(--color-blue-600);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-500) 12%, transparent);
+    --cat-purple-text: var(--color-purple-600);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-500) 12%, transparent);
+    --cat-amber-text: var(--color-amber-700);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-500) 12%, transparent);
+    --cat-emerald-text: var(--color-emerald-600);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-500) 12%, transparent);
+    --cat-sky-text: var(--color-sky-600);
     --cat-rose-bg: color-mix(in srgb, var(--color-rose-500) 12%, transparent);
     --cat-rose-text: var(--color-rose-600);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-400) 12%, transparent);
+    --cat-slate-text: var(--color-slate-600);
 
     /* ── Detail page ───────────────────────────────────── */
     --events-body-max-width: 65ch;
@@ -75,9 +85,21 @@
     );
     --events-card-glow: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
 
-    /* Rose category badge (dark) */
+    /* Category badge colors (dark) */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
+    --cat-blue-text: var(--color-blue-400);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-400) 16%, transparent);
+    --cat-purple-text: var(--color-purple-400);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+    --cat-amber-text: var(--color-amber-400);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-400) 16%, transparent);
+    --cat-emerald-text: var(--color-emerald-400);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
+    --cat-sky-text: var(--color-sky-400);
     --cat-rose-bg: color-mix(in srgb, var(--color-rose-400) 16%, transparent);
     --cat-rose-text: var(--color-rose-400);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-500) 16%, transparent);
+    --cat-slate-text: var(--color-slate-400);
 
     /* Featured card gradient mesh (dark — brighter) */
     --events-featured-mesh: radial-gradient(

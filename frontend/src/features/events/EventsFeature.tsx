@@ -52,6 +52,7 @@ export const EventsFeature = () => {
           return next
         },
         replace: true,
+        viewTransition: false,
       })
     },
     [navigate]
@@ -161,51 +162,53 @@ export const EventsFeature = () => {
   const isAdmin = user?.role === "admin" || user?.role === "teacher"
 
   return (
-    <div className="events-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14">
+    <div className="events-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip">
       <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-      <EventsHeader
-        onAddClick={() => setCreateOpen(true)}
-        isAdmin={isAdmin}
-        eventsCount={filteredEvents.length}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        activeCategory={activeCategory}
-        onCategoryChange={setActiveCategory}
-        sortMode={sortMode}
-        onSortChange={setSortMode}
-        tab={tab}
-        onTabChange={setTab}
-        typeFilter={typeFilter}
-        onTypeChange={(v: string) => handleURLChange("type", v)}
-        locationFilter={locationFilter}
-        onLocationChange={(v: string) => handleURLChange("loc", v)}
-      />
+      <div className="relative z-[1]">
+        <EventsHeader
+          onAddClick={() => setCreateOpen(true)}
+          isAdmin={isAdmin}
+          eventsCount={filteredEvents.length}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          activeCategory={activeCategory}
+          onCategoryChange={setActiveCategory}
+          sortMode={sortMode}
+          onSortChange={setSortMode}
+          tab={tab}
+          onTabChange={setTab}
+          typeFilter={typeFilter}
+          onTypeChange={(v: string) => handleURLChange("type", v)}
+          locationFilter={locationFilter}
+          onLocationChange={(v: string) => handleURLChange("loc", v)}
+        />
 
-      <EventsList
-        eventsList={filteredEvents}
-        isInitialLoading={isInitialLoading}
-        isFetching={isFetching}
-        isFetchingNextPage={isFetchingNextPage}
-        hasNextPage={canFetchMore}
-        fetchNextPage={fetchNextPage}
-        refreshEvents={refreshEvents}
-        onAddClick={() => setCreateOpen(true)}
-        isAdmin={isAdmin}
-        isOnline={isOnline}
-        tab={tab}
-        onTabChange={setTab}
-        activeKeyboardIndex={activeIndex}
-        registerCardRef={registerRef}
-      />
+        <EventsList
+          eventsList={filteredEvents}
+          isInitialLoading={isInitialLoading}
+          isFetching={isFetching}
+          isFetchingNextPage={isFetchingNextPage}
+          hasNextPage={canFetchMore}
+          fetchNextPage={fetchNextPage}
+          refreshEvents={refreshEvents}
+          onAddClick={() => setCreateOpen(true)}
+          isAdmin={isAdmin}
+          isOnline={isOnline}
+          tab={tab}
+          onTabChange={setTab}
+          activeKeyboardIndex={activeIndex}
+          registerCardRef={registerRef}
+        />
 
-      <EventFormDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onSuccess={refreshEvents}
-        language={language as "ru" | "en"}
-      />
+        <EventFormDialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onSuccess={refreshEvents}
+          language={language as "ru" | "en"}
+        />
 
-      <EventsShortcutsOverlay />
+        <EventsShortcutsOverlay />
+      </div>
     </div>
   )
 }

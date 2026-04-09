@@ -4,7 +4,7 @@ import * as v from "valibot"
 
 const Events = lazy(() => import("@/pages/Events"))
 
-export const Route = createFileRoute("/_auth/events")({
+export const Route = createFileRoute("/_auth/events/")({
   validateSearch: (search: Record<string, unknown>) =>
     v.parse(
       v.object({
