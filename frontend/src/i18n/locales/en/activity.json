@@ -1,5 +1,9 @@
 {
   "title": "Activity",
+  "pageDescription": "Track your attendance, grades, and participation",
+  "hero": {
+    "badge": "Analytics"
+  },
   "period": {
     "options": {
       "30d": "{{count}} day",
@@ -71,6 +75,39 @@
       "recent": "Recent participation",
       "dialogTitle": "Participation"
     }
+  },
+  "motivation": {
+    "streakDays": "{{count}} day streak",
+    "streakDays_few": "{{count}} day streak",
+    "streakDays_many": "{{count}} days streak",
+    "streakDays_other": "{{count}} days streak",
+    "excellent": "Excellent attendance! Keep it up!",
+    "good": "Good progress! A little more consistency.",
+    "improving": "Your grades are improving!",
+    "active": "Very active community member!",
+    "default": "Every day counts. Keep moving forward!"
+  },
+  "timeline": {
+    "title": "Recent Activity",
+    "showMore": "Show more",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "noActivity": "No recent activity",
+    "gradeEntry": "{{course}} — {{score}}",
+    "attendanceEntry": "{{course}} — {{status}}",
+    "participationEntry": "{{title}}"
+  },
+  "a11y": {
+    "attendanceCard": "Attendance statistics",
+    "gradesCard": "Grade statistics",
+    "participationCard": "Participation statistics",
+    "periodSelector": "Select time period",
+    "timeline": "Activity timeline",
+    "streak": "Attendance streak"
+  },
+  "empty": {
+    "title": "No activity yet",
+    "description": "Your activity will appear here as you attend classes and participate in events"
   },
   "dialog": {
     "close": "Close"

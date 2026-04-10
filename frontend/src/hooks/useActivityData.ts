@@ -7,7 +7,6 @@ import {
   type AttendanceStats,
   type GradeStats,
   type ParticipationStats,
-  type DetailSection,
   type AttendanceSummaryResponse,
   type GradeSummaryResponse,
   type ParticipationSummaryResponse,
@@ -36,23 +35,6 @@ export default function useActivityData() {
   const [participation, setParticipation] = useState<ParticipationStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
-  const [detail, setDetail] = useState<
-    | ""
-    | "attendance"
-    | "grades"
-    | "participation"
-    | "attendance_recent"
-    | "grades_recent"
-    | "participation_recent"
-  >("")
-
-  const detailSection: DetailSection = detail.startsWith("attendance")
-    ? "attendance"
-    : detail.startsWith("grades")
-      ? "grades"
-      : detail.startsWith("participation")
-        ? "participation"
-        : ""
 
   const labelByPeriod = useCallback(
     (p: PeriodKey) =>
@@ -272,9 +254,6 @@ export default function useActivityData() {
     participation,
     loading,
     hasInitiallyLoaded,
-    detail,
-    setDetail,
-    detailSection,
     periodOptions,
     separator,
     noDataText,

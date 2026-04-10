@@ -70,3 +70,9 @@ export type ParticipationSummaryResponse = {
 }
 
 export type DetailSection = "" | "attendance" | "grades" | "participation"
+
+/** Unified timeline entry — discriminated union for merged activity feed */
+export type TimelineEntry =
+  | { type: "attendance"; date: string; course?: string; status: "present" | "absent" | "late" }
+  | { type: "grade"; date: string; course: string; score: number; max?: number }
+  | { type: "participation"; date: string; title: string; role?: string }

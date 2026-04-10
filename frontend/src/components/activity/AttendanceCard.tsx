@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { animate, useMotionValue } from "framer-motion"
 import { ProgressBar } from "@/components/ui"
+import { SkeletonMorph } from "@/components/ui/SkeletonMorph"
 import AnimatedRing, { useAnimatedNumber } from "@/components/activity/AnimatedRing"
 import CardShell from "@/components/activity/CardShell"
 import TrendChip from "@/components/activity/TrendChip"
@@ -10,18 +11,29 @@ import type { AttendanceStats } from "@/components/activity/activityTypes"
 
 type AttendanceCardProps = {
   attendance?: AttendanceStats | null
-  loading?: boolean
   hasInitiallyLoaded: boolean
   reduceMotion: boolean
-  onClick: () => void
   ringSize: number
+}
+
+function AttendanceCardSkeleton() {
+  return (
+    <div className="flex items-center gap-4 p-4 md:p-6 xl:p-8">
+      <div className="h-20 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-6 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-2 w-full animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+        <div className="h-3 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+      </div>
+    </div>
+  )
 }
 
 export function AttendanceCard({
   attendance,
   hasInitiallyLoaded,
   reduceMotion,
-  onClick,
   ringSize,
 }: AttendanceCardProps) {
   const { t } = useTranslation(["activity"])
@@ -53,36 +65,41 @@ export function AttendanceCard({
   return (
     <CardShell
       tone="success"
-      onClick={onClick}
-      hasInitiallyLoaded={hasInitiallyLoaded}
-      reduceMotion={reduceMotion}
+      aria-label={t("activity:a11y.attendanceCard")}
     >
-      <div className="flex items-center gap-4">
-        <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="text-micro font-semibold uppercase tracking-wider text-(--text-tertiary)">
-            {t("activity:sections.attendance.title")}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-(--fs-card-stat) font-black tracking-tighter tabular-nums lining-nums">
-              {attendancePctAnimated}%
-            </span>
-            <TrendChip value={attendance?.trend} />
-          </div>
-          <ProgressBar
-            value={progressAttendance}
-            className="h-2 rounded-full"
-            barClassName="bg-(--success-text) rounded-full transition-[width] duration-slow"
+      <SkeletonMorph loaded={hasInitiallyLoaded} skeleton={<AttendanceCardSkeleton />}>
+        <div className="flex items-center gap-4">
+          <AnimatedRing
+            value={attendance?.percent ?? 0}
+            size={ringSize}
+            mode="percent"
+            colorVar="var(--activity-present-accent)"
           />
-          <p className="truncate text-sm text-(--text-muted-subtle)">
-            {t("activity:sections.attendance.summary", {
-              present: attendance?.present ?? 0,
-              total: attendance?.total ?? 0,
-              period: attendance?.periodLabel,
-            })}
-          </p>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <p className="text-micro font-semibold uppercase tracking-wider text-text-tertiary">
+              {t("activity:sections.attendance.title")}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-(--fs-activity-card-title) font-black tracking-tighter tabular-nums lining-nums">
+                {attendancePctAnimated}%
+              </span>
+              <TrendChip value={attendance?.trend} />
+            </div>
+            <ProgressBar
+              value={progressAttendance}
+              className="h-2 rounded-full"
+              barClassName="bg-[var(--activity-present-accent)] rounded-full transition-[width] duration-slow"
+            />
+            <p className="truncate text-sm text-text-secondary">
+              {t("activity:sections.attendance.summary", {
+                present: attendance?.present ?? 0,
+                total: attendance?.total ?? 0,
+                period: attendance?.periodLabel,
+              })}
+            </p>
+          </div>
         </div>
-      </div>
+      </SkeletonMorph>
     </CardShell>
   )
 }
