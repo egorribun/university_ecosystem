@@ -2,7 +2,7 @@
 
 ## Project Structure
 - Python backend: `app/` (FastAPI + SQLAlchemy 2.0 + Pydantic v2) — **Python >=3.13,<3.15**
-- TypeScript frontend: `frontend/src/` (React 19 + Vite + TanStack Router + TanStack Query + Zustand + Framer Motion)
+- TypeScript frontend: `frontend/src/` (React 19 + Vite 8/Rolldown + TanStack Router + TanStack Query + Zustand + Framer Motion)
 - Rust optimizer: `native/rust_ext/` (PyO3 FFI — schedule conflicts, partition management, HMAC)
 - Go services: `services/` (ws-hub, file-processor, gateway, caddy)
 - Alembic migrations: `alembic/versions/` (112 files; squash script: `app/management/squash_migrations.py`)
@@ -156,6 +156,10 @@
 - Frontend WCAG 2.2: ChatWindow has `role="log"` + `aria-live="polite"` (A11Y-35-06)
 - Frontend WCAG 2.2: Global CSS `scroll-margin-top` on `:focus-visible` for Focus Not Obscured (A11Y-35-07)
 - Frontend: useEventRegistration uses `useOptimistic` + `useTransition` for instant RSVP feedback (PERF-35-01)
+- Vite 8 / Rolldown: `build.rolldownOptions` (not `rollupOptions`), `manualChunks` function form only (object form removed), `oxc` config replaces `esbuild` (INFRA-83-01)
+- Vite 8: `hotUpdate` hook replaces `handleHotUpdate`, uses `this.environment.hot.send()` not `server.ws.send()` (INFRA-83-02)
+- Vite 8: `@vitejs/plugin-react` v6 uses Oxc (no Babel). React Compiler via separate `@rolldown/plugin-babel` (INFRA-83-03)
+- Vite 8: `vite-plugin-top-level-await` removed — Rolldown handles TLA natively (INFRA-83-04)
 - Schedule cards: `.sched-card-matte` (opaque matte, NOT GlassCard) — `--_accent` CSS var scopes lesson-type color to `::before` top gradient (DESIGN-64-01)
 - Schedule grid: `minmax(176px, 1fr)` + `overflow-x: auto` + `scroll-snap-type: x proximity` + sticky row numbers (DESIGN-64-04)
 - Schedule page: `variant="full"` + own `px-4 sm:px-6 md:px-8 lg:px-10` — no max-width constraint (DESIGN-64-09)
@@ -284,6 +288,7 @@
 - Backend event_type filter: `==` → `ilike(f"%{safe_type}%")` with `_escape_like()` for partial match (FIX-82-05)
 
 ## Audit Trail
+- Wave 83: Vite 7→8 (Rolldown) migration — 3 files (+1362/-780). vite ^8.0.0, @vitejs/plugin-react ^6.0.0 (Oxc), @rolldown/plugin-babel ^0.2.2 (React Compiler). Removed vite-plugin-top-level-await (Rolldown native TLA). rollupOptions→rolldownOptions, manualChunks object→function, esbuild.pure→oxc.define, handleHotUpdate→hotUpdate+this.environment.hot.send. Removed esbuild/rollup overrides. Build 7.3s, main chunk 293 KB, 0 TS errors.
 - Wave 82: Events page — sticky jitter fix, date filter, nav redesign, exhaustive polish. 20 files (+234/-87). Sticky: removed padding-block change + all visual effects (backdrop-filter/bg/shadow) that caused oscillation + "frame". Filter: type→date quick-buttons (Today/Week/Month client-side via getDateRangeBounds), removed type from API/ETag/route. Nav: .events-nav-btn matte volumetric (shadow depth, hover lift, dark overrides). Backend: event_type ==→ILIKE. Audit ~45 files: React.CSSProperties→import type (3), defaultValue removed (4), dead CSS var, logError catch, i18n 124/124 sync. 0 TS errors, 0 lint errors.
 - Wave 80: Events tech debt cleanup — 15 files (+48/-39). React.FC→function declarations (4 components: EventMedia, EventActions, EventAdminActions, EventInfo), React.MouseEvent/ChangeEvent/SyntheticEvent→import type (EventActions, EventCardView, EventEditDialog, EventFileManager, EventDetailHero). i18n: added common:buttons.close (Close/Закрыть) + common:statuses.cached (Cached/В кэше) to EN+RU, removed 6 defaultValue fallbacks (events/news/schedule). A11y: 7 htmlFor+id pairs in EventEditDialog via useId(). Exhaustive audit: 0 React.FC, 0 React.* namespace, 0 defaultValue Close/Cached, 0 labels without htmlFor. 0 TS errors, 0 lint errors.
 - Wave 78: Events detail page polish — 11 files. Layout: 3-layer restructure matching NewsDetail (overflow-clip, padding wrapper, space-y-8, 2xl:max-w-5xl, touch-pan-y). Fixes: dead editOpen state→render EventDetailEditDialog (FIX-78-04), EventAboutEditor language-aware display (FIX-78-05), aria-labelledby broken IDs (A11Y-78-01/02), Firefox reading progress fallback (FIX-78-02), SEO component (FIX-78-03), ObjectURL memory leak (FIX-78-06), React Compiler userId extraction (RC-78-01). Polish: 11 defaultValue removals, QR dialog loading spinner, unused props removed (EventDetailHero title, EventDetailEditDialog language). 0 TS errors, 0 lint errors.
