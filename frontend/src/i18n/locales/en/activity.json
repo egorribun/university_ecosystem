@@ -87,6 +87,32 @@
     "active": "Very active community member!",
     "default": "Every day counts. Keep moving forward!"
   },
+  "charts": {
+    "title": "Analytics",
+    "attendanceTrend": "Attendance trend",
+    "gradesBySubject": "Grades by subject",
+    "noChartData": "Not enough data to display chart"
+  },
+  "heatmap": {
+    "title": "Activity Calendar",
+    "cellLabel": "{{date}}: {{count}} activities",
+    "legendLess": "Less",
+    "legendMore": "More"
+  },
+  "comparative": {
+    "title": "Period Comparison",
+    "attendanceLabel": "Attendance",
+    "gradesLabel": "Avg. grade",
+    "participationLabel": "Events",
+    "vsPrevious": "vs {{value}}",
+    "unchanged": "Unchanged"
+  },
+  "export": {
+    "title": "Export",
+    "pdf": "Export as PDF",
+    "png": "Export as PNG",
+    "exporting": "Exporting…"
+  },
   "timeline": {
     "title": "Recent Activity",
     "showMore": "Show more",
@@ -95,15 +121,23 @@
     "noActivity": "No recent activity",
     "gradeEntry": "{{course}} — {{score}}",
     "attendanceEntry": "{{course}} — {{status}}",
-    "participationEntry": "{{title}}"
+    "participationEntry": "{{title}}",
+    "gradeType": "Grade",
+    "participationType": "Participation"
   },
   "a11y": {
     "attendanceCard": "Attendance statistics",
     "gradesCard": "Grade statistics",
     "participationCard": "Participation statistics",
-    "periodSelector": "Select time period",
+    "periodSelector": "Select time period for activity statistics",
     "timeline": "Activity timeline",
-    "streak": "Attendance streak"
+    "streak": "Attendance streak",
+    "ringAttendance": "Attendance ring showing {{value}}%",
+    "ringGrades": "Grade gauge showing {{value}} out of {{max}}",
+    "ringParticipation": "Participation count showing {{value}} events",
+    "attendanceTrend": "Line chart showing attendance percentage over time",
+    "gradesBySubject": "Bar chart showing grades by subject",
+    "heatmapCalendar": "Activity heatmap calendar showing daily contributions"
   },
   "empty": {
     "title": "No activity yet",

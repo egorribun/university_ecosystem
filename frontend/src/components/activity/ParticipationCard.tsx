@@ -4,6 +4,7 @@ import AnimatedRing, { useAnimatedNumber } from "@/components/activity/AnimatedR
 import CardShell from "@/components/activity/CardShell"
 import TrendChip from "@/components/activity/TrendChip"
 import type { ParticipationStats } from "@/components/activity/activityTypes"
+import { motion as motionTokens } from "@/theme/tokens"
 
 type ParticipationCardProps = {
   participation?: ParticipationStats | null
@@ -15,11 +16,11 @@ type ParticipationCardProps = {
 function ParticipationCardSkeleton() {
   return (
     <div className="flex items-center gap-4 p-4 md:p-6 xl:p-8">
-      <div className="h-20 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+      <div className="h-20 w-20 animate-pulse rounded-full bg-[var(--activity-skeleton-bg)]" />
       <div className="flex flex-1 flex-col gap-2">
-        <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-        <div className="h-6 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-        <div className="h-3 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-3 w-24 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
+        <div className="h-6 w-20 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
+        <div className="h-3 w-32 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
       </div>
     </div>
   )
@@ -33,7 +34,8 @@ export function ParticipationCard({
 }: ParticipationCardProps) {
   const { t } = useTranslation(["activity"])
 
-  const partEventsAnimated = useAnimatedNumber(Math.round(participation?.events ?? 0), 0.9, 0)
+  const goal = participation?.goal ?? 10
+  const partEventsAnimated = useAnimatedNumber(Math.round(participation?.events ?? 0), motionTokens.durationLazy, 0)
 
   return (
     <CardShell
@@ -44,10 +46,11 @@ export function ParticipationCard({
         <div className="flex items-center gap-4">
           <AnimatedRing
             value={participation?.events ?? 0}
-            max={10}
+            max={goal}
             size={ringSize}
             mode="count"
             colorVar="var(--activity-participation-accent)"
+            ariaLabel={t("activity:a11y.ringParticipation", { value: participation?.events ?? 0 })}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p className="text-micro font-semibold uppercase tracking-wider text-text-tertiary">

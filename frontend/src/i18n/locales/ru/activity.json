@@ -87,6 +87,32 @@
     "active": "Очень активный участник сообщества!",
     "default": "Каждый день на счету. Продолжайте двигаться!"
   },
+  "charts": {
+    "title": "Аналитика",
+    "attendanceTrend": "Тренд посещаемости",
+    "gradesBySubject": "Оценки по предметам",
+    "noChartData": "Недостаточно данных для построения графика"
+  },
+  "heatmap": {
+    "title": "Календарь активности",
+    "cellLabel": "{{date}}: {{count}} активностей",
+    "legendLess": "Меньше",
+    "legendMore": "Больше"
+  },
+  "comparative": {
+    "title": "Сравнение периодов",
+    "attendanceLabel": "Посещаемость",
+    "gradesLabel": "Ср. оценка",
+    "participationLabel": "События",
+    "vsPrevious": "было {{value}}",
+    "unchanged": "Без изменений"
+  },
+  "export": {
+    "title": "Экспорт",
+    "pdf": "Экспорт в PDF",
+    "png": "Экспорт в PNG",
+    "exporting": "Экспорт…"
+  },
   "timeline": {
     "title": "Недавняя активность",
     "showMore": "Показать ещё",
@@ -95,15 +121,23 @@
     "noActivity": "Нет недавней активности",
     "gradeEntry": "{{course}} — {{score}}",
     "attendanceEntry": "{{course}} — {{status}}",
-    "participationEntry": "{{title}}"
+    "participationEntry": "{{title}}",
+    "gradeType": "Оценка",
+    "participationType": "Участие"
   },
   "a11y": {
     "attendanceCard": "Статистика посещаемости",
     "gradesCard": "Статистика оценок",
     "participationCard": "Статистика участия",
-    "periodSelector": "Выберите период",
+    "periodSelector": "Выберите период для статистики активности",
     "timeline": "Лента активности",
-    "streak": "Серия посещений"
+    "streak": "Серия посещений",
+    "ringAttendance": "Кольцо посещаемости: {{value}}%",
+    "ringGrades": "Шкала оценок: {{value}} из {{max}}",
+    "ringParticipation": "Счётчик участия: {{value}} событий",
+    "attendanceTrend": "Линейный график тренда посещаемости",
+    "gradesBySubject": "Столбчатая диаграмма оценок по предметам",
+    "heatmapCalendar": "Тепловая карта активности по дням"
   },
   "empty": {
     "title": "Активности пока нет",

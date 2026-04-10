@@ -5,6 +5,7 @@ import CardShell from "@/components/activity/CardShell"
 import TrendChip from "@/components/activity/TrendChip"
 import { toNumber } from "@/components/activity/activityParsers"
 import type { GradeStats } from "@/components/activity/activityTypes"
+import { motion as motionTokens } from "@/theme/tokens"
 
 type GradesCardProps = {
   grades?: GradeStats | null
@@ -15,11 +16,11 @@ type GradesCardProps = {
 function GradesCardSkeleton() {
   return (
     <div className="flex items-center gap-4 p-4 md:p-6 xl:p-8">
-      <div className="h-20 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+      <div className="h-20 w-20 animate-pulse rounded-full bg-[var(--activity-skeleton-bg)]" />
       <div className="flex flex-1 flex-col gap-2">
-        <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-        <div className="h-6 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-        <div className="h-3 w-36 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-3 w-24 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
+        <div className="h-6 w-16 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
+        <div className="h-3 w-36 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
       </div>
     </div>
   )
@@ -37,7 +38,7 @@ export function GradesCard({
   const gradeAnimatedValue = grades?.scale === "100" ? Math.round(gradeAverage) : gradeAverage
   const gradesAnimated = useAnimatedNumber(
     gradeAnimatedValue,
-    0.9,
+    motionTokens.durationLazy,
     grades?.scale === "gpa" ? 2 : grades?.scale === "5" ? 1 : 0
   )
 
@@ -55,6 +56,7 @@ export function GradesCard({
             mode="gauge"
             colorVar="var(--activity-grade-accent)"
             fraction={grades?.scale === "gpa" ? 2 : grades?.scale === "5" ? 1 : 0}
+            ariaLabel={t("activity:a11y.ringGrades", { value: gradeAverage.toFixed(1), max: gradeMax })}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p className="text-micro font-semibold uppercase tracking-wider text-text-tertiary">

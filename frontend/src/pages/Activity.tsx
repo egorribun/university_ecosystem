@@ -1,4 +1,4 @@
-import { type CSSProperties } from "react"
+import { useRef, type CSSProperties } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { Activity as TimelineIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -7,12 +7,18 @@ import { breakpoints } from "@/theme/tokens"
 import { PageLayout } from "@/components/layout/PageLayout"
 import FadeSection from "@/components/motion/FadeSection"
 import useActivityData from "@/hooks/useActivityData"
+import { useActivityComparative } from "@/hooks/useActivityComparative"
 
 import { ActivityBackdrop } from "@/components/activity/ActivityBackdrop"
 import { ActivityMotivation } from "@/components/activity/ActivityMotivation"
 import { AttendanceCard } from "@/components/activity/AttendanceCard"
 import { GradesCard } from "@/components/activity/GradesCard"
 import { ParticipationCard } from "@/components/activity/ParticipationCard"
+import { ActivityTrendChart } from "@/components/activity/ActivityTrendChart"
+import { ActivityBarChart } from "@/components/activity/ActivityBarChart"
+import { ActivityHeatmap } from "@/components/activity/ActivityHeatmap"
+import { ActivityComparativeCard } from "@/components/activity/ActivityComparativeCard"
+import { ActivityExportButton } from "@/components/activity/ActivityExportButton"
 import { ActivityTimeline } from "@/components/activity/ActivityTimeline"
 
 export default function Activity() {
@@ -28,7 +34,12 @@ export default function Activity() {
     separator,
     formatDate,
     attendanceStatusLabel,
+    attendanceTrendData,
+    gradesBySubject,
+    heatmapData,
   } = useActivityData()
+
+  const comparative = useActivityComparative(attendance, grades, participation, period)
 
   const reduce = useReducedMotion() ?? false
   const isSm = useMediaQuery(`(max-width: ${breakpoints.small})`)
@@ -36,6 +47,8 @@ export default function Activity() {
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
   const isXl = useMediaQuery(`(min-width: ${breakpoints.desktop})`)
   const ringSize = isSm ? 68 : isMd ? 84 : isXl ? 104 : 96
+
+  const contentRef = useRef<HTMLDivElement>(null)
 
   return (
     <PageLayout
@@ -50,7 +63,7 @@ export default function Activity() {
         <ActivityBackdrop isNarrow={isNarrow} prefersReducedMotion={reduce} />
 
         {/* Layer 1: Content */}
-        <div className="relative z-[1]">
+        <div ref={contentRef} className="relative z-[1]">
           {/* ── Header ──────────────────────────────── */}
           <header>
             <FadeSection delay="60ms" className="mb-4 flex flex-wrap items-center gap-3 sm:gap-4">
@@ -62,7 +75,7 @@ export default function Activity() {
               >
                 <TimelineIcon size={20} aria-hidden="true" />
               </div>
-              <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary">
+              <h1 className="flex-1 text-fluid-h1 font-extrabold tracking-tight text-text-primary">
                 {t("activity:title")}
                 <span
                   className="ml-2 inline-block align-middle rounded-full bg-[var(--activity-present-accent)] px-2 text-[var(--text-inverse)]"
@@ -71,6 +84,7 @@ export default function Activity() {
                   {t("activity:hero.badge")}
                 </span>
               </h1>
+              <ActivityExportButton contentRef={contentRef} />
             </FadeSection>
           </header>
 
@@ -124,8 +138,8 @@ export default function Activity() {
 
           {/* ── Stat Cards ──────────────────────────── */}
           <section aria-label={t("activity:title")} className="mb-8 md:mb-10">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-6">
-              <div className="activity-stagger-item" style={{ "--stagger-index": 0 } as CSSProperties}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 md:gap-6">
+              <div className="activity-card-container activity-stagger-item" style={{ "--stagger-index": 0 } as CSSProperties}>
                 <AttendanceCard
                   attendance={attendance}
                   hasInitiallyLoaded={hasInitiallyLoaded}
@@ -133,14 +147,14 @@ export default function Activity() {
                   ringSize={ringSize}
                 />
               </div>
-              <div className="activity-stagger-item" style={{ "--stagger-index": 1 } as CSSProperties}>
+              <div className="activity-card-container activity-stagger-item" style={{ "--stagger-index": 1 } as CSSProperties}>
                 <GradesCard
                   grades={grades}
                   hasInitiallyLoaded={hasInitiallyLoaded}
                   ringSize={ringSize}
                 />
               </div>
-              <div className="activity-stagger-item" style={{ "--stagger-index": 2 } as CSSProperties}>
+              <div className="activity-card-container activity-stagger-item" style={{ "--stagger-index": 2 } as CSSProperties}>
                 <ParticipationCard
                   participation={participation}
                   hasInitiallyLoaded={hasInitiallyLoaded}
@@ -150,6 +164,90 @@ export default function Activity() {
               </div>
             </div>
           </section>
+
+          {/* ── Charts ──────────────────────────────── */}
+          {hasInitiallyLoaded && (
+            <FadeSection delay="140ms">
+              <section aria-label={t("activity:charts.title")} className="mb-8 md:mb-10">
+                <h2 className="mb-4 text-lg font-extrabold text-text-primary">
+                  {t("activity:charts.title")}
+                </h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+                  <div className="activity-stagger-item" style={{ "--stagger-index": 3 } as CSSProperties}>
+                    <ActivityTrendChart
+                      data={attendanceTrendData}
+                      colorVar="var(--activity-present-accent)"
+                      ariaLabel={t("activity:a11y.attendanceTrend")}
+                      formatDate={formatDate}
+                    />
+                  </div>
+                  <div className="activity-stagger-item" style={{ "--stagger-index": 4 } as CSSProperties}>
+                    <ActivityBarChart
+                      data={gradesBySubject}
+                      colorVar="var(--activity-grade-accent)"
+                      ariaLabel={t("activity:a11y.gradesBySubject")}
+                    />
+                  </div>
+                </div>
+              </section>
+            </FadeSection>
+          )}
+
+          {/* ── Heatmap Calendar ────────────────────── */}
+          {hasInitiallyLoaded && (
+            <FadeSection delay="180ms">
+              <section className="mb-8 md:mb-10">
+                <ActivityHeatmap
+                  data={heatmapData}
+                  period={period}
+                  ariaLabel={t("activity:a11y.heatmapCalendar")}
+                />
+              </section>
+            </FadeSection>
+          )}
+
+          {/* ── Comparative Analytics ────────────────── */}
+          {hasInitiallyLoaded && comparative.hasData && (
+            <FadeSection delay="200ms">
+              <section aria-label={t("activity:comparative.title")} className="mb-8 md:mb-10">
+                <h2 className="mb-4 text-lg font-extrabold text-text-primary">
+                  {t("activity:comparative.title")}
+                </h2>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 md:gap-6">
+                  <div className="activity-stagger-item" style={{ "--stagger-index": 5 } as CSSProperties}>
+                    <ActivityComparativeCard
+                      label={t("activity:comparative.attendanceLabel")}
+                      current={comparative.attendance.current}
+                      previous={comparative.attendance.previous}
+                      delta={comparative.attendance.delta}
+                      format="percent"
+                      colorVar="var(--activity-present-accent)"
+                    />
+                  </div>
+                  <div className="activity-stagger-item" style={{ "--stagger-index": 6 } as CSSProperties}>
+                    <ActivityComparativeCard
+                      label={t("activity:comparative.gradesLabel")}
+                      current={comparative.grades.current}
+                      previous={comparative.grades.previous}
+                      delta={comparative.grades.delta}
+                      format="decimal"
+                      colorVar="var(--activity-grade-accent)"
+                    />
+                  </div>
+                  <div className="activity-stagger-item" style={{ "--stagger-index": 7 } as CSSProperties}>
+                    <ActivityComparativeCard
+                      label={t("activity:comparative.participationLabel")}
+                      current={comparative.participation.current}
+                      previous={comparative.participation.previous}
+                      delta={comparative.participation.delta}
+                      format="count"
+                      colorVar="var(--activity-participation-accent)"
+                    />
+                  </div>
+                </div>
+              </section>
+            </FadeSection>
+          )}
 
           {/* ── Timeline ────────────────────────────── */}
           <ActivityTimeline

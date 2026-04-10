@@ -58,8 +58,6 @@ export default function useActivityData() {
   )
 
   const separator = t("activity:common.separator", { defaultValue: " • " })
-  const noDataText = t("activity:common.noData")
-  const attendanceLessonFallback = t("activity:sections.attendance.lessonFallback")
 
   const formatDate = useCallback(
     (value?: string | null) => {
@@ -245,6 +243,49 @@ export default function useActivityData() {
     }
   }, [])
 
+  // ── Chart data derivation (Phase B) ───────────────
+  const attendanceTrendData = useMemo(() => {
+    const recent = attendance?.recent
+    if (!recent?.length) return []
+    const byDate = new Map<string, { present: number; total: number }>()
+    for (const item of recent) {
+      const key = item.date.slice(0, 10)
+      const prev = byDate.get(key) ?? { present: 0, total: 0 }
+      byDate.set(key, { present: prev.present + (item.status === "present" ? 1 : 0), total: prev.total + 1 })
+    }
+    return [...byDate.entries()]
+      .map(([date, { present, total }]) => ({ date, value: total > 0 ? Math.round((present / total) * 100) : 0 }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [attendance?.recent])
+
+  const gradesBySubject = useMemo(() => {
+    const recent = grades?.recent
+    if (!recent?.length) return []
+    const bySubject = new Map<string, { sum: number; count: number; max: number }>()
+    for (const item of recent) {
+      const prev = bySubject.get(item.course) ?? { sum: 0, count: 0, max: item.max ?? 5 }
+      bySubject.set(item.course, { sum: prev.sum + item.score, count: prev.count + 1, max: item.max ?? prev.max })
+    }
+    return [...bySubject.entries()].map(([label, { sum, count, max }]) => ({
+      label,
+      value: sum / count,
+      max,
+    }))
+  }, [grades?.recent])
+
+  // Heatmap data — merge all recent arrays into date→count map
+  const heatmapData = useMemo(() => {
+    const map = new Map<string, number>()
+    const inc = (date: string) => {
+      const key = date.slice(0, 10)
+      map.set(key, (map.get(key) ?? 0) + 1)
+    }
+    for (const item of attendance?.recent ?? []) inc(item.date)
+    for (const item of grades?.recent ?? []) inc(item.date)
+    for (const item of participation?.recent ?? []) inc(item.date)
+    return map
+  }, [attendance?.recent, grades?.recent, participation?.recent])
+
   return {
     t,
     period,
@@ -256,10 +297,10 @@ export default function useActivityData() {
     hasInitiallyLoaded,
     periodOptions,
     separator,
-    noDataText,
-    attendanceLessonFallback,
     formatDate,
     attendanceStatusLabel,
-    labelByPeriod,
+    attendanceTrendData,
+    gradesBySubject,
+    heatmapData,
   }
 }

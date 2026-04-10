@@ -33,6 +33,8 @@ type AnimatedRingProps = {
   colorVar?: string
   /** Fraction digits for inner label */
   fraction?: number
+  /** Accessible label for the SVG gauge (WCAG) */
+  ariaLabel?: string
 }
 
 export default function AnimatedRing({
@@ -42,6 +44,7 @@ export default function AnimatedRing({
   size = 96,
   colorVar,
   fraction,
+  ariaLabel,
 }: AnimatedRingProps) {
   const reduce = useReducedMotion()
   const stroke = 8
@@ -88,17 +91,16 @@ export default function AnimatedRing({
   }, [mode, max])
 
   const strokeColor = colorVar ?? "var(--activity-present-accent)"
-  const bgStrokeColor = `color-mix(in srgb, ${strokeColor} 15%, transparent)`
 
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
+    <div className="relative shrink-0" style={{ width: size, height: size, "--_ring-color": strokeColor } as React.CSSProperties}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block" role="img" aria-label={ariaLabel}>
         <circle
+          className="activity-ring-track"
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
-          stroke={bgStrokeColor}
           strokeWidth={stroke}
         />
         <motion.circle

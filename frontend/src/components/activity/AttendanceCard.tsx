@@ -8,6 +8,7 @@ import CardShell from "@/components/activity/CardShell"
 import TrendChip from "@/components/activity/TrendChip"
 import { EASE_OUT_EXPO } from "@/components/activity/activityTypes"
 import type { AttendanceStats } from "@/components/activity/activityTypes"
+import { motion as motionTokens } from "@/theme/tokens"
 
 type AttendanceCardProps = {
   attendance?: AttendanceStats | null
@@ -19,12 +20,12 @@ type AttendanceCardProps = {
 function AttendanceCardSkeleton() {
   return (
     <div className="flex items-center gap-4 p-4 md:p-6 xl:p-8">
-      <div className="h-20 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+      <div className="h-20 w-20 animate-pulse rounded-full bg-[var(--activity-skeleton-bg)]" />
       <div className="flex flex-1 flex-col gap-2">
-        <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-        <div className="h-6 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-        <div className="h-2 w-full animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
-        <div className="h-3 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-3 w-24 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
+        <div className="h-6 w-16 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
+        <div className="h-2 w-full animate-pulse rounded-full bg-[var(--activity-skeleton-bg)]" />
+        <div className="h-3 w-32 animate-pulse rounded bg-[var(--activity-skeleton-bg)]" />
       </div>
     </div>
   )
@@ -40,7 +41,7 @@ export function AttendanceCard({
 
   const attendancePctAnimated = useAnimatedNumber(
     Math.max(0, Math.min(100, attendance?.percent ?? 0)),
-    0.9,
+    motionTokens.durationLazy,
     0
   )
 
@@ -50,7 +51,7 @@ export function AttendanceCard({
   useEffect(() => {
     const target = Math.max(0, Math.min(100, attendance?.percent ?? 0))
     const controls = animate(progressAttendanceMv, target, {
-      duration: reduceMotion ? 0 : 0.9,
+      duration: reduceMotion ? 0 : motionTokens.durationLazy,
       ease: EASE_OUT_EXPO,
     })
     const unsubscribe = progressAttendanceMv.on("change", (value: number) =>
@@ -74,6 +75,7 @@ export function AttendanceCard({
             size={ringSize}
             mode="percent"
             colorVar="var(--activity-present-accent)"
+            ariaLabel={t("activity:a11y.ringAttendance", { value: Math.round(attendance?.percent ?? 0) })}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p className="text-micro font-semibold uppercase tracking-wider text-text-tertiary">

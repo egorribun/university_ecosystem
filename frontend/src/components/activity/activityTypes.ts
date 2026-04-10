@@ -40,6 +40,7 @@ export type ParticipationStats = {
   events: number
   hours?: number
   groups?: number
+  goal?: number
   trend: number
   recent: Array<{ title: string; date: string; role?: string }>
 }

@@ -67,11 +67,19 @@ export function ActivityTimelineItem({
       style={{ "--stagger-index": staggerIndex } as CSSProperties}
       role="article"
     >
-      {/* Dot */}
+      {/* Dot — color alone must not convey status (WCAG 1.4.1) */}
       <div
         className="activity-timeline-dot absolute left-[14px] top-1.5"
         style={{ backgroundColor: dotColor }}
+        aria-hidden="true"
       />
+      <span className="sr-only">
+        {entry.type === "attendance"
+          ? attendanceStatusLabel(entry.status)
+          : entry.type === "grade"
+            ? t("activity:timeline.gradeType")
+            : t("activity:timeline.participationType")}
+      </span>
 
       {/* Content */}
       <div className="flex min-w-0 flex-1 items-start gap-2">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ActivityTimelineItem } from "./ActivityTimelineItem"
 import type {
@@ -67,12 +67,22 @@ export function ActivityTimeline({
   const visibleEntries = allEntries.slice(0, visibleCount)
   const hasMore = visibleCount < allEntries.length
 
-  // Date group helpers
-  const today = new Date()
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`
+  // Date group helpers — memoized to avoid recalculating every render (A9)
+  const { todayStr, yesterdayStr } = useMemo(() => {
+    const now = new Date()
+    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    const prev = new Date(now)
+    prev.setDate(prev.getDate() - 1)
+    const ys = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}-${String(prev.getDate()).padStart(2, "0")}`
+    return { todayStr: ts, yesterdayStr: ys }
+  }, [])
+
+  // Stable key builder — avoids collision when same type+date (A15)
+  const getEntryKey = useCallback((entry: TimelineEntry, index: number): string => {
+    if (entry.type === "attendance") return `att-${entry.date}-${entry.status}-${entry.course ?? ""}-${index}`
+    if (entry.type === "grade") return `grd-${entry.date}-${entry.course}-${entry.score}-${index}`
+    return `prt-${entry.date}-${entry.title}-${index}`
+  }, [])
 
   if (!hasInitiallyLoaded) return null
 
@@ -111,7 +121,7 @@ export function ActivityTimeline({
           const currentStagger = staggerIndex++
 
           return (
-            <div key={`${entry.type}-${entry.date}-${i}`}>
+            <div key={getEntryKey(entry, i)}>
               {showDateHeader && (
                 <div className="relative mb-2 mt-4 pl-10 first:mt-0">
                   <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary">
