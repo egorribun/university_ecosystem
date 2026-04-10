@@ -97,7 +97,8 @@
     "title": "Activity Calendar",
     "cellLabel": "{{date}}: {{count}} activities",
     "legendLess": "Less",
-    "legendMore": "More"
+    "legendMore": "More",
+    "legendLevel": "Activity level {{level}}"
   },
   "comparative": {
     "title": "Period Comparison",

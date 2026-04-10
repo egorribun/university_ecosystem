@@ -38,9 +38,9 @@
 
     /* ── Orbs (emerald palette) ─────────────────────── */
     --activity-hero-orb: color-mix(in srgb, var(--color-emerald-400) 10%, transparent);
-    --activity-hero-highlight: color-mix(in srgb, var(--color-teal-500, var(--color-emerald-500)) 6%, transparent);
+    --activity-hero-highlight: color-mix(in srgb, var(--color-teal-500) 6%, transparent);
     --activity-orb-1: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
-    --activity-orb-2: color-mix(in srgb, var(--color-teal-400, var(--color-emerald-500)) 8%, transparent);
+    --activity-orb-2: color-mix(in srgb, var(--color-teal-400) 8%, transparent);
     --activity-orb-3: color-mix(in srgb, var(--color-cyan-400) 6%, transparent);
 
     /* ── Gradients & Flares ────────────────────────── */
@@ -58,7 +58,7 @@
     );
 
     /* ── Matte card system ────────────────────────── */
-    --activity-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-emerald-50, var(--color-slate-50)) 4%);
+    --activity-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-emerald-50) 4%);
     --activity-card-shadow:
       0 1px 2px color-mix(in srgb, black 5%, transparent),
       0 4px 12px color-mix(in srgb, black 4%, transparent),
@@ -78,6 +78,7 @@
 
     /* ── Period selector ──────────────────────────── */
     --activity-selector-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-100) 10%);
+    --activity-period-indicator-shadow: 0 2px 8px color-mix(in srgb, var(--activity-present-accent) 30%, transparent);
 
     /* ── Timeline ─────────────────────────────────── */
     --activity-timeline-line: color-mix(in srgb, var(--color-slate-300) 50%, transparent);
@@ -121,11 +122,11 @@
   /* ── Dark Theme Overrides ──────────────────────── */
   .dark .activity-theme {
     --activity-hero-orb: color-mix(in srgb, var(--color-emerald-400) 16%, transparent);
-    --activity-hero-highlight: color-mix(in srgb, var(--color-teal-400, var(--color-emerald-500)) 10%, transparent);
+    --activity-hero-highlight: color-mix(in srgb, var(--color-teal-400) 10%, transparent);
     --activity-orb-1: color-mix(in srgb, var(--color-emerald-400) 18%, transparent);
-    --activity-orb-2: color-mix(in srgb, var(--color-teal-400, var(--color-emerald-500)) 14%, transparent);
+    --activity-orb-2: color-mix(in srgb, var(--color-teal-400) 14%, transparent);
     --activity-orb-3: color-mix(in srgb, var(--color-cyan-400) 10%, transparent);
-    --activity-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-emerald-900, var(--color-slate-800)) 5%);
+    --activity-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-emerald-900) 5%);
     --activity-card-shadow:
       0 1px 2px color-mix(in srgb, black 20%, transparent),
       0 4px 12px color-mix(in srgb, black 15%, transparent),
@@ -228,7 +229,7 @@
   height: var(--activity-timeline-dot-size);
   border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 0 0 3px var(--bg-surface, white);
+  box-shadow: 0 0 0 3px var(--bg-surface, var(--color-white, #fff));
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -423,6 +424,10 @@
   .activity-comparative-card:hover {
     transform: none;
   }
+  .activity-export-btn:hover,
+  .activity-export-btn:active {
+    transform: none;
+  }
   .activity-stagger-item {
     animation-duration: 0.01s;
     animation-delay: 0s;
@@ -453,7 +458,7 @@
     display: none;
   }
   .activity-card-matte.activity-card-matte {
-    box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+    box-shadow: 0 0 0 1px var(--color-slate-200);
     break-inside: avoid;
   }
   .activity-card-matte.activity-card-matte:hover {
@@ -473,6 +478,6 @@
     print-color-adjust: exact;
   }
   .activity-motivation-chip.activity-motivation-chip {
-    box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+    box-shadow: 0 0 0 1px var(--color-slate-200);
   }
 }

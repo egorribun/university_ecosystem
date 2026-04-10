@@ -32,8 +32,17 @@
     --color-sky-500: #0ea5e9;
 
     /* Functional Palette */
+    --color-emerald-50: #ecfdf5;
+    --color-emerald-200: #a7f3d0;
+    --color-emerald-300: #6ee7b7;
     --color-emerald-400: #34d399;
     --color-emerald-500: #10b981;
+    --color-emerald-600: #059669;
+    --color-emerald-700: #047857;
+    --color-emerald-900: #064e3b;
+    --color-teal-400: #2dd4bf;
+    --color-teal-500: #14b8a6;
+    --color-cyan-400: #22d3ee;
     --color-green-100: #dcfce7;
     --color-green-500: #22c55e;
     --color-green-800: #166534;

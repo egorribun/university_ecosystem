@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, type CSSProperties } from "react"
 import { motion, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion"
 import { EASE_OUT_EXPO } from "./activityTypes"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -37,6 +37,8 @@ type AnimatedRingProps = {
   ariaLabel?: string
 }
 
+const RING_STROKE_WIDTH = 8
+
 export default function AnimatedRing({
   value,
   max = 100,
@@ -47,7 +49,7 @@ export default function AnimatedRing({
   ariaLabel,
 }: AnimatedRingProps) {
   const reduce = useReducedMotion()
-  const stroke = 8
+  const stroke = RING_STROKE_WIDTH
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
 
@@ -94,7 +96,7 @@ export default function AnimatedRing({
   const strokeColor = colorVar ?? "var(--activity-present-accent)"
 
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size, "--_ring-color": strokeColor } as React.CSSProperties}>
+    <div className="relative shrink-0" style={{ width: size, height: size, "--_ring-color": strokeColor } as CSSProperties}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block" role="img" aria-label={ariaLabel}>
         <circle
           className="activity-ring-track"

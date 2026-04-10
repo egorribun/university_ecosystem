@@ -13,6 +13,7 @@ import {
   PERIOD_VALUES,
   periodDayCount,
   isPeriodKey,
+  isGradeScale,
 } from "@/components/activity/activityTypes"
 import {
   toNumber,
@@ -39,7 +40,6 @@ export default function useActivityData() {
   const labelByPeriod = useCallback(
     (p: PeriodKey) =>
       t(`activity:period.labels.${p}`, {
-        defaultValue: p,
         count: periodDayCount(p),
       }),
     [t]
@@ -50,14 +50,13 @@ export default function useActivityData() {
       PERIOD_VALUES.map((value) => ({
         value,
         label: t(`activity:period.options.${value}`, {
-          defaultValue: value,
           count: periodDayCount(value),
         }),
       })),
     [t]
   )
 
-  const separator = t("activity:common.separator", { defaultValue: " • " })
+  const separator = t("activity:common.separator")
 
   const formatDate = useCallback(
     (value?: string | null) => {
@@ -75,7 +74,7 @@ export default function useActivityData() {
 
   const attendanceStatusLabel = useCallback(
     (status: AttendanceStats["recent"][number]["status"]) =>
-      t(`activity:sections.attendance.status.${status}`, { defaultValue: status }),
+      t(`activity:sections.attendance.status.${status}`),
     [t]
   )
 
@@ -83,6 +82,8 @@ export default function useActivityData() {
   const fallbackGradeRecentRef = useRef(DEFAULT_GRADE_RECENT)
   const fallbackParticipationRecentRef = useRef(DEFAULT_PARTICIPATION_RECENT)
 
+  // react-i18next returnObjects returns TFunctionResult which doesn't narrow to unknown[].
+  // Cast to `unknown` is safe because each value passes through typed parsers below.
   useEffect(() => {
     const attendanceRaw = t("activity:fallback.attendance.recent", {
       returnObjects: true,
@@ -190,7 +191,7 @@ export default function useActivityData() {
         const d = g.value.data
         setGrades({
           average: toNumber(d.average, 4.4),
-          scale: (d.scale as GradeStats["scale"]) || "5",
+          scale: isGradeScale(d.scale) ? d.scale : "5",
           trend: toNumber(d.trend, 0.3),
           recent: parseGradeRecent(d.recent),
         })

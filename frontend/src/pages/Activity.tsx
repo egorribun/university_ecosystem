@@ -123,7 +123,7 @@ export default function Activity() {
                     <motion.span
                       layoutId="activity-period-indicator"
                       className="absolute inset-0 rounded-full bg-[var(--activity-present-accent)]"
-                      style={{ boxShadow: "0 2px 8px color-mix(in srgb, var(--activity-present-accent) 30%, transparent)" } as CSSProperties}
+                      style={{ boxShadow: "var(--activity-period-indicator-shadow)" }}
                       transition={{
                         type: "spring",
                         stiffness: 400,

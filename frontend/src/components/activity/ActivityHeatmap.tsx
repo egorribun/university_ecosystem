@@ -164,6 +164,8 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
             <div
               key={i}
               className="activity-heatmap-cell"
+              role="img"
+              aria-label={t("activity:heatmap.legendLevel", { level: i })}
               style={{ backgroundColor: color }}
             />
           ))}

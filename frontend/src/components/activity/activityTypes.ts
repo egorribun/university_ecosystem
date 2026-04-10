@@ -19,6 +19,10 @@ export function periodDayCount(key: PeriodKey): number {
 export const isPeriodKey = (value: unknown): value is PeriodKey =>
   typeof value === "string" && PERIOD_VALUES.includes(value as PeriodKey)
 
+const GRADE_SCALES = ["5", "100", "gpa"] as const
+export const isGradeScale = (value: unknown): value is GradeStats["scale"] =>
+  typeof value === "string" && GRADE_SCALES.includes(value as GradeStats["scale"])
+
 export type AttendanceStats = {
   percent: number
   present: number

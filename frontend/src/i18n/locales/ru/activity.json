@@ -97,7 +97,8 @@
     "title": "Календарь активности",
     "cellLabel": "{{date}}: {{count}} активностей",
     "legendLess": "Меньше",
-    "legendMore": "Больше"
+    "legendMore": "Больше",
+    "legendLevel": "Уровень активности {{level}}"
   },
   "comparative": {
     "title": "Сравнение периодов",

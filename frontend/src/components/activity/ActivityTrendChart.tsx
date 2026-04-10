@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react"
+import { useId, useMemo, type CSSProperties } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -91,7 +91,7 @@ export function ActivityTrendChart({
         className="block w-full"
         role="img"
         aria-label={ariaLabel}
-        style={{ "--_chart-color": colorVar } as React.CSSProperties}
+        style={{ "--_chart-color": colorVar } as CSSProperties}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
