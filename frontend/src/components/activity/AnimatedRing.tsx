@@ -74,11 +74,12 @@ export default function AnimatedRing({
   // Determine fraction digits for inner text
   const displayFraction = fraction ?? (mode === "gauge" ? 1 : 0)
 
-  // Inner label text
+  // Inner label text — NaN guard (M6)
   const innerLabel = useMemo(() => {
-    if (mode === "percent") return `${Math.round(value)}%`
-    if (mode === "gauge") return `${Number(value).toFixed(displayFraction)}`
-    return `${Math.round(value)}`
+    const safe = Number.isFinite(value) ? value : 0
+    if (mode === "percent") return `${Math.round(safe)}%`
+    if (mode === "gauge") return `${safe.toFixed(displayFraction)}`
+    return `${Math.round(safe)}`
   }, [mode, value, displayFraction])
 
   // Sub-label (below number) for gauge mode
@@ -115,12 +116,15 @@ export default function AnimatedRing({
           style={{ strokeDashoffset: dash }}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center"
+        style={{ fontSize: Math.round(size * 0.17) }}
+      >
         <span className="font-black tracking-tighter tabular-nums lining-nums text-text-primary leading-none">
           {innerLabel}
         </span>
         {subLabel && (
-          <span className="text-[0.6em] text-text-secondary leading-none">{subLabel}</span>
+          <span className="text-[0.55em] text-text-secondary leading-none">{subLabel}</span>
         )}
       </div>
     </div>

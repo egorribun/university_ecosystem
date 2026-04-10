@@ -64,7 +64,6 @@ export function ActivityTimeline({
     return entries
   }, [attendance?.recent, grades?.recent, participation?.recent])
 
-  const visibleEntries = allEntries.slice(0, visibleCount)
   const hasMore = visibleCount < allEntries.length
 
   // Date group helpers — memoized to avoid recalculating every render (A9)
@@ -84,6 +83,27 @@ export function ActivityTimeline({
     return `prt-${entry.date}-${entry.title}-${index}`
   }, [])
 
+  // H1: Precompute date groups + stagger indices — no mutable state in render map (React Compiler)
+  const visibleItems = useMemo(() => {
+    const visible = allEntries.slice(0, visibleCount)
+    let lastGroup = ""
+    let stagger = 0
+    return visible.map((entry, i) => {
+      const dateKey = entry.date.slice(0, 10)
+      const dateGroup = getDateGroup(dateKey, todayStr, yesterdayStr, t)
+      const showDateHeader = dateGroup !== lastGroup
+      lastGroup = dateGroup
+      return {
+        entry,
+        key: getEntryKey(entry, i),
+        dateKey,
+        dateGroup,
+        showDateHeader,
+        staggerIndex: stagger++,
+      }
+    })
+  }, [allEntries, visibleCount, todayStr, yesterdayStr, t, getEntryKey])
+
   if (!hasInitiallyLoaded) return null
 
   if (allEntries.length === 0) {
@@ -99,10 +119,6 @@ export function ActivityTimeline({
     )
   }
 
-  // Group entries by date for rendering date headers
-  let lastDateGroup = ""
-  let staggerIndex = 0
-
   return (
     <section aria-label={t("activity:a11y.timeline")}>
       <h2 className="mb-4 text-lg font-extrabold text-text-primary">
@@ -113,31 +129,24 @@ export function ActivityTimeline({
         {/* Vertical timeline line */}
         <div className="activity-timeline-line" />
 
-        {visibleEntries.map((entry, i) => {
-          const dateKey = entry.date.slice(0, 10)
-          const dateGroup = getDateGroup(dateKey, todayStr, yesterdayStr, t)
-          const showDateHeader = dateGroup !== lastDateGroup
-          lastDateGroup = dateGroup
-          const currentStagger = staggerIndex++
-
-          return (
-            <div key={getEntryKey(entry, i)}>
-              {showDateHeader && (
-                <div className="relative mb-2 mt-4 pl-10 first:mt-0">
-                  <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary">
-                    {dateGroup === dateKey ? formatDate(dateKey) : dateGroup}
-                  </p>
-                </div>
-              )}
-              <ActivityTimelineItem
-                entry={entry}
-                formatDate={formatDate}
-                attendanceStatusLabel={attendanceStatusLabel}
-                staggerIndex={currentStagger}
-              />
-            </div>
-          )
-        })}
+        {visibleItems.map((item) => (
+          <div key={item.key}>
+            {item.showDateHeader && (
+              <div className="relative mb-2 mt-4 pl-10 first:mt-0">
+                {/* M4: semantic heading for screen reader section navigation */}
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text-tertiary">
+                  {item.dateGroup === item.dateKey ? formatDate(item.dateKey) : item.dateGroup}
+                </h3>
+              </div>
+            )}
+            <ActivityTimelineItem
+              entry={item.entry}
+              formatDate={formatDate}
+              attendanceStatusLabel={attendanceStatusLabel}
+              staggerIndex={item.staggerIndex}
+            />
+          </div>
+        ))}
       </div>
 
       {hasMore && (

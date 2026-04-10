@@ -1,3 +1,28 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   (M7 — parity with schedule.css Wave 64 pattern)
+   ═══════════════════════════════════════════════════════ */
+@property --activity-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --activity-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --activity-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --activity-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
 @layer base {
   /* ═══════════════════════════════════════════════════════
      ACTIVITY PAGE TOKENS
@@ -74,6 +99,11 @@
     /* ── Charts ───────────────────────────────────── */
     --activity-chart-grid: color-mix(in srgb, var(--color-slate-300) 30%, transparent);
     --activity-chart-label: var(--color-slate-500);
+    --activity-chart-min-h: 120px;
+
+    /* ── Comparative trend colors ────────────────── */
+    --activity-positive-accent: var(--color-emerald-500);
+    --activity-negative-accent: var(--color-rose-500);
 
     /* ── Featured mesh ────────────────────────────── */
     --activity-featured-mesh: radial-gradient(
@@ -260,10 +290,6 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   REDUCED MOTION
-   ═══════════════════════════════════════════════════════ */
-
-/* ═══════════════════════════════════════════════════════
    RING TRACK (A10 — bgStrokeColor moved to CSS)
    ═══════════════════════════════════════════════════════ */
 
@@ -293,9 +319,9 @@
   .activity-card-matte .flex { flex-direction: column; align-items: flex-start; }
 }
 
-@container activity-card (max-width: 320px) {
-  .activity-card-matte svg { max-width: 68px; max-height: 68px; }
-}
+/* Ring sizing handled by JS breakpoints (isLgCompact/isSm/isMd/isXl).
+   Removed: svg max-width: 68px at ≤320px — conflicted with wrapper div
+   inline size, causing SVG circle to shrink while text overlay stayed full-size. */
 
 .activity-heatmap-container {
   container-type: inline-size;
@@ -427,7 +453,7 @@
     display: none;
   }
   .activity-card-matte.activity-card-matte {
-    box-shadow: 0 0 0 1px #e5e7eb;
+    box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
     break-inside: avoid;
   }
   .activity-card-matte.activity-card-matte:hover {
@@ -447,6 +473,6 @@
     print-color-adjust: exact;
   }
   .activity-motivation-chip.activity-motivation-chip {
-    box-shadow: 0 0 0 1px #e5e7eb;
+    box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
   }
 }

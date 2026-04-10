@@ -111,7 +111,9 @@
     "title": "Export",
     "pdf": "Export as PDF",
     "png": "Export as PNG",
-    "exporting": "Exporting…"
+    "exporting": "Exporting…",
+    "success": "Exported!",
+    "error": "Export failed"
   },
   "timeline": {
     "title": "Recent Activity",

@@ -30,7 +30,10 @@ export function ActivityBarChart({
   const { bars, svgHeight, barAreaWidth } = useMemo(() => {
     if (data.length === 0) return { bars: [], svgHeight: 0, barAreaWidth: 0 }
 
-    const maxVal = Math.max(...data.map((d) => d.max ?? d.value), 1)
+    const maxVal = Math.max(...data.map((d) => {
+      const v = d.max ?? d.value
+      return Number.isFinite(v) ? v : 0 // NaN guard (L1)
+    }), 1)
     const svgWidth = 400 // viewBox width
     const barAreaWidth = svgWidth - PADDING.left - LABEL_WIDTH - VALUE_WIDTH - PADDING.right
     const svgHeight = PADDING.top + data.length * (BAR_HEIGHT + GAP) - GAP + PADDING.bottom
@@ -53,7 +56,7 @@ export function ActivityBarChart({
 
   if (data.length === 0) {
     return (
-      <div className="activity-chart-card flex items-center justify-center" style={{ minHeight: 120 }}>
+      <div className="activity-chart-card flex items-center justify-center" style={{ minHeight: "var(--activity-chart-min-h, 120px)" }}>
         <p className="text-sm text-text-secondary">{t("activity:charts.noChartData")}</p>
       </div>
     )

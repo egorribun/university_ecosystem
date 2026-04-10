@@ -12,9 +12,10 @@ type ActivityComparativeCardProps = {
 }
 
 function formatValue(value: number, format: "percent" | "decimal" | "count"): string {
-  if (format === "percent") return `${Math.round(value)}%`
-  if (format === "decimal") return value.toFixed(1)
-  return String(Math.round(value))
+  const safe = Number.isFinite(value) ? value : 0 // NaN guard (L4)
+  if (format === "percent") return `${Math.round(safe)}%`
+  if (format === "decimal") return safe.toFixed(1)
+  return String(Math.round(safe))
 }
 
 export function ActivityComparativeCard({
@@ -48,14 +49,14 @@ export function ActivityComparativeCard({
         </span>
       </div>
       <div className="mt-1.5 flex items-center gap-1">
-        {isPositive && <TrendingUp size={14} className="text-emerald-500" aria-hidden="true" />}
-        {isNegative && <TrendingDown size={14} className="text-rose-500" aria-hidden="true" />}
+        {isPositive && <TrendingUp size={14} className="text-[var(--activity-positive-accent)]" aria-hidden="true" />}
+        {isNegative && <TrendingDown size={14} className="text-[var(--activity-negative-accent)]" aria-hidden="true" />}
         {isNeutral && <Minus size={14} className="text-text-tertiary" aria-hidden="true" />}
         <span
           className={cn(
             "text-xs font-bold",
-            isPositive && "text-emerald-500",
-            isNegative && "text-rose-500",
+            isPositive && "text-[var(--activity-positive-accent)]",
+            isNegative && "text-[var(--activity-negative-accent)]",
             isNeutral && "text-text-tertiary"
           )}
         >

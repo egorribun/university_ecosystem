@@ -49,7 +49,7 @@ export function ActivityMotivation({
           className="activity-motivation-chip inline-flex items-center gap-1.5"
           aria-label={t("activity:a11y.streak")}
         >
-          <Flame size={16} className="text-amber-500" aria-hidden="true" />
+          <Flame size={16} className="text-[var(--activity-streak-accent)]" aria-hidden="true" />
           <span>{t("activity:motivation.streakDays", { count: streak })}</span>
         </div>
       )}

@@ -172,7 +172,7 @@ export default function useActivityData() {
           trend: toNumber(d.trend),
           periodKey: resolvedPeriodKey,
           periodLabel,
-          recent: Array.isArray(d.recent) ? d.recent : [],
+          recent: parseAttendanceRecent(d.recent),
         })
       } else {
         const fallbackRecent = fallbackAttendanceRecentRef.current
@@ -192,7 +192,7 @@ export default function useActivityData() {
           average: toNumber(d.average, 4.4),
           scale: (d.scale as GradeStats["scale"]) || "5",
           trend: toNumber(d.trend, 0.3),
-          recent: Array.isArray(d.recent) ? d.recent : [],
+          recent: parseGradeRecent(d.recent),
         })
       } else {
         const fallbackRecent = fallbackGradeRecentRef.current
@@ -210,7 +210,7 @@ export default function useActivityData() {
           hours: d.hours != null ? toNumber(d.hours) : undefined,
           groups: d.groups != null ? toNumber(d.groups) : undefined,
           trend: toNumber(d.trend),
-          recent: Array.isArray(d.recent) ? d.recent : [],
+          recent: parseParticipationRecent(d.recent),
         })
       } else {
         const fallbackRecent = fallbackParticipationRecentRef.current

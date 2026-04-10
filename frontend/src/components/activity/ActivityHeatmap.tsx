@@ -146,6 +146,7 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
                   <div
                     key={cell.date}
                     className="activity-heatmap-cell"
+                    role="img"
                     style={{ backgroundColor: HEAT_LEVELS[level] }}
                     title={t("activity:heatmap.cellLabel", { date: cell.date, count })}
                     aria-label={t("activity:heatmap.cellLabel", { date: cell.date, count })}

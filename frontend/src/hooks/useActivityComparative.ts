@@ -37,7 +37,7 @@ export function useActivityComparative(
     midpoint.setDate(midpoint.getDate() - halfDays)
 
     const isCurrentHalf = (dateStr: string) => {
-      const d = new Date(dateStr)
+      const d = new Date(dateStr + "T00:00:00") // local parse — avoid UTC midnight shift (M2)
       return d > midpoint && d <= now
     }
 

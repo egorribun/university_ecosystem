@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useId, useMemo } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -25,6 +25,7 @@ export function ActivityTrendChart({
 }: ActivityTrendChartProps) {
   const { t } = useTranslation(["activity"])
   const reduce = useReducedMotion()
+  const gradientId = useId() // unique per instance (L3) — must be before early return
 
   const chartWidth = 400 // SVG viewBox width; responsive via CSS width:100%
 
@@ -74,13 +75,11 @@ export function ActivityTrendChart({
 
   if (data.length < 2) {
     return (
-      <div className="activity-chart-card flex items-center justify-center" style={{ minHeight: height }}>
+      <div className="activity-chart-card flex items-center justify-center" style={{ minHeight: "var(--activity-chart-min-h, 120px)" }}>
         <p className="text-sm text-text-secondary">{t("activity:charts.noChartData")}</p>
       </div>
     )
   }
-
-  const gradientId = "activity-trend-fill"
 
   return (
     <div className="activity-chart-card">

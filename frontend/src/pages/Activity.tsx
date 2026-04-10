@@ -46,7 +46,8 @@ export default function Activity() {
   const isMd = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
   const isXl = useMediaQuery(`(min-width: ${breakpoints.desktop})`)
-  const ringSize = isSm ? 68 : isMd ? 84 : isXl ? 104 : 96
+  const isLgCompact = useMediaQuery("(min-width: 1024px) and (max-width: 1199px)")
+  const ringSize = isSm ? 68 : isMd ? 84 : isLgCompact ? 72 : isXl ? 104 : 96
 
   const contentRef = useRef<HTMLDivElement>(null)
 
