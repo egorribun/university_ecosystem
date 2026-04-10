@@ -24,7 +24,6 @@ export type EventsListFilters = {
   language: string
   is_active?: boolean | null
   search?: string
-  type?: string
   location?: string
   limit?: number
 }
@@ -33,7 +32,6 @@ type NormalizedEventsListFilters = {
   language: string
   is_active: boolean | null
   search: string
-  type: string
   location: string
   limit: number
 }
@@ -53,7 +51,6 @@ const normalizeEventsListFilters = (filters: EventsListFilters): NormalizedEvent
     language: filters.language,
     is_active: normalizeBoolean(filters.is_active ?? null),
     search: filters.search?.trim() ?? "",
-    type: filters.type?.trim() ?? "",
     location: filters.location?.trim() ?? "",
     limit: normalizeLimit(filters.limit),
   }
@@ -71,7 +68,6 @@ const createEventsListEtagKey = (filters: NormalizedEventsListFilters) => {
     filters.language,
     activity,
     filters.search,
-    filters.type,
     filters.location,
     filters.limit,
   ].join(":")
@@ -145,7 +141,6 @@ const createEventsListQueryFn =
     const params: Record<string, unknown> = {
       limit: normalized.limit,
       search: normalized.search,
-      type: normalized.type,
       location: normalized.location,
     }
     if (normalized.is_active !== null) {

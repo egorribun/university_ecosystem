@@ -14,7 +14,7 @@ import { ALL_EVENT_CATEGORIES, type EventCategory } from "@/features/events/cate
 import { cn } from "@/utils/cn"
 import { springSoft } from "@/utils/animations"
 import { motion, useReducedMotion } from "framer-motion"
-import type { EventSortMode, EventTabKey } from "../types"
+import type { EventDateRange, EventSortMode, EventTabKey } from "../types"
 import { useEventFilterPopover } from "@/components/events/EventFilterPopover"
 
 const SORT_CYCLE: EventSortMode[] = ["newest", "popular", "upcoming"]
@@ -31,8 +31,8 @@ interface EventsHeaderProps {
   onSortChange: (s: EventSortMode) => void
   tab: EventTabKey
   onTabChange: (t: string) => void
-  typeFilter: string
-  onTypeChange: (v: string) => void
+  dateRange: EventDateRange
+  onDateRangeChange: (v: EventDateRange) => void
   locationFilter: string
   onLocationChange: (v: string) => void
 }
@@ -49,8 +49,8 @@ export const EventsHeader = ({
   onSortChange,
   tab,
   onTabChange,
-  typeFilter,
-  onTypeChange,
+  dateRange,
+  onDateRangeChange,
   locationFilter,
   onLocationChange,
 }: EventsHeaderProps) => {
@@ -69,7 +69,7 @@ export const EventsHeader = ({
       ([entry]) => {
         if (entry) setIsStuck(!entry.isIntersecting)
       },
-      { threshold: 0 }
+      { threshold: 0, rootMargin: "-64px 0px 0px 0px" }
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
@@ -82,10 +82,10 @@ export const EventsHeader = ({
     onSortChange(next)
   }
 
-  /* ── Filter popover (type + location) ── */
+  /* ── Filter popover (date range + location) ── */
   const filter = useEventFilterPopover({
-    type: typeFilter,
-    onTypeChange,
+    dateRange,
+    onDateRangeChange,
     location: locationFilter,
     onLocationChange,
   })
@@ -223,7 +223,7 @@ export const EventsHeader = ({
           delay="140ms"
           className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4"
           role="toolbar"
-          aria-label={t("events:categories.all", { defaultValue: "Category filter" })}
+          aria-label={t("events:aria.categoryFilter")}
           onKeyDown={(e: React.KeyboardEvent) => {
             if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
             const buttons = (e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>("button")

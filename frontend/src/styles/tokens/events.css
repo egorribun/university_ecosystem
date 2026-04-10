@@ -55,7 +55,6 @@
 
     /* ── Sticky category nav ──────────────────────────── */
     --events-sticky-top: 64px;
-    --events-sticky-blur: 16px;
 
     /* ── Featured card gradient mesh ───────────────────── */
     --events-featured-mesh: radial-gradient(
@@ -123,16 +122,6 @@
   position: sticky;
   top: var(--events-sticky-top);
   z-index: var(--z-surface, 10);
-  transition:
-    backdrop-filter var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
-    background-color var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
-    box-shadow var(--motion-duration-base, 0.3s) var(--ease-premium, ease);
-}
-
-.events-sticky-categories[data-stuck="true"] {
-  backdrop-filter: blur(var(--events-sticky-blur)) saturate(1.3);
-  background-color: var(--bg-surface, #fff);
-  box-shadow: 0 1px 0 var(--glass-border);
   padding-block: var(--space-2, 0.5rem);
 }
 
@@ -253,6 +242,63 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   NAV BUTTON — matte volumetric, shadow depth, no border
+   Prev/next event navigation on detail page.
+   ═══════════════════════════════════════════════════════ */
+
+.events-nav-btn {
+  border: none;
+  background: color-mix(in srgb, var(--bg-surface-hover, var(--bg-surface)) 60%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 6%, transparent),
+    0 2px 6px color-mix(in srgb, black 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.events-nav-btn:hover {
+  background: color-mix(in srgb, var(--bg-surface-hover, var(--bg-surface)) 80%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 8%, transparent),
+    0 4px 12px color-mix(in srgb, black 5%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  transform: translateY(-2px);
+}
+
+.events-nav-btn:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, black 8%, transparent),
+    inset 0 1px 3px color-mix(in srgb, black 4%, transparent);
+}
+
+.dark .events-nav-btn {
+  background: color-mix(in srgb, var(--color-slate-700, #334155) 40%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 15%, transparent),
+    0 2px 6px color-mix(in srgb, black 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+
+.dark .events-nav-btn:hover {
+  background: color-mix(in srgb, var(--color-slate-600, #475569) 50%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 18%, transparent),
+    0 4px 12px color-mix(in srgb, black 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+}
+
+.dark .events-nav-btn:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, black 18%, transparent),
+    inset 0 1px 3px color-mix(in srgb, black 10%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
    REGISTER BUTTON PULSE
    ═══════════════════════════════════════════════════════ */
 
@@ -309,16 +355,18 @@
    ═══════════════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {
-  .events-sticky-categories[data-stuck="true"] {
-    transition: none;
-  }
-
   .events-reading-progress {
     display: none;
   }
 
   .events-register-pulse {
     animation: none;
+  }
+
+  .events-nav-btn,
+  .events-nav-btn:hover {
+    transition: none;
+    transform: none;
   }
 
   /* View transitions off — browser handles this natively

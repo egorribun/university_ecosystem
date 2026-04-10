@@ -2,6 +2,8 @@ export type EventSortMode = "newest" | "popular" | "upcoming"
 
 export type EventTabKey = "active" | "archive" | "my"
 
+export type EventDateRange = "today" | "week" | "month" | ""
+
 export type EventFormState = {
   title: string
   description: string

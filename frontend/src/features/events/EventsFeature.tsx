@@ -17,7 +17,45 @@ import { useEventsKeyboardNav } from "@/hooks/useEventsKeyboardNav"
 import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import type { EventSortMode, EventTabKey } from "./types"
+import type { EventDateRange, EventSortMode, EventTabKey } from "./types"
+
+/**
+ * Returns [start, end) of date range in UTC milliseconds.
+ * "today" = start of today → end of today
+ * "week"  = start of Monday → end of Sunday
+ * "month" = start of 1st → end of last day
+ */
+function getDateRangeBounds(range: EventDateRange): [number, number] | null {
+  if (!range) return null
+
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const d = now.getDate()
+
+  if (range === "today") {
+    const start = new Date(y, m, d).getTime()
+    const end = new Date(y, m, d + 1).getTime()
+    return [start, end]
+  }
+
+  if (range === "week") {
+    const dayOfWeek = now.getDay()
+    // Monday = 1, Sunday = 0 → shift to Monday-based
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const start = new Date(y, m, d + mondayOffset).getTime()
+    const end = new Date(y, m, d + mondayOffset + 7).getTime()
+    return [start, end]
+  }
+
+  if (range === "month") {
+    const start = new Date(y, m, 1).getTime()
+    const end = new Date(y, m + 1, 1).getTime()
+    return [start, end]
+  }
+
+  return null
+}
 
 export const EventsFeature = () => {
   const { user } = useAuth()
@@ -33,10 +71,10 @@ export const EventsFeature = () => {
 
   const tab = (searchParams.tab as EventTabKey) || "active"
   const searchQuery = searchParams.q || ""
-  const typeFilter = searchParams.type || ""
   const locationFilter = searchParams.loc || ""
   const sortMode = (searchParams.sort as EventSortMode) || "newest"
   const activeCategory = (searchParams.cat as EventCategory | "all") || "all"
+  const dateRange = (searchParams.dr as EventDateRange) || ""
 
   const handleURLChange = useCallback(
     (key: string, value: string) => {
@@ -68,8 +106,13 @@ export const EventsFeature = () => {
     (v: EventCategory | "all") => handleURLChange("cat", v === "all" ? "" : v),
     [handleURLChange]
   )
+  const setDateRange = useCallback(
+    (v: EventDateRange) => handleURLChange("dr", v),
+    [handleURLChange]
+  )
 
   const debouncedSearch = useDebounced(searchQuery, "search")
+  const debouncedLocation = useDebounced(locationFilter, "search")
 
   /* ── Create dialog ── */
   const [createOpen, setCreateOpen] = useState(false)
@@ -81,11 +124,10 @@ export const EventsFeature = () => {
       language,
       is_active: isActiveFilter,
       search: debouncedSearch,
-      type: typeFilter,
-      location: locationFilter,
+      location: debouncedLocation,
       limit: EVENTS_PAGE_SIZE,
     }
-  }, [tab, language, debouncedSearch, typeFilter, locationFilter])
+  }, [tab, language, debouncedSearch, debouncedLocation])
 
   const eventsListQuery = useEventsListQuery(eventsListFilters, {
     enabled: tab !== "my",
@@ -129,6 +171,17 @@ export const EventsFeature = () => {
       )
     }
 
+    // Date range filter (client-side)
+    const bounds = getDateRangeBounds(dateRange)
+    if (bounds) {
+      const [rangeStart, rangeEnd] = bounds
+      list = list.filter((e) => {
+        if (!e.starts_at) return false
+        const ts = new Date(e.starts_at).getTime()
+        return ts >= rangeStart && ts < rangeEnd
+      })
+    }
+
     // Sort
     if (sortMode === "popular") {
       list = [...list].sort((a, b) => (b.participant_count ?? 0) - (a.participant_count ?? 0))
@@ -142,7 +195,7 @@ export const EventsFeature = () => {
     }
 
     return list
-  }, [rawEvents, activeCategory, sortMode])
+  }, [rawEvents, activeCategory, dateRange, sortMode])
 
   /* ── Keyboard navigation ── */
   const { activeIndex, registerRef } = useEventsKeyboardNav(filteredEvents)
@@ -177,8 +230,8 @@ export const EventsFeature = () => {
           onSortChange={setSortMode}
           tab={tab}
           onTabChange={setTab}
-          typeFilter={typeFilter}
-          onTypeChange={(v: string) => handleURLChange("type", v)}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
           locationFilter={locationFilter}
           onLocationChange={(v: string) => handleURLChange("loc", v)}
         />

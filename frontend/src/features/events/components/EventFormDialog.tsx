@@ -4,6 +4,7 @@
  * brings the edit flow into the feature layer.
  */
 import { EventCreateDialog } from "@/components/events/EventCreateDialog"
+import { logError } from "@/app/logger"
 
 interface EventFormDialogProps {
   open: boolean
@@ -27,8 +28,8 @@ export const EventFormDialog = ({ open, onClose, onSuccess, language }: EventFor
           onClose()
           onSuccess()
           window.scrollTo({ top: 0, behavior: "smooth" })
-        } catch {
-          // Error handling is in the legacy dialog; will be moved to snackbar in Phase 5
+        } catch (err) {
+          logError("[EventFormDialog] createEvent failed:", err)
         }
       }}
       language={language}

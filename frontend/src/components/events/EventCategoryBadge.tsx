@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import type { EventCategory } from "@/features/events/categories"
 import { getCategoryMeta } from "@/features/events/categories"
@@ -24,7 +25,7 @@ export function EventCategoryBadge({ category, size = "sm" }: EventCategoryBadge
       }
       style={{
         "--_badge-accent": `var(--cat-${color}-text)`,
-      } as React.CSSProperties}
+      } as CSSProperties}
     >
       <span
         className="mr-1 inline-block h-1.5 w-1.5 rounded-full"

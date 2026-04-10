@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect, useCallback, type CSSProperties } from "react"
 import { Calendar as EventIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import EventCard from "@/components/events/EventCard/EventCard"
@@ -157,7 +157,7 @@ export const EventsList = ({
           <div
             key={event.id}
             ref={(el) => registerCardRef?.(index, el)}
-            style={{ "--stagger-index": Math.min(index, 12) } as React.CSSProperties}
+            style={{ "--stagger-index": Math.min(index, 12) } as CSSProperties}
             className={cn(
               "css-stagger-item",
               activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"

@@ -42,8 +42,12 @@
   },
   "filters": {
     "search": "Search events",
-    "type": "Type",
-    "location": "Location"
+    "location": "Location",
+    "dateRange": "Date",
+    "today": "Today",
+    "thisWeek": "This week",
+    "thisMonth": "This month",
+    "allDates": "All dates"
   },
   "actions": {
     "openCreate": "+ Add event"
@@ -78,7 +82,8 @@
   },
   "aria": {
     "clearSearch": "Clear search",
-    "openFilters": "Open filters panel"
+    "openFilters": "Open filters panel",
+    "categoryFilter": "Category filter"
   },
   "alt": {
     "preview": "Event image preview",

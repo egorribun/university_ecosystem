@@ -16,10 +16,19 @@ import {
 
 import { Button } from "@/components/ui"
 import { TextField } from "@/components/ui/TextField"
+import { cn } from "@/utils/cn"
+import type { EventDateRange } from "@/features/events/types"
+
+const DATE_OPTIONS: { value: EventDateRange; labelKey: string }[] = [
+  { value: "", labelKey: "events:filters.allDates" },
+  { value: "today", labelKey: "events:filters.today" },
+  { value: "week", labelKey: "events:filters.thisWeek" },
+  { value: "month", labelKey: "events:filters.thisMonth" },
+]
 
 type EventFilterPopoverProps = {
-  type: string
-  onTypeChange: (value: string) => void
+  dateRange: EventDateRange
+  onDateRangeChange: (value: EventDateRange) => void
   location: string
   onLocationChange: (value: string) => void
   placement?: Placement
@@ -30,8 +39,8 @@ type EventFilterPopoverProps = {
  * Returns `referenceProps` (spread onto the trigger button) and `popoverNode` (render in tree).
  */
 export function useEventFilterPopover({
-  type,
-  onTypeChange,
+  dateRange,
+  onDateRangeChange,
   location,
   onLocationChange,
   placement = "bottom-end",
@@ -39,7 +48,7 @@ export function useEventFilterPopover({
   const { t } = useTranslation(["events", "common"])
   const [isOpen, setIsOpen] = useState(false)
 
-  const filtersActive = Boolean(type?.trim() || location?.trim())
+  const filtersActive = Boolean(dateRange || location?.trim())
 
   const {
     refs: { setReference, setFloating },
@@ -60,7 +69,7 @@ export function useEventFilterPopover({
   const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role])
 
   const handleReset = () => {
-    onTypeChange("")
+    onDateRangeChange("")
     onLocationChange("")
   }
 
@@ -74,21 +83,42 @@ export function useEventFilterPopover({
           ref={setFloating}
           style={floatingStyles}
           {...getFloatingProps()}
-          className="z-modal min-w-64 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
+          className="z-modal min-w-64 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
         >
           <div className="space-y-4">
+            {/* Date range quick buttons */}
+            <fieldset>
+              <legend className="text-xs font-semibold text-(--text-secondary) mb-2">
+                {t("events:filters.dateRange")}
+              </legend>
+              <div className="flex flex-wrap gap-1.5">
+                {DATE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onDateRangeChange(opt.value)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-brand",
+                      dateRange === opt.value
+                        ? "bg-brand text-[var(--text-inverse)] shadow-sm"
+                        : "matte-chip text-(--text-secondary) hover:text-text-primary"
+                    )}
+                  >
+                    {t(opt.labelKey)}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            {/* Location filter */}
             <TextField
-              label={t("events:filters.type")}
-              value={type}
-              onChange={(event) => onTypeChange(event.target.value)}
-              fullWidth
-            />
-            <TextField
+              id="events-filter-location"
               label={t("events:filters.location")}
               value={location}
               onChange={(event) => onLocationChange(event.target.value)}
               fullWidth
             />
+
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={handleReset}>
                 {t("common:buttons.reset")}

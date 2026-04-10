@@ -10,9 +10,7 @@ const Events = () => {
       variant="full"
       seo={{
         title: t("events:pageTitle"),
-        description: t("events:pageDescription", {
-          defaultValue: "Upcoming events, lectures, and activities.",
-        }),
+        description: t("events:pageDescription"),
       }}
     >
       <EventsFeature />

@@ -38,7 +38,7 @@ export function EventEditDialog({
   setNewImage,
   previewUrl,
 }: EventEditDialogProps) {
-  const { t, i18n } = useTranslation()
+  const { t, i18n } = useTranslation(["events", "common"])
   const language = i18n.language
   const imageInputRef = useRef<HTMLInputElement>(null)
   const baseId = useId()

@@ -21,7 +21,7 @@ export function NewsDetailNavigation({
   return (
     <nav
       className="flex items-stretch gap-4 border-t border-glass-border/(--opacity-soft) pt-6"
-      aria-label={t("news:navigation.label", { defaultValue: "Article navigation" })}
+      aria-label={t("news:navigation.label")}
     >
       {prevId ? (
         <Link
@@ -30,7 +30,7 @@ export function NewsDetailNavigation({
           className="group flex flex-1 flex-col gap-1 rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) p-4 transition hover:shadow-glass hover:-translate-y-0.5"
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">
-            {t("news:navigation.prev", { defaultValue: "Previous" })}
+            {t("news:navigation.prev")}
           </span>
           <span className="text-sm font-semibold text-text-primary line-clamp-1 group-hover:text-brand transition-colors">
             {prevTitle}
@@ -47,7 +47,7 @@ export function NewsDetailNavigation({
           className="group flex flex-1 flex-col gap-1 rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) p-4 text-right transition hover:shadow-glass hover:-translate-y-0.5"
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">
-            {t("news:navigation.next", { defaultValue: "Next" })}
+            {t("news:navigation.next")}
           </span>
           <span className="text-sm font-semibold text-text-primary line-clamp-1 group-hover:text-brand transition-colors">
             {nextTitle}

@@ -190,10 +190,11 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
                 conditions = [or_(and_(*conditions), sim_score > 0.6)]
 
         if event_type:
+            safe_type = self._escape_like(event_type)
             conditions.append(
                 or_(
-                    Event.event_type == event_type,
-                    Event.event_type_en == event_type,
+                    Event.event_type.ilike(f"%{safe_type}%", escape="\\"),
+                    Event.event_type_en.ilike(f"%{safe_type}%", escape="\\"),
                 )
             )
 

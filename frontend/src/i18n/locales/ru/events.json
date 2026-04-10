@@ -42,8 +42,12 @@
   },
   "filters": {
     "search": "Поиск мероприятий",
-    "type": "Тип",
-    "location": "Место"
+    "location": "Место",
+    "dateRange": "Дата",
+    "today": "Сегодня",
+    "thisWeek": "Эта неделя",
+    "thisMonth": "Этот месяц",
+    "allDates": "Все даты"
   },
   "actions": {
     "openCreate": "+ Добавить мероприятие"
@@ -78,7 +82,8 @@
   },
   "aria": {
     "clearSearch": "Очистить поиск",
-    "openFilters": "Открыть панель фильтров"
+    "openFilters": "Открыть панель фильтров",
+    "categoryFilter": "Фильтр категорий"
   },
   "alt": {
     "preview": "Предпросмотр изображения события",
