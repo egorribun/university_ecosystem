@@ -1,10 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { defineConfig, loadEnv, PluginOption } from "vite"
+import { defineConfig, loadEnv, type PluginOption } from "vite"
 import react from "@vitejs/plugin-react"
+import babel from "@rolldown/plugin-babel"
 import wasm from "vite-plugin-wasm"
-import topLevelAwait from "vite-plugin-top-level-await"
 import { VitePWA } from "vite-plugin-pwa"
 import { TanStackRouterVite } from "@tanstack/router-vite-plugin"
 import { visualizer } from "rollup-plugin-visualizer"
@@ -66,10 +66,10 @@ const withGeneratedManifests = (): PluginOption => ({
   buildStart() {
     generateManifests({ publicDir, sourcePath: manifestSourcePath })
   },
-  handleHotUpdate(ctx) {
+  hotUpdate(ctx) {
     if (ctx.file === manifestSourcePath) {
       generateManifests({ publicDir, sourcePath: manifestSourcePath })
-      ctx.server?.ws.send({ type: "full-reload" })
+      this.environment.hot.send({ type: "full-reload" })
     }
   },
 })
@@ -144,23 +144,21 @@ export default defineConfig(({ mode }) => {
       quoteStyle: "double",
     }),
     wasm(),
-    topLevelAwait(),
     withGeneratedManifests(),
-    react({
-      babel: {
-        plugins: [
-          [
-            "babel-plugin-react-compiler",
-            {
-              // MOD-W5-08: Stable mode — compiler validates React rules and
-              // auto-memoizes; build fails on rule violations rather than
-              // silently skipping non-conforming components.
-              compilationMode: "infer",
-              panicThreshold: "CRITICAL_ERRORS",
-            },
-          ],
+    react(),
+    // MOD-W5-08: React Compiler via @rolldown/plugin-babel (plugin-react v6 uses Oxc,
+    // no longer bundles Babel). Stable mode — compiler validates React rules and
+    // auto-memoizes; build fails on rule violations rather than silently skipping.
+    babel({
+      plugins: [
+        [
+          "babel-plugin-react-compiler",
+          {
+            compilationMode: "infer",
+            panicThreshold: "CRITICAL_ERRORS",
+          },
         ],
-      },
+      ],
     }),
     VitePWA({
       registerType: "autoUpdate",
@@ -276,8 +274,11 @@ export default defineConfig(({ mode }) => {
       exclude: ["qrcode"],
     },
     modulepreload: { polyfill: false },
-    esbuild: {
-      pure: mode === "production" ? ["console.log", "console.debug"] : [],
+    oxc: {
+      define:
+        mode === "production"
+          ? { "console.log": "(() => {})", "console.debug": "(() => {})" }
+          : {},
     },
     build: {
       minify: true,
@@ -286,20 +287,27 @@ export default defineConfig(({ mode }) => {
       // so browsers and attackers cannot download the full TypeScript source.
       sourcemap: mode === "production" ? "hidden" : true,
       chunkSizeWarningLimit: 768,
-      rollupOptions: {
+      // Vite 8: rollupOptions → rolldownOptions (Rolldown replaces Rollup)
+      rolldownOptions: {
         output: {
-          manualChunks: {
-            "vendor-react": ["react", "react-dom", "react-router-dom"],
-            "vendor-ui": ["framer-motion", "lucide-react"],
-            "vendor-query": ["@tanstack/react-query"],
-            // PERF-05 (audit 2026-03-06): Split vendor-utils so Sentry and i18n
-            // don't share a chunk — a Sentry release bump no longer re-downloads i18n.
-            "vendor-sentry": ["@sentry/react"],
-            "vendor-i18n": ["i18next", "react-i18next"],
-            "vendor-http": ["axios"],
-            // TD-04 (audit 2026-03-06): @zxcvbn-ts/core removed from this chunk.
-            // Import it dynamically in password-entry components only (register / reset-password).
-            "vendor-security": ["@simplewebauthn/browser"],
+          // Vite 8: object-form manualChunks removed — use function form
+          manualChunks(id: string) {
+            if (
+              id.includes("node_modules/react-dom") ||
+              id.includes("node_modules/react/") ||
+              id.includes("node_modules/react-router-dom")
+            )
+              return "vendor-react"
+            if (id.includes("node_modules/framer-motion") || id.includes("node_modules/lucide-react"))
+              return "vendor-ui"
+            if (id.includes("node_modules/@tanstack/react-query")) return "vendor-query"
+            // PERF-05: Sentry isolated from i18n — release bump won't re-download i18n.
+            if (id.includes("node_modules/@sentry/react") || id.includes("node_modules/@sentry/core"))
+              return "vendor-sentry"
+            if (id.includes("node_modules/i18next") || id.includes("node_modules/react-i18next"))
+              return "vendor-i18n"
+            if (id.includes("node_modules/axios")) return "vendor-http"
+            if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
           },
         },
       },
