@@ -1,0 +1,170 @@
+{
+  "page": {
+    "title": "Campus map",
+    "badge": "Interactive",
+    "subtitle": "Navigate the campus — buildings, rooms, and key locations"
+  },
+  "campusMap": {
+    "ariaLabel": "Interactive isometric campus map with five buildings",
+    "groundLabel": "Campus grounds and pathways"
+  },
+  "buildings": {
+    "А": {
+      "name": "Building A — Main",
+      "description": "Administrative offices, admissions, student services, and the largest lecture halls. The central hub for all campus activities.",
+      "address": "109544, Moscow, Ryazansky Prospekt, 99",
+      "hours": "07:00–22:00",
+      "amenities": ["Elevator", "Wi-Fi", "Accessible", "ATM", "Info desk"]
+    },
+    "Б": {
+      "name": "Building B — Engineering",
+      "description": "Engineering and IT departments. Computer labs, server rooms, and the innovation center.",
+      "address": "Ryazansky Prospekt, 99, Building B",
+      "hours": "08:00–21:00",
+      "amenities": ["Elevator", "Wi-Fi", "Computer labs", "3D printing"]
+    },
+    "В": {
+      "name": "Building C — Humanities",
+      "description": "Languages, law, and social sciences. Seminar rooms, moot court, and the translation lab.",
+      "address": "Ryazansky Prospekt, 99, Building C",
+      "hours": "08:00–20:00",
+      "amenities": ["Wi-Fi", "Study rooms", "Vending machines"]
+    },
+    "Г": {
+      "name": "Building D — Science",
+      "description": "Natural sciences and mathematics. Research laboratories, lecture theatres, and the planetarium room.",
+      "address": "Ryazansky Prospekt, 99, Building D",
+      "hours": "08:00–21:00",
+      "amenities": ["Elevator", "Wi-Fi", "Labs", "Accessible"]
+    },
+    "Д": {
+      "name": "Building E — Arts & Sports",
+      "description": "Creative arts studios, the campus gymnasium, swimming pool, and the student club space.",
+      "address": "Ryazansky Prospekt, 99, Building E",
+      "hours": "07:00–22:00",
+      "amenities": ["Gym", "Pool", "Lockers", "Showers", "Stage"]
+    }
+  },
+  "rooms": {
+    "А-101": { "name": "Large Lecture Hall" },
+    "А-102": { "name": "Conference Room" },
+    "А-201": { "name": "Admissions Office" },
+    "А-202": { "name": "Student Services" },
+    "А-203": { "name": "Dean's Office" },
+    "А-301": { "name": "Lecture Room 301" },
+    "А-302": { "name": "Lecture Room 302" },
+    "А-303": { "name": "Faculty Lounge" },
+    "А-304": { "name": "Seminar Room 304" },
+    "А-305": { "name": "Seminar Room 305" },
+    "Б-101": { "name": "Computer Lab 1" },
+    "Б-102": { "name": "Computer Lab 2" },
+    "Б-103": { "name": "Innovation Center" },
+    "Б-201": { "name": "Server Room" },
+    "Б-202": { "name": "Network Lab" },
+    "Б-203": { "name": "Software Engineering Lab" },
+    "Б-301": { "name": "AI Research Lab" },
+    "Б-302": { "name": "Data Science Lab" },
+    "Б-303": { "name": "Electronics Workshop" },
+    "В-101": { "name": "Language Lab" },
+    "В-102": { "name": "Translation Studio" },
+    "В-201": { "name": "Moot Court" },
+    "В-202": { "name": "Law Library" },
+    "В-301": { "name": "Seminar Room 301" },
+    "В-302": { "name": "Seminar Room 302" },
+    "Г-101": { "name": "Physics Lab" },
+    "Г-102": { "name": "Chemistry Lab" },
+    "Г-201": { "name": "Biology Lab" },
+    "Г-202": { "name": "Math Lecture Hall" },
+    "Г-301": { "name": "Research Lab" },
+    "Г-302": { "name": "Planetarium Room" },
+    "Д-101": { "name": "Gymnasium" },
+    "Д-102": { "name": "Swimming Pool" },
+    "Д-201": { "name": "Art Studio" },
+    "Д-202": { "name": "Music Room" },
+    "Д-301": { "name": "Dance Studio" },
+    "Д-302": { "name": "Student Club" }
+  },
+  "roomTypes": {
+    "lecture": "Lecture hall",
+    "lab": "Laboratory",
+    "office": "Office",
+    "seminar": "Seminar room",
+    "library": "Library",
+    "sports": "Sports facility",
+    "cafeteria": "Cafeteria",
+    "admin": "Administration",
+    "study": "Study space",
+    "other": "Other"
+  },
+  "categories": {
+    "all": "All",
+    "study": "Study",
+    "food": "Dining",
+    "sports": "Sports",
+    "services": "Services",
+    "housing": "Housing",
+    "events": "Events"
+  },
+  "sidebar": {
+    "title": "Details",
+    "hours": "Hours",
+    "amenities": "Amenities",
+    "rooms": "Rooms",
+    "roomCount": "{{count}} rooms",
+    "floor": "Floor {{number}}",
+    "capacity": "Capacity: {{count}}",
+    "type": "Type",
+    "close": "Close sidebar",
+    "emptyState": "Select a building or room to see details"
+  },
+  "search": {
+    "placeholder": "Search buildings and rooms…",
+    "ariaLabel": "Search campus map",
+    "noResults": "No results found",
+    "groupBuildings": "Buildings",
+    "groupRooms": "Rooms"
+  },
+  "floorPlan": {
+    "title": "Floor plan — {{building}}",
+    "ariaLabel": "Floor plan of {{building}}, floor {{floor}}",
+    "backToCampus": "Back to campus",
+    "floorLabel": "Floor {{number}}",
+    "selectFloor": "Select floor"
+  },
+  "schedule": {
+    "widgetTitle": "Next class",
+    "noUpcoming": "No upcoming classes today",
+    "showOnMap": "Show on map",
+    "inTime": "in {{time}}",
+    "room": "Room {{room}}"
+  },
+  "layers": {
+    "campus": "Campus",
+    "floorplan": "Floor plan",
+    "ariaLabel": "Map view mode"
+  },
+  "zoom": {
+    "in": "Zoom in",
+    "out": "Zoom out",
+    "reset": "Reset view",
+    "ariaLabel": "Map zoom controls"
+  },
+  "tooltip": {
+    "clickToExplore": "Click to explore",
+    "floors": "{{count}} floors",
+    "rooms": "{{count}} rooms"
+  },
+  "poi": {
+    "cafeteria": "Cafeteria",
+    "library": "Library",
+    "sports": "Sports complex",
+    "dormitory": "Dormitory",
+    "parking": "Parking"
+  },
+  "a11y": {
+    "mapNavInstructions": "Use Tab to move between buildings. Press Enter to view floor plan. Press Escape to return.",
+    "buildingSelected": "{{name}} selected. {{floors}} floors, {{rooms}} rooms.",
+    "roomSelected": "Room {{room}} selected. {{type}}.",
+    "scheduleHighlight": "Your next class is in {{room}}."
+  }
+}

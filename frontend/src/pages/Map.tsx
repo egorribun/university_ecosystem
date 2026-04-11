@@ -2,48 +2,25 @@ import { Suspense, lazy } from "react"
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { Skeleton } from "@/components/ui"
-import useMediaQuery from "@/hooks/useMediaQuery"
-import { breakpoints } from "@/theme/tokens"
 
-const MapContent = lazy(() => import("./MapContent"))
-
-const ICON_SIZES = { mobile: 26, desktop: 34 }
+const MapFeature = lazy(() =>
+  import("@/features/map/MapFeature").then((m) => ({ default: m.MapFeature })),
+)
 
 function MapSkeleton() {
-  const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
-  const iconSize = isMobile ? ICON_SIZES.mobile : ICON_SIZES.desktop
-
   return (
-    <div className="w-full max-w-(--layout-max-modal) z-modal text-text-primary rounded-none shadow-2xl overflow-hidden relative">
-      <div className="map-page bg-page relative h-full w-full">
-        <div className="glass glass--panel glass--sheen map-head flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0 z-navbar">
-          <div className="flex items-center gap-3">
-            <Skeleton className="rounded-full" style={{ width: iconSize, height: iconSize }} />
-            <Skeleton className={isMobile ? "h-8 w-40" : "h-10 w-60"} />
-          </div>
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-10 w-10 rounded-sm" />
-            <Skeleton className="h-10 w-10 rounded-sm" />
-          </div>
-        </div>
-
-        <Skeleton className="absolute inset-0 w-full h-full z-base" />
-
-        <div className="absolute inset-0 z-sidebar grid place-items-center bg-background/(--opacity-heavy) backdrop-blur-sm">
-          <Skeleton className="h-16 w-16 rounded-full" />
-        </div>
-
-        <div className="absolute inset-0 pointer-events-none" />
-
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-md p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
-              <Skeleton className={isMobile ? "h-8 w-36" : "h-10 w-52"} />
-              <Skeleton className="h-10 w-10 rounded-sm" />
-            </div>
-          </div>
+    <div className="map-theme aurora-mesh relative w-full py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14">
+      {/* Header skeleton */}
+      <div className="flex items-center gap-4 mb-8">
+        <Skeleton className="hidden sm:block h-14 w-14 rounded-xl" />
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-5 w-96" />
         </div>
       </div>
+
+      {/* Map viewport skeleton */}
+      <Skeleton className="w-full rounded-xl" style={{ minHeight: "560px" }} />
     </div>
   )
 }
@@ -53,7 +30,7 @@ export default function MapPage() {
     <Layout>
       <PageFadeIn>
         <Suspense fallback={<MapSkeleton />}>
-          <MapContent />
+          <MapFeature />
         </Suspense>
       </PageFadeIn>
     </Layout>

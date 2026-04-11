@@ -1,0 +1,521 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   Parity with activity.css / schedule.css pattern.
+   ═══════════════════════════════════════════════════════ */
+@property --map-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --map-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --map-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --map-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     MAP PAGE TOKENS
+     Scoped under .map-theme — mirrors activity.css structure.
+     Teal/cyan palette — navigation, wayfinding, campus.
+     Distinct from Dashboard (blue), News (indigo), Events (amber),
+     Activity (emerald), Schedule (sky).
+     ═══════════════════════════════════════════════════════ */
+  .map-theme {
+    /* ── Typography ─────────────────────────────────── */
+    --fs-map-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-map-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-map-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
+
+    /* ── Orbs (teal/cyan palette) ───────────────────── */
+    --map-hero-orb: color-mix(in srgb, var(--color-teal-400) 10%, transparent);
+    --map-hero-highlight: color-mix(in srgb, var(--color-cyan-400) 6%, transparent);
+    --map-orb-1: color-mix(in srgb, var(--color-teal-400) 12%, transparent);
+    --map-orb-2: color-mix(in srgb, var(--color-cyan-400) 8%, transparent);
+    --map-orb-3: color-mix(in srgb, var(--color-teal-500) 6%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-map-conic: conic-gradient(
+      from 180deg at 50% 50%,
+      var(--map-orb-1),
+      var(--map-orb-2),
+      transparent 85%
+    );
+    --map-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-teal-400) 50%,
+      transparent 90%
+    );
+
+    /* ── Building colors (match buildingIcons.ts) ──── */
+    --map-bldg-a: var(--color-blue-500);
+    --map-bldg-b: var(--color-emerald-500);
+    --map-bldg-c: var(--color-amber-500);
+    --map-bldg-d: var(--color-violet-500);
+    --map-bldg-e: var(--color-rose-500);
+
+    /* ── Matte card system ────────────────────────── */
+    --map-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-teal-50) 4%);
+    --map-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --map-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent),
+      0 8px 24px color-mix(in srgb, black 5%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+    --map-card-glow: color-mix(in srgb, var(--color-teal-400) 8%, transparent);
+
+    /* ── SVG campus tokens (light) ───────────────── */
+    --map-svg-ground: var(--color-slate-100);
+    --map-svg-ground-accent: color-mix(in srgb, var(--color-teal-100) 30%, var(--color-slate-100) 70%);
+    --map-svg-path: color-mix(in srgb, var(--color-slate-300) 50%, transparent);
+    --map-svg-path-stroke: var(--color-slate-300);
+    --map-svg-roof-opacity: 0.9;
+    --map-svg-wall-darken: 15%;
+    --map-svg-label: white;
+    --map-svg-shadow: color-mix(in srgb, black 12%, transparent);
+
+    /* ── Floor plan tokens ────────────────────────── */
+    --map-room-fill: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+    --map-room-fill-hover: color-mix(in srgb, var(--bg-surface-hover) 90%, transparent);
+    --map-room-fill-active: color-mix(in srgb, var(--color-teal-400) 15%, var(--bg-surface));
+    --map-room-fill-schedule: color-mix(in srgb, var(--color-brand) 12%, var(--bg-surface));
+    --map-room-stroke: var(--color-slate-300);
+    --map-room-stroke-active: var(--color-teal-500);
+    --map-room-stroke-schedule: var(--color-brand);
+    --map-room-label: var(--color-slate-600);
+
+    /* ── Sidebar ──────────────────────────────────── */
+    --map-sidebar-bg: var(--bg-surface);
+    --map-sidebar-shadow:
+      -4px 0 16px color-mix(in srgb, black 6%, transparent),
+      -1px 0 4px color-mix(in srgb, black 3%, transparent);
+
+    /* ── Search ───────────────────────────────────── */
+    --map-search-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-100) 10%);
+    --map-search-shadow: var(--map-card-shadow);
+
+    /* ── Tooltip ──────────────────────────────────── */
+    --map-tooltip-bg: var(--bg-surface);
+    --map-tooltip-shadow:
+      0 2px 8px color-mix(in srgb, black 10%, transparent),
+      0 1px 2px color-mix(in srgb, black 6%, transparent);
+
+    /* ── Schedule widget accent ───────────────────── */
+    --map-schedule-accent: var(--color-brand);
+    --map-schedule-bg: color-mix(in srgb, var(--color-brand) 8%, var(--bg-surface));
+
+    /* ── Skeleton ─────────────────────────────────── */
+    --map-skeleton-bg: color-mix(in srgb, var(--color-teal-200) 20%, var(--color-slate-200) 80%);
+
+    /* ── Zoom controls ────────────────────────────── */
+    --map-zoom-bg: var(--map-card-bg);
+    --map-zoom-shadow: var(--map-card-shadow);
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .map-theme {
+    --map-hero-orb: color-mix(in srgb, var(--color-teal-400) 16%, transparent);
+    --map-hero-highlight: color-mix(in srgb, var(--color-cyan-400) 10%, transparent);
+    --map-orb-1: color-mix(in srgb, var(--color-teal-400) 18%, transparent);
+    --map-orb-2: color-mix(in srgb, var(--color-cyan-400) 14%, transparent);
+    --map-orb-3: color-mix(in srgb, var(--color-teal-500) 10%, transparent);
+    --map-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-teal-900) 5%);
+    --map-card-shadow:
+      0 1px 2px color-mix(in srgb, black 20%, transparent),
+      0 4px 12px color-mix(in srgb, black 15%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    --map-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 25%, transparent),
+      0 8px 24px color-mix(in srgb, black 20%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+    --map-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-teal-500) 50%,
+      transparent 90%
+    );
+    --map-card-glow: color-mix(in srgb, var(--color-teal-400) 12%, transparent);
+
+    /* SVG dark overrides */
+    --map-svg-ground: var(--color-slate-800);
+    --map-svg-ground-accent: color-mix(in srgb, var(--color-teal-900) 30%, var(--color-slate-800) 70%);
+    --map-svg-path: color-mix(in srgb, var(--color-slate-600) 50%, transparent);
+    --map-svg-path-stroke: var(--color-slate-600);
+    --map-svg-wall-darken: 25%;
+    --map-svg-shadow: color-mix(in srgb, black 25%, transparent);
+
+    /* Floor plan dark */
+    --map-room-fill: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+    --map-room-fill-hover: color-mix(in srgb, var(--bg-surface-hover) 75%, transparent);
+    --map-room-fill-active: color-mix(in srgb, var(--color-teal-400) 20%, var(--bg-surface));
+    --map-room-stroke: var(--color-slate-600);
+    --map-room-label: var(--color-slate-400);
+
+    /* Sidebar dark */
+    --map-sidebar-shadow:
+      -4px 0 16px color-mix(in srgb, black 20%, transparent),
+      -1px 0 4px color-mix(in srgb, black 12%, transparent);
+
+    /* Search dark */
+    --map-search-bg: color-mix(in srgb, var(--bg-surface) 85%, var(--color-slate-700) 15%);
+
+    /* Tooltip dark */
+    --map-tooltip-shadow:
+      0 2px 8px color-mix(in srgb, black 25%, transparent),
+      0 1px 2px color-mix(in srgb, black 15%, transparent);
+
+    /* Schedule widget dark */
+    --map-schedule-bg: color-mix(in srgb, var(--color-brand) 12%, var(--bg-surface));
+
+    /* Skeleton dark */
+    --map-skeleton-bg: color-mix(in srgb, var(--color-teal-900) 20%, var(--color-slate-700) 80%);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MATTE CARD
+   Shadow-based depth — no borders, no backdrop-blur.
+   --_accent scopes top gradient color per card type.
+   ═══════════════════════════════════════════════════════ */
+
+.map-card-matte {
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow);
+  border-radius: var(--radius-xl, 1rem);
+  overflow: clip;
+  position: relative;
+  transition: transform 0.2s var(--ease-premium, ease-out),
+              box-shadow 0.2s var(--ease-premium, ease-out);
+}
+
+.map-card-matte::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--_accent, var(--color-teal-500)), transparent 80%);
+  opacity: 0.7;
+}
+
+.map-card-matte:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--map-card-shadow-hover);
+}
+
+.map-card-matte:active {
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════════════════
+   BADGE MATTE (header icon)
+   ═══════════════════════════════════════════════════════ */
+
+.map-badge-matte {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 40%, transparent),
+    0 1px 3px color-mix(in srgb, black 8%, transparent),
+    0 2px 8px color-mix(in srgb, black 4%, transparent);
+  border-radius: var(--radius-lg, 0.75rem);
+}
+
+.dark .map-badge-matte {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+    0 1px 3px color-mix(in srgb, black 30%, transparent),
+    0 2px 8px color-mix(in srgb, black 20%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   BUILDING SVG INTERACTIONS
+   ═══════════════════════════════════════════════════════ */
+
+.map-building-group {
+  cursor: pointer;
+  transition: filter 0.2s var(--ease-premium, ease-out),
+              transform 0.2s var(--ease-premium, ease-out);
+}
+
+.map-building-group:hover,
+.map-building-group:focus-visible {
+  filter: drop-shadow(0 0 12px var(--_bldg-color, var(--color-teal-400)));
+}
+
+.map-building-group[data-active="true"] {
+  filter: drop-shadow(0 0 20px var(--_bldg-color, var(--color-teal-400)));
+}
+
+.map-building-group:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Building pulse for schedule-highlighted building */
+@keyframes map-building-pulse {
+  0%, 100% { filter: drop-shadow(0 0 12px var(--_bldg-color, var(--color-brand))); }
+  50% { filter: drop-shadow(0 0 24px var(--_bldg-color, var(--color-brand))); }
+}
+
+.map-building-group[data-schedule="true"] {
+  animation: map-building-pulse 2s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════
+   FLOOR PLAN ROOM INTERACTIONS
+   ═══════════════════════════════════════════════════════ */
+
+.map-room {
+  fill: var(--map-room-fill);
+  stroke: var(--map-room-stroke);
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+.map-room:hover {
+  fill: var(--map-room-fill-hover);
+}
+
+.map-room[data-active="true"] {
+  fill: var(--map-room-fill-active);
+  stroke: var(--map-room-stroke-active);
+  stroke-width: 2;
+}
+
+.map-room[data-schedule="true"] {
+  fill: var(--map-room-fill-schedule);
+  stroke: var(--map-room-stroke-schedule);
+  stroke-width: 2;
+}
+
+/* Room pulse for schedule-highlighted room */
+@keyframes map-room-pulse {
+  0%, 100% { stroke-opacity: 1; }
+  50% { stroke-opacity: 0.4; }
+}
+
+.map-room[data-schedule="true"] {
+  animation: map-room-pulse 2s ease-in-out infinite;
+}
+
+.map-room:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   LAYER TOGGLE (campus/floor pills)
+   ═══════════════════════════════════════════════════════ */
+
+.map-layer-toggle {
+  background: var(--map-search-bg);
+  box-shadow: var(--map-card-shadow);
+  border-radius: 9999px;
+  padding: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   CATEGORY FILTER CHIPS
+   ═══════════════════════════════════════════════════════ */
+
+.map-category-chip {
+  background: color-mix(in srgb, var(--bg-surface-hover) 60%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 6%, transparent),
+    0 2px 6px color-mix(in srgb, black 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 600;
+  transition: box-shadow 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.map-category-chip:hover {
+  background: color-mix(in srgb, var(--bg-surface-hover) 80%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 8%, transparent),
+    0 4px 12px color-mix(in srgb, black 5%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  transform: translateY(-1px);
+}
+
+.map-category-chip[data-active="true"] {
+  background: color-mix(in srgb, var(--color-teal-500) 15%, var(--bg-surface));
+  color: var(--color-teal-500);
+}
+
+.dark .map-category-chip[data-active="true"] {
+  background: color-mix(in srgb, var(--color-teal-400) 20%, var(--bg-surface));
+  color: var(--color-teal-400);
+}
+
+/* ═══════════════════════════════════════════════════════
+   SCHEDULE WIDGET
+   ═══════════════════════════════════════════════════════ */
+
+.map-schedule-widget {
+  background: var(--map-schedule-bg);
+  box-shadow: var(--map-card-shadow);
+  border-radius: var(--radius-xl, 1rem);
+  overflow: clip;
+  position: relative;
+}
+
+.map-schedule-widget::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--map-schedule-accent), transparent 80%);
+  opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ZOOM CONTROLS
+   ═══════════════════════════════════════════════════════ */
+
+.map-zoom-controls {
+  background: var(--map-zoom-bg);
+  box-shadow: var(--map-zoom-shadow);
+  border-radius: var(--radius-lg, 0.75rem);
+}
+
+.map-zoom-btn {
+  transition: background-color 0.15s ease;
+}
+
+.map-zoom-btn:hover {
+  background: var(--bg-surface-hover);
+}
+
+.map-zoom-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: -2px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   STAGGER ANIMATION (CSS-only)
+   ═══════════════════════════════════════════════════════ */
+
+.map-stagger-item {
+  animation: map-card-enter 0.4s var(--ease-premium, ease-out) both;
+  animation-delay: min(calc(var(--stagger-index, 0) * 60ms), 360ms);
+}
+
+@keyframes map-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@starting-style {
+  .map-stagger-item {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTAINER QUERIES
+   ═══════════════════════════════════════════════════════ */
+
+.map-sidebar-container {
+  container-type: inline-size;
+  container-name: map-sidebar;
+}
+
+@container map-sidebar (max-width: 280px) {
+  .map-card-matte .map-amenities { display: none; }
+  .map-card-matte .map-hours { display: none; }
+}
+
+@container map-sidebar (max-width: 320px) {
+  .map-card-matte .map-amenities { flex-direction: column; align-items: flex-start; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .map-card-matte:hover {
+    transform: none;
+  }
+  .map-category-chip:hover {
+    transform: none;
+  }
+  .map-building-group {
+    transition: none;
+  }
+  .map-building-group:hover,
+  .map-building-group:focus-visible {
+    filter: none;
+  }
+  .map-building-group[data-schedule="true"] {
+    animation: none;
+  }
+  .map-room {
+    transition: none;
+  }
+  .map-room[data-schedule="true"] {
+    animation: none;
+  }
+  .map-stagger-item {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT
+   ═══════════════════════════════════════════════════════ */
+
+@media print {
+  .map-theme.map-theme {
+    background: white;
+    color: black;
+  }
+  .map-theme.map-theme .aurora-mesh::before,
+  .map-theme.map-theme .aurora-mesh::after,
+  .map-theme.map-theme [aria-hidden="true"]:not([role="img"]) {
+    display: none;
+  }
+  .map-card-matte.map-card-matte {
+    box-shadow: 0 0 0 1px var(--color-slate-200);
+    break-inside: avoid;
+  }
+  .map-card-matte.map-card-matte:hover {
+    transform: none;
+  }
+  .map-zoom-controls.map-zoom-controls {
+    display: none;
+  }
+  .map-layer-toggle.map-layer-toggle {
+    display: none;
+  }
+  .map-schedule-widget.map-schedule-widget {
+    box-shadow: 0 0 0 1px var(--color-slate-200);
+  }
+  .map-building-group {
+    filter: none;
+  }
+  .map-theme.map-theme svg {
+    color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
