@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, lazy, Suspense } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -24,18 +24,37 @@ import {
   type CampusBuilding,
 } from "@/data/campusBuildings"
 import FadeSection from "@/components/motion/FadeSection"
+import { CAMPUS_COORDINATES } from "@/constants/campus"
+import type { MapRef } from "react-map-gl/maplibre"
 
-export type MapViewMode = "campus" | "floorplan"
+export type MapViewMode = "campus" | "floorplan" | "map"
+
+/* ── Reactive dark mode detection ── */
+function subscribeToDarkMode(cb: () => void) {
+  const mq = window.matchMedia("(prefers-color-scheme: dark)")
+  mq.addEventListener("change", cb)
+  const observer = new MutationObserver(cb)
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+  return () => { mq.removeEventListener("change", cb); observer.disconnect() }
+}
+function getIsDark() {
+  return document.documentElement.classList.contains("dark")
+}
+const SERVER_SNAPSHOT = false
+
+/** Lazy-load MapLibre GL — CSS + JS only loaded when map mode is activated */
+const MapLibreMapComponent = lazy(() => import("@/components/map/MapLibreMap"))
 
 /**
  * MapFeature — central orchestrator for the campus map page.
- * Mirrors EventsFeature pattern: .map-theme, backdrop, z-stacking.
+ * Three view modes: map (MapLibre GL), campus (isometric SVG), floorplan.
  */
 export function MapFeature() {
   const { t, i18n } = useTranslation("map")
   const prefersReducedMotion = useReducedMotion() ?? false
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const timePeriod = useTimeOfDay()
+  const isDark = useSyncExternalStore(subscribeToDarkMode, getIsDark, () => SERVER_SNAPSHOT)
 
   /* ── Campus data ── */
   const buildings = useMemo(
@@ -44,7 +63,7 @@ export function MapFeature() {
   )
 
   /* ── View state ── */
-  const [viewMode, setViewMode] = useState<MapViewMode>("campus")
+  const [viewMode, setViewMode] = useState<MapViewMode>("map")
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingLetter | null>(null)
   const [selectedFloor, setSelectedFloor] = useState<number>(1)
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
@@ -54,7 +73,7 @@ export function MapFeature() {
   /* ── Schedule integration ── */
   const nextLessonInfo = useNextLesson()
 
-  /* ── Zoom/Pan ── */
+  /* ── Zoom/Pan (isometric SVG mode) ── */
   const {
     containerRef: mapContainerRef,
     zoomIn, zoomOut, resetView,
@@ -62,13 +81,19 @@ export function MapFeature() {
     canZoomIn, canZoomOut, isZoomed,
   } = useMapNavigation()
 
+  /* ── MapLibre GL map ref (map mode) ── */
+  const mapLibreRef = useRef<MapRef | null>(null)
+
   /* ── Building selection ── */
   const handleBuildingClick = useCallback((letter: BuildingLetter) => {
     setSelectedBuilding(letter)
     setSelectedFloor(1)
     setSelectedRoom(null)
-    setViewMode("floorplan")
-  }, [])
+    // In map mode, just select — don't switch to floorplan
+    if (viewMode !== "map") {
+      setViewMode("floorplan")
+    }
+  }, [viewMode])
 
   const handleBackToCampus = useCallback(() => {
     setViewMode("campus")
@@ -97,15 +122,33 @@ export function MapFeature() {
     [],
   )
 
-  /* ── Escape key → back to campus ── */
+  /* ── Mode switching ── */
+  const handleModeToggle = useCallback((mode: MapViewMode) => {
+    if (mode === "campus") {
+      setViewMode("campus")
+      // Keep selectedBuilding if coming from floorplan
+    } else if (mode === "floorplan" && selectedBuilding) {
+      setViewMode("floorplan")
+    } else if (mode === "map") {
+      setViewMode("map")
+    }
+  }, [selectedBuilding])
+
+  /* ── Escape key → back ── */
   useEffect(() => {
-    if (viewMode !== "floorplan") return
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") handleBackToCampus()
+      if (e.key === "Escape") {
+        if (viewMode === "floorplan") {
+          setViewMode("campus")
+          setSelectedBuilding(null)
+          setSelectedFloor(1)
+          setSelectedRoom(null)
+        }
+      }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [viewMode, handleBackToCampus])
+  }, [viewMode])
 
   /* ── Category filtering ── */
   const filteredBuildings = useMemo(() => {
@@ -123,6 +166,31 @@ export function MapFeature() {
     () => currentBuilding?.floors.find((f) => f.floor === selectedFloor),
     [currentBuilding, selectedFloor],
   )
+
+  /* ── Zoom controls bridging ── */
+  const handleZoomIn = useCallback(() => {
+    if (viewMode === "map" && mapLibreRef.current) {
+      mapLibreRef.current.getMap().zoomIn()
+    } else {
+      zoomIn()
+    }
+  }, [viewMode, zoomIn])
+
+  const handleZoomOut = useCallback(() => {
+    if (viewMode === "map" && mapLibreRef.current) {
+      mapLibreRef.current.getMap().zoomOut()
+    } else {
+      zoomOut()
+    }
+  }, [viewMode, zoomOut])
+
+  const handleResetView = useCallback(() => {
+    if (viewMode === "map" && mapLibreRef.current) {
+      mapLibreRef.current.flyTo({ center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat], zoom: 16, pitch: 45, bearing: 0, duration: 600 })
+    } else {
+      resetView()
+    }
+  }, [viewMode, resetView])
 
   return (
     <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip" data-time-period={timePeriod}>
@@ -147,43 +215,61 @@ export function MapFeature() {
           </div>
         </FadeSection>
 
-        {/* Layer toggle */}
-        {currentBuilding && (
-          <FadeSection delay="160ms" className="mb-4 flex items-center gap-3">
-            <MapLayerToggle
-              viewMode={viewMode}
-              onToggle={(mode) => {
-                if (mode === "campus") handleBackToCampus()
-                else if (selectedBuilding) setViewMode("floorplan")
-              }}
-              buildingName={currentBuilding.name}
-            />
-          </FadeSection>
-        )}
+        {/* Layer toggle — always visible now (3 modes) */}
+        <FadeSection delay="160ms" className="mb-4 flex items-center gap-3">
+          <MapLayerToggle
+            viewMode={viewMode}
+            onToggle={handleModeToggle}
+            buildingName={currentBuilding?.name}
+            showFloorplan={!!currentBuilding}
+          />
+        </FadeSection>
 
         {/* Map viewport + sidebar layout */}
         <FadeSection delay="180ms">
-          <div className={`flex gap-4 ${!isNarrow && currentBuilding ? "flex-row" : "flex-col"}`}>
+          <div className={`flex gap-4 ${!isNarrow && currentBuilding && viewMode !== "map" ? "flex-row" : "flex-col"}`}>
           <div
             className="map-card-matte flex-1 min-w-0 overflow-hidden relative"
             style={{ minHeight: isNarrow ? "400px" : "560px" }}
           >
             {/* Zoom controls — bottom right */}
-            {viewMode === "campus" && (
-              <div className="absolute bottom-4 right-4 z-10">
-                <MapZoomControls
-                  onZoomIn={zoomIn}
-                  onZoomOut={zoomOut}
-                  onReset={resetView}
-                  canZoomIn={canZoomIn}
-                  canZoomOut={canZoomOut}
-                  isZoomed={isZoomed}
-                />
-              </div>
-            )}
+            <div className="absolute bottom-4 right-4 z-10">
+              <MapZoomControls
+                onZoomIn={handleZoomIn}
+                onZoomOut={handleZoomOut}
+                onReset={handleResetView}
+                canZoomIn={viewMode === "map" ? true : canZoomIn}
+                canZoomOut={viewMode === "map" ? true : canZoomOut}
+                isZoomed={viewMode === "map" ? true : isZoomed}
+              />
+            </div>
 
             <AnimatePresence mode="wait" initial={false}>
-              {viewMode === "campus" ? (
+              {viewMode === "map" ? (
+                <motion.div
+                  key="maplibre-map"
+                  initial={prefersReducedMotion ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+                  transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
+                  className="h-full min-h-[inherit]"
+                >
+                  <Suspense fallback={
+                    <div className="h-full min-h-[inherit] flex items-center justify-center">
+                      <div className="map-poi-chip animate-pulse">{t("poi.loading")}</div>
+                    </div>
+                  }>
+                    <MapLibreMapComponent
+                      selectedBuilding={selectedBuilding}
+                      activeCategory={activeCategory}
+                      highlightedBuilding={nextLessonInfo?.building ?? hoveredBuilding}
+                      onSelectBuilding={handleBuildingClick}
+                      mapRef={mapLibreRef}
+                      isDark={isDark}
+                    />
+                  </Suspense>
+                </motion.div>
+              ) : viewMode === "campus" ? (
                 <motion.div
                   key="campus"
                   initial={prefersReducedMotion ? false : { scale: 0.98, opacity: 0 }}
@@ -260,7 +346,7 @@ export function MapFeature() {
           </div>
 
           {/* Sidebar — desktop: inline panel, mobile: bottom sheet */}
-          {currentBuilding && (
+          {currentBuilding && viewMode !== "map" && (
             isNarrow ? (
               <MapSidebar
                 building={currentBuilding}
@@ -280,6 +366,18 @@ export function MapFeature() {
                 isMobile={false}
               />
             )
+          )}
+
+          {/* Sidebar in map mode — show building info when selected */}
+          {currentBuilding && viewMode === "map" && !isNarrow && (
+            <MapSidebar
+              building={currentBuilding}
+              floor={currentFloor}
+              selectedRoom={selectedRoom}
+              onRoomClick={handleRoomClick}
+              onClose={() => setSelectedBuilding(null)}
+              isMobile={false}
+            />
           )}
           </div>
         </FadeSection>

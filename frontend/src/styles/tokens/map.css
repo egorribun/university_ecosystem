@@ -63,13 +63,6 @@
       transparent 90%
     );
 
-    /* ── Building colors (match buildingIcons.ts) ──── */
-    --map-bldg-a: var(--color-blue-500);
-    --map-bldg-b: var(--color-emerald-500);
-    --map-bldg-c: var(--color-amber-500);
-    --map-bldg-d: var(--color-violet-500);
-    --map-bldg-e: var(--color-rose-500);
-
     /* ── Matte card system ────────────────────────── */
     --map-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-teal-50) 4%);
     --map-card-shadow:
@@ -141,6 +134,29 @@
     --map-svg-window-opacity: 0.15;
     --map-svg-tree: var(--color-emerald-400);
     --map-svg-bench: var(--color-slate-400);
+
+    /* ── Building colors (8 real GUU buildings) ───── */
+    --map-bldg-a: var(--color-blue-500);      /* ГУК (main) */
+    --map-bldg-b: var(--color-amber-500);     /* Lecture halls */
+    --map-bldg-c: var(--color-emerald-500);   /* Labs */
+    --map-bldg-d: var(--color-slate-500);     /* Admin */
+    --map-bldg-e: var(--color-rose-500);      /* Sports */
+    --map-bldg-f: var(--color-indigo-500);    /* Dorm 2 */
+    --map-bldg-g: var(--color-sky-500);       /* Dorm 6 */
+    --map-bldg-h: var(--color-violet-500);    /* Institute */
+
+    /* ── POI tokens (Leaflet map mode) ───────────── */
+    --map-poi-transport: var(--color-blue-500);
+    --map-poi-food: var(--color-amber-500);
+    --map-poi-shop: var(--color-violet-500);
+    --map-poi-service: var(--color-emerald-500);
+    --map-poi-campus: var(--color-teal-500);
+    --map-poi-popup-bg: var(--map-card-bg);
+    --map-poi-popup-shadow: var(--map-card-shadow);
+    --map-poi-marker-size: 32px;
+
+    /* ── Leaflet overrides ───────────────────────── */
+    --map-attribution-bg: color-mix(in srgb, var(--bg-surface) 80%, transparent);
   }
 
   /* ── Dark Theme Overrides ──────────────────────── */
@@ -617,4 +633,111 @@
     color-adjust: exact;
     print-color-adjust: exact;
   }
+  .maplibre-map-wrapper {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAPLIBRE GL OVERRIDES — scoped to .map-theme
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme .maplibregl-map {
+  font-family: var(--font-ui), Inter, system-ui, sans-serif;
+}
+
+/* Popup → matte card style */
+.map-theme .maplibregl-popup-content {
+  background: var(--map-poi-popup-bg, var(--bg-surface));
+  color: var(--text-primary);
+  border-radius: 12px;
+  box-shadow: var(--map-poi-popup-shadow, 0 4px 12px rgba(0,0,0,0.1));
+  padding: 12px 14px;
+  border: none;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.map-theme .maplibregl-popup-tip {
+  border-top-color: var(--map-poi-popup-bg, var(--bg-surface));
+}
+.map-theme .maplibregl-popup-close-button {
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  padding: 4px 8px;
+}
+.map-theme .maplibregl-popup-close-button:hover {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+/* Attribution → subtle */
+.map-theme .maplibregl-ctrl-attrib {
+  background: var(--map-attribution-bg, rgba(255,255,255,0.8));
+  font-size: 0.625rem;
+  border-radius: 4px 0 0 0;
+}
+.map-theme .maplibregl-ctrl-attrib a {
+  color: var(--text-secondary);
+}
+
+/* Hide default navigation/compass controls (we use MapZoomControls) */
+.map-theme .maplibregl-ctrl-group {
+  display: none;
+}
+
+/* POI controls overlay */
+.map-poi-controls {
+  background: var(--map-card-bg);
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: var(--map-card-shadow);
+  backdrop-filter: blur(8px);
+}
+
+.map-poi-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.map-poi-chip:hover {
+  background: var(--bg-surface-hover);
+}
+.map-poi-chip[data-active] {
+  background: var(--map-layer-active-bg);
+  color: var(--map-on-accent);
+}
+
+.map-poi-load-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--map-poi-campus) 12%, var(--bg-surface));
+  color: var(--map-poi-campus);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.map-poi-load-more:hover {
+  background: color-mix(in srgb, var(--map-poi-campus) 20%, var(--bg-surface));
+}
+.map-poi-load-more:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+/* Popup content styling */
+.map-popup-content {
+  min-width: 160px;
+  max-width: 240px;
 }

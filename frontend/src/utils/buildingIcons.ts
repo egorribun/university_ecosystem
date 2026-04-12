@@ -20,10 +20,13 @@ export interface BuildingRoom {
  */
 const BUILDING_COLORS: Record<string, { colorVar: string; colorHex: string }> = {
   А: { colorVar: "var(--color-blue-500)", colorHex: "#3b82f6" },
-  Б: { colorVar: "var(--color-emerald-500)", colorHex: "#10b981" },
-  В: { colorVar: "var(--color-amber-500)", colorHex: "#f59e0b" },
-  Г: { colorVar: "var(--color-violet-500)", colorHex: "#8b5cf6" },
+  Б: { colorVar: "var(--color-amber-500)", colorHex: "#f59e0b" },
+  В: { colorVar: "var(--color-emerald-500)", colorHex: "#10b981" },
+  Г: { colorVar: "var(--color-slate-500)", colorHex: "#64748b" },
   Д: { colorVar: "var(--color-rose-500)", colorHex: "#f43f5e" },
+  Е: { colorVar: "var(--color-indigo-500)", colorHex: "#6366f1" },
+  Ж: { colorVar: "var(--color-sky-500)", colorHex: "#0ea5e9" },
+  З: { colorVar: "var(--color-violet-500)", colorHex: "#8b5cf6" },
 }
 
 const DEFAULT_COLOR = { colorVar: "var(--color-slate-400)", colorHex: "#94a3b8" }

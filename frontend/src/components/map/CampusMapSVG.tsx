@@ -16,11 +16,14 @@ interface BuildingGeometry {
 }
 
 const BUILDING_GEOMETRY: Record<BuildingLetter, BuildingGeometry> = {
-  А: { w: 120, d: 80, h: 70 },   // Main — largest
-  Б: { w: 100, d: 70, h: 60 },   // Engineering
-  В: { w: 90, d: 65, h: 55 },    // Humanities
-  Г: { w: 100, d: 70, h: 65 },   // Science
-  Д: { w: 110, d: 75, h: 50 },   // Arts & Sports — wide, short
+  А: { w: 130, d: 85, h: 80 },   // Main building (ГУК, стр. 8) — tallest, largest
+  Б: { w: 110, d: 75, h: 55 },   // Lecture halls (стр. 5) — wide
+  В: { w: 90, d: 65, h: 55 },    // Lab building (стр. 4)
+  Г: { w: 80, d: 55, h: 45 },    // Admin (стр. 1) �� smaller
+  Д: { w: 100, d: 70, h: 40 },   // Sports complex (стр. 3) — wide, low
+  Е: { w: 70, d: 50, h: 65 },    // Dorm 2 (стр. 2) — tall, narrow
+  Ж: { w: 70, d: 50, h: 65 },    // Dorm 6 (к. 6) — tall, narrow
+  З: { w: 75, d: 55, h: 45 },    // Graduate institute (стр. 16) — small
 }
 
 /**
@@ -192,7 +195,7 @@ export function CampusMapSVG({
 
   return (
     <svg
-      viewBox="0 0 1200 700"
+      viewBox="0 0 1400 750"
       role="img"
       aria-label={t("campusMap.ariaLabel")}
       className="w-full h-full select-none"
@@ -200,7 +203,7 @@ export function CampusMapSVG({
     >
       {/* Ground plane */}
       <rect
-        x="0" y="0" width="1200" height="700" rx="12"
+        x="0" y="0" width="1400" height="750" rx="12"
         fill="var(--map-svg-ground)"
       />
 
