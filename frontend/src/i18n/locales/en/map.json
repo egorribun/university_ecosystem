@@ -31,36 +31,43 @@
       "amenities": ["Elevator", "Wi-Fi", "Computer labs", "Admissions"]
     },
     "Г": {
-      "name": "Administrative Building",
+      "name": "Educational-Administrative Building",
       "description": "University administration, rector's office, and central services.",
       "address": "99 Ryazansky Prospekt, bldg. 1",
       "hours": "09:00–18:00",
       "amenities": ["Elevator", "Accessible"]
     },
     "Д": {
-      "name": "Sports Complex",
-      "description": "Swimming pool, gymnasium, and fitness facilities. Built in 2013.",
+      "name": "Swimming Pool",
+      "description": "25m swimming pool with 5 lanes. Built in 2013 as part of the '500 pools' program.",
       "address": "99 Ryazansky Prospekt, bldg. 3",
       "hours": "07:00–22:00",
-      "amenities": ["Pool", "Gym", "Lockers", "Showers"]
+      "amenities": ["Pool", "Lockers", "Showers"]
     },
     "Е": {
-      "name": "Dormitory No. 2",
-      "description": "Student residential building. Common areas, study rooms, and a cafeteria on the ground floor. Built in 1976.",
-      "address": "99 Ryazansky Prospekt, bldg. 2",
-      "hours": "24/7",
-      "amenities": ["Wi-Fi", "Kitchen", "Laundry", "Study room"]
+      "name": "Sports Complex",
+      "description": "Stadium, football field, 333m running track. Indoor gyms for volleyball, basketball, boxing, table tennis, wrestling.",
+      "address": "99 Ryazansky Prospekt, bldg. 7",
+      "hours": "07:00–22:00",
+      "amenities": ["Stadium", "Gym", "Lockers", "Showers"]
     },
     "Ж": {
+      "name": "Dormitory No. 2 / CECP",
+      "description": "Student dormitory (16 floors, 1976). Center for Educational and Cultural Programs (CECP) — 22 student organizations, concert hall, studios.",
+      "address": "99 Ryazansky Prospekt, bldg. 2",
+      "hours": "24/7",
+      "amenities": ["Wi-Fi", "Kitchen", "Laundry", "CECP", "Concert hall"]
+    },
+    "З": {
       "name": "Dormitory No. 6",
-      "description": "Student residential building with modern amenities. Hotel-style rooms. Built in 1987.",
+      "description": "Student dormitory with modern amenities. 1,197 capacity. Built in 1987.",
       "address": "99 Ryazansky Prospekt, bldg. 6",
       "hours": "24/7",
       "amenities": ["Wi-Fi", "Kitchen", "Laundry", "Cafeteria"]
     },
-    "З": {
-      "name": "Graduate Studies Institute",
-      "description": "Institute for Training Scientific and Pedagogical Personnel. Graduate programs and research offices.",
+    "И": {
+      "name": "Business Center",
+      "description": "Sport & Event Management teaching center. Graduate studies and IPNPK.",
       "address": "99 Ryazansky Prospekt, bldg. 16",
       "hours": "09:00–20:00",
       "amenities": ["Wi-Fi", "Conference rooms"]
@@ -98,22 +105,25 @@
     "Г-201": { "name": "Rector's Office" },
     "Г-202": { "name": "Vice-Rector's Office" },
     "Г-203": { "name": "Accounting" },
-    "Д-101": { "name": "Swimming Pool" },
-    "Д-102": { "name": "Gymnasium" },
-    "Д-201": { "name": "Fitness Room" },
-    "Д-202": { "name": "Locker Room" },
-    "Е-101": { "name": "Study Room" },
-    "Е-102": { "name": "Ground Floor Cafeteria" },
-    "Е-201": { "name": "Common Room" },
-    "Е-202": { "name": "Laundry" },
+    "Д-101": { "name": "Swimming Pool (25m, 5 lanes)" },
+    "Д-102": { "name": "Locker Room" },
+    "Д-201": { "name": "Dry Swimming Hall" },
+    "Е-101": { "name": "Stadium / Gym" },
+    "Е-102": { "name": "Weight Room" },
+    "Е-201": { "name": "Wrestling Hall" },
+    "Е-202": { "name": "Table Tennis Hall" },
     "Ж-101": { "name": "Study Room" },
     "Ж-102": { "name": "Ground Floor Cafeteria" },
     "Ж-201": { "name": "Common Room" },
-    "Ж-202": { "name": "Recreation Room" },
-    "З-101": { "name": "Seminar Room" },
-    "З-102": { "name": "Research Office" },
-    "З-201": { "name": "Conference Room" },
-    "З-202": { "name": "Faculty Office" }
+    "Ж-202": { "name": "Laundry" },
+    "З-101": { "name": "Study Room" },
+    "З-102": { "name": "Ground Floor Cafeteria" },
+    "З-201": { "name": "Common Room" },
+    "З-202": { "name": "Recreation Room" },
+    "И-101": { "name": "Seminar Room" },
+    "И-102": { "name": "Research Office" },
+    "И-201": { "name": "Conference Room" },
+    "И-202": { "name": "Faculty Office" }
   },
   "roomTypes": {
     "lecture": "Lecture hall",
@@ -143,7 +153,7 @@
     "rooms": "Rooms",
     "roomCount_one": "{{count}} room",
     "roomCount_other": "{{count}} rooms",
-    "floor": "Floor {{number}}",
+    "floor": "Floor",
     "capacity": "Capacity: {{count}}",
     "type": "Type",
     "close": "Close sidebar",
@@ -175,7 +185,12 @@
     "in": "Zoom in",
     "out": "Zoom out",
     "reset": "Reset view",
-    "ariaLabel": "Map zoom controls"
+    "ariaLabel": "Map controls"
+  },
+  "controls": {
+    "compass": "Reset north",
+    "pitchToggle": "Toggle 3D / 2D view",
+    "fullscreen": "Toggle fullscreen"
   },
   "tooltip": {
     "clickToExplore": "Click to explore",
@@ -200,15 +215,16 @@
     },
     "items": {
       "metro-vykhino": { "name": "Vykhino Metro Station" },
-      "bus-guu": { "name": "Bus Stop — GUU" },
-      "bus-ryazansky": { "name": "Bus Stop — Ryazansky Prospekt" },
+      "bus-guu": { "name": "Bus Stop — Pochta (near GUK)" },
+      "bus-sormovskaya": { "name": "Bus Stop — Sormovskaya Street" },
       "canteen-guu": { "name": "GUU Canteen" },
-      "cafe-nearby-1": { "name": "Coffee Point" },
-      "cafe-nearby-2": { "name": "Cafe near Campus" },
-      "atm-guu": { "name": "ATM (Sberbank)" },
+      "cafe-kletka": { "name": "Café Kletka" },
+      "library-guu": { "name": "GUU Scientific Library" },
+      "atm-sber": { "name": "ATM (Sberbank)" },
       "parking-guu": { "name": "Campus Parking" },
-      "shop-nearby": { "name": "Mini-market" },
-      "pharmacy-nearby": { "name": "Pharmacy" }
+      "pyaterochka": { "name": "Pyaterochka (TC Mayak)" },
+      "gorzdrav": { "name": "Gorzdrav Pharmacy" },
+      "fix-price": { "name": "Fix Price (TC Mayak)" }
     },
     "loadMore": "Show more places",
     "loading": "Loading places…",

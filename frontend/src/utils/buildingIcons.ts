@@ -27,6 +27,7 @@ const BUILDING_COLORS: Record<string, { colorVar: string; colorHex: string }> = 
   Е: { colorVar: "var(--color-indigo-500)", colorHex: "#6366f1" },
   Ж: { colorVar: "var(--color-sky-500)", colorHex: "#0ea5e9" },
   З: { colorVar: "var(--color-violet-500)", colorHex: "#8b5cf6" },
+  И: { colorVar: "var(--color-orange-500)", colorHex: "#f97316" },
 }
 
 const DEFAULT_COLOR = { colorVar: "var(--color-slate-400)", colorHex: "#94a3b8" }

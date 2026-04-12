@@ -1,13 +1,40 @@
 /**
- * POIMarker.tsx — Marker for a point of interest on the map.
- * react-map-gl/maplibre Marker with JSX children + Popup.
- * Wave 100 — Leaflet → MapLibre GL migration.
+ * POIMarker.tsx — Premium POI marker with category-specific Lucide icons.
+ * react-map-gl/maplibre Marker with hover tooltip + click popup.
+ * Wave 102 — redesign from generic white-dot circles.
  */
 
 import { useState } from "react"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
+import {
+  TrainFront,
+  Bus,
+  UtensilsCrossed,
+  Coffee,
+  ShoppingCart,
+  ShoppingBag,
+  Pill,
+  Landmark,
+  ParkingCircle,
+  MapPin,
+  type LucideIcon,
+} from "lucide-react"
 import type { CampusPOI } from "@/data/campusPOI"
+
+/* ── Icon lookup by lucide icon name ── */
+const ICON_MAP: Record<string, LucideIcon> = {
+  TrainFront,
+  Bus,
+  UtensilsCrossed,
+  Coffee,
+  ShoppingCart,
+  ShoppingBag,
+  Pill,
+  Landmark,
+  ParkingCircle,
+  MapPin,
+}
 
 const CATEGORY_HEX: Record<string, string> = {
   transport: "#3b82f6",
@@ -24,9 +51,10 @@ interface POIMarkerProps {
 export function POIMarker({ poi }: POIMarkerProps) {
   const { t } = useTranslation("map")
   const [showPopup, setShowPopup] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
 
-  const DEFAULT_HEX = "#94a3b8" // --color-slate-400
-  const hex = CATEGORY_HEX[poi.type] ?? DEFAULT_HEX
+  const hex = CATEGORY_HEX[poi.type] ?? "#94a3b8"
+  const Icon = ICON_MAP[poi.icon] ?? MapPin
 
   const displayName = poi.i18nKey
     ? t(`poi.items.${poi.i18nKey}.name`)
@@ -47,46 +75,65 @@ export function POIMarker({ poi }: POIMarkerProps) {
       >
         <div
           aria-label={`${displayName} — ${t(`poi.categories.${poi.type}`)}`}
-          className="map-poi-marker-3d"
+          className={`map-poi-pin${isHovered ? " map-poi-pin--hover" : ""}`}
           style={{
-            width: 28,
-            height: 28,
-            background: hex,
-            border: "2px solid white",
-            borderRadius: "50%",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-          }}
+            "--_poi-color": hex,
+          } as React.CSSProperties}
+          onPointerEnter={() => setIsHovered(true)}
+          onPointerLeave={() => setIsHovered(false)}
         >
-          <div style={{ width: 8, height: 8, background: "white", borderRadius: "50%" }} />
+          <Icon size={14} color="white" strokeWidth={2.5} />
         </div>
       </Marker>
 
+      {/* Hover tooltip — name only */}
+      {isHovered && !showPopup && (
+        <Popup
+          longitude={poi.coords[1]}
+          latitude={poi.coords[0]}
+          anchor="bottom"
+          offset={18}
+          closeButton={false}
+          closeOnClick={false}
+          className="map-poi-tooltip"
+        >
+          <span className="text-xs font-semibold">{displayName}</span>
+        </Popup>
+      )}
+
+      {/* Click popup — full details */}
       {showPopup && (
         <Popup
           longitude={poi.coords[1]}
           latitude={poi.coords[0]}
           anchor="bottom"
-          offset={16}
-          closeButton={true}
+          offset={18}
+          closeButton
           closeOnClick={false}
           onClose={() => setShowPopup(false)}
-          className="map-poi-popup"
+          className="map-popup-premium"
+          maxWidth="240px"
         >
-          <div className="map-popup-content">
-            <p className="font-semibold text-sm mb-0.5">{displayName}</p>
-            <p className="text-xs opacity-60 mb-1.5">{t(`poi.categories.${poi.type}`)}</p>
+          <div className="map-popup-card map-popup-card--compact">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div
+                className="flex items-center justify-center w-7 h-7 rounded-full"
+                style={{ backgroundColor: hex }}
+              >
+                <Icon size={14} color="white" strokeWidth={2.5} />
+              </div>
+              <div>
+                <p className="font-bold text-sm leading-tight">{displayName}</p>
+                <p className="text-[10px] opacity-50">{t(`poi.categories.${poi.type}`)}</p>
+              </div>
+            </div>
             <a
               href={yandexMapsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs font-medium"
-              style={{ color: "var(--map-accent-line, #14b8a6)" }}
+              className="map-popup-link"
             >
-              {t("poi.openInMaps")}
+              {t("poi.openInMaps")} &rarr;
             </a>
           </div>
         </Popup>

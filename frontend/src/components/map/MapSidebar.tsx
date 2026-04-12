@@ -8,20 +8,25 @@ import useFocusTrap from "@/hooks/useFocusTrap"
 interface MapSidebarProps {
   building: CampusBuilding | undefined
   floor: BuildingFloor | undefined
+  selectedFloor: number
   selectedRoom: string | null
+  onFloorChange: (floor: number) => void
   onRoomClick: (roomId: string) => void
   onClose: () => void
   isMobile: boolean
 }
 
 /**
- * MapSidebar — building/room info panel.
+ * MapSidebar — building/room info panel with integrated floor selector.
  * Desktop: inline panel (no overlay). Mobile: bottom sheet.
+ * Wave 101: FloorSelector integrated (was separate component for SVG mode).
  */
 export function MapSidebar({
   building,
   floor,
+  selectedFloor,
   selectedRoom,
+  onFloorChange,
   onRoomClick,
   onClose,
   isMobile,
@@ -162,6 +167,42 @@ export function MapSidebar({
                 {a}
               </span>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Floor selector — replaces deleted FloorSelector.tsx (Wave 101) */}
+      {building.floors.length > 1 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+            {t("sidebar.floor")}
+          </p>
+          <div
+            role="radiogroup"
+            aria-label={t("floorPlan.floorSelector")}
+            className="flex flex-wrap gap-1.5"
+          >
+            {building.floors.map(({ floor: flNum }) => {
+              const isActive = selectedFloor === flNum
+              return (
+                <button
+                  key={flNum}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  onClick={() => onFloorChange(flNum)}
+                  className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors"
+                  style={{
+                    backgroundColor: isActive
+                      ? `color-mix(in srgb, ${building.colorHex} 15%, var(--bg-surface))`
+                      : "var(--bg-surface-hover)",
+                    color: isActive ? building.colorHex : "var(--text-secondary)",
+                  }}
+                >
+                  {flNum}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

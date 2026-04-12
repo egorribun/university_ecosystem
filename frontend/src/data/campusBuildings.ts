@@ -1,15 +1,16 @@
 /**
  * campusBuildings.ts — Real GUU campus building/floor/room data model.
  *
- * Structural data (rooms, floors, SVG IDs, positions, geo coords) is locale-independent.
+ * Structural data (rooms, floors, geo coords) is locale-independent.
  * Localized metadata (names, descriptions) is loaded from map.json.
  *
- * Wave 88 — foundation; Wave 99 — real GUU data (8 buildings from 2GIS/Wikipedia).
+ * Wave 88 — foundation; Wave 99 — real GUU data; Wave 101 — verified coordinates from
+ * 2GIS/Yandex Maps/totadres.ru, real floor counts, SVG fields removed.
  */
 
-/* ── Type Definitions ────────────��───────────────── */
+/* ── Type Definitions ──────────────────────────── */
 
-export type BuildingLetter = "А" | "Б" | "В" | "Г" | "Д" | "Е" | "Ж" | "З"
+export type BuildingLetter = "А" | "Б" | "В" | "Г" | "Д" | "Е" | "Ж" | "З" | "И"
 
 export type RoomType =
   | "lecture"
@@ -43,8 +44,6 @@ export interface CampusRoom {
   capacity?: number
   /** Localized display name (merged from map.json) */
   name?: string
-  /** SVG element ID for highlight in FloorPlanSVG */
-  svgId: string
 }
 
 export interface BuildingFloor {
@@ -52,8 +51,6 @@ export interface BuildingFloor {
   floor: number
   /** Rooms on this floor */
   rooms: CampusRoom[]
-  /** SVG ref for the floor plan component */
-  svgFloorId: string
 }
 
 export interface CampusBuilding {
@@ -81,11 +78,7 @@ export interface CampusBuilding {
   floorCount: number
   /** All floor/room data */
   floors: BuildingFloor[]
-  /** SVG group ID in CampusMapSVG */
-  svgBuildingId: string
-  /** Position in the isometric viewport (pixel offsets) */
-  isoPosition: { x: number; y: number }
-  /** WGS84 coordinates for Leaflet map [lat, lng] */
+  /** WGS84 coordinates [lat, lng] — verified via 2GIS/Yandex Maps */
   geoCoords: [number, number]
 }
 
@@ -100,6 +93,7 @@ const BUILDING_COLORS: Record<BuildingLetter, { colorVar: string; colorHex: stri
   Е: { colorVar: "var(--color-indigo-500)", colorHex: "#6366f1" },
   Ж: { colorVar: "var(--color-sky-500)", colorHex: "#0ea5e9" },
   З: { colorVar: "var(--color-violet-500)", colorHex: "#8b5cf6" },
+  И: { colorVar: "var(--color-orange-500)", colorHex: "#f97316" },
 }
 
 /* ── Structural Data (locale-independent) ─────────── */
@@ -108,268 +102,347 @@ interface BuildingStructure {
   letter: BuildingLetter
   structureId: string
   tags: MapCategory[]
-  svgBuildingId: string
-  isoPosition: { x: number; y: number }
   geoCoords: [number, number]
   floors: Array<{
     floor: number
-    svgFloorId: string
     rooms: Array<{
       id: string
       number: string
       type: RoomType
       capacity?: number
-      svgId: string
     }>
   }>
 }
 
+/**
+ * All coordinates verified via 2GIS, Yandex Maps, totadres.ru (April 2026).
+ * Floor counts from totadres.ru building registry data.
+ * Rooms are representative samples — will be expanded in Wave 102.
+ */
 const CAMPUS_STRUCTURE: BuildingStructure[] = [
-  /* ── А — Главный учебный корпус (стр. 8, 8 этажей) ── */
+  /* ── А — Главный учебный корпус (ГУК, стр. 8, 8 этажей) ── */
   {
     letter: "А",
     structureId: "стр. 8",
     tags: ["study", "services", "events"],
-    svgBuildingId: "bldg-a",
-    isoPosition: { x: 450, y: 260 },
-    geoCoords: [55.71400, 37.81500],
+    geoCoords: [55.71405, 37.81165],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-a-1",
         rooms: [
-          { id: "А-101", number: "101", type: "lecture", capacity: 200, svgId: "room-a-101" },
-          { id: "А-102", number: "102", type: "cafeteria", capacity: 300, svgId: "room-a-102" },
-          { id: "А-103", number: "103", type: "admin", capacity: 20, svgId: "room-a-103" },
-          { id: "А-104", number: "104", type: "other", capacity: 15, svgId: "room-a-104" },
+          { id: "А-101", number: "101", type: "lecture", capacity: 200 },
+          { id: "А-102", number: "102", type: "cafeteria", capacity: 300 },
+          { id: "А-103", number: "103", type: "admin", capacity: 20 },
+          { id: "А-104", number: "104", type: "other", capacity: 15 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-a-2",
         rooms: [
-          { id: "А-201", number: "201", type: "lecture", capacity: 120, svgId: "room-a-201" },
-          { id: "А-202", number: "202", type: "seminar", capacity: 40, svgId: "room-a-202" },
-          { id: "А-203", number: "203", type: "office", capacity: 10, svgId: "room-a-203" },
-          { id: "А-204", number: "204", type: "seminar", capacity: 35, svgId: "room-a-204" },
+          { id: "А-201", number: "201", type: "lecture", capacity: 120 },
+          { id: "А-202", number: "202", type: "seminar", capacity: 40 },
+          { id: "А-203", number: "203", type: "office", capacity: 10 },
+          { id: "А-204", number: "204", type: "seminar", capacity: 35 },
         ],
       },
       {
         floor: 3,
-        svgFloorId: "floor-a-3",
         rooms: [
-          { id: "А-301", number: "301", type: "lecture", capacity: 80, svgId: "room-a-301" },
-          { id: "А-302", number: "302", type: "seminar", capacity: 30, svgId: "room-a-302" },
-          { id: "А-303", number: "303", type: "office", capacity: 8, svgId: "room-a-303" },
-          { id: "А-304", number: "304", type: "seminar", capacity: 30, svgId: "room-a-304" },
+          { id: "А-301", number: "301", type: "lecture", capacity: 80 },
+          { id: "А-302", number: "302", type: "seminar", capacity: 30 },
+          { id: "А-303", number: "303", type: "office", capacity: 8 },
+          { id: "А-304", number: "304", type: "seminar", capacity: 30 },
+        ],
+      },
+      {
+        floor: 4,
+        rooms: [
+          { id: "А-401", number: "401", type: "lecture", capacity: 80 },
+          { id: "А-402", number: "402", type: "seminar", capacity: 35 },
+        ],
+      },
+      {
+        floor: 5,
+        rooms: [
+          { id: "А-501", number: "501", type: "seminar", capacity: 30 },
+          { id: "А-502", number: "502", type: "office", capacity: 10 },
+        ],
+      },
+      {
+        floor: 6,
+        rooms: [
+          { id: "А-601", number: "601", type: "seminar", capacity: 30 },
+          { id: "А-602", number: "602", type: "office", capacity: 10 },
+        ],
+      },
+      {
+        floor: 7,
+        rooms: [
+          { id: "А-701", number: "701", type: "office", capacity: 8 },
+          { id: "А-702", number: "702", type: "office", capacity: 8 },
+        ],
+      },
+      {
+        floor: 8,
+        rooms: [
+          { id: "А-801", number: "801", type: "office", capacity: 6 },
+          { id: "А-802", number: "802", type: "admin", capacity: 10 },
         ],
       },
     ],
   },
-  /* ── Б — Корпус поточных аудиторий + Библиотека (стр. 5) ── */
+  /* ── Б — Корпус поточных аудиторий + Библиотека (стр. 5, 5 этажей) ── */
   {
     letter: "Б",
     structureId: "стр. 5",
     tags: ["study", "services"],
-    svgBuildingId: "bldg-b",
-    isoPosition: { x: 200, y: 300 },
-    geoCoords: [55.71380, 37.81430],
+    geoCoords: [55.71350, 37.81669],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-b-1",
         rooms: [
-          { id: "Б-101", number: "101", type: "lecture", capacity: 250, svgId: "room-b-101" },
-          { id: "Б-102", number: "102", type: "lecture", capacity: 200, svgId: "room-b-102" },
+          { id: "Б-101", number: "101", type: "lecture", capacity: 250 },
+          { id: "Б-102", number: "102", type: "lecture", capacity: 200 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-b-2",
         rooms: [
-          { id: "Б-201", number: "201", type: "lecture", capacity: 150, svgId: "room-b-201" },
-          { id: "Б-202", number: "202", type: "library", capacity: 100, svgId: "room-b-202" },
-          { id: "Б-203", number: "203", type: "study", capacity: 50, svgId: "room-b-203" },
+          { id: "Б-201", number: "201", type: "lecture", capacity: 150 },
+          { id: "Б-202", number: "202", type: "library", capacity: 100 },
+          { id: "Б-203", number: "203", type: "study", capacity: 50 },
         ],
       },
       {
         floor: 3,
-        svgFloorId: "floor-b-3",
         rooms: [
-          { id: "Б-301", number: "301", type: "lecture", capacity: 120, svgId: "room-b-301" },
-          { id: "Б-302", number: "302", type: "seminar", capacity: 40, svgId: "room-b-302" },
+          { id: "Б-301", number: "301", type: "lecture", capacity: 120 },
+          { id: "Б-302", number: "302", type: "seminar", capacity: 40 },
+        ],
+      },
+      {
+        floor: 4,
+        rooms: [
+          { id: "Б-401", number: "401", type: "seminar", capacity: 40 },
+          { id: "Б-402", number: "402", type: "seminar", capacity: 35 },
+        ],
+      },
+      {
+        floor: 5,
+        rooms: [
+          { id: "Б-501", number: "501", type: "office", capacity: 15 },
+          { id: "Б-502", number: "502", type: "office", capacity: 10 },
         ],
       },
     ],
   },
-  /* ── В — Лабораторный корпус + Приёмная комиссия (стр. 4) ── */
+  /* ── В — Лабораторный корпус + Приёмная комиссия (стр. 4, 6 этажей) ── */
   {
     letter: "В",
     structureId: "стр. 4",
     tags: ["study", "services"],
-    svgBuildingId: "bldg-c",
-    isoPosition: { x: 700, y: 220 },
-    geoCoords: [55.71420, 37.81400],
+    geoCoords: [55.71342, 37.81537],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-c-1",
         rooms: [
-          { id: "В-101", number: "101", type: "admin", capacity: 20, svgId: "room-c-101" },
-          { id: "В-102", number: "102", type: "lab", capacity: 30, svgId: "room-c-102" },
-          { id: "В-103", number: "103", type: "lab", capacity: 25, svgId: "room-c-103" },
+          { id: "В-101", number: "101", type: "admin", capacity: 20 },
+          { id: "В-102", number: "102", type: "lab", capacity: 30 },
+          { id: "В-103", number: "103", type: "lab", capacity: 25 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-c-2",
         rooms: [
-          { id: "В-201", number: "201", type: "lab", capacity: 20, svgId: "room-c-201" },
-          { id: "В-202", number: "202", type: "lab", capacity: 25, svgId: "room-c-202" },
+          { id: "В-201", number: "201", type: "lab", capacity: 20 },
+          { id: "В-202", number: "202", type: "lab", capacity: 25 },
         ],
       },
       {
         floor: 3,
-        svgFloorId: "floor-c-3",
         rooms: [
-          { id: "В-301", number: "301", type: "lab", capacity: 20, svgId: "room-c-301" },
-          { id: "В-302", number: "302", type: "lab", capacity: 20, svgId: "room-c-302" },
+          { id: "В-301", number: "301", type: "lab", capacity: 20 },
+          { id: "В-302", number: "302", type: "lab", capacity: 20 },
+        ],
+      },
+      {
+        floor: 4,
+        rooms: [
+          { id: "В-401", number: "401", type: "lab", capacity: 25 },
+          { id: "В-402", number: "402", type: "seminar", capacity: 30 },
+        ],
+      },
+      {
+        floor: 5,
+        rooms: [
+          { id: "В-501", number: "501", type: "office", capacity: 10 },
+          { id: "В-502", number: "502", type: "office", capacity: 8 },
+        ],
+      },
+      {
+        floor: 6,
+        rooms: [
+          { id: "В-601", number: "601", type: "office", capacity: 8 },
+          { id: "В-602", number: "602", type: "office", capacity: 6 },
         ],
       },
     ],
   },
-  /* ── Г — Административный корпус (стр. 1) ── */
+  /* ── Г — Административный корпус (стр. 1, 5 этажей) ── */
   {
     letter: "Г",
     structureId: "стр. 1",
     tags: ["services"],
-    svgBuildingId: "bldg-d",
-    isoPosition: { x: 300, y: 480 },
-    geoCoords: [55.71360, 37.81520],
+    geoCoords: [55.71401, 37.81778],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-d-1",
         rooms: [
-          { id: "Г-101", number: "101", type: "admin", capacity: 15, svgId: "room-d-101" },
-          { id: "Г-102", number: "102", type: "admin", capacity: 10, svgId: "room-d-102" },
+          { id: "Г-101", number: "101", type: "admin", capacity: 15 },
+          { id: "Г-102", number: "102", type: "admin", capacity: 10 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-d-2",
         rooms: [
-          { id: "Г-201", number: "201", type: "admin", capacity: 12, svgId: "room-d-201" },
-          { id: "Г-202", number: "202", type: "office", capacity: 8, svgId: "room-d-202" },
-          { id: "Г-203", number: "203", type: "office", capacity: 6, svgId: "room-d-203" },
+          { id: "Г-201", number: "201", type: "admin", capacity: 12 },
+          { id: "Г-202", number: "202", type: "office", capacity: 8 },
+          { id: "Г-203", number: "203", type: "office", capacity: 6 },
+        ],
+      },
+      {
+        floor: 3,
+        rooms: [
+          { id: "Г-301", number: "301", type: "admin", capacity: 15 },
+          { id: "Г-302", number: "302", type: "office", capacity: 8 },
+        ],
+      },
+      {
+        floor: 4,
+        rooms: [
+          { id: "Г-401", number: "401", type: "office", capacity: 10 },
+          { id: "Г-402", number: "402", type: "office", capacity: 8 },
+        ],
+      },
+      {
+        floor: 5,
+        rooms: [
+          { id: "Г-501", number: "501", type: "office", capacity: 8 },
+          { id: "Г-502", number: "502", type: "office", capacity: 6 },
         ],
       },
     ],
   },
-  /* ── Д — Бассейн / Спорткомплекс (стр. 3) ── */
+  /* ── Д — Бассейн ГУУ (к. 3, 2 этажа, построен 2013) ── */
   {
     letter: "Д",
-    structureId: "стр. 3",
-    tags: ["sports", "events"],
-    svgBuildingId: "bldg-e",
-    isoPosition: { x: 850, y: 400 },
-    geoCoords: [55.71440, 37.81550],
+    structureId: "к. 3",
+    tags: ["sports"],
+    geoCoords: [55.71572, 37.81193],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-e-1",
         rooms: [
-          { id: "Д-101", number: "101", type: "sports", capacity: 60, svgId: "room-e-101" },
-          { id: "Д-102", number: "102", type: "sports", capacity: 40, svgId: "room-e-102" },
+          { id: "Д-101", number: "101", type: "sports", capacity: 60 },
+          { id: "Д-102", number: "102", type: "other", capacity: 20 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-e-2",
         rooms: [
-          { id: "Д-201", number: "201", type: "sports", capacity: 30, svgId: "room-e-201" },
-          { id: "Д-202", number: "202", type: "other", capacity: 20, svgId: "room-e-202" },
+          { id: "Д-201", number: "201", type: "sports", capacity: 30 },
         ],
       },
     ],
   },
-  /* ── Е — Общежитие №2 (стр. 2, 1976 г.) ── */
+  /* ── Е — Спортивный комплекс (стр. 7, 2 этажа) ── */
   {
     letter: "Е",
-    structureId: "стр. 2",
-    tags: ["housing"],
-    svgBuildingId: "bldg-f",
-    isoPosition: { x: 120, y: 160 },
-    geoCoords: [55.71350, 37.81350],
+    structureId: "стр. 7",
+    tags: ["sports", "events"],
+    geoCoords: [55.71490, 37.81272],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-f-1",
         rooms: [
-          { id: "Е-101", number: "101", type: "study", capacity: 20, svgId: "room-f-101" },
-          { id: "Е-102", number: "102", type: "cafeteria", capacity: 40, svgId: "room-f-102" },
+          { id: "Е-101", number: "101", type: "sports", capacity: 200 },
+          { id: "Е-102", number: "102", type: "sports", capacity: 80 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-f-2",
         rooms: [
-          { id: "Е-201", number: "201", type: "study", capacity: 15, svgId: "room-f-201" },
-          { id: "Е-202", number: "202", type: "other", capacity: 10, svgId: "room-f-202" },
+          { id: "Е-201", number: "201", type: "sports", capacity: 40 },
+          { id: "Е-202", number: "202", type: "sports", capacity: 30 },
         ],
       },
     ],
   },
-  /* ── Ж — Общежитие №6 (к. 6, 1987 г.) ── */
+  /* ── Ж — Общежитие №2 + ЦУВП (стр. 2, 16 этажей) ── */
   {
     letter: "Ж",
-    structureId: "к. 6",
-    tags: ["housing"],
-    svgBuildingId: "bldg-g",
-    isoPosition: { x: 600, y: 500 },
-    geoCoords: [55.71330, 37.81420],
+    structureId: "стр. 2",
+    tags: ["housing", "events"],
+    geoCoords: [55.71384, 37.81577],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-g-1",
         rooms: [
-          { id: "Ж-101", number: "101", type: "study", capacity: 25, svgId: "room-g-101" },
-          { id: "Ж-102", number: "102", type: "cafeteria", capacity: 50, svgId: "room-g-102" },
+          { id: "Ж-101", number: "101", type: "study", capacity: 20 },
+          { id: "Ж-102", number: "102", type: "cafeteria", capacity: 40 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-g-2",
         rooms: [
-          { id: "Ж-201", number: "201", type: "study", capacity: 20, svgId: "room-g-201" },
-          { id: "Ж-202", number: "202", type: "other", capacity: 15, svgId: "room-g-202" },
+          { id: "Ж-201", number: "201", type: "study", capacity: 15 },
+          { id: "Ж-202", number: "202", type: "other", capacity: 10 },
         ],
       },
     ],
   },
-  /* ── З — Институт подготовки научно-педагогических кадров (стр. 16) ── */
+  /* ── З — Общежитие №6 (к. 6, 18 этажей) ── */
   {
     letter: "З",
-    structureId: "стр. 16",
-    tags: ["study", "services"],
-    svgBuildingId: "bldg-h",
-    isoPosition: { x: 950, y: 180 },
-    geoCoords: [55.71450, 37.81470],
+    structureId: "к. 6",
+    tags: ["housing"],
+    geoCoords: [55.71495, 37.81547],
     floors: [
       {
         floor: 1,
-        svgFloorId: "floor-h-1",
         rooms: [
-          { id: "З-101", number: "101", type: "seminar", capacity: 30, svgId: "room-h-101" },
-          { id: "З-102", number: "102", type: "office", capacity: 10, svgId: "room-h-102" },
+          { id: "З-101", number: "101", type: "study", capacity: 25 },
+          { id: "З-102", number: "102", type: "cafeteria", capacity: 50 },
         ],
       },
       {
         floor: 2,
-        svgFloorId: "floor-h-2",
         rooms: [
-          { id: "З-201", number: "201", type: "seminar", capacity: 25, svgId: "room-h-201" },
-          { id: "З-202", number: "202", type: "office", capacity: 8, svgId: "room-h-202" },
+          { id: "З-201", number: "201", type: "study", capacity: 20 },
+          { id: "З-202", number: "202", type: "other", capacity: 15 },
+        ],
+      },
+    ],
+  },
+  /* ── И — Бизнес-центр (стр. 16, 2+ этажа) ── */
+  {
+    letter: "И",
+    structureId: "стр. 16",
+    tags: ["study", "services"],
+    geoCoords: [55.71569, 37.81355],
+    floors: [
+      {
+        floor: 1,
+        rooms: [
+          { id: "И-101", number: "101", type: "seminar", capacity: 30 },
+          { id: "И-102", number: "102", type: "office", capacity: 10 },
+        ],
+      },
+      {
+        floor: 2,
+        rooms: [
+          { id: "И-201", number: "201", type: "seminar", capacity: 25 },
+          { id: "И-202", number: "202", type: "office", capacity: 8 },
         ],
       },
     ],
@@ -423,7 +496,7 @@ function resolveLocaleData(locale?: string): LocalizedMapData | undefined {
 
 /**
  * Get all campus buildings with localized metadata merged in.
- * Structural data (rooms, floors, positions, geo coords) is always the same;
+ * Structural data (rooms, floors, geo coords) is always the same;
  * only names, descriptions, and amenities change per locale.
  */
 export function getCampusBuildings(locale?: string): CampusBuilding[] {
@@ -435,7 +508,6 @@ export function getCampusBuildings(locale?: string): CampusBuilding[] {
 
     const floors: BuildingFloor[] = struct.floors.map((f) => ({
       floor: f.floor,
-      svgFloorId: f.svgFloorId,
       rooms: f.rooms.map((r) => ({
         ...r,
         name: localeData?.rooms?.[r.id]?.name,
@@ -455,8 +527,6 @@ export function getCampusBuildings(locale?: string): CampusBuilding[] {
       colorHex: colors.colorHex,
       floorCount: floors.length,
       floors,
-      svgBuildingId: struct.svgBuildingId,
-      isoPosition: struct.isoPosition,
       geoCoords: struct.geoCoords,
     } satisfies CampusBuilding
   })
@@ -502,7 +572,7 @@ export function extractFloorFromRoomId(roomId: string): number | null {
 /**
  * All building letters in display order.
  */
-export const BUILDING_LETTERS: readonly BuildingLetter[] = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З"]
+export const BUILDING_LETTERS: readonly BuildingLetter[] = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И"]
 
 /**
  * All filterable categories (excluding "all").

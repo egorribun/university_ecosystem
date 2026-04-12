@@ -1,32 +1,34 @@
 /**
- * MapLibreMap.tsx — Geographic map mode using react-map-gl + MapLibre GL + OpenFreeMap.
+ * MapLibreMap.tsx — Premium geographic map with MapLibre GL + OpenFreeMap.
  *
- * WebGL-powered: 3D buildings via fill-extrusion, vector tiles, native dark theme.
- * Lazy-loaded via React.lazy() in MapFeature.
+ * WebGL-powered: 3D buildings (generic + custom campus colors), sky, fog,
+ * walking paths, cinematic camera intro, premium markers.
  *
- * Wave 100 — Leaflet → MapLibre GL migration.
+ * Wave 100 — Leaflet → MapLibre; Wave 102-103 — premium visual masterpiece.
  */
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Map, Layer } from "react-map-gl/maplibre"
 import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import { getCampusBuildings, type BuildingLetter, type MapCategory } from "@/data/campusBuildings"
 import { CAMPUS_POIS, type CampusPOI } from "@/data/campusPOI"
+// Walking paths removed — they were approximate, not real paths
 import { useOverpassPOI } from "@/hooks/useOverpassPOI"
 import { BuildingMarker } from "./BuildingMarker"
 import { POIMarker } from "./POIMarker"
 import { POIControls } from "./POIControls"
+import { MapControls } from "./MapControls"
 import "maplibre-gl/dist/maplibre-gl.css"
 
 /* ── Tile styles ── */
 const STYLE_LIGHT = "https://tiles.openfreemap.org/styles/bright"
 const STYLE_DARK = "https://tiles.openfreemap.org/styles/dark"
 
-/* ── 3D buildings fill-extrusion ── */
-const BUILDINGS_3D_LAYER: LayerProps = {
-  id: "3d-buildings",
+/* ── Generic 3D buildings from vector tiles (gray, surrounding) ── */
+const GENERIC_BUILDINGS_LAYER: LayerProps = {
+  id: "3d-buildings-generic",
   type: "fill-extrusion" as const,
   source: "openmaptiles",
   "source-layer": "building",
@@ -53,18 +55,18 @@ const BUILDINGS_3D_LAYER: LayerProps = {
       ["get", "render_min_height"],
       0,
     ],
-    "fill-extrusion-opacity": 0.7,
+    "fill-extrusion-opacity": 0.5,
   },
 }
+
+/* Walking paths layer removed — approximate data didn't match real paths */
 
 interface MapLibreMapProps {
   selectedBuilding: BuildingLetter | null
   activeCategory: MapCategory
   highlightedBuilding: BuildingLetter | null
   onSelectBuilding: (letter: BuildingLetter) => void
-  /** Forwarded ref for external zoom control */
   mapRef?: React.MutableRefObject<MapRef | null>
-  /** Whether dark theme is active */
   isDark?: boolean
 }
 
@@ -77,6 +79,7 @@ export function MapLibreMapComponent({
   isDark,
 }: MapLibreMapProps) {
   const { i18n } = useTranslation("map")
+  const hasAnimatedIntro = useRef(false)
 
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
@@ -88,16 +91,15 @@ export function MapLibreMapComponent({
     return buildings.filter((b) => b.tags.includes(activeCategory))
   }, [buildings, activeCategory])
 
-  /* ── Fly to selected building ── */
+  /* ── Gentle pan to selected building (no zoom/pitch jump) ── */
   useEffect(() => {
     if (!selectedBuilding || !mapRef?.current) return
     const building = buildings.find((b) => b.letter === selectedBuilding)
     if (!building) return
-    mapRef.current.flyTo({
+
+    mapRef.current.easeTo({
       center: [building.geoCoords[1], building.geoCoords[0]],
-      zoom: 17,
-      pitch: 45,
-      duration: 800,
+      duration: 600,
     })
   }, [selectedBuilding, buildings, mapRef])
 
@@ -123,6 +125,58 @@ export function MapLibreMapComponent({
 
   const mapStyle = isDark ? STYLE_DARK : STYLE_LIGHT
 
+  /* ── Cinematic intro + sky/fog setup on map load ── */
+  const onMapLoad = useCallback(() => {
+    const map = mapRef?.current?.getMap()
+    if (!map) return
+
+    // Sky — atmospheric gradient
+    map.setSky({
+      "sky-color": isDark ? "#0f172a" : "#87ceeb",
+      "sky-horizon-blend": 0.3,
+      "horizon-color": isDark ? "#1e293b" : "#f0f4ff",
+      "horizon-fog-blend": 0.8,
+      "fog-color": isDark ? "#1e293b" : "#e8edf5",
+      "fog-ground-blend": 0.5,
+    })
+
+    // Cinematic intro — fly from high altitude
+    if (!hasAnimatedIntro.current) {
+      hasAnimatedIntro.current = true
+      map.jumpTo({
+        center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+        zoom: 13,
+        pitch: 0,
+        bearing: -20,
+      })
+      setTimeout(() => {
+        map.flyTo({
+          center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+          zoom: 16,
+          pitch: 45,
+          bearing: 0,
+          duration: 2500,
+          essential: true,
+        })
+      }, 300)
+    }
+  }, [mapRef, isDark])
+
+  /* ── Update sky on theme change ── */
+  useEffect(() => {
+    const map = mapRef?.current?.getMap()
+    if (!map || !map.loaded()) return
+
+    map.setSky({
+      "sky-color": isDark ? "#0f172a" : "#87ceeb",
+      "sky-horizon-blend": 0.3,
+      "horizon-color": isDark ? "#1e293b" : "#f0f4ff",
+      "horizon-fog-blend": 0.8,
+      "fog-color": isDark ? "#1e293b" : "#e8edf5",
+      "fog-ground-blend": 0.5,
+    })
+  }, [isDark, mapRef])
+
   return (
     <div className="maplibre-map-wrapper relative h-full min-h-[inherit]">
       <Map
@@ -137,9 +191,11 @@ export function MapLibreMapComponent({
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
         reuseMaps
+        onLoad={onMapLoad}
+        maxPitch={70}
       >
-        {/* 3D building extrusion layer */}
-        <Layer {...BUILDINGS_3D_LAYER} />
+        {/* Generic 3D buildings (gray, surrounding area) */}
+        <Layer {...GENERIC_BUILDINGS_LAYER} />
 
         {/* Building markers */}
         {filteredBuildings.map((building) => (
@@ -157,6 +213,11 @@ export function MapLibreMapComponent({
           <POIMarker key={poi.id} poi={poi} />
         ))}
       </Map>
+
+      {/* Premium map controls — bottom right */}
+      <div className="absolute bottom-4 right-4 z-10">
+        {mapRef && <MapControls mapRef={mapRef} />}
+      </div>
 
       {/* POI controls overlay — bottom left */}
       <div className="absolute bottom-4 left-4 z-[500]">

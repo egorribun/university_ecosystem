@@ -1,6 +1,6 @@
 export type CampusCoordinates = { readonly lat: number; readonly lon: number }
 
 export const CAMPUS_COORDINATES: CampusCoordinates = Object.freeze({
-  lat: 55.71392,
-  lon: 37.81474,
+  lat: 55.71440,
+  lon: 37.81478,
 })

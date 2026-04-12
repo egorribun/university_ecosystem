@@ -1,10 +1,10 @@
 /**
- * campusPOI.ts — Hardcoded key points of interest around GUU campus.
+ * campusPOI.ts — Verified points of interest around GUU campus.
  *
  * Core POIs are embedded for instant loading (no network required).
  * Additional POIs can be loaded on demand via Overpass API (useOverpassPOI).
  *
- * Wave 99 — campus map Leaflet integration.
+ * Wave 99 — initial; Wave 101 — all coordinates verified via 2GIS/Yandex Maps/Nominatim/Moovit.
  */
 
 export type POICategory = "transport" | "food" | "shop" | "service" | "campus"
@@ -14,7 +14,7 @@ export interface CampusPOI {
   id: string
   /** Category for filtering and icon selection */
   type: POICategory
-  /** WGS84 coordinates [lat, lng] */
+  /** WGS84 coordinates [lat, lng] — verified April 2026 */
   coords: [number, number]
   /** Lucide icon name */
   icon: string
@@ -24,82 +24,89 @@ export interface CampusPOI {
 
 /**
  * Key POIs around GUU campus (Рязанский проспект, 99, Moscow).
- * Coordinates are approximate — sufficient for Leaflet marker placement.
+ * All coordinates verified via 2GIS, Yandex Maps, Nominatim, Moovit.
  */
 export const CAMPUS_POIS: readonly CampusPOI[] = [
   /* ── Transport ── */
   {
     id: "metro-vykhino",
     type: "transport",
-    coords: [55.7156, 37.8172],
+    coords: [55.71570, 37.81642],
     icon: "TrainFront",
     i18nKey: "metro-vykhino",
   },
   {
     id: "bus-guu",
     type: "transport",
-    coords: [55.7142, 37.8135],
+    coords: [55.71366, 37.81055],
     icon: "Bus",
     i18nKey: "bus-guu",
   },
   {
-    id: "bus-ryazansky",
+    id: "bus-sormovskaya",
     type: "transport",
-    coords: [55.7130, 37.8160],
+    coords: [55.71155, 37.81342],
     icon: "Bus",
-    i18nKey: "bus-ryazansky",
+    i18nKey: "bus-sormovskaya",
   },
   /* ── Food ── */
   {
     id: "canteen-guu",
     type: "food",
-    coords: [55.7140, 37.8148],
+    coords: [55.71387, 37.81585],
     icon: "UtensilsCrossed",
     i18nKey: "canteen-guu",
   },
   {
-    id: "cafe-nearby-1",
+    id: "cafe-kletka",
     type: "food",
-    coords: [55.7135, 37.8120],
+    coords: [55.71341, 37.81590],
     icon: "Coffee",
-    i18nKey: "cafe-nearby-1",
+    i18nKey: "cafe-kletka",
   },
   {
-    id: "cafe-nearby-2",
-    type: "food",
-    coords: [55.7148, 37.8165],
-    icon: "Coffee",
-    i18nKey: "cafe-nearby-2",
+    id: "library-guu",
+    type: "campus",
+    coords: [55.71385, 37.81673],
+    icon: "BookOpen",
+    i18nKey: "library-guu",
   },
   /* ── Services ── */
   {
-    id: "atm-guu",
+    id: "atm-sber",
     type: "service",
-    coords: [55.7141, 37.8150],
+    coords: [55.71410, 37.81190],
     icon: "Landmark",
-    i18nKey: "atm-guu",
+    i18nKey: "atm-sber",
   },
   {
     id: "parking-guu",
     type: "campus",
-    coords: [55.7133, 37.8142],
+    coords: [55.71359, 37.81388],
     icon: "ParkingCircle",
     i18nKey: "parking-guu",
   },
-  /* ── Shops ── */
+  /* ── Shops (ТЦ Маяк cluster — Рязанский пр-т, 99а стр.1) ── */
   {
-    id: "shop-nearby",
+    id: "pyaterochka",
     type: "shop",
-    coords: [55.7127, 37.8155],
-    icon: "ShoppingBag",
-    i18nKey: "shop-nearby",
+    coords: [55.71250, 37.81640],
+    icon: "ShoppingCart",
+    i18nKey: "pyaterochka",
   },
   {
-    id: "pharmacy-nearby",
+    id: "gorzdrav",
     type: "shop",
-    coords: [55.7150, 37.8130],
+    coords: [55.71260, 37.81640],
     icon: "Pill",
-    i18nKey: "pharmacy-nearby",
+    i18nKey: "gorzdrav",
+  },
+  {
+    id: "fix-price",
+    type: "shop",
+    coords: [55.71260, 37.81640],
+    icon: "ShoppingBag",
+    i18nKey: "fix-price",
   },
 ] as const
 

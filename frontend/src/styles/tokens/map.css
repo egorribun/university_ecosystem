@@ -297,8 +297,6 @@
   border-radius: var(--radius-xl, 1rem);
   overflow: clip;
   position: relative;
-  transition: transform 0.2s var(--ease-premium, ease-out),
-              box-shadow 0.2s var(--ease-premium, ease-out);
 }
 
 .map-card-matte::before {
@@ -308,16 +306,6 @@
   height: 3px;
   background: linear-gradient(to right, var(--_accent, var(--color-teal-500)), transparent 80%);
   opacity: 0.7;
-}
-
-.map-card-matte:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--map-card-shadow-hover),
-    0 0 0 1px var(--map-card-glow);
-}
-
-.map-card-matte:active {
-  transform: translateY(0);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -340,100 +328,342 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   BUILDING SVG INTERACTIONS
+   PREMIUM BUILDING PIN MARKERS (Wave 102)
    ═══════════════════════════════════════════════════════ */
 
-.map-building-group {
+.map-building-pin {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   cursor: pointer;
-  transition: filter 0.2s var(--ease-premium, ease-out),
-              transform 0.2s var(--ease-premium, ease-out);
+  transition: transform 0.2s var(--ease-premium, ease-out),
+              filter 0.2s var(--ease-premium, ease-out);
 }
 
-.map-building-group:hover,
-.map-building-group:focus-visible {
-  filter: drop-shadow(0 0 12px var(--_bldg-color, var(--color-teal-400)));
+.map-building-pin:hover {
+  transform: scale(1.1) translateY(-2px);
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
 }
 
-.map-building-group[data-active="true"] {
-  filter: drop-shadow(0 0 20px var(--_bldg-color, var(--color-teal-400)));
+.map-building-pin--active {
+  transform: scale(1.15) translateY(-3px);
+  filter: drop-shadow(0 6px 16px rgba(0,0,0,0.35));
+  z-index: 10;
 }
 
-.map-building-group:focus-visible {
-  filter: drop-shadow(0 0 0 3px var(--color-brand)) drop-shadow(0 0 12px var(--_bldg-color, var(--color-teal-400)));
-}
-
-/* Building pulse for schedule-highlighted building */
-@keyframes map-building-pulse {
-  0%, 100% { filter: drop-shadow(0 0 12px var(--_bldg-color, var(--color-brand))); }
-  50% { filter: drop-shadow(0 0 24px var(--_bldg-color, var(--color-brand))); }
-}
-
-.map-building-group[data-schedule="true"] {
-  animation: map-building-pulse 2s ease-in-out infinite;
-}
-
-/* ═══════════════════════════════════════════════════════
-   FLOOR PLAN ROOM INTERACTIONS
-   ═══════════════════════════════════════════════════════ */
-
-.map-room {
-  fill: var(--map-room-fill);
-  stroke: var(--map-room-stroke);
-  stroke-width: 1;
-  cursor: pointer;
-  transition: fill 0.15s ease, stroke 0.15s ease;
-}
-
-.map-room:hover {
-  fill: var(--map-room-fill-hover);
-}
-
-.map-room[data-active="true"] {
-  fill: var(--map-room-fill-active);
-  stroke: var(--map-room-stroke-active);
-  stroke-width: 2;
-}
-
-.map-room[data-schedule="true"] {
-  fill: var(--map-room-fill-schedule);
-  stroke: var(--map-room-stroke-schedule);
-  stroke-width: 2;
-}
-
-/* Room pulse for schedule-highlighted room */
-@keyframes map-room-pulse {
-  0%, 100% { stroke-opacity: 1; }
-  50% { stroke-opacity: 0.4; }
-}
-
-.map-room[data-schedule="true"] {
-  animation: map-room-pulse 2s ease-in-out infinite;
-}
-
-.map-room:focus-visible {
+.map-building-pin:focus-visible {
   outline: 2px solid var(--color-brand);
-  outline-offset: 2px;
+  outline-offset: 4px;
+  border-radius: 8px;
 }
 
-/* Active room glow pulse */
-@keyframes map-room-glow {
-  0%, 100% { filter: drop-shadow(0 0 3px var(--_bldg-color, var(--color-teal-400))); }
-  50% { filter: drop-shadow(0 0 8px var(--_bldg-color, var(--color-teal-400))); }
+/* Pin icon positioned over SVG */
+.map-pin-icon {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
-.map-room[data-active="true"] {
-  animation: map-room-glow 2s ease-in-out infinite;
+/* Letter badge below pin */
+.map-pin-letter {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 900;
+  color: white;
+  font-family: var(--font-ui, Inter, system-ui, sans-serif);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+/* Schedule-active building pulse */
+@keyframes map-pin-pulse {
+  0%, 100% { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
+  50% { filter: drop-shadow(0 4px 20px rgba(0,0,0,0.4)) drop-shadow(0 0 12px var(--color-brand)); }
+}
+
+.map-building-pin--pulse {
+  animation: map-pin-pulse 2s ease-in-out infinite;
 }
 
 /* ═══════════════════════════════════════════════════════
-   LAYER TOGGLE (campus/floor pills)
+   PREMIUM POI MARKERS (Wave 102)
    ═══════════════════════════════════════════════════════ */
 
-.map-layer-toggle {
-  background: var(--map-search-bg);
-  box-shadow: var(--map-card-shadow);
+.map-poi-pin {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--_poi-color, #94a3b8);
+  border: 2px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.map-poi-pin--hover,
+.map-poi-pin:hover {
+  transform: scale(1.2);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+}
+
+/* ═══════════════════════════════════════════════════════
+   PREMIUM POPUP CARDS (Wave 102)
+   ═══════════════════════════════════════════════════════ */
+
+.map-popup-premium .maplibregl-popup-content {
+  background: var(--map-card-bg);
+  border-radius: 12px;
+  padding: 0;
+  box-shadow:
+    0 4px 16px color-mix(in srgb, black 12%, transparent),
+    0 8px 32px color-mix(in srgb, black 8%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  overflow: hidden;
+}
+
+.map-popup-premium .maplibregl-popup-tip {
+  border-top-color: var(--map-card-bg);
+}
+
+.map-popup-premium .maplibregl-popup-close-button {
+  font-size: 18px;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  right: 4px;
+  top: 4px;
+}
+
+.map-popup-card {
+  padding: 12px 14px;
+}
+
+.map-popup-card--compact {
+  padding: 10px 12px;
+}
+
+.map-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-tertiary) 15%, transparent);
+  position: relative;
+}
+
+/* Accent top bar */
+.map-popup-header::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: -14px;
+  right: -14px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--_popup-accent, var(--color-teal-500)), transparent);
+  border-radius: 3px 3px 0 0;
+}
+
+.map-popup-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 900;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.map-popup-name {
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.map-popup-structure {
+  font-size: 11px;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+.map-popup-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.map-popup-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.map-popup-stats-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.map-popup-amenities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.map-popup-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
   border-radius: 9999px;
+  background: color-mix(in srgb, var(--bg-surface-hover) 70%, transparent);
+  color: var(--text-secondary);
+}
+
+.map-popup-link {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-teal-500);
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.map-popup-link:hover {
+  opacity: 0.8;
+}
+
+/* POI tooltip — minimal */
+.map-poi-tooltip .maplibregl-popup-content {
+  background: var(--map-card-bg);
+  border-radius: 6px;
+  padding: 4px 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.map-poi-tooltip .maplibregl-popup-tip {
+  border-top-color: var(--map-card-bg);
+}
+
+/* ═══════════════════════════════════════════════════════
+   PREMIUM MAP CONTROLS (Wave 103)
+   ═══════════════════════════════════════════════════════ */
+
+.map-control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   padding: 4px;
+  background: var(--map-zoom-bg);
+  box-shadow: var(--map-card-shadow);
+  border-radius: 12px;
+}
+
+.map-control-btn {
+  width: 36px;
+  height: 36px;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  background: transparent;
+  border: none;
+  font: inherit;
+}
+
+.map-control-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.map-control-btn:active {
+  transform: scale(0.92);
+}
+
+.map-control-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.map-control-btn:disabled:hover {
+  background: transparent;
+  transform: none;
+}
+
+.map-control-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: -2px;
+}
+
+.map-control-btn--accent {
+  color: var(--map-accent-icon, var(--color-teal-500));
+}
+
+.map-control-divider {
+  width: 20px;
+  height: 1px;
+  background: color-mix(in srgb, var(--text-tertiary) 20%, transparent);
+  margin: 2px auto;
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION (Wave 102-103)
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .map-building-pin,
+  .map-building-pin:hover,
+  .map-building-pin--active {
+    transition: none;
+    transform: none;
+    filter: none;
+  }
+
+  .map-building-pin--pulse {
+    animation: none;
+  }
+
+  .map-poi-pin,
+  .map-poi-pin--hover {
+    transition: none;
+    transform: none;
+  }
+
+  .map-control-btn:active {
+    transform: none;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════

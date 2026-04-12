@@ -1,0 +1,101 @@
+/**
+ * MapControls.tsx — Premium map control panel.
+ * Zoom, compass, pitch toggle, fullscreen, recenter.
+ * Wave 103 — replaces MapZoomControls with richer controls.
+ */
+
+import { useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
+import {
+  Plus,
+  Minus,
+  Compass,
+  Box,
+  Map as MapIcon,
+  Maximize2,
+  Minimize2,
+  LocateFixed,
+} from "lucide-react"
+import type { MapRef } from "react-map-gl/maplibre"
+import { CAMPUS_COORDINATES } from "@/constants/campus"
+
+interface MapControlsProps {
+  mapRef: React.MutableRefObject<MapRef | null>
+}
+
+export function MapControls({ mapRef }: MapControlsProps) {
+  const { t } = useTranslation("map")
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [is3D, setIs3D] = useState(true) // starts with pitch 45
+
+  const zoomIn = useCallback(() => mapRef.current?.getMap().zoomIn(), [mapRef])
+  const zoomOut = useCallback(() => mapRef.current?.getMap().zoomOut(), [mapRef])
+
+  const resetNorth = useCallback(() => {
+    mapRef.current?.easeTo({ bearing: 0, duration: 400 })
+  }, [mapRef])
+
+  const togglePitch = useCallback(() => {
+    const newPitch = is3D ? 0 : 45
+    mapRef.current?.easeTo({ pitch: newPitch, duration: 400 })
+    setIs3D(!is3D)
+  }, [mapRef, is3D])
+
+  const recenter = useCallback(() => {
+    mapRef.current?.flyTo({
+      center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+      zoom: 16,
+      pitch: 45,
+      bearing: 0,
+      duration: 800,
+    })
+    setIs3D(true)
+  }, [mapRef])
+
+  const toggleFullscreen = useCallback(() => {
+    const container = mapRef.current?.getMap().getContainer()?.closest(".map-card-matte")
+    if (!container) return
+
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
+    }
+  }, [mapRef])
+
+  return (
+    <div className="map-control-panel" role="group" aria-label={t("zoom.ariaLabel")}>
+      {/* Zoom */}
+      <button type="button" onClick={zoomIn} className="map-control-btn" aria-label={t("zoom.in")}>
+        <Plus size={16} />
+      </button>
+      <button type="button" onClick={zoomOut} className="map-control-btn" aria-label={t("zoom.out")}>
+        <Minus size={16} />
+      </button>
+
+      <div className="map-control-divider" />
+
+      {/* Compass — reset north */}
+      <button type="button" onClick={resetNorth} className="map-control-btn" aria-label={t("controls.compass")}>
+        <Compass size={16} />
+      </button>
+
+      {/* 3D / 2D toggle */}
+      <button type="button" onClick={togglePitch} className="map-control-btn" aria-label={t("controls.pitchToggle")}>
+        {is3D ? <MapIcon size={16} /> : <Box size={16} />}
+      </button>
+
+      <div className="map-control-divider" />
+
+      {/* Recenter campus */}
+      <button type="button" onClick={recenter} className="map-control-btn map-control-btn--accent" aria-label={t("zoom.reset")}>
+        <LocateFixed size={16} />
+      </button>
+
+      {/* Fullscreen */}
+      <button type="button" onClick={toggleFullscreen} className="map-control-btn" aria-label={t("controls.fullscreen")}>
+        {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+      </button>
+    </div>
+  )
+}
