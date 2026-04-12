@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from "react"
-import { useReducedMotion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -11,11 +11,11 @@ import { FloorSelector } from "@/components/map/FloorSelector"
 import { MapSidebar } from "@/components/map/MapSidebar"
 import { MapSearchBar } from "@/components/map/MapSearchBar"
 import { MapCategoryFilter } from "@/components/map/MapCategoryFilter"
-import { MapScheduleWidget } from "@/components/map/MapScheduleWidget"
 import { MapLayerToggle } from "@/components/map/MapLayerToggle"
 import { MapZoomControls } from "@/components/map/MapZoomControls"
 import { useNextLesson } from "@/hooks/useNextLesson"
 import { useMapNavigation } from "@/hooks/useMapNavigation"
+import { useTimeOfDay } from "@/hooks/useTimeOfDay"
 import { ArrowLeft } from "lucide-react"
 import {
   getCampusBuildings,
@@ -35,6 +35,7 @@ export function MapFeature() {
   const { t, i18n } = useTranslation("map")
   const prefersReducedMotion = useReducedMotion() ?? false
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
+  const timePeriod = useTimeOfDay()
 
   /* ── Campus data ── */
   const buildings = useMemo(
@@ -124,32 +125,26 @@ export function MapFeature() {
   )
 
   return (
-    <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip">
+    <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip" data-time-period={timePeriod}>
       <MapBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
       <div className="relative z-[1]">
-        <MapHeader buildingCount={buildings.length} />
+        <MapHeader />
 
-        {/* Schedule widget + Search + category filters */}
-        <FadeSection delay="100ms" className="mb-4">
-          <MapScheduleWidget
-            nextLesson={nextLessonInfo}
-            onNavigate={navigateToRoom}
-          />
-        </FadeSection>
-
-        <FadeSection delay="140ms" className="flex flex-col sm:flex-row gap-3 mb-4">
-          <div className="flex-1 max-w-md">
+        <FadeSection delay="100ms" className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="flex-1 min-w-0 sm:min-w-[240px] sm:max-w-md">
             <MapSearchBar
               buildings={buildings}
               onSelectBuilding={handleBuildingClick}
               onSelectRoom={navigateToRoom}
             />
           </div>
-          <MapCategoryFilter
-            active={activeCategory}
-            onChange={setActiveCategory}
-          />
+          <div className="flex-1 min-w-0 overflow-x-auto">
+            <MapCategoryFilter
+              active={activeCategory}
+              onChange={setActiveCategory}
+            />
+          </div>
         </FadeSection>
 
         {/* Layer toggle */}
@@ -187,64 +182,81 @@ export function MapFeature() {
               </div>
             )}
 
-            {viewMode === "campus" ? (
-              <div ref={mapContainerRef} style={transformStyle}>
-              <CampusMapSVG
-                buildings={filteredBuildings}
-                selectedBuilding={selectedBuilding}
-                highlightedBuilding={nextLessonInfo?.building ?? hoveredBuilding}
-                onBuildingClick={handleBuildingClick}
-                onBuildingHover={setHoveredBuilding}
-                prefersReducedMotion={prefersReducedMotion}
-              />
-              </div>
-            ) : currentBuilding ? (
-              <div className="flex flex-col h-full min-h-[inherit]">
-                {/* Floor plan header */}
-                <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
-                  <button
-                    type="button"
-                    onClick={handleBackToCampus}
-                    className="map-category-chip flex items-center gap-2"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    <span className="hidden sm:inline">{t("floorPlan.backToCampus")}</span>
-                  </button>
-
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="text-lg font-black"
-                      style={{ color: currentBuilding.colorHex }}
+            <AnimatePresence mode="wait" initial={false}>
+              {viewMode === "campus" ? (
+                <motion.div
+                  key="campus"
+                  initial={prefersReducedMotion ? false : { scale: 0.98, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={prefersReducedMotion ? undefined : { scale: 1.05, opacity: 0 }}
+                  transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.25, ease: "easeInOut" }}
+                >
+                  <div ref={mapContainerRef} style={transformStyle}>
+                    <CampusMapSVG
+                      buildings={filteredBuildings}
+                      selectedBuilding={selectedBuilding}
+                      highlightedBuilding={nextLessonInfo?.building ?? hoveredBuilding}
+                      onBuildingClick={handleBuildingClick}
+                      onBuildingHover={setHoveredBuilding}
+                      prefersReducedMotion={prefersReducedMotion}
+                    />
+                  </div>
+                </motion.div>
+              ) : currentBuilding ? (
+                <motion.div
+                  key="floorplan"
+                  initial={prefersReducedMotion ? false : { scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={prefersReducedMotion ? undefined : { scale: 0.95, opacity: 0 }}
+                  transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
+                  className="flex flex-col h-full min-h-[inherit]"
+                >
+                  {/* Floor plan header */}
+                  <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
+                    <button
+                      type="button"
+                      onClick={handleBackToCampus}
+                      className="map-category-chip flex items-center gap-2"
                     >
-                      {currentBuilding.letter}
-                    </span>
-                    <span className="text-sm font-semibold text-[var(--text-secondary)]">
-                      {currentBuilding.name}
-                    </span>
+                      <ArrowLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t("floorPlan.backToCampus")}</span>
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="text-lg font-black"
+                        style={{ color: currentBuilding.colorHex }}
+                      >
+                        {currentBuilding.letter}
+                      </span>
+                      <span className="text-sm font-semibold text-[var(--text-secondary)]">
+                        {currentBuilding.name}
+                      </span>
+                    </div>
+
+                    <FloorSelector
+                      floors={currentBuilding.floors}
+                      activeFloor={selectedFloor}
+                      onFloorChange={handleFloorChange}
+                      accentColor={currentBuilding.colorHex}
+                    />
                   </div>
 
-                  <FloorSelector
-                    floors={currentBuilding.floors}
-                    activeFloor={selectedFloor}
-                    onFloorChange={handleFloorChange}
-                    accentColor={currentBuilding.colorHex}
-                  />
-                </div>
-
-                {/* Floor plan SVG */}
-                <div className="flex-1">
-                  {currentFloor && (
-                    <FloorPlanSVG
-                      building={currentBuilding}
-                      floor={currentFloor}
-                      selectedRoom={selectedRoom}
-                      scheduledRoom={nextLessonInfo?.roomId}
-                      onRoomClick={handleRoomClick}
-                    />
-                  )}
-                </div>
-              </div>
-            ) : null}
+                  {/* Floor plan SVG */}
+                  <div className="flex-1">
+                    {currentFloor && (
+                      <FloorPlanSVG
+                        building={currentBuilding}
+                        floor={currentFloor}
+                        selectedRoom={selectedRoom}
+                        scheduledRoom={nextLessonInfo?.roomId}
+                        onRoomClick={handleRoomClick}
+                      />
+                    )}
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
 
           {/* Sidebar — desktop: inline panel, mobile: bottom sheet */}

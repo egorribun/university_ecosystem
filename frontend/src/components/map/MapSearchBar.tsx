@@ -150,7 +150,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom }: MapS
               inputRef.current?.focus()
             }}
             className="h-5 w-5 flex items-center justify-center rounded-full hover:bg-[var(--bg-surface-hover)]"
-            aria-label="Clear"
+            aria-label={t("search.clear")}
           >
             <X className="h-3 w-3" />
           </button>

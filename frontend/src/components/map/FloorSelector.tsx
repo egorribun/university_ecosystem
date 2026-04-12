@@ -39,7 +39,7 @@ export function FloorSelector({
             className="relative px-4 py-2 text-sm font-bold rounded-full transition-colors"
             style={{
               backgroundColor: isActive ? accentColor : undefined,
-              color: isActive ? "white" : "var(--text-secondary)",
+              color: isActive ? "var(--map-on-accent)" : "var(--text-secondary)",
               opacity: isActive ? 1 : 0.7,
             }}
           >

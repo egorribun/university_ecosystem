@@ -145,6 +145,7 @@ export function FloorPlanSVG({
         fontSize="11"
         fontWeight="600"
         opacity="0.5"
+        aria-hidden="true"
       >
         ───── ─────
       </text>

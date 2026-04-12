@@ -115,14 +115,16 @@
     "capacity": "Capacity: {{count}}",
     "type": "Type",
     "close": "Close sidebar",
-    "emptyState": "Select a building or room to see details"
+    "emptyState": "Select a building or room to see details",
+    "dragToResize": "Drag to resize panel"
   },
   "search": {
     "placeholder": "Search buildings and rooms…",
     "ariaLabel": "Search campus map",
     "noResults": "No results found",
     "groupBuildings": "Buildings",
-    "groupRooms": "Rooms"
+    "groupRooms": "Rooms",
+    "clear": "Clear search"
   },
   "floorPlan": {
     "title": "Floor plan — {{building}}",
@@ -130,13 +132,6 @@
     "backToCampus": "Back to campus",
     "floorLabel": "Floor {{number}}",
     "selectFloor": "Select floor"
-  },
-  "schedule": {
-    "widgetTitle": "Next class",
-    "noUpcoming": "No upcoming classes today",
-    "showOnMap": "Show on map",
-    "inTime": "in {{time}}",
-    "room": "Room {{room}}"
   },
   "layers": {
     "campus": "Campus",

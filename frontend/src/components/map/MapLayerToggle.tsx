@@ -38,13 +38,13 @@ export function MapLayerToggle({ viewMode, onToggle, buildingName }: MapLayerTog
             aria-checked={isActive}
             onClick={() => onToggle(key)}
             className="relative flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-colors"
-            style={{ color: isActive ? "white" : "var(--text-secondary)" }}
+            style={{ color: isActive ? "var(--map-layer-active-text)" : "var(--text-secondary)" }}
           >
             {isActive && (
               <motion.div
                 layoutId="map-layer-indicator"
                 className="absolute inset-0 rounded-full"
-                style={{ backgroundColor: "var(--color-teal-500)" }}
+                style={{ backgroundColor: "var(--map-layer-active-bg)" }}
                 transition={
                   prefersReduced
                     ? { duration: 0 }

@@ -33,6 +33,11 @@ export function useMapNavigation() {
   // activeDrag as state (not ref) — React Compiler forbids ref access during render
   const [activeDrag, setActiveDrag] = useState(false)
 
+  // Ref-mirror: event handlers read stateRef (always fresh) without
+  // triggering effect re-runs — listeners attach once (PERF-97-01)
+  const stateRef = useRef(state)
+  useEffect(() => { stateRef.current = state }, [state])
+
   // Track drag state in refs to avoid re-renders during drag
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, y: 0 })
@@ -103,8 +108,9 @@ export function useMapNavigation() {
     if (!el) return
 
     const onPointerDown = (e: PointerEvent) => {
+      const s = stateRef.current
       // Only pan when zoomed in, and only with primary button
-      if (state.zoom <= 1 || e.button !== 0) return
+      if (s.zoom <= 1 || e.button !== 0) return
       // Don't intercept clicks on buildings (they have role="button")
       const target = e.target as HTMLElement
       if (target.closest("[role='button']")) return
@@ -112,15 +118,16 @@ export function useMapNavigation() {
       isDragging.current = true
       setActiveDrag(true)
       dragStart.current = { x: e.clientX, y: e.clientY }
-      panStart.current = { ...state.pan }
+      panStart.current = { ...s.pan }
       el.setPointerCapture(e.pointerId)
       el.style.cursor = "grabbing"
     }
 
     const onPointerMove = (e: PointerEvent) => {
       if (!isDragging.current) return
-      const dx = (e.clientX - dragStart.current.x) / state.zoom
-      const dy = (e.clientY - dragStart.current.y) / state.zoom
+      const zoom = stateRef.current.zoom
+      const dx = (e.clientX - dragStart.current.x) / zoom
+      const dy = (e.clientY - dragStart.current.y) / zoom
       setState((prev) => ({
         ...prev,
         pan: clampPan(panStart.current.x + dx, panStart.current.y + dy, prev.zoom),
@@ -132,7 +139,7 @@ export function useMapNavigation() {
         isDragging.current = false
         setActiveDrag(false)
         el.releasePointerCapture(e.pointerId)
-        el.style.cursor = state.zoom > 1 ? "grab" : ""
+        el.style.cursor = stateRef.current.zoom > 1 ? "grab" : ""
       }
     }
 
@@ -147,7 +154,7 @@ export function useMapNavigation() {
       el.removeEventListener("pointerup", onPointerUp)
       el.removeEventListener("pointercancel", onPointerUp)
     }
-  }, [state.zoom, state.pan, clampPan])
+  }, [clampPan])
 
   /* ── Pinch zoom (touch) ── */
   useEffect(() => {
@@ -165,7 +172,7 @@ export function useMapNavigation() {
       if (e.touches.length === 2) {
         e.preventDefault()
         pinchStartDist.current = getTouchDist(e.touches)
-        pinchStartZoom.current = state.zoom
+        pinchStartZoom.current = stateRef.current.zoom
       }
     }
 
@@ -195,7 +202,7 @@ export function useMapNavigation() {
       el.removeEventListener("touchmove", onTouchMove)
       el.removeEventListener("touchend", onTouchEnd)
     }
-  }, [state.zoom, clampPan])
+  }, [clampPan])
 
   /* ── Double-click to reset ── */
   useEffect(() => {

@@ -22,6 +22,11 @@
   inherits: true;
   initial-value: transparent;
 }
+@property --map-atmosphere-hue {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 180;
+}
 
 @layer base {
   /* ═══════════════════════════════════════════════════════
@@ -123,6 +128,19 @@
     /* ── Zoom controls ────────────────────────────── */
     --map-zoom-bg: var(--map-card-bg);
     --map-zoom-shadow: var(--map-card-shadow);
+
+    /* ── Badge / accent ───────────────────────────── */
+    --map-badge-bg: color-mix(in srgb, var(--color-teal-500) 12%, var(--bg-surface));
+    --fs-map-badge: 0.45em;
+    --map-accent-icon: var(--color-teal-500);
+    --map-layer-active-bg: var(--color-teal-500);
+    --map-layer-active-text: var(--text-inverse);
+    --map-on-accent: var(--text-inverse);
+
+    /* ── SVG decoration (windows, doors) ──────────── */
+    --map-svg-window-opacity: 0.15;
+    --map-svg-tree: var(--color-emerald-400);
+    --map-svg-bench: var(--color-slate-400);
   }
 
   /* ── Dark Theme Overrides ──────────────────────── */
@@ -182,7 +200,73 @@
 
     /* Skeleton dark */
     --map-skeleton-bg: color-mix(in srgb, var(--color-teal-900) 20%, var(--color-slate-700) 80%);
+
+    /* Badge / accent dark */
+    --map-badge-bg: color-mix(in srgb, var(--color-teal-400) 18%, var(--bg-surface));
+    --map-accent-icon: var(--color-teal-400);
+    --map-layer-active-bg: var(--color-teal-400);
+
+    /* SVG decoration dark */
+    --map-svg-window-opacity: 0.1;
+    --map-svg-tree: var(--color-emerald-500);
+    --map-svg-bench: var(--color-slate-500);
   }
+}
+
+/* ═══════════════════════════════════════════════════════
+   TIME-OF-DAY ATMOSPHERE
+   SVG ground, shadows, and orb hues shift by current hour.
+   Dark mode: atmosphere is subtler (ground stays dark).
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme[data-time-period="dawn"] {
+  --map-svg-ground: color-mix(in srgb, var(--color-amber-50) 40%, var(--color-slate-100) 60%);
+  --map-svg-ground-accent: color-mix(in srgb, var(--color-amber-100) 30%, var(--color-slate-100) 70%);
+  --map-svg-shadow: color-mix(in srgb, rgb(180 120 40) 15%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-amber-300) 12%, transparent);
+  --map-orb-1: color-mix(in srgb, var(--color-amber-400) 10%, transparent);
+}
+
+.map-theme[data-time-period="afternoon"] {
+  --map-svg-ground: color-mix(in srgb, var(--color-sky-50) 20%, var(--color-slate-100) 80%);
+  --map-svg-shadow: color-mix(in srgb, black 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-sky-300) 10%, transparent);
+}
+
+.map-theme[data-time-period="dusk"] {
+  --map-svg-ground: color-mix(in srgb, var(--color-orange-50) 30%, var(--color-slate-100) 70%);
+  --map-svg-ground-accent: color-mix(in srgb, var(--color-orange-100) 25%, var(--color-slate-100) 75%);
+  --map-svg-shadow: color-mix(in srgb, rgb(120 60 20) 18%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-orange-300) 14%, transparent);
+  --map-orb-1: color-mix(in srgb, var(--color-orange-400) 10%, transparent);
+}
+
+.map-theme[data-time-period="night"] {
+  --map-svg-ground: color-mix(in srgb, var(--color-slate-200) 60%, var(--color-blue-100) 40%);
+  --map-svg-ground-accent: color-mix(in srgb, var(--color-blue-100) 20%, var(--color-slate-200) 80%);
+  --map-svg-shadow: color-mix(in srgb, rgb(0 0 40) 20%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-blue-400) 10%, transparent);
+  --map-orb-1: color-mix(in srgb, var(--color-blue-500) 8%, transparent);
+  --map-svg-roof-opacity: 0.8;
+}
+
+/* Dark mode atmosphere — subtler (ground stays dark) */
+.dark .map-theme[data-time-period="dawn"] {
+  --map-svg-shadow: color-mix(in srgb, rgb(180 120 40) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-amber-400) 14%, transparent);
+  --map-orb-1: color-mix(in srgb, var(--color-amber-500) 12%, transparent);
+}
+
+.dark .map-theme[data-time-period="dusk"] {
+  --map-svg-shadow: color-mix(in srgb, rgb(120 60 20) 12%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-orange-400) 16%, transparent);
+  --map-orb-1: color-mix(in srgb, var(--color-orange-500) 12%, transparent);
+}
+
+.dark .map-theme[data-time-period="night"] {
+  --map-svg-shadow: color-mix(in srgb, rgb(0 0 60) 15%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-blue-400) 14%, transparent);
+  --map-orb-1: color-mix(in srgb, var(--color-blue-500) 10%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -212,7 +296,8 @@
 
 .map-card-matte:hover {
   transform: translateY(-2px);
-  box-shadow: var(--map-card-shadow-hover);
+  box-shadow: var(--map-card-shadow-hover),
+    0 0 0 1px var(--map-card-glow);
 }
 
 .map-card-matte:active {
@@ -258,9 +343,7 @@
 }
 
 .map-building-group:focus-visible {
-  outline: 2px solid var(--color-brand);
-  outline-offset: 4px;
-  border-radius: 4px;
+  filter: drop-shadow(0 0 0 3px var(--color-brand)) drop-shadow(0 0 12px var(--_bldg-color, var(--color-teal-400)));
 }
 
 /* Building pulse for schedule-highlighted building */
@@ -314,6 +397,16 @@
 .map-room:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
+}
+
+/* Active room glow pulse */
+@keyframes map-room-glow {
+  0%, 100% { filter: drop-shadow(0 0 3px var(--_bldg-color, var(--color-teal-400))); }
+  50% { filter: drop-shadow(0 0 8px var(--_bldg-color, var(--color-teal-400))); }
+}
+
+.map-room[data-active="true"] {
+  animation: map-room-glow 2s ease-in-out infinite;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -478,6 +571,12 @@
   .map-stagger-item {
     animation-duration: 0.01s;
     animation-delay: 0s;
+  }
+  .map-room[data-active="true"] {
+    animation: none;
+  }
+  .map-layer-toggle {
+    transition: none;
   }
 }
 

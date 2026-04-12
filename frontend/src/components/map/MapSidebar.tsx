@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { useTranslation } from "react-i18next"
 import { X, Clock, MapPin, Users, ChevronRight } from "lucide-react"
 import type { CampusBuilding, CampusRoom, BuildingFloor } from "@/data/campusBuildings"
+import { useAppShell } from "@/contexts/AppShellContext"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface MapSidebarProps {
   building: CampusBuilding | undefined
@@ -25,6 +27,7 @@ export function MapSidebar({
   isMobile,
 }: MapSidebarProps) {
   const { t } = useTranslation("map")
+  const { setOverlayState } = useAppShell()
   const isOpen = !!building
 
   /* ── Bottom sheet drag state (mobile only) ── */
@@ -35,8 +38,22 @@ export function MapSidebar({
   const isDragging = useRef(false)
 
   const SNAP_PEEK = 160
-  const SNAP_HALF = typeof window !== "undefined" ? window.innerHeight * 0.5 : 400
-  const SNAP_FULL = typeof window !== "undefined" ? window.innerHeight * 0.85 : 700
+  const getViewH = () => (typeof window !== "undefined" ? window.innerHeight : 800)
+  const SNAP_HALF = getViewH() * 0.5
+  const SNAP_FULL = getViewH() * 0.85
+
+  /* ── Body scroll lock for mobile sheet ── */
+  useEffect(() => {
+    if (!isMobile || !isOpen) return
+    setOverlayState("map-sidebar", { scrollLocked: true, blurred: false })
+    return () => setOverlayState("map-sidebar", null)
+  }, [isMobile, isOpen, setOverlayState])
+
+  /* ── Focus trap for mobile sheet ── */
+  const sheetRef = useFocusTrap<HTMLDivElement>({
+    active: isMobile && isOpen,
+    onDeactivate: onClose,
+  })
 
   const snapToNearest = useCallback(
     (h: number) => {
@@ -62,7 +79,8 @@ export function MapSidebar({
   const handleDragMove = useCallback((clientY: number) => {
     if (!isDragging.current) return
     const dy = dragStartY.current - clientY
-    const newH = Math.max(100, Math.min(dragStartH.current + dy, window.innerHeight * 0.9))
+    const viewH = typeof window !== "undefined" ? window.innerHeight : 800
+    const newH = Math.max(100, Math.min(dragStartH.current + dy, viewH * 0.9))
     setSheetHeight(newH)
   }, [])
 
@@ -91,8 +109,8 @@ export function MapSidebar({
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div
-            className="flex items-center justify-center h-10 w-10 rounded-lg text-white font-black text-lg"
-            style={{ backgroundColor: building.colorHex }}
+            className="flex items-center justify-center h-10 w-10 rounded-lg font-black text-lg"
+            style={{ backgroundColor: building.colorHex, color: "var(--map-on-accent)" }}
           >
             {building.letter}
           </div>
@@ -108,7 +126,7 @@ export function MapSidebar({
           <button
             type="button"
             onClick={onClose}
-            className="map-zoom-btn h-8 w-8 flex items-center justify-center rounded-lg"
+            className="map-zoom-btn min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg"
             aria-label={t("sidebar.close")}
           >
             <X className="h-4 w-4" />
@@ -221,6 +239,10 @@ export function MapSidebar({
   if (isMobile) {
     return (
       <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={building.name}
         className="fixed inset-x-0 bottom-0 z-50 bg-[var(--map-sidebar-bg)] rounded-t-2xl"
         style={{
           height: `${sheetHeight}px`,
@@ -230,6 +252,8 @@ export function MapSidebar({
       >
         {/* Drag handle */}
         <div
+          role="separator"
+          aria-label={t("sidebar.dragToResize")}
           className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={(e) => handleDragStart(e.clientY)}
           onPointerMove={(e) => handleDragMove(e.clientY)}

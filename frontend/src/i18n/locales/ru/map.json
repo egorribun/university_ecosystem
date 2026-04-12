@@ -115,14 +115,16 @@
     "capacity": "Вместимость: {{count}}",
     "type": "Тип",
     "close": "Закрыть панель",
-    "emptyState": "Выберите здание или аудиторию для просмотра"
+    "emptyState": "Выберите здание или аудиторию для просмотра",
+    "dragToResize": "Потяните для изменения размера панели"
   },
   "search": {
     "placeholder": "Поиск зданий и аудиторий…",
     "ariaLabel": "Поиск по карте кампуса",
     "noResults": "Ничего не найдено",
     "groupBuildings": "Здания",
-    "groupRooms": "Аудитории"
+    "groupRooms": "Аудитории",
+    "clear": "Очистить поиск"
   },
   "floorPlan": {
     "title": "План этажа — {{building}}",
@@ -130,13 +132,6 @@
     "backToCampus": "Назад к кампусу",
     "floorLabel": "Этаж {{number}}",
     "selectFloor": "Выберите этаж"
-  },
-  "schedule": {
-    "widgetTitle": "Следующая пара",
-    "noUpcoming": "Сегодня больше нет занятий",
-    "showOnMap": "Показать на карте",
-    "inTime": "через {{time}}",
-    "room": "Ауд. {{room}}"
   },
   "layers": {
     "campus": "Кампус",

@@ -13,7 +13,6 @@ import Schedule from "@/pages/Schedule"
 import Settings from "@/pages/Settings"
 import Profile from "@/pages/Profile"
 import Events from "@/pages/Events"
-import MapContent from "@/pages/MapContentLegacy"
 import AdminUsers from "@/pages/AdminUsers"
 import Dashboard from "@/pages/Dashboard"
 import News from "@/pages/News"
@@ -598,45 +597,6 @@ describe("page translations", () => {
 
     expect(await screen.findByText("Мероприятия")).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Актуальные" })).toBeInTheDocument()
-  })
-
-  it("switches map controls translations", async () => {
-    const matchMediaSpy = vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
-      matches: query.includes("prefers-reduced-motion"),
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }))
-
-    try {
-      const { user } = renderWithProviders(<MapContent />, { initialPath: "/map" })
-
-      expect(await screen.findByText("Campus map")).toBeInTheDocument()
-      expect(
-        await screen.findByText(
-          "Interactive maps are disabled to respect your privacy or reduced motion settings."
-        )
-      ).toBeInTheDocument()
-      // The fallback landmark is intentionally exposed as a region so keyboard users can
-      // quickly locate the static points list when the Tailwind map shim takes over.
-      expect(await screen.findByRole("region", { name: "Campus overview" })).toBeInTheDocument()
-
-      await user.click(screen.getByTestId("lang-toggle"))
-
-      expect(await screen.findByText("Карта кампуса")).toBeInTheDocument()
-      expect(
-        await screen.findByText(
-          "Интерактивная карта отключена согласно настройкам приватности или уменьшения анимации."
-        )
-      ).toBeInTheDocument()
-      expect(await screen.findByRole("region", { name: "Обзор кампуса" })).toBeInTheDocument()
-    } finally {
-      matchMediaSpy.mockRestore()
-    }
   })
 
   it("switches admin users page translations", async () => {

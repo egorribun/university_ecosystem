@@ -52,7 +52,7 @@ export function MapZoomControls({
         <button
           type="button"
           onClick={onReset}
-          className="map-zoom-btn h-9 w-9 flex items-center justify-center rounded-b-md text-[var(--color-teal-500)]"
+          className="map-zoom-btn h-9 w-9 flex items-center justify-center rounded-b-md text-[var(--map-accent-icon)]"
           aria-label={t("zoom.reset")}
         >
           <RotateCcw className="h-3.5 w-3.5" />
