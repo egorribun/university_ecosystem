@@ -16,7 +16,6 @@ export const namespaces = [
   "admin",
   "stories",
   "messenger",
-  "campus-points",
   "map",
 ] as const
 

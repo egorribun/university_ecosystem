@@ -1,7 +1,7 @@
 /**
  * MapControls.tsx — Premium map control panel.
  * Zoom, compass, pitch toggle, fullscreen, recenter.
- * Wave 103 — replaces MapZoomControls with richer controls.
+ * Wave 103 — premium map control panel.
  */
 
 import { useState, useCallback } from "react"

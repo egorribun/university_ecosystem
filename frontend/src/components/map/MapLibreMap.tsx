@@ -14,7 +14,6 @@ import { useTranslation } from "react-i18next"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import { getCampusBuildings, type BuildingLetter, type MapCategory } from "@/data/campusBuildings"
 import { CAMPUS_POIS, type CampusPOI } from "@/data/campusPOI"
-// Walking paths removed — they were approximate, not real paths
 import { useOverpassPOI } from "@/hooks/useOverpassPOI"
 import { BuildingMarker } from "./BuildingMarker"
 import { POIMarker } from "./POIMarker"
@@ -58,8 +57,6 @@ const GENERIC_BUILDINGS_LAYER: LayerProps = {
     "fill-extrusion-opacity": 0.5,
   },
 }
-
-/* Walking paths layer removed — approximate data didn't match real paths */
 
 interface MapLibreMapProps {
   selectedBuilding: BuildingLetter | null
@@ -198,10 +195,11 @@ export function MapLibreMapComponent({
         <Layer {...GENERIC_BUILDINGS_LAYER} />
 
         {/* Building markers */}
-        {filteredBuildings.map((building) => (
+        {filteredBuildings.map((building, index) => (
           <BuildingMarker
             key={building.letter}
             building={building}
+            index={index}
             isSelected={selectedBuilding === building.letter}
             isHighlighted={highlightedBuilding === building.letter}
             onClick={onSelectBuilding}

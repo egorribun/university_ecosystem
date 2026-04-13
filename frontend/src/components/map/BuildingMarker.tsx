@@ -7,40 +7,20 @@
 import { useState, useMemo } from "react"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
-import {
-  BookOpen,
-  Building2,
-  Dumbbell,
-  Home,
-  GraduationCap,
-  type LucideIcon,
-} from "lucide-react"
-import type { CampusBuilding, BuildingLetter, MapCategory } from "@/data/campusBuildings"
-
-/* ── Category → icon mapping ── */
-const CATEGORY_ICONS: Record<string, LucideIcon> = {
-  study: BookOpen,
-  services: Building2,
-  sports: Dumbbell,
-  housing: Home,
-  events: GraduationCap,
-}
-
-function getPrimaryIcon(tags: MapCategory[]): LucideIcon {
-  for (const tag of tags) {
-    if (CATEGORY_ICONS[tag]) return CATEGORY_ICONS[tag]
-  }
-  return Building2
-}
+import type { CampusBuilding, BuildingLetter } from "@/data/campusBuildings"
+import { isOpenNow } from "@/utils/buildingHours"
+import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
 
 interface BuildingMarkerProps {
   building: CampusBuilding
   isSelected: boolean
   isHighlighted: boolean
   onClick: (letter: BuildingLetter) => void
+  /** Array index for stagger entrance animation */
+  index?: number
 }
 
-export function BuildingMarker({ building, isSelected, isHighlighted, onClick }: BuildingMarkerProps) {
+export function BuildingMarker({ building, isSelected, isHighlighted, onClick, index = 0 }: BuildingMarkerProps) {
   const { t } = useTranslation("map")
   const [showPopup, setShowPopup] = useState(false)
 
@@ -72,7 +52,8 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick }:
             floors: building.floorCount,
             rooms: roomCount,
           })}
-          className={`map-building-pin${isActive ? " map-building-pin--active" : ""}${isHighlighted ? " map-building-pin--pulse" : ""}`}
+          className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}${isHighlighted ? " map-building-pin--pulse" : ""}`}
+          style={{ "--stagger-index": index, "--_pin-color": building.colorHex } as React.CSSProperties}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
@@ -127,6 +108,16 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick }:
           className="map-popup-premium"
           maxWidth="280px"
         >
+          {building.photo ? (
+            <img src={building.photo} alt={building.name} className="map-popup-photo" loading="lazy" />
+          ) : (
+            <div
+              className="map-photo-placeholder"
+              style={{ background: `linear-gradient(135deg, ${building.colorHex}, color-mix(in srgb, ${building.colorHex} 60%, black))` }}
+            >
+              <Icon size={32} strokeWidth={1.5} />
+            </div>
+          )}
           <div className="map-popup-card">
             {/* Header: color bar + letter badge + name */}
             <div className="map-popup-header" style={{ "--_popup-accent": building.colorHex } as React.CSSProperties}>
@@ -149,6 +140,20 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick }:
               <span>{t("tooltip.floors", { count: building.floorCount })}</span>
               <span className="map-popup-stats-dot" />
               <span>{t("sidebar.roomCount", { count: roomCount })}</span>
+              <span className="map-popup-stats-dot" />
+              <span
+                className="font-bold text-[10px] px-1.5 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: isOpenNow(building.hours)
+                    ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
+                    : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+                  color: isOpenNow(building.hours)
+                    ? "var(--color-emerald-500)"
+                    : "var(--color-rose-500)",
+                }}
+              >
+                {isOpenNow(building.hours) ? t("hours.openNow") : t("hours.closedNow")}
+              </span>
             </div>
 
             {/* Amenity chips */}

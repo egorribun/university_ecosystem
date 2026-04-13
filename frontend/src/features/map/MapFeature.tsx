@@ -8,6 +8,8 @@ import { MapSidebar } from "@/components/map/MapSidebar"
 import { MapSearchBar } from "@/components/map/MapSearchBar"
 import { MapCategoryFilter } from "@/components/map/MapCategoryFilter"
 import { useNextLesson } from "@/hooks/useNextLesson"
+import { useMapWeather } from "@/hooks/useMapWeather"
+import { MapWeatherBadge } from "@/components/map/MapWeatherBadge"
 import {
   getCampusBuildings,
   type BuildingLetter,
@@ -58,6 +60,9 @@ export function MapFeature() {
 
   /* ── Schedule integration ── */
   const nextLessonInfo = useNextLesson()
+
+  /* ── Weather ── */
+  const { data: weatherData } = useMapWeather()
 
   /* ── MapLibre GL map ref ── */
   const mapLibreRef = useRef<MapRef | null>(null)
@@ -117,11 +122,12 @@ export function MapFeature() {
   )
 
   return (
-    <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip">
+    <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip" data-weather={weatherData?.condition}>
       <MapBackdrop isNarrow={isNarrow} prefersReducedMotion={false} />
 
       <div className="relative z-[1]">
         <MapHeader />
+        <MapWeatherBadge />
 
         <FadeSection delay="100ms" className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="flex-1 min-w-0 sm:min-w-[240px] sm:max-w-md">

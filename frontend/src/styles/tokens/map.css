@@ -75,26 +75,6 @@
       inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
     --map-card-glow: color-mix(in srgb, var(--color-teal-400) 8%, transparent);
 
-    /* ── SVG campus tokens (light) ───────────────── */
-    --map-svg-ground: var(--color-slate-100);
-    --map-svg-ground-accent: color-mix(in srgb, var(--color-teal-100) 30%, var(--color-slate-100) 70%);
-    --map-svg-path: color-mix(in srgb, var(--color-slate-300) 50%, transparent);
-    --map-svg-path-stroke: var(--color-slate-300);
-    --map-svg-roof-opacity: 0.9;
-    --map-svg-wall-darken: 15%;
-    --map-svg-label: white;
-    --map-svg-shadow: color-mix(in srgb, black 12%, transparent);
-
-    /* ── Floor plan tokens ────────────────────────── */
-    --map-room-fill: color-mix(in srgb, var(--bg-surface) 85%, transparent);
-    --map-room-fill-hover: color-mix(in srgb, var(--bg-surface-hover) 90%, transparent);
-    --map-room-fill-active: color-mix(in srgb, var(--color-teal-400) 15%, var(--bg-surface));
-    --map-room-fill-schedule: color-mix(in srgb, var(--color-brand) 12%, var(--bg-surface));
-    --map-room-stroke: var(--color-slate-300);
-    --map-room-stroke-active: var(--color-teal-500);
-    --map-room-stroke-schedule: var(--color-brand);
-    --map-room-label: var(--color-slate-600);
-
     /* ── Sidebar ──────────────────────────────────── */
     --map-sidebar-bg: var(--bg-surface);
     --map-sidebar-shadow:
@@ -111,16 +91,8 @@
       0 2px 8px color-mix(in srgb, black 10%, transparent),
       0 1px 2px color-mix(in srgb, black 6%, transparent);
 
-    /* ── Schedule widget accent ───────────────────── */
-    --map-schedule-accent: var(--color-brand);
-    --map-schedule-bg: color-mix(in srgb, var(--color-brand) 8%, var(--bg-surface));
-
     /* ── Skeleton ─────────────────────────────────── */
     --map-skeleton-bg: color-mix(in srgb, var(--color-teal-200) 20%, var(--color-slate-200) 80%);
-
-    /* ── Zoom controls ────────────────────────────── */
-    --map-zoom-bg: var(--map-card-bg);
-    --map-zoom-shadow: var(--map-card-shadow);
 
     /* ── Badge / accent ───────────────────────────── */
     --map-badge-bg: color-mix(in srgb, var(--color-teal-500) 12%, var(--bg-surface));
@@ -130,12 +102,7 @@
     --map-layer-active-text: var(--text-inverse);
     --map-on-accent: var(--text-inverse);
 
-    /* ── SVG decoration (windows, doors) ──────────── */
-    --map-svg-window-opacity: 0.15;
-    --map-svg-tree: var(--color-emerald-400);
-    --map-svg-bench: var(--color-slate-400);
-
-    /* ── Building colors (8 real GUU buildings) ───── */
+    /* ── Building colors (9 real GUU buildings) ───── */
     --map-bldg-a: var(--color-blue-500);      /* ГУК (main) */
     --map-bldg-b: var(--color-amber-500);     /* Lecture halls */
     --map-bldg-c: var(--color-emerald-500);   /* Labs */
@@ -183,21 +150,6 @@
     );
     --map-card-glow: color-mix(in srgb, var(--color-teal-400) 12%, transparent);
 
-    /* SVG dark overrides */
-    --map-svg-ground: var(--color-slate-800);
-    --map-svg-ground-accent: color-mix(in srgb, var(--color-teal-900) 30%, var(--color-slate-800) 70%);
-    --map-svg-path: color-mix(in srgb, var(--color-slate-600) 50%, transparent);
-    --map-svg-path-stroke: var(--color-slate-600);
-    --map-svg-wall-darken: 25%;
-    --map-svg-shadow: color-mix(in srgb, black 25%, transparent);
-
-    /* Floor plan dark */
-    --map-room-fill: color-mix(in srgb, var(--bg-surface) 70%, transparent);
-    --map-room-fill-hover: color-mix(in srgb, var(--bg-surface-hover) 75%, transparent);
-    --map-room-fill-active: color-mix(in srgb, var(--color-teal-400) 20%, var(--bg-surface));
-    --map-room-stroke: var(--color-slate-600);
-    --map-room-label: var(--color-slate-400);
-
     /* Sidebar dark */
     --map-sidebar-shadow:
       -4px 0 16px color-mix(in srgb, black 20%, transparent),
@@ -211,9 +163,6 @@
       0 2px 8px color-mix(in srgb, black 25%, transparent),
       0 1px 2px color-mix(in srgb, black 15%, transparent);
 
-    /* Schedule widget dark */
-    --map-schedule-bg: color-mix(in srgb, var(--color-brand) 12%, var(--bg-surface));
-
     /* Skeleton dark */
     --map-skeleton-bg: color-mix(in srgb, var(--color-teal-900) 20%, var(--color-slate-700) 80%);
 
@@ -222,67 +171,59 @@
     --map-accent-icon: var(--color-teal-400);
     --map-layer-active-bg: var(--color-teal-400);
 
-    /* SVG decoration dark */
-    --map-svg-window-opacity: 0.1;
-    --map-svg-tree: var(--color-emerald-500);
-    --map-svg-bench: var(--color-slate-500);
   }
 }
 
 /* ═══════════════════════════════════════════════════════
-   TIME-OF-DAY ATMOSPHERE
-   SVG ground, shadows, and orb hues shift by current hour.
-   Dark mode: atmosphere is subtler (ground stays dark).
+   WEATHER ATMOSPHERE (Open-Meteo)
+   data-weather attr set by MapFeature from useMapWeather.
    ═══════════════════════════════════════════════════════ */
 
-.map-theme[data-time-period="dawn"] {
-  --map-svg-ground: color-mix(in srgb, var(--color-amber-50) 40%, var(--color-slate-100) 60%);
-  --map-svg-ground-accent: color-mix(in srgb, var(--color-amber-100) 30%, var(--color-slate-100) 70%);
-  --map-svg-shadow: color-mix(in srgb, rgb(180 120 40) 15%, transparent);
-  --map-hero-orb: color-mix(in srgb, var(--color-amber-300) 12%, transparent);
-  --map-orb-1: color-mix(in srgb, var(--color-amber-400) 10%, transparent);
+.map-theme[data-weather="cloudy"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-300) 6%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
 }
 
-.map-theme[data-time-period="afternoon"] {
-  --map-svg-ground: color-mix(in srgb, var(--color-sky-50) 20%, var(--color-slate-100) 80%);
-  --map-svg-shadow: color-mix(in srgb, black 8%, transparent);
-  --map-hero-orb: color-mix(in srgb, var(--color-sky-300) 10%, transparent);
-}
-
-.map-theme[data-time-period="dusk"] {
-  --map-svg-ground: color-mix(in srgb, var(--color-orange-50) 30%, var(--color-slate-100) 70%);
-  --map-svg-ground-accent: color-mix(in srgb, var(--color-orange-100) 25%, var(--color-slate-100) 75%);
-  --map-svg-shadow: color-mix(in srgb, rgb(120 60 20) 18%, transparent);
-  --map-hero-orb: color-mix(in srgb, var(--color-orange-300) 14%, transparent);
-  --map-orb-1: color-mix(in srgb, var(--color-orange-400) 10%, transparent);
-}
-
-.map-theme[data-time-period="night"] {
-  --map-svg-ground: color-mix(in srgb, var(--color-slate-200) 60%, var(--color-blue-100) 40%);
-  --map-svg-ground-accent: color-mix(in srgb, var(--color-blue-100) 20%, var(--color-slate-200) 80%);
-  --map-svg-shadow: color-mix(in srgb, rgb(0 0 40) 20%, transparent);
+.map-theme[data-weather="rain"] {
+  --map-orb-1: color-mix(in srgb, var(--color-blue-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-blue-300) 8%, transparent);
   --map-hero-orb: color-mix(in srgb, var(--color-blue-400) 10%, transparent);
-  --map-orb-1: color-mix(in srgb, var(--color-blue-500) 8%, transparent);
-  --map-svg-roof-opacity: 0.8;
 }
 
-/* Dark mode atmosphere — subtler (ground stays dark) */
-.dark .map-theme[data-time-period="dawn"] {
-  --map-svg-shadow: color-mix(in srgb, rgb(180 120 40) 10%, transparent);
-  --map-hero-orb: color-mix(in srgb, var(--color-amber-400) 14%, transparent);
-  --map-orb-1: color-mix(in srgb, var(--color-amber-500) 12%, transparent);
+.map-theme[data-weather="snow"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-200) 15%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-sky-100) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-sky-300) 12%, transparent);
 }
 
-.dark .map-theme[data-time-period="dusk"] {
-  --map-svg-shadow: color-mix(in srgb, rgb(120 60 20) 12%, transparent);
-  --map-hero-orb: color-mix(in srgb, var(--color-orange-400) 16%, transparent);
-  --map-orb-1: color-mix(in srgb, var(--color-orange-500) 12%, transparent);
+.map-theme[data-weather="fog"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-300) 6%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-200) 4%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-slate-300) 5%, transparent);
 }
 
-.dark .map-theme[data-time-period="night"] {
-  --map-svg-shadow: color-mix(in srgb, rgb(0 0 60) 15%, transparent);
-  --map-hero-orb: color-mix(in srgb, var(--color-blue-400) 14%, transparent);
-  --map-orb-1: color-mix(in srgb, var(--color-blue-500) 10%, transparent);
+.map-theme[data-weather="storm"] {
+  --map-orb-1: color-mix(in srgb, var(--color-violet-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-violet-300) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-violet-400) 10%, transparent);
+}
+
+/* Dark mode weather adjustments */
+.dark .map-theme[data-weather="cloudy"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-500) 12%, transparent);
+}
+
+.dark .map-theme[data-weather="rain"] {
+  --map-orb-1: color-mix(in srgb, var(--color-blue-500) 14%, transparent);
+}
+
+.dark .map-theme[data-weather="snow"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-300) 18%, transparent);
+}
+
+.dark .map-theme[data-weather="storm"] {
+  --map-orb-1: color-mix(in srgb, var(--color-violet-500) 16%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -327,6 +268,19 @@
     0 2px 8px color-mix(in srgb, black 20%, transparent);
 }
 
+/* ── Weather badge ───────────────────────────── */
+.map-weather-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow);
+  color: var(--text-primary);
+}
+
 /* ═══════════════════════════════════════════════════════
    PREMIUM BUILDING PIN MARKERS (Wave 102)
    ═══════════════════════════════════════════════════════ */
@@ -341,15 +295,46 @@
               filter 0.2s var(--ease-premium, ease-out);
 }
 
+/* Color-matched hover glow */
 .map-building-pin:hover {
   transform: scale(1.1) translateY(-2px);
-  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+  filter:
+    drop-shadow(0 4px 12px rgba(0,0,0,0.3))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--_pin-color, #94a3b8) 50%, transparent));
 }
 
+/* Selected building — glow + ring */
 .map-building-pin--active {
   transform: scale(1.15) translateY(-3px);
-  filter: drop-shadow(0 6px 16px rgba(0,0,0,0.35));
+  filter:
+    drop-shadow(0 6px 16px rgba(0,0,0,0.35))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--_pin-color, #94a3b8) 40%, transparent));
   z-index: 10;
+}
+
+/* Expanding ring on selected building */
+@keyframes map-pin-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0;
+  }
+}
+
+.map-building-pin--active::after {
+  content: "";
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--_pin-color, var(--color-teal-500));
+  animation: map-pin-ring 1.5s ease-out infinite;
+  pointer-events: none;
 }
 
 .map-building-pin:focus-visible {
@@ -366,24 +351,21 @@
   pointer-events: none;
 }
 
-/* Letter badge below pin */
-.map-pin-letter {
-  position: absolute;
-  bottom: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 900;
-  color: white;
-  font-family: var(--font-ui, Inter, system-ui, sans-serif);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+/* Entrance stagger animation */
+@keyframes map-pin-enter {
+  from {
+    opacity: 0;
+    transform: scale(0) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.map-building-pin--entering {
+  animation: map-pin-enter 0.35s var(--ease-premium, ease-out) both;
+  animation-delay: min(calc(var(--stagger-index, 0) * 80ms), 600ms);
 }
 
 /* Schedule-active building pulse */
@@ -400,6 +382,14 @@
    PREMIUM POI MARKERS (Wave 102)
    ═══════════════════════════════════════════════════════ */
 
+/* POI entrance */
+@keyframes map-poi-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
 .map-poi-pin {
   width: 28px;
   height: 28px;
@@ -412,22 +402,38 @@
   cursor: pointer;
   box-shadow: 0 1px 6px rgba(0,0,0,0.25);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  animation: map-poi-enter 0.2s var(--ease-premium, ease-out) both;
 }
 
 .map-poi-pin--hover,
 .map-poi-pin:hover {
   transform: scale(1.2);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  box-shadow:
+    0 2px 10px rgba(0,0,0,0.35),
+    0 0 0 3px color-mix(in srgb, var(--_poi-color, #94a3b8) 30%, transparent);
+}
+
+.map-poi-pin:active {
+  transform: scale(0.9);
 }
 
 /* ═══════════════════════════════════════════════════════
    PREMIUM POPUP CARDS (Wave 102)
    ═══════════════════════════════════════════════════════ */
 
+/* Popup entrance animation */
+@keyframes map-popup-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
 .map-popup-premium .maplibregl-popup-content {
   background: var(--map-card-bg);
   border-radius: 12px;
   padding: 0;
+  animation: map-popup-enter 0.25s var(--ease-premium, ease-out);
   box-shadow:
     0 4px 16px color-mix(in srgb, black 12%, transparent),
     0 8px 32px color-mix(in srgb, black 8%, transparent),
@@ -453,6 +459,41 @@
 
 .map-popup-card--compact {
   padding: 10px 12px;
+}
+
+/* ── Building photo / placeholder ───────────── */
+.map-popup-photo {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  display: block;
+}
+
+.map-photo-placeholder {
+  width: 100%;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.map-sidebar-photo {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+  border-radius: var(--radius-lg, 0.75rem);
+}
+
+.map-sidebar-photo-placeholder {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg, 0.75rem);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .map-popup-header {
@@ -576,14 +617,23 @@
    PREMIUM MAP CONTROLS (Wave 103)
    ═══════════════════════════════════════════════════════ */
 
+/* Controls panel entrance */
+@keyframes map-controls-enter {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
 .map-control-panel {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  background: var(--map-zoom-bg);
+  background: var(--map-card-bg);
   box-shadow: var(--map-card-shadow);
   border-radius: 12px;
+  animation: map-controls-enter 0.4s var(--ease-premium, ease-out) 0.8s both;
 }
 
 .map-control-btn {
@@ -651,7 +701,20 @@
     filter: none;
   }
 
+  .map-building-pin--entering {
+    animation: none;
+    opacity: 1;
+  }
+
+  .map-building-pin--active::after {
+    display: none;
+  }
+
   .map-building-pin--pulse {
+    animation: none;
+  }
+
+  .map-poi-pin {
     animation: none;
   }
 
@@ -663,6 +726,14 @@
 
   .map-control-btn:active {
     transform: none;
+  }
+
+  .map-control-panel {
+    animation: none;
+  }
+
+  .map-popup-premium .maplibregl-popup-content {
+    animation: none;
   }
 }
 
@@ -692,58 +763,21 @@
   transform: translateY(-1px);
 }
 
+@keyframes map-chip-select {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
 .map-category-chip[data-active="true"] {
   background: color-mix(in srgb, var(--color-teal-500) 15%, var(--bg-surface));
   color: var(--color-teal-500);
+  animation: map-chip-select 0.25s var(--ease-premium, ease-out);
 }
 
 .dark .map-category-chip[data-active="true"] {
   background: color-mix(in srgb, var(--color-teal-400) 20%, var(--bg-surface));
   color: var(--color-teal-400);
-}
-
-/* ═══════════════════════════════════════════════════════
-   SCHEDULE WIDGET
-   ═══════════════════════════════════════════════════════ */
-
-.map-schedule-widget {
-  background: var(--map-schedule-bg);
-  box-shadow: var(--map-card-shadow);
-  border-radius: var(--radius-xl, 1rem);
-  overflow: clip;
-  position: relative;
-}
-
-.map-schedule-widget::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(to right, var(--map-schedule-accent), transparent 80%);
-  opacity: 0.7;
-}
-
-/* ═══════════════════════════════════════════════════════
-   ZOOM CONTROLS
-   ═══════════════════════════════════════════════════════ */
-
-.map-zoom-controls {
-  background: var(--map-zoom-bg);
-  box-shadow: var(--map-zoom-shadow);
-  border-radius: var(--radius-lg, 0.75rem);
-}
-
-.map-zoom-btn {
-  transition: background-color 0.15s ease;
-}
-
-.map-zoom-btn:hover {
-  background: var(--bg-surface-hover);
-}
-
-.map-zoom-btn:focus-visible {
-  outline: 2px solid var(--color-brand);
-  outline-offset: -2px;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -798,31 +832,12 @@
   .map-category-chip:hover {
     transform: none;
   }
-  .map-building-group {
-    transition: none;
-  }
-  .map-building-group:hover,
-  .map-building-group:focus-visible {
-    filter: none;
-  }
-  .map-building-group[data-schedule="true"] {
-    animation: none;
-  }
-  .map-room {
-    transition: none;
-  }
-  .map-room[data-schedule="true"] {
-    animation: none;
-  }
   .map-stagger-item {
     animation-duration: 0.01s;
     animation-delay: 0s;
   }
-  .map-room[data-active="true"] {
+  .map-category-chip[data-active="true"] {
     animation: none;
-  }
-  .map-layer-toggle {
-    transition: none;
   }
 }
 
@@ -846,18 +861,6 @@
   }
   .map-card-matte.map-card-matte:hover {
     transform: none;
-  }
-  .map-zoom-controls.map-zoom-controls {
-    display: none;
-  }
-  .map-layer-toggle.map-layer-toggle {
-    display: none;
-  }
-  .map-schedule-widget.map-schedule-widget {
-    box-shadow: 0 0 0 1px var(--color-slate-200);
-  }
-  .map-building-group {
-    filter: none;
   }
   .map-theme.map-theme svg {
     color-adjust: exact;
@@ -910,7 +913,7 @@
   color: var(--text-secondary);
 }
 
-/* Hide default navigation/compass controls (we use MapZoomControls) */
+/* Hide default navigation/compass controls (we use MapControls) */
 .map-theme .maplibregl-ctrl-group {
   display: none;
 }

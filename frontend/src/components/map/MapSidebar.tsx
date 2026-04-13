@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { useTranslation } from "react-i18next"
 import { X, Clock, MapPin, Users, ChevronRight } from "lucide-react"
 import type { CampusBuilding, CampusRoom, BuildingFloor } from "@/data/campusBuildings"
+import { isOpenNow } from "@/utils/buildingHours"
+import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
 import { useAppShell } from "@/contexts/AppShellContext"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
@@ -107,9 +109,23 @@ export function MapSidebar({
 
   if (!isOpen) return null
 
+  const BuildingIcon = getPrimaryIcon(building.tags)
+
   /* ── Content ── */
   const content = (
     <div className="flex flex-col gap-4 p-4 sm:p-5">
+      {/* Building photo / placeholder */}
+      {building.photo ? (
+        <img src={building.photo} alt={building.name} className="map-sidebar-photo" loading="lazy" />
+      ) : (
+        <div
+          className="map-sidebar-photo-placeholder"
+          style={{ background: `linear-gradient(135deg, ${building.colorHex}, color-mix(in srgb, ${building.colorHex} 60%, black))` }}
+        >
+          <BuildingIcon size={40} strokeWidth={1.5} />
+        </div>
+      )}
+
       {/* Building header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -131,7 +147,7 @@ export function MapSidebar({
           <button
             type="button"
             onClick={onClose}
-            className="map-zoom-btn min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg"
+            className="map-control-btn min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg"
             aria-label={t("sidebar.close")}
           >
             <X className="h-4 w-4" />
@@ -144,11 +160,28 @@ export function MapSidebar({
         {building.description}
       </p>
 
-      {/* Hours + amenities */}
-      <div className="flex flex-wrap gap-3 text-xs">
-        <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+      {/* Hours — structured Пн-Пт / Сб / Вс */}
+      <div className="flex flex-col gap-1 text-xs">
+        <div className="flex items-center gap-1.5 mb-1">
           <Clock className="h-3.5 w-3.5 text-[var(--color-teal-500)]" />
-          <span className="font-semibold">{building.hours}</span>
+          <span
+            className="font-bold text-[10px] px-1.5 py-0.5 rounded-full"
+            style={{
+              backgroundColor: isOpenNow(building.hours)
+                ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
+                : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+              color: isOpenNow(building.hours)
+                ? "var(--color-emerald-500)"
+                : "var(--color-rose-500)",
+            }}
+          >
+            {isOpenNow(building.hours) ? t("hours.openNow") : t("hours.closedNow")}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[var(--text-secondary)]">
+          <span><span className="font-semibold">{t("hours.weekday")}:</span> {building.hours.weekday}</span>
+          <span><span className="font-semibold">{t("hours.saturday")}:</span> {building.hours.saturday}</span>
+          <span><span className="font-semibold">{t("hours.sunday")}:</span> {building.hours.sunday}</span>
         </div>
       </div>
 
@@ -179,7 +212,7 @@ export function MapSidebar({
           </p>
           <div
             role="radiogroup"
-            aria-label={t("floorPlan.floorSelector")}
+            aria-label={t("floorPlan.selectFloor")}
             className="flex flex-wrap gap-1.5"
           >
             {building.floors.map(({ floor: flNum }) => {
