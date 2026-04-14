@@ -1,0 +1,1134 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   Parity with activity.css / schedule.css pattern.
+   ═══════════════════════════════════════════════════════ */
+@property --map-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --map-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --map-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --map-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --map-atmosphere-hue {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 180;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     MAP PAGE TOKENS
+     Scoped under .map-theme — mirrors activity.css structure.
+     Teal/cyan palette — navigation, wayfinding, campus.
+     Distinct from Dashboard (blue), News (indigo), Events (amber),
+     Activity (emerald), Schedule (sky).
+     ═══════════════════════════════════════════════════════ */
+  .map-theme {
+    /* ── Typography ─────────────────────────────────── */
+    --fs-map-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-map-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-map-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
+
+    /* ── Orbs (teal/cyan palette) ───────────────────── */
+    --map-hero-orb: color-mix(in srgb, var(--color-teal-400) 10%, transparent);
+    --map-hero-highlight: color-mix(in srgb, var(--color-cyan-400) 6%, transparent);
+    --map-orb-1: color-mix(in srgb, var(--color-teal-400) 12%, transparent);
+    --map-orb-2: color-mix(in srgb, var(--color-cyan-400) 8%, transparent);
+    --map-orb-3: color-mix(in srgb, var(--color-teal-500) 6%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-map-conic: conic-gradient(
+      from 180deg at 50% 50%,
+      var(--map-orb-1),
+      var(--map-orb-2),
+      transparent 85%
+    );
+    --map-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-teal-400) 50%,
+      transparent 90%
+    );
+
+    /* ── Matte card system ────────────────────────── */
+    --map-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-teal-50) 4%);
+    --map-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --map-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent),
+      0 8px 24px color-mix(in srgb, black 5%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+    --map-card-glow: color-mix(in srgb, var(--color-teal-400) 8%, transparent);
+
+    /* ── Sidebar ──────────────────────────────────── */
+    --map-sidebar-bg: var(--bg-surface);
+    --map-sidebar-shadow:
+      -4px 0 16px color-mix(in srgb, black 6%, transparent),
+      -1px 0 4px color-mix(in srgb, black 3%, transparent);
+
+    /* ── Search ───────────────────────────────────── */
+    --map-search-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-100) 10%);
+    --map-search-shadow: var(--map-card-shadow);
+
+    /* ── Tooltip ──────────────────────────────────── */
+    --map-tooltip-bg: var(--bg-surface);
+    --map-tooltip-shadow:
+      0 2px 8px color-mix(in srgb, black 10%, transparent),
+      0 1px 2px color-mix(in srgb, black 6%, transparent);
+
+    /* ── Skeleton ─────────────────────────────────── */
+    --map-skeleton-bg: color-mix(in srgb, var(--color-teal-200) 20%, var(--color-slate-200) 80%);
+
+    /* ── Badge / accent ───────────────────────────── */
+    --map-badge-bg: color-mix(in srgb, var(--color-teal-500) 12%, var(--bg-surface));
+    --fs-map-badge: 0.45em;
+    --map-accent-icon: var(--color-teal-500);
+    --map-layer-active-bg: var(--color-teal-500);
+    --map-layer-active-text: var(--text-inverse);
+    --map-on-accent: var(--text-inverse);
+
+    /* Building colors defined inline via building.colorVar/colorHex (campusBuildings.ts) */
+    /* 9 buildings: ГУК (blue), ПА (amber), ЛК (emerald), А (slate), Б (rose), СК (indigo), О2 (sky), О6 (violet), ЦИТ (orange) */
+
+    /* ── POI tokens ────────────────────────────────── */
+    --map-poi-transport: var(--color-blue-500);
+    --map-poi-food: var(--color-amber-500);
+    --map-poi-shop: var(--color-violet-500);
+    --map-poi-service: var(--color-emerald-500);
+    --map-poi-campus: var(--color-teal-500);
+    --map-poi-popup-bg: var(--map-card-bg);
+    --map-poi-popup-shadow: var(--map-card-shadow);
+    --map-poi-marker-size: 32px;
+
+    /* ── MapLibre overrides ─────────────────────── */
+    --map-attribution-bg: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .map-theme {
+    --map-hero-orb: color-mix(in srgb, var(--color-teal-400) 16%, transparent);
+    --map-hero-highlight: color-mix(in srgb, var(--color-cyan-400) 10%, transparent);
+    --map-orb-1: color-mix(in srgb, var(--color-teal-400) 18%, transparent);
+    --map-orb-2: color-mix(in srgb, var(--color-cyan-400) 14%, transparent);
+    --map-orb-3: color-mix(in srgb, var(--color-teal-500) 10%, transparent);
+    --map-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-teal-900) 5%);
+    --map-card-shadow:
+      0 1px 2px color-mix(in srgb, black 20%, transparent),
+      0 4px 12px color-mix(in srgb, black 15%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    --map-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 25%, transparent),
+      0 8px 24px color-mix(in srgb, black 20%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+    --map-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-teal-500) 50%,
+      transparent 90%
+    );
+    --map-card-glow: color-mix(in srgb, var(--color-teal-400) 12%, transparent);
+
+    /* Sidebar dark */
+    --map-sidebar-shadow:
+      -4px 0 16px color-mix(in srgb, black 20%, transparent),
+      -1px 0 4px color-mix(in srgb, black 12%, transparent);
+
+    /* Search dark */
+    --map-search-bg: color-mix(in srgb, var(--bg-surface) 85%, var(--color-slate-700) 15%);
+
+    /* Tooltip dark */
+    --map-tooltip-shadow:
+      0 2px 8px color-mix(in srgb, black 25%, transparent),
+      0 1px 2px color-mix(in srgb, black 15%, transparent);
+
+    /* Skeleton dark */
+    --map-skeleton-bg: color-mix(in srgb, var(--color-teal-900) 20%, var(--color-slate-700) 80%);
+
+    /* Badge / accent dark */
+    --map-badge-bg: color-mix(in srgb, var(--color-teal-400) 18%, var(--bg-surface));
+    --map-accent-icon: var(--color-teal-400);
+    --map-layer-active-bg: var(--color-teal-400);
+
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   SEASONAL PALETTE (Wave 108)
+   Lowest specificity — overridden by time-of-day and weather.
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme[data-season="spring"] {
+  --map-orb-1: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-pink-300) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-emerald-400) 10%, transparent);
+}
+.map-theme[data-season="autumn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-orange-400) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-amber-400) 10%, transparent);
+}
+.map-theme[data-season="winter"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-300) 15%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-sky-200) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-sky-300) 12%, transparent);
+}
+/* summer = default teal/cyan palette — no overrides needed */
+
+.dark .map-theme[data-season="spring"] {
+  --map-orb-1: color-mix(in srgb, var(--color-emerald-500) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-pink-400) 10%, transparent);
+}
+.dark .map-theme[data-season="autumn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-500) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-orange-500) 10%, transparent);
+}
+.dark .map-theme[data-season="winter"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-400) 18%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-sky-300) 12%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TIME-OF-DAY ATMOSPHERE (Wave 108)
+   Medium specificity — overrides season, overridden by weather.
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme[data-time-period="dawn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-300) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-rose-300) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-amber-300) 12%, transparent);
+}
+.map-theme[data-time-period="dusk"] {
+  --map-orb-1: color-mix(in srgb, var(--color-orange-400) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-violet-400) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-orange-400) 12%, transparent);
+}
+.map-theme[data-time-period="night"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-500) 8%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-400) 6%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-slate-500) 6%, transparent);
+}
+/* Night building pin glow — "lit windows" effect */
+.map-theme[data-time-period="night"] .map-building-pin {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--_pin-color, var(--color-teal-400)) 40%, transparent));
+}
+
+.dark .map-theme[data-time-period="dawn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-rose-400) 12%, transparent);
+}
+.dark .map-theme[data-time-period="dusk"] {
+  --map-orb-1: color-mix(in srgb, var(--color-orange-500) 16%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-violet-500) 12%, transparent);
+}
+.dark .map-theme[data-time-period="night"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-600) 10%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-500) 8%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   WEATHER ATMOSPHERE (Open-Meteo)
+   Highest specificity — overrides both season and time-of-day.
+   data-weather attr set by MapFeature from useMapWeather.
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme[data-weather="cloudy"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-300) 6%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
+}
+
+.map-theme[data-weather="rain"] {
+  --map-orb-1: color-mix(in srgb, var(--color-blue-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-blue-300) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-blue-400) 10%, transparent);
+}
+
+.map-theme[data-weather="snow"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-200) 15%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-sky-100) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-sky-300) 12%, transparent);
+}
+
+.map-theme[data-weather="fog"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-300) 6%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-200) 4%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-slate-300) 5%, transparent);
+}
+
+.map-theme[data-weather="storm"] {
+  --map-orb-1: color-mix(in srgb, var(--color-violet-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-violet-300) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-violet-400) 10%, transparent);
+}
+
+/* Dark mode weather adjustments */
+.dark .map-theme[data-weather="cloudy"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-500) 12%, transparent);
+}
+
+.dark .map-theme[data-weather="rain"] {
+  --map-orb-1: color-mix(in srgb, var(--color-blue-500) 14%, transparent);
+}
+
+.dark .map-theme[data-weather="snow"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-300) 18%, transparent);
+}
+
+.dark .map-theme[data-weather="storm"] {
+  --map-orb-1: color-mix(in srgb, var(--color-violet-500) 16%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   MATTE CARD
+   Shadow-based depth — no borders, no backdrop-blur.
+   --_accent scopes top gradient color per card type.
+   ═══════════════════════════════════════════════════════ */
+
+.map-card-matte {
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow);
+  border-radius: var(--radius-xl, 1rem);
+  overflow: clip;
+  position: relative;
+}
+
+.map-card-matte::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--_accent, var(--color-teal-500)), transparent 80%);
+  opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════════════
+   BADGE MATTE (header icon)
+   ═══════════════════════════════════════════════════════ */
+
+.map-badge-matte {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 40%, transparent),
+    0 1px 3px color-mix(in srgb, black 8%, transparent),
+    0 2px 8px color-mix(in srgb, black 4%, transparent);
+  border-radius: var(--radius-lg, 0.75rem);
+}
+
+.dark .map-badge-matte {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+    0 1px 3px color-mix(in srgb, black 30%, transparent),
+    0 2px 8px color-mix(in srgb, black 20%, transparent);
+}
+
+/* ── Weather badge ───────────────────────────── */
+.map-weather-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow);
+  color: var(--text-primary);
+}
+
+/* ── Expanded weather panel (Wave 108) ────── */
+.map-weather-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow-hover);
+}
+.map-weather-panel-hourly {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.map-weather-panel-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 40px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  scroll-snap-align: start;
+  transition: background-color 0.15s;
+}
+.map-weather-panel-hour:hover {
+  background: var(--bg-surface-hover);
+}
+
+/* ═══════════════════════════════════════════════════════
+   PREMIUM BUILDING PIN MARKERS (Wave 102)
+   ═══════════════════════════════════════════════════════ */
+
+.map-building-pin {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-premium, ease-out),
+              filter 0.2s var(--ease-premium, ease-out);
+}
+
+/* Color-matched hover glow */
+.map-building-pin:hover {
+  transform: scale(1.1) translateY(-2px);
+  filter:
+    drop-shadow(0 4px 12px rgba(0,0,0,0.3))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--_pin-color, #94a3b8) 50%, transparent));
+}
+
+/* Selected building — glow + ring */
+.map-building-pin--active {
+  transform: scale(1.15) translateY(-3px);
+  filter:
+    drop-shadow(0 6px 16px rgba(0,0,0,0.35))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--_pin-color, #94a3b8) 40%, transparent));
+  z-index: 10;
+}
+
+/* Expanding ring on selected building */
+@keyframes map-pin-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0;
+  }
+}
+
+.map-building-pin--active::after {
+  content: "";
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--_pin-color, var(--color-teal-500));
+  animation: map-pin-ring 1.5s ease-out infinite;
+  pointer-events: none;
+}
+
+.map-building-pin:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+/* Pin icon positioned over SVG */
+.map-pin-icon {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* Entrance stagger animation */
+@keyframes map-pin-enter {
+  from {
+    opacity: 0;
+    transform: scale(0) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.map-building-pin--entering {
+  animation: map-pin-enter 0.35s var(--ease-premium, ease-out) both;
+  animation-delay: min(calc(var(--stagger-index, 0) * 80ms), 600ms);
+}
+
+/* Schedule-active building pulse */
+@keyframes map-pin-pulse {
+  0%, 100% { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
+  50% { filter: drop-shadow(0 4px 20px rgba(0,0,0,0.4)) drop-shadow(0 0 12px var(--color-brand)); }
+}
+
+.map-building-pin--pulse {
+  animation: map-pin-pulse 2s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PREMIUM POI MARKERS (Wave 102)
+   ═══════════════════════════════════════════════════════ */
+
+/* POI entrance */
+@keyframes map-poi-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+.map-poi-pin {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--_poi-color, #94a3b8);
+  border: 2px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  animation: map-poi-enter 0.2s var(--ease-premium, ease-out) both;
+}
+
+.map-poi-pin--hover,
+.map-poi-pin:hover {
+  transform: scale(1.2);
+  box-shadow:
+    0 2px 10px rgba(0,0,0,0.35),
+    0 0 0 3px color-mix(in srgb, var(--_poi-color, #94a3b8) 30%, transparent);
+}
+
+.map-poi-pin:active {
+  transform: scale(0.9);
+}
+
+/* ── Event pin markers (Wave 108) ───────── */
+.map-event-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, filter 0.2s;
+  animation: map-marker-stagger 0.4s var(--ease-premium, ease-out) backwards;
+  animation-delay: calc(var(--stagger-index, 0) * 60ms);
+}
+.map-event-pin:hover,
+.map-event-pin:focus-visible {
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--color-amber-500) 50%, transparent));
+}
+.map-event-pin:focus-visible {
+  outline: 2px solid var(--color-amber-500);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PREMIUM POPUP CARDS (Wave 102)
+   ═══════════════════════════════════════════════════════ */
+
+/* Popup entrance animation */
+@keyframes map-popup-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.map-popup-premium .maplibregl-popup-content {
+  background: var(--map-card-bg);
+  border-radius: 12px;
+  padding: 0;
+  animation: map-popup-enter 0.25s var(--ease-premium, ease-out);
+  box-shadow:
+    0 4px 16px color-mix(in srgb, black 12%, transparent),
+    0 8px 32px color-mix(in srgb, black 8%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  overflow: hidden;
+}
+
+.map-popup-premium .maplibregl-popup-tip {
+  border-top-color: var(--map-card-bg);
+}
+
+.map-popup-premium .maplibregl-popup-close-button {
+  font-size: 18px;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  right: 4px;
+  top: 4px;
+}
+
+.map-popup-card {
+  padding: 12px 14px;
+}
+
+.map-popup-card--compact {
+  padding: 10px 12px;
+}
+
+/* ── Building photo / placeholder ───────────── */
+.map-popup-photo {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  display: block;
+}
+
+.map-photo-placeholder {
+  width: 100%;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.map-sidebar-photo {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+  border-radius: var(--radius-lg, 0.75rem);
+}
+
+.map-sidebar-photo-placeholder {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg, 0.75rem);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.map-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-tertiary) 15%, transparent);
+  position: relative;
+}
+
+/* Accent top bar */
+.map-popup-header::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: -14px;
+  right: -14px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--_popup-accent, var(--color-teal-500)), transparent);
+  border-radius: 3px 3px 0 0;
+}
+
+.map-popup-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 900;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.map-popup-name {
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.map-popup-structure {
+  font-size: 11px;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+.map-popup-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.map-popup-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.map-popup-stats-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.map-popup-amenities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.map-popup-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--bg-surface-hover) 70%, transparent);
+  color: var(--text-secondary);
+}
+
+.map-popup-link {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-teal-500);
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.map-popup-link:hover {
+  opacity: 0.8;
+}
+
+/* POI tooltip — minimal */
+.map-poi-tooltip .maplibregl-popup-content {
+  background: var(--map-card-bg);
+  border-radius: 6px;
+  padding: 4px 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.map-poi-tooltip .maplibregl-popup-tip {
+  border-top-color: var(--map-card-bg);
+}
+
+/* ═══════════════════════════════════════════════════════
+   PREMIUM MAP CONTROLS (Wave 103)
+   ═══════════════════════════════════════════════════════ */
+
+/* Controls panel entrance */
+@keyframes map-controls-enter {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+/* ── Mini-map overview (Wave 108) ───────── */
+.map-mini-overview {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  width: 140px;
+  height: 100px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow);
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+.map-mini-overview .maplibregl-ctrl-attrib {
+  display: none;
+}
+.map-mini-viewport-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-teal-500);
+  box-shadow: 0 0 4px var(--color-teal-400);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+}
+@media print { .map-mini-overview { display: none; } }
+
+.map-control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow);
+  border-radius: 12px;
+  animation: map-controls-enter 0.4s var(--ease-premium, ease-out) 0.8s both;
+}
+
+.map-control-btn {
+  width: 36px;
+  height: 36px;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  background: transparent;
+  border: none;
+  font: inherit;
+}
+
+.map-control-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.map-control-btn:active {
+  transform: scale(0.92);
+}
+
+.map-control-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-teal-500);
+}
+.map-control-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.map-control-btn:disabled:hover {
+  background: transparent;
+  transform: none;
+}
+
+.map-control-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: -2px;
+}
+
+.map-control-btn--accent {
+  color: var(--map-accent-icon, var(--color-teal-500));
+}
+
+.map-control-divider {
+  width: 20px;
+  height: 1px;
+  background: color-mix(in srgb, var(--text-tertiary) 20%, transparent);
+  margin: 2px auto;
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION (Wave 102-103)
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .map-building-pin,
+  .map-building-pin:hover,
+  .map-building-pin--active {
+    transition: none;
+    transform: none;
+    filter: none;
+  }
+
+  .map-building-pin--entering {
+    animation: none;
+    opacity: 1;
+  }
+
+  .map-building-pin--active::after {
+    display: none;
+  }
+
+  .map-building-pin--pulse {
+    animation: none;
+  }
+
+  .map-poi-pin {
+    animation: none;
+  }
+
+  .map-poi-pin,
+  .map-poi-pin--hover {
+    transition: none;
+    transform: none;
+  }
+
+  .map-control-btn:active {
+    transform: none;
+  }
+
+  .map-control-panel {
+    animation: none;
+  }
+
+  .map-popup-premium .maplibregl-popup-content {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CATEGORY FILTER CHIPS
+   ═══════════════════════════════════════════════════════ */
+
+.map-category-chip {
+  background: color-mix(in srgb, var(--bg-surface-hover) 60%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 6%, transparent),
+    0 2px 6px color-mix(in srgb, black 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 600;
+  transition: box-shadow 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.map-category-chip:hover {
+  background: color-mix(in srgb, var(--bg-surface-hover) 80%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 8%, transparent),
+    0 4px 12px color-mix(in srgb, black 5%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  transform: translateY(-1px);
+}
+
+@keyframes map-chip-select {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.map-category-chip[data-active="true"] {
+  background: color-mix(in srgb, var(--color-teal-500) 15%, var(--bg-surface));
+  color: var(--color-teal-500);
+  animation: map-chip-select 0.25s var(--ease-premium, ease-out);
+}
+
+.dark .map-category-chip[data-active="true"] {
+  background: color-mix(in srgb, var(--color-teal-400) 20%, var(--bg-surface));
+  color: var(--color-teal-400);
+}
+
+/* ═══════════════════════════════════════════════════════
+   STAGGER ANIMATION (CSS-only)
+   ═══════════════════════════════════════════════════════ */
+
+.map-stagger-item {
+  animation: map-card-enter 0.4s var(--ease-premium, ease-out) both;
+  animation-delay: min(calc(var(--stagger-index, 0) * 60ms), 360ms);
+}
+
+@keyframes map-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@starting-style {
+  .map-stagger-item {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTAINER QUERIES
+   ═══════════════════════════════════════════════════════ */
+
+.map-sidebar-container {
+  container-type: inline-size;
+  container-name: map-sidebar;
+}
+
+@container map-sidebar (max-width: 280px) {
+  .map-card-matte .map-amenities { display: none; }
+  .map-card-matte .map-hours { display: none; }
+}
+
+@container map-sidebar (max-width: 320px) {
+  .map-card-matte .map-amenities { flex-direction: column; align-items: flex-start; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .map-card-matte:hover {
+    transform: none;
+  }
+  .map-category-chip:hover {
+    transform: none;
+  }
+  .map-stagger-item {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+  .map-category-chip[data-active="true"] {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT
+   ═══════════════════════════════════════════════════════ */
+
+@media print {
+  .map-theme.map-theme {
+    background: white;
+    color: black;
+  }
+  .map-theme.map-theme .aurora-mesh::before,
+  .map-theme.map-theme .aurora-mesh::after,
+  .map-theme.map-theme [aria-hidden="true"]:not([role="img"]) {
+    display: none;
+  }
+  .map-card-matte.map-card-matte {
+    box-shadow: 0 0 0 1px var(--color-slate-200);
+    break-inside: avoid;
+  }
+  .map-card-matte.map-card-matte:hover {
+    transform: none;
+  }
+  .map-theme.map-theme svg {
+    color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .maplibre-map-wrapper {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAPLIBRE GL OVERRIDES — scoped to .map-theme
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme .maplibregl-map {
+  font-family: var(--font-ui), Inter, system-ui, sans-serif;
+}
+
+/* Popup → matte card style */
+.map-theme .maplibregl-popup-content {
+  background: var(--map-poi-popup-bg, var(--bg-surface));
+  color: var(--text-primary);
+  border-radius: 12px;
+  box-shadow: var(--map-poi-popup-shadow, 0 4px 12px rgba(0,0,0,0.1));
+  padding: 12px 14px;
+  border: none;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.map-theme .maplibregl-popup-tip {
+  border-top-color: var(--map-poi-popup-bg, var(--bg-surface));
+}
+.map-theme .maplibregl-popup-close-button {
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  padding: 4px 8px;
+}
+.map-theme .maplibregl-popup-close-button:hover {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+/* Attribution → subtle */
+.map-theme .maplibregl-ctrl-attrib {
+  background: var(--map-attribution-bg, rgba(255,255,255,0.8));
+  font-size: 0.625rem;
+  border-radius: 4px 0 0 0;
+}
+.map-theme .maplibregl-ctrl-attrib a {
+  color: var(--text-secondary);
+}
+
+/* Hide default navigation/compass controls (we use MapControls) */
+.map-theme .maplibregl-ctrl-group {
+  display: none;
+}
+
+/* POI controls overlay */
+.map-poi-controls {
+  background: var(--map-card-bg);
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: var(--map-card-shadow);
+  backdrop-filter: blur(8px);
+}
+
+.map-poi-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.map-poi-chip:hover {
+  background: var(--bg-surface-hover);
+}
+.map-poi-chip[data-active] {
+  background: var(--map-layer-active-bg);
+  color: var(--map-on-accent);
+}
+
+.map-poi-load-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--map-poi-campus) 12%, var(--bg-surface));
+  color: var(--map-poi-campus);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.map-poi-load-more:hover {
+  background: color-mix(in srgb, var(--map-poi-campus) 20%, var(--bg-surface));
+}
+.map-poi-load-more:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+/* Popup content styling */
+.map-popup-content {
+  min-width: 160px;
+  max-width: 240px;
+}

@@ -1,4 +1,4 @@
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { ChatWindow, MessageInput } from "@/components/messenger"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
@@ -16,7 +16,7 @@ import {
 } from "lucide-react"
 import { Dispatch, SetStateAction, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 
 interface ChatAreaProps {
   isMobile: boolean
@@ -61,7 +61,7 @@ export function ChatArea({
 
   useEffect(() => {
     if (showSearchInChat && searchInputRef.current) {
-      setTimeout(() => searchInputRef.current?.focus(), 0)
+      requestAnimationFrame(() => searchInputRef.current?.focus())
     }
   }, [showSearchInChat])
 
@@ -89,7 +89,7 @@ export function ChatArea({
                   {isMobile && (
                     <motion.button
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => navigate("/messenger")}
+                      onClick={() => navigate({ to: "/messenger" })}
                       className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
                       <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />

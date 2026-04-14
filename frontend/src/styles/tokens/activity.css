@@ -1,0 +1,483 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   (M7 — parity with schedule.css Wave 64 pattern)
+   ═══════════════════════════════════════════════════════ */
+@property --activity-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --activity-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --activity-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --activity-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     ACTIVITY PAGE TOKENS
+     Scoped under .activity-theme — mirrors events.css structure.
+     Emerald/teal palette — growth, progress, academic health.
+     Distinct from Dashboard (blue), News (sky), Events (amber).
+     ═══════════════════════════════════════════════════════ */
+  .activity-theme {
+    /* ── Typography ─────────────────────────────────── */
+    --fs-activity-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-activity-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-activity-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
+
+    /* ── Orbs (emerald palette) ─────────────────────── */
+    --activity-hero-orb: color-mix(in srgb, var(--color-emerald-400) 10%, transparent);
+    --activity-hero-highlight: color-mix(in srgb, var(--color-teal-500) 6%, transparent);
+    --activity-orb-1: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
+    --activity-orb-2: color-mix(in srgb, var(--color-teal-400) 8%, transparent);
+    --activity-orb-3: color-mix(in srgb, var(--color-cyan-400) 6%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-activity-conic: conic-gradient(
+      from 160deg at 50% 50%,
+      var(--activity-orb-1),
+      var(--activity-orb-2),
+      transparent 85%
+    );
+    --activity-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-emerald-400) 50%,
+      transparent 90%
+    );
+
+    /* ── Matte card system ────────────────────────── */
+    --activity-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-emerald-50) 4%);
+    --activity-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --activity-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent),
+      0 8px 24px color-mix(in srgb, black 5%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+    --activity-card-glow: color-mix(in srgb, var(--color-emerald-400) 8%, transparent);
+
+    /* ── Status accent colors ─────────────────────── */
+    --activity-present-accent: var(--color-emerald-500);
+    --activity-absent-accent: var(--color-rose-500);
+    --activity-late-accent: var(--color-amber-500);
+    --activity-grade-accent: var(--color-indigo-500);
+    --activity-participation-accent: var(--color-amber-500);
+
+    /* ── Period selector ──────────────────────────── */
+    --activity-selector-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-100) 10%);
+    --activity-period-indicator-shadow: 0 2px 8px color-mix(in srgb, var(--activity-present-accent) 30%, transparent);
+
+    /* ── Timeline ─────────────────────────────────── */
+    --activity-timeline-line: color-mix(in srgb, var(--color-slate-300) 50%, transparent);
+    --activity-timeline-dot-size: 10px;
+
+    /* ── Motivation ───────────────────────────────── */
+    --activity-streak-accent: var(--color-emerald-500);
+
+    /* ── Skeleton placeholders ────────────────────── */
+    --activity-skeleton-bg: color-mix(in srgb, var(--color-emerald-200) 20%, var(--color-slate-200) 80%);
+
+    /* ── Heatmap levels ──────────────────────────── */
+    --activity-heat-0: color-mix(in srgb, var(--color-slate-200) 60%, var(--bg-surface) 40%);
+    --activity-heat-1: color-mix(in srgb, var(--color-emerald-300) 35%, var(--bg-surface) 65%);
+    --activity-heat-2: color-mix(in srgb, var(--color-emerald-400) 55%, var(--bg-surface) 45%);
+    --activity-heat-3: color-mix(in srgb, var(--color-emerald-500) 75%, var(--bg-surface) 25%);
+    --activity-heat-4: var(--color-emerald-500);
+
+    /* ── Charts ───────────────────────────────────── */
+    --activity-chart-grid: color-mix(in srgb, var(--color-slate-300) 30%, transparent);
+    --activity-chart-label: var(--color-slate-500);
+    --activity-chart-min-h: 120px;
+
+    /* ── Comparative trend colors ────────────────── */
+    --activity-positive-accent: var(--color-emerald-500);
+    --activity-negative-accent: var(--color-rose-500);
+
+    /* ── Featured mesh ────────────────────────────── */
+    --activity-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-emerald-400) 8%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-cyan-400) 6%, transparent) 0%,
+      transparent 50%
+    );
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .activity-theme {
+    --activity-hero-orb: color-mix(in srgb, var(--color-emerald-400) 16%, transparent);
+    --activity-hero-highlight: color-mix(in srgb, var(--color-teal-400) 10%, transparent);
+    --activity-orb-1: color-mix(in srgb, var(--color-emerald-400) 18%, transparent);
+    --activity-orb-2: color-mix(in srgb, var(--color-teal-400) 14%, transparent);
+    --activity-orb-3: color-mix(in srgb, var(--color-cyan-400) 10%, transparent);
+    --activity-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-emerald-900) 5%);
+    --activity-card-shadow:
+      0 1px 2px color-mix(in srgb, black 20%, transparent),
+      0 4px 12px color-mix(in srgb, black 15%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    --activity-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 25%, transparent),
+      0 8px 24px color-mix(in srgb, black 20%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+    --activity-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-emerald-500) 50%,
+      transparent 90%
+    );
+    --activity-card-glow: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
+    --activity-timeline-line: color-mix(in srgb, var(--color-slate-600) 50%, transparent);
+    --activity-selector-bg: color-mix(in srgb, var(--bg-surface) 85%, var(--color-slate-700) 15%);
+    --activity-skeleton-bg: color-mix(in srgb, var(--color-emerald-900) 20%, var(--color-slate-700) 80%);
+    --activity-heat-0: color-mix(in srgb, var(--color-slate-700) 60%, var(--bg-surface) 40%);
+    --activity-heat-1: color-mix(in srgb, var(--color-emerald-700) 35%, var(--bg-surface) 65%);
+    --activity-heat-2: color-mix(in srgb, var(--color-emerald-600) 55%, var(--bg-surface) 45%);
+    --activity-heat-3: color-mix(in srgb, var(--color-emerald-500) 75%, var(--bg-surface) 25%);
+    --activity-heat-4: var(--color-emerald-400);
+    --activity-chart-grid: color-mix(in srgb, var(--color-slate-600) 30%, transparent);
+    --activity-chart-label: var(--color-slate-400);
+
+    --activity-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-emerald-400) 12%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-cyan-400) 10%, transparent) 0%,
+      transparent 50%
+    );
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MATTE CARD
+   Shadow-based depth — no borders, no backdrop-blur.
+   --_accent scopes top gradient color per card type.
+   ═══════════════════════════════════════════════════════ */
+
+.activity-card-matte {
+  background: var(--activity-card-bg);
+  box-shadow: var(--activity-card-shadow);
+  border-radius: var(--radius-xl, 1rem);
+  overflow: clip;
+  position: relative;
+  transition: transform 0.2s var(--ease-premium, ease-out),
+              box-shadow 0.2s var(--ease-premium, ease-out);
+}
+
+.activity-card-matte::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--_accent, var(--activity-present-accent)), transparent 80%);
+  opacity: 0.7;
+}
+
+.activity-card-matte:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--activity-card-shadow-hover);
+}
+
+.activity-card-matte:active {
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════════════════
+   PERIOD SELECTOR (MATTE PILL)
+   ═══════════════════════════════════════════════════════ */
+
+.activity-period-selector {
+  background: var(--activity-selector-bg);
+  box-shadow: var(--activity-card-shadow);
+  border-radius: 9999px;
+  padding: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   TIMELINE
+   ═══════════════════════════════════════════════════════ */
+
+.activity-timeline-line {
+  position: absolute;
+  left: 19px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--activity-timeline-line);
+}
+
+.activity-timeline-dot {
+  width: var(--activity-timeline-dot-size);
+  height: var(--activity-timeline-dot-size);
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px var(--bg-surface, var(--color-white, #fff));
+}
+
+/* ═══════════════════════════════════════════════════════
+   BADGE MATTE (header icon)
+   ═══════════════════════════════════════════════════════ */
+
+.activity-badge-matte {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 40%, transparent),
+    0 1px 3px color-mix(in srgb, black 8%, transparent),
+    0 2px 8px color-mix(in srgb, black 4%, transparent);
+  border-radius: var(--radius-lg, 0.75rem);
+}
+
+.dark .activity-badge-matte {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+    0 1px 3px color-mix(in srgb, black 30%, transparent),
+    0 2px 8px color-mix(in srgb, black 20%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   STAGGER ANIMATION (CSS-only — no Framer Motion)
+   ═══════════════════════════════════════════════════════ */
+
+.activity-stagger-item {
+  animation: activity-card-enter 0.4s var(--ease-premium, ease-out) both;
+  animation-delay: min(calc(var(--stagger-index, 0) * 60ms), 360ms);
+}
+
+@keyframes activity-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MOTIVATION CHIP
+   ═══════════════════════════════════════════════════════ */
+
+.activity-motivation-chip {
+  background: color-mix(in srgb, var(--activity-streak-accent) 10%, var(--bg-surface));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 30%, transparent),
+    0 1px 3px color-mix(in srgb, black 6%, transparent);
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dark .activity-motivation-chip {
+  background: color-mix(in srgb, var(--activity-streak-accent) 14%, var(--bg-surface));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent),
+    0 1px 3px color-mix(in srgb, black 25%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   RING TRACK (A10 — bgStrokeColor moved to CSS)
+   ═══════════════════════════════════════════════════════ */
+
+.activity-ring-track {
+  stroke: color-mix(in srgb, var(--_ring-color, var(--activity-present-accent)) 15%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TREND CHIP ICON (A11 — !important removal)
+   ═══════════════════════════════════════════════════════ */
+
+.activity-trend-icon.activity-trend-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTAINER QUERIES (A1 — parity with events/news/schedule)
+   ═══════════════════════════════════════════════════════ */
+
+.activity-card-container {
+  container-type: inline-size;
+  container-name: activity-card;
+}
+
+@container activity-card (max-width: 280px) {
+  .activity-card-matte .flex { flex-direction: column; align-items: flex-start; }
+}
+
+/* Ring sizing handled by JS breakpoints (isLgCompact/isSm/isMd/isXl).
+   Removed: svg max-width: 68px at ≤320px — conflicted with wrapper div
+   inline size, causing SVG circle to shrink while text overlay stayed full-size. */
+
+.activity-heatmap-container {
+  container-type: inline-size;
+  container-name: activity-heatmap;
+}
+
+/* ═══════════════════════════════════════════════════════
+   HEATMAP CALENDAR
+   ═══════════════════════════════════════════════════════ */
+
+.activity-heatmap-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-xs, 2px);
+  transition: opacity 0.15s ease;
+}
+
+@container activity-heatmap (max-width: 480px) {
+  .activity-heatmap-cell { width: 10px; height: 10px; }
+}
+
+@container activity-heatmap (max-width: 320px) {
+  .activity-heatmap-cell { width: 8px; height: 8px; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHART
+   ═══════════════════════════════════════════════════════ */
+
+.activity-chart-card {
+  background: var(--activity-card-bg);
+  box-shadow: var(--activity-card-shadow);
+  border-radius: var(--radius-xl, 1rem);
+  overflow: clip;
+  padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  .activity-chart-card { padding: 1.5rem; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   COMPARATIVE CARD
+   ═══════════════════════════════════════════════════════ */
+
+.activity-comparative-card {
+  background: var(--activity-card-bg);
+  box-shadow: var(--activity-card-shadow);
+  border-radius: var(--radius-xl, 1rem);
+  padding: 1rem 1.25rem;
+  transition: transform 0.2s var(--ease-premium, ease-out),
+              box-shadow 0.2s var(--ease-premium, ease-out);
+}
+
+.activity-comparative-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--activity-card-shadow-hover);
+}
+
+/* ═══════════════════════════════════════════════════════
+   EXPORT BUTTON
+   ═══════════════════════════════════════════════════════ */
+
+.activity-export-btn {
+  background: var(--activity-card-bg);
+  box-shadow: var(--activity-card-shadow);
+  border-radius: var(--radius-lg, 0.75rem);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.activity-export-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--activity-card-shadow-hover);
+}
+
+.activity-export-btn:active {
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════════════════
+   @STARTING-STYLE (A3 — progressive enhancement)
+   ═══════════════════════════════════════════════════════ */
+
+@starting-style {
+  .activity-stagger-item {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-card-matte:hover {
+    transform: none;
+  }
+  .activity-comparative-card:hover {
+    transform: none;
+  }
+  .activity-export-btn:hover,
+  .activity-export-btn:active {
+    transform: none;
+  }
+  .activity-stagger-item {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+  .activity-heatmap-cell {
+    transition-duration: 0s;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT (A2 — parity with schedule/events/news)
+   ═══════════════════════════════════════════════════════ */
+
+@page {
+  margin: 1.5cm;
+  orphans: 3;
+  widows: 3;
+}
+
+@media print {
+  .activity-theme.activity-theme {
+    background: white;
+    color: black;
+  }
+  .activity-theme.activity-theme .aurora-mesh::before,
+  .activity-theme.activity-theme .aurora-mesh::after,
+  .activity-theme.activity-theme [aria-hidden="true"]:not([role="img"]) {
+    display: none;
+  }
+  .activity-card-matte.activity-card-matte {
+    box-shadow: 0 0 0 1px var(--color-slate-200);
+    break-inside: avoid;
+  }
+  .activity-card-matte.activity-card-matte:hover {
+    transform: none;
+  }
+  .activity-period-selector.activity-period-selector {
+    display: none;
+  }
+  .activity-export-btn.activity-export-btn {
+    display: none;
+  }
+  .activity-theme.activity-theme svg {
+    color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .activity-heatmap-cell.activity-heatmap-cell {
+    print-color-adjust: exact;
+  }
+  .activity-motivation-chip.activity-motivation-chip {
+    box-shadow: 0 0 0 1px var(--color-slate-200);
+  }
+}

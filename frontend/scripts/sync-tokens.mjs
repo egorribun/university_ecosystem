@@ -239,6 +239,7 @@ GROUPS.forEach((group) => {
   content: "900px",
   tablet: "1024px",
   dashboard: "1100px",
+  storiesInHero: "1220px",
   desktop: "1280px",
   wide: "1350px",
   ultrawide: "1730px",

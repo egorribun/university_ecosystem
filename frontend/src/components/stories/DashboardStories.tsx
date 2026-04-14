@@ -34,6 +34,8 @@ export default function DashboardStories({
   const [isPaused, setIsPaused] = useState(false)
   const rafRef = useRef<number | null>(null)
   const autoStartRef = useRef<number>(0)
+  /** Wave 54: Track elapsed time when pausing to avoid timer drift on resume (FIX-54-08) */
+  const pausedElapsedRef = useRef<number>(0)
 
   useEffect(() => {
     return () => {
@@ -48,6 +50,7 @@ export default function DashboardStories({
     setOpenIndex(null)
     setProgress(0)
     setIsPaused(false)
+    pausedElapsedRef.current = 0
   }, [])
 
   const goToIndex = useCallback(
@@ -154,8 +157,16 @@ export default function DashboardStories({
     [onStoryOpen]
   )
 
-  const handlePause = useCallback(() => setIsPaused(true), [])
-  const handleResume = useCallback(() => setIsPaused(false), [])
+  const handlePause = useCallback(() => {
+    // Wave 54: Save elapsed time so resume can continue from the right point (FIX-54-08)
+    pausedElapsedRef.current = performance.now() - autoStartRef.current
+    setIsPaused(true)
+  }, [])
+  const handleResume = useCallback(() => {
+    // Wave 54: Restore start ref so progress continues from where it paused (FIX-54-08)
+    autoStartRef.current = performance.now() - pausedElapsedRef.current
+    setIsPaused(false)
+  }, [])
 
   return (
     <>

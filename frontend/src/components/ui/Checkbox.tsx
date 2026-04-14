@@ -49,7 +49,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.5, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                className="text-brand"
+                className="text-brand check-celebrate"
               >
                 {isIndeterminate ? (
                   <Minus className="h-4 w-4" style={{ strokeWidth: 3 }} />

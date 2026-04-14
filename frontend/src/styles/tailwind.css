@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "./partials/_glass-layers.css";
+@import "./partials/_micro-interactions.css";
+@import "./partials/_modern-css.css";
 
 @theme {
   /*
@@ -65,8 +68,6 @@
   --news-hero-h: var(--h-news-hero);
   --news-hero-h-md: var(--h-news-hero-md);
   --h-hero-max: var(--h-hero-max);
-  --w-2-5: var(--w-2-5);
-  --h-2-5: var(--h-2-5);
 
   /* Spacing Scale - Standard Aliases */
   --spacing-1: var(--space-1);
@@ -99,6 +100,10 @@
 
   /* Touch Targets */
   --size-touch: var(--size-touch-target);
+
+  /* Navbar Action Buttons — fluid (Wave 52) */
+  --size-nav-action: var(--nav-action-size);
+  --spacing-nav-action-gap: var(--nav-action-gap);
 
   /* Typography Scale (Fluid) */
   --font-size-xs: var(--fs-xs);
@@ -138,6 +143,7 @@
   --font-size-icon-lg: var(--fs-icon-lg);
 
   /* Shadows */
+  --shadow-xs: var(--raw-shadow-xs);
   --shadow-sm: var(--raw-shadow-sm);
   --shadow-md: var(--raw-shadow-md);
   --shadow-premium: var(--raw-shadow-premium);
@@ -155,6 +161,30 @@
 
   --navbar-height: var(--navbar-h-base);
   --navbar-height-scrolled: var(--navbar-h-scrolled);
+
+  /* Morphing Navbar — Wave 50 */
+  --navbar-pill-max-w: var(--navbar-pill-max-w);
+  --navbar-pill-h: var(--navbar-pill-h);
+  --navbar-pill-radius: var(--navbar-pill-radius);
+  --navbar-pill-mt: var(--navbar-pill-mt);
+  --color-pill-bg: var(--pill-bg);
+  --color-pill-border: var(--pill-border);
+  --color-pill-glow: var(--pill-glow);
+  --color-nav-active: var(--nav-active-color);
+  --color-nav-active-glow: var(--nav-active-glow);
+  --color-drawer-bg: var(--drawer-bg);
+  --color-drawer-overlay: var(--drawer-overlay);
+  --color-bottom-pill-bg: var(--bottom-pill-bg);
+  --color-bottom-pill-border: var(--bottom-pill-border);
+  --color-bottom-nav-bg: var(--bottom-nav-bg);
+  --color-notif-badge: var(--notif-badge);
+
+  /* Animations — Wave 51 */
+  --animate-pill-breathe: pill-breathe 6s ease-in-out infinite;
+  --animate-logo-shimmer: logo-shimmer 1.5s ease-in-out 1;
+  --animate-nav-glow-pulse: nav-link-glow-pulse 4s ease-in-out infinite;
+  --animate-nav-bar-enter: nav-bar-enter 0.4s var(--ease-premium) both;
+  --animate-nav-dot-enter: nav-dot-enter 0.3s var(--ease-premium) both;
 
   /* Gradients */
   --bg-linear-brand: var(--gradient-brand);
@@ -242,8 +272,6 @@
   --animate-dash-colon-blink: dash-colon-blink var(--motion-duration-pulse-slow, 2s)
     var(--ease-premium) infinite;
   --animate-pulse-shadow: pulse-shadow var(--motion-duration-pulse-slow, 2s) ease-in-out infinite;
-
-  --animate-pulse-shadow: pulse-shadow 2s ease-in-out infinite;
 
   /* Easing */
   --ease-back-out: var(--ease-back-out);
@@ -423,6 +451,264 @@
   }
 }
 
+/* Wave 51: Morphing Navbar keyframes */
+@keyframes pill-breathe {
+  0%,
+  100% {
+    box-shadow: var(--pill-shadow), var(--pill-inner-glow);
+  }
+
+  50% {
+    box-shadow: var(--pill-shadow-breathe), var(--pill-inner-glow);
+  }
+}
+
+@keyframes logo-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes nav-link-glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px var(--nav-active-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 16px var(--nav-active-glow);
+  }
+}
+
+@keyframes nav-bar-enter {
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes nav-dot-enter {
+  0% {
+    transform: translateX(-50%) scale(0);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pill-breathe,
+  .animate-logo-shimmer,
+  .animate-nav-glow-pulse,
+  .animate-nav-bar-enter,
+  .animate-nav-dot-enter {
+    animation: none !important;
+  }
+}
+
+/* Wave 52: Navbar action button — fluid circle for mobile harmony */
+.nav-action-btn {
+  width: var(--nav-action-size);
+  height: var(--nav-action-size);
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-subtle), transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-xs);
+  transition: background 200ms var(--ease-premium),
+              border-color 200ms var(--ease-premium),
+              box-shadow 200ms var(--ease-premium),
+              transform 200ms var(--ease-premium);
+}
+.nav-action-btn:hover {
+  background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-dim), transparent);
+  border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
+  box-shadow: var(--shadow-sm);
+}
+.nav-action-btn:active {
+  transform: scale(0.93);
+}
+/* Icon inside nav-action-btn */
+.nav-action-btn > svg,
+.nav-action-btn .nav-action-icon {
+  width: var(--nav-action-icon);
+  height: var(--nav-action-icon);
+  flex-shrink: 0;
+}
+/* Optical size compensation — Bell has more whitespace in its viewBox than
+   MessageSquare, so it appears smaller at the same pixel size. Scaling up
+   by ~12% matches perceived visual weight. Same technique as SF Symbols. */
+.nav-action-btn .bell-wiggle {
+  width: calc(var(--nav-action-icon) * 1.12);
+  height: calc(var(--nav-action-icon) * 1.12);
+}
+
+/* Unread state — subtle brand glow on the button itself */
+.nav-action-btn[data-unread] {
+  border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-main) var(--opacity-faint), transparent),
+              var(--shadow-xs);
+}
+
+/* Bell wiggle on hover — playful micro-interaction */
+@keyframes bell-wiggle {
+  0%   { transform: rotate(0deg); }
+  20%  { transform: rotate(12deg); }
+  40%  { transform: rotate(-10deg); }
+  60%  { transform: rotate(6deg); }
+  80%  { transform: rotate(-3deg); }
+  100% { transform: rotate(0deg); }
+}
+.nav-action-btn:hover .bell-wiggle {
+  animation: bell-wiggle 0.5s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-action-btn,
+  .nav-action-btn:hover,
+  .nav-action-btn:active {
+    transition-duration: 0ms;
+    transform: none;
+  }
+  .nav-action-btn:hover .bell-wiggle {
+    animation: none;
+  }
+}
+
+/* Wave 51: Premium nav link — glass capsule */
+.nav-link-premium {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  padding: 0.4rem 0.875rem;
+  text-decoration: none;
+  font-family: var(--font-ui);
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  transition: color 0.25s, background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.15s;
+}
+
+.nav-link-premium:hover {
+  color: var(--text-primary);
+  background: var(--nav-hover-bg);
+  border-color: var(--nav-hover-border);
+}
+
+.nav-link-premium:active {
+  transform: scale(0.97);
+}
+
+.nav-link-premium[data-active] {
+  color: var(--text-primary);
+  background-image: var(--nav-capsule-bg);
+  border-top-color: var(--nav-capsule-border-top);
+  border-left-color: var(--nav-capsule-border-side);
+  border-right-color: var(--nav-capsule-border-side);
+  border-bottom-color: var(--nav-capsule-border-bottom);
+  box-shadow: var(--nav-capsule-shadow);
+}
+
+/* Specular highlight — top-edge radial glare like iOS glass */
+.nav-link-premium[data-active]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--nav-capsule-specular);
+  pointer-events: none;
+  z-index: 1;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .nav-link-premium[data-active] {
+    backdrop-filter: blur(16px) saturate(1.5);
+    -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  }
+}
+
+.nav-link-premium[data-active]:hover {
+  transform: none;
+}
+
+/* Wave 51: Mobile drawer nav link */
+.mobile-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-family: var(--font-ui);
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.mobile-nav-link:hover {
+  color: var(--text-primary);
+  background: var(--nav-hover-bg);
+}
+
+.mobile-nav-link[data-active] {
+  position: relative;
+  color: var(--text-primary);
+  background-image: var(--nav-capsule-bg);
+  border: 1px solid var(--nav-capsule-border-side);
+  border-top-color: var(--nav-capsule-border-top);
+  border-bottom-color: var(--nav-capsule-border-bottom);
+  box-shadow: var(--nav-capsule-shadow);
+}
+
+.mobile-nav-link[data-active]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--nav-capsule-specular);
+  pointer-events: none;
+}
+
+.mobile-nav-link-icon {
+  color: var(--text-tertiary);
+  transition: color 0.2s;
+}
+
+.mobile-nav-link[data-active] .mobile-nav-link-icon {
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-link-premium,
+  .mobile-nav-link {
+    transition: none;
+  }
+
+  .nav-link-premium:hover {
+    transform: none;
+  }
+}
+
 @utility container-fluid {
   margin-left: auto;
   margin-right: auto;
@@ -439,6 +725,23 @@
   }
 }
 
+/* Wave 51: Navbar pill glass surface (premium) */
+@utility navbar-pill-glass {
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  box-shadow: var(--pill-shadow), var(--pill-inner-glow);
+  animation: pill-breathe 6s ease-in-out infinite;
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 @utility bg-footer {
   background: var(--bg-footer-light);
 
@@ -447,9 +750,37 @@
   }
 }
 
+/* Wave 50: Drawer glass surface */
+@utility drawer-glass {
+  background: var(--drawer-bg);
+  border-left: 1px solid var(--pill-border);
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  }
+}
+
+/* Wave 51: Bottom nav pill indicator (premium) */
+@utility bottom-nav-pill {
+  background: var(--bottom-nav-pill-gradient), var(--bottom-pill-bg);
+  border: 1px solid var(--bottom-pill-border);
+  box-shadow: var(--bottom-nav-pill-glow);
+}
+
+/* Wave 50: Bottom nav glass bar */
+@utility bottom-nav-glass {
+  background: var(--bottom-nav-bg);
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  }
+}
+
 @utility sf-pro {
   font-family: var(--font-sf);
-  letter-spacing: -0.011em;
+  letter-spacing: var(--tracking-body);
 }
 
 @utility scale-hover {
@@ -472,6 +803,13 @@
   }
 }
 
+/* Wave 51: Ultra-wide pill scaling */
+@media (min-width: 120rem) {
+  :root {
+    --navbar-pill-max-w: var(--navbar-pill-max-w-xl);
+  }
+}
+
 @layer base {
   body {
     @apply min-h-dvh text-(--text-primary) antialiased;
@@ -484,7 +822,7 @@
       color 0.6s var(--ease-premium);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
-    letter-spacing: -0.011em;
+    letter-spacing: var(--tracking-body);
   }
 
   h1,
@@ -499,6 +837,11 @@
   ::selection {
     background: var(--primary-main);
     color: var(--color-white);
+  }
+
+  /* WCAG 2.4.11 Focus Not Obscured — prevent sticky navbar from covering focused elements */
+  :focus-visible {
+    scroll-margin-top: calc(var(--navbar-h-scrolled, 4.5rem) + 1rem);
   }
 }
 
@@ -536,6 +879,41 @@
   }
 }
 
+/* Wave 60: Scroll-to-top FAB — theme-reactive via CSS vars, no JS theme detection */
+.back-to-top-wrap {
+  transition: bottom 0.2s var(--ease-premium, ease);
+}
+
+.back-to-top-fab {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--text-primary);
+  color: var(--bg-page);
+  box-shadow:
+    0 4px 14px color-mix(in srgb, var(--text-primary) 25%, transparent),
+    0 2px 4px color-mix(in srgb, var(--text-primary) 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 15%, transparent);
+}
+
+.dark .back-to-top-fab {
+  box-shadow:
+    0 4px 16px color-mix(in srgb, black 50%, transparent),
+    0 2px 4px color-mix(in srgb, black 30%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 40%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back-to-top-wrap {
+    transition: none;
+  }
+}
+
 @utility glass-high-fidelity {
   @apply border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-3xl;
 
@@ -545,20 +923,194 @@
   }
 }
 
+/* Wave 45: Dashboard — gradient fills <main>, overflow-x hidden prevents horizontal scroll */
+@layer utilities {
+  main:has(.dashboard-theme) {
+    background: linear-gradient(145deg, var(--hero-grad-start), var(--hero-grad-end)) !important;
+    overflow: clip;
+  }
+}
+
 @utility surface-raised {
   @apply bg-(--bg-surface-raised) shadow-sm border border-border-subtle;
 }
 
+/* Wave 45: Dashboard glass card utility */
+@utility card-matte {
+  @apply relative overflow-hidden rounded-2xl text-text-primary;
+  background: var(--dash-card-bg, var(--bg-matte-card));
+  border: 1px solid var(--dash-border, var(--border-matte));
+  box-shadow: 0 4px 24px color-mix(in srgb, black 15%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  transition:
+    box-shadow var(--motion-duration-base) var(--ease-premium),
+    border-color var(--motion-duration-base) var(--ease-premium),
+    transform var(--motion-duration-base) var(--ease-premium);
+}
+
+@utility card-matte-interactive {
+  @apply cursor-pointer hover:-translate-y-0.5 hover:shadow-[var(--shadow-matte-card-hover)] motion-reduce:hover:transform-none;
+}
+
+@utility list-item-matte {
+  @apply w-full rounded-xl border border-transparent px-4 py-3 text-left;
+  background: var(--bg-matte-list);
+  transition:
+    background-color var(--motion-duration-fast) var(--ease-premium),
+    border-color var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-fast) var(--ease-premium),
+    box-shadow var(--motion-duration-fast) var(--ease-premium);
+}
+
+@utility list-item-matte-hover {
+  @apply hover:border-(--border-matte) hover:-translate-y-0.5 hover:shadow-[var(--shadow-matte-card)] motion-reduce:hover:transform-none;
+}
+
+/* Wave 49: Premium blue list items — rich blue depth for dashboard cards */
+@utility list-item-blue {
+  @apply w-full rounded-xl px-4 py-3.5 text-left;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--brand-main) 6%, var(--bg-matte-list)) 0%,
+    var(--bg-matte-list) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--brand-main) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent),
+    0 1px 2px color-mix(in srgb, black 4%, transparent);
+  transition:
+    background var(--motion-duration-fast) var(--ease-premium),
+    border-color var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-fast) var(--ease-premium),
+    box-shadow var(--motion-duration-fast) var(--ease-premium);
+}
+
+@utility list-item-blue-hover {
+  @apply motion-reduce:hover:transform-none;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--brand-main) 25%, transparent);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--brand-main) 10%, var(--bg-matte-list)) 0%,
+      color-mix(in srgb, var(--brand-main) 4%, var(--bg-matte-list)) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+      0 2px 8px color-mix(in srgb, var(--brand-main) 10%, transparent),
+      0 1px 3px color-mix(in srgb, black 6%, transparent);
+    transform: translateY(-2px);
+  }
+}
+
+@utility skeleton-matte {
+  background: color-mix(in srgb, var(--bg-matte-card) 60%, var(--border-matte) 40%);
+}
+
 @layer utilities {
+  /* Wave 45: Dashboard cards — matte embossed surface with depth */
   .dash-panel-schedule,
   .dash-panel-news,
   .dash-panel-events {
-    @apply bg-glass border-glass-border shadow-glass;
-    transition-property: background-color, border-color, box-shadow, opacity;
-    transition-duration: 300ms;
-    transition-timing-function: var(--ease-premium);
+    background: var(--dash-card-bg);
+    border: 1px solid var(--dash-border);
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 3px color-mix(in srgb, black 8%, transparent),
+      0 4px 16px color-mix(in srgb, black 6%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    transition: border-color 300ms var(--ease-premium), box-shadow 300ms var(--ease-premium), transform 300ms var(--ease-premium);
     position: relative;
     overflow: hidden;
+  }
+
+  /* Blue accent line at top */
+  .dash-panel-schedule::after,
+  .dash-panel-news::after,
+  .dash-panel-events::after {
+    content: "";
+    position: absolute;
+    inset-inline: 20%;
+    top: 0;
+    height: 1px;
+    pointer-events: none;
+    z-index: 2;
+    background: var(--dash-accent-line);
+    opacity: 0.4;
+    transition: opacity 300ms var(--ease-premium), inset 300ms var(--ease-premium);
+  }
+
+  .dash-panel-schedule:hover,
+  .dash-panel-news:hover,
+  .dash-panel-events:hover {
+    border-color: var(--dash-border-hover);
+    box-shadow:
+      0 2px 6px color-mix(in srgb, black 10%, transparent),
+      0 8px 28px color-mix(in srgb, black 8%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+    transform: translateY(-3px);
+  }
+
+  .dash-panel-schedule:hover::after,
+  .dash-panel-news:hover::after,
+  .dash-panel-events:hover::after {
+    opacity: 0.8;
+    inset-inline: 10%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dash-panel-schedule:hover,
+    .dash-panel-news:hover,
+    .dash-panel-events:hover {
+      transform: none;
+    }
+  }
+
+  /* Dashboard buttons — clearly distinct from card bg */
+  .btn-dash {
+    background: var(--dash-btn-bg) !important;
+    border-color: var(--dash-btn-border) !important;
+    font-weight: 600 !important;
+  }
+
+  .btn-dash:hover {
+    border-color: var(--dash-border-hover) !important;
+  }
+
+  /* Wave 49: Premium DateBullet — 3D depth with layered shadows and radial gradient */
+  .date-bullet-premium {
+    background:
+      radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--brand-main) 18%, transparent), transparent 70%),
+      radial-gradient(circle at 65% 70%, color-mix(in srgb, var(--brand-main) 10%, transparent), transparent 60%),
+      color-mix(in srgb, var(--brand-main) 6%, var(--bg-matte-card));
+    border: 1.5px solid color-mix(in srgb, var(--brand-main) 22%, transparent);
+    box-shadow:
+      0 1px 2px color-mix(in srgb, black 8%, transparent),
+      0 4px 12px color-mix(in srgb, var(--brand-main) 12%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 12%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--brand-main) 8%, transparent);
+  }
+
+  .date-bullet-premium:hover {
+    box-shadow:
+      0 2px 4px color-mix(in srgb, black 10%, transparent),
+      0 6px 20px color-mix(in srgb, var(--brand-main) 20%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 15%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--brand-main) 12%, transparent);
+    border-color: color-mix(in srgb, var(--brand-main) 35%, transparent);
+  }
+
+  :is(.dark) .date-bullet-premium {
+    background:
+      radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--brand-main) 24%, transparent), transparent 70%),
+      radial-gradient(circle at 65% 70%, color-mix(in srgb, var(--brand-main) 14%, transparent), transparent 60%),
+      color-mix(in srgb, var(--brand-main) 8%, var(--bg-matte-card));
+    border-color: color-mix(in srgb, var(--brand-main) 30%, transparent);
+    box-shadow:
+      0 1px 3px color-mix(in srgb, black 20%, transparent),
+      0 4px 16px color-mix(in srgb, var(--brand-main) 16%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--brand-main) 10%, transparent);
   }
 
   .animate-premium-in {
@@ -716,6 +1268,14 @@
 
 @utility z-tooltip {
   z-index: var(--z-tooltip);
+}
+
+@utility z-navbar {
+  z-index: var(--z-navbar);
+}
+
+@utility z-dropdown {
+  z-index: var(--z-dropdown);
 }
 
 @utility z-overlay {

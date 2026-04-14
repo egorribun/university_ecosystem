@@ -1,11 +1,11 @@
 import { useRef, useId, useCallback, useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 import { ChevronLeft, ChevronRight, X } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { Button, ProgressBar } from "@/components/ui"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import type { ButtonProps } from "@/components/ui/Button"
 import type { StoryItem } from "@/types/Story"
 import { useSwipe } from "@/hooks/useSwipe"
@@ -142,32 +142,30 @@ export const StoryViewer = ({
   if (!isClient || !viewerStory || activeStoryIndex === null) return null
 
   return createPortal(
-    <div className="fixed inset-0 flex items-center justify-center p-(--fluid-px) z-overlay">
-      <button
-        type="button"
-        aria-hidden
-        className="pointer-events-auto absolute inset-0 z-base w-full h-full border-0 p-0 cursor-default bg-linear-to-b from-black/0 via-black/0 to-black/(--opacity-strong)"
+    // Wave 54: css-scale-in entrance animation via @starting-style (DESIGN-54-04)
+    <div className="css-scale-in fixed inset-0 flex items-center justify-center p-(--fluid-px) z-overlay">
+      {/* Wave 54: div with role=presentation, not button (FIX-54-03) */}
+      <div
+        role="presentation"
+        className="pointer-events-auto absolute inset-0 z-base w-full h-full cursor-default bg-linear-to-b from-black/0 via-black/0 to-black/(--opacity-strong)"
         onClick={onClose}
-        tabIndex={-1}
       />
       <div
         ref={dialogTrapRef}
         role="dialog"
         aria-modal="true"
-        aria-label={storyDialogLabel}
+        // Wave 54: prefer aria-labelledby when title exists (FIX-54-04)
+        aria-labelledby={viewerStory.title?.trim() ? dialogTitleId : undefined}
+        aria-label={viewerStory.title?.trim() ? undefined : storyDialogLabel}
         className="relative z-base flex w-full justify-center"
       >
+        {/* Wave 54: Tailwind-only sizing, no conflicting inline styles (FIX-54-05) */}
         <div
           className={cn(
-            "relative z-decor flex aspect-9/16 w-(--story-card-w) max-h-hero-max max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,60rem)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
+            "relative z-decor flex aspect-9/16 max-h-[92vh] w-[min(96%,960px)] flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,60rem)]",
             viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
-          style={{
-            maxHeight: "92vh",
-            aspectRatio: "9/16",
-            width: "min(96%, 960px)",
-          }}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
@@ -255,6 +253,8 @@ export const StoryViewer = ({
                     : "duration-rapid ease-linear"
                 )}
                 animated={!prefersReducedMotion}
+                // Wave 54: only active bar announces to screen reader (A11Y-54-01)
+                liveRegion={index === activeStoryIndex}
               />
             ))}
           </div>

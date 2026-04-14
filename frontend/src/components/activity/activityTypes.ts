@@ -19,6 +19,10 @@ export function periodDayCount(key: PeriodKey): number {
 export const isPeriodKey = (value: unknown): value is PeriodKey =>
   typeof value === "string" && PERIOD_VALUES.includes(value as PeriodKey)
 
+const GRADE_SCALES = ["5", "100", "gpa"] as const
+export const isGradeScale = (value: unknown): value is GradeStats["scale"] =>
+  typeof value === "string" && GRADE_SCALES.includes(value as GradeStats["scale"])
+
 export type AttendanceStats = {
   percent: number
   present: number
@@ -40,6 +44,7 @@ export type ParticipationStats = {
   events: number
   hours?: number
   groups?: number
+  goal?: number
   trend: number
   recent: Array<{ title: string; date: string; role?: string }>
 }
@@ -70,3 +75,9 @@ export type ParticipationSummaryResponse = {
 }
 
 export type DetailSection = "" | "attendance" | "grades" | "participation"
+
+/** Unified timeline entry — discriminated union for merged activity feed */
+export type TimelineEntry =
+  | { type: "attendance"; date: string; course?: string; status: "present" | "absent" | "late" }
+  | { type: "grade"; date: string; course: string; score: number; max?: number }
+  | { type: "participation"; date: string; title: string; role?: string }

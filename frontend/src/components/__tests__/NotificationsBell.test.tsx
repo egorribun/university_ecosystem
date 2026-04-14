@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { useNotifications } from "@/hooks/useNotifications"
-import NotificationsBell from "../NotificationsBell"
+import NotificationsBell from "../feedback/NotificationsBell"
 
 const useNotificationsMock = vi.fn()
 

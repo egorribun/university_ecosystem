@@ -1,51 +1,92 @@
-import { Link } from "react-router-dom"
-import { motion } from "framer-motion"
+import { Link } from "@tanstack/react-router"
 import { type TFunction } from "i18next"
 import guuLogo from "@/assets/guu_logo.png"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 import { breakpoints } from "@/theme/tokens"
-import { hoverScale } from "@/utils/animations"
 
 interface NavbarLogoProps {
   t: TFunction
   isMobile: boolean
+  isCompact: boolean
+  isPhone: boolean
+  prefersReducedMotion: boolean
   onLogoClick: (e: React.MouseEvent) => void
   markScrollFromBottom: () => void
 }
 
-export const NavbarLogo = ({ t, isMobile, onLogoClick, markScrollFromBottom }: NavbarLogoProps) => {
+/**
+ * NavbarLogo — all transitions use CSS only (no Framer Motion).
+ * Every child shares the same 500ms ease-premium timing as the pill container,
+ * preventing the "logo jumps ahead of pill" desync.
+ */
+export const NavbarLogo = ({
+  t,
+  isMobile,
+  isCompact,
+  isPhone,
+  prefersReducedMotion,
+  onLogoClick,
+  markScrollFromBottom,
+}: NavbarLogoProps) => {
+  const dur = prefersReducedMotion ? "duration-0" : "duration-500"
+  const ease = "ease-[var(--ease-premium)]"
+
   return (
     <Link
       id="navbar-logo-link"
       to="/dashboard"
       aria-label={t("navigation:aria.homeLink")}
       className={cn(
-        "inline-flex min-w-0 items-center rounded-2xl px-3 py-1.5 no-underline group transition-all duration-base hover:bg-(--bg-surface-hover)/(--opacity-soft)",
-        isMobile ? "gap-fluid-gap" : "gap-4"
+        "inline-flex min-w-0 items-center rounded-2xl no-underline group",
+        "transition-[gap,padding]", dur, ease,
+        "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+        isCompact ? "gap-0 px-1 py-1" : isPhone ? "gap-0 px-1 py-1" : isMobile ? "gap-fluid-gap px-3 py-1.5" : "gap-3 px-3 py-1.5"
       )}
       onPointerDown={markScrollFromBottom}
       onClick={onLogoClick}
     >
-      <motion.div
-        variants={hoverScale}
-        whileHover="hover"
-        whileTap="tap"
-        className="flex items-center justify-center shrink-0 rounded-full bg-(--bg-surface-raised) shadow-sm size-touch border border-border-subtle"
+      {/* Logo circle — CSS transition synced with pill + shimmer on load */}
+      <div
+        className={cn(
+          "flex items-center justify-center shrink-0 rounded-full",
+          "bg-(--bg-surface-raised) dark:bg-(--bg-surface-hover) shadow-sm border border-border-subtle",
+          "transition-[width,height,transform,box-shadow]", dur, ease,
+          isCompact ? "w-8 h-8" : isPhone ? "w-(--nav-action-size) h-(--nav-action-size)" : "w-11 h-11",
+          "hover:scale-105 hover:shadow-[var(--nav-link-hover-glow)] active:scale-95",
+          !prefersReducedMotion && "hover:transition-transform hover:duration-200",
+          !prefersReducedMotion && "animate-logo-shimmer",
+        )}
+        style={
+          !prefersReducedMotion
+            ? {
+                backgroundImage:
+                  "linear-gradient(90deg, transparent 30%, color-mix(in srgb, white 20%, transparent) 50%, transparent 70%)",
+                backgroundSize: "200% 100%",
+              }
+            : undefined
+        }
       >
         <SmartImage
           srcRaw={guuLogo}
           alt={t("navigation:brandAlt")}
-          className="object-contain w-2/3 h-2/3"
+          className="object-contain w-3/4 h-3/4"
           loading="eager"
           fetchPriority="high"
           sizes={`(min-width: ${breakpoints.wide}) 2.75rem, (min-width: ${breakpoints.mobile}) 2.25rem, 1.625rem`}
           responsiveWidths={[28, 48, 64]}
           decoding="async"
         />
-      </motion.div>
-      <div className="flex flex-col justify-center">
-        <span className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-strong transition-all duration-base leading-tight text-brand">
+      </div>
+
+      {/* Brand text — instant hide/show, pill morph handles the visual transition */}
+      <div
+        className={cn(
+          "overflow-hidden",
+          isCompact || isPhone ? "max-w-0 opacity-0" : "max-w-40 opacity-100"
+        )}
+      >
+        <span className="whitespace-nowrap font-black tracking-tight text-lg leading-tight text-text-primary">
           {t("navigation:brandName")}
         </span>
       </div>

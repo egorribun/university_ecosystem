@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import { useForm } from "react-hook-form"
@@ -19,10 +19,10 @@ export type ChallengeWithAttempts = ChallengeMethod &
 export function useLoginForm() {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
-  const location = useLocation()
+  const locationState = useRouterState({ select: (s) => s.location.state })
   const { login, pendingMfa, loginWithPasskey } = useAuth()
 
-  const state = location.state as { from?: { pathname: string } } | null
+  const state = locationState as { from?: { pathname: string } } | null
   const redirectPath = state?.from?.pathname || "/dashboard"
 
   // Persistence for user convenience
@@ -77,7 +77,7 @@ export function useLoginForm() {
         return // Handled by MFA flow
       }
 
-      navigate(redirectPath, { replace: true })
+      navigate({ to: redirectPath, replace: true })
     } catch (error) {
       let message = t("auth:login.error")
       if (error instanceof Error && error.message) {
@@ -116,7 +116,7 @@ export function useLoginForm() {
     setPasskeyError(null)
     try {
       await loginWithPasskey(currentEmail || "", trustDevice)
-      navigate(redirectPath, { replace: true })
+      navigate({ to: redirectPath, replace: true })
     } catch (error) {
       let message = t("auth:login.error")
       if (error instanceof Error) message = error.message
@@ -166,10 +166,10 @@ export function useLoginForm() {
 export function useMfaFlow() {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
-  const location = useLocation()
+  const locationState = useRouterState({ select: (s) => s.location.state })
   const { pendingMfa, submitMfaChallenge } = useAuth()
 
-  const state = location.state as { from?: { pathname: string } } | null
+  const state = locationState as { from?: { pathname: string } } | null
   const redirectPath = state?.from?.pathname || "/dashboard"
 
   const [mfaBusy, setMfaBusy] = useState(false)
@@ -212,7 +212,7 @@ export function useMfaFlow() {
           challengeToken: otpChallenge.challenge_token,
           trustDevice,
         })
-        navigate(redirectPath, { replace: true })
+        navigate({ to: redirectPath, replace: true })
       } catch (error) {
         if (error instanceof ChallengeLockedError) {
           setMfaError(error.message)
@@ -260,7 +260,7 @@ export function useMfaFlow() {
           challengeToken: webauthnChallenge.challenge_token,
           trustDevice,
         })
-        navigate(redirectPath, { replace: true })
+        navigate({ to: redirectPath, replace: true })
       } catch (error) {
         let message = t("auth:mfa.errors.generic")
         if (error instanceof Error && error.message) {

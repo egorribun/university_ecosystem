@@ -13,6 +13,7 @@ export const parseAttendanceRecent = (value: unknown): AttendanceStats["recent"]
   return value
     .map((item) => {
       if (!item || typeof item !== "object") return null
+      // Safe narrowing: null/object guard above ensures item is a non-null object
       const entry = item as Record<string, unknown>
       const date = typeof entry.date === "string" ? entry.date : null
       const status = entry.status
@@ -32,6 +33,7 @@ export const parseGradeRecent = (value: unknown): GradeStats["recent"] => {
   return value
     .map((item) => {
       if (!item || typeof item !== "object") return null
+      // Safe narrowing: null/object guard above ensures item is a non-null object
       const entry = item as Record<string, unknown>
       const course = typeof entry.course === "string" ? entry.course : null
       const score = toNumber(entry.score, Number.NaN)
@@ -54,6 +56,7 @@ export const parseParticipationRecent = (value: unknown): ParticipationStats["re
   return value
     .map((item) => {
       if (!item || typeof item !== "object") return null
+      // Safe narrowing: null/object guard above ensures item is a non-null object
       const entry = item as Record<string, unknown>
       const title = typeof entry.title === "string" ? entry.title : null
       if (!title) return null

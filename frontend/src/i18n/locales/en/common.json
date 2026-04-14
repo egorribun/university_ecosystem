@@ -2,6 +2,7 @@
   "skipToContent": "Skip to content",
   "skipToMain": "Skip to main content",
   "dateUnknown": "Date unavailable",
+  "noResults": "No results.",
   "ariaDatePublished": "Published on {{date}}",
   "ariaCurrentTime": "Current time",
   "ariaCurrentLessonProgress": "Progress of the current lesson",
@@ -19,7 +20,8 @@
     "uploadPhoto": "Upload photo",
     "changePhoto": "Change photo",
     "loadMore": "Load more",
-    "backToTop": "Back to top"
+    "backToTop": "Back to top",
+    "close": "Close"
   },
   "statuses": {
     "loading": "Loading…",
@@ -27,10 +29,12 @@
     "publishing": "Publishing…",
     "error": "Something went wrong",
     "tryAgain": "Try again",
-    "live": "LIVE"
+    "live": "LIVE",
+    "cached": "Cached"
   },
   "errors": {
-    "generic": "An error occurred"
+    "generic": "An error occurred",
+    "featureUnavailable": "{{feature}} unavailable"
   },
   "pagination": {
     "rowsPerPage": "Rows per page",
@@ -49,5 +53,14 @@
   },
   "select": {
     "placeholder": "Select..."
+  },
+  "aria": {
+    "like": "Like",
+    "unlike": "Unlike",
+    "addBookmark": "Bookmark",
+    "removeBookmark": "Remove bookmark"
+  },
+  "cta": {
+    "learnMore": "Learn more"
   }
 }

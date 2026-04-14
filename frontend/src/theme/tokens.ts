@@ -8,6 +8,13 @@
 //     Always update `src/styles/theme.css` first, then run `npm run tokens:sync`.
 // -----------------------------------------------------------------------------
 
+/** Framer Motion spring presets (not valid CSS — JS only) */
+export const springs = {
+  stiff: { stiffness: 520, damping: 34 },
+  standard: { stiffness: 460, damping: 34 },
+  gentle: { stiffness: 260, damping: 26 },
+} as const;
+
 export const spacingScale = {
   "05": "var(--space-05)",
   "1": "var(--space-1)",
@@ -64,6 +71,7 @@ export const breakpoints = {
   content: "900px",
   tablet: "1024px",
   dashboard: "1100px",
+  storiesInHero: "1220px",
   desktop: "1280px",
   wide: "1350px",
   ultrawide: "1730px",

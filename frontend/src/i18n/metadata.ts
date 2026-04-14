@@ -16,6 +16,7 @@ export const namespaces = [
   "admin",
   "stories",
   "messenger",
+  "map",
 ] as const
 
 export const localeMeta = {

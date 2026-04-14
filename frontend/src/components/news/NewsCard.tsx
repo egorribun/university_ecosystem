@@ -1,7 +1,11 @@
 import { useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
+import { useBookmarks } from "@/hooks/useBookmarks"
 import { sanitizeNewsText } from "@/utils/sanitize"
+import { localizeField } from "@/utils/localize"
+import { inferCategory } from "@/features/news/categories"
+import { estimateReadingTime } from "@/utils/readingTime"
 import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
@@ -68,18 +72,21 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const commentsCount = interactions?.comments_count ?? initialComments
 
   const spotlight = useSpotlight()
+  const { isBookmarked, toggleBookmark } = useBookmarks()
+  const handleToggleBookmark = useCallback(() => toggleBookmark(id), [id, toggleBookmark])
 
-  const localizedTitle = useMemo(() => {
-    const english = title_en ?? ""
-    if (language === "en" && english.trim()) return english
-    return title || english
-  }, [language, title, title_en])
+  const localizedTitle = useMemo(
+    () => localizeField(title, title_en, language),
+    [language, title, title_en]
+  )
 
-  const localizedContent = useMemo(() => {
-    const english = content_en ?? ""
-    if (language === "en" && english.trim()) return english
-    return content || english
-  }, [language, content, content_en])
+  const localizedContent = useMemo(
+    () => localizeField(content, content_en, language),
+    [language, content, content_en]
+  )
+
+  const category = useMemo(() => inferCategory(title, content), [title, content])
+  const readingTime = useMemo(() => estimateReadingTime(localizedContent), [localizedContent])
 
   const [sanitizedPreview, setSanitizedPreview] = useState("")
 
@@ -99,7 +106,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       await api.delete(`/news/${id}`)
       onChange?.()
     } catch (_e) {
-      setError(t("common:errors.generic", { defaultValue: "Произошла ошибка" }))
+      setError(t("common:errors.generic", { defaultValue: "An error occurred" }))
     } finally {
       setLoading(false)
       setConfirmDeleteOpen(false)
@@ -127,15 +134,19 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       isLiked={isLiked}
       likesCount={likesCount}
       commentsCount={commentsCount}
+      isBookmarked={isBookmarked(id)}
       isAdmin={user?.role === "admin"}
       loading={loading}
       error={error}
       hoveringDisabled={editOpen}
+      readingTime={readingTime}
+      category={category}
       editOpen={editOpen}
       confirmDeleteOpen={confirmDeleteOpen}
       editData={editData}
       spotlight={spotlight}
       onToggleLike={toggleLike}
+      onToggleBookmark={handleToggleBookmark}
       onEditOpen={openEdit}
       onEditClose={closeEdit}
       onDeleteOpen={openDeletePrompt}

@@ -1,82 +1,143 @@
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
-import { getMoscowDate } from "@/utils/date"
-// dayjs removed
+import { getMoscowDate, formatRelativeTime } from "@/utils/date"
+import { getNewsHeroId, clearNewsHeroId } from "@/utils/newsTransition"
 import { Cloud, FileText as ArticleIcon } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface NewsCardHeroProps {
+  id?: string
   image_url?: string
   title?: string
   created_at: string
+  /** Set by parent on pointerdown for forward view-transition morphing */
+  transitioning?: boolean
 }
 
-const NewsCardHero = ({ image_url, title, created_at }: NewsCardHeroProps) => {
-  const { t } = useTranslation(["news", "common"])
+const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsCardHeroProps) => {
+  const { t, i18n } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
-  const [cardImageReady, setCardImageReady] = useState(!image_url)
+  const [ready, setReady] = useState(!image_url)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  const cardImageUrl = useMemo(() => image_url || "", [image_url])
+  const src = useMemo(() => image_url || "", [image_url])
+  useEffect(() => { setReady(!src) }, [src])
 
-  useEffect(() => {
-    setCardImageReady(!cardImageUrl)
-  }, [cardImageUrl])
+  /* ── Back-nav view transition: set VT name via DOM ref in layout phase ──
+     useLayoutEffect fires synchronously after DOM commit but before paint/snapshot.
+     Only the FIRST matching card gets the name — clearNewsHeroId() prevents duplicates.
+     setTimeout(0) removes name AFTER VT snapshot is captured — prevents stale
+     names from colliding with forward-nav transitioning prop. */
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    if (!el || !id) return
+    const heroId = getNewsHeroId()
+    if (heroId !== id) return
 
-  const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
+    el.style.viewTransitionName = "news-hero"
+    clearNewsHeroId()
 
-  const createdAtIso = useMemo(
+    const cleanup = setTimeout(() => { el.style.viewTransitionName = "" }, 0)
+    return () => { clearTimeout(cleanup); el.style.viewTransitionName = "" }
+  }, [id])
+  const onLoad = useCallback(() => setReady(true), [])
+
+  const isoDate = useMemo(
     () => (created_at ? new Date(created_at).toISOString() : ""),
     [created_at]
   )
-  const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
+  const label = useMemo(
+    () => (created_at ? getMoscowDate(created_at) : ""),
+    [created_at]
+  )
+  const relativeLabel = useMemo(
+    () => (created_at ? formatRelativeTime(created_at, i18n.language === "ru" ? "ru-RU" : "en-US") : ""),
+    [created_at, i18n.language]
+  )
+
+  /* ── Parallax on scroll — image shifts 15% vertically ── */
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !src) return
+
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (prefersReduced) return
+
+    const img = container.querySelector<HTMLElement>("[data-parallax-img]")
+    if (!img) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return
+        // Map intersectionRatio [0,1] → translateY [8%, -8%]
+        const shift = (1 - entry.intersectionRatio * 2) * 8
+        img.style.transform = `translateY(${shift}%) scale(1.12)`
+      },
+      { threshold: [0, 0.25, 0.5, 0.75, 1] }
+    )
+
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [src])
 
   return (
-    <div className="relative w-full h-news-hero md:h-news-hero-md shrink-0 overflow-hidden border-b border-glass-border bg-linear-to-br from-brand/(--opacity-subtle) to-brand/(--opacity-faint)">
+    <div
+      ref={containerRef}
+      className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand/(--opacity-subtle) to-transparent"
+      style={transitioning ? { viewTransitionName: "news-hero" } : undefined}
+    >
+      {/* Loading shimmer */}
       <div
         className={cn(
           "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-base",
-          cardImageReady ? "opacity-0" : "opacity-100"
+          ready ? "opacity-0 pointer-events-none" : "opacity-100"
         )}
-        aria-hidden
+        aria-hidden="true"
       />
-      {cardImageUrl ? (
+
+      {src ? (
         <>
           <SmartImage
-            srcRaw={cardImageUrl}
+            data-parallax-img
+            srcRaw={src}
             alt={title ? t("news:alt.hero", { title }) : t("news:alt.heroFallback")}
-            sizes="(min-width: 75rem) 40rem, (min-width: 56.25rem) 32.5rem, 100vw"
-            className="absolute inset-0 h-full w-full object-cover transition duration-slower ease-out"
-            onLoad={handleCardImageReady}
-            onError={handleCardImageReady}
+            sizes="(min-width: 75rem) 33vw, (min-width: 40rem) 50vw, 100vw"
+            className="absolute inset-0 h-full w-full object-cover will-change-transform transition-transform duration-slower ease-out scale-[1.12] group-hover:scale-[1.16]"
+            onLoad={onLoad}
+            onError={onLoad}
           />
+
+          {/* Bottom gradient */}
           <div
-            className="pointer-events-none absolute inset-0 z-decor transition-opacity duration-base group-hover:opacity-0 bg-linear-to-t from-black/(--opacity-heavy) via-black/(--opacity-medium) to-transparent opacity-strong"
-            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/(--opacity-heavy) to-transparent"
+            aria-hidden="true"
           />
         </>
       ) : (
-        <span className="relative z-deep flex h-full w-full items-center justify-center overflow-hidden rounded-full">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand/(--opacity-medium) opacity-dim"></span>
-          <ArticleIcon className="h-12 w-12" fontSize="large" />
-        </span>
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl glass-layer-surface border border-glass-border/(--opacity-soft) text-brand shadow-glass">
+            <ArticleIcon className="h-7 w-7" />
+          </div>
+        </div>
       )}
 
-      {/* Badges Overlay */}
-      <div className="absolute bottom-3 left-3 z-decor flex flex-wrap gap-2">
-        {createdAtIso && (
+      {/* Date badge — bottom-left */}
+      <div className="absolute bottom-3 left-3 z-decor flex flex-wrap items-center gap-2">
+        {isoDate && (
           <time
-            dateTime={createdAtIso}
-            className="rounded-full bg-black/(--opacity-strong) px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/(--opacity-heavy) transition duration-base ease-out group-hover/content:-translate-y-0.5 group-hover/content:bg-black/(--opacity-strong)"
+            dateTime={isoDate}
+            title={label}
+            className="news-badge-matte rounded-full px-3 py-1 text-[11px] font-semibold tracking-wider"
           >
-            {createdAtLabel}
+            {relativeLabel}
           </time>
         )}
         {!isOnline && (
-          <div className="flex items-center gap-1 rounded-full bg-warning-bg/(--opacity-heavy) px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text shadow-surface backdrop-blur-sm">
-            <Cloud size={12} />
-            <span>{t("common:statuses.cached", { defaultValue: "Кэш" })}</span>
+          <div className="flex items-center gap-1 rounded-full bg-warning-bg/(--opacity-heavy) px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text backdrop-blur-sm">
+            <Cloud size={11} />
+            <span>{t("common:statuses.cached")}</span>
           </div>
         )}
       </div>

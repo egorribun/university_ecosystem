@@ -1,9 +1,10 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Pencil as EditIcon, Save as SaveIcon, X as CloseIcon } from "lucide-react"
 import { Button } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import api from "@/api/client"
+import { logError } from "@/app/logger"
 import type { Event } from "@/types/Event"
 
 interface EventAboutEditorProps {
@@ -32,11 +33,10 @@ export function EventAboutEditor({
   const [saving, setSaving] = useState(false)
   const sectionRef = useRef<HTMLHeadingElement | null>(null)
 
-  const getBaseline = () => {
-    return language === "en" ? (event.about_en ?? "") : (event.about ?? "")
-  }
-
-  const baseline = getBaseline()
+  const baseline = useMemo(
+    () => (language === "en" ? (event.about_en ?? "") : (event.about ?? "")),
+    [language, event.about_en, event.about]
+  )
 
   const handleEdit = () => {
     setDraft(baseline)
@@ -57,7 +57,8 @@ export function EventAboutEditor({
       onSuccess(t("events:detail.messages.aboutUpdated"))
       await onUpdate()
       setTimeout(() => sectionRef.current?.focus?.(), 0)
-    } catch {
+    } catch (err) {
+      logError("[EventAboutEditor] Save failed:", err)
       onError(t("events:detail.messages.aboutUpdateFailed"))
     } finally {
       setSaving(false)
@@ -67,7 +68,7 @@ export function EventAboutEditor({
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
-        <h2 ref={sectionRef} tabIndex={-1} className="text-fluid-h2 font-bold text-text-primary">
+        <h2 id="event-about-heading" ref={sectionRef} tabIndex={-1} className="text-fluid-h2 font-bold text-text-primary">
           {t("events:detail.sections.about.title")}
         </h2>
         {canEdit && !editing && (
@@ -92,9 +93,7 @@ export function EventAboutEditor({
             className={cn(inputClass, "min-h-(--min-h-textarea) resize-y")}
             placeholder={
               language === "en"
-                ? t("events:detail.sections.about.fieldLabel_en", {
-                    defaultValue: `${t("events:detail.sections.about.fieldLabel")} (English)`,
-                  })
+                ? t("events:detail.sections.about.fieldLabel_en")
                 : t("events:detail.sections.about.fieldLabel")
             }
           />
@@ -123,10 +122,10 @@ export function EventAboutEditor({
         <p
           className={cn(
             "whitespace-pre-line text-lg leading-relaxed",
-            event.about ? "text-text-primary" : "text-(--text-secondary)"
+            baseline ? "text-text-primary" : "text-(--text-secondary)"
           )}
         >
-          {event.about || t("events:detail.sections.about.empty")}
+          {baseline || t("events:detail.sections.about.empty")}
         </p>
       )}
     </div>

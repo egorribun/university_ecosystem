@@ -33,12 +33,13 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
       </button>
 
       <div
-        className={cn(
-          "transition-all duration-base overflow-hidden",
-          isOpen ? "max-h-[150vh] opacity-100" : "max-h-0 opacity-0"
-        )}
-        style={{ maxHeight: isOpen ? "1000px" : "0px" }}
+        className="grid transition-[grid-template-rows,opacity] duration-base"
+        style={{
+          gridTemplateRows: isOpen ? "1fr" : "0fr",
+          opacity: isOpen ? 1 : 0,
+        }}
       >
+        <div className="overflow-hidden">
         <div className="px-3 pb-6 flex flex-col gap-1">
           <DetailRow
             label={t("profile:labels.institute")}
@@ -80,6 +81,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
               </span>
             }
           />
+        </div>
         </div>
       </div>
     </SectionCard>

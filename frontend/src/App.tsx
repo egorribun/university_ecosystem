@@ -1,12 +1,15 @@
-import { useTranslation } from "react-i18next"
+import { Suspense } from "react"
+import { RouterProvider } from "@tanstack/react-router"
 import { AppProviders } from "./AppProviders"
-import { AppRoutes } from "./AppRoutes"
+import { router } from "./router"
+import { useAuth } from "./contexts/AuthContext"
+import { queryClient } from "./app/queryClient"
 
 /**
- * World-Class Modular App Registry
+ * Inner app — injects auth context into router
  */
-function AppShell() {
-  const { t } = useTranslation("common")
+function InnerApp() {
+  const auth = useAuth()
 
   // Check for forced bootstrap error (used in E2E tests)
   if (
@@ -18,19 +21,26 @@ function AppShell() {
   }
 
   return (
-    <>
-      <a href="#main" className="skip-link">
-        {t("skipToContent")}
-      </a>
-      <AppRoutes />
-    </>
+    <Suspense>
+      <RouterProvider
+        router={router}
+        context={{
+          auth: {
+            isAuth: auth.isAuth,
+            user: auth.user ? { role: auth.user.role ?? "student" } : null,
+            loading: auth.loading,
+          },
+          queryClient,
+        }}
+      />
+    </Suspense>
   )
 }
 
 export default function App() {
   return (
     <AppProviders>
-      <AppShell />
+      <InnerApp />
     </AppProviders>
   )
 }

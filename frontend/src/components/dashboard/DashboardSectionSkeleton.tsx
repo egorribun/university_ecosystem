@@ -9,19 +9,19 @@ interface DashboardSectionSkeletonProps {
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
 export function DashboardSectionSkeleton({ type, className }: DashboardSectionSkeletonProps) {
   return (
-    <Card className={cn("p-5 h-full", className)}>
-      <Skeleton width="55%" height="1.5rem" className="mb-6" />
+    <Card className={cn("card-matte glass-noise p-6 h-full", className)}>
+      <Skeleton width="55%" height="1.5rem" className="mb-5" />
 
-      <div className="space-y-5">
+      <div className="space-y-3">
         {type === "schedule" && (
           <>
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <Skeleton width="3rem" height="3rem" rounded="sm" />
-                <div className="flex-1 space-y-2.5">
-                  <Skeleton width="85%" height="1rem" />
-                  <Skeleton width="45%" height="0.75rem" />
+              <div key={i} className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Skeleton width="5rem" height="1rem" />
+                  <Skeleton width="7.5rem" height="1.25rem" />
                 </div>
+                <Skeleton width="45%" height="0.75rem" />
               </div>
             ))}
           </>
@@ -30,10 +30,12 @@ export function DashboardSectionSkeleton({ type, className }: DashboardSectionSk
         {type === "news" && (
           <>
             {Array.from({ length: 2 }).map((_, i) => (
-              <div key={i} className="space-y-3 pb-2">
-                <Skeleton width="100%" height="1.125rem" />
-                <Skeleton width="90%" height="1.125rem" />
-                <Skeleton width="60%" height="0.875rem" />
+              <div key={i} className="flex items-start gap-4 rounded-xl bg-(--bg-matte-list) px-4 py-3">
+                <Skeleton width="2.75rem" height="2.75rem" rounded="9999rem" className="shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton width="90%" height="1.125rem" />
+                  <Skeleton width="60%" height="0.875rem" />
+                </div>
               </div>
             ))}
           </>
@@ -42,11 +44,11 @@ export function DashboardSectionSkeleton({ type, className }: DashboardSectionSk
         {type === "events" && (
           <>
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <Skeleton width="3.5rem" height="3.5rem" rounded="0.875rem" />
-                <div className="flex-1 space-y-2.5">
-                  <Skeleton width="92%" height="1rem" />
-                  <Skeleton width="40%" height="0.75rem" />
+              <div key={i} className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3">
+                <Skeleton width="80%" height="1rem" />
+                <div className="flex items-center gap-2">
+                  <Skeleton width="7.5rem" height="0.75rem" />
+                  <Skeleton width="5rem" height="0.75rem" />
                 </div>
               </div>
             ))}

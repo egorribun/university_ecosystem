@@ -2,7 +2,7 @@
 
 ## Project Structure
 - Python backend: `app/` (FastAPI + SQLAlchemy 2.0 + Pydantic v2) — **Python >=3.13,<3.15**
-- TypeScript frontend: `frontend/src/` (React 19 + Vite + TanStack Query + Zustand + Framer Motion)
+- TypeScript frontend: `frontend/src/` (React 19 + Vite 8/Rolldown + TanStack Router + TanStack Query + Zustand + Framer Motion)
 - Rust optimizer: `native/rust_ext/` (PyO3 FFI — schedule conflicts, partition management, HMAC)
 - Go services: `services/` (ws-hub, file-processor, gateway, caddy)
 - Alembic migrations: `alembic/versions/` (112 files; squash script: `app/management/squash_migrations.py`)
@@ -69,7 +69,7 @@
 - `cached()` decorator: `_l1_ttl` param now forwarded to TieredCache L1 layer (TD-33-09)
 - `RedisClusterCache.invalidate()`: supports glob patterns via SCAN (TD-33-10)
 - Go file-processor: env vars require `FP_` prefix (e.g. `FP_GRPC_PORT`) per `SetEnvPrefix("FP")`
-- Pyroscope: `grafana/pyroscope:1.18.1` in docker-compose.observability.yml
+- Pyroscope: `grafana/pyroscope:1.19.1` in docker-compose.observability.yml
 - Tests: S105/S106 (hardcoded password) suppressed in `tests/` via pyproject.toml per-file-ignores
 
 ## Gotchas
@@ -136,7 +136,7 @@
 - Ruff: dev dep pinned `>=0.14.14,<0.15` — v0.15.x strips except parens (RZ-30-05)
 - NATS retry: exponential backoff with jitter on `cache.invalidate` publish (TD-30-06)
 - Kyverno: Policy 9 `disallow-latest-tag` rejects empty/latest image tags (MOD-30-02)
-- Dockerfile.test: Rust toolchain from `rust:1.85-slim-bookworm` image, not curl|sh (MOD-30-05)
+- Dockerfile.test: Rust toolchain from `rust:1.94.1-slim-bookworm` image, not curl|sh (MOD-30-05)
 - Gateway: no `os.Exit` in goroutines — use channel-based error propagation (RZ-31-01)
 - ws-hub handleMessage: oversized messages notify client with `message_too_large` error frame (RZ-31-02)
 - Frontend localStorage: always wrap in try-catch for Safari private browsing (RZ-31-03)
@@ -148,9 +148,301 @@
 - ws-hub HandleWebSocket: maxClients pre-check before upgrade (TD-31-05)
 - Go services: `.golangci.yml` with exhaustive + gosec linters (MOD-31-01)
 - Go services OTEL: composite propagator (TraceContext + Baggage) registered (MOD-31-02)
+- Frontend WCAG 2.2: ConfirmDialog has `role="alertdialog"`, `aria-labelledby`, `aria-describedby` (A11Y-35-01)
+- Frontend WCAG 2.2: TextField connects helperText via `aria-describedby` + `role="alert"` on error (A11Y-35-02)
+- Frontend WCAG 2.2: ActionMenu items have `focus-visible:ring-2` focus indicator (A11Y-35-03)
+- Frontend WCAG 2.2: DataTableColumnHeader has `aria-sort` on columns (A11Y-35-04)
+- Frontend WCAG 2.2: ScheduleDesktopTable uses `scope="col"`/`scope="row"` semantics (A11Y-35-05)
+- Frontend WCAG 2.2: ChatWindow has `role="log"` + `aria-live="polite"` (A11Y-35-06)
+- Frontend WCAG 2.2: Global CSS `scroll-margin-top` on `:focus-visible` for Focus Not Obscured (A11Y-35-07)
+- Frontend: useEventRegistration uses `useOptimistic` + `useTransition` for instant RSVP feedback (PERF-35-01)
+- Vite 8 / Rolldown: `build.rolldownOptions` (not `rollupOptions`), `manualChunks` function form only (object form removed), `oxc` config replaces `esbuild` (INFRA-83-01)
+- Vite 8: `hotUpdate` hook replaces `handleHotUpdate`, uses `this.environment.hot.send()` not `server.ws.send()` (INFRA-83-02)
+- Vite 8: `@vitejs/plugin-react` v6 uses Oxc (no Babel). React Compiler via separate `@rolldown/plugin-babel` (INFRA-83-03)
+- Vite 8: `vite-plugin-top-level-await` removed — Rolldown handles TLA natively (INFRA-83-04)
+- Schedule cards: `.sched-card-matte` (opaque matte, NOT GlassCard) — `--_accent` CSS var scopes lesson-type color to `::before` top gradient (DESIGN-64-01)
+- Schedule grid: `minmax(176px, 1fr)` + `overflow-x: auto` + `scroll-snap-type: x proximity` + sticky row numbers (DESIGN-64-04)
+- Schedule page: `variant="full"` + own `px-4 sm:px-6 md:px-8 lg:px-10` — no max-width constraint (DESIGN-64-09)
+- Schedule snackbar: `showSnackbar(msg, severity)` — severity "success"|"error" maps to Alert color (FIX-63-02)
+- Schedule focus traps: `useFocusTrap` in ScheduleSettingsPanel + ScheduleShortcutsOverlay — `onDeactivate` = `handleClose` (A11Y-63-02)
+- LessonSlideOver / LessonBottomSheet: deleted (Wave 74) — dead code, 0 imports since Wave 69
+- LessonCard `onOpen` is optional — when absent, card has no cursor-pointer/role="button"/tabIndex (FIX-69-card)
+- SkeletonMorph: skeleton wrapper gets `overflow-hidden` when `loaded=true` — prevents absolute skeleton from inflating page scrollHeight (FIX-69-10)
+- Schedule skeleton: NO `min-h-screen` — causes empty space below schedule via absolute SkeletonMorph wrapper (FIX-69-10)
+- WeekSelector: `role="radiogroup"` + `role="radio"` + `aria-checked` (not aria-pressed buttons) (FIX-69-05)
+- Schedule Framer Motion: all spring animations use `useReducedMotion()` guard — `prefersReduced ? { duration: 0 } : { type: "spring", ... }` (FIX-69-a11y)
+- Schedule hardcoded white text: use `text-[var(--sched-on-accent)]` token, not `text-white` on colored backgrounds
+- Schedule touch targets: toolbar buttons min-h-[44px] min-w-[44px] for WCAG 2.5.8 (FIX-69-touch)
+- Page header pattern: icon `hidden sm:flex` + `<h1 className="text-fluid-h1">` + inline badge `<span style={{ fontSize: "0.45em" }}>` — used by News + Schedule (Wave 73)
+- Schedule page padding: `px-4 sm:px-6 md:px-10 lg:px-14` — matches news page, no `max-w` constraint (Wave 70)
+- Schedule mobile swipe: `variants` + `custom` pattern for directional animation — `swipeDir` as state (not ref — React Compiler forbids ref access during render) (FIX-70-SWIPE)
+- Schedule perf: NO `AnimatePresence key={weekOffset}` — causes full re-mount of all cards. Use `animate` prop changes instead (PERF-70-01)
+- Schedule perf: NO `filter: blur()` in Framer transitions — GPU-expensive, imperceptible at 200ms (PERF-70-02)
+- Schedule CSS: `.sched-current-glow.sched-current-glow` double-class specificity — no `!important` (THEME-70-01)
+- Schedule CSS: `.sched-card-item` stagger capped at 300ms via `min()` — prevents 1s+ animation pile-up (PERF-70-03)
+- Schedule header: news-style layout (no hero-card/orbs/flare). Icon `hidden sm:flex`. Badge inline `<span>` in `<h1>` with `fontSize: 0.45em` (Wave 73)
+- Schedule controls: single `SlidersHorizontal` icon button in title row → opens `ScheduleSettingsPanel` (Wave 72)
+- Schedule dead code: `ScheduleToolbar.tsx`, `WeekSelector.tsx` (Wave 72), `LessonSlideOver.tsx`, `LessonBottomSheet.tsx` (Wave 74) — all deleted
+- ProgressRing: drain mode — ring depletes as lesson progresses, number inside shows remaining %. Progress bar removed (Wave 73)
+- Schedule status: `.sched-status-card` (left accent stripe, gradient bg) for current/next lesson cards (DESIGN-71-02)
+- Schedule overlays: `--sched-overlay-bg` (30%/50%) for panels, `--sched-modal-overlay-bg` (40%/60%) for centered modals (THEME-71-01)
+- Schedule toggle: `.sched-toggle-input` CSS-only toggle replaces native checkbox accent-brand (THEME-71-02)
+- Schedule time: `timeLeftShort` ("7h 22m") — compact font-mono badge with ClockIcon, full text in aria-label (Wave 71)
+- DayColumn: React 19 ref-as-prop (no forwardRef), `useTranslation` directly in LessonList (CQ-71-02/03)
+- Schedule shared: `buildLessonsByDay()` in scheduleUtils.ts — used by MobileView + ListView (CQ-71-05)
+- Schedule `notesMap`: non-optional `Map<string, boolean>` — no `?.` access needed (CQ-71-06)
+- Schedule CSS print: `.schedule-theme.schedule-theme` doubled-class specificity — no `!important` (FIX-72-04)
+- Schedule heat map: `--sched-heat-light-bg`, `--sched-heat-medium-bg`, `--sched-heat-heavy-bg` tokens (FIX-72-03)
+- Schedule dark hero/status: semantic `color-mix()` with `--bg-surface` + `--color-slate-*` — no hardcoded hex (FIX-72-01)
+- Schedule badge: all light-mode badges use 600-series (`--lt-*-badge`), dark-mode all 400-series (FIX-72-02)
+- ExportDropdown: `z-30` on wrapper div, `position: fixed` on mobile (<640px) to avoid parent stacking context clipping (FIX-72-07)
+- Schedule toolbar: removed — all controls moved to `ScheduleSettingsPanel` centered dialog (Wave 72→74)
+- Schedule settings: centered AnimatePresence dialog (not slide-over), solid matte bg, spring animation, responsive max-w-[28rem]/md:max-w-[32rem] (Wave 74)
+- Matte volumetric system: `.sched-settings-btn` (buttons), `.sched-matte-card` (containers), `.sched-settings-group` (recessed groups), `.matte-chip` + `.matte-input` (shared utilities in _glass-layers.css) — shadow-based depth, no borders, dark mode + reduced-motion (Wave 74)
+- Schedule stats: `sched-stats-card` uses shadow (not border), motivational "dayComplete" message with CircleCheckBig icon (Wave 74)
+- News matte: category chips, search input, sort button, detail header buttons/badges use `matte-chip`/`matte-input` (Wave 74)
+- Frontend glass layers: `glass-layer-surface`, `glass-layer-elevated`, `glass-layer-floating` — depth hierarchy with noise texture (DESIGN-36-01)
+- Frontend glass noise: `glass-noise` class adds SVG feTurbulence frosted texture (pure CSS, 0 JS) (DESIGN-36-02)
+- Frontend aurora: `aurora-mesh` class adds animated gradient mesh background (20s CSS animation) (DESIGN-36-03)
+- Frontend micro-interactions: `btn-ripple` (Button), `input-focus-glow` (Input), `card-hover-lift` (GlassCard), `check-celebrate` (Checkbox) (DESIGN-36-04)
+- Frontend skeleton morph: `SkeletonMorph` component for blur-dissolve skeleton→content transitions (DESIGN-36-05)
+- Frontend theme toggle: `ThemeToggle` component with sun/moon spring animation + color pulse wave (DESIGN-36-06)
+- Frontend stagger: `StaggerChildren` wrapper + `.stagger-item` CSS class for cascading entry animations (DESIGN-36-07)
+- All Wave 36 animations respect `prefers-reduced-motion: reduce`
+- Frontend @property: `--glass-alpha-low`, `--glass-alpha-med`, `--glass-alpha-high`, `--opacity-medium`, `--aurora-hue` registered for CSS transitions (DESIGN-43-01)
+- Frontend stagger: `calc(var(--stagger-i) * var(--stagger-step))` replaces 12-item hardcoded nth-child delays; items 13+ use `--stagger-i: 12` fallback (DESIGN-43-02)
+- Frontend dashboard orbs: CSS `@keyframes` (orb-breathe, orb-drift, orb-drift-alt, orb-pulse-opacity, orb-sway) replace Framer Motion infinite loops — zero JS overhead (PERF-43-01)
+- Frontend component org: root-level components moved to `feedback/`, `motion/`, `media/`, `search/`, `pwa/` feature folders with barrel index.ts (INFRA-43-01)
+- CI: token sync gate in `reusable-frontend-tests.yml` — `npm run tokens:sync && git diff --exit-code` fails if CSS/TS drift (MOD-43-01)
+- TanStack Router: `news.tsx` = layout route (needs Outlet), `news.index.tsx` = index route (exact match). Missing `.index` breaks child routes (FIX-57-03)
+- `view-transition-name` creates `contain: layout` → becomes containing block. Never on elements with `before:absolute` Link overlay (FIX-57-01)
+- `overflow-x: hidden` auto-sets `overflow-y: auto` (CSS BFC spec). Use `overflow: clip` to clip without scrollbar
+- NewsDetail: NO `<Layout>` wrapper — MainLayout already provides `<main>`. Double `<main>` = double scrollbar
+- `NewsInteractionsOut`: requires `ConfigDict(from_attributes=True)` for DTO→Pydantic model_validate
+- WASM sanitizer (`strip_html`/`sanitize_rich_text`): try-catch with regex fallback when wasm-sanitizer pkg not built
+- useBookmarks: `useSyncExternalStore` + module-level Set + BroadcastChannel("ecosystem.news.bookmarks")
+- NewsDetailBody: `new Marked()` isolated instance — NEVER `marked.use()` (mutates global singleton). `sanitizeArticleHtml()` instead of SafeHtml (WASM ammonia strips table/img/hr)
+- NewsTableOfContents: only renders when 3+ headings. Sticky sidebar (desktop), collapsible (mobile). IntersectionObserver active heading tracking
+- View transition morph: forward via `transitioning` React state (pointerDown), back via `useLayoutEffect` + `setTimeout(0)` DOM cleanup. `newsTransition.ts` stores hero ID. Only ONE element may have `viewTransitionName: "news-hero"` at any time
+- `slugify()` in `utils/slugify.ts` — shared between marked heading renderer and `useArticleHeadings` hook. Guarantees ToC links match heading IDs
+- NewsBackdrop: `-z-1`, content `z-[1]` — backdrop glow must not tint card images (FIX-58-02)
+- StoryList: drag-to-scroll mouse-only (`pointerType === "mouse"`), touch uses native `overflow-x: auto` — never set `touchAction: "pan-y"` (DESIGN-54-03)
+- StoryList: `scroll-snap-type` disabled via inline style during drag, re-enabled on pointer up — snap fights `scrollLeft` assignment (DESIGN-54-03)
+- DashboardHero: decoratives in `overflow-hidden rounded-[inherit]` wrapper, header itself has NO overflow-clip — stories must scroll (FIX-54-01)
+- Dashboard.tsx: `"use no memo"` required — `useTilt` reads refs during render, React Compiler panics without it. ESLint needs file-level disable (FIX-54-01)
+- ProgressBar: `liveRegion` prop (default false) — only set `aria-live` on active bar in multi-bar contexts (A11Y-54-01)
+- useSwipe: velocity-based detection (`minVelocity: 0.3 px/ms`) — catches fast short swipes below distance threshold
+- Frontend routing: TanStack Router (file-based) replaces React Router DOM 7 — routes in `frontend/src/routes/` (INFRA-37-01)
+- Frontend route guards: `beforeLoad` in `_auth.tsx`, `_public.tsx`, `_admin.tsx` replaces RouteGuards.tsx (INFRA-37-02)
+- Frontend search params: Valibot `validateSearch` in route files replaces useSearchParams (INFRA-37-03)
+- Frontend prefetch: `defaultPreload: 'intent'` replaces manual prefetchRouteModules.ts (INFRA-37-04)
+- Frontend navigate: `navigate({ to: "/path" })` object form (not string) — TanStack Router convention (INFRA-37-05)
+- Frontend params: `useParams({ strict: false })` for untyped access, or `from:` for type-safe (INFRA-37-06)
+- Frontend ESLint: storybook/default-exports rule off for src/routes/ (admin.stories.tsx is a route, not a story)
+- Frontend search: `SearchDialog` component — Cmd+K / Ctrl+K global search with glass morphism, keyboard nav, recent searches (AI-38-01)
+- Frontend AI: `ContentSummary` component — expandable AI summary with "AI Summary" badge, skeleton loading (AI-38-02)
+- Frontend AI: `NotificationRelevanceScore` — 3-dot priority indicator (high/medium/low) for smart notifications (AI-38-03)
+- Backend search: `GET /api/v1/search?q=&type=&limit=` — unified Elasticsearch endpoint via Dishka DI (AI-38-04)
+- Storybook: stories for ThemeToggle, ConfirmDialog — visual regression via Chromatic addon (TEST-38-01)
+- Frontend CSS: `_modern-css.css` — @container queries, @starting-style, View Transitions (CSS-39-01)
+- Frontend container queries: `.dashboard-grid`, `.card-container`, `.content-container` — parent-aware responsive (CSS-39-02)
+- Frontend @starting-style: `.css-fade-in`, `.css-scale-in`, `.css-slide-left/right`, `.css-dialog-in`, `.css-toast-in`, `.css-stagger-item` (CSS-39-03)
+- Frontend View Transitions: `defaultViewTransition: true` in router.ts, `view-transition-name` on navbar and main content (CSS-39-04)
+- Frontend View Transitions: `.vt-navbar` persists across transitions (no animation), `.vt-page-content` fades/slides (CSS-39-05)
+- Frontend WebSocket: `WebSocketProvider` wraps `MessengerProvider` in `AppProviders.tsx` — required for `useChatWebSocket` context (FIX-40-01)
+- Gateway routing: all `/api/v1/*path` in single gin wildcard with inline auth dispatch — avoids gin tree conflict between `*path` and `/auth/*`, `/files/*` (FIX-40-02)
+- Gateway: `ProxyOrFileHandler` intercepts `/files/process/sync` → gRPC, proxies rest (FIX-40-03)
+- Docker: `docker-compose.full.yml` uses MinIO (not Garage — registry denied), `pgvector/pgvector:pg17`, `service_started` for backend dependency (FIX-40-04)
+- Docker: `start-docker.ps1` generates `.env.docker` with 12+ secrets, no BOM, no rust-optimizer health check (FIX-40-05)
+- Docker: NATS config uses `sed` instead of `envsubst` (not in alpine) (FIX-40-06)
+- News hooks: `useRelatedNews` + `useArticleNavigation` read `page.items` from InfiniteData cache (NOT `page.data`) — PaginatedResponse uses `.items` field (FIX-75-01)
+- Dashboard WidgetErrorBoundary: all 3 card SkeletonMorphs wrapped — one card crash doesn't kill page (A11Y-75-05)
+- DateBullet: `Intl.DateTimeFormat(locale, { month: "short" })` — no hardcoded English month array (Wave 75)
+- Dashboard MOCK_STORIES: `buildMockStories(t)` factory — text from `dashboard:mockStories.*` i18n keys, no hardcoded Russian (Wave 75)
+- Dashboard tokens/dashboard.css: all light-theme values use semantic tokens (`var(--color-slate-50)`, `var(--bg-surface)`) — must match dashboard-theme.css to avoid load-order conflicts (Wave 75)
+- EventsCard active toggle: `text-[var(--sched-on-accent)]` not `text-white` — respects theme (Wave 75)
+- Events routing: `events.index.tsx` + `events.$id.tsx` — both siblings under `_auth`, NOT parent-child (FIX-77-01, same as FIX-57-03)
+- Events category CSS tokens: all 7 colors defined in `.events-theme` scope (NOT inherited from `.news-theme`) — light + dark (FIX-77-02)
+- Events URL params: `viewTransition: false` on all `handleURLChange` navigate calls — prevents CSS View Transition on tab/sort/category (FIX-77-03)
+- Events card grid: `css-stagger-item` (CSS `@starting-style`) — no Framer Motion AnimatePresence/layout on card wrappers (PERF-77-01)
+- Events stagger: `--stagger-index` (not `--stagger-i`) — matches `_modern-css.css` variable name (FIX-77-04)
+- Events layout: `overflow-x-clip` on root `.events-theme` div — clips backdrop orbs without BFC (FIX-77-05)
+- Events z-stacking: content wrapped in `relative z-[1]` above `EventsBackdrop` at `z-[-1]` (FIX-77-06)
+- FormData uploads: NEVER set `Content-Type: multipart/form-data` manually — browser adds boundary automatically (FIX-77-07)
+- Events detail layout: 3-layer pattern — outer has NO overflow property (any overflow breaks `position: sticky`; backdrop has own `overflow-hidden`), padding wrapper `z-[1] px-4 sm:px-6 md:px-10 lg:px-14 pb-20 pt-6 sm:pt-8`, article `max-w-4xl 2xl:max-w-5xl space-y-8` (FIX-78-01)
+- Events detail back button: `sticky top-3 z-overlay` on all viewports — outer container MUST NOT have any `overflow` property (FIX-78-07)
+- Events detail reading progress: CSS scroll-driven + Firefox JS fallback (ref + rAF), extracted to sibling above themed container (FIX-78-02)
+- Events detail SEO: `<SEO>` component rendered inside article (FIX-78-03)
+- Events detail edit dialog: `editOpen` state was dead — dialog never rendered. Fixed: `<EventDetailEditDialog>` rendered for admins (FIX-78-04)
+- EventAboutEditor: `id="event-about-heading"` wired to `aria-labelledby` in EventDetailBody (A11Y-78-01)
+- EventFileManager: `id="event-files-heading"` wired to `aria-labelledby` in EventDetailBody (A11Y-78-02)
+- EventAboutEditor: display uses language-aware `baseline` (was always showing Russian `event.about`) (FIX-78-05)
+- useEventRegistration: extract `const userId = user?.id` — React Compiler requires primitive in deps, not property access on object (RC-78-01)
+- EventDetailEditDialog: `useEffect` cleanup for `previewUrl` ObjectURL on unmount (FIX-78-06)
+- Events i18n: removed 11 `defaultValue` fallbacks where keys confirmed in events.json (CQ-78-01)
+- Events sticky categories: NO visual effects on stuck — `position: sticky` only, no backdrop-filter/bg/shadow (FIX-82-01)
+- Events sticky: `rootMargin: "-64px 0px 0px 0px"` in IntersectionObserver — matches navbar height (FIX-82-02)
+- Events filter popover: date quick-buttons (Today/This week/This month) replaced free-text type filter. URL param `dr`, client-side `getDateRangeBounds()` (FIX-82-03)
+- Events type filter removed: `type` param removed from `EventsListFilters`, ETag key, API query, route schema. Backend ILIKE kept for API compatibility (FIX-82-04)
+- Events nav buttons: `.events-nav-btn` matte volumetric CSS class — multi-layer shadows, hover lift, active press, light+dark, reduced-motion (DESIGN-82-01)
+- Backend event_type filter: `==` → `ilike(f"%{safe_type}%")` with `_escape_like()` for partial match (FIX-82-05)
+- Activity page: `.activity-theme` scoped CSS tokens in `tokens/activity.css` — emerald palette (DESIGN-84-01)
+- Activity cards: `.activity-card-matte` shadow-based depth with `::before` top gradient via `--_accent` (DESIGN-84-02)
+- Activity backdrop: `ActivityBackdrop.tsx` — 4 orbs (emerald hero, teal highlight, conic drift, cyan bottom), `overflow-x-clip` on root (DESIGN-84-03)
+- Activity timeline: unified `ActivityTimeline` replaces 3x duplicated `RecentActivityGrid` — merged by date, colored dots, date group headers (DESIGN-84-04)
+- Activity period selector: `.activity-period-selector` matte pill, `role="radiogroup"` + `role="radio"` + `aria-checked` (A11Y-84-01)
+- Activity motivation: `ActivityMotivation` — streak counter (flame icon) + context-dependent i18n message (DESIGN-84-05)
+- AnimatedRing: 3 modes — `percent` (attendance), `gauge` (grades value/max), `count` (participation) (DESIGN-84-06)
+- Activity React Compiler: `recentAttendance` extracted to local variable for `useMemo` deps (RC-84-01, same pattern as RC-78-01)
+- Activity cards: non-interactive (no onClick/dialog) — `CardShell` renders `<div>` not `<button>` (DESIGN-84-07)
+- Activity charts: custom SVG (no chart library) — `ActivityTrendChart` (polyline + motion.polyline pathLength), `ActivityBarChart` (rect + motion.rect scaleX). 0 new deps (DESIGN-85-01)
+- Activity heatmap: CSS Grid 7×N, 5-level emerald intensity via `color-mix()`, container queries for cell sizes (12→10→8px) (DESIGN-85-02)
+- Activity comparative: `useActivityComparative` splits period in half, computes client-side deltas — no API changes (DESIGN-85-03)
+- Activity export: `activityExport.ts` follows `scheduleExport.ts` pattern — dynamic import html-to-image + jspdf (DESIGN-85-04)
+- Activity CSS: container queries `.activity-card-container` + `.activity-heatmap-container`, print stylesheet (doubled-class specificity), @starting-style progressive enhancement (CSS-85-01)
+- Activity ring: `.activity-ring-track` CSS class replaces inline `bgStrokeColor` — uses `--_ring-color` scoped variable (CSS-85-02)
+- Activity skeleton: `--activity-skeleton-bg` token (light+dark) replaces generic `bg-slate-200 dark:bg-slate-700` (CSS-85-03)
+- Activity TrendChip: `.activity-trend-icon.activity-trend-icon` doubled-class replaces `text-badge!` (CSS-85-04)
+- AnimatedRing: `ariaLabel` prop + `role="img"` on SVG — callers pass i18n labels (A11Y-85-01)
+- Activity timeline dots: `sr-only` span with status text next to colored dot — WCAG 1.4.1 color-alone (A11Y-85-02)
+- Activity stat cards: `sm:grid-cols-2 lg:grid-cols-3` — NOT `md:grid-cols-3` (768-1023px cards too narrow for ring+text) (FIX-85-01)
+- Activity animation durations: `motionTokens.durationLazy` (not hardcoded `0.9`) in all 3 cards (CQ-85-01)
+- Activity CSS: `@property` registered for `--activity-orb-1/2/3`, `--activity-card-glow` — smooth theme transitions (CSS-86-01)
+- Activity CSS tokens: `--activity-positive-accent`, `--activity-negative-accent`, `--activity-chart-min-h` (CSS-86-02)
+- Activity CSS print: `var(--color-slate-200, #e5e7eb)` fallback — no bare hex (CSS-86-03)
+- Activity timeline: date groups + stagger indices precomputed in `useMemo` — no mutable state in `.map()` (RC-86-01)
+- Activity timeline: date headers use `<h3>` (not `<p>`) for screen reader section navigation (A11Y-86-01)
+- Activity heatmap cells: `role="img"` for screen reader label announcement (A11Y-86-02)
+- Activity export: success/error feedback via local state, `aria-haspopup="menu"`, Escape key close + focus restore (A11Y-86-03)
+- Activity comparative: `--activity-positive/negative-accent` tokens (not hardcoded `text-emerald-500`/`text-rose-500`) (CSS-86-04)
+- Activity NaN guards: `AnimatedRing`, `ActivityBarChart`, `ActivityComparativeCard.formatValue` — `Number.isFinite()` before render (FIX-86-01)
+- Activity TrendChart: `useId()` for unique SVG gradient ID (FIX-86-02)
+- Activity comparative: `new Date(dateStr + "T00:00:00")` — local parse, not UTC (FIX-86-03)
+- Activity data: API `recent` arrays pass through `parseAttendanceRecent`/`parseGradeRecent`/`parseParticipationRecent` — never raw assign `unknown[]` to typed fields (FIX-86-04)
+- Activity ring font: `fontSize: Math.round(size * 0.17)` — text scales with ring diameter (FIX-86-05)
+- Activity ring: NO CSS container query on `.activity-card-matte svg` — removed (conflicted with JS inline size, causing SVG/overlay misalignment) (FIX-86-06)
+- Activity responsive: `isLgCompact` (1024–1199px) → ring 72px; avoids oversized rings in narrow 3-col cards (FIX-86-07)
+- Activity streak icon: `text-[var(--activity-streak-accent)]` not `text-amber-500` (CSS-86-05)
+- Activity export menu items: `min-h-[44px]` touch targets on PDF/PNG buttons (A11Y-86-04)
+- Activity color primitives: `--color-emerald-50/200/300/600/700/900`, `--color-teal-400/500`, `--color-cyan-400` in primitives.css — no fallback chains in activity.css (INFRA-87-01)
+- Activity period indicator: `--activity-period-indicator-shadow` CSS token — no inline boxShadow (CSS-87-01)
+- Activity export btn: reduced-motion block covers `.activity-export-btn:hover/active` (A11Y-87-01)
+- Activity timeline dot: `var(--bg-surface, var(--color-white, #fff))` — no bare `white` fallback (CSS-87-02)
+- Activity grade scale: `isGradeScale()` type guard replaces `as GradeStats["scale"]` assertion (TS-87-01)
+- Activity heatmap legend: `role="img"` + `aria-label` on legend swatches (A11Y-87-02)
+- AnimatedRing: `RING_STROKE_WIDTH` module constant, `import type { CSSProperties }` (CQ-87-01)
+- Map page: `.map-theme` scoped CSS tokens in `tokens/map.css` — teal/cyan palette (DESIGN-88-01)
+- Map CSS: `@property` registered for `--map-orb-1/2/3`, `--map-card-glow` — smooth theme transitions (CSS-88-01)
+- Map buildings: `--map-bldg-a` through `--map-bldg-e` match `buildingIcons.ts` palette (А=blue, Б=emerald, В=amber, Г=violet, Д=rose) (DESIGN-88-02)
+- Map SVG: isometric dimetric 2:1 projection — `isoPoint(x,y,z)` converts 3D to 2D. Each building = 3 polygons (top/left/right face) (DESIGN-90-01)
+- Map backdrop: `MapBackdrop.tsx` — 4 orbs (teal hero, cyan highlight, conic drift, bottom teal), `aria-hidden="true"`, `pointer-events-none` (DESIGN-89-01)
+- Map building hover: CSS `drop-shadow` + `filter` transition, `data-schedule="true"` for pulsing `@keyframes map-building-pulse` (CSS-90-01)
+- Map room SVG: `.map-room` class with `data-active`/`data-schedule` attrs, `fill`/`stroke` from CSS tokens (CSS-92-01)
+- Map floor plan: `FloorPlanSVG.tsx` — procedural room layout via `layoutRooms()`, corridor between rows, capacity badge (DESIGN-92-01)
+- Map sidebar: desktop = inline `w-80 lg:w-96 shrink-0` panel in flex-row, mobile = bottom sheet with `position: fixed; bottom: 0` + touch drag snap (DESIGN-93-01)
+- Map sidebar drag: `activeDrag` state (NOT ref) — React Compiler forbids ref access during render (RC-93-01, same pattern as RC-78-01)
+- Map zoom/pan: `useMapNavigation.ts` — ref-mirror pattern: `stateRef` synced via useEffect, handlers read ref not state, listeners attach once (PERF-97-01)
+- Map zoom: `activeDrag` state declared before `useEffect` that references `setActiveDrag` — React Compiler requires declaration-before-use (RC-91-01)
+- Map tokens: `--map-badge-bg`, `--fs-map-badge`, `--map-accent-icon`, `--map-layer-active-bg/text`, `--map-on-accent`, `--map-svg-window-opacity`, `--map-svg-tree`, `--map-svg-bench` (CSS-97-01)
+- Map SVG focus: `drop-shadow` replaces `outline` on `.map-building-group:focus-visible` (SVG `<g>` outline doesn't render) (A11Y-97-01)
+- Map sidebar mobile: `useAppShell().setOverlayState` scroll lock + `useFocusTrap` + `role="dialog"` + `aria-modal` (A11Y-97-02)
+- Map card glow: `--map-card-glow` applied to `.map-card-matte:hover` box-shadow (was orphaned) (CSS-97-02)
+- Map room glow: `@keyframes map-room-glow` on `.map-room[data-active="true"]` — pulsing drop-shadow (CSS-98-01)
+- Map time-of-day: `useTimeOfDay()` → `data-time-period` attribute on `.map-theme` root → CSS token overrides per period (dawn/morning/afternoon/dusk/night) (DESIGN-98-01)
+- Map building entrance: `motion.g` (first SVG animation in project) inside positioned `<g>` — spring stagger, respects reduced-motion (DESIGN-98-02)
+- Map geometry: window rows on walls (isometric rects), door indicator, decorative trees (circle+rect) + benches — all `aria-hidden`, `pointer-events: none` (DESIGN-98-03)
+- Map view transition: `AnimatePresence mode="wait"` wraps campus↔floorplan switch — scale+fade with spring physics (DESIGN-98-04)
+- Map search: `MapSearchBar.tsx` — client-side fuzzy match over buildings + rooms, `role="combobox"` + `aria-expanded` + `aria-activedescendant` (A11Y-94-01)
+- Map categories: `MapCategoryFilter.tsx` — `role="radiogroup"` + `role="radio"` + `aria-checked` (not buttons) (A11Y-94-02)
+- Map schedule widget: `MapScheduleWidget.tsx` — `role="status"` + `aria-live="polite"`, `useNextLesson` wraps `useScheduleData` + `parseBuildingRoom` (DESIGN-95-01)
+- Map data: `campusBuildings.ts` — 8 real GUU buildings (stр.1-16) with `geoCoords: [lat, lng]`, locale-independent structure; localized names from `map.json` via `getCampusBuildings(locale)` (INFRA-88-01, updated Wave 99)
+- Map buildings: `BuildingLetter` = А-З (8 letters), `structureId` field links to real GUU building numbers (Wave 99)
+- Map i18n: 198/204 keys EN/RU in `map.json` (6 RU-only = `_few/_many` plurals for roomCount/floors/rooms) (INFRA-88-02, updated Wave 100)
+- MapFeature: orchestrator in `features/map/MapFeature.tsx` — 3 view modes: map (MapLibre GL), campus (isometric SVG), floorplan (INFRA-89-01, updated Wave 100)
+- Map rendering: `react-map-gl/maplibre` (`<Map>`, `<Marker>`, `<Popup>`, `<Layer>`) — single MapLibre GL mode only (isometric SVG + floor plan removed Wave 101)
+- Map buildings: 9 real GUU buildings, `BuildingId` type: `"ГУК"|"ПА"|"ЛК"|"А"|"Б"|"СК"|"О2"|"О6"|"ЦИТ"` — real student abbreviations (Wave 107). Coords verified via 2GIS/Yandex/OSM Overpass. Floor counts from totadres.ru registry (INFRA-101-01)
+- Map building names: Бассейн (к.3) and Спорткомплекс (стр.7) are SEPARATE buildings. стр.16 = Бизнес-центр (NOT ИПНПК). стр.1 = Учебно-административный. ЦУВП is inside Общежитие №2 (стр.2), not separate (INFRA-104-01)
+- Map building IDs: `BuildingLetter` renamed to `BuildingId` (Wave 107). Room IDs use building abbreviation prefix: `ГУК-305`, `ПА-201`, `О2-103`. Parser `parseBuildingRoom()` splits on first dash (no regex). `extractFloorFromRoomId()` reads digit after dash (INFRA-107-01)
+- Map POI coords: ALL from OSM Overpass API — Столовая ГУУ [55.71387,37.81585], ост. Почта [55.71366,37.81055], парковка [55.71359,37.81388], Клетка [55.71341,37.81590], библиотека [55.71385,37.81673] (INFRA-104-02)
+- Map markers: SVG drop-pin shape with category Lucide icon (BookOpen/Dumbbell/Home/Building2) — NO letter badges. Popups = matte volumetric cards with accent bar (DESIGN-102-01)
+- Map POI markers: category-specific Lucide icons (TrainFront/Bus/Coffee/Pill/etc.) with hover tooltip — NOT generic white dots (DESIGN-102-02)
+- Map sky: `setSky()` on map load + theme change. Light = blue gradient, dark = navy. No terrain/DEM (DESIGN-103-01)
+- Map controls: `MapControls.tsx` — zoom/compass/pitch-toggle/fullscreen/recenter. Embedded inside MapLibreMap, not MapFeature (DESIGN-103-02)
+- Map camera: cinematic intro (zoom 13→16 flyTo, 2.5s). Building select = `easeTo` center only (no zoom/pitch jump). `useRef(hasAnimatedIntro)` prevents re-trigger (DESIGN-103-03)
+- Map panel: `.map-card-matte` has NO hover/active transform — static container. Removed translateY bounce (FIX-104-01)
+- Map tiles: OpenFreeMap `https://tiles.openfreemap.org/styles/bright` (light) / `dark` (dark) — native dark theme (DESIGN-100-02)
+- Map coordinates: `campusBuildings.ts` stores `geoCoords: [lat, lng]` — MapLibre needs `longitude={coords[1]} latitude={coords[0]}`. NEVER swap indices (FIX-100-01)
+- Map dark mode: reactive via `useSyncExternalStore` + `MutationObserver` on `<html class>` (INFRA-100-02)
+- Map POI: hardcoded `CAMPUS_POIS` in `campusPOI.ts` + lazy Overpass API via `useOverpassPOI()` (INFRA-100-03)
+- Map lazy: `React.lazy(() => import("@/components/map/MapLibreMap"))` — maplibre-gl CSS+JS only loaded on map page (INFRA-100-04)
+- Map dead code deleted (Wave 101): CampusMapSVG, FloorPlanSVG, FloorSelector, useMapNavigation, useTimeOfDay, MapLayerToggle — all removed
+- Map dead code deleted (Wave 105): MapZoomControls, campusWalkways, campusBuildingFootprints, campusPoints + test + campus-points i18n — all removed
+- Map building icons: `getPrimaryIcon(tags)` from `@/utils/buildingCategoryIcons.ts` — shared between BuildingMarker + MapSidebar
+- Map building hours: `BuildingHours { weekday, saturday, sunday }` — `isOpenNow()` + `getTodayHours()` from `@/utils/buildingHours.ts`
+- Map weather: `useMapWeather()` hook (NOT `useWeather` — that's dashboard). Open-Meteo API, localStorage 30min cache, `data-weather` attr on `.map-theme`
+- Map weather codes: `wmoToCondition()` from `@/utils/weatherCodes.ts` — 28 WMO codes → 6 conditions (clear/cloudy/rain/snow/fog/storm)
+- Map CSS atmosphere: `data-weather="clear|cloudy|rain|snow|fog|storm"` on `.map-theme` → orb color overrides (Wave 106)
+- Map building photos: `CampusBuilding.photo?: string` — gradient placeholder when undefined (Wave 106)
+- Map rooms: real GUU uses ГУ/ЛК/П/А prefixes — project uses letter-based IDs (А-229). Real names in i18n `rooms` section where known
+- Map rooms: 126 total (expanded Wave 106), 14 with verified real GUU names
+- Map cinematic intro: respects `prefers-reduced-motion` — jumpTo (no animation) when reduced-motion enabled (A11Y-107-01)
+- Map search dropdown: `focus-visible:ring-2` on option buttons, responsive `max-h-[min(16rem,calc(100dvh-200px))]` (A11Y-107-02)
+- Map sidebar drag handle: `aria-roledescription="drag handle"` (not `role="separator"`) (A11Y-107-03)
+- Map POI colors: use CSS tokens `var(--map-poi-${type})` — no hardcoded hex in TSX (CSS-107-01)
+- Map sky/fog: `getSkyConfig(isDark)` helper deduplicates sky configuration (CQ-107-01)
+- Map fill-extrusion-base: `["get", "render_min_height"]` directly — removed invalid `["get", "zoom"]` case expression (FIX-107-01)
+- Map cinematic timeout: `introTimeoutRef` + cleanup on unmount (FIX-107-02)
+- Map POI dedup: O(n) spatial hash Set replaces O(n²) `.some()` loop (PERF-107-01)
+- Map dead code: deleted `constants/maps.ts` (Yandex config, 0 imports since Wave 99), `hoveredBuilding` state (always null) (TD-107-01)
+
+- Map time-of-day: `useTimeOfDay()` hook → `data-time-period` attr → CSS atmosphere tokens (dawn/dusk/night orbs) + `getSkyConfig(isDark, period)` sky colors (DESIGN-108-01)
+- Map seasonal: `useSeason()` hook → `data-season` attr → CSS palette shifts (spring=emerald/pink, autumn=amber, winter=sky-blue) (DESIGN-108-02)
+- Map weather panel: `MapWeatherPanel.tsx` — expandable from badge click, shows feels-like/wind/humidity/UV + 12h hourly forecast (DESIGN-108-03)
+- Map weather particles: `WeatherParticles.tsx` — canvas overlay (rain/snow/storm/fog), `useReducedMotion` guard, `pointer-events:none`, pauses on hidden tab (DESIGN-108-04)
+- Map event pins: `useMapEvents()` + `EventMarker.tsx` — amber CalendarDays pins from events API, toggle in POIControls (DESIGN-108-05)
+- Map room status: `getRoomStatus()` in `roomStatus.ts` — free/busy badges from schedule data in sidebar room list (DESIGN-108-06)
+- Map keyboard shortcuts: `useMapKeyboardShortcuts()` + `MapShortcutsOverlay.tsx` — 1-9 buildings, F fullscreen, / search, ? help (DESIGN-108-07)
+- Map mini-map: `MapMiniOverview.tsx` — second Map instance at zoom 14, teal dot viewport indicator, click→flyTo, visible when zoom>16 (DESIGN-108-08)
+- Map CSS specificity: season (lowest) → time-of-day → weather (highest) — all override `--map-orb-*` tokens (CSS-108-01)
 
 ## Audit Trail
+- Wave 108: Campus map — Living Campus (8 features) — 10 new files (~755 lines), 9 modified. Features: time-of-day atmosphere (useTimeOfDay + getSkyConfig period-aware + CSS dawn/dusk/night), seasonal decorations (useSeason + CSS spring/autumn/winter), expanded weather (Open-Meteo hourly + MapWeatherPanel + badge click-to-expand), weather particles (canvas rain/snow/storm/fog + reduced-motion), event pins (useMapEvents + EventMarker + POIControls toggle), room status (getRoomStatus + sidebar badges), keyboard shortcuts (1-9/F/slash/? + MapShortcutsOverlay), mini-map overview (second Map at zoom 14 + viewport dot). i18n: ~20 keys EN+RU (weather, events, shortcuts, sidebar). CSS: ~175 lines (seasonal, time-of-day, weather panel, event pin, mini-map). 0 TS errors.
+- Wave 107: Campus map — exhaustive polish + building ID migration — ~15 files modified, 1 deleted. A11y: prefersReducedMotion wired to MapBackdrop (A11Y-107-01), cinematic intro skipped on reduced-motion (A11Y-107-01), search dropdown focus-visible ring (A11Y-107-02), drag handle ARIA fix (A11Y-107-03). Dead code: deleted constants/maps.ts (Yandex), removed hoveredBuilding state, removed unreachable search branch, fixed 3 stale Leaflet comments. CSS: added --map-bldg-i token (building И), POI hex→CSS tokens, sky config deduplicated. i18n: "Loading map..." → campusMap.loading (EN+RU). Bugs: fill-extrusion-base invalid zoom expression, setTimeout cleanup, fullscreen logError. Mobile: responsive search dropdown max-height. Perf: O(n) POI dedup, removed per-render readCache(). 0 TS errors.
+- Wave 105-106: Campus map — cleanup + visual upgrade + enrichment — 24 files (+1601/-706). W105: Delete 7 dead files (~370 lines), remove ~200 lines dead CSS (SVG mode, time-of-day, schedule widget), fix broken i18n key, 6 new CSS animations (marker stagger, color-matched glow, ring pulse, POI fade-in, popup entrance, controls slide-in). W106: Structured hours (BuildingHours + isOpenNow + Open/Closed badge), building photo placeholders (gradient + category icon), weather system (Open-Meteo API + useMapWeather + MapWeatherBadge + CSS atmosphere tokens), room expansion (54→126 rooms, 14 real GUU names). 290.92 KB main chunk. 0 TS errors.
+- Wave 101-104: Campus map — full redesign + verified data + premium markers — 21 files (+1233/-1630). W101: ALL building/POI coords verified via 2GIS/Yandex/OSM Overpass. 8→9 buildings: split Бассейн (к.3) from Спорткомплекс (стр.7), rename стр.16→Бизнес-центр, add ЦУВП to Общ.2, BuildingLetter А-И (9). Floor counts from totadres.ru (ГУК=8, Лаб=6, Админ=5, Общ.2=16, Общ.6=18). Delete 6 SVG files (~1600 lines): CampusMapSVG, FloorPlanSVG, FloorSelector, useMapNavigation, useTimeOfDay, MapLayerToggle. MapFeature simplified to single MapLibre GL mode. W102: SVG drop-pin building markers with Lucide category icons (BookOpen/Dumbbell/Home/Building2), POI markers with category icons + hover tooltip, matte volumetric popup cards with accent bar + amenity chips. W103: setSky() atmosphere, MapControls.tsx (compass/pitch/fullscreen/recenter), cinematic camera intro (zoom 13→16 flyTo 2.5s), easeTo on building select. New data: campusBuildingFootprints.ts, campusWalkways.ts (unused). W104: Real names from guu.ru, remove letter badges, fix panel bounce (removed translateY hover), POI from OSM Overpass (Столовая [55.71387,37.81585], ост.Почта [55.71366,37.81055], парковка [55.71359,37.81388], Клетка [55.71341,37.81590], библиотека [55.71385,37.81673]). 0 TS errors.
+- Wave 99-100: Campus map — real GUU data + Leaflet→MapLibre GL 3D — 19 files (+2898/-275). 8 buildings, MapLibre GL migration, 3D fill-extrusion, native dark theme, JSX markers.
+- Wave 97-98: Campus map — exhaustive polish + visual upgrades — 23 files (+517/-1016), 1 new. Phase 1 (Wave 97): 11 CSS tokens (badge-bg, fs-badge, accent-icon, layer-active-bg/text, on-accent, svg-window-opacity, svg-tree, svg-bench). Performance: ref-mirror pattern in useMapNavigation (PERF-97-01). A11y: mobile sidebar scroll lock + focus trap + aria-modal (A11Y-97-02), SVG focus drop-shadow (A11Y-97-01), search clear i18n, corridor aria-hidden, room glow @keyframes, close btn 44px, drag handle aria-label. Phase 2 (Wave 98): useTimeOfDay → data-time-period CSS atmosphere (DESIGN-98-01). motion.g building entrance stagger (DESIGN-98-02). Richer geometry: windows, doors, 8 trees, 3 benches (DESIGN-98-03). AnimatePresence view transitions (DESIGN-98-04). Dead code deleted: MapScheduleWidget, BuildingTooltip, MapContentLegacy, MapFallback+test, 5 schedule.* i18n keys, buildingCount prop. i18n: 141/141 EN↔RU, 291 KB main chunk, 0 errors, 0 new deps.
+- Wave 88–96: Campus map page — premium overhaul — ~20 new files, ~5 modified. Custom isometric 2.5D SVG campus map (no Yandex iframe). CSS: `tokens/map.css` with teal/cyan palette, @property orbs, matte card system, building SVG interactions, room states, zoom controls, category chips, print, reduced-motion, dark mode. Components: MapBackdrop (4 orbs), MapHeader (FadeSection), CampusMapSVG (dimetric 2:1 projection, 5 buildings, hover glow, keyboard nav, ARIA), FloorPlanSVG (procedural room layout, corridor, capacity), FloorSelector (role="tablist"), MapSidebar (desktop inline + mobile bottom sheet with drag snap), MapSearchBar (combobox, fuzzy autocomplete), MapCategoryFilter (radiogroup), MapScheduleWidget (next-lesson locator, aria-live), MapZoomControls (+/-/reset). Hooks: useMapNavigation (CSS transform zoom/pan, wheel/pinch/drag, 0 deps), useNextLesson (schedule→map bridge via parseBuildingRoom). Data: campusBuildings.ts (5 buildings, 15 floors, 37 rooms, locale-aware loading). i18n: 128/128 EN↔RU keys. RC fixes: activeDrag state instead of ref in render (RC-91-01, RC-93-01). 0 TS errors, 0 new deps, 294 KB main chunk.
+- Wave 87: Activity page final polish — 9 files (+40/-15). CSS: 9 color primitives added to primitives.css (INFRA-87-01), fallback chains removed from activity.css, period indicator shadow tokenized (CSS-87-01), timeline dot `white`→token (CSS-87-02), print hex fallbacks removed, export btn added to reduced-motion (A11Y-87-01). TS: `isGradeScale()` type guard replaces `as` assertion (TS-87-01), `React.CSSProperties`→`import type` (2 files), `RING_STROKE_WIDTH` constant (CQ-87-01). i18n: 4 defaultValue removed, 1 key added (136/136 EN↔RU). A11y: heatmap legend `role="img"` + `aria-label` (A11Y-87-02). Code: parser narrowing comments. 0 TS/lint errors, 293 KB main chunk.
+- Wave 86: Activity page exhaustive polish — 15 files (+188/-79). RC: timeline mutable state→useMemo precompute (RC-86-01). A11y: `<h3>` date headers (A11Y-86-01), heatmap `role="img"` (A11Y-86-02), export menu ARIA+Escape+focus (A11Y-86-03), 44px touch targets on menu items (A11Y-86-04). CSS: @property orbs/glow (CSS-86-01), positive/negative/chart-min-h tokens (CSS-86-02), print hex→var() (CSS-86-03), comparative→tokens (CSS-86-04), streak icon→token (CSS-86-05). Bugs: NaN guards 3 components (FIX-86-01), TrendChart useId (FIX-86-02), UTC→local parse (FIX-86-03), API recent→parsers (FIX-86-04), ring font scaling size*0.17 (FIX-86-05), removed container query SVG conflict (FIX-86-06), isLgCompact 1024–1199px ring 72px (FIX-86-07). Export success/error feedback. i18n: 135/135 EN↔RU. 0 TS/lint errors.
+- Wave 85: Activity analytics dashboard + exhaustive polish — 20 files (+1298/-51). CSS: container queries (.activity-card-container, .activity-heatmap-container), print stylesheet (doubled-class), @starting-style, skeleton tokens, ring track CSS, heatmap cells, chart card, comparative card, export button, reduced-motion. New: ActivityTrendChart (SVG polyline + motion.polyline pathLength), ActivityBarChart (SVG rects + motion.rect scaleX), ActivityHeatmap (CSS Grid 7×N, 5-level emerald, container-responsive cells), ActivityComparativeCard (period-split deltas), ActivityExportButton (PDF/PNG dropdown), activityExport.ts (scheduleExport pattern), useActivityComparative (client-side split). Polish: AnimatedRing ARIA (role="img" + ariaLabel), timeline dot sr-only, TrendChip !important→doubled-class, skeleton bg-slate→token, 0.9→motionTokens.durationLazy (4 places), timeline memoize+key, unused hook returns removed, ParticipationStats.goal. Grid: md:grid-cols-3→lg:grid-cols-3 (768-1023px fix). i18n: 112/112 EN↔RU (+26 new keys). 0 TS errors, 0 lint errors, 293 KB main chunk, 0 new deps.
+- Wave 84: Activity page premium overhaul — 18 files (+1054/-811). CSS: activity.css tokens (emerald palette, matte card system, timeline, stagger, dark overrides). New: ActivityBackdrop (4 orbs), ActivityTimeline (unified feed replacing 3x grid), ActivityTimelineItem (colored dots + icons), ActivityMotivation (streak + i18n message). Rewritten: Activity.tsx (3-layer layout, .activity-theme, CSS stagger), CardShell (glass→matte, no borders), AnimatedRing (3 modes: percent/gauge/count), AttendanceCard/GradesCard/ParticipationCard (SkeletonMorph, rings on all 3). Deleted: RecentActivityGrid (323 lines 3x dup), ActivityDetailDialog (card click removed). A11y: radiogroup period selector, feed/article timeline, aria-labels, 44px touch targets. i18n: 86/86 keys EN↔RU. 0 TS errors, 0 lint errors.
+- Wave 83: Vite 7→8 (Rolldown) migration — 3 files (+1362/-780). vite ^8.0.0, @vitejs/plugin-react ^6.0.0 (Oxc), @rolldown/plugin-babel ^0.2.2 (React Compiler). Removed vite-plugin-top-level-await (Rolldown native TLA). rollupOptions→rolldownOptions, manualChunks object→function, esbuild.pure→oxc.define, handleHotUpdate→hotUpdate+this.environment.hot.send. Removed esbuild/rollup overrides. Build 7.3s, main chunk 293 KB, 0 TS errors.
+- Wave 82: Events page — sticky jitter fix, date filter, nav redesign, exhaustive polish. 20 files (+234/-87). Sticky: removed padding-block change + all visual effects (backdrop-filter/bg/shadow) that caused oscillation + "frame". Filter: type→date quick-buttons (Today/Week/Month client-side via getDateRangeBounds), removed type from API/ETag/route. Nav: .events-nav-btn matte volumetric (shadow depth, hover lift, dark overrides). Backend: event_type ==→ILIKE. Audit ~45 files: React.CSSProperties→import type (3), defaultValue removed (4), dead CSS var, logError catch, i18n 124/124 sync. 0 TS errors, 0 lint errors.
+- Wave 80: Events tech debt cleanup — 15 files (+48/-39). React.FC→function declarations (4 components: EventMedia, EventActions, EventAdminActions, EventInfo), React.MouseEvent/ChangeEvent/SyntheticEvent→import type (EventActions, EventCardView, EventEditDialog, EventFileManager, EventDetailHero). i18n: added common:buttons.close (Close/Закрыть) + common:statuses.cached (Cached/В кэше) to EN+RU, removed 6 defaultValue fallbacks (events/news/schedule). A11y: 7 htmlFor+id pairs in EventEditDialog via useId(). Exhaustive audit: 0 React.FC, 0 React.* namespace, 0 defaultValue Close/Cached, 0 labels without htmlFor. 0 TS errors, 0 lint errors.
+- Wave 78: Events detail page polish — 11 files. Layout: 3-layer restructure matching NewsDetail (overflow-clip, padding wrapper, space-y-8, 2xl:max-w-5xl, touch-pan-y). Fixes: dead editOpen state→render EventDetailEditDialog (FIX-78-04), EventAboutEditor language-aware display (FIX-78-05), aria-labelledby broken IDs (A11Y-78-01/02), Firefox reading progress fallback (FIX-78-02), SEO component (FIX-78-03), ObjectURL memory leak (FIX-78-06), React Compiler userId extraction (RC-78-01). Polish: 11 defaultValue removals, QR dialog loading spinner, unused props removed (EventDetailHero title, EventDetailEditDialog language). 0 TS errors, 0 lint errors.
+- Wave 79: Events detail page polish — 25 files (+301/-238). Layout: 3-layer NewsDetail pattern (overflow-clip, padding wrapper z-[1] px-4→lg:px-14 pb-20, article max-w-4xl 2xl:max-w-5xl space-y-8). Bugs: dead editOpen→render EventDetailEditDialog (FIX-78-04), EventAboutEditor language-aware display (FIX-78-05), aria-labelledby broken IDs (A11Y-78-01/02), ObjectURL leak (FIX-78-06), qrKey user→userId (RC-78-01), previewUrl never created from newImage. Features: reading progress Firefox fallback, SEO component, QR loading spinner, error state backdrop+aurora+glass. i18n: 24 defaultValues removed, 3 keys added (119/119 EN↔RU match). Theme: text-white→text-[var(--text-inverse)] (4 places), bg-white→bg-[var(--text-inverse)] (2 places). A11y: aria-hidden decorative icons, removed role=tooltip+aria-hidden contradiction. Code: logError in 3 catches, void async onClick, language type narrowed, unused cn import removed. 0 TS errors, 0 lint errors.
+- Wave 77: Events page 5 bug fixes + polish — 10 files (+131/-126). Routing: events.tsx→events.index.tsx (FIX-57-03 pattern — layout route without Outlet blocked detail page). Bounce: viewTransition:false on URL param navigate + AnimatePresence→css-stagger-item (--stagger-i→--stagger-index). Scroll: overflow-x-clip on root. Colors: 14 category CSS tokens (7 light + 7 dark) added to events.css — were scoped to .news-theme only. Glow: relative z-[1] content wrapper. Polish: FormData Content-Type removed (2 files), QR dialog a11y title (EN+RU). i18n: 116/116 keys EN↔RU in sync. 0 TS errors.
+- Wave 75: Cross-page polish (Dashboard + News + Schedule) — 27 files (+228/-230). Bugs: useRelatedNews + useArticleNavigation page.data→page.items (FIX-75-01, related articles + prev/next nav were silently broken), AddLessonDialog snackbar missing "error" severity (FIX-75-02). i18n: 38 keys added (EN+RU) — Dashboard (academicWeek, parity, timeline.lessonCount, 9 mockStories), News (17 keys: comments, ToC, shortcuts, zoom, form fields, deleteComment dialog). Removed Russian defaultValue from DashboardHero, removed 20+ English defaultValue from 6 News components. DateBullet MONTH_SHORT→Intl.DateTimeFormat(locale). MOCK_STORIES refactored to buildMockStories(t). A11y: 14 label htmlFor in Add/EditLessonDialog, type=button on ScheduleShortcutsOverlay close, 6 touch targets→min-44px (DayColumn, ScheduleHeader, ScheduleSettingsPanel, ScheduleListView), focus-visible on EventsCard toggle + DateBullet, WidgetErrorBoundary on 3 Dashboard cards, useReducedMotion on EventsCard + NewsQuickView. CSS: text-white→on-accent token, !important→doubled-class specificity, tokens/dashboard.css hardcoded hex→semantic tokens (var(--color-slate-50), var(--bg-surface)), ScheduleTimeline role=img + stale eslint-disable removed.
+- Wave 74: Settings dialog + matte volumetric system — 16 files (+536/-676). ScheduleSettingsPanel: slide-over→centered AnimatePresence dialog, solid matte bg with gradient tint, 4-layer shadow, accent line, corner flare, responsive width, 2-col weekday grid, grouped toggles. Matte system: .sched-settings-btn/.sched-matte-card/.matte-chip/.matte-input — shadow-based depth replacing all border-glass-border in active schedule components (0 remaining). Dead code deleted: LessonSlideOver + LessonBottomSheet. Stats card: border→shadow + CircleCheckBig + motivational dayComplete i18n. News page: chips/search/sort/detail buttons→matte. Critical fix: --bg-surface-elevated→--bg-surface-hover (undefined var).
+- Wave 73: Unified page headers — 2 files (+36/-65). ProgressRing drain mode (offset inverted), progress bar removed, sched-hero-card replaced with news-style clean layout, badges as inline spans (fontSize: 0.45em, align-middle), icon hidden on mobile (<sm), status card separated into own FadeSection.
+- Wave 72: Schedule page final polish — 10 fixes across 5 files (+73/-39). CSS: dark hex→semantic tokens (FIX-72-01), badge 500→600 standardized (FIX-72-02), heat map tokenized (FIX-72-03), print !important eliminated via doubled-class specificity (FIX-72-04), reduced-motion coverage documented (DOC-72-01), export dropdown mobile centered (FIX-72-07). Code: DashboardLesson.id number→string (FIX-72-05), ScheduleGroup index signature removed (FIX-72-06), useLessonNotesMap depKey extracted (CQ-72-01), nowParity stale memo removed (CQ-72-02).
+- Wave 71: Schedule final polish + premium header — 37 fixes across 20 files (+656/-400). Critical: currentProgress broken in mobile/list views (FIX-71-01/02). Code: forwardRef→React 19 ref prop (CQ-71-02), shared buildLessonsByDay (CQ-71-05), notesMap non-optional (CQ-71-06), t prop→useTranslation (CQ-71-03), Date memoized (CQ-71-04), console.warn→logError. Theme: --sched-overlay-bg/--sched-modal-overlay-bg tokens (4 overlays), sched-toggle-input CSS toggle, sched-skeleton-shimmer alignment, row header text-muted-subtle. Header redesign: sched-hero-card (4-layer shadow, accent line, corner flare, integrated orbs), sched-status-card (left accent stripe, gradient bg), compact timeLeftShort badge. Responsive: adaptive mini-cal w-48/w-56, chip scroll fade masks (CSS mask-image), grid min-width fallback. A11y: AddIcon consistency, empty cell aria-labels, confetti defaultValue, type=button audit (WeekSelector, LessonDetailsDialog, ExportDropdown). Perf: ResizeObserver double-call removed, AnimatePresence mobile documented. Features: filter count badge on settings, Today quick-return in MiniCalendar, AnimatePresence desktop↔mobile transition, WeekSelector className dedup.
+- Wave 70: Schedule page polish — 31 fixes across 18 files (+367/-209). Performance: removed AnimatePresence key-swap re-mount (PERF-70-01), removed GPU blur transitions (PERF-70-02), capped stagger 300ms (PERF-70-03), stabilized nowTick/lessonDays deps (PERF-70-04/07), eliminated duplicate buildTable (PERF-70-05), conditional DndContext (PERF-70-06), will-change hints (PERF-70-08). Code quality: useMemo→useCallback, ACCENT_MAP→Map, impure showCountdown fix, currentProgress to desktop, mobile map-filter optimized. Theme: removed !important (double-class specificity), ProgressRing stroke CSS-only, skeleton #f0f0f0→color-mix, content-visibility on grid cells, calendar today on-accent token. Responsive: mini-calendar on tablets (md:block), scroll overflow indicator (ResizeObserver). A11y: day-complete sr-only announcement, dt/dd semantics, AddLesson id. Layout: toolbar+parity merged via children slot, page padding matched news, mobile week swipe spring animation (variants+custom). Audit round: text-white→on-accent (5 files), LessonDetailsDialog text-brand, DraggableLessonCard type=button, table №→i18n.
+- Wave 69: Schedule final perfection — 3 memory leak fixes (FIX-69-01 setTimeout cleanup), console→logError (4 files), useReducedMotion (4 components), text-white→--sched-on-accent (6 files), radiogroup+dl semantics, touch targets 44px, Russian→EN fallbacks (4 files), landscape+safe-area bottom sheet, card hover glow (FIX-69-07), current lesson bloom (FIX-69-08), 4th orb, frosted timeline (FIX-69-09), empty space fix (FIX-69-10 SkeletonMorph overflow-hidden + removed min-h-screen), removed lesson detail dialog on card click. 22 files +179/-128
+- Wave 63-64: Schedule premium overhaul — 9 bug fixes (breakpoint, snackbar severity, nowTick filter, CSS token, ARIA tab/panel, keyboard nav guard, useFocusTrap, content-visibility, onDelete wired) + visual redesign (GlassCard→sched-card-matte opaque system, top gradient accent, minmax(176px,1fr) horizontal scroll + sticky headers, compact volumetric badges, matte break pills, dot-pattern empty cells, variant=full layout, @property registrations, SkeletonMorph loading, mobile sliding tab indicator, lessonDays MiniCalendar, exit animation fix). 13 files +738/-428
+- Wave 62: Schedule perfection — ScheduleListView (chronological flat list), ScheduleSettingsPanel (slide-over with weekday/compact/past toggles), ConfirmDialog before deletion, keyboard nav cell IDs fixed, MiniCalendar i18n (Intl.DateTimeFormat) + interactive day clicks, export loading spinner, mobile swipe (useSwipe) + tab Arrow keys, badge matte CSS vars, aurora orb CSS classes, breakpoint 1730→1280px, AnimatePresence view transitions, container queries for day columns, premium timeline connectors, getLessonTypeLabel dedup, time ticker minute-only updates. 16 files +788/-139
+- Wave 61: Schedule premium polish — CSS Grid, aurora mesh, keyboard nav (←→↑↓?), 12 visual upgrades, Zustand wired, useShallow fix. 20 files +2227/-401
+- Wave 58: News premium polish — decompose NewsDetail (879→302 lines, 6 extracted components), Markdown engine (marked v17 + sanitizeArticleHtml + auto-ToC + 150 lines editorial CSS), bidirectional view-transition morph (forward: pointerDown state, back: useLayoutEffect+setTimeout(0)), 14 bug fixes (FIX-58-01 critical snackbar, duplicate useQuery, missing catch, a11y aria-labels, staleTime, refetch indicator, localizeField dedup, etc.), uniform card grid (removed featured variant), image lightbox (focus-trapped), reading progress bar (CSS scroll-driven), mobile category pill scroll, container queries, print stylesheet, backdrop z-index isolation. 10 commits, 33 files +2322/-733
+- Wave 57: News editorial premium — bookmarks, J/K keyboard nav, related articles, mobile swipe, editorial typography, sticky category nav, prev/next nav. Fixes: card click (FIX-57-02), route news.tsx→news.index.tsx (FIX-57-03), WASM sanitizer fallback, double scrollbar, NewsInteractionsOut from_attributes. 21 files +951/-229
+- Wave 54: Stories scroll + polish — decorative clip wrapper, circular thumbnails, scroll snap (drag-pause), edge fade masks, wheel→horizontal, mouse-only drag / native touch, velocity swipe, ProgressBar liveRegion, cascadeProps helper, timer drift fix, css-scale-in viewer, 6 missing color primitives, dead CSS vars removed. 10 files +210/-122
 - Wave 33: 7 commits, ~145 files, 1 CRITICAL + 11 HIGH + ~115 MEDIUM + ~80 LOW — ALL code-level backend issues closed. Recovery code hash bug (RZ-33-01), 6 DCL singletons (RZ-33-29), DI dedup (TD-33-08), cache SCAN (TD-33-10), Go stale tests (TD-33-11/12), Pyroscope 1.18.1, test quality (7 files). Full report in `memory/audit_wave33_2026_03_26.md`
+- Wave 40 (Docker): rust-optimizer removed, Garage→MinIO, gateway gin route conflict fixed (unified wildcard), WebSocketProvider added to AppProviders, NATS envsubst→sed, .env.docker BOM fix, pgvector tag fix, depends_on relaxed. ~14 GB old images cleaned.
+- Wave 39: CSS modernization — @container queries (3 container types, 5 query breakpoints), @starting-style (7 entrance animations), View Transitions API (defaultViewTransition in router, view-transition-name on navbar/content). All progressive enhancement with reduced-motion support.
+- Wave 38: AI features + visual regression — SearchDialog (Cmd+K global search with glass morphism), ContentSummary (AI summary expand/collapse), NotificationRelevanceScore (priority indicator), backend GET /api/v1/search endpoint (Elasticsearch + Dishka DI), Storybook stories for ThemeToggle + ConfirmDialog. Design doc: `docs/plans/2026-03-28-wave38-testing-ai-design.md`
+- Wave 37: TanStack Router migration — React Router DOM 7 → TanStack Router file-based. 25 route files created, 31 files migrated (navigate/useParams/useLocation/Link/NavLink), router.ts with auth context + queryClient, beforeLoad guards replace RouteGuards.tsx, Valibot validateSearch replaces useSearchParams, defaultPreload 'intent' replaces prefetchRouteModules.ts. 0 TS errors, 0 lint warnings.
+- Wave 36: Frontend UI/UX polish — Glass Morphism 2.0 (depth layers, noise texture, aurora mesh), micro-interactions (ripple, focus glow, card lift, checkbox celebration), SkeletonMorph component, ThemeToggle with spring animation, StaggerChildren wrapper. 3 new CSS files, 3 new TSX components, 7 existing components enhanced. Design doc: `docs/plans/2026-03-28-wave36-ui-polish-design.md`
+- Wave 35: Frontend WCAG 2.2 AA + useOptimistic — 9 a11y fixes across 8 files (ConfirmDialog ARIA, TextField aria-describedby, ActionMenu/BackToTop focus rings, DataTable aria-sort, Schedule table semantics, ChatWindow live region, NotificationsBell touch targets, global scroll-margin-top) + useOptimistic for event RSVP (PERF-35-01). CSP enforcement verified already complete.
 - Wave 32: 7 deferred items closed, 20 files, +534/-48 — ChatService DI verified (TD-30-01), Redis circuit breaker (PERF-30-01), L1 XFetch jitter (PERF-31-02), Helm chart complete (MOD-30-04), JWKS hot-reload (MOD-W17-03), ADR-012 centralized logging (MOD-W16-03), ADR-013 secret rotation (MOD-W16-07) — full report in `TOTAL_AUDIT_WAVE32.md`
 - Wave 31: 13 issues (5 dropped after validation), 14 files, +165/-17 — gateway os.Exit fix (RZ-31-01), WS message notification (RZ-31-02), Safari localStorage (RZ-31-03), AbortSignal propagation (RZ-31-04), gRPC timeout (RZ-31-05), pod anti-affinity (TD-31-01), ingress envsubst (TD-31-02), Vault URL param (TD-31-03), BroadcastChannel dedup (TD-31-04), maxClients pre-check (TD-31-05), topology spread (PERF-31-01), golangci-lint exhaustive (MOD-31-01), OTEL baggage (MOD-31-02) — full report in `TOTAL_AUDIT_WAVE31.md`
 - Wave 30: 22 issues (6 FP/already done, 6 deferred), 8 files — free-threading singleton (RZ-30-01), symlink path traversal (RZ-30-02), PII regex tightening (RZ-30-03/04), ruff pin (RZ-30-05), cache Prometheus metrics (TD-30-05), NATS backoff (TD-30-06), CI lazy=noload gate (MOD-30-01), Kyverno image tag policy (MOD-30-02), Dockerfile.test Rust pin (MOD-30-05) — full report in `TOTAL_AUDIT_WAVE30.md`
@@ -183,4 +475,6 @@
 - Wave 26: Python 2 except syntax fully fixed (44 occurrences, 21 files); Helm secrets hardened; Go services input validation + goroutine lifecycle; K8s port mismatch; frontend WS AbortController + TOCTOU guards
 - Wave 26 CI: Go coverage threshold (60%); Python 2 except gate regex strengthened (MOD-26-02)
 - Wave 28: Python 2 except syntax corrected (43 occurrences, 21 files — Wave 27 introduced the bug); CSRF anonymous nonce timing hardened via compiled regex (RZ-28-02); frontend K8s seccompProfile added (TD-28-01); Renovate configs consolidated (TD-28-02); pre-commit hook for except syntax (MOD-28-01)
+- Wave 41 (Docker): pydantic >=2.13.0b2 (FIX-41-01), strawberry >=0.283.2 (FIX-41-02), redis >=6 (FIX-41-03) — all for Python 3.14 Field(doc=) compat. Docker compose env alignment (.env ↔ .env.docker), Redis auth in URLs, SpiceDB insecure mode for dev. Test user: test@university.dev / TestPass@2024x
+- Wave 43: Deep frontend audit — @property registrations (glass alpha, aurora-hue, opacity), calc()-based stagger animations, Framer Motion→CSS keyframes (3 dashboard cards: orb-breathe, orb-drift, orb-sway), component reorg (40 files → 6 feature folders), CI token sync gate (MOD-43-01), undefined CSS vars fixed, vendor hack documented. 130 files changed, +341/-5382
 - Backend audit status: **production-ready (Wave 33 — 100/100)** — all code-level issues closed; only infrastructure items remain (flagd, NATS NKey, Vault, Linkerd, backups)

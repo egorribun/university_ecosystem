@@ -1,5 +1,9 @@
 {
   "title": "Активность",
+  "pageDescription": "Отслеживайте посещаемость, оценки и участие",
+  "hero": {
+    "badge": "Аналитика"
+  },
   "period": {
     "options": {
       "30d": "{{count}} день",
@@ -71,6 +75,76 @@
       "recent": "Недавнее участие",
       "dialogTitle": "Участие"
     }
+  },
+  "motivation": {
+    "streakDays": "{{count}} день подряд",
+    "streakDays_few": "{{count}} дня подряд",
+    "streakDays_many": "{{count}} дней подряд",
+    "streakDays_other": "{{count}} дня подряд",
+    "excellent": "Отличная посещаемость! Так держать!",
+    "good": "Хороший прогресс! Чуть больше стабильности.",
+    "improving": "Ваши оценки растут!",
+    "active": "Очень активный участник сообщества!",
+    "default": "Каждый день на счету. Продолжайте двигаться!"
+  },
+  "charts": {
+    "title": "Аналитика",
+    "attendanceTrend": "Тренд посещаемости",
+    "gradesBySubject": "Оценки по предметам",
+    "noChartData": "Недостаточно данных для построения графика"
+  },
+  "heatmap": {
+    "title": "Календарь активности",
+    "cellLabel": "{{date}}: {{count}} активностей",
+    "legendLess": "Меньше",
+    "legendMore": "Больше",
+    "legendLevel": "Уровень активности {{level}}"
+  },
+  "comparative": {
+    "title": "Сравнение периодов",
+    "attendanceLabel": "Посещаемость",
+    "gradesLabel": "Ср. оценка",
+    "participationLabel": "События",
+    "vsPrevious": "было {{value}}",
+    "unchanged": "Без изменений"
+  },
+  "export": {
+    "title": "Экспорт",
+    "pdf": "Экспорт в PDF",
+    "png": "Экспорт в PNG",
+    "exporting": "Экспорт…",
+    "success": "Экспортировано!",
+    "error": "Ошибка экспорта"
+  },
+  "timeline": {
+    "title": "Недавняя активность",
+    "showMore": "Показать ещё",
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "noActivity": "Нет недавней активности",
+    "gradeEntry": "{{course}} — {{score}}",
+    "attendanceEntry": "{{course}} — {{status}}",
+    "participationEntry": "{{title}}",
+    "gradeType": "Оценка",
+    "participationType": "Участие"
+  },
+  "a11y": {
+    "attendanceCard": "Статистика посещаемости",
+    "gradesCard": "Статистика оценок",
+    "participationCard": "Статистика участия",
+    "periodSelector": "Выберите период для статистики активности",
+    "timeline": "Лента активности",
+    "streak": "Серия посещений",
+    "ringAttendance": "Кольцо посещаемости: {{value}}%",
+    "ringGrades": "Шкала оценок: {{value}} из {{max}}",
+    "ringParticipation": "Счётчик участия: {{value}} событий",
+    "attendanceTrend": "Линейный график тренда посещаемости",
+    "gradesBySubject": "Столбчатая диаграмма оценок по предметам",
+    "heatmapCalendar": "Тепловая карта активности по дням"
+  },
+  "empty": {
+    "title": "Активности пока нет",
+    "description": "Ваша активность появится здесь по мере посещения занятий и участия в мероприятиях"
   },
   "dialog": {
     "close": "Закрыть"

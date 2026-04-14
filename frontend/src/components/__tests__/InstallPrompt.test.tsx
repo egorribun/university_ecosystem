@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type ReactNode } from "react"
-import InstallPrompt from "@/components/InstallPrompt"
+import InstallPrompt from "@/components/pwa/InstallPrompt"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 const DISMISS_TTL = 1000 * 60 * 60 * 24 * 7

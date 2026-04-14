@@ -11,9 +11,9 @@ export default function TrendChip({ value }: { value?: number }) {
       tone={value >= 0 ? "success" : "danger"}
       leadingIcon={
         value >= 0 ? (
-          <TrendingUpIcon className="text-badge!" />
+          <TrendingUpIcon className="activity-trend-icon" />
         ) : (
-          <TrendingDownIcon className="text-badge!" />
+          <TrendingDownIcon className="activity-trend-icon" />
         )
       }
       className="font-extrabold"

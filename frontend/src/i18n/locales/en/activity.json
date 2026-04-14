@@ -1,5 +1,9 @@
 {
   "title": "Activity",
+  "pageDescription": "Track your attendance, grades, and participation",
+  "hero": {
+    "badge": "Analytics"
+  },
   "period": {
     "options": {
       "30d": "{{count}} day",
@@ -71,6 +75,76 @@
       "recent": "Recent participation",
       "dialogTitle": "Participation"
     }
+  },
+  "motivation": {
+    "streakDays": "{{count}} day streak",
+    "streakDays_few": "{{count}} day streak",
+    "streakDays_many": "{{count}} days streak",
+    "streakDays_other": "{{count}} days streak",
+    "excellent": "Excellent attendance! Keep it up!",
+    "good": "Good progress! A little more consistency.",
+    "improving": "Your grades are improving!",
+    "active": "Very active community member!",
+    "default": "Every day counts. Keep moving forward!"
+  },
+  "charts": {
+    "title": "Analytics",
+    "attendanceTrend": "Attendance trend",
+    "gradesBySubject": "Grades by subject",
+    "noChartData": "Not enough data to display chart"
+  },
+  "heatmap": {
+    "title": "Activity Calendar",
+    "cellLabel": "{{date}}: {{count}} activities",
+    "legendLess": "Less",
+    "legendMore": "More",
+    "legendLevel": "Activity level {{level}}"
+  },
+  "comparative": {
+    "title": "Period Comparison",
+    "attendanceLabel": "Attendance",
+    "gradesLabel": "Avg. grade",
+    "participationLabel": "Events",
+    "vsPrevious": "vs {{value}}",
+    "unchanged": "Unchanged"
+  },
+  "export": {
+    "title": "Export",
+    "pdf": "Export as PDF",
+    "png": "Export as PNG",
+    "exporting": "Exporting…",
+    "success": "Exported!",
+    "error": "Export failed"
+  },
+  "timeline": {
+    "title": "Recent Activity",
+    "showMore": "Show more",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "noActivity": "No recent activity",
+    "gradeEntry": "{{course}} — {{score}}",
+    "attendanceEntry": "{{course}} — {{status}}",
+    "participationEntry": "{{title}}",
+    "gradeType": "Grade",
+    "participationType": "Participation"
+  },
+  "a11y": {
+    "attendanceCard": "Attendance statistics",
+    "gradesCard": "Grade statistics",
+    "participationCard": "Participation statistics",
+    "periodSelector": "Select time period for activity statistics",
+    "timeline": "Activity timeline",
+    "streak": "Attendance streak",
+    "ringAttendance": "Attendance ring showing {{value}}%",
+    "ringGrades": "Grade gauge showing {{value}} out of {{max}}",
+    "ringParticipation": "Participation count showing {{value}} events",
+    "attendanceTrend": "Line chart showing attendance percentage over time",
+    "gradesBySubject": "Bar chart showing grades by subject",
+    "heatmapCalendar": "Activity heatmap calendar showing daily contributions"
+  },
+  "empty": {
+    "title": "No activity yet",
+    "description": "Your activity will appear here as you attend classes and participate in events"
   },
   "dialog": {
     "close": "Close"

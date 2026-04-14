@@ -1,12 +1,19 @@
-import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
-import { motion as motionTokens } from "@/theme/tokens"
-import { EASING } from "@/utils/motion"
 import { MobileMenu } from "./MobileMenu"
 import { NavbarLogo } from "./NavbarLogo"
 import { NavbarActions } from "./NavbarActions"
 import { useNavbarLogic } from "./useNavbarLogic"
+import { NavbarPill } from "./NavbarPill"
+import { useNavbarMorph } from "./useNavbarMorph"
 
+/**
+ * Navbar — sticky, FIXED HEIGHT in all states.
+ *
+ * CRITICAL: The <nav> never changes height. Changing height on a sticky
+ * element causes layout shift (page content jumps). Instead, the pill
+ * container inside visually morphs while the nav shell stays constant.
+ * This is the same technique Apple.com uses for their sticky nav.
+ */
 const Navbar = () => {
   const logic = useNavbarLogic()
   const {
@@ -28,28 +35,45 @@ const Navbar = () => {
     t,
   } = logic
 
+  const morph = useNavbarMorph(menuLinks)
+
+  // Desktop: full morph to pill. Mobile: just glass bg on scroll (no pill).
+  const showPill = morph.isCompact && !isMobile
+
+  const dur = prefersReducedMotion ? "duration-0" : "duration-500"
+  const ease = "ease-[var(--ease-premium)]"
+
   return (
     <>
-      <motion.nav
+      <nav
         ref={navRef}
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: motionTokens.navTransition, ease: EASING.premium }}
         className={cn(
-          "sticky top-0 z-navbar w-full flex flex-col justify-center",
-          "border-b border-glass-border transition-all duration-slow",
-          isScrolled
-            ? "bg-nav/(--opacity-hover) shadow-glass backdrop-nav h-(--navbar-height-scrolled)"
-            : "bg-transparent h-(--navbar-height)",
-          "items-center",
-          "pt-(--safe-area-top)",
-          prefersReducedMotion && "transition-none"
+          "vt-navbar sticky top-0 z-(--z-navbar) w-full",
+          // FIXED height — never changes, no layout shift
+          "h-(--navbar-height)",
+          "flex items-center justify-center",
+          // Only visual properties transition (no height, no padding)
+          "transition-[background,backdrop-filter,box-shadow]",
+          dur, ease,
+          showPill
+            ? "bg-transparent"
+            : isScrolled && isMobile
+              ? "bg-(--pill-bg) backdrop-blur-xl backdrop-saturate-[1.4]"
+              : "bg-nav/(--opacity-hover) backdrop-blur-(--blur-xl)"
         )}
+        style={{
+          boxShadow: showPill
+            ? "none"
+            : "0 1px 0 var(--nav-glow-line), 0 8px 30px 0px var(--nav-glow-spread)",
+        }}
       >
-        <div className="flex h-full w-full items-center px-fluid-x box-border">
+        <NavbarPill isCompact={showPill} prefersReducedMotion={prefersReducedMotion}>
           <NavbarLogo
             t={t}
             isMobile={isMobile}
+            isCompact={showPill}
+            isPhone={morph.isPhone}
+            prefersReducedMotion={prefersReducedMotion}
             onLogoClick={(e) => {
               if (isSameTarget("/dashboard")) {
                 e.preventDefault()
@@ -59,9 +83,9 @@ const Navbar = () => {
             markScrollFromBottom={markScrollFromBottom}
           />
 
-          <NavbarActions logic={logic} />
-        </div>
-      </motion.nav>
+          <NavbarActions logic={logic} morph={morph} />
+        </NavbarPill>
+      </nav>
 
       {isMobile && (
         <MobileMenu

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useCallback, useMemo } 
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 
 type DialogType = "details" | "edit" | "add" | null
+type SnackbarSeverity = "success" | "error"
 
 interface SchedulePageContextType {
   // Dialog State
@@ -12,7 +13,8 @@ interface SchedulePageContextType {
 
   // Optimistic UI / Snackbars
   snackbarMessage: string | null
-  showSnackbar: (msg: string) => void
+  snackbarSeverity: SnackbarSeverity
+  showSnackbar: (msg: string, severity?: SnackbarSeverity) => void
   hideSnackbar: () => void
 
   // Shared State
@@ -26,6 +28,7 @@ export function SchedulePageProvider({ children }: { children: ReactNode }) {
   const [activeDialog, setActiveDialog] = useState<DialogType>(null)
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null)
   const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null)
+  const [snackbarSeverity, setSnackbarSeverity] = useState<SnackbarSeverity>("success")
   const [addDay, setAddDay] = useState<string | null>(null)
 
   const openDialog = useCallback((type: DialogType, lesson: Lesson | null = null) => {
@@ -40,8 +43,9 @@ export function SchedulePageProvider({ children }: { children: ReactNode }) {
     setAddDay(null)
   }, [])
 
-  const showSnackbar = useCallback((msg: string) => {
+  const showSnackbar = useCallback((msg: string, severity: SnackbarSeverity = "success") => {
     setSnackbarMessage(msg)
+    setSnackbarSeverity(severity)
   }, [])
 
   const hideSnackbar = useCallback(() => {
@@ -55,6 +59,7 @@ export function SchedulePageProvider({ children }: { children: ReactNode }) {
       openDialog,
       closeDialog,
       snackbarMessage,
+      snackbarSeverity,
       showSnackbar,
       hideSnackbar,
       addDay,
@@ -66,6 +71,7 @@ export function SchedulePageProvider({ children }: { children: ReactNode }) {
       openDialog,
       closeDialog,
       snackbarMessage,
+      snackbarSeverity,
       showSnackbar,
       hideSnackbar,
       addDay,
@@ -83,3 +89,4 @@ export function useSchedulePage() {
   }
   return context
 }
+

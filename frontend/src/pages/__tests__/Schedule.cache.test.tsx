@@ -77,7 +77,7 @@ vi.mock("@/api/client", () => ({
   },
 }))
 
-vi.mock("@/components/PageFadeIn", () => ({
+vi.mock("@/components/motion/PageFadeIn", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
 

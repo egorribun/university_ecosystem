@@ -1,4 +1,3 @@
-import React from "react"
 import { Tooltip } from "@/components/ui"
 import { MapPin as PlaceIcon, Calendar as EventIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -14,7 +13,7 @@ interface EventInfoProps {
   description: string
 }
 
-export const EventInfo: React.FC<EventInfoProps> = ({
+export function EventInfo({
   titleId,
   title,
   speaker,
@@ -22,7 +21,7 @@ export const EventInfo: React.FC<EventInfoProps> = ({
   endsAt,
   location,
   description,
-}) => {
+}: EventInfoProps) {
   const { t } = useTranslation(["events"])
 
   return (

@@ -5,7 +5,7 @@ import { Search, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import client from "@/api/client"
 import type { User } from "@/types/User"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { TextField } from "@/components/ui"
 // PERF-20-05 (audit 2026-03-24): Debounce search to prevent API spam.
@@ -56,7 +56,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-3xl shadow-premium w-full max-w-md overflow-hidden border border-(--glass-border) ring-1 ring-white/(--opacity-subtle)"
+            className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-3xl shadow-premium w-full max-w-[28rem] overflow-hidden border border-(--glass-border) ring-1 ring-white/(--opacity-subtle)"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">

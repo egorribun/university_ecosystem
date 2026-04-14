@@ -1,6 +1,6 @@
 import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
-import { motion } from "framer-motion"
-import { Link } from "react-router-dom"
+
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
@@ -27,7 +27,6 @@ export function ScheduleCard({
   ...props
 }: ScheduleCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
-
   const shouldLoadSchedule = userRole === "student" && Boolean(userGroupId)
   const dashboardScheduleQuery = useDashboardSchedule(
     (userRole as "student" | "teacher" | "admin" | null) ?? null,
@@ -41,7 +40,9 @@ export function ScheduleCard({
     ? dashboardScheduleQuery.isLoading && schedule.length === 0
     : false
 
-  const parity = useMemo(nowParity, [])
+  // CQ-72-02: removed useMemo — nowParity() is microsecond-cheap (Date + arithmetic),
+  // and empty deps [] made it stale in long-lived tabs (wouldn't update after midnight)
+  const parity = nowParity()
   const todayIndex = time.getDay()
 
   const weekDaysDisplay = useMemo(() => {
@@ -62,11 +63,17 @@ export function ScheduleCard({
 
   const weekdayIndex = useMemo(() => {
     const map = new Map<string, number>()
+    // i18n display/raw names (e.g. Russian: "воскресенье" → 0)
     weekDaysDisplay.forEach((name, index) => {
       map.set(name.toLowerCase(), index)
     })
     weekDaysRaw.forEach((name, index) => {
       map.set(name.toLowerCase(), index)
+    })
+    // English backend names — API returns weekday as "sunday", "monday", etc.
+    const englishDays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+    englishDays.forEach((name, index) => {
+      map.set(name, index)
     })
     return map
   }, [weekDaysDisplay, weekDaysRaw])
@@ -117,27 +124,25 @@ export function ScheduleCard({
     }
   }, [])
 
-  const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-1 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
-
   return (
     <Card
-      className={cn("card-glass card-glass-interactive dash-panel-schedule", className)}
-      padding="lg"
+      className={cn("glass-noise refetch-shimmer dash-border-shimmer dash-panel-schedule p-6 md:p-7", className)}
+      padding="none"
       aria-busy={loadingSched}
+      data-refetching={dashboardScheduleQuery.isFetching && !dashboardScheduleQuery.isLoading}
       style={style}
       {...props}
     >
       <div className="relative z-base space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-(--fs-card-title) font-extrabold">{t("dashboard:todaySchedule")}</h2>
+          <h2 className="font-extrabold" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>{t("dashboard:todaySchedule")}</h2>
           <div className="flex items-center gap-2">
             <Button
               as={Link}
               to="/schedule"
               size="sm"
               variant="outline"
-              className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
+              className="btn-dash whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
               aria-label={t("dashboard:aria.openFullSchedule")}
               onPointerDown={warmSchedulePage}
               onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
@@ -146,55 +151,53 @@ export function ScheduleCard({
             </Button>
           </div>
         </div>
+
+        {/* Current lesson — premium blue panel */}
         {currentLesson && (
-          <div>
-            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-              <div className="flex flex-wrap items-center gap-2">
+          <div className="list-item-blue rounded-xl p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
                 <Badge size="sm" tone="primary" label={t("dashboard:now")} />
-                <Badge
-                  size="sm"
-                  className="border-(--brand-main)/(--opacity-dim) bg-(--brand-main)/(--opacity-faint) font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/(--opacity-subtle)"
-                  label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
-                />
+                <span className="text-base font-semibold leading-tight text-text-primary line-clamp-1">
+                  {currentLesson.subject}
+                </span>
               </div>
-              <span className="text-base font-semibold leading-tight text-text-primary line-clamp-1">
-                {currentLesson.subject}
+              <span className="shrink-0 font-mono text-sm font-medium text-brand">
+                {fmtTime(currentLesson.start_time)}–{fmtTime(currentLesson.end_time)}
               </span>
             </div>
             <ProgressBar
               value={currentProgress}
-              className="h-2.5"
+              className="h-2"
               ariaLabel={t("common:ariaCurrentLessonProgress")}
             />
           </div>
         )}
+
         {!currentLesson && nextLesson && (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="list-item-blue flex items-center gap-3 rounded-xl p-4">
             <Badge
               size="sm"
               variant="outline"
               tone="primary"
-              className="self-start font-bold uppercase tracking-wide"
+              className="shrink-0 text-[0.625rem] font-bold uppercase tracking-wide"
               label={t("dashboard:next")}
             />
-            <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-              <span className="text-base font-semibold leading-tight text-text-primary truncate">
-                {nextLesson.subject}
-              </span>
-              <Badge
-                size="sm"
-                className="self-start border-brand/(--opacity-dim) bg-brand/(--opacity-faint) font-mono text-xs font-medium text-brand dark:bg-brand/(--opacity-subtle)"
-                label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
-              />
-            </div>
+            <span className="min-w-0 flex-1 text-base font-semibold leading-tight text-text-primary truncate">
+              {nextLesson.subject}
+            </span>
+            <span className="shrink-0 font-mono text-sm font-medium text-brand">
+              {fmtTime(nextLesson.start_time)}–{fmtTime(nextLesson.end_time)}
+            </span>
           </div>
         )}
+
         {loadingSched && (
-          <div className="space-y-4" role="presentation">
+          <div className="space-y-3" role="presentation">
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-medium"
+                className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3 opacity-medium"
               >
                 <div className="flex items-center gap-2">
                   <Skeleton width={80} height={18} />
@@ -205,33 +208,35 @@ export function ScheduleCard({
             ))}
           </div>
         )}
+
         {!loadingSched && todayLessons.length === 0 && (
           <p className="text-sm text-(--text-secondary)">{t("dashboard:noClasses")}</p>
         )}
+
+        {/* Wave 49: always list view on dashboard — timeline removed (too cramped for card width) */}
         {!loadingSched && todayLessons.length > 0 && (
-          <ul className="space-y-3">
-            {todayLessons.map((l) => (
+          <ul className="space-y-2.5">
+            {todayLessons.map((l, idx) => (
               <li key={l.id} className="dash-list-item px-0 py-0">
                 <div
                   className={cn(
-                    listActionBase,
-                    "flex flex-col gap-2 border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 pb-4 hover:bg-(--bg-surface)/(--opacity-dim) sm:gap-2.5",
+                    "list-item-blue list-item-blue-hover",
+                    "flex flex-col gap-2 sm:gap-2.5",
                     "cursor-default"
                   )}
+                  style={{ "--stagger-i": idx } as React.CSSProperties}
                 >
-                  <div className="flex w-full items-start justify-between gap-3">
+                  <div className="flex w-full items-center justify-between gap-3">
                     <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                       {l.subject}
                     </span>
-                    <Badge
-                      size="sm"
-                      className="shrink-0 border-(--brand-main)/(--opacity-dim) bg-(--brand-main)/(--opacity-faint) font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/(--opacity-subtle)"
-                      label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                    />
+                    <span className="shrink-0 font-mono text-sm font-medium text-brand">
+                      {fmtTime(l.start_time)}–{fmtTime(l.end_time)}
+                    </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                     <Badge size="sm" tone="default" variant="outline" label={l.lesson_type} />
-                    <span className="truncate max-w-40 opacity-heavy">
+                    <span className="opacity-heavy">
                       {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
                     </span>
                   </div>
@@ -241,32 +246,17 @@ export function ScheduleCard({
           </ul>
         )}
       </div>
-      <motion.span
+
+      {/* Decorative orbs — visible accents (Wave 48: dash-orb-reactive) */}
+      <span
         aria-hidden="true"
-        initial={{ opacity: 0 }}
-        whileHover={{ opacity: "var(--opacity-heavy)" }}
-        animate={{
-          scale: [1, 1.1, 1],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-schedule-flare) mix-blend-soft-light transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive bg-(--grad-schedule-flare) mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
+        style={{ animation: "orb-breathe 5s ease-in-out infinite" }}
       />
-      <motion.span
+      <span
         aria-hidden="true"
-        animate={{
-          opacity: [0.4, 0.7, 0.4],
-          scale: [1, 1.1, 1],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute -top-24 right-10 z-hide h-36 w-36 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-slower"
+        className="pointer-events-none absolute -top-16 right-8 z-hide dash-orb-reactive h-32 w-32 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light opacity-medium transition-opacity duration-slower motion-reduce:!animate-none"
+        style={{ animation: "orb-pulse-opacity 5s ease-in-out infinite" }}
       />
     </Card>
   )

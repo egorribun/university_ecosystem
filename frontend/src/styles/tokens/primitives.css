@@ -26,20 +26,33 @@
     --color-blue-500: #3b82f6;
     --color-blue-600: #2563eb;
     --color-blue-700: #1d4ed8;
+    --color-sky-100: #e0f2fe;
     --color-sky-300: #7dd3fc;
     --color-sky-400: #38bdf8;
     --color-sky-500: #0ea5e9;
 
     /* Functional Palette */
+    --color-emerald-50: #ecfdf5;
+    --color-emerald-200: #a7f3d0;
+    --color-emerald-300: #6ee7b7;
     --color-emerald-400: #34d399;
     --color-emerald-500: #10b981;
+    --color-emerald-600: #059669;
+    --color-emerald-700: #047857;
+    --color-emerald-900: #064e3b;
+    --color-teal-400: #2dd4bf;
+    --color-teal-500: #14b8a6;
+    --color-cyan-400: #22d3ee;
     --color-green-100: #dcfce7;
     --color-green-500: #22c55e;
     --color-green-800: #166534;
     --color-amber-100: #fef3c7;
+    --color-amber-300: #fcd34d;
     --color-amber-400: #fbbf24;
     --color-amber-500: #f59e0b;
     --color-amber-700: #b45309;
+    --color-orange-400: #fb923c;
+    --color-yellow-400: #facc15;
     --color-red-400: #f87171;
     --color-red-600: #dc2626;
     --color-indigo-400: #818cf8;
@@ -48,9 +61,23 @@
     /* Extended Decorative Palette */
     --color-purple-400: #c084fc;
     --color-purple-500: #a855f7;
+    --color-violet-300: #c4b5fd;
+    --color-violet-400: #a78bfa;
     --color-violet-500: #8b5cf6;
     --color-pink-400: #f472b6;
     --color-rose-500: #f43f5e;
+
+    /* Matte Palette — desaturated variants for frosted glass surfaces (Wave 45) */
+    --color-matte-sky: #c4dff0;
+    --color-matte-indigo: #b8bdd4;
+    --color-matte-violet: #c5b8d4;
+    --color-matte-rose: #d4c0c8;
+    --color-matte-amber: #d4cdb8;
+
+    /* Sky tone extras for card tinting */
+    --color-sky-50: #f0f9ff;
+    --color-indigo-50: #eef2ff;
+    --color-indigo-950: #1e1b4b;
 
     /* RADIUS */
     --radius-xs: 0.5rem;
@@ -105,10 +132,13 @@
     --fs-xl: 1.25rem;
     --fs-2xl: 1.5rem;
 
+    /* Letter Spacing */
+    --tracking-body: -0.011em;
+
     /* Font Stacks */
     --font-sf: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
 
-    /* Z-Index Scale */
+    /* Z-Index Scale (ordered: background → foreground) */
     --z-negative: -10;
     --z-hide: -1;
     --z-base: 0;
@@ -120,19 +150,15 @@
     --z-sidebar: 400;
     --z-navbar: 500;
     --z-overlay: 1000;
-    --z-dropdown: 1200;
-    --z-modal: 1100;
+    --z-dropdown: 1100;
     --z-popover: 1200;
-    --z-floating: 1300;
+    --z-modal: 1300;
+    --z-floating: 1400;
     --z-toast: 2000;
     --z-tooltip: 2100;
     --z-offline: 9999;
 
     /* Animation Tokens */
-    --spring-stiff: stiffness: 520, damping: 34;
-    --spring-standard: stiffness: 460, damping: 34;
-    --spring-gentle: stiffness: 260, damping: 26;
-
     --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-back-out: cubic-bezier(0.34, 1.56, 0.64, 1);
 
@@ -154,6 +180,8 @@
     --motion-delay-long: 0.2s;
 
     /* Opacities */
+    --opacity-micro: 0.03;
+    --opacity-whisper: 0.07;
     --opacity-faint: 0.05;
     --opacity-subtle: 0.1;
     --opacity-dim: 0.2;

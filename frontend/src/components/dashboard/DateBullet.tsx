@@ -6,13 +6,17 @@ import { pad } from "@/utils/scheduleUtils"
 interface DateBulletProps {
   date?: string
   locale: string
+  /** Compact mode for event lists (slightly smaller) */
+  size?: "default" | "compact"
 }
 
-export function DateBullet({ date, locale }: DateBulletProps) {
+export function DateBullet({ date, locale, size = "default" }: DateBulletProps) {
   const { t } = useTranslation("common")
   const d = date ? new Date(date) : null
   const dd = d ? pad(d.getDate()) : "—"
-  const mm = d ? pad(d.getMonth() + 1) : "--"
+  const mmLabel = d
+    ? new Intl.DateTimeFormat(locale, { month: "short" }).format(d)
+    : "--"
   const fallback = t("dateUnknown")
   const full = d
     ? d.toLocaleString(locale, {
@@ -23,18 +27,37 @@ export function DateBullet({ date, locale }: DateBulletProps) {
         minute: "2-digit",
       })
     : fallback
+
+  const isCompact = size === "compact"
+  const outerSize = isCompact ? "h-10 w-10 min-h-10 min-w-10" : "h-12 w-12 min-h-12 min-w-12"
+
   return (
     <Tooltip content={full}>
       <span
         aria-label={t("ariaDatePublished", { date: full })}
         className={cn(
-          "flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-brand/(--opacity-dim) bg-brand/(--opacity-faint) text-brand shadow-sm dark:bg-brand/(--opacity-subtle)",
-          "shadow-sm"
+          "relative flex flex-col items-center justify-center rounded-full",
+          outerSize,
+          // Premium layered background — radial gradient for depth
+          "date-bullet-premium",
+          // Transition for hover lift + keyboard focus ring
+          "transition-transform duration-base hover:scale-105",
+          "focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:rounded-full"
         )}
       >
-        <span className="text-date-day font-black leading-none tracking-tight">{dd}</span>
-        <span className="text-micro font-semibold leading-tight text-(--text-secondary)/(--opacity-strong)">
-          {mm}
+        {/* Day number */}
+        <span className={cn(
+          "relative z-[1] font-black leading-none tracking-tight text-brand",
+          isCompact ? "text-sm" : "text-base"
+        )}>
+          {dd}
+        </span>
+        {/* Month abbreviation */}
+        <span className={cn(
+          "relative z-[1] font-bold uppercase leading-tight text-brand/(--opacity-strong)",
+          isCompact ? "text-[0.5rem]" : "text-[0.6rem]"
+        )}>
+          {mmLabel}
         </span>
       </span>
     </Tooltip>

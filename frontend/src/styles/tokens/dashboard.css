@@ -1,6 +1,10 @@
 @layer base {
   .dashboard-theme {
-    /* Dashboard & Feature Gradients */
+    /* Wave 45: Bold typography — confident, institutional */
+    --fs-hero: clamp(1.75rem, 3vw, 2.75rem);
+    --fs-card-title: clamp(1.35rem, 2.5vw, 1.75rem);
+
+    /* Dashboard conic gradient palette */
     --dash-conic-1: var(--color-sky-400);
     --dash-conic-2: var(--color-indigo-400);
     --dash-conic-3: var(--color-purple-400);
@@ -15,96 +19,66 @@
       var(--dash-hero-conic-tertiary),
       var(--dash-hero-conic-accent)
     );
-    --grad-dash-conic-90: conic-gradient(
-      from 90deg at 50% 50%,
-      var(--dash-hero-conic-primary),
-      var(--dash-hero-conic-secondary),
-      var(--dash-hero-conic-tertiary),
-      var(--dash-hero-conic-accent)
-    );
-    --grad-dash-conic-130: conic-gradient(
-      from 130deg at 50% 50%,
-      var(--dash-hero-conic-primary),
-      var(--dash-hero-conic-secondary),
-      transparent 85%
-    );
-    --grad-dash-conic-simple: conic-gradient(
-      from 140deg at 50% 50%,
-      var(--dash-hero-conic-primary),
-      var(--dash-hero-conic-secondary),
-      transparent 85%
-    );
-    --grad-schedule-flare: radial-gradient(
-      circle at top,
-      var(--dash-card-schedule-radial),
-      transparent 72%
-    );
+    --grad-dash-conic-90: conic-gradient(from 90deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), var(--dash-hero-conic-tertiary), var(--dash-hero-conic-accent));
+    --grad-dash-conic-130: conic-gradient(from 130deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), transparent 85%);
+    --grad-dash-conic-simple: conic-gradient(from 140deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), transparent 85%);
+    --grad-schedule-flare: radial-gradient(circle at top, var(--dash-card-schedule-radial), transparent 72%);
     --flare-schedule-orb: radial-gradient(circle, var(--dash-card-schedule-orb), transparent);
 
-    /* Dashboard Specialized Effects */
+    /* ── Light Theme — must match dashboard-theme.css (no hardcoded hex) ── */
     --hero-grad-start: var(--color-slate-50);
     --hero-grad-end: var(--color-sky-100);
-    --dash-hero-radial-top: color-mix(
-      in srgb,
-      var(--color-sky-400) var(--opacity-dim),
-      transparent
-    );
-    --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) var(--glass-alpha-med), transparent);
-    --dash-hero-highlight: color-mix(
-      in srgb,
-      var(--color-purple-500) var(--opacity-subtle),
-      transparent
-    );
-    --dash-hero-highlight-soft: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-faint),
-      transparent
-    );
 
-    /* Dashboard Schedule Card Gradients */
-    --dash-card-schedule-radial: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-subtle),
-      transparent
-    );
-    --dash-card-schedule-orb: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-dim),
-      transparent
-    );
+    --dash-hero-radial-top: color-mix(in srgb, var(--color-sky-400) var(--opacity-dim), transparent);
+    --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) var(--glass-alpha-med), transparent);
+    --dash-hero-highlight: color-mix(in srgb, var(--color-indigo-500) var(--opacity-subtle), transparent);
+    --dash-hero-highlight-soft: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
+
+    --hero-card-bg: var(--bg-surface);
+    --dash-card-bg: var(--bg-surface);
+    --dash-card-schedule-radial: color-mix(in srgb, var(--primary-main) 8%, transparent);
+    --dash-card-schedule-orb: color-mix(in srgb, var(--primary-main) 12%, transparent);
+    --dash-card-news-radial: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
+    --dash-card-news-orb: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
+    --dash-card-events-radial: color-mix(in srgb, var(--color-indigo-400) 8%, transparent);
+    --grad-events-flare: radial-gradient(circle at bottom right, var(--dash-card-events-radial), transparent 70%);
+
+    --dash-border: color-mix(in srgb, var(--color-slate-200) 80%, transparent);
+    --dash-border-hover: var(--color-sky-400);
+    --dash-accent-line: linear-gradient(to right, transparent 10%, var(--color-sky-400) 50%, transparent 90%);
+    --dash-btn-bg: var(--color-slate-50);
+    --dash-btn-border: var(--color-slate-200);
   }
 
   .dark .dashboard-theme {
-    /* Dashboard Specialized Effects */
-    --hero-grad-start: var(--color-slate-950);
-    --hero-grad-end: var(--color-slate-900);
-    --dash-hero-radial-top: color-mix(
-      in srgb,
-      var(--color-sky-400) var(--opacity-dim),
-      transparent
-    );
-    --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) var(--opacity-dim), transparent);
-    --dash-hero-highlight: color-mix(
-      in srgb,
-      var(--color-violet-500) var(--opacity-subtle),
-      transparent
-    );
-    --dash-hero-highlight-soft: color-mix(
-      in srgb,
-      var(--color-sky-400) var(--opacity-subtle),
-      transparent
-    );
+    /* ── Dark Theme — Deep Navy Matte ─────────────────────── */
+    --hero-grad-start: #070b15;
+    --hero-grad-end: #0a1020;
 
-    /* Dashboard Schedule Card Gradients (Dark) */
-    --dash-card-schedule-radial: color-mix(
-      in srgb,
-      var(--color-sky-400) var(--opacity-subtle),
-      transparent
-    );
-    --dash-card-schedule-orb: color-mix(
-      in srgb,
-      var(--color-sky-400) var(--opacity-dim),
-      transparent
-    );
+    --dash-hero-radial-top: color-mix(in srgb, var(--color-sky-400) 15%, transparent);
+    --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) 18%, transparent);
+    --dash-hero-highlight: color-mix(in srgb, var(--color-indigo-400) 10%, transparent);
+    --dash-hero-highlight-soft: color-mix(in srgb, var(--color-sky-400) 6%, transparent);
+
+    /* Hero: solid dark with subtle gradient for depth */
+    --hero-card-bg: linear-gradient(145deg, #111927, #0f1520);
+
+    /* Cards: solid dark matte — NOT transparent, NOT glassy */
+    --dash-card-bg: #131c2d;
+
+    --dash-card-schedule-radial: color-mix(in srgb, var(--color-sky-400) 10%, transparent);
+    --dash-card-schedule-orb: color-mix(in srgb, var(--color-sky-400) 14%, transparent);
+    --dash-card-news-radial: color-mix(in srgb, var(--color-sky-400) 14%, transparent);
+    --dash-card-news-orb: color-mix(in srgb, var(--color-sky-400) 10%, transparent);
+    --dash-card-events-radial: color-mix(in srgb, var(--color-indigo-400) 14%, transparent);
+
+    /* Border: desaturated slate with faint blue, NOT cyan glow */
+    --dash-border: #1e2a3e;
+    --dash-border-hover: color-mix(in srgb, var(--color-sky-400) 50%, #1e2a3e 50%);
+    --dash-accent-line: linear-gradient(to right, transparent 10%, color-mix(in srgb, var(--color-sky-400) 60%, transparent) 50%, transparent 90%);
+
+    /* Buttons: clearly lighter than card bg */
+    --dash-btn-bg: #1a2540;
+    --dash-btn-border: #2a3a55;
   }
 }

@@ -3,7 +3,7 @@ import { Mail as EmailIcon, Send as TelegramIcon, QrCode as QrCodeIcon } from "l
 import { QRCodeSVG } from "qrcode.react"
 import { Button } from "@/components/ui"
 import { SectionCard } from "@/components/settings"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 import type { User } from "@/types/User"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"

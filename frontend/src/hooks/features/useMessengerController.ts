@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useOptimistic } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
@@ -26,7 +26,7 @@ const formatMessageTime = (dateString: string) => {
 export const useMessengerController = () => {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
-  const { chatId } = useParams<{ chatId: string }>()
+  const { chatId } = useParams({ strict: false }) as { chatId?: string }
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { presenceMap } = useMessenger()
@@ -157,7 +157,7 @@ export const useMessengerController = () => {
     mutationFn: (participantId: string) => chatApi.createChat(participantId),
     onSuccess: (newChat) => {
       queryClient.invalidateQueries({ queryKey: ["chats"] })
-      navigate(`/messenger/${newChat.id}`)
+      navigate({ to: "/messenger/$chatId", params: { chatId: newChat.id } })
       setIsNewChatModalOpen(false)
     },
   })
@@ -228,7 +228,7 @@ export const useMessengerController = () => {
       }
 
       if (selectedChatId === chatId) {
-        navigate("/messenger")
+        navigate({ to: "/messenger" })
       }
 
       return { previousChats }

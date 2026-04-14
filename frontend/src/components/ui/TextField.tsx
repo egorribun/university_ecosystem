@@ -1,4 +1,4 @@
-import React, { ChangeEvent, FocusEvent } from "react"
+import React, { ChangeEvent, FocusEvent, useId } from "react"
 import { cn } from "@/utils/cn"
 import { Input, Textarea } from "@/components/ui"
 
@@ -53,6 +53,8 @@ export const TextField = React.forwardRef<
     },
     ref
   ) => {
+    const helperId = useId()
+
     return (
       <div className={cn("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
         {label && (
@@ -82,6 +84,8 @@ export const TextField = React.forwardRef<
               disabled={disabled}
               placeholder={placeholder}
               rows={rows}
+              aria-describedby={helperText ? helperId : undefined}
+              aria-invalid={error || undefined}
               className={cn(
                 "resize-none",
                 leadingIcon ? "pl-11" : "",
@@ -103,6 +107,7 @@ export const TextField = React.forwardRef<
               error={error}
               size={size}
               fullWidth={fullWidth}
+              aria-describedby={helperText ? helperId : undefined}
               className={cn(
                 leadingIcon ? "pl-11" : "",
                 trailingIcon ? "pr-11" : "",
@@ -119,6 +124,8 @@ export const TextField = React.forwardRef<
         </div>
         {helperText && (
           <p
+            id={helperId}
+            role={error ? "alert" : undefined}
             className={cn(
               "px-1 text-xs font-medium leading-tight",
               error ? "text-(--error-text)" : "text-(--text-tertiary)/(--opacity-strong)"

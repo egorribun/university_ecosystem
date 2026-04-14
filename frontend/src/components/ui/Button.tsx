@@ -10,7 +10,7 @@ import { cn } from "@/utils/cn"
 import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorphic"
 
 const buttonVariants = cva(
-  "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-md font-bold tracking-tight text-base transition-premium focus-ring-premium no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
+  "group/button btn-ripple relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-md font-bold tracking-tight text-base transition-premium focus-ring-premium no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
   {
     variants: {
       variant: {

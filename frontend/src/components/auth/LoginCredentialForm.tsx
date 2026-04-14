@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 import { Eye, EyeOff, Sparkles, Fingerprint, LogIn } from "lucide-react"
 
 import { FadeIn } from "@/components/ui/motion/FadeIn"
@@ -56,7 +56,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
           <p className="text-sm text-text-secondary">
             {t("auth:login.subtitle", {
-              defaultValue: "Войдите, чтобы продолжить путешествие по университету",
+              defaultValue: "Sign in to continue your university journey",
             })}
           </p>
         </div>

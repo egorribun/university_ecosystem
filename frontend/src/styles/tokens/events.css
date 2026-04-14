@@ -1,0 +1,378 @@
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     EVENTS PAGE TOKENS
+     Scoped under .events-theme — mirrors news.css structure.
+     Warm palette (amber/orange/rose) to differentiate from
+     News (cool sky/indigo).
+     ═══════════════════════════════════════════════════════ */
+  .events-theme {
+    /* ── Typography ─────────────────────────────────────── */
+    --fs-events-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-events-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-events-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
+
+    /* ── Gradients & Flares ────────────────────────────── */
+    --grad-events-conic: conic-gradient(
+      from 200deg at 50% 50%,
+      var(--events-orb-1),
+      var(--events-orb-2),
+      transparent 85%
+    );
+
+    /* ── Light Theme ───────────────────────────────────── */
+    --events-hero-orb: color-mix(in srgb, var(--color-amber-400) 10%, transparent);
+    --events-hero-highlight: color-mix(in srgb, var(--color-orange-500, var(--color-amber-500)) 6%, transparent);
+    --events-orb-1: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
+    --events-orb-2: color-mix(in srgb, var(--color-orange-400, var(--color-amber-500)) 8%, transparent);
+    --events-orb-3: color-mix(in srgb, var(--color-rose-400) 6%, transparent);
+    --events-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-amber-400) 50%,
+      transparent 90%
+    );
+    --events-card-glow: color-mix(in srgb, var(--color-amber-400) 8%, transparent);
+
+    /* ── Category badge colors (all defined locally) ──── */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
+    --cat-blue-text: var(--color-blue-600);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-500) 12%, transparent);
+    --cat-purple-text: var(--color-purple-600);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-500) 12%, transparent);
+    --cat-amber-text: var(--color-amber-700);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-500) 12%, transparent);
+    --cat-emerald-text: var(--color-emerald-600);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-500) 12%, transparent);
+    --cat-sky-text: var(--color-sky-600);
+    --cat-rose-bg: color-mix(in srgb, var(--color-rose-500) 12%, transparent);
+    --cat-rose-text: var(--color-rose-600);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-400) 12%, transparent);
+    --cat-slate-text: var(--color-slate-600);
+
+    /* ── Detail page ───────────────────────────────────── */
+    --events-body-max-width: 65ch;
+    --events-section-spacing: 2em;
+
+    /* ── Sticky category nav ──────────────────────────── */
+    --events-sticky-top: 64px;
+
+    /* ── Featured card gradient mesh ───────────────────── */
+    --events-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-amber-400) 8%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-rose-400) 6%, transparent) 0%,
+      transparent 50%
+    );
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────────── */
+  .dark .events-theme {
+    --events-hero-orb: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+    --events-hero-highlight: color-mix(in srgb, var(--color-orange-400, var(--color-amber-500)) 10%, transparent);
+    --events-orb-1: color-mix(in srgb, var(--color-amber-400) 18%, transparent);
+    --events-orb-2: color-mix(in srgb, var(--color-orange-400, var(--color-amber-500)) 14%, transparent);
+    --events-orb-3: color-mix(in srgb, var(--color-rose-400) 10%, transparent);
+    --events-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-amber-500) 50%,
+      transparent 90%
+    );
+    --events-card-glow: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
+
+    /* Category badge colors (dark) */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
+    --cat-blue-text: var(--color-blue-400);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-400) 16%, transparent);
+    --cat-purple-text: var(--color-purple-400);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+    --cat-amber-text: var(--color-amber-400);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-400) 16%, transparent);
+    --cat-emerald-text: var(--color-emerald-400);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
+    --cat-sky-text: var(--color-sky-400);
+    --cat-rose-bg: color-mix(in srgb, var(--color-rose-400) 16%, transparent);
+    --cat-rose-text: var(--color-rose-400);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-500) 16%, transparent);
+    --cat-slate-text: var(--color-slate-400);
+
+    /* Featured card gradient mesh (dark — brighter) */
+    --events-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-amber-400) 12%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-rose-400) 10%, transparent) 0%,
+      transparent 50%
+    );
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   STICKY CATEGORY NAV
+   ═══════════════════════════════════════════════════════ */
+
+.events-sticky-categories {
+  position: sticky;
+  top: var(--events-sticky-top);
+  z-index: var(--z-surface, 10);
+  padding-block: var(--space-2, 0.5rem);
+}
+
+/* ═══════════════════════════════════════════════════════
+   READING PROGRESS INDICATOR
+   CSS scroll-driven animation — zero JS, GPU-composited.
+   ═══════════════════════════════════════════════════════ */
+
+.events-reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: calc((var(--navbar-h-base, 64px) - var(--navbar-pill-h, 52px)) / 2);
+  background: var(--color-brand);
+  transform-origin: left;
+  transform: scaleX(0);
+  z-index: calc(var(--z-navbar, 50) - 1);
+  pointer-events: none;
+  animation: events-reading-progress linear;
+  animation-timeline: scroll();
+}
+
+@keyframes events-reading-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Firefox fallback — JS sets transform via inline style */
+@supports not (animation-timeline: scroll()) {
+  .events-reading-progress {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   VIEW TRANSITIONS — EVENT CARDS → DETAIL
+   Only ONE card has view-transition-name: events-hero at
+   a time (set on pointerdown). The detail page hero always
+   has view-transition-name: events-hero.
+   ═══════════════════════════════════════════════════════ */
+
+::view-transition-group(events-hero) {
+  animation-duration: 0.4s;
+  animation-timing-function: var(--ease-premium, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+::view-transition-old(events-hero) {
+  animation: 0.3s var(--ease-premium) both events-hero-out;
+}
+
+::view-transition-new(events-hero) {
+  animation: 0.4s var(--ease-premium) both events-hero-in;
+}
+
+@keyframes events-hero-out {
+  to {
+    opacity: 0;
+    transform: scale(1.03);
+    filter: blur(4px);
+  }
+}
+
+@keyframes events-hero-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(4px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTAINER QUERIES — EVENT CARDS
+   ═══════════════════════════════════════════════════════ */
+
+.events-card-container {
+  container-type: inline-size;
+  container-name: events-card;
+}
+
+@container events-card (max-width: 280px) {
+  .events-card-title { font-size: 0.875rem; }
+  .events-card-preview { display: none; }
+  .events-card-footer { gap: 0.5rem; }
+}
+
+@container events-card (min-width: 281px) and (max-width: 399px) {
+  .events-card-title { font-size: 1rem; }
+  .events-card-preview { -webkit-line-clamp: 2; }
+}
+
+@container events-card (min-width: 400px) {
+  .events-card-title { font-size: 1.25rem; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MATTE BADGE — opaque, volumetric, theme-adaptive
+   Same pattern as .news-badge-matte
+   ═══════════════════════════════════════════════════════ */
+
+.events-badge-matte {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.12),
+    0 0 0 1px rgb(0 0 0 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.6);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.dark .events-badge-matte {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow:
+    0 1px 4px rgb(0 0 0 / 0.4),
+    0 0 0 1px rgb(255 255 255 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════
+   NAV BUTTON — matte volumetric, shadow depth, no border
+   Prev/next event navigation on detail page.
+   ═══════════════════════════════════════════════════════ */
+
+.events-nav-btn {
+  border: none;
+  background: color-mix(in srgb, var(--bg-surface-hover, var(--bg-surface)) 60%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 6%, transparent),
+    0 2px 6px color-mix(in srgb, black 4%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.events-nav-btn:hover {
+  background: color-mix(in srgb, var(--bg-surface-hover, var(--bg-surface)) 80%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 8%, transparent),
+    0 4px 12px color-mix(in srgb, black 5%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  transform: translateY(-2px);
+}
+
+.events-nav-btn:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, black 8%, transparent),
+    inset 0 1px 3px color-mix(in srgb, black 4%, transparent);
+}
+
+.dark .events-nav-btn {
+  background: color-mix(in srgb, var(--color-slate-700, #334155) 40%, transparent);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, black 15%, transparent),
+    0 2px 6px color-mix(in srgb, black 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+
+.dark .events-nav-btn:hover {
+  background: color-mix(in srgb, var(--color-slate-600, #475569) 50%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 18%, transparent),
+    0 4px 12px color-mix(in srgb, black 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+}
+
+.dark .events-nav-btn:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, black 18%, transparent),
+    inset 0 1px 3px color-mix(in srgb, black 10%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   REGISTER BUTTON PULSE
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes events-register-pulse {
+  0% { box-shadow: 0 0 0 0 var(--color-brand); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.events-register-pulse {
+  animation: events-register-pulse 1.5s ease-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT STYLESHEET
+   Doubled-class specificity — no !important per CLAUDE.md
+   ═══════════════════════════════════════════════════════ */
+
+@media print {
+  .events-theme.events-theme {
+    background: white;
+    color: black;
+  }
+
+  .events-theme.events-theme .aurora-mesh,
+  .events-theme.events-theme [aria-hidden="true"],
+  .events-reading-progress,
+  .events-sticky-categories {
+    display: none;
+  }
+
+  .events-theme.events-theme .glass-layer-surface,
+  .events-theme.events-theme .glass-layer-elevated,
+  .events-theme.events-theme .glass-layer-floating {
+    backdrop-filter: none;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .events-theme.events-theme img {
+    break-inside: avoid;
+  }
+
+  .events-theme.events-theme h1,
+  .events-theme.events-theme h2,
+  .events-theme.events-theme h3 {
+    break-after: avoid;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .events-reading-progress {
+    display: none;
+  }
+
+  .events-register-pulse {
+    animation: none;
+  }
+
+  .events-nav-btn,
+  .events-nav-btn:hover {
+    transition: none;
+    transform: none;
+  }
+
+  /* View transitions off — browser handles this natively
+     but we ensure no leftover keyframes fire */
+  ::view-transition-old(events-hero),
+  ::view-transition-new(events-hero) {
+    animation: none;
+  }
+}

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeAll, describe, expect, it } from "vitest"
 
-import AsyncImage from "../AsyncImage"
+import AsyncImage from "../media/AsyncImage"
 
 beforeAll(() => {
   // Mock IntersectionObserver to immediately trigger visibility

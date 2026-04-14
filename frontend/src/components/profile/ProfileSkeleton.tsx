@@ -1,6 +1,6 @@
 import { Skeleton, Card } from "@/components/ui"
 import Layout from "@/components/Layout"
-import PageFadeIn from "@/components/PageFadeIn"
+import PageFadeIn from "@/components/motion/PageFadeIn"
 
 export const ProfileSkeleton = () => {
   return (

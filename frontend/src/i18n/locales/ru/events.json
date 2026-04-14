@@ -1,5 +1,32 @@
 {
   "pageTitle": "Мероприятия",
+  "pageDescription": "Предстоящие мероприятия, лекции и активности",
+  "categories": {
+    "all": "Все",
+    "lecture": "Лекция",
+    "seminar": "Семинар",
+    "conference": "Конференция",
+    "workshop": "Мастер-класс",
+    "social": "Встреча",
+    "sport": "Спорт",
+    "other": "Другое"
+  },
+  "sort": {
+    "label": "Сортировка",
+    "newest": "Новые",
+    "popular": "Популярные",
+    "upcoming": "Ближайшие"
+  },
+  "keyboard": {
+    "overlayTitle": "Горячие клавиши",
+    "next": "Следующее",
+    "prev": "Предыдущее",
+    "open": "Открыть",
+    "register": "Записаться / Отписаться",
+    "deselect": "Снять выделение",
+    "toggleHelp": "Показать подсказки",
+    "pressToClose": "Нажмите ? или Esc, чтобы закрыть"
+  },
   "states": {
     "empty": "Нет событий, подходящих под фильтры",
     "emptyHint": {
@@ -15,8 +42,12 @@
   },
   "filters": {
     "search": "Поиск мероприятий",
-    "type": "Тип",
-    "location": "Место"
+    "location": "Место",
+    "dateRange": "Дата",
+    "today": "Сегодня",
+    "thisWeek": "Эта неделя",
+    "thisMonth": "Этот месяц",
+    "allDates": "Все даты"
   },
   "actions": {
     "openCreate": "+ Добавить мероприятие"
@@ -36,17 +67,23 @@
     "location": "Место",
     "location_en": "Место (английский)",
     "speaker": "Спикер",
+    "image": "Изображение",
+    "participants": "Участники",
     "uploadImage": "Загрузить изображение",
     "imageSelected": "Изображение выбрано",
     "start": "Начало",
     "end": "Окончание",
     "errors": {
+      "titleRequired": "Укажите название",
+      "startRequired": "Укажите время начала",
+      "endRequired": "Укажите время окончания",
       "endsBeforeStarts": "Время окончания должно быть позже начала"
     }
   },
   "aria": {
     "clearSearch": "Очистить поиск",
-    "openFilters": "Открыть панель фильтров"
+    "openFilters": "Открыть панель фильтров",
+    "categoryFilter": "Фильтр категорий"
   },
   "alt": {
     "preview": "Предпросмотр изображения события",
@@ -66,7 +103,12 @@
       "closeQr": "Закрыть"
     },
     "statuses": {
-      "ended": "Мероприятие завершено"
+      "ended": "Мероприятие завершено",
+      "live": "В ЭФИРЕ",
+      "soon": "Скоро",
+      "registered": "Вы записаны",
+      "open": "Открыто",
+      "in": "Через {{time}}"
     },
     "participants": "Участников: {{count}}",
     "messages": {
@@ -86,8 +128,14 @@
       "delete": {
         "title": "Удалить мероприятие?",
         "description": "Действие необратимо. Подтвердите удаление."
+      },
+      "qr": {
+        "title": "QR-код"
       }
     }
+  },
+  "quickView": {
+    "viewDetails": "Подробнее"
   },
   "detail": {
     "messages": {
@@ -98,7 +146,10 @@
       "fileDeleted": "Файл удалён",
       "fileDeleteFailed": "Не удалось удалить файл",
       "aboutUpdated": "Описание обновлено",
-      "aboutUpdateFailed": "Не удалось обновить описание"
+      "aboutUpdateFailed": "Не удалось обновить описание",
+      "linkCopied": "Ссылка скопирована",
+      "deleted": "Мероприятие удалено",
+      "deleteFailed": "Не удалось удалить мероприятие"
     },
     "upload": {
       "errors": {
@@ -114,6 +165,18 @@
       "location": "Место",
       "date": "Дата",
       "speaker": "Спикер"
+    },
+    "actions": {
+      "share": "Поделиться",
+      "zoom": "Увеличить изображение"
+    },
+    "nav": {
+      "label": "Навигация по мероприятиям",
+      "prev": "Предыдущее",
+      "next": "Следующее"
+    },
+    "related": {
+      "title": "Похожие мероприятия"
     },
     "sections": {
       "about": {

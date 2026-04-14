@@ -2,7 +2,11 @@
   "pageTitle": "University news",
   "states": {
     "empty": "No news yet",
-    "loadError": "Failed to load the news."
+    "loadError": "Failed to load the news.",
+    "noComments": "No comments yet. Be the first!"
+  },
+  "sections": {
+    "comments": "Comments"
   },
   "actions": {
     "add": "+ Add news",
@@ -10,7 +14,26 @@
     "edit": "Edit news",
     "delete": "Delete news",
     "back": "Back",
-    "share": "Share"
+    "share": "Share",
+    "bookmark": "Save",
+    "saved": "Saved",
+    "removeBookmark": "Remove bookmark",
+    "zoomImage": "View full image",
+    "editComment": "Edit",
+    "deleteComment": "Delete",
+    "postComment": "Submit"
+  },
+  "quickView": {
+    "readMore": "Read full article"
+  },
+  "toc": {
+    "label": "Table of contents",
+    "title": "Contents"
+  },
+  "navigation": {
+    "label": "Article navigation",
+    "prev": "Previous",
+    "next": "Next"
   },
   "form": {
     "title": "Title",
@@ -19,7 +42,11 @@
     "title_en": "Title (English)",
     "content_en": "News text (English)",
     "uploadPhoto": "Upload photo",
-    "changePhoto": "Change photo"
+    "changePhoto": "Change photo",
+    "image": "Cover Image",
+    "commentPlaceholder": "Write something...",
+    "commentAriaLabel": "Write a new comment",
+    "editCommentAriaLabel": "Edit comment"
   },
   "dialogs": {
     "create": {
@@ -31,6 +58,10 @@
     "delete": {
       "title": "Delete news?",
       "description": "This action cannot be undone. Confirm deletion."
+    },
+    "deleteComment": {
+      "title": "Delete comment?",
+      "description": "Are you sure you want to delete this comment? This action cannot be undone."
     }
   },
   "shareDialog": {
@@ -67,10 +98,38 @@
     "preview": "Preview of the news image",
     "newCover": "Preview of the new cover"
   },
+  "categories": {
+    "all": "All",
+    "education": "Education",
+    "sport": "Sport",
+    "science": "Science",
+    "events": "Events",
+    "campus": "Campus",
+    "general": "General",
+    "saved": "Saved"
+  },
+  "sort": {
+    "label": "Sort",
+    "newest": "Newest",
+    "popular": "Popular"
+  },
+  "search": {
+    "placeholder": "Search news..."
+  },
+  "related": {
+    "title": "Related articles"
+  },
+  "keyboard": {
+    "hint": "J/K — navigate",
+    "overlayTitle": "Keyboard shortcuts",
+    "pressToClose": "Press ? or Esc to close"
+  },
   "aria": {
     "cardActions": "News actions",
     "editNews": "Edit news",
     "deleteNews": "Delete news",
-    "shareNews": "Share this news"
+    "shareNews": "Share this news",
+    "bookmarkNews": "Bookmark this news",
+    "removeBookmark": "Remove bookmark"
   }
 }

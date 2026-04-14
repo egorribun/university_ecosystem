@@ -43,11 +43,22 @@ export const sanitizeNewsHtml = async (
       return policy.createHTML(source)
     }
   }
-  return sanitize_rich_text(source)
+  try {
+    return sanitize_rich_text(source)
+  } catch {
+    // RZ-24-04: WASM fallback — strip tags when wasm-sanitizer unavailable
+    return source.replace(/<[^>]*>/g, "")
+  }
 }
 
 export const sanitizeNewsText = async (dirty: string | null | undefined): Promise<string> => {
-  return strip_html(dirty ?? "")
+  const source = dirty ?? ""
+  try {
+    return strip_html(source)
+  } catch {
+    // RZ-24-04: WASM fallback — strip tags with regex when wasm-sanitizer unavailable
+    return source.replace(/<[^>]*>/g, "")
+  }
 }
 
 const TELEGRAM_HOSTS = new Set(["t.me", "telegram.me"])

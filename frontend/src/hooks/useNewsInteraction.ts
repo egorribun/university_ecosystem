@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import api from "@/api/client"
+import { isAxiosError } from "axios"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
 import { logWarning } from "@/app/logger"
@@ -10,7 +11,7 @@ const CLICK_DB_NAME = "notification-interactions"
 const CLICK_DB_VERSION = 3
 
 export type NewsComment = {
-  id: number
+  id: string
   content: string
   user_id: string
   user_name: string
@@ -65,6 +66,28 @@ async function queueInteraction(url: string, payload: unknown, method = "POST") 
   }
 }
 
+/**
+ * Shared error handler for news interaction mutations.
+ * - 401 → rethrow (auth interceptor handles it)
+ * - Offline/network error → queue to IndexedDB for SW sync
+ * - Otherwise → rethrow
+ */
+async function handleMutationError(
+  error: unknown,
+  offlineUrl: string,
+  offlinePayload: unknown = {},
+  offlineMethod = "POST"
+): Promise<{ isOfflineStore: true }> {
+  if (isAxiosError(error) && error.response?.status === 401) throw error
+
+  if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
+    await queueInteraction(offlineUrl, offlinePayload, offlineMethod)
+    return { isOfflineStore: true }
+  }
+
+  throw error
+}
+
 interface NewsInteractionOptions {
   initialData?: Partial<NewsInteractions>
 }
@@ -80,7 +103,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       const res = await api.get<NewsInteractions>(`/news/${newsId}/interactions`)
       return res.data
     },
-    staleTime: 0, // Always refresh interactions on mount to ensure latest counts/comments
+    staleTime: 30_000, // 30s cache — optimistic updates handle local state immediately
     initialData: options.initialData
       ? {
           likes_count: options.initialData.likes_count ?? 0,
@@ -96,16 +119,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       try {
         await api.post(`/news/${newsId}/like`)
       } catch (error: unknown) {
-        if (typeof error === "object" && error !== null && "response" in error) {
-          const axiosError = error as { response?: { status?: number } }
-          if (axiosError.response?.status === 401) throw error
-        }
-
-        if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
-          await queueInteraction(`/api/v1/news/${newsId}/like`, {})
-          return { isOfflineStore: true }
-        }
-        throw error
+        return handleMutationError(error, `/api/v1/news/${newsId}/like`)
       }
     },
     onMutate: async () => {
@@ -136,17 +150,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
         const res = await api.post(`/news/${newsId}/comment`, { content })
         return res.data
       } catch (error: unknown) {
-        // If it's a 401, don't queue, let the interceptor handle it
-        if (typeof error === "object" && error !== null && "response" in error) {
-          const axiosError = error as { response?: { status?: number } }
-          if (axiosError.response?.status === 401) throw error
-        }
-
-        if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
-          await queueInteraction(`/api/v1/news/${newsId}/comment`, { content })
-          return { isOfflineStore: true }
-        }
-        throw error
+        return handleMutationError(error, `/api/v1/news/${newsId}/comment`, { content })
       }
     },
     onMutate: async (content) => {
@@ -155,7 +159,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       if (previous) {
         // Optimistic comment
         const optimisticComment: NewsComment = {
-          id: -Date.now(),
+          id: "optimistic-" + Date.now(),
           content,
           user_id: user?.id ?? "",
           user_name: user?.full_name ?? "You",
@@ -180,16 +184,12 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   })
 
   const updateCommentMutation = useMutation({
-    mutationFn: async ({ commentId, content }: { commentId: number; content: string }) => {
+    mutationFn: async ({ commentId, content }: { commentId: string; content: string }) => {
       try {
         const res = await api.patch(`/news/comments/${commentId}`, { content })
         return res.data
-      } catch (error) {
-        if (!navigator.onLine) {
-          await queueInteraction(`/api/v1/news/comments/${commentId}`, { content }, "PATCH")
-          return { isOfflineStore: true }
-        }
-        throw error
+      } catch (error: unknown) {
+        return handleMutationError(error, `/api/v1/news/comments/${commentId}`, { content }, "PATCH")
       }
     },
     onMutate: async ({ commentId, content }) => {
@@ -214,15 +214,11 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   })
 
   const deleteCommentMutation = useMutation({
-    mutationFn: async (commentId: number) => {
+    mutationFn: async (commentId: string) => {
       try {
         await api.delete(`/news/comments/${commentId}`)
-      } catch (error) {
-        if (!navigator.onLine) {
-          await queueInteraction(`/api/v1/news/comments/${commentId}`, {}, "DELETE")
-          return { isOfflineStore: true }
-        }
-        throw error
+      } catch (error: unknown) {
+        return handleMutationError(error, `/api/v1/news/comments/${commentId}`, {}, "DELETE")
       }
     },
     onMutate: async (commentId) => {
@@ -256,11 +252,11 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       [commentMutation]
     ),
     updateComment: useCallback(
-      (commentId: number, content: string) => updateCommentMutation.mutate({ commentId, content }),
+      (commentId: string, content: string) => updateCommentMutation.mutate({ commentId, content }),
       [updateCommentMutation]
     ),
     deleteComment: useCallback(
-      (commentId: number) => deleteCommentMutation.mutate(commentId),
+      (commentId: string) => deleteCommentMutation.mutate(commentId),
       [deleteCommentMutation]
     ),
     isLiking: likeMutation.isPending,

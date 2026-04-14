@@ -2,12 +2,13 @@ import { useTranslation } from "react-i18next"
 import { Search as SearchIcon, Filter as FilterListIcon, X as ClearIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { useEventFilterPopover } from "./EventFilterPopover"
+import type { EventDateRange } from "@/features/events/types"
 
 type EventSearchBarProps = {
   search: string
   onSearchChange: (value: string) => void
-  type: string
-  onTypeChange: (value: string) => void
+  dateRange: EventDateRange
+  onDateRangeChange: (value: EventDateRange) => void
   location: string
   onLocationChange: (value: string) => void
 }
@@ -15,16 +16,16 @@ type EventSearchBarProps = {
 export function EventSearchBar({
   search,
   onSearchChange,
-  type,
-  onTypeChange,
+  dateRange,
+  onDateRangeChange,
   location,
   onLocationChange,
 }: EventSearchBarProps) {
   const { t } = useTranslation(["events"])
 
   const filter = useEventFilterPopover({
-    type,
-    onTypeChange,
+    dateRange,
+    onDateRangeChange,
     location,
     onLocationChange,
   })

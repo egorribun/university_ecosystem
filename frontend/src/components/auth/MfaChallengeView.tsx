@@ -39,7 +39,7 @@ export function MfaChallengeView({
     <div className="fixed inset-0 min-h-screen w-full bg-linear-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
       <ParticleAuthBackground />
       <div className="relative z-navbar flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-        <div className="w-full max-w-2xl rounded-4xl glass-high-fidelity p-8">
+        <div className="w-full max-w-[42rem] rounded-4xl glass-high-fidelity p-8">
           <div className="flex flex-col items-center gap-6 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-surface-hover/(--opacity-subtle) px-4 py-1 text-sm font-semibold tracking-wide text-text-primary">
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -74,14 +74,14 @@ export function MfaChallengeView({
                     className="bg-brand/(--opacity-subtle) text-brand hover:bg-brand/(--opacity-dim)"
                   >
                     {t("auth:mfa.webauthn.useSecurityKey", {
-                      defaultValue: "Использовать ключ безопасности",
+                      defaultValue: "Use security key",
                     })}
                   </Button>
                 ) : (
                   <div className="w-full rounded-md border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text text-center">
                     {t("auth:mfa.webauthn.notSupported", {
                       defaultValue:
-                        "WebAuthn недоступен в этом браузере. Используйте HTTPS или код аутентификатора ниже.",
+                        "WebAuthn is not available in this browser. Use HTTPS or the authenticator code below.",
                     })}
                   </div>
                 )}
@@ -97,7 +97,7 @@ export function MfaChallengeView({
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
                       <span className="bg-surface px-2 text-text-secondary">
-                        {t("auth:mfa.or", { defaultValue: "ИЛИ" })}
+                        {t("auth:mfa.or", { defaultValue: "OR" })}
                       </span>
                     </div>
                   </div>
@@ -118,10 +118,10 @@ export function MfaChallengeView({
                     onCheckedChange={(checked) => onTrustDeviceChange(checked === true)}
                     disabled={mfaBusy}
                     aria-label={t("auth:actions.trustDevice", {
-                      defaultValue: "Доверять этому устройству",
+                      defaultValue: "Trust this device",
                     })}
                   />
-                  {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
+                  {t("auth:actions.trustDevice", { defaultValue: "Trust this device" })}
                 </div>
               </>
             )}

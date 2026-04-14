@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-// dayjs removal
 import api from "@/api/client"
+import { logError } from "@/app/logger"
 import { Button, Input, Select } from "@/components/ui"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import {
@@ -64,8 +64,9 @@ export function EditLessonDialog({
       })
       showSnackbar(t("schedule:snackbar.updated"))
       refresh()
-    } catch {
-      showSnackbar(t("schedule:snackbar.updateError"))
+    } catch (err) {
+      logError("Failed to update lesson", err)
+      showSnackbar(t("schedule:snackbar.updateError"), "error")
       // Revert optimistic update
       applyScheduleUpdate(() => backup)
     } finally {
@@ -88,7 +89,7 @@ export function EditLessonDialog({
           {editLesson && (
             <div className="space-y-5">
               <div>
-                <label className="mb-2 block text-sm font-semibold opacity-strong">
+                <label htmlFor="edit-lesson-subject" className="mb-2 block text-sm font-semibold opacity-strong">
                   {t("schedule:form.subject")}
                 </label>
                 <Input
@@ -104,7 +105,7 @@ export function EditLessonDialog({
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-semibold opacity-strong">
+                <label htmlFor="edit-lesson-teacher" className="mb-2 block text-sm font-semibold opacity-strong">
                   {t("schedule:form.teacher")}
                 </label>
                 <Input
@@ -120,7 +121,7 @@ export function EditLessonDialog({
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-semibold opacity-strong">
+                <label htmlFor="edit-lesson-room" className="mb-2 block text-sm font-semibold opacity-strong">
                   {t("schedule:form.room")}
                 </label>
                 <Input
@@ -134,7 +135,7 @@ export function EditLessonDialog({
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-semibold opacity-strong">
+                <label htmlFor="edit-lesson-type" className="mb-2 block text-sm font-semibold opacity-strong">
                   {t("schedule:form.lessonType")}
                 </label>
                 <Select
@@ -149,7 +150,7 @@ export function EditLessonDialog({
               </div>
               <div className="flex gap-4">
                 <div className="flex-1">
-                  <label className="mb-2 block text-sm font-semibold opacity-strong">
+                  <label htmlFor="edit-lesson-start-time" className="mb-2 block text-sm font-semibold opacity-strong">
                     {t("schedule:form.startTime")}
                   </label>
                   <Input
@@ -172,7 +173,7 @@ export function EditLessonDialog({
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="mb-2 block text-sm font-semibold opacity-strong">
+                  <label htmlFor="edit-lesson-end-time" className="mb-2 block text-sm font-semibold opacity-strong">
                     {t("schedule:form.endTime")}
                   </label>
                   <Input
@@ -196,7 +197,7 @@ export function EditLessonDialog({
                 </div>
               </div>
               <div>
-                <label className="mb-2 block text-sm font-semibold opacity-strong">
+                <label htmlFor="edit-lesson-parity" className="mb-2 block text-sm font-semibold opacity-strong">
                   {t("schedule:form.week")}
                 </label>
                 <Select

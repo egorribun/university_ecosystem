@@ -7,13 +7,13 @@ import {
   type AttendanceStats,
   type GradeStats,
   type ParticipationStats,
-  type DetailSection,
   type AttendanceSummaryResponse,
   type GradeSummaryResponse,
   type ParticipationSummaryResponse,
   PERIOD_VALUES,
   periodDayCount,
   isPeriodKey,
+  isGradeScale,
 } from "@/components/activity/activityTypes"
 import {
   toNumber,
@@ -36,28 +36,10 @@ export default function useActivityData() {
   const [participation, setParticipation] = useState<ParticipationStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
-  const [detail, setDetail] = useState<
-    | ""
-    | "attendance"
-    | "grades"
-    | "participation"
-    | "attendance_recent"
-    | "grades_recent"
-    | "participation_recent"
-  >("")
-
-  const detailSection: DetailSection = detail.startsWith("attendance")
-    ? "attendance"
-    : detail.startsWith("grades")
-      ? "grades"
-      : detail.startsWith("participation")
-        ? "participation"
-        : ""
 
   const labelByPeriod = useCallback(
     (p: PeriodKey) =>
       t(`activity:period.labels.${p}`, {
-        defaultValue: p,
         count: periodDayCount(p),
       }),
     [t]
@@ -68,16 +50,13 @@ export default function useActivityData() {
       PERIOD_VALUES.map((value) => ({
         value,
         label: t(`activity:period.options.${value}`, {
-          defaultValue: value,
           count: periodDayCount(value),
         }),
       })),
     [t]
   )
 
-  const separator = t("activity:common.separator", { defaultValue: " • " })
-  const noDataText = t("activity:common.noData")
-  const attendanceLessonFallback = t("activity:sections.attendance.lessonFallback")
+  const separator = t("activity:common.separator")
 
   const formatDate = useCallback(
     (value?: string | null) => {
@@ -95,7 +74,7 @@ export default function useActivityData() {
 
   const attendanceStatusLabel = useCallback(
     (status: AttendanceStats["recent"][number]["status"]) =>
-      t(`activity:sections.attendance.status.${status}`, { defaultValue: status }),
+      t(`activity:sections.attendance.status.${status}`),
     [t]
   )
 
@@ -103,6 +82,8 @@ export default function useActivityData() {
   const fallbackGradeRecentRef = useRef(DEFAULT_GRADE_RECENT)
   const fallbackParticipationRecentRef = useRef(DEFAULT_PARTICIPATION_RECENT)
 
+  // react-i18next returnObjects returns TFunctionResult which doesn't narrow to unknown[].
+  // Cast to `unknown` is safe because each value passes through typed parsers below.
   useEffect(() => {
     const attendanceRaw = t("activity:fallback.attendance.recent", {
       returnObjects: true,
@@ -192,7 +173,7 @@ export default function useActivityData() {
           trend: toNumber(d.trend),
           periodKey: resolvedPeriodKey,
           periodLabel,
-          recent: Array.isArray(d.recent) ? d.recent : [],
+          recent: parseAttendanceRecent(d.recent),
         })
       } else {
         const fallbackRecent = fallbackAttendanceRecentRef.current
@@ -210,9 +191,9 @@ export default function useActivityData() {
         const d = g.value.data
         setGrades({
           average: toNumber(d.average, 4.4),
-          scale: (d.scale as GradeStats["scale"]) || "5",
+          scale: isGradeScale(d.scale) ? d.scale : "5",
           trend: toNumber(d.trend, 0.3),
-          recent: Array.isArray(d.recent) ? d.recent : [],
+          recent: parseGradeRecent(d.recent),
         })
       } else {
         const fallbackRecent = fallbackGradeRecentRef.current
@@ -230,7 +211,7 @@ export default function useActivityData() {
           hours: d.hours != null ? toNumber(d.hours) : undefined,
           groups: d.groups != null ? toNumber(d.groups) : undefined,
           trend: toNumber(d.trend),
-          recent: Array.isArray(d.recent) ? d.recent : [],
+          recent: parseParticipationRecent(d.recent),
         })
       } else {
         const fallbackRecent = fallbackParticipationRecentRef.current
@@ -263,6 +244,49 @@ export default function useActivityData() {
     }
   }, [])
 
+  // ── Chart data derivation (Phase B) ───────────────
+  const attendanceTrendData = useMemo(() => {
+    const recent = attendance?.recent
+    if (!recent?.length) return []
+    const byDate = new Map<string, { present: number; total: number }>()
+    for (const item of recent) {
+      const key = item.date.slice(0, 10)
+      const prev = byDate.get(key) ?? { present: 0, total: 0 }
+      byDate.set(key, { present: prev.present + (item.status === "present" ? 1 : 0), total: prev.total + 1 })
+    }
+    return [...byDate.entries()]
+      .map(([date, { present, total }]) => ({ date, value: total > 0 ? Math.round((present / total) * 100) : 0 }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [attendance?.recent])
+
+  const gradesBySubject = useMemo(() => {
+    const recent = grades?.recent
+    if (!recent?.length) return []
+    const bySubject = new Map<string, { sum: number; count: number; max: number }>()
+    for (const item of recent) {
+      const prev = bySubject.get(item.course) ?? { sum: 0, count: 0, max: item.max ?? 5 }
+      bySubject.set(item.course, { sum: prev.sum + item.score, count: prev.count + 1, max: item.max ?? prev.max })
+    }
+    return [...bySubject.entries()].map(([label, { sum, count, max }]) => ({
+      label,
+      value: sum / count,
+      max,
+    }))
+  }, [grades?.recent])
+
+  // Heatmap data — merge all recent arrays into date→count map
+  const heatmapData = useMemo(() => {
+    const map = new Map<string, number>()
+    const inc = (date: string) => {
+      const key = date.slice(0, 10)
+      map.set(key, (map.get(key) ?? 0) + 1)
+    }
+    for (const item of attendance?.recent ?? []) inc(item.date)
+    for (const item of grades?.recent ?? []) inc(item.date)
+    for (const item of participation?.recent ?? []) inc(item.date)
+    return map
+  }, [attendance?.recent, grades?.recent, participation?.recent])
+
   return {
     t,
     period,
@@ -272,15 +296,12 @@ export default function useActivityData() {
     participation,
     loading,
     hasInitiallyLoaded,
-    detail,
-    setDetail,
-    detailSection,
     periodOptions,
     separator,
-    noDataText,
-    attendanceLessonFallback,
     formatDate,
     attendanceStatusLabel,
-    labelByPeriod,
+    attendanceTrendData,
+    gradesBySubject,
+    heatmapData,
   }
 }

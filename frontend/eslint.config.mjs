@@ -10,6 +10,7 @@ import prettier from "eslint-config-prettier";
 import i18nextPlugin from "eslint-plugin-i18next";
 import boundaries from "eslint-plugin-boundaries";
 import reactCompiler from "eslint-plugin-react-compiler";
+import security from "eslint-plugin-security";
 
 
 export default tseslint.config({
@@ -45,7 +46,8 @@ export default tseslint.config({
     "react-hooks": reactHooks,
     i18next: i18nextPlugin,
     boundaries: boundaries,
-    "react-compiler": reactCompiler
+    "react-compiler": reactCompiler,
+    security
   },
   settings: {
     react: { version: "detect" },
@@ -107,6 +109,15 @@ export default tseslint.config({
       }
     ],
     "react-compiler/react-compiler": "error",
+    // MOD-43-02: eslint-plugin-security — static analysis for common vulnerability patterns
+    // detect-object-injection disabled: >95% false positives on array[i] and Map lookups
+    "security/detect-object-injection": "off",
+    "security/detect-non-literal-regexp": "warn",
+    "security/detect-unsafe-regex": "error",
+    "security/detect-buffer-noassert": "error",
+    "security/detect-eval-with-expression": "error",
+    "security/detect-no-csrf-before-method-override": "error",
+    "security/detect-pseudoRandomBytes": "warn",
     "no-restricted-imports": ["error", {
       "paths": [{
         "name": "@/api/client",
@@ -168,4 +179,9 @@ export default tseslint.config({
   rules: {
     "i18next/no-literal-string": "off"
   }
-}, prettier, storybook.configs["flat/recommended"]);
+}, prettier, storybook.configs["flat/recommended"], {
+  files: ["src/routes/**/*.{ts,tsx}"],
+  rules: {
+    "storybook/default-exports": "off"
+  }
+});

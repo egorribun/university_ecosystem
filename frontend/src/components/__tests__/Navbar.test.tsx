@@ -48,18 +48,18 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-vi.mock("@/components/NotificationsBell", () => ({
+vi.mock("@/components/feedback/NotificationsBell", () => ({
   default: () => <div data-testid="notifications-bell" />,
 }))
 
-vi.mock("@/components/SmartImage", () => ({
+vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt, onClick }: { alt: string; onClick?: () => void }) => (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-redundant-roles
     <img src="avatar" alt={alt} role="img" data-testid="smart-image" onClick={onClick} />
   ),
 }))
 
-vi.mock("@/components/MessengerButton", () => ({
+vi.mock("@/components/layout/MessengerButton", () => ({
   default: () => <button data-testid="messenger-button">Messenger</button>,
 }))
 

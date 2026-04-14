@@ -2,7 +2,9 @@ import React, { useEffect } from "react"
 import ReactDOM from "react-dom"
 import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
+// A11Y-65-01: Added useFocusTrap — traps Tab inside dialog, Escape calls onClose
 export function Dialog({
   open,
   onClose,
@@ -27,16 +29,21 @@ export function Dialog({
     }
   }, [open])
 
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    onDeactivate: onClose,
+  })
+
   if (!open) return null
 
   const maxWidthClasses =
     {
       xs: "max-w-xs",
-      sm: "max-w-sm",
-      md: "max-w-md",
-      lg: "max-w-lg",
-      xl: "max-w-xl",
-    }[maxWidth] || "max-w-md"
+      sm: "max-w-[24rem]",
+      md: "max-w-[28rem]",
+      lg: "max-w-[32rem]",
+      xl: "max-w-[36rem]",
+    }[maxWidth] || "max-w-[28rem]"
 
   // Check if document is available (SSR check)
   if (typeof document === "undefined") return null
@@ -54,6 +61,7 @@ export function Dialog({
         onClick={onClose}
       />
       <motion.div
+        ref={dialogRef}
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}

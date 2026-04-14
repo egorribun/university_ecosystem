@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { useAuth } from "@/contexts/AuthContext"
@@ -17,8 +17,7 @@ export type NavbarLogicResult = ReturnType<typeof useNavbarLogic>
 
 export const useNavbarLogic = () => {
   const navigate = useNavigate()
-  const location = useLocation()
-  const pathname = location.pathname
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const { user, isAuth, loading } = useAuth()
   const { t } = useTranslation(["navigation"])
 
@@ -29,7 +28,7 @@ export const useNavbarLogic = () => {
   // Disable "scrolled" state on mobile to avoid layout shifts or too much blur
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.wide})`)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(location.pathname)
+  const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(pathname)
   const prevIsMobile = useRef(isMobile)
   const navRef = useRef<HTMLElement | null>(null)
   const burgerBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -47,7 +46,7 @@ export const useNavbarLogic = () => {
 
   useEffect(() => {
     setMobileMenuStart(false)
-  }, [location.pathname])
+  }, [pathname])
 
   const avatarCacheV = useMemo(() => {
     const raw = user?.avatar_updated_at ?? user?.avatar_version ?? user?.updated_at ?? undefined
@@ -85,7 +84,7 @@ export const useNavbarLogic = () => {
         scrollToTop(prefersReducedMotion ? "auto" : "smooth")
       } else {
         markScrollFromBottom()
-        navigate(to)
+        navigate({ to })
       }
     },
     [isSameTarget, markScrollFromBottom, navigate, prefersReducedMotion, scrollToTop]

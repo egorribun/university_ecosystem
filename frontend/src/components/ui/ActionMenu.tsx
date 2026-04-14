@@ -185,7 +185,7 @@ export const ActionMenu = ({
               aria-label={item.ariaLabel}
               className={cn(
                 "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium transition-fast",
-                "hover:bg-(--bg-surface-hover) focus-visible:bg-(--bg-surface-hover) focus-visible:outline-none",
+                "hover:bg-(--bg-surface-hover) focus-visible:bg-(--bg-surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
                 item.variant === "danger"
                   ? "text-error-text hover:bg-error-bg"
                   : "text-text-primary",

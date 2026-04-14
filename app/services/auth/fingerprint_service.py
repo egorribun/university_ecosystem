@@ -53,8 +53,14 @@ class AuthFingerprintService:
             )
 
             if event:
+                # FIX-44-03: Log actual values for debugging header mismatches.
                 logger.warning(
-                    "Session fingerprint mismatch detected — revoking session immediately",
+                    "Session fingerprint mismatch detected — revoking session immediately "
+                    "(stored_al=%r, current_al=%r, stored_ua_len=%d, current_ua_len=%d)",
+                    stored_fp.accept_language,
+                    current_fp.accept_language,
+                    len(stored_fp.user_agent),
+                    len(current_fp.user_agent),
                     extra=event.to_log_record(),
                 )
 
@@ -62,7 +68,10 @@ class AuthFingerprintService:
                 env = os.getenv("ENVIRONMENT") or getattr(
                     settings, "ENVIRONMENT", "production"
                 )
-                if env != "testing":
+                # FIX-44-03: Skip revocation in development — Docker proxy layers
+                # can cause subtle header differences (Accept-Language normalization).
+                # Production retains full fingerprint enforcement.
+                if env not in ("testing", "development"):
                     session.revoked_at = datetime.now(UTC)
                     await db.commit()
 

@@ -1,6 +1,7 @@
 import api from "@/api/client"
 
 const DUMMY_ORIGIN = "http://__avatar__"
+// eslint-disable-next-line security/detect-unsafe-regex -- linear pattern, no backtracking risk
 const ABSOLUTE_URL_PATTERN = /^(?:https?:)?\/\//i
 
 const getLocationOrigin = (): string | undefined => {

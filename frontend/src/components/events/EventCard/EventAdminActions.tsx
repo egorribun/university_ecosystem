@@ -1,4 +1,3 @@
-import React from "react"
 import { Button } from "@/components/ui"
 import {
   MoreVertical as MoreVertIcon,
@@ -15,13 +14,13 @@ interface EventAdminActionsProps {
   menuId: string
 }
 
-export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
+export function EventAdminActions({
   menuAnchor,
   setMenuAnchor,
   onEdit,
   onDelete,
   menuId,
-}) => {
+}: EventAdminActionsProps) {
   const { t } = useTranslation(["events", "common"])
 
   return (

@@ -7,6 +7,7 @@
 
 import { create } from "zustand"
 import { devtools, persist } from "zustand/middleware"
+import { useShallow } from "zustand/react/shallow"
 
 import type { ScheduleViewMode } from "./types"
 
@@ -125,21 +126,26 @@ export const useViewMode = () => useScheduleUIStore((state) => state.viewMode)
 export const useHiddenWeekdays = () => useScheduleUIStore((state) => state.hiddenWeekdays)
 
 export const useScheduleDisplayPreferences = () =>
-  useScheduleUIStore((state) => ({
-    showPastLessons: state.showPastLessons,
-    compactMode: state.compactMode,
-  }))
+  useScheduleUIStore(
+    useShallow((state) => ({
+      showPastLessons: state.showPastLessons,
+      compactMode: state.compactMode,
+    })),
+  )
+
+// PERF: extract selector to module scope — inline closures cause useShallow identity issues
+const actionsSelector = (state: ScheduleUIState) => ({
+  setWeekOffset: state.setWeekOffset,
+  nextWeek: state.nextWeek,
+  previousWeek: state.previousWeek,
+  goToCurrentWeek: state.goToCurrentWeek,
+  setViewMode: state.setViewMode,
+  toggleWeekday: state.toggleWeekday,
+  setHiddenWeekdays: state.setHiddenWeekdays,
+  togglePastLessons: state.togglePastLessons,
+  toggleCompactMode: state.toggleCompactMode,
+  resetPreferences: state.resetPreferences,
+})
 
 export const useScheduleUIActions = () =>
-  useScheduleUIStore((state) => ({
-    setWeekOffset: state.setWeekOffset,
-    nextWeek: state.nextWeek,
-    previousWeek: state.previousWeek,
-    goToCurrentWeek: state.goToCurrentWeek,
-    setViewMode: state.setViewMode,
-    toggleWeekday: state.toggleWeekday,
-    setHiddenWeekdays: state.setHiddenWeekdays,
-    togglePastLessons: state.togglePastLessons,
-    toggleCompactMode: state.toggleCompactMode,
-    resetPreferences: state.resetPreferences,
-  }))
+  useScheduleUIStore(useShallow(actionsSelector))

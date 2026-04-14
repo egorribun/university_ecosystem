@@ -24,7 +24,6 @@ export type EventsListFilters = {
   language: string
   is_active?: boolean | null
   search?: string
-  type?: string
   location?: string
   limit?: number
 }
@@ -33,7 +32,6 @@ type NormalizedEventsListFilters = {
   language: string
   is_active: boolean | null
   search: string
-  type: string
   location: string
   limit: number
 }
@@ -53,7 +51,6 @@ const normalizeEventsListFilters = (filters: EventsListFilters): NormalizedEvent
     language: filters.language,
     is_active: normalizeBoolean(filters.is_active ?? null),
     search: filters.search?.trim() ?? "",
-    type: filters.type?.trim() ?? "",
     location: filters.location?.trim() ?? "",
     limit: normalizeLimit(filters.limit),
   }
@@ -71,7 +68,6 @@ const createEventsListEtagKey = (filters: NormalizedEventsListFilters) => {
     filters.language,
     activity,
     filters.search,
-    filters.type,
     filters.location,
     filters.limit,
   ].join(":")
@@ -145,7 +141,6 @@ const createEventsListQueryFn =
     const params: Record<string, unknown> = {
       limit: normalized.limit,
       search: normalized.search,
-      type: normalized.type,
       location: normalized.location,
     }
     if (normalized.is_active !== null) {
@@ -419,4 +414,94 @@ export const useSuspenseMyEventsQuery = (
     ...query,
     queryKey,
   }
+}
+
+// ---------------------------------------------------------------------------
+// EVENT DETAIL QUERY (Wave 76)
+// ---------------------------------------------------------------------------
+
+type EventDetailQueryKey = readonly ["events", "detail", string]
+
+export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
+
+export const useEventDetailQuery = (
+  id: string | undefined,
+  options?: Omit<UseQueryOptions<Event, Error, Event, EventDetailQueryKey>, "queryKey" | "queryFn">
+): UseEventDetailQueryResult => {
+  const queryKey: EventDetailQueryKey = ["events", "detail", id ?? ""]
+
+  return useQuery<Event, Error, Event, EventDetailQueryKey>({
+    queryKey,
+    enabled: !!id,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: async ({ signal }) => {
+      const { getEventApiV1EventsIdGet } = await import("@/api/generated/sdk.gen")
+      const response = await getEventApiV1EventsIdGet({
+        path: { id: id! },
+        signal,
+      } as Parameters<typeof getEventApiV1EventsIdGet>[0])
+      return response.data as Event
+    },
+    ...options,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// EVENT NAVIGATION (Wave 76)
+// Reads from cached events list to determine prev/next event.
+// Pattern source: hooks/useArticleNavigation.ts
+// ---------------------------------------------------------------------------
+
+interface EventNav {
+  prevId: string | null
+  nextId: string | null
+  prevTitle: string | null
+  nextTitle: string | null
+}
+
+export function useEventNavigation(currentId: string): EventNav {
+  const queryClient = useQueryClient()
+
+  return useMemo(() => {
+    const fallback: EventNav = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
+
+    const queries = queryClient.getQueriesData<{
+      pages?: Array<{ items?: Event[] }>
+    }>({
+      queryKey: ["events", "list"],
+    })
+
+    const allItems: Event[] = []
+    for (const [, data] of queries) {
+      if (data?.pages) {
+        for (const page of data.pages) {
+          if (page.items) allItems.push(...page.items)
+        }
+      }
+    }
+
+    // Deduplicate preserving order
+    const seen = new Set<string>()
+    const ordered: Event[] = []
+    for (const item of allItems) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id)
+        ordered.push(item)
+      }
+    }
+
+    const currentIndex = ordered.findIndex((e) => e.id === currentId)
+    if (currentIndex === -1) return fallback
+
+    const prev = currentIndex > 0 ? ordered[currentIndex - 1] : null
+    const next = currentIndex < ordered.length - 1 ? ordered[currentIndex + 1] : null
+
+    return {
+      prevId: prev?.id ?? null,
+      nextId: next?.id ?? null,
+      prevTitle: prev?.title ?? null,
+      nextTitle: next?.title ?? null,
+    }
+  }, [queryClient, currentId])
 }

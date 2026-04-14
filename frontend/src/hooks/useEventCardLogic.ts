@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 import { formatRelativeTime, toDate } from "@/utils/date"
 
 import api from "@/api/client"
@@ -11,7 +11,18 @@ import type { Event, EventEditDraft } from "@/types/Event"
 
 // dayjs extensions removed
 
-const normalizeDate = (d?: string) => (d ? d.replace("T", " ").replace("Z", "") : "")
+/** Normalize ISO 8601 date string to locale-friendly display format.
+ *  Handles both "2024-01-15T10:30:00Z" and "2024-01-15 10:30:00" inputs. */
+const normalizeDate = (d?: string) => {
+  if (!d) return ""
+  try {
+    const date = new Date(d)
+    if (Number.isNaN(date.getTime())) return d
+    return date.toLocaleString()
+  } catch {
+    return d.replace("T", " ").replace("Z", "")
+  }
+}
 
 interface UseEventCardLogicProps extends Partial<Event> {
   id: string
@@ -125,9 +136,7 @@ export function useEventCardLogic({
         setImageLoading(true)
         const data = new FormData()
         data.append("file", newImage)
-        const uploadRes = await api.post<{ url: string }>(`/events/upload_image`, data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        })
+        const uploadRes = await api.post<{ url: string }>(`/events/upload_image`, data)
         imgUrl = uploadRes.data.url
         setImageLoading(false)
       }
@@ -162,7 +171,7 @@ export function useEventCardLogic({
     }
   }
 
-  const navigateToDetails = useCallback(() => navigate(`/events/${id}`), [id, navigate])
+  const navigateToDetails = useCallback(() => navigate({ to: "/events/$id", params: { id: String(id) } }), [id, navigate])
 
   const handleCardClick = (e: React.MouseEvent) => {
     if (editOpen) return

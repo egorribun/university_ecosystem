@@ -1,17 +1,20 @@
+import { useRef, useEffect, useCallback } from "react"
 import { Newspaper as ArticleIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import FadeSection from "@/components/FadeSection"
+import { AnimatePresence, motion } from "framer-motion"
 import NewsCard from "@/components/news/NewsCard"
-import NewsCardSkeleton from "@/components/NewsCardSkeleton"
-import OfflineFallback from "@/components/OfflineFallback"
+import NewsCardSkeleton from "@/components/ui/NewsCardSkeleton"
+import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { Button } from "@/components/ui"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { type NewsItem as News } from "@/api/news"
+import { FeatureErrorBoundary } from "@/components/error"
+import { cn } from "@/utils/cn"
 
 interface NewsListProps {
   newsList: News[]
   isInitialLoading: boolean
-  isFetching: boolean // used for empty state check context
+  isFetching: boolean
   isFetchingNextPage: boolean
   hasNextPage: boolean
   fetchNextPage: () => void
@@ -19,7 +22,12 @@ interface NewsListProps {
   onAddClick: () => void
   isAdmin: boolean
   isOnline: boolean
+  activeKeyboardIndex?: number
+  registerCardRef?: (index: number, el: HTMLElement | null) => void
 }
+
+const SKELETON_COUNT = 6
+const NEXT_PAGE_SKELETON_COUNT = 3
 
 export const NewsList = ({
   newsList,
@@ -32,80 +40,129 @@ export const NewsList = ({
   onAddClick,
   isAdmin,
   isOnline,
+  activeKeyboardIndex = -1,
+  registerCardRef,
 }: NewsListProps) => {
   const { t } = useTranslation(["news", "common"])
-  const skeletonCount = 6
-  const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
+  const showEmptyState = !isInitialLoading && newsList.length === 0
+
+  /* ── Infinite scroll ── */
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel || !hasNextPage || isFetchingNextPage) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          void fetchNextPage()
+        }
+      },
+      { rootMargin: "300px" }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  const handleRetry = useCallback(() => refreshNews(), [refreshNews])
+
+  /* ── Loading skeleton ── */
+  if (isInitialLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+        {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+          <div key={`skel-${i}`}>
+            <NewsCardSkeleton />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  /* ── Empty state ── */
+  if (showEmptyState) {
+    return (
+      <div className="w-full flex justify-center py-20">
+        {!isOnline ? (
+          <OfflineFallback onRetry={handleRetry} />
+        ) : (
+          <EmptyState
+            icon={<ArticleIcon className="h-8 w-8" />}
+            title={t("news:states.empty")}
+            description={t("news:states.checkLater", {
+              defaultValue: "Check back later for updates",
+            })}
+            action={
+              isAdmin ? (
+                <Button
+                  id="news-empty-add-btn"
+                  variant="glass"
+                  size="lg"
+                  onClick={onAddClick}
+                  className="px-6"
+                >
+                  {t("news:actions.add")}
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+      </div>
+    )
+  }
+
+  /* ── Card grid ── */
+  const showRefetchBar = isFetching && !isInitialLoading && !isFetchingNextPage
 
   return (
-    <>
-      <section aria-label={t("news:pageTitle")}>
-        <FadeSection delay="200ms" className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {isInitialLoading
-            ? Array.from({ length: skeletonCount }).map((_, index) => (
-                <div key={`news-skeleton-${index}`} className="flex h-full w-full">
-                  <NewsCardSkeleton />
-                </div>
-              ))
-            : newsList.map((news) => (
-                <div key={news.id} className="flex h-full w-full">
-                  <NewsCard
-                    {...news}
-                    image_url={news.image_url ?? undefined}
-                    onChange={() => {
-                      void refreshNews()
-                    }}
-                  />
-                </div>
-              ))}
-
-          {showEmptyState && (
-            <div className="col-span-full mt-12 flex w-full justify-center">
-              {!isOnline && newsList.length === 0 ? (
-                <OfflineFallback onRetry={refreshNews} />
-              ) : (
-                <EmptyState
-                  icon={<ArticleIcon className="h-8 w-8" />}
-                  title={t("news:states.empty")}
-                  description={t("news:states.checkLater", {
-                    defaultValue: "Check back later for updates",
-                  })}
-                  action={
-                    isAdmin ? (
-                      <Button
-                        id="news-empty-add-btn"
-                        size="lg"
-                        onClick={onAddClick}
-                        className="px-6"
-                      >
-                        {t("news:actions.add")}
-                      </Button>
-                    ) : undefined
-                  }
-                />
-              )}
-            </div>
-          )}
-        </FadeSection>
-      </section>
-
-      {/* Load more */}
-      {hasNextPage && (
-        <div className="mt-8 mb-8 flex justify-center">
-          <Button
-            id="news-load-more-btn"
-            variant="outline"
-            size="lg"
-            onClick={() => void fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="px-6"
-          >
-            {isFetchingNextPage
-              ? t("common:statuses.loading")
-              : t("common:buttons.loadMore", { defaultValue: "Load more" })}
-          </Button>
-        </div>
+    <section aria-label={t("news:pageTitle")}>
+      {/* Refetch indicator — thin bar during background refresh */}
+      {showRefetchBar && (
+        <div className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse" aria-hidden="true" />
       )}
-    </>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+        <AnimatePresence mode="popLayout">
+          {newsList.map((news, index) => (
+            <motion.div
+              key={news.id}
+              ref={(el) => registerCardRef?.(index, el)}
+              layout
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{
+                layout: { duration: 0.4, ease: [0.25, 1, 0.5, 1] },
+                opacity: { duration: 0.25 },
+                y: { duration: 0.3, ease: [0.25, 1, 0.5, 1] },
+              }}
+              className={cn(
+                activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
+              )}
+            >
+              <FeatureErrorBoundary>
+                <NewsCard
+                  {...news}
+                  image_url={news.image_url ?? undefined}
+                  onChange={handleRetry}
+                />
+              </FeatureErrorBoundary>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {/* Next-page loading skeletons */}
+        {isFetchingNextPage &&
+          Array.from({ length: NEXT_PAGE_SKELETON_COUNT }).map((_, i) => (
+            <div key={`next-skel-${i}`}>
+              <NewsCardSkeleton />
+            </div>
+          ))}
+      </div>
+
+      {/* Infinite scroll sentinel */}
+      {hasNextPage && <div ref={sentinelRef} className="h-1" aria-hidden="true" />}
+    </section>
   )
 }

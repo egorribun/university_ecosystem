@@ -10,8 +10,8 @@ import {
 } from "lucide-react"
 
 import Layout from "@/components/Layout"
-import PageFadeIn from "@/components/PageFadeIn"
-import SmartImage from "@/components/SmartImage"
+import PageFadeIn from "@/components/motion/PageFadeIn"
+import SmartImage from "@/components/media/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
 import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"

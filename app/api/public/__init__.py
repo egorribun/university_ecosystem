@@ -9,6 +9,7 @@ from app.api.internal.csp_report import router as csp_report_router
 from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
 from app.api.schedule import router as schedule_api_router
+from app.api.search import router as search_router
 from app.api.sessions import router as sessions_router
 from app.api.spotify import router as spotify_router
 from app.api.stats import router as stats_router
@@ -36,3 +37,4 @@ router.include_router(stats_router)
 router.include_router(chat_router)
 router.include_router(images_router)
 router.include_router(csp_report_router)
+router.include_router(search_router)

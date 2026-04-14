@@ -2,6 +2,7 @@
   "skipToContent": "Перейти к содержанию",
   "skipToMain": "Перейти к основному содержанию",
   "dateUnknown": "Дата недоступна",
+  "noResults": "Ничего не найдено.",
   "ariaDatePublished": "Опубликовано: {{date}}",
   "ariaCurrentTime": "Текущее время",
   "ariaCurrentLessonProgress": "Прогресс текущего занятия",
@@ -30,7 +31,8 @@
     "uploadPhoto": "Загрузить фото",
     "changePhoto": "Изменить фото",
     "loadMore": "Загрузить ещё",
-    "backToTop": "Наверх"
+    "backToTop": "Наверх",
+    "close": "Закрыть"
   },
   "statuses": {
     "loading": "Загрузка…",
@@ -38,10 +40,21 @@
     "publishing": "Публикация…",
     "error": "Что-то пошло не так",
     "tryAgain": "Попробовать снова",
-    "live": "В ЭФИРЕ"
+    "live": "В ЭФИРЕ",
+    "cached": "В кэше"
   },
   "errors": {
-    "generic": "Произошла ошибка"
+    "generic": "Произошла ошибка",
+    "featureUnavailable": "{{feature}} недоступен"
+  },
+  "aria": {
+    "like": "Нравится",
+    "unlike": "Убрать лайк",
+    "addBookmark": "Сохранить",
+    "removeBookmark": "Убрать из сохранённых"
+  },
+  "cta": {
+    "learnMore": "Подробнее"
   },
   "pagination": {
     "rowsPerPage": "Строк на странице",

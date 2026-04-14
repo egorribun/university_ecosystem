@@ -1,6 +1,5 @@
-import React from "react"
 import { cn } from "@/utils/cn"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { useTranslation } from "react-i18next"
 
 interface EventMediaProps {
@@ -16,7 +15,7 @@ interface EventMediaProps {
   onImageClick?: () => void
 }
 
-export const EventMedia: React.FC<EventMediaProps> = ({
+export function EventMedia({
   imageUrl,
   alt,
   eventType,
@@ -24,7 +23,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
   isReady,
   onReady,
   onImageClick,
-}) => {
+}: EventMediaProps) {
   const { t } = useTranslation(["events"])
 
   return (
@@ -62,7 +61,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
         {/* Event type badge on image */}
         {eventType && (
           <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-black/(--opacity-medium) backdrop-blur-md border border-white/(--opacity-dim) shadow-lg">
-            <span className="text-xs font-semibold text-white">{eventType}</span>
+            <span className="text-xs font-semibold text-[var(--text-inverse)]">{eventType}</span>
           </div>
         )}
 
@@ -70,16 +69,16 @@ export const EventMedia: React.FC<EventMediaProps> = ({
         {timeStatus.status === "live" && (
           <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/(--opacity-strong) backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-strong" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--text-inverse)] opacity-strong" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--text-inverse)]" />
             </span>
-            <span className="text-xs font-bold text-white">{t("common:statuses.live")}</span>
+            <span className="text-xs font-bold text-[var(--text-inverse)]">{t("common:statuses.live")}</span>
           </div>
         )}
 
         {timeStatus.status === "soon" && timeStatus.timeText && (
           <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-warning-bg/(--opacity-strong) backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-warning-text">
-            <span className="text-xs font-bold text-white">
+            <span className="text-xs font-bold text-[var(--text-inverse)]">
               ⏱ {t("events:card.statuses.in", { time: timeStatus.timeText })}
             </span>
           </div>

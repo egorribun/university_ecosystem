@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Search, SquarePen } from "lucide-react"
 import { Dispatch, SetStateAction, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 
 interface MessengerSidebarProps {
   isMobile: boolean
@@ -66,7 +66,7 @@ export function MessengerSidebar({
       <ContactList
         contacts={contacts}
         selectedId={selectedChatId}
-        onSelect={(id: string) => navigate(`/messenger/${id}`)}
+        onSelect={(id: string) => navigate({ to: "/messenger/$chatId", params: { chatId: id } })}
       />
     </motion.div>
   )

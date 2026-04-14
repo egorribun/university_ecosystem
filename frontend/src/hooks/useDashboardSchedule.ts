@@ -5,7 +5,7 @@ import api from "@/api/client"
 import type { User } from "@/types/User"
 
 export type DashboardLesson = {
-  id: number
+  id: string /* FIX-72-05: was `number` — API ScheduleOut returns string */
   subject: string
   teacher: string
   room: string

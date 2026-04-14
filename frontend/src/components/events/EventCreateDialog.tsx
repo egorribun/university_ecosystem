@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Search as SearchIcon } from "lucide-react"
 
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { Button } from "@/components/ui"
 import { TextField } from "@/components/ui/TextField"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
@@ -122,9 +122,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
             <TextField
               label={
                 language === "en"
-                  ? t("events:form.title_en", {
-                      defaultValue: `${t("events:form.title")} (English)`,
-                    })
+                  ? t("events:form.title_en")
                   : t("events:form.title")
               }
               value={getLocalizedValue("title")}
@@ -134,9 +132,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
             <TextField
               label={
                 language === "en"
-                  ? t("events:form.description_en", {
-                      defaultValue: `${t("events:form.description")} (English)`,
-                    })
+                  ? t("events:form.description_en")
                   : t("events:form.description")
               }
               value={getLocalizedValue("description")}
@@ -148,9 +144,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
             <TextField
               label={
                 language === "en"
-                  ? t("events:form.type_en", {
-                      defaultValue: `${t("events:form.type")} (English)`,
-                    })
+                  ? t("events:form.type_en")
                   : t("events:form.type")
               }
               value={getLocalizedValue("event_type")}
@@ -160,9 +154,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
             <TextField
               label={
                 language === "en"
-                  ? t("events:form.location_en", {
-                      defaultValue: `${t("events:form.location")} (English)`,
-                    })
+                  ? t("events:form.location_en")
                   : t("events:form.location")
               }
               value={getLocalizedValue("location")}

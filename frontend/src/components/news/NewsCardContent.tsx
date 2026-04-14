@@ -1,13 +1,15 @@
-import { ContentCard } from "@/components/ui"
 import { cn } from "@/utils/cn"
-import { motion } from "framer-motion"
 import {
-  ArrowUpRight as ArrowOutwardIcon,
-  MessageCircle as ChatBubbleOutlineIcon,
-  Heart as FavoriteIcon,
+  ArrowUpRight as ArrowIcon,
+  Bookmark as BookmarkIcon,
+  BookmarkCheck as BookmarkCheckIcon,
+  Clock as ClockIcon,
+  MessageCircle as CommentIcon,
+  Heart as HeartIcon,
 } from "lucide-react"
+import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 
 interface NewsCardContentProps {
   id: string
@@ -16,7 +18,10 @@ interface NewsCardContentProps {
   isLiked: boolean
   likesCount: number
   commentsCount: number
+  isBookmarked?: boolean
+  readingTime?: number | null
   onToggleLike: () => void
+  onToggleBookmark?: () => void
   hoveringDisabled: boolean
 }
 
@@ -27,76 +32,115 @@ const NewsCardContent = ({
   isLiked,
   likesCount,
   commentsCount,
+  isBookmarked = false,
+  readingTime,
   onToggleLike,
+  onToggleBookmark,
   hoveringDisabled,
 }: NewsCardContentProps) => {
   const { t } = useTranslation(["common"])
+  const [celebrating, setCelebrating] = useState(false)
+
+  const handleLike = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!isLiked) {
+      setCelebrating(true)
+      setTimeout(() => setCelebrating(false), 400)
+    }
+    onToggleLike()
+  }, [isLiked, onToggleLike])
 
   return (
-    <ContentCard.Body className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-base ease-out group-hover:-translate-y-px group-focus-visible/content:-translate-y-px md:gap-3">
-      <ContentCard.Title className="text-fluid-h3 font-semibold line-clamp-none">
+    <div className="flex flex-1 flex-col gap-3 p-5">
+      {/* Title */}
+      <h3 className="font-semibold leading-snug text-text-primary text-base line-clamp-2"
+      >
         <Link
-          to={`/news/${id}`}
+          to="/news/$id"
+          params={{ id }}
           className={cn(
-            "before:absolute before:inset-0 focus:outline-none line-clamp-2",
+            "before:absolute before:inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium) focus-visible:ring-offset-2",
             hoveringDisabled && "pointer-events-none"
           )}
         >
           {title}
         </Link>
-      </ContentCard.Title>
+      </h3>
 
-      <p className="min-h-12 text-sm text-(--text-secondary) line-clamp-2 md:min-h-18 md:line-clamp-3">
+      {/* Preview */}
+      <p className="text-sm leading-relaxed text-(--text-secondary) line-clamp-2">
         {preview}
       </p>
 
-      <div className="relative z-deep flex items-center gap-4 mt-1 border-t border-glass-border pt-3">
-        <motion.button
-          type="button"
-          whileTap={{ scale: 0.85 }}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleLike()
-          }}
-          className={cn(
-            "flex items-center gap-1.5 transition-colors duration-fast",
-            isLiked
-              ? "text-error-text"
-              : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
-          )}
-        >
-          <div className="relative">
-            {isLiked ? (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 15 }}
-              >
-                <FavoriteIcon size={18} fill="currentColor" />
-              </motion.div>
-            ) : (
-              <FavoriteIcon size={18} />
+      {/* Footer — likes, comments, CTA */}
+      <div className="mt-auto flex items-center justify-between pt-3 border-t border-glass-border/(--opacity-soft)">
+        <div className="relative z-deep flex items-center gap-4">
+          {/* Like */}
+          <button
+            type="button"
+            onClick={handleLike}
+            className={cn(
+              "flex items-center gap-1.5 transition-[color,transform] duration-fast active:scale-90",
+              isLiked
+                ? "text-error-text"
+                : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
             )}
-          </div>
-          <span className="text-xs font-bold tabular-nums">{likesCount}</span>
-        </motion.button>
+            aria-label={isLiked ? t("common:aria.unlike", { defaultValue: "Unlike" }) : t("common:aria.like", { defaultValue: "Like" })}
+          >
+            <span className={cn(celebrating && "news-heart-celebrate")}>
+              <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} />
+            </span>
+            <span className="text-xs font-bold tabular-nums">{likesCount}</span>
+          </button>
 
-        <div className="flex items-center gap-1.5 text-(--text-secondary)">
-          <ChatBubbleOutlineIcon size={18} />
-          <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
+          {/* Comments */}
+          <div className="flex items-center gap-1.5 text-(--text-secondary)">
+            <CommentIcon size={16} />
+            <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
+          </div>
+
+          {/* Reading time (W59-10) */}
+          {readingTime != null && (
+            <div className="flex items-center gap-1 text-(--text-secondary)">
+              <ClockIcon size={14} />
+              <span className="text-[11px] font-medium tabular-nums">{readingTime} {t("common:time.minuteShort", { defaultValue: "min" })}</span>
+            </div>
+          )}
+
+          {/* Bookmark */}
+          {onToggleBookmark && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleBookmark()
+              }}
+              className={cn(
+                "flex items-center transition-[color,transform] duration-fast active:scale-90",
+                isBookmarked
+                  ? "text-brand"
+                  : "text-(--text-secondary) hover:text-brand/(--opacity-hover)"
+              )}
+              aria-label={isBookmarked ? t("common:aria.removeBookmark", { defaultValue: "Remove bookmark" }) : t("common:aria.addBookmark", { defaultValue: "Bookmark" })}
+            >
+              {isBookmarked ? (
+                <BookmarkCheckIcon size={16} fill="currentColor" />
+              ) : (
+                <BookmarkIcon size={16} />
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* CTA — reveals on hover */}
+        <div className="flex items-center gap-1 text-brand opacity-0 translate-x-1 transition duration-base ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0">
+          <span className="text-xs font-semibold tracking-wide hidden sm:inline">
+            {t("common:cta.learnMore", { defaultValue: "Learn more" })}
+          </span>
+          <ArrowIcon size={14} />
         </div>
       </div>
-
-      <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
-        <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-base ease-out group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
-          {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
-        </span>
-        <ArrowOutwardIcon
-          size={16}
-          className="translate-x-0 text-(--primary-main) opacity-0 transition duration-base ease-out group-focus-within:translate-x-1 group-focus-within:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
-        />
-      </div>
-    </ContentCard.Body>
+    </div>
   )
 }
 

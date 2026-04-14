@@ -1,0 +1,585 @@
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     NEWS PAGE TOKENS
+     Scoped under .news-theme — mirrors dashboard.css structure.
+     ═══════════════════════════════════════════════════════ */
+  .news-theme {
+    /* ── Typography ─────────────────────────────────────── */
+    --fs-news-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-news-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-news-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
+
+    /* ── Gradients & Flares ────────────────────────────── */
+    --grad-news-conic: conic-gradient(
+      from 140deg at 50% 50%,
+      var(--news-orb-1),
+      var(--news-orb-2),
+      transparent 85%
+    );
+
+    /* ── Light Theme ───────────────────────────────────── */
+    --news-hero-orb: color-mix(in srgb, var(--color-sky-400) 10%, transparent);
+    --news-hero-highlight: color-mix(in srgb, var(--color-indigo-500) 6%, transparent);
+    --news-orb-1: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
+    --news-orb-2: color-mix(in srgb, var(--color-indigo-400) 8%, transparent);
+    --news-orb-3: color-mix(in srgb, var(--color-purple-400) 6%, transparent);
+    --news-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-sky-400) 50%,
+      transparent 90%
+    );
+    --news-card-glow: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
+
+    /* ── Category badge colors ─────────────────────────── */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
+    --cat-blue-text: var(--color-blue-600);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-500) 12%, transparent);
+    --cat-emerald-text: var(--color-emerald-600);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-500) 12%, transparent);
+    --cat-purple-text: var(--color-purple-600);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-500) 12%, transparent);
+    --cat-amber-text: var(--color-amber-700);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-500) 12%, transparent);
+    --cat-sky-text: var(--color-sky-600);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-400) 12%, transparent);
+    --cat-slate-text: var(--color-slate-600);
+
+    /* ── Editorial typography (Wave 57) ────────────────── */
+    --fs-news-dropcap: 3.5em;
+    --news-body-max-width: 65ch;
+    --news-paragraph-spacing: 1.75em;
+    --news-pullquote-border: 3px solid var(--color-brand);
+    --news-pullquote-fs: clamp(1.125rem, 1.6vw, 1.375rem);
+
+    /* ── Sticky category nav (Wave 57) ────────────────── */
+    --news-sticky-top: 64px;
+    --news-sticky-blur: 16px;
+
+    /* ── Featured card gradient mesh ───────────────────── */
+    --news-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-sky-400) 8%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-indigo-400) 6%, transparent) 0%,
+      transparent 50%
+    );
+  }
+
+  /* Dark mode overrides for code blocks / tables */
+  .dark .news-article-body code {
+    background: oklch(0.25 0 0);
+  }
+
+  .dark .news-article-body pre {
+    background: oklch(0.2 0 0);
+  }
+
+  .dark .news-article-body th {
+    background: oklch(0.25 0 0);
+  }
+
+  .dark .news-theme {
+    /* ── Dark Theme — Brighter orbs for visibility ────── */
+    --news-hero-orb: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
+    --news-hero-highlight: color-mix(in srgb, var(--color-indigo-400) 10%, transparent);
+    --news-orb-1: color-mix(in srgb, var(--color-sky-400) 18%, transparent);
+    --news-orb-2: color-mix(in srgb, var(--color-indigo-400) 14%, transparent);
+    --news-orb-3: color-mix(in srgb, var(--color-purple-400) 10%, transparent);
+    --news-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-sky-500) 50%,
+      transparent 90%
+    );
+    --news-card-glow: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
+
+    /* ── Category badge colors (dark) ──────────────────── */
+    --cat-blue-bg: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
+    --cat-blue-text: var(--color-blue-400);
+    --cat-emerald-bg: color-mix(in srgb, var(--color-emerald-400) 16%, transparent);
+    --cat-emerald-text: var(--color-emerald-400);
+    --cat-purple-bg: color-mix(in srgb, var(--color-purple-400) 16%, transparent);
+    --cat-purple-text: var(--color-purple-400);
+    --cat-amber-bg: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+    --cat-amber-text: var(--color-amber-400);
+    --cat-sky-bg: color-mix(in srgb, var(--color-sky-400) 16%, transparent);
+    --cat-sky-text: var(--color-sky-400);
+    --cat-slate-bg: color-mix(in srgb, var(--color-slate-500) 16%, transparent);
+    --cat-slate-text: var(--color-slate-400);
+
+    /* ── Featured card gradient mesh (dark — brighter) ─── */
+    --news-featured-mesh: radial-gradient(
+      ellipse at 20% 50%,
+      color-mix(in srgb, var(--color-sky-400) 12%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      color-mix(in srgb, var(--color-indigo-400) 10%, transparent) 0%,
+      transparent 50%
+    );
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     EDITORIAL TYPOGRAPHY (Wave 57)
+     ═══════════════════════════════════════════════════════ */
+
+  /* Article body — optimal reading width + premium typography */
+  .news-article-body {
+    max-width: var(--news-body-max-width);
+    font-feature-settings: "kern", "liga", "calt";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .news-article-body p {
+    margin-block: var(--news-paragraph-spacing);
+  }
+
+  .news-article-body p:first-of-type {
+    margin-block-start: 0;
+  }
+
+  /* Drop cap — first letter of first paragraph */
+  .news-article-body .news-dropcap::first-letter {
+    float: left;
+    font-size: var(--fs-news-dropcap);
+    line-height: 0.8;
+    padding-right: 0.1em;
+    font-weight: 800;
+    color: var(--color-brand);
+  }
+
+  /* Pull-quote blockquote */
+  .news-pullquote,
+  .news-article-body blockquote {
+    border-left: var(--news-pullquote-border);
+    padding-left: var(--space-5, 1.25rem);
+    margin-block: var(--news-paragraph-spacing);
+    font-size: var(--news-pullquote-fs);
+    font-style: italic;
+    line-height: 1.6;
+    color: var(--text-primary);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     MARKDOWN EDITORIAL TYPOGRAPHY (Wave 58)
+     Styles for marked-rendered HTML within .news-article-body
+     ═══════════════════════════════════════════════════════ */
+
+  /* Headings */
+  .news-article-body h2 {
+    font-size: clamp(1.375rem, 2.2vw, 1.75rem);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+    margin-block: 2em 0.75em;
+    scroll-margin-top: 5rem;
+  }
+
+  .news-article-body h3 {
+    font-size: clamp(1.125rem, 1.8vw, 1.375rem);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-block: 1.5em 0.5em;
+    scroll-margin-top: 5rem;
+  }
+
+  .news-article-body h4 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-block: 1.25em 0.5em;
+    scroll-margin-top: 5rem;
+  }
+
+  .news-article-body h2:first-child,
+  .news-article-body h3:first-child,
+  .news-article-body h4:first-child {
+    margin-block-start: 0;
+  }
+
+  /* Lists */
+  .news-article-body ul,
+  .news-article-body ol {
+    margin-block: var(--news-paragraph-spacing);
+    padding-inline-start: 1.5em;
+  }
+
+  .news-article-body ul { list-style-type: disc; }
+  .news-article-body ol { list-style-type: decimal; }
+
+  .news-article-body li {
+    margin-block: 0.35em;
+    line-height: 1.7;
+  }
+
+  .news-article-body li::marker {
+    color: var(--color-brand);
+  }
+
+  /* Links */
+  .news-article-body a {
+    color: var(--color-brand);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+    transition: text-decoration-color 0.2s ease;
+  }
+
+  .news-article-body a:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  /* Inline code */
+  .news-article-body code {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.875em;
+    padding: 0.15em 0.4em;
+    border-radius: 0.375rem;
+    background: var(--bg-matte-list, oklch(0.95 0 0));
+    border: 1px solid var(--glass-border);
+  }
+
+  /* Code blocks */
+  .news-article-body pre {
+    margin-block: var(--news-paragraph-spacing);
+    padding: 1rem 1.25rem;
+    border-radius: 0.75rem;
+    background: var(--bg-matte-list, oklch(0.95 0 0));
+    border: 1px solid var(--glass-border);
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .news-article-body pre code {
+    padding: 0;
+    background: transparent;
+    border: none;
+    font-size: 0.85em;
+    line-height: 1.65;
+  }
+
+  /* Tables (GFM) */
+  .news-article-body table {
+    width: 100%;
+    margin-block: var(--news-paragraph-spacing);
+    border-collapse: collapse;
+    font-size: 0.9em;
+  }
+
+  .news-article-body th,
+  .news-article-body td {
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--glass-border);
+    text-align: left;
+  }
+
+  .news-article-body th {
+    font-weight: 700;
+    color: var(--text-primary);
+    background: var(--bg-matte-list, oklch(0.95 0 0));
+  }
+
+  .news-article-body tr:hover td {
+    background: var(--bg-surface);
+  }
+
+  /* Horizontal rule */
+  .news-article-body hr {
+    border: none;
+    height: 1px;
+    margin-block: 2.5em;
+    background: linear-gradient(
+      to right,
+      transparent 5%,
+      var(--glass-border) 50%,
+      transparent 95%
+    );
+  }
+
+  /* Strong / em */
+  .news-article-body strong {
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .news-article-body em {
+    font-style: italic;
+  }
+
+  /* Images in markdown */
+  .news-article-body img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+    margin-block: var(--news-paragraph-spacing);
+  }
+
+  /* ─── Table of Contents ────────────────────────────── */
+  .news-toc {
+    font-size: 0.875rem;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     STICKY CATEGORY NAV (Wave 57)
+     ═══════════════════════════════════════════════════════ */
+
+  .news-sticky-categories {
+    position: sticky;
+    top: var(--news-sticky-top);
+    z-index: var(--z-surface, 10);
+    transition:
+      backdrop-filter var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
+      background-color var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
+      box-shadow var(--motion-duration-base, 0.3s) var(--ease-premium, ease);
+  }
+
+  .news-sticky-categories[data-stuck="true"] {
+    backdrop-filter: blur(var(--news-sticky-blur)) saturate(1.3);
+    background-color: var(--bg-surface, #fff);
+    box-shadow: 0 1px 0 var(--glass-border);
+    padding-block: var(--space-2, 0.5rem);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   READING PROGRESS INDICATOR (Wave 58)
+   CSS scroll-driven animation — zero JS, GPU-composited.
+   ═══════════════════════════════════════════════════════ */
+
+.news-reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* Fill the gap above the pill: (nav 64px - pill 52px) / 2 = 6px */
+  height: calc((var(--navbar-h-base, 64px) - var(--navbar-pill-h, 52px)) / 2);
+  background: var(--color-brand);
+  transform-origin: left;
+  transform: scaleX(0);
+  z-index: calc(var(--z-navbar, 50) - 1);
+  pointer-events: none;
+  animation: news-reading-progress linear;
+  animation-timeline: scroll();
+}
+
+@keyframes news-reading-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   VIEW TRANSITIONS — NEWS CARDS (Wave 57 + 58)
+   ═══════════════════════════════════════════════════════ */
+
+/* Morph news card hero → detail page hero.
+   Only ONE card has view-transition-name: news-hero at a time (set on pointerdown).
+   The detail page hero always has view-transition-name: news-hero. */
+::view-transition-group(news-hero) {
+  animation-duration: 0.4s;
+  animation-timing-function: var(--ease-premium, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+::view-transition-old(news-hero) {
+  animation: 0.3s var(--ease-premium) both news-hero-out;
+}
+
+::view-transition-new(news-hero) {
+  animation: 0.4s var(--ease-premium) both news-hero-in;
+}
+
+@keyframes news-hero-out {
+  to {
+    opacity: 0;
+    transform: scale(1.03);
+    filter: blur(4px);
+  }
+}
+
+@keyframes news-hero-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(4px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTAINER QUERIES — NEWS CARDS (Wave 58)
+   ═══════════════════════════════════════════════════════ */
+
+.news-card-container {
+  container-type: inline-size;
+  container-name: news-card;
+}
+
+@container news-card (max-width: 280px) {
+  .news-card-title { font-size: 0.875rem; }
+  .news-card-preview { display: none; }
+  .news-card-footer { gap: 0.5rem; }
+}
+
+/* Intermediate — preview visible but clamped */
+@container news-card (min-width: 281px) and (max-width: 399px) {
+  .news-card-title { font-size: 1rem; }
+  .news-card-preview { -webkit-line-clamp: 2; }
+}
+
+@container news-card (min-width: 400px) {
+  .news-card-title { font-size: 1.25rem; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MATTE BADGE — opaque, volumetric, theme-adaptive (Wave 59)
+   Light: white bg, dark text, subtle lift shadow
+   Dark:  charcoal bg, white text, deeper shadow
+   ═══════════════════════════════════════════════════════ */
+
+.news-badge-matte {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.12),
+    0 0 0 1px rgb(0 0 0 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.6);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.dark .news-badge-matte {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow:
+    0 1px 4px rgb(0 0 0 / 0.4),
+    0 0 0 1px rgb(255 255 255 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════
+   HEART CELEBRATE — like pulse (Wave 59, W59-07)
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes news-heart-celebrate {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.35); }
+  60% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+.news-heart-celebrate {
+  animation: news-heart-celebrate 0.35s var(--ease-premium) both;
+}
+
+/* Scroll-to-top FAB visual styles in tailwind.css (.back-to-top-fab) — Wave 60 */
+
+/* ═══════════════════════════════════════════════════════
+   FIREFOX SCROLL-DRIVEN FALLBACK (Wave 59, W59-19)
+   ═══════════════════════════════════════════════════════ */
+
+@supports not (animation-timeline: scroll()) {
+  .news-reading-progress {
+    /* JS fallback sets transform via inline style */
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT STYLESHEET (Wave 58)
+   ═══════════════════════════════════════════════════════ */
+
+/* Page geometry — standalone at-rule (not nested in @media print) */
+@page {
+  margin: 2cm 1.5cm;
+  orphans: 3;
+  widows: 3;
+}
+
+@media print {
+  .news-theme {
+    background: white !important;
+    color: black !important;
+  }
+
+  .news-theme .aurora-mesh,
+  .news-theme [aria-hidden="true"],
+  .news-reading-progress,
+  .news-sticky-categories {
+    display: none !important;
+  }
+
+  .news-article-body {
+    max-width: 100%;
+    font-size: 12pt;
+    line-height: 1.6;
+    color: black;
+  }
+
+  .news-article-body .news-dropcap::first-letter {
+    color: black;
+  }
+
+  .news-pullquote {
+    border-left-color: var(--text-primary, #333);
+    color: var(--text-primary, #333);
+  }
+
+  /* Code blocks visible on paper */
+  .news-article-body pre,
+  .news-article-body code {
+    background: var(--bg-matte-list, #f5f5f5) !important;
+    border: 1px solid var(--glass-border, #ccc) !important;
+  }
+
+  /* Prevent breaking inside block-level elements */
+  .news-article-body img,
+  .news-article-body blockquote,
+  .news-article-body table,
+  .news-article-body pre {
+    break-inside: avoid;
+  }
+
+  .news-article-body h2,
+  .news-article-body h3,
+  .news-article-body h4 {
+    break-after: avoid;
+  }
+
+  /* Hide non-content sections */
+  .glass-layer-surface,
+  .glass-layer-elevated,
+  .glass-layer-floating {
+    backdrop-filter: none !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION (Wave 57 + 58)
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .news-article-body .news-dropcap::first-letter {
+    float: none;
+    font-size: inherit;
+    line-height: inherit;
+    padding-right: 0;
+  }
+
+  .news-sticky-categories[data-stuck="true"] {
+    transition: none;
+  }
+
+  .news-reading-progress {
+    display: none;
+  }
+
+  .news-heart-celebrate {
+    animation: none;
+  }
+}

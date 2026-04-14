@@ -3,7 +3,7 @@ import { motion } from "framer-motion" // Removed AnimatePresence, LayoutGroup a
 import { File, Check, CheckCheck } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/utils/cn"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { sanitizeUrl } from "@/utils/media"
 import { Message } from "./types"
@@ -43,6 +43,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
   return (
     <div
       ref={containerRef}
+      role="log"
+      aria-live="polite"
+      aria-label="Chat messages"
       className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
     >
       <div

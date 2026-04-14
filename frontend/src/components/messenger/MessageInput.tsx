@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { X, FileText, Image as ImageIcon, File, Paperclip, Send } from "lucide-react"
 import { cn } from "@/utils/cn"
-import SmartImage from "@/components/SmartImage"
+import SmartImage from "@/components/media/SmartImage"
 
 interface MessageInputProps {
   onSend: (text: string, files: File[]) => void
@@ -14,6 +14,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   const [text, setText] = useState("")
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [svgRejected, setSvgRejected] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSend = () => {
@@ -61,6 +62,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           if (file.type.startsWith("image/")) {
             try {
               const fileText = await file.slice(0, 512).text()
+              // eslint-disable-next-line security/detect-unsafe-regex -- bounded 512-byte input, no ReDoS risk
               if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(fileText)) return null
             } catch {
               // ignore
@@ -69,10 +71,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           return file
         })
       )
-      setSelectedFiles((previousFiles) => [
-        ...previousFiles,
-        ...filteredFiles.filter((file) => !!file),
-      ])
+      const validFiles = filteredFiles.filter((file): file is File => !!file)
+      const rejectedCount = filteredFiles.length - validFiles.length
+      if (rejectedCount > 0) {
+        setSvgRejected(true)
+        setTimeout(() => setSvgRejected(false), 3000)
+      }
+      setSelectedFiles((previousFiles) => [...previousFiles, ...validFiles])
     }
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
@@ -83,6 +88,19 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
 
   return (
     <div className="shrink-0 p-3 z-popover relative border-t border-glass-border bg-surface/(--opacity-soft) backdrop-blur-xl">
+      <AnimatePresence>
+        {svgRejected && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="absolute -top-10 left-3 right-3 rounded-lg bg-error-bg px-3 py-1.5 text-sm text-error-text shadow-sm"
+            role="alert"
+          >
+            {t("messenger:svgNotAllowed", "SVG files are not allowed")}
+          </motion.div>
+        )}
+      </AnimatePresence>
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) => (

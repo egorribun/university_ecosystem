@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import axios from "@/api/client"
-import { Link } from "react-router-dom"
+import { Link } from "@tanstack/react-router"
 import { useTranslation, Trans } from "react-i18next"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"

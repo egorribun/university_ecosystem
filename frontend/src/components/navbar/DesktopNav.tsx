@@ -1,7 +1,5 @@
-import { Link } from "react-router-dom"
-import { motion } from "framer-motion"
+import { Link } from "@tanstack/react-router"
 import { cn } from "@/utils/cn"
-import { slideUpVariants, staggerContainerVariants, springSoft } from "@/utils/animations"
 import { type NavigationItem } from "@/config/navigation"
 import { type ScrollBehavior } from "@/hooks/useScrollRestoration"
 
@@ -12,6 +10,7 @@ interface DesktopNavProps {
   scrollToTop: (behavior?: ScrollBehavior) => void
   markScrollFromBottom: () => void
   prefersReducedMotion: boolean
+  isCompact: boolean
 }
 
 export const DesktopNav = ({
@@ -21,44 +20,61 @@ export const DesktopNav = ({
   scrollToTop,
   markScrollFromBottom,
   prefersReducedMotion,
+  isCompact,
 }: DesktopNavProps) => {
   return (
-    <motion.ul
-      variants={staggerContainerVariants(0.05, 0.2)}
-      initial="hidden"
-      animate="visible"
-      className="ml-(--space-8) flex flex-1 flex-row flex-wrap items-center gap-1 m-0 p-0 min-w-0 list-none text-base font-medium"
+    <ul
+      className={cn(
+        "flex flex-row items-center m-0 p-0 min-w-0 list-none",
+        isCompact ? "ml-(--space-4) gap-0.5" : "ml-(--space-8) gap-1"
+      )}
     >
-      {menuLinks.map((item) => (
-        <motion.li
-          key={item.to}
-          variants={slideUpVariants}
-          whileHover={{ y: -1 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <Link
-            id={`navbar-link-${item.to.replace(/\//g, "") || "home"}`}
-            to={item.to}
-            className={cn("menu-link", isActive(item.to) && "active")}
-            onPointerDown={markScrollFromBottom}
-            onClick={(e) => {
-              if (isSameTarget(item.to)) {
-                e.preventDefault()
-                scrollToTop(prefersReducedMotion ? "auto" : "smooth")
-              }
-            }}
-          >
-            <span className="relative z-surface transition-colors duration-fast">{item.label}</span>
-            {isActive(item.to) && (
-              <motion.div
-                layoutId="navbar-active-bar"
-                className="active-bar"
-                transition={springSoft}
-              />
-            )}
-          </Link>
-        </motion.li>
-      ))}
-    </motion.ul>
+      {menuLinks.map((item) => {
+        const Icon = item.icon
+        const active = isActive(item.to)
+        return (
+          <li key={item.to}>
+            <Link
+              id={`navbar-link-${item.to.replace(/\//g, "") || "home"}`}
+              to={item.to}
+              className="nav-link-premium"
+              data-active={active || undefined}
+              onPointerDown={markScrollFromBottom}
+              onClick={(e) => {
+                if (isSameTarget(item.to)) {
+                  e.preventDefault()
+                  scrollToTop(prefersReducedMotion ? "auto" : "smooth")
+                }
+              }}
+            >
+              {/* Icon — instant swap, no crossfade (prevents flash during pill morph) */}
+              <span
+                className={cn(
+                  "flex items-center justify-center",
+                  isCompact
+                    ? "relative opacity-100"
+                    : "absolute inset-0 opacity-0 pointer-events-none"
+                )}
+              >
+                <Icon size={18} aria-hidden="true" />
+              </span>
+
+              {/* Text — instant swap */}
+              <span
+                className={cn(
+                  "whitespace-nowrap",
+                  isCompact
+                    ? "absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none"
+                    : "relative opacity-100"
+                )}
+              >
+                {item.label}
+              </span>
+
+            </Link>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

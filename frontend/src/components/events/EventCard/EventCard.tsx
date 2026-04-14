@@ -1,25 +1,21 @@
+/**
+ * EventCard — logic-only layer.
+ * Computes all state via useEventCardLogic, then delegates rendering
+ * to EventCardView (lazy-loaded).
+ *
+ * Pattern source: components/news/NewsCard.tsx
+ * PERF-27-02-KEPT: custom areEqual comparator (React Compiler can't infer for memo'd components)
+ */
+
 import { memo, lazy, Suspense, type FC } from "react"
 import type { Event } from "@/types/Event"
-
-import { cn } from "@/utils/cn"
-import { SpotlightOverlay } from "@/components/ui/Spotlight"
-import { motion as motionTokens } from "@/theme/tokens"
-import { motion } from "framer-motion"
-import { EASING } from "@/utils/motion"
-
-import { Snackbar, ContentCard, ConfirmDialog } from "@/components/ui"
 import { useEventCardLogic } from "@/hooks/useEventCardLogic"
+import { useTranslation } from "react-i18next"
+import { inferEventCategory } from "@/features/events/categories"
+import { EventCardSkeleton } from "./EventCardSkeleton"
 
-// Sub-components
-import { EventMedia } from "./EventMedia"
-import { EventInfo } from "./EventInfo"
-import { EventActions } from "./EventActions"
-
-const EventEditDialog = lazy(() =>
-  import("@/components/events/EventEditDialog").then((m) => ({ default: m.EventEditDialog }))
-)
-const EventAdminActions = lazy(() =>
-  import("./EventAdminActions").then((m) => ({ default: m.EventAdminActions }))
+const EventCardView = lazy(() =>
+  import("./EventCardView").then((m) => ({ default: m.EventCardView }))
 )
 
 interface EventCardProps extends Partial<Event> {
@@ -29,33 +25,17 @@ interface EventCardProps extends Partial<Event> {
   maxWidth?: string
 }
 
-// Animation Constants
-const STAGGER_BATCH_SIZE = 10
-const HOVER_Y_OFFSET = -4
-
 const EventCardComponent: FC<EventCardProps> = (props) => {
-  const {
-    id,
-    title,
-    speaker,
-    location,
-    description,
-    starts_at,
-    ends_at,
-    event_type,
-    is_active,
-    animationIndex = 0,
-  } = props
+  const { id, title, speaker, location, description, starts_at, ends_at, event_type, event_type_en } = props
+  const { t } = useTranslation(["events", "common"])
 
   const {
     user,
-    t,
     spotlight,
     menuId,
     timeStatus,
     eventEnded,
     cardImageUrl,
-
     snackbar,
     setSnackbar,
     loading,
@@ -70,143 +50,63 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
     newImage,
     setNewImage,
     imageLoading,
-    cardImageReady,
-    setCardImageReady,
     previewUrl,
-
     registration,
     handleEdit,
     handleDelete,
-    navigate: navigateToDetails,
   } = useEventCardLogic(props)
 
+  const category = inferEventCategory(event_type ?? event_type_en)
+  const isAdmin = user?.role === "admin" || user?.role === "teacher"
+
   return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 16, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{
-        duration: motionTokens.durationMedium,
-        delay: (animationIndex % STAGGER_BATCH_SIZE) * motionTokens.staggerDelay,
-        ease: EASING.premium,
-      }}
-      whileHover={{
-        y: HOVER_Y_OFFSET,
-        transition: { duration: motionTokens.durationFast, ease: EASING.premium },
-      }}
-      className="w-full outline-none"
-      data-testid="event-card"
-      tabIndex={editOpen ? -1 : 0}
-      aria-labelledby={`event-title-${id}`}
-      aria-describedby={`event-location-${id}`}
-      onKeyDown={(e) => {
-        if (!editOpen && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault()
-          navigateToDetails()
-        }
-      }}
-    >
-      <ContentCard
-        hoverable={!editOpen}
-        className={cn(
-          "card-glass group w-full transform-gpu will-change-transform rounded-fluid-lg hover:shadow-premium-lift",
-          editOpen ? "cursor-default" : "card-interactive"
-        )}
-        onMouseMove={spotlight.onMouseMove}
-      >
-        <SpotlightOverlay
-          mouseX={spotlight.mouseX}
-          mouseY={spotlight.mouseY}
-          className="z-hide rounded-3xl"
-        />
-
-        {/* Admin Menu */}
-        {user && (user.role === "admin" || user.role === "teacher") && (
-          <ContentCard.Actions className="absolute top-3 right-3 z-surface">
-            <Suspense fallback={<div className="w-8 h-8 rounded-full bg-glass animate-pulse" />}>
-              <EventAdminActions
-                menuAnchor={menuAnchor}
-                setMenuAnchor={setMenuAnchor}
-                onEdit={() => setEditOpen(true)}
-                onDelete={() => setConfirmDeleteOpen(true)}
-                menuId={menuId}
-              />
-            </Suspense>
-          </ContentCard.Actions>
-        )}
-
-        <ContentCard.Body className="p-fluid-card-p flex flex-col h-full">
-          {/* Media Section */}
-          <EventMedia
-            imageUrl={cardImageUrl || undefined}
-            alt={title || ""}
-            eventType={event_type || undefined}
-            timeStatus={timeStatus}
-            isReady={cardImageReady}
-            onReady={() => setCardImageReady(true)}
-            onImageClick={navigateToDetails}
-          />
-
-          {/* Info Section */}
-          <EventInfo
-            titleId={`event-title-${id}`}
-            title={title || ""}
-            speaker={speaker || undefined}
-            startsAt={starts_at || ""}
-            endsAt={ends_at || ""}
-            location={location || ""}
-            description={description || ""}
-          />
-
-          {/* Actions Section */}
-          <EventActions
-            eventId={id}
-            isActive={is_active ?? true}
-            isEnded={eventEnded}
-            isRegistered={registration.isRegistered}
-            participantCount={registration.participantCount}
-            qrToken={registration.qrToken}
-            loading={loading || registration.isLoading}
-            onRegister={registration.register}
-            onUnregister={registration.unregister}
-            userRole={user?.role}
-          />
-        </ContentCard.Body>
-
-        {/* Dialogs */}
-        <Suspense fallback={null}>
-          <EventEditDialog
-            open={editOpen}
-            onClose={() => setEditOpen(false)}
-            draft={editData}
-            setDraft={setEditData}
-            onSave={handleEdit}
-            loading={loading}
-            imageLoading={imageLoading}
-            dateError={false}
-            normalizedTitle={title || ""}
-            normalizedLocation={location || ""}
-            newImage={newImage}
-            setNewImage={setNewImage}
-            previewUrl={previewUrl}
-          />
-        </Suspense>
-
-        <ConfirmDialog
-          open={confirmDeleteOpen}
-          title={t("events:card.dialogs.delete.title")}
-          message={t("events:card.dialogs.delete.description")}
-          confirmText={t("common:buttons.delete")}
-          cancelText={t("common:buttons.cancel")}
-          variant="danger"
-          onConfirm={handleDelete}
-          onCancel={() => setConfirmDeleteOpen(false)}
-          isLoading={loading}
-        />
-
-        <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
-      </ContentCard>
-    </motion.article>
+    <Suspense fallback={<EventCardSkeleton />}>
+      <EventCardView
+        id={id}
+        title={title || ""}
+        speaker={speaker ?? undefined}
+        startsAt={starts_at || ""}
+        endsAt={ends_at ?? undefined}
+        location={location ?? undefined}
+        description={description ?? undefined}
+        imageUrl={cardImageUrl || undefined}
+        participantCount={registration.participantCount}
+        isRegistered={registration.isRegistered}
+        isEnded={eventEnded}
+        isAdmin={isAdmin}
+        loading={loading || registration.isLoading}
+        error={snackbar}
+        hoveringDisabled={editOpen}
+        timeStatus={timeStatus.status}
+        category={category}
+        editOpen={editOpen}
+        confirmDeleteOpen={confirmDeleteOpen}
+        editData={editData as Record<string, unknown>}
+        spotlight={spotlight}
+        menuAnchor={menuAnchor}
+        setMenuAnchor={setMenuAnchor}
+        menuId={menuId}
+        onEditOpen={() => setEditOpen(true)}
+        onEditClose={() => setEditOpen(false)}
+        onDeleteOpen={() => setConfirmDeleteOpen(true)}
+        onDeleteClose={() => setConfirmDeleteOpen(false)}
+        onDeleteConfirm={handleDelete}
+        onEditSave={handleEdit}
+        editDraft={editData as Record<string, unknown>}
+        setEditDraft={setEditData as (d: Record<string, unknown>) => void}
+        imageLoading={imageLoading}
+        newImage={newImage}
+        setNewImage={setNewImage}
+        previewUrl={previewUrl}
+        onErrorClose={() => setSnackbar("")}
+        t={{
+          deleteTitle: t("events:card.dialogs.delete.title"),
+          deleteDesc: t("events:card.dialogs.delete.description"),
+          confirm: t("common:buttons.delete"),
+          cancel: t("common:buttons.cancel"),
+        }}
+      />
+    </Suspense>
   )
 }
 

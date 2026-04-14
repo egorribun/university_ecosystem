@@ -6,7 +6,7 @@
 
 // Re-export components from existing locations
 export { DashboardStories } from "@/components/stories"
-export { default as WeatherWidget } from "@/components/WeatherWidget"
+export { default as WeatherWidget } from "@/components/ui/WeatherWidget"
 
 // Hooks
 export { useDashboardStories } from "@/hooks/useDashboardStories"

@@ -59,7 +59,7 @@ function FeatureErrorFallback({
       </div>
       <div>
         <h3 className="text-sm font-bold text-text-primary">
-          {featureName ? `${featureName} unavailable` : "Feature unavailable"}
+          {t("common:errors.featureUnavailable", { feature: featureName ?? "Feature" })}
         </h3>
         <p className="text-xs text-text-primary/(--opacity-medium)">{t("common:statuses.error")}</p>
       </div>

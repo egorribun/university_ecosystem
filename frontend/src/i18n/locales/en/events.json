@@ -1,5 +1,32 @@
 {
   "pageTitle": "Events",
+  "pageDescription": "Upcoming events, lectures, and activities",
+  "categories": {
+    "all": "All",
+    "lecture": "Lecture",
+    "seminar": "Seminar",
+    "conference": "Conference",
+    "workshop": "Workshop",
+    "social": "Social",
+    "sport": "Sport",
+    "other": "Other"
+  },
+  "sort": {
+    "label": "Sort",
+    "newest": "Newest",
+    "popular": "Popular",
+    "upcoming": "Upcoming"
+  },
+  "keyboard": {
+    "overlayTitle": "Keyboard shortcuts",
+    "next": "Next event",
+    "prev": "Previous event",
+    "open": "Open event",
+    "register": "Register / Unregister",
+    "deselect": "Deselect",
+    "toggleHelp": "Toggle shortcuts",
+    "pressToClose": "Press ? or Esc to close"
+  },
   "states": {
     "empty": "No events match your filters",
     "emptyHint": {
@@ -15,8 +42,12 @@
   },
   "filters": {
     "search": "Search events",
-    "type": "Type",
-    "location": "Location"
+    "location": "Location",
+    "dateRange": "Date",
+    "today": "Today",
+    "thisWeek": "This week",
+    "thisMonth": "This month",
+    "allDates": "All dates"
   },
   "actions": {
     "openCreate": "+ Add event"
@@ -36,17 +67,23 @@
     "location": "Location",
     "location_en": "Location (English)",
     "speaker": "Speaker",
+    "image": "Image",
+    "participants": "Participants",
     "uploadImage": "Upload image",
     "imageSelected": "Image selected",
     "start": "Start",
     "end": "End",
     "errors": {
+      "titleRequired": "Title is required",
+      "startRequired": "Start time is required",
+      "endRequired": "End time is required",
       "endsBeforeStarts": "End time must be after the start time"
     }
   },
   "aria": {
     "clearSearch": "Clear search",
-    "openFilters": "Open filters panel"
+    "openFilters": "Open filters panel",
+    "categoryFilter": "Category filter"
   },
   "alt": {
     "preview": "Event image preview",
@@ -66,7 +103,12 @@
       "closeQr": "Close"
     },
     "statuses": {
-      "ended": "Event ended"
+      "ended": "Event ended",
+      "live": "LIVE",
+      "soon": "Soon",
+      "registered": "Registered",
+      "open": "Open",
+      "in": "In {{time}}"
     },
     "participants": "Participants: {{count}}",
     "messages": {
@@ -86,8 +128,14 @@
       "delete": {
         "title": "Delete event?",
         "description": "This action cannot be undone. Confirm deletion."
+      },
+      "qr": {
+        "title": "QR Code"
       }
     }
+  },
+  "quickView": {
+    "viewDetails": "View details"
   },
   "detail": {
     "messages": {
@@ -98,7 +146,10 @@
       "fileDeleted": "File removed",
       "fileDeleteFailed": "Couldn't remove the file",
       "aboutUpdated": "Description updated",
-      "aboutUpdateFailed": "Couldn't update the description"
+      "aboutUpdateFailed": "Couldn't update the description",
+      "linkCopied": "Link copied",
+      "deleted": "Event deleted",
+      "deleteFailed": "Couldn't delete the event"
     },
     "upload": {
       "errors": {
@@ -114,6 +165,18 @@
       "location": "Location",
       "date": "Date",
       "speaker": "Speaker"
+    },
+    "actions": {
+      "share": "Share",
+      "zoom": "Zoom image"
+    },
+    "nav": {
+      "label": "Event navigation",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "related": {
+      "title": "Related events"
     },
     "sections": {
       "about": {
