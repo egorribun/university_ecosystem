@@ -46,7 +46,7 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@0d865d5cc6d507df4765f1f866bfae8bab4e2a73 # v2.69.7
+        uses: taiki-e/install-action@921a4027af787cda265c4f334a0f7f89b21d72e9 # v2.75.8
         with:
           tool: wasm-pack
 
@@ -64,7 +64,7 @@ jobs:
           CI: "true"
 
       - name: Upload vitest report
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-vitest-report
           path: ${{ inputs.working-directory }}/vitest-report.xml
@@ -90,7 +90,7 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@0d865d5cc6d507df4765f1f866bfae8bab4e2a73 # v2.69.7
+        uses: taiki-e/install-action@921a4027af787cda265c4f334a0f7f89b21d72e9 # v2.75.8
         with:
           tool: wasm-pack
 
@@ -140,7 +140,7 @@ jobs:
       # The action verifies SHA256 checksums from official GitHub releases, preventing
       # supply chain attacks via DNS hijacking or CDN compromise (OWASP CI/CD C-PPE-1).
       - name: Install wasm-pack
-        uses: taiki-e/install-action@0d865d5cc6d507df4765f1f866bfae8bab4e2a73 # v2.69.7
+        uses: taiki-e/install-action@921a4027af787cda265c4f334a0f7f89b21d72e9 # v2.75.8
         with:
           tool: wasm-pack
 
@@ -153,7 +153,7 @@ jobs:
         run: npm run build
 
       - name: Upload production bundle
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-dist
           path: ${{ inputs.working-directory }}/dist
@@ -172,7 +172,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download production bundle
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: frontend-dist
           path: ${{ inputs.working-directory }}/dist
@@ -208,7 +208,7 @@ jobs:
 
       - name: Upload bundle report
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bundle-report
           path: ${{ inputs.working-directory }}/bundle-report.json
@@ -249,7 +249,7 @@ jobs:
         run: npm run lhci
 
       - name: Upload Lighthouse reports
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: lighthouse-reports

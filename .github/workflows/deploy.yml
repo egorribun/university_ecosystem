@@ -54,7 +54,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -216,7 +216,7 @@ jobs:
         # Replaces long-lived secrets with ephemeral, short-lived tokens via GitHub's OIDC provider.
         # Ensure the cloud provider's identity pool trusts this repository and environment.
         # NOTE (2026-03-06): Upgraded from v4 to v6. Requires GitHub Actions runner ≥ 2.327.1.
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
+        uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
         with:
           role-to-assume: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
@@ -256,7 +256,7 @@ jobs:
         # GitHub Insights tracks Deployment Frequency automatically via the
         # 'environment' field above. Lead Time requires explicit calculation.
         id: dora
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             // Fetch the triggering commit to get its author date
@@ -360,7 +360,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"

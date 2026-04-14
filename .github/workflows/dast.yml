@@ -44,7 +44,7 @@ jobs:
       # Updated to the verified SHA for v3.1.0 (latest stable as of 2026-03-08).
       # To re-verify: gh api repos/projectdiscovery/nuclei-action/git/refs/tags
       - name: Set up Nuclei
-        uses: projectdiscovery/nuclei-action@32a91c0da7be14c07b0ade6c14fa0f6e78d97c9c # v3.1.0
+        uses: projectdiscovery/nuclei-action@cc153d0541e1adf8a42bbe31c0a4fb2376147538 # v3.1.1
         with:
           nuclei-version: v3.3.9
 
@@ -78,14 +78,14 @@ jobs:
             || true  # Don't fail the workflow — findings are uploaded as SARIF
 
       - name: Upload results to GitHub Security
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         if: always()
         with:
           sarif_file: nuclei-results.sarif
           category: nuclei-dast
 
       - name: Upload raw JSON findings
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: nuclei-results-${{ github.run_id }}
@@ -130,7 +130,7 @@ jobs:
           artifact_name: zap-results-${{ github.run_id }}
 
       - name: Upload ZAP SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         if: always()
         with:
           sarif_file: zap-results.sarif
