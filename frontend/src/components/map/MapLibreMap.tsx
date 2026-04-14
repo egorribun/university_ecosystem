@@ -5,6 +5,7 @@
  * walking paths, cinematic camera intro, premium markers.
  *
  * Wave 100 — Leaflet → MapLibre; Wave 102-103 — premium visual masterpiece.
+ * Wave 107 — reduced-motion, sky dedup, extrusion fix, timeout cleanup, POI perf.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
@@ -12,13 +13,18 @@ import { Map, Layer } from "react-map-gl/maplibre"
 import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
-import { getCampusBuildings, type BuildingLetter, type MapCategory } from "@/data/campusBuildings"
+import { getCampusBuildings, type BuildingId, type MapCategory } from "@/data/campusBuildings"
 import { CAMPUS_POIS, type CampusPOI } from "@/data/campusPOI"
 import { useOverpassPOI } from "@/hooks/useOverpassPOI"
 import { BuildingMarker } from "./BuildingMarker"
 import { POIMarker } from "./POIMarker"
 import { POIControls } from "./POIControls"
 import { MapControls } from "./MapControls"
+import { WeatherParticles } from "./WeatherParticles"
+import { EventMarker } from "./EventMarker"
+import { MapMiniOverview } from "./MapMiniOverview"
+import type { WeatherCondition } from "@/utils/weatherCodes"
+import type { MapEvent } from "@/hooks/useMapEvents"
 import "maplibre-gl/dist/maplibre-gl.css"
 
 /* ── Tile styles ── */
@@ -37,9 +43,9 @@ const GENERIC_BUILDINGS_LAYER: LayerProps = {
       "interpolate",
       ["linear"],
       ["get", "render_height"],
-      0, "#d1d5db",
-      50, "#9ca3af",
-      100, "#6b7280",
+      0, "#d1d5db",   // ≈ --color-gray-300
+      50, "#9ca3af",  // ≈ --color-gray-400
+      100, "#6b7280", // ≈ --color-gray-500
     ],
     "fill-extrusion-height": [
       "interpolate",
@@ -48,23 +54,56 @@ const GENERIC_BUILDINGS_LAYER: LayerProps = {
       15, 0,
       16, ["get", "render_height"],
     ],
-    "fill-extrusion-base": [
-      "case",
-      [">=", ["get", "zoom"], 16],
-      ["get", "render_min_height"],
-      0,
-    ],
+    // render_min_height used directly — minzoom: 15 already gates visibility
+    "fill-extrusion-base": ["get", "render_min_height"],
     "fill-extrusion-opacity": 0.5,
   },
 }
 
+/**
+ * Sky/fog configuration — MapLibre GL doesn't support CSS variables in paint
+ * properties, so hex values are used with token equivalents documented.
+ * Wave 108: period-aware sky colors (dawn=warm, dusk=orange, night=deep navy).
+ */
+type TimePeriod = "dawn" | "morning" | "afternoon" | "dusk" | "night"
+
+const SKY_PRESETS: Record<TimePeriod, { sky: string; horizon: string; fog: string }> = {
+  dawn:      { sky: "#fbbf24", horizon: "#fca5a5", fog: "#fef3c7" }, // warm amber-pink sunrise
+  morning:   { sky: "#87ceeb", horizon: "#f0f4ff", fog: "#e8edf5" }, // default bright blue
+  afternoon: { sky: "#87ceeb", horizon: "#f0f4ff", fog: "#e8edf5" }, // same as morning
+  dusk:      { sky: "#f59e0b", horizon: "#a78bfa", fog: "#fde68a" }, // orange-violet sunset
+  night:     { sky: "#0f172a", horizon: "#1e293b", fog: "#1e293b" }, // deep navy
+}
+
+const SKY_DARK: { sky: string; horizon: string; fog: string } = {
+  sky: "#0f172a", horizon: "#1e293b", fog: "#1e293b",
+}
+
+function getSkyConfig(isDark: boolean, period?: TimePeriod) {
+  // Dark mode always uses deep navy regardless of period
+  const preset = isDark ? SKY_DARK : SKY_PRESETS[period ?? "afternoon"]
+  return {
+    "sky-color": preset.sky,
+    "sky-horizon-blend": 0.3,
+    "horizon-color": preset.horizon,
+    "horizon-fog-blend": 0.8,
+    "fog-color": preset.fog,
+    "fog-ground-blend": 0.5,
+  }
+}
+
 interface MapLibreMapProps {
-  selectedBuilding: BuildingLetter | null
+  selectedBuilding: BuildingId | null
   activeCategory: MapCategory
-  highlightedBuilding: BuildingLetter | null
-  onSelectBuilding: (letter: BuildingLetter) => void
+  highlightedBuilding: BuildingId | null
+  onSelectBuilding: (letter: BuildingId) => void
   mapRef?: React.MutableRefObject<MapRef | null>
   isDark?: boolean
+  timePeriod?: TimePeriod
+  weatherCondition?: WeatherCondition
+  showEvents?: boolean
+  mapEvents?: MapEvent[]
+  onToggleEvents?: () => void
 }
 
 export function MapLibreMapComponent({
@@ -74,9 +113,16 @@ export function MapLibreMapComponent({
   onSelectBuilding,
   mapRef,
   isDark,
+  timePeriod,
+  weatherCondition,
+  showEvents,
+  mapEvents,
+  onToggleEvents,
 }: MapLibreMapProps) {
   const { i18n } = useTranslation("map")
   const hasAnimatedIntro = useRef(false)
+  const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [currentZoom, setCurrentZoom] = useState(16)
 
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
@@ -104,16 +150,22 @@ export function MapLibreMapComponent({
   const { pois: overpassPois, isLoading: poisLoading, loadMore, hasLoaded } = useOverpassPOI()
   const [poiCategory, setPoiCategory] = useState<string>("all")
 
+  /* ── Merge hardcoded + Overpass POIs with O(n) spatial dedup ── */
   const allPois = useMemo(() => {
     const base: CampusPOI[] = [...CAMPUS_POIS]
     if (hasLoaded) {
+      // Spatial hash for O(n) dedup — key = rounded lat/lng grid cell
+      const seen = new Set(
+        base.map((bp) =>
+          `${Math.round(bp.coords[0] / 0.0005)}_${Math.round(bp.coords[1] / 0.0005)}`,
+        ),
+      )
       for (const op of overpassPois) {
-        const isDuplicate = base.some((bp) => {
-          const dlat = Math.abs(bp.coords[0] - op.coords[0])
-          const dlng = Math.abs(bp.coords[1] - op.coords[1])
-          return dlat < 0.0005 && dlng < 0.0005
-        })
-        if (!isDuplicate) base.push(op)
+        const key = `${Math.round(op.coords[0] / 0.0005)}_${Math.round(op.coords[1] / 0.0005)}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          base.push(op)
+        }
       }
     }
     if (poiCategory === "all") return base
@@ -127,52 +179,60 @@ export function MapLibreMapComponent({
     const map = mapRef?.current?.getMap()
     if (!map) return
 
-    // Sky — atmospheric gradient
-    map.setSky({
-      "sky-color": isDark ? "#0f172a" : "#87ceeb",
-      "sky-horizon-blend": 0.3,
-      "horizon-color": isDark ? "#1e293b" : "#f0f4ff",
-      "horizon-fog-blend": 0.8,
-      "fog-color": isDark ? "#1e293b" : "#e8edf5",
-      "fog-ground-blend": 0.5,
-    })
+    map.setSky(getSkyConfig(!!isDark, timePeriod))
 
-    // Cinematic intro — fly from high altitude
+    // Cinematic intro — fly from high altitude (skip if reduced-motion)
     if (!hasAnimatedIntro.current) {
       hasAnimatedIntro.current = true
-      map.jumpTo({
-        center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-        zoom: 13,
-        pitch: 0,
-        bearing: -20,
-      })
-      setTimeout(() => {
-        map.flyTo({
+      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+      if (prefersReduced) {
+        // Jump directly to final position — no animation
+        map.jumpTo({
           center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
           zoom: 16,
           pitch: 45,
           bearing: 0,
-          duration: 2500,
-          essential: true,
         })
-      }, 300)
+      } else {
+        map.jumpTo({
+          center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+          zoom: 13,
+          pitch: 0,
+          bearing: -20,
+        })
+        introTimeoutRef.current = setTimeout(() => {
+          // Guard against unmount during delay
+          if (!mapRef?.current) return
+          map.flyTo({
+            center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+            zoom: 16,
+            pitch: 45,
+            bearing: 0,
+            duration: 2500,
+            essential: true,
+          })
+        }, 300)
+      }
     }
   }, [mapRef, isDark])
 
-  /* ── Update sky on theme change ── */
+  /* ── Cleanup cinematic intro timeout on unmount ── */
+  useEffect(() => {
+    return () => {
+      if (introTimeoutRef.current) {
+        clearTimeout(introTimeoutRef.current)
+        introTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  /* ── Update sky on theme/time-of-day change ── */
   useEffect(() => {
     const map = mapRef?.current?.getMap()
     if (!map || !map.loaded()) return
-
-    map.setSky({
-      "sky-color": isDark ? "#0f172a" : "#87ceeb",
-      "sky-horizon-blend": 0.3,
-      "horizon-color": isDark ? "#1e293b" : "#f0f4ff",
-      "horizon-fog-blend": 0.8,
-      "fog-color": isDark ? "#1e293b" : "#e8edf5",
-      "fog-ground-blend": 0.5,
-    })
-  }, [isDark, mapRef])
+    map.setSky(getSkyConfig(!!isDark, timePeriod))
+  }, [isDark, timePeriod, mapRef])
 
   return (
     <div className="maplibre-map-wrapper relative h-full min-h-[inherit]">
@@ -189,6 +249,7 @@ export function MapLibreMapComponent({
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
         reuseMaps
         onLoad={onMapLoad}
+        onZoom={(e) => setCurrentZoom(e.viewState.zoom)}
         maxPitch={70}
       >
         {/* Generic 3D buildings (gray, surrounding area) */}
@@ -210,7 +271,17 @@ export function MapLibreMapComponent({
         {allPois.map((poi) => (
           <POIMarker key={poi.id} poi={poi} />
         ))}
+
+        {/* Event markers */}
+        {showEvents && mapEvents?.map((event) => (
+          <EventMarker key={event.id} event={event} />
+        ))}
       </Map>
+
+      {/* Weather particle overlay — above map, below markers */}
+      {weatherCondition && (
+        <WeatherParticles condition={weatherCondition} isDark={!!isDark} />
+      )}
 
       {/* Premium map controls — bottom right */}
       <div className="absolute bottom-4 right-4 z-10">
@@ -225,8 +296,19 @@ export function MapLibreMapComponent({
           onLoadMore={loadMore}
           isLoading={poisLoading}
           hasLoadedMore={hasLoaded}
+          showEvents={!!showEvents}
+          onToggleEvents={onToggleEvents ?? (() => {})}
         />
       </div>
+
+      {/* Mini-map overview — visible when zoomed in */}
+      {mapRef && (
+        <MapMiniOverview
+          mainMapRef={mapRef}
+          isDark={!!isDark}
+          visible={currentZoom > 16}
+        />
+      )}
     </div>
   )
 }

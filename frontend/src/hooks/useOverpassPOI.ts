@@ -76,6 +76,7 @@ export function useOverpassPOI() {
     /** Call to trigger Overpass API fetch (or load from cache) */
     loadMore: query.refetch,
     hasLoaded: query.isSuccess,
-    isCached: readCache() !== null,
+    // query.isSuccess is true when fetchWithCache resolves (including cached path)
+    isCached: query.isSuccess,
   }
 }

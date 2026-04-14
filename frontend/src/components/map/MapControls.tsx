@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
+import { logError } from "@/app/logger"
 import {
   Plus,
   Minus,
@@ -57,9 +58,9 @@ export function MapControls({ mapRef }: MapControlsProps) {
     if (!container) return
 
     if (!document.fullscreenElement) {
-      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(logError)
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(logError)
     }
   }, [mapRef])
 

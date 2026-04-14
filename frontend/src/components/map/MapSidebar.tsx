@@ -4,8 +4,15 @@ import { X, Clock, MapPin, Users, ChevronRight } from "lucide-react"
 import type { CampusBuilding, CampusRoom, BuildingFloor } from "@/data/campusBuildings"
 import { isOpenNow } from "@/utils/buildingHours"
 import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
+import { getRoomStatus } from "@/utils/roomStatus"
 import { useAppShell } from "@/contexts/AppShellContext"
 import useFocusTrap from "@/hooks/useFocusTrap"
+
+interface TodayLesson {
+  room?: string | null
+  start_time?: string | null
+  end_time?: string | null
+}
 
 interface MapSidebarProps {
   building: CampusBuilding | undefined
@@ -16,6 +23,7 @@ interface MapSidebarProps {
   onRoomClick: (roomId: string) => void
   onClose: () => void
   isMobile: boolean
+  todayLessons?: TodayLesson[]
 }
 
 /**
@@ -32,6 +40,7 @@ export function MapSidebar({
   onRoomClick,
   onClose,
   isMobile,
+  todayLessons,
 }: MapSidebarProps) {
   const { t } = useTranslation("map")
   const { setOverlayState } = useAppShell()
@@ -224,7 +233,7 @@ export function MapSidebar({
                   role="radio"
                   aria-checked={isActive}
                   onClick={() => onFloorChange(flNum)}
-                  className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors"
                   style={{
                     backgroundColor: isActive
                       ? `color-mix(in srgb, ${building.colorHex} 15%, var(--bg-surface))`
@@ -279,6 +288,7 @@ export function MapSidebar({
           <div className="flex flex-col gap-1">
             {floor.rooms.map((room) => {
               const isActive = selectedRoom === room.id
+              const status = todayLessons ? getRoomStatus(room.id, todayLessons) : null
               return (
                 <button
                   key={room.id}
@@ -291,15 +301,34 @@ export function MapSidebar({
                       : undefined,
                   }}
                 >
-                  <div>
+                  <div className="flex items-center gap-1.5 min-w-0">
                     <span className="font-bold" style={isActive ? { color: building.colorHex } : undefined}>
                       {room.id}
                     </span>
                     {room.name && (
-                      <span className="text-[var(--text-tertiary)] ml-1.5">{room.name}</span>
+                      <span className="text-[var(--text-tertiary)] truncate">{room.name}</span>
                     )}
                   </div>
-                  <ChevronRight className="h-3 w-3 text-[var(--text-tertiary)] opacity-50" />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {status && (
+                      <span
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                        style={{
+                          backgroundColor: status.status === "free"
+                            ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
+                            : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+                          color: status.status === "free"
+                            ? "var(--color-emerald-500)"
+                            : "var(--color-rose-500)",
+                        }}
+                      >
+                        {status.status === "free"
+                          ? t("sidebar.roomFree")
+                          : t("sidebar.roomBusy", { time: status.busyUntil })}
+                      </span>
+                    )}
+                    <ChevronRight className="h-3 w-3 text-[var(--text-tertiary)] opacity-50" />
+                  </div>
                 </button>
               )
             })}
@@ -326,7 +355,7 @@ export function MapSidebar({
       >
         {/* Drag handle */}
         <div
-          role="separator"
+          aria-roledescription="drag handle"
           aria-label={t("sidebar.dragToResize")}
           className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={(e) => handleDragStart(e.clientY)}

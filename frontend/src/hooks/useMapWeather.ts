@@ -1,12 +1,36 @@
+/**
+ * useMapWeather.ts — Campus weather data from Open-Meteo API.
+ * Wave 99 — initial; Wave 108 — expanded fields + hourly forecast.
+ */
+
 import { useQuery } from "@tanstack/react-query"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import { wmoToCondition, type WeatherCondition } from "@/utils/weatherCodes"
+
+export interface HourlyPoint {
+  /** Hour (0-23) */
+  hour: number
+  /** Temperature in Celsius, rounded */
+  temperature: number
+  /** Mapped weather condition */
+  condition: WeatherCondition
+}
 
 export interface MapWeatherData {
   temperature: number
   weatherCode: number
   isDay: boolean
   condition: WeatherCondition
+  /** Feels-like temperature (°C) */
+  feelsLike: number
+  /** Wind speed (m/s) */
+  windSpeed: number
+  /** Relative humidity (%) */
+  humidity: number
+  /** UV index (0-11+) */
+  uvIndex: number
+  /** Next 12 hours forecast */
+  hourlyForecast: HourlyPoint[]
 }
 
 const CACHE_KEY = "map.weather.cache"
@@ -40,7 +64,15 @@ function writeCache(data: MapWeatherData): void {
   }
 }
 
-const API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${CAMPUS_COORDINATES.lat}&longitude=${CAMPUS_COORDINATES.lon}&current=temperature_2m,weather_code,is_day&timezone=Europe/Moscow`
+const API_URL = [
+  `https://api.open-meteo.com/v1/forecast`,
+  `?latitude=${CAMPUS_COORDINATES.lat}`,
+  `&longitude=${CAMPUS_COORDINATES.lon}`,
+  `&current=temperature_2m,weather_code,is_day,apparent_temperature,wind_speed_10m,relative_humidity_2m,uv_index`,
+  `&hourly=temperature_2m,weather_code`,
+  `&forecast_hours=12`,
+  `&timezone=Europe/Moscow`,
+].join("")
 
 async function fetchWeather(): Promise<MapWeatherData> {
   const cached = readCache()
@@ -52,11 +84,31 @@ async function fetchWeather(): Promise<MapWeatherData> {
   const json = await res.json()
   const current = json.current
 
+  // Parse hourly forecast (12 points)
+  const hourlyForecast: HourlyPoint[] = []
+  const hourlyTimes: string[] = json.hourly?.time ?? []
+  const hourlyTemps: number[] = json.hourly?.temperature_2m ?? []
+  const hourlyCodes: number[] = json.hourly?.weather_code ?? []
+
+  for (let i = 0; i < Math.min(hourlyTimes.length, 12); i++) {
+    const dt = new Date(hourlyTimes[i])
+    hourlyForecast.push({
+      hour: dt.getHours(),
+      temperature: Math.round(hourlyTemps[i] ?? 0),
+      condition: wmoToCondition(hourlyCodes[i] ?? 0),
+    })
+  }
+
   const data: MapWeatherData = {
     temperature: Math.round(current.temperature_2m),
     weatherCode: current.weather_code,
     isDay: current.is_day === 1,
     condition: wmoToCondition(current.weather_code),
+    feelsLike: Math.round(current.apparent_temperature ?? current.temperature_2m),
+    windSpeed: Math.round((current.wind_speed_10m ?? 0) * 10) / 10,
+    humidity: Math.round(current.relative_humidity_2m ?? 0),
+    uvIndex: Math.round(current.uv_index ?? 0),
+    hourlyForecast,
   }
 
   writeCache(data)

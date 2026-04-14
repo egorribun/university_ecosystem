@@ -7,7 +7,7 @@
 import { useState, useMemo } from "react"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
-import type { CampusBuilding, BuildingLetter } from "@/data/campusBuildings"
+import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
 import { isOpenNow } from "@/utils/buildingHours"
 import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
 
@@ -15,7 +15,7 @@ interface BuildingMarkerProps {
   building: CampusBuilding
   isSelected: boolean
   isHighlighted: boolean
-  onClick: (letter: BuildingLetter) => void
+  onClick: (letter: BuildingId) => void
   /** Array index for stagger entrance animation */
   index?: number
 }

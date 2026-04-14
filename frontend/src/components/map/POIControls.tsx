@@ -1,14 +1,14 @@
 /**
  * POIControls.tsx — POI category filter + "Load more" button.
  *
- * Overlays the Leaflet map at bottom-left.
+ * Overlays the MapLibre GL map at bottom-left.
  * "Load more" triggers Overpass API fetch via useOverpassPOI.
  *
- * Wave 99 — campus map Leaflet integration.
+ * Wave 99 — campus map integration; Wave 107 — stale comment fix.
  */
 
 import { useTranslation } from "react-i18next"
-import { MapPin, Loader2 } from "lucide-react"
+import { MapPin, Loader2, CalendarDays } from "lucide-react"
 
 interface POIControlsProps {
   activeCategory: string
@@ -16,6 +16,8 @@ interface POIControlsProps {
   onLoadMore: () => void
   isLoading: boolean
   hasLoadedMore: boolean
+  showEvents: boolean
+  onToggleEvents: () => void
 }
 
 const POI_CATEGORIES = ["all", "transport", "food", "shop", "service", "campus"] as const
@@ -26,6 +28,8 @@ export function POIControls({
   onLoadMore,
   isLoading,
   hasLoadedMore,
+  showEvents,
+  onToggleEvents,
 }: POIControlsProps) {
   const { t } = useTranslation("map")
 
@@ -69,6 +73,18 @@ export function POIControls({
           <span>{isLoading ? t("poi.loading") : t("poi.loadMore")}</span>
         </button>
       )}
+
+      {/* Events toggle */}
+      <button
+        type="button"
+        onClick={onToggleEvents}
+        className="map-poi-chip"
+        data-active={showEvents || undefined}
+        aria-pressed={showEvents}
+      >
+        <CalendarDays className="h-3 w-3" />
+        <span>{showEvents ? t("events.hideOnMap") : t("events.showOnMap")}</span>
+      </button>
     </div>
   )
 }

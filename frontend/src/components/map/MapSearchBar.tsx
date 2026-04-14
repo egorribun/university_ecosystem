@@ -1,11 +1,11 @@
 import { useState, useMemo, useCallback, useRef, useId, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
-import type { CampusBuilding, BuildingLetter } from "@/data/campusBuildings"
+import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
 
 interface SearchResult {
   type: "building" | "room"
-  buildingLetter: BuildingLetter
+  buildingLetter: BuildingId
   label: string
   sublabel?: string
   roomId?: string
@@ -14,15 +14,17 @@ interface SearchResult {
 
 interface MapSearchBarProps {
   buildings: CampusBuilding[]
-  onSelectBuilding: (letter: BuildingLetter) => void
-  onSelectRoom: (letter: BuildingLetter, floor: number, roomId: string) => void
+  onSelectBuilding: (letter: BuildingId) => void
+  onSelectRoom: (letter: BuildingId, floor: number, roomId: string) => void
+  /** External ref for keyboard shortcut "/" focus (Wave 108) */
+  searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
 
 /**
  * MapSearchBar — fuzzy autocomplete over buildings + rooms.
  * role="combobox" + aria-expanded + aria-activedescendant.
  */
-export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom }: MapSearchBarProps) {
+export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, searchInputRef }: MapSearchBarProps) {
   const { t } = useTranslation("map")
   const baseId = useId()
   const listboxId = `${baseId}-listbox`
@@ -122,7 +124,12 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom }: MapS
       <div className="map-card-matte flex items-center gap-2 px-3 py-2">
         <Search className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
         <input
-          ref={inputRef}
+          ref={(node: HTMLInputElement | null) => {
+            (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+            if (searchInputRef && "current" in searchInputRef) {
+              (searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+            }
+          }}
           type="text"
           role="combobox"
           aria-expanded={isOpen && results.length > 0}
@@ -162,7 +169,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom }: MapS
         <div
           id={listboxId}
           role="listbox"
-          className="absolute top-full left-0 right-0 mt-1 z-20 map-card-matte max-h-64 overflow-y-auto"
+          className="absolute top-full left-0 right-0 mt-1 z-20 map-card-matte max-h-[min(16rem,calc(100dvh-200px))] overflow-y-auto"
         >
           {buildingResults.length > 0 && (
             <div className="px-3 pt-2 pb-1">
@@ -182,7 +189,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom }: MapS
                 type="button"
                 onClick={() => handleSelect(r)}
                 onPointerEnter={() => setActiveIdx(globalIdx)}
-                className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-surface-hover)]"
+                className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--map-accent-icon)] focus-visible:outline-none"
                 style={activeIdx === globalIdx ? { backgroundColor: "var(--bg-surface-hover)" } : undefined}
               >
                 <span className="font-bold">{r.label}</span>
@@ -211,7 +218,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom }: MapS
                 type="button"
                 onClick={() => handleSelect(r)}
                 onPointerEnter={() => setActiveIdx(globalIdx)}
-                className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-surface-hover)]"
+                className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--map-accent-icon)] focus-visible:outline-none"
                 style={activeIdx === globalIdx ? { backgroundColor: "var(--bg-surface-hover)" } : undefined}
               >
                 <span className="font-bold">{r.label}</span>
@@ -222,11 +229,6 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom }: MapS
             )
           })}
 
-          {results.length === 0 && (
-            <p className="px-3 py-4 text-sm text-center text-[var(--text-tertiary)]">
-              {t("search.noResults")}
-            </p>
-          )}
         </div>
       )}
     </div>

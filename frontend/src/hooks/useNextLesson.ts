@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { parseBuildingRoom } from "@/utils/buildingIcons"
-import { extractFloorFromRoomId, type BuildingLetter } from "@/data/campusBuildings"
+import { extractFloorFromRoomId, BUILDING_IDS, type BuildingId } from "@/data/campusBuildings"
 
 /**
  * useNextLesson — bridge between schedule data and campus map.
@@ -13,11 +13,11 @@ import { extractFloorFromRoomId, type BuildingLetter } from "@/data/campusBuildi
  */
 
 interface NextLessonMapInfo {
-  /** Building letter (e.g. "А") */
-  building: BuildingLetter
-  /** Floor number (e.g. 3 from "А-305") */
+  /** Building ID (e.g. "ГУК") */
+  building: BuildingId
+  /** Floor number (e.g. 3 from "ГУК-305") */
   floor: number
-  /** Full room ID (e.g. "А-305") */
+  /** Full room ID (e.g. "ГУК-305") */
   roomId: string
   /** Lesson subject */
   subject: string
@@ -36,11 +36,15 @@ export function useNextLesson(): NextLessonMapInfo | null {
     const parsed = parseBuildingRoom(nextLesson.room)
     if (!parsed) return null
 
+    // Type guard — reject unknown building IDs from schedule data
+    if (!BUILDING_IDS.includes(parsed.building as BuildingId)) return null
+    const buildingId = parsed.building as BuildingId
+
     const floor = extractFloorFromRoomId(nextLesson.room)
     if (!floor) return null
 
     return {
-      building: parsed.building as BuildingLetter,
+      building: buildingId,
       floor,
       roomId: nextLesson.room,
       subject: nextLesson.subject ?? "",

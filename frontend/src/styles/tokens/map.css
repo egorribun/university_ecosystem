@@ -102,17 +102,10 @@
     --map-layer-active-text: var(--text-inverse);
     --map-on-accent: var(--text-inverse);
 
-    /* ── Building colors (9 real GUU buildings) ───── */
-    --map-bldg-a: var(--color-blue-500);      /* ГУК (main) */
-    --map-bldg-b: var(--color-amber-500);     /* Lecture halls */
-    --map-bldg-c: var(--color-emerald-500);   /* Labs */
-    --map-bldg-d: var(--color-slate-500);     /* Admin */
-    --map-bldg-e: var(--color-rose-500);      /* Sports */
-    --map-bldg-f: var(--color-indigo-500);    /* Dorm 2 */
-    --map-bldg-g: var(--color-sky-500);       /* Dorm 6 */
-    --map-bldg-h: var(--color-violet-500);    /* Institute */
+    /* Building colors defined inline via building.colorVar/colorHex (campusBuildings.ts) */
+    /* 9 buildings: ГУК (blue), ПА (amber), ЛК (emerald), А (slate), Б (rose), СК (indigo), О2 (sky), О6 (violet), ЦИТ (orange) */
 
-    /* ── POI tokens (Leaflet map mode) ───────────── */
+    /* ── POI tokens ────────────────────────────────── */
     --map-poi-transport: var(--color-blue-500);
     --map-poi-food: var(--color-amber-500);
     --map-poi-shop: var(--color-violet-500);
@@ -122,7 +115,7 @@
     --map-poi-popup-shadow: var(--map-card-shadow);
     --map-poi-marker-size: 32px;
 
-    /* ── Leaflet overrides ───────────────────────── */
+    /* ── MapLibre overrides ─────────────────────── */
     --map-attribution-bg: color-mix(in srgb, var(--bg-surface) 80%, transparent);
   }
 
@@ -175,7 +168,81 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   SEASONAL PALETTE (Wave 108)
+   Lowest specificity — overridden by time-of-day and weather.
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme[data-season="spring"] {
+  --map-orb-1: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-pink-300) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-emerald-400) 10%, transparent);
+}
+.map-theme[data-season="autumn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-orange-400) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-amber-400) 10%, transparent);
+}
+.map-theme[data-season="winter"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-300) 15%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-sky-200) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-sky-300) 12%, transparent);
+}
+/* summer = default teal/cyan palette — no overrides needed */
+
+.dark .map-theme[data-season="spring"] {
+  --map-orb-1: color-mix(in srgb, var(--color-emerald-500) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-pink-400) 10%, transparent);
+}
+.dark .map-theme[data-season="autumn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-500) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-orange-500) 10%, transparent);
+}
+.dark .map-theme[data-season="winter"] {
+  --map-orb-1: color-mix(in srgb, var(--color-sky-400) 18%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-sky-300) 12%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TIME-OF-DAY ATMOSPHERE (Wave 108)
+   Medium specificity — overrides season, overridden by weather.
+   ═══════════════════════════════════════════════════════ */
+
+.map-theme[data-time-period="dawn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-300) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-rose-300) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-amber-300) 12%, transparent);
+}
+.map-theme[data-time-period="dusk"] {
+  --map-orb-1: color-mix(in srgb, var(--color-orange-400) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-violet-400) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-orange-400) 12%, transparent);
+}
+.map-theme[data-time-period="night"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-500) 8%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-400) 6%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-slate-500) 6%, transparent);
+}
+/* Night building pin glow — "lit windows" effect */
+.map-theme[data-time-period="night"] .map-building-pin {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--_pin-color, var(--color-teal-400)) 40%, transparent));
+}
+
+.dark .map-theme[data-time-period="dawn"] {
+  --map-orb-1: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-rose-400) 12%, transparent);
+}
+.dark .map-theme[data-time-period="dusk"] {
+  --map-orb-1: color-mix(in srgb, var(--color-orange-500) 16%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-violet-500) 12%, transparent);
+}
+.dark .map-theme[data-time-period="night"] {
+  --map-orb-1: color-mix(in srgb, var(--color-slate-600) 10%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-500) 8%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
    WEATHER ATMOSPHERE (Open-Meteo)
+   Highest specificity — overrides both season and time-of-day.
    data-weather attr set by MapFeature from useMapWeather.
    ═══════════════════════════════════════════════════════ */
 
@@ -279,6 +346,41 @@
   background: var(--map-card-bg);
   box-shadow: var(--map-card-shadow);
   color: var(--text-primary);
+}
+
+/* ── Expanded weather panel (Wave 108) ────── */
+.map-weather-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow-hover);
+}
+.map-weather-panel-hourly {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.map-weather-panel-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 40px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  scroll-snap-align: start;
+  transition: background-color 0.15s;
+}
+.map-weather-panel-hour:hover {
+  background: var(--bg-surface-hover);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -415,6 +517,27 @@
 
 .map-poi-pin:active {
   transform: scale(0.9);
+}
+
+/* ── Event pin markers (Wave 108) ───────── */
+.map-event-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, filter 0.2s;
+  animation: map-marker-stagger 0.4s var(--ease-premium, ease-out) backwards;
+  animation-delay: calc(var(--stagger-index, 0) * 60ms);
+}
+.map-event-pin:hover,
+.map-event-pin:focus-visible {
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--color-amber-500) 50%, transparent));
+}
+.map-event-pin:focus-visible {
+  outline: 2px solid var(--color-amber-500);
+  outline-offset: 2px;
+  border-radius: 50%;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -625,6 +748,37 @@
   }
 }
 
+/* ── Mini-map overview (Wave 108) ───────── */
+.map-mini-overview {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  width: 140px;
+  height: 100px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--map-card-bg);
+  box-shadow: var(--map-card-shadow);
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+.map-mini-overview .maplibregl-ctrl-attrib {
+  display: none;
+}
+.map-mini-viewport-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-teal-500);
+  box-shadow: 0 0 4px var(--color-teal-400);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+}
+@media print { .map-mini-overview { display: none; } }
+
 .map-control-panel {
   display: flex;
   flex-direction: column;
@@ -662,6 +816,10 @@
   transform: scale(0.92);
 }
 
+.map-control-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-teal-500);
+}
 .map-control-btn:disabled {
   opacity: 0.3;
   cursor: default;

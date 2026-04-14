@@ -1,0 +1,172 @@
+/**
+ * MapWeatherPanel.tsx — Expanded weather information panel.
+ * Shows feels-like temp, wind, humidity, UV + 12h hourly forecast.
+ * Opened by clicking MapWeatherBadge. Wave 108.
+ */
+
+import { useEffect, useRef } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { useTranslation } from "react-i18next"
+import {
+  Thermometer,
+  Wind,
+  Droplets,
+  Sun,
+  X,
+  Cloud,
+  CloudRain,
+  Snowflake,
+  CloudFog,
+  CloudLightning,
+  Moon,
+  type LucideIcon,
+} from "lucide-react"
+import type { MapWeatherData, HourlyPoint } from "@/hooks/useMapWeather"
+import type { WeatherCondition } from "@/utils/weatherCodes"
+
+const CONDITION_ICONS: Record<WeatherCondition, LucideIcon> = {
+  clear: Sun,
+  cloudy: Cloud,
+  rain: CloudRain,
+  snow: Snowflake,
+  fog: CloudFog,
+  storm: CloudLightning,
+}
+
+interface MapWeatherPanelProps {
+  data: MapWeatherData
+  open: boolean
+  onClose: () => void
+}
+
+export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
+  const { t } = useTranslation("map")
+  const prefersReduced = useReducedMotion()
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  /* ── Close on click outside ── */
+  useEffect(() => {
+    if (!open) return
+    const handle = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    // Delay to avoid the badge click also triggering close
+    const id = setTimeout(() => document.addEventListener("pointerdown", handle), 0)
+    return () => {
+      clearTimeout(id)
+      document.removeEventListener("pointerdown", handle)
+    }
+  }, [open, onClose])
+
+  /* ── Close on Escape ── */
+  useEffect(() => {
+    if (!open) return
+    const handle = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handle)
+    return () => window.removeEventListener("keydown", handle)
+  }, [open, onClose])
+
+  const motionProps = prefersReduced
+    ? {}
+    : {
+        initial: { opacity: 0, y: -8, scale: 0.96 },
+        animate: { opacity: 1, y: 0, scale: 1 },
+        exit: { opacity: 0, y: -8, scale: 0.96 },
+        transition: { duration: 0.2 },
+      }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          ref={panelRef}
+          className="map-weather-panel"
+          role="dialog"
+          aria-label={t("weather.hourlyForecast")}
+          {...motionProps}
+        >
+          {/* Close button */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-2 right-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
+            aria-label={t("sidebar.close")}
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          {/* Current details grid */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <StatCard
+              icon={Thermometer}
+              label={t("weather.feelsLike")}
+              value={`${data.feelsLike > 0 ? "+" : ""}${data.feelsLike}°`}
+            />
+            <StatCard
+              icon={Wind}
+              label={t("weather.wind")}
+              value={`${data.windSpeed} ${t("weather.speedUnit")}`}
+            />
+            <StatCard
+              icon={Droplets}
+              label={t("weather.humidity")}
+              value={`${data.humidity}%`}
+            />
+            <StatCard
+              icon={Sun}
+              label={t("weather.uvIndex")}
+              value={`${data.uvIndex}`}
+            />
+          </div>
+
+          {/* Hourly forecast */}
+          {data.hourlyForecast.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                {t("weather.hourlyForecast")}
+              </p>
+              <div className="map-weather-panel-hourly">
+                {data.hourlyForecast.map((point) => (
+                  <HourlyColumn key={point.hour} point={point} isDay={data.isDay} />
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/* ── Stat card ── */
+function StatCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[var(--bg-surface-hover)]">
+      <Icon className="h-3.5 w-3.5 text-[var(--map-accent-icon)] shrink-0" />
+      <div className="min-w-0">
+        <p className="text-[9px] text-[var(--text-tertiary)] truncate">{label}</p>
+        <p className="text-xs font-bold text-text-primary">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+/* ── Hourly column ── */
+function HourlyColumn({ point, isDay }: { point: HourlyPoint; isDay: boolean }) {
+  const Icon = (point.condition === "clear" && !isDay) ? Moon : (CONDITION_ICONS[point.condition] ?? Sun)
+  return (
+    <div className="map-weather-panel-hour">
+      <span className="text-[9px] text-[var(--text-tertiary)]">
+        {String(point.hour).padStart(2, "0")}
+      </span>
+      <Icon className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+      <span className="text-[10px] font-bold text-text-primary">
+        {point.temperature > 0 ? "+" : ""}{point.temperature}°
+      </span>
+    </div>
+  )
+}

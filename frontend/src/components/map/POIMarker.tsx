@@ -2,6 +2,7 @@
  * POIMarker.tsx — Premium POI marker with category-specific Lucide icons.
  * react-map-gl/maplibre Marker with hover tooltip + click popup.
  * Wave 102 — redesign from generic white-dot circles.
+ * Wave 107 — replace hardcoded hex with CSS tokens.
  */
 
 import { useState } from "react"
@@ -36,12 +37,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   MapPin,
 }
 
-const CATEGORY_HEX: Record<string, string> = {
-  transport: "#3b82f6",
-  food: "#f59e0b",
-  shop: "#8b5cf6",
-  service: "#10b981",
-  campus: "#14b8a6",
+/** CSS token reference for POI category colors — defined in map.css */
+function poiColorVar(type: string): string {
+  return `var(--map-poi-${type}, #94a3b8)`
 }
 
 interface POIMarkerProps {
@@ -53,7 +51,7 @@ export function POIMarker({ poi }: POIMarkerProps) {
   const [showPopup, setShowPopup] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
-  const hex = CATEGORY_HEX[poi.type] ?? "#94a3b8"
+  const colorVar = poiColorVar(poi.type)
   const Icon = ICON_MAP[poi.icon] ?? MapPin
 
   const displayName = poi.i18nKey
@@ -74,13 +72,21 @@ export function POIMarker({ poi }: POIMarkerProps) {
         }}
       >
         <div
+          role="button"
+          tabIndex={0}
           aria-label={`${displayName} — ${t(`poi.categories.${poi.type}`)}`}
           className={`map-poi-pin${isHovered ? " map-poi-pin--hover" : ""}`}
           style={{
-            "--_poi-color": hex,
+            "--_poi-color": colorVar,
           } as React.CSSProperties}
           onPointerEnter={() => setIsHovered(true)}
           onPointerLeave={() => setIsHovered(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              setShowPopup(true)
+            }
+          }}
         >
           <Icon size={14} color="white" strokeWidth={2.5} />
         </div>
@@ -118,7 +124,7 @@ export function POIMarker({ poi }: POIMarkerProps) {
             <div className="flex items-center gap-2 mb-1.5">
               <div
                 className="flex items-center justify-center w-7 h-7 rounded-full"
-                style={{ backgroundColor: hex }}
+                style={{ backgroundColor: colorVar }}
               >
                 <Icon size={14} color="white" strokeWidth={2.5} />
               </div>

@@ -11,7 +11,7 @@
 
 /* ── Type Definitions ──────────────────────────── */
 
-export type BuildingLetter = "А" | "Б" | "В" | "Г" | "Д" | "Е" | "Ж" | "З" | "И"
+export type BuildingId = "ГУК" | "ПА" | "ЛК" | "А" | "Б" | "СК" | "О2" | "О6" | "ЦИТ"
 
 export type RoomType =
   | "lecture"
@@ -41,7 +41,7 @@ export interface BuildingHours {
 }
 
 export interface CampusRoom {
-  /** Full room ID, e.g. "А-305" */
+  /** Full room ID, e.g. "ГУК-305" */
   id: string
   /** Room number only, e.g. "305" */
   number: string
@@ -61,8 +61,8 @@ export interface BuildingFloor {
 }
 
 export interface CampusBuilding {
-  /** Cyrillic letter, e.g. "А" */
-  letter: BuildingLetter
+  /** Building abbreviation, e.g. "ГУК" */
+  letter: BuildingId
   /** Real structure number, e.g. "стр. 8" */
   structureId: string
   /** Localized building name */
@@ -93,22 +93,22 @@ export interface CampusBuilding {
 
 /* ── Building Colors ─────────────────────────────── */
 
-const BUILDING_COLORS: Record<BuildingLetter, { colorVar: string; colorHex: string }> = {
-  А: { colorVar: "var(--color-blue-500)", colorHex: "#3b82f6" },
-  Б: { colorVar: "var(--color-amber-500)", colorHex: "#f59e0b" },
-  В: { colorVar: "var(--color-emerald-500)", colorHex: "#10b981" },
-  Г: { colorVar: "var(--color-slate-500)", colorHex: "#64748b" },
-  Д: { colorVar: "var(--color-rose-500)", colorHex: "#f43f5e" },
-  Е: { colorVar: "var(--color-indigo-500)", colorHex: "#6366f1" },
-  Ж: { colorVar: "var(--color-sky-500)", colorHex: "#0ea5e9" },
-  З: { colorVar: "var(--color-violet-500)", colorHex: "#8b5cf6" },
-  И: { colorVar: "var(--color-orange-500)", colorHex: "#f97316" },
+const BUILDING_COLORS: Record<BuildingId, { colorVar: string; colorHex: string }> = {
+  ГУК: { colorVar: "var(--color-blue-500)", colorHex: "#3b82f6" },
+  ПА: { colorVar: "var(--color-amber-500)", colorHex: "#f59e0b" },
+  ЛК: { colorVar: "var(--color-emerald-500)", colorHex: "#10b981" },
+  А: { colorVar: "var(--color-slate-500)", colorHex: "#64748b" },
+  Б: { colorVar: "var(--color-rose-500)", colorHex: "#f43f5e" },
+  СК: { colorVar: "var(--color-indigo-500)", colorHex: "#6366f1" },
+  О2: { colorVar: "var(--color-sky-500)", colorHex: "#0ea5e9" },
+  О6: { colorVar: "var(--color-violet-500)", colorHex: "#8b5cf6" },
+  ЦИТ: { colorVar: "var(--color-orange-500)", colorHex: "#f97316" },
 }
 
 /* ── Structural Data (locale-independent) ─────────── */
 
 interface BuildingStructure {
-  letter: BuildingLetter
+  letter: BuildingId
   structureId: string
   tags: MapCategory[]
   geoCoords: [number, number]
@@ -131,7 +131,7 @@ interface BuildingStructure {
 const CAMPUS_STRUCTURE: BuildingStructure[] = [
   /* ── А — Главный учебный корпус (ГУК, стр. 8, 8 этажей) ── */
   {
-    letter: "А",
+    letter: "ГУК",
     structureId: "стр. 8",
     tags: ["study", "services", "events"],
     geoCoords: [55.71405, 37.81165],
@@ -139,85 +139,85 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "А-101", number: "101", type: "lecture", capacity: 200 },
-          { id: "А-102", number: "102", type: "cafeteria", capacity: 300 },
-          { id: "А-103", number: "103", type: "admin", capacity: 20 },
-          { id: "А-104", number: "104", type: "other", capacity: 15 },
-          { id: "А-105", number: "105", type: "admin", capacity: 12 },
-          { id: "А-106", number: "106", type: "lecture", capacity: 100 },
+          { id: "ГУК-101", number: "101", type: "lecture", capacity: 200 },
+          { id: "ГУК-102", number: "102", type: "cafeteria", capacity: 300 },
+          { id: "ГУК-103", number: "103", type: "admin", capacity: 20 },
+          { id: "ГУК-104", number: "104", type: "other", capacity: 15 },
+          { id: "ГУК-105", number: "105", type: "admin", capacity: 12 },
+          { id: "ГУК-106", number: "106", type: "lecture", capacity: 100 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "А-201", number: "201", type: "lecture", capacity: 120 },
-          { id: "А-202", number: "202", type: "seminar", capacity: 40 },
-          { id: "А-203", number: "203", type: "office", capacity: 10 },
-          { id: "А-204", number: "204", type: "seminar", capacity: 35 },
-          { id: "А-205", number: "205", type: "seminar", capacity: 30 },
-          { id: "А-229", number: "229", type: "admin", capacity: 15 },
+          { id: "ГУК-201", number: "201", type: "lecture", capacity: 120 },
+          { id: "ГУК-202", number: "202", type: "seminar", capacity: 40 },
+          { id: "ГУК-203", number: "203", type: "office", capacity: 10 },
+          { id: "ГУК-204", number: "204", type: "seminar", capacity: 35 },
+          { id: "ГУК-205", number: "205", type: "seminar", capacity: 30 },
+          { id: "ГУК-229", number: "229", type: "admin", capacity: 15 },
         ],
       },
       {
         floor: 3,
         rooms: [
-          { id: "А-301", number: "301", type: "lecture", capacity: 80 },
-          { id: "А-302", number: "302", type: "seminar", capacity: 30 },
-          { id: "А-303", number: "303", type: "office", capacity: 8 },
-          { id: "А-304", number: "304", type: "seminar", capacity: 30 },
-          { id: "А-305", number: "305", type: "seminar", capacity: 35 },
-          { id: "А-310", number: "310", type: "lab", capacity: 25 },
+          { id: "ГУК-301", number: "301", type: "lecture", capacity: 80 },
+          { id: "ГУК-302", number: "302", type: "seminar", capacity: 30 },
+          { id: "ГУК-303", number: "303", type: "office", capacity: 8 },
+          { id: "ГУК-304", number: "304", type: "seminar", capacity: 30 },
+          { id: "ГУК-305", number: "305", type: "seminar", capacity: 35 },
+          { id: "ГУК-310", number: "310", type: "lab", capacity: 25 },
         ],
       },
       {
         floor: 4,
         rooms: [
-          { id: "А-401", number: "401", type: "lecture", capacity: 80 },
-          { id: "А-402", number: "402", type: "seminar", capacity: 35 },
-          { id: "А-403", number: "403", type: "seminar", capacity: 30 },
-          { id: "А-410", number: "410", type: "office", capacity: 10 },
-          { id: "А-464", number: "464", type: "office", capacity: 12 },
+          { id: "ГУК-401", number: "401", type: "lecture", capacity: 80 },
+          { id: "ГУК-402", number: "402", type: "seminar", capacity: 35 },
+          { id: "ГУК-403", number: "403", type: "seminar", capacity: 30 },
+          { id: "ГУК-410", number: "410", type: "office", capacity: 10 },
+          { id: "ГУК-464", number: "464", type: "office", capacity: 12 },
         ],
       },
       {
         floor: 5,
         rooms: [
-          { id: "А-501", number: "501", type: "seminar", capacity: 30 },
-          { id: "А-502", number: "502", type: "office", capacity: 10 },
-          { id: "А-506", number: "506", type: "admin", capacity: 15 },
-          { id: "А-507", number: "507", type: "office", capacity: 12 },
-          { id: "А-509", number: "509", type: "admin", capacity: 10 },
-          { id: "А-515", number: "515", type: "seminar", capacity: 25 },
+          { id: "ГУК-501", number: "501", type: "seminar", capacity: 30 },
+          { id: "ГУК-502", number: "502", type: "office", capacity: 10 },
+          { id: "ГУК-506", number: "506", type: "admin", capacity: 15 },
+          { id: "ГУК-507", number: "507", type: "office", capacity: 12 },
+          { id: "ГУК-509", number: "509", type: "admin", capacity: 10 },
+          { id: "ГУК-515", number: "515", type: "seminar", capacity: 25 },
         ],
       },
       {
         floor: 6,
         rooms: [
-          { id: "А-601", number: "601", type: "seminar", capacity: 30 },
-          { id: "А-602", number: "602", type: "office", capacity: 10 },
-          { id: "А-610", number: "610", type: "office", capacity: 8 },
+          { id: "ГУК-601", number: "601", type: "seminar", capacity: 30 },
+          { id: "ГУК-602", number: "602", type: "office", capacity: 10 },
+          { id: "ГУК-610", number: "610", type: "office", capacity: 8 },
         ],
       },
       {
         floor: 7,
         rooms: [
-          { id: "А-701", number: "701", type: "office", capacity: 8 },
-          { id: "А-702", number: "702", type: "office", capacity: 8 },
-          { id: "А-705", number: "705", type: "admin", capacity: 6 },
+          { id: "ГУК-701", number: "701", type: "office", capacity: 8 },
+          { id: "ГУК-702", number: "702", type: "office", capacity: 8 },
+          { id: "ГУК-705", number: "705", type: "admin", capacity: 6 },
         ],
       },
       {
         floor: 8,
         rooms: [
-          { id: "А-801", number: "801", type: "office", capacity: 6 },
-          { id: "А-802", number: "802", type: "admin", capacity: 10 },
+          { id: "ГУК-801", number: "801", type: "office", capacity: 6 },
+          { id: "ГУК-802", number: "802", type: "admin", capacity: 10 },
         ],
       },
     ],
   },
   /* ── Б — Корпус поточных аудиторий + Библиотека (стр. 5, 5 этажей) ── */
   {
-    letter: "Б",
+    letter: "ПА",
     structureId: "стр. 5",
     tags: ["study", "services"],
     geoCoords: [55.71350, 37.81669],
@@ -225,51 +225,51 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "Б-101", number: "101", type: "lecture", capacity: 250 },
-          { id: "Б-102", number: "102", type: "lecture", capacity: 200 },
-          { id: "Б-103", number: "103", type: "lecture", capacity: 150 },
-          { id: "Б-104", number: "104", type: "admin", capacity: 10 },
+          { id: "ПА-101", number: "101", type: "lecture", capacity: 250 },
+          { id: "ПА-102", number: "102", type: "lecture", capacity: 200 },
+          { id: "ПА-103", number: "103", type: "lecture", capacity: 150 },
+          { id: "ПА-104", number: "104", type: "admin", capacity: 10 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "Б-201", number: "201", type: "lecture", capacity: 150 },
-          { id: "Б-202", number: "202", type: "library", capacity: 100 },
-          { id: "Б-203", number: "203", type: "study", capacity: 50 },
-          { id: "Б-204", number: "204", type: "study", capacity: 40 },
+          { id: "ПА-201", number: "201", type: "lecture", capacity: 150 },
+          { id: "ПА-202", number: "202", type: "library", capacity: 100 },
+          { id: "ПА-203", number: "203", type: "study", capacity: 50 },
+          { id: "ПА-204", number: "204", type: "study", capacity: 40 },
         ],
       },
       {
         floor: 3,
         rooms: [
-          { id: "Б-301", number: "301", type: "lecture", capacity: 120 },
-          { id: "Б-302", number: "302", type: "seminar", capacity: 40 },
-          { id: "Б-303", number: "303", type: "seminar", capacity: 35 },
+          { id: "ПА-301", number: "301", type: "lecture", capacity: 120 },
+          { id: "ПА-302", number: "302", type: "seminar", capacity: 40 },
+          { id: "ПА-303", number: "303", type: "seminar", capacity: 35 },
         ],
       },
       {
         floor: 4,
         rooms: [
-          { id: "Б-401", number: "401", type: "seminar", capacity: 40 },
-          { id: "Б-402", number: "402", type: "seminar", capacity: 35 },
-          { id: "Б-403", number: "403", type: "lecture", capacity: 80 },
-          { id: "Б-410", number: "410", type: "seminar", capacity: 30 },
+          { id: "ПА-401", number: "401", type: "seminar", capacity: 40 },
+          { id: "ПА-402", number: "402", type: "seminar", capacity: 35 },
+          { id: "ПА-403", number: "403", type: "lecture", capacity: 80 },
+          { id: "ПА-410", number: "410", type: "seminar", capacity: 30 },
         ],
       },
       {
         floor: 5,
         rooms: [
-          { id: "Б-501", number: "501", type: "office", capacity: 15 },
-          { id: "Б-502", number: "502", type: "office", capacity: 10 },
-          { id: "Б-503", number: "503", type: "seminar", capacity: 25 },
+          { id: "ПА-501", number: "501", type: "office", capacity: 15 },
+          { id: "ПА-502", number: "502", type: "office", capacity: 10 },
+          { id: "ПА-503", number: "503", type: "seminar", capacity: 25 },
         ],
       },
     ],
   },
   /* ── В — Лабораторный корпус + Приёмная комиссия (стр. 4, 6 этажей) ── */
   {
-    letter: "В",
+    letter: "ЛК",
     structureId: "стр. 4",
     tags: ["study", "services"],
     geoCoords: [55.71342, 37.81537],
@@ -277,66 +277,66 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "В-101", number: "101", type: "admin", capacity: 20 },
-          { id: "В-102", number: "102", type: "lab", capacity: 30 },
-          { id: "В-103", number: "103", type: "lab", capacity: 25 },
-          { id: "В-104", number: "104", type: "seminar", capacity: 40 },
+          { id: "ЛК-101", number: "101", type: "admin", capacity: 20 },
+          { id: "ЛК-102", number: "102", type: "lab", capacity: 30 },
+          { id: "ЛК-103", number: "103", type: "lab", capacity: 25 },
+          { id: "ЛК-104", number: "104", type: "seminar", capacity: 40 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "В-201", number: "201", type: "lab", capacity: 20 },
-          { id: "В-202", number: "202", type: "lab", capacity: 25 },
-          { id: "В-204", number: "204", type: "lab", capacity: 25 },
-          { id: "В-206", number: "206", type: "lab", capacity: 20 },
-          { id: "В-207", number: "207", type: "seminar", capacity: 30 },
-          { id: "В-212", number: "212", type: "lab", capacity: 20 },
-          { id: "В-216", number: "216", type: "seminar", capacity: 35 },
+          { id: "ЛК-201", number: "201", type: "lab", capacity: 20 },
+          { id: "ЛК-202", number: "202", type: "lab", capacity: 25 },
+          { id: "ЛК-204", number: "204", type: "lab", capacity: 25 },
+          { id: "ЛК-206", number: "206", type: "lab", capacity: 20 },
+          { id: "ЛК-207", number: "207", type: "seminar", capacity: 30 },
+          { id: "ЛК-212", number: "212", type: "lab", capacity: 20 },
+          { id: "ЛК-216", number: "216", type: "seminar", capacity: 35 },
         ],
       },
       {
         floor: 3,
         rooms: [
-          { id: "В-301", number: "301", type: "lab", capacity: 20 },
-          { id: "В-302", number: "302", type: "lab", capacity: 20 },
-          { id: "В-304", number: "304", type: "office", capacity: 12 },
-          { id: "В-308", number: "308", type: "office", capacity: 10 },
-          { id: "В-310", number: "310", type: "office", capacity: 10 },
-          { id: "В-312", number: "312", type: "office", capacity: 12 },
+          { id: "ЛК-301", number: "301", type: "lab", capacity: 20 },
+          { id: "ЛК-302", number: "302", type: "lab", capacity: 20 },
+          { id: "ЛК-304", number: "304", type: "office", capacity: 12 },
+          { id: "ЛК-308", number: "308", type: "office", capacity: 10 },
+          { id: "ЛК-310", number: "310", type: "office", capacity: 10 },
+          { id: "ЛК-312", number: "312", type: "office", capacity: 12 },
         ],
       },
       {
         floor: 4,
         rooms: [
-          { id: "В-401", number: "401", type: "lab", capacity: 25 },
-          { id: "В-402", number: "402", type: "office", capacity: 12 },
-          { id: "В-410", number: "410", type: "seminar", capacity: 30 },
-          { id: "В-431", number: "431", type: "office", capacity: 10 },
-          { id: "В-440", number: "440", type: "seminar", capacity: 35 },
+          { id: "ЛК-401", number: "401", type: "lab", capacity: 25 },
+          { id: "ЛК-402", number: "402", type: "office", capacity: 12 },
+          { id: "ЛК-410", number: "410", type: "seminar", capacity: 30 },
+          { id: "ЛК-431", number: "431", type: "office", capacity: 10 },
+          { id: "ЛК-440", number: "440", type: "seminar", capacity: 35 },
         ],
       },
       {
         floor: 5,
         rooms: [
-          { id: "В-501", number: "501", type: "office", capacity: 10 },
-          { id: "В-502", number: "502", type: "office", capacity: 8 },
-          { id: "В-510", number: "510", type: "seminar", capacity: 25 },
+          { id: "ЛК-501", number: "501", type: "office", capacity: 10 },
+          { id: "ЛК-502", number: "502", type: "office", capacity: 8 },
+          { id: "ЛК-510", number: "510", type: "seminar", capacity: 25 },
         ],
       },
       {
         floor: 6,
         rooms: [
-          { id: "В-601", number: "601", type: "office", capacity: 8 },
-          { id: "В-602", number: "602", type: "office", capacity: 6 },
-          { id: "В-645", number: "645", type: "office", capacity: 15 },
+          { id: "ЛК-601", number: "601", type: "office", capacity: 8 },
+          { id: "ЛК-602", number: "602", type: "office", capacity: 6 },
+          { id: "ЛК-645", number: "645", type: "office", capacity: 15 },
         ],
       },
     ],
   },
   /* ── Г — Административный корпус (стр. 1, 5 этажей) ── */
   {
-    letter: "Г",
+    letter: "А",
     structureId: "стр. 1",
     tags: ["services"],
     geoCoords: [55.71401, 37.81778],
@@ -344,48 +344,48 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "Г-101", number: "101", type: "admin", capacity: 15 },
-          { id: "Г-102", number: "102", type: "admin", capacity: 10 },
-          { id: "Г-105", number: "105", type: "other", capacity: 8 },
+          { id: "А-101", number: "101", type: "admin", capacity: 15 },
+          { id: "А-102", number: "102", type: "admin", capacity: 10 },
+          { id: "А-105", number: "105", type: "other", capacity: 8 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "Г-201", number: "201", type: "admin", capacity: 12 },
-          { id: "Г-202", number: "202", type: "office", capacity: 8 },
-          { id: "Г-203", number: "203", type: "office", capacity: 6 },
-          { id: "Г-210", number: "210", type: "admin", capacity: 10 },
+          { id: "А-201", number: "201", type: "admin", capacity: 12 },
+          { id: "А-202", number: "202", type: "office", capacity: 8 },
+          { id: "А-203", number: "203", type: "office", capacity: 6 },
+          { id: "А-210", number: "210", type: "admin", capacity: 10 },
         ],
       },
       {
         floor: 3,
         rooms: [
-          { id: "Г-301", number: "301", type: "admin", capacity: 15 },
-          { id: "Г-302", number: "302", type: "office", capacity: 8 },
-          { id: "Г-319", number: "319", type: "admin", capacity: 10 },
+          { id: "А-301", number: "301", type: "admin", capacity: 15 },
+          { id: "А-302", number: "302", type: "office", capacity: 8 },
+          { id: "А-319", number: "319", type: "admin", capacity: 10 },
         ],
       },
       {
         floor: 4,
         rooms: [
-          { id: "Г-401", number: "401", type: "office", capacity: 10 },
-          { id: "Г-402", number: "402", type: "office", capacity: 8 },
-          { id: "Г-405", number: "405", type: "admin", capacity: 8 },
+          { id: "А-401", number: "401", type: "office", capacity: 10 },
+          { id: "А-402", number: "402", type: "office", capacity: 8 },
+          { id: "А-405", number: "405", type: "admin", capacity: 8 },
         ],
       },
       {
         floor: 5,
         rooms: [
-          { id: "Г-501", number: "501", type: "office", capacity: 8 },
-          { id: "Г-502", number: "502", type: "office", capacity: 6 },
+          { id: "А-501", number: "501", type: "office", capacity: 8 },
+          { id: "А-502", number: "502", type: "office", capacity: 6 },
         ],
       },
     ],
   },
   /* ── Д — Бассейн ГУУ (к. 3, 2 этажа, построен 2013) ── */
   {
-    letter: "Д",
+    letter: "Б",
     structureId: "к. 3",
     tags: ["sports"],
     geoCoords: [55.71572, 37.81193],
@@ -393,23 +393,23 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "Д-101", number: "101", type: "sports", capacity: 60 },
-          { id: "Д-102", number: "102", type: "other", capacity: 20 },
-          { id: "Д-103", number: "103", type: "office", capacity: 6 },
+          { id: "Б-101", number: "101", type: "sports", capacity: 60 },
+          { id: "Б-102", number: "102", type: "other", capacity: 20 },
+          { id: "Б-103", number: "103", type: "office", capacity: 6 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "Д-201", number: "201", type: "sports", capacity: 30 },
-          { id: "Д-202", number: "202", type: "other", capacity: 15 },
+          { id: "Б-201", number: "201", type: "sports", capacity: 30 },
+          { id: "Б-202", number: "202", type: "other", capacity: 15 },
         ],
       },
     ],
   },
   /* ── Е — Спортивный комплекс (стр. 7, 2 этажа) ── */
   {
-    letter: "Е",
+    letter: "СК",
     structureId: "стр. 7",
     tags: ["sports", "events"],
     geoCoords: [55.71490, 37.81272],
@@ -417,24 +417,24 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "Е-101", number: "101", type: "sports", capacity: 200 },
-          { id: "Е-102", number: "102", type: "sports", capacity: 80 },
-          { id: "Е-103", number: "103", type: "other", capacity: 15 },
+          { id: "СК-101", number: "101", type: "sports", capacity: 200 },
+          { id: "СК-102", number: "102", type: "sports", capacity: 80 },
+          { id: "СК-103", number: "103", type: "other", capacity: 15 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "Е-201", number: "201", type: "sports", capacity: 40 },
-          { id: "Е-202", number: "202", type: "sports", capacity: 30 },
-          { id: "Е-203", number: "203", type: "sports", capacity: 25 },
+          { id: "СК-201", number: "201", type: "sports", capacity: 40 },
+          { id: "СК-202", number: "202", type: "sports", capacity: 30 },
+          { id: "СК-203", number: "203", type: "sports", capacity: 25 },
         ],
       },
     ],
   },
   /* ── Ж — Общежитие №2 + ЦУВП (стр. 2, 16 этажей) ── */
   {
-    letter: "Ж",
+    letter: "О2",
     structureId: "стр. 2",
     tags: ["housing", "events"],
     geoCoords: [55.71384, 37.81577],
@@ -442,24 +442,24 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "Ж-101", number: "101", type: "study", capacity: 20 },
-          { id: "Ж-102", number: "102", type: "cafeteria", capacity: 40 },
-          { id: "Ж-103", number: "103", type: "admin", capacity: 8 },
+          { id: "О2-101", number: "101", type: "study", capacity: 20 },
+          { id: "О2-102", number: "102", type: "cafeteria", capacity: 40 },
+          { id: "О2-103", number: "103", type: "admin", capacity: 8 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "Ж-201", number: "201", type: "study", capacity: 15 },
-          { id: "Ж-202", number: "202", type: "other", capacity: 10 },
-          { id: "Ж-203", number: "203", type: "other", capacity: 100 },
+          { id: "О2-201", number: "201", type: "study", capacity: 15 },
+          { id: "О2-202", number: "202", type: "other", capacity: 10 },
+          { id: "О2-203", number: "203", type: "other", capacity: 100 },
         ],
       },
     ],
   },
   /* ── З — Общежитие №6 (к. 6, 18 этажей) ── */
   {
-    letter: "З",
+    letter: "О6",
     structureId: "к. 6",
     tags: ["housing"],
     geoCoords: [55.71495, 37.81547],
@@ -467,23 +467,23 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "З-101", number: "101", type: "study", capacity: 25 },
-          { id: "З-102", number: "102", type: "cafeteria", capacity: 50 },
-          { id: "З-103", number: "103", type: "admin", capacity: 6 },
+          { id: "О6-101", number: "101", type: "study", capacity: 25 },
+          { id: "О6-102", number: "102", type: "cafeteria", capacity: 50 },
+          { id: "О6-103", number: "103", type: "admin", capacity: 6 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "З-201", number: "201", type: "study", capacity: 20 },
-          { id: "З-202", number: "202", type: "other", capacity: 15 },
+          { id: "О6-201", number: "201", type: "study", capacity: 20 },
+          { id: "О6-202", number: "202", type: "other", capacity: 15 },
         ],
       },
     ],
   },
   /* ── И — Бизнес-центр (стр. 16, 2+ этажа) ── */
   {
-    letter: "И",
+    letter: "ЦИТ",
     structureId: "стр. 16",
     tags: ["study", "services"],
     geoCoords: [55.71569, 37.81355],
@@ -491,17 +491,17 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
       {
         floor: 1,
         rooms: [
-          { id: "И-101", number: "101", type: "seminar", capacity: 30 },
-          { id: "И-102", number: "102", type: "office", capacity: 10 },
-          { id: "И-103", number: "103", type: "seminar", capacity: 25 },
+          { id: "ЦИТ-101", number: "101", type: "seminar", capacity: 30 },
+          { id: "ЦИТ-102", number: "102", type: "office", capacity: 10 },
+          { id: "ЦИТ-103", number: "103", type: "seminar", capacity: 25 },
         ],
       },
       {
         floor: 2,
         rooms: [
-          { id: "И-201", number: "201", type: "seminar", capacity: 25 },
-          { id: "И-202", number: "202", type: "office", capacity: 8 },
-          { id: "И-205", number: "205", type: "office", capacity: 10 },
+          { id: "ЦИТ-201", number: "201", type: "seminar", capacity: 25 },
+          { id: "ЦИТ-202", number: "202", type: "office", capacity: 8 },
+          { id: "ЦИТ-205", number: "205", type: "office", capacity: 10 },
         ],
       },
     ],
@@ -592,17 +592,17 @@ export function getCampusBuildings(locale?: string): CampusBuilding[] {
 }
 
 /**
- * Find a specific building by letter.
+ * Find a specific building by its ID.
  */
-export function getBuildingByLetter(
-  letter: BuildingLetter,
+export function getBuildingById(
+  letter: BuildingId,
   locale?: string,
 ): CampusBuilding | undefined {
   return getCampusBuildings(locale).find((b) => b.letter === letter)
 }
 
 /**
- * Find a room by its full ID (e.g. "А-305").
+ * Find a room by its full ID (e.g. "ГУК-305").
  * Returns the room, its floor, and parent building.
  */
 export function findRoom(
@@ -620,18 +620,20 @@ export function findRoom(
 
 /**
  * Extract floor number from a room ID string.
- * "А-305" → 3, "Б-102" → 1
+ * "ГУК-305" → 3, "ПА-102" → 1
  */
 export function extractFloorFromRoomId(roomId: string): number | null {
-  const match = roomId.match(/^[А-ЯA-Z][\s-]?(\d)/)
-  if (!match) return null
-  return parseInt(match[1], 10)
+  const dashIdx = roomId.indexOf("-")
+  if (dashIdx < 0) return null
+  const digit = roomId[dashIdx + 1]
+  if (!digit || !/\d/.test(digit)) return null
+  return parseInt(digit, 10)
 }
 
 /**
- * All building letters in display order.
+ * All building IDs in display order.
  */
-export const BUILDING_LETTERS: readonly BuildingLetter[] = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И"]
+export const BUILDING_IDS: readonly BuildingId[] = ["ГУК", "ПА", "ЛК", "А", "Б", "СК", "О2", "О6", "ЦИТ"]
 
 /**
  * All filterable categories (excluding "all").

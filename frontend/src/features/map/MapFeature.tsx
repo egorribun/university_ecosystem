@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, lazy, Suspense } from "react"
 import { useTranslation } from "react-i18next"
+import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { MapBackdrop } from "@/components/map/MapBackdrop"
@@ -8,11 +9,17 @@ import { MapSidebar } from "@/components/map/MapSidebar"
 import { MapSearchBar } from "@/components/map/MapSearchBar"
 import { MapCategoryFilter } from "@/components/map/MapCategoryFilter"
 import { useNextLesson } from "@/hooks/useNextLesson"
+import { useScheduleData } from "@/hooks/useScheduleData"
 import { useMapWeather } from "@/hooks/useMapWeather"
+import { useTimeOfDay } from "@/hooks/useTimeOfDay"
+import { useSeason } from "@/hooks/useSeason"
+import { useMapEvents } from "@/hooks/useMapEvents"
+import { useMapKeyboardShortcuts } from "@/hooks/useMapKeyboardShortcuts"
+import { MapShortcutsOverlay } from "@/components/map/MapShortcutsOverlay"
 import { MapWeatherBadge } from "@/components/map/MapWeatherBadge"
 import {
   getCampusBuildings,
-  type BuildingLetter,
+  type BuildingId,
   type MapCategory,
   type CampusBuilding,
 } from "@/data/campusBuildings"
@@ -41,9 +48,12 @@ const MapLibreMapComponent = lazy(() => import("@/components/map/MapLibreMap"))
  * Wave 101: removed isometric SVG + floor plan modes.
  */
 export function MapFeature() {
-  const { i18n } = useTranslation("map")
+  const { t, i18n } = useTranslation("map")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const isDark = useSyncExternalStore(subscribeToDarkMode, getIsDark, () => SERVER_SNAPSHOT)
+  const prefersReducedMotion = useReducedMotion() ?? false
+  const timePeriod = useTimeOfDay()
+  const season = useSeason()
 
   /* ── Campus data ── */
   const buildings = useMemo(
@@ -52,14 +62,20 @@ export function MapFeature() {
   )
 
   /* ── View state ── */
-  const [selectedBuilding, setSelectedBuilding] = useState<BuildingLetter | null>(null)
+  const [selectedBuilding, setSelectedBuilding] = useState<BuildingId | null>(null)
   const [selectedFloor, setSelectedFloor] = useState<number>(1)
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<MapCategory>("all")
-  const [hoveredBuilding] = useState<BuildingLetter | null>(null)
+  const [showEvents, setShowEvents] = useState(true)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   /* ── Schedule integration ── */
   const nextLessonInfo = useNextLesson()
+  const { todayLessons } = useScheduleData()
+
+  /* ── Events on map ── */
+  const { events: mapEvents } = useMapEvents()
 
   /* ── Weather ── */
   const { data: weatherData } = useMapWeather()
@@ -68,7 +84,7 @@ export function MapFeature() {
   const mapLibreRef = useRef<MapRef | null>(null)
 
   /* ── Building selection ── */
-  const handleBuildingClick = useCallback((letter: BuildingLetter) => {
+  const handleBuildingClick = useCallback((letter: BuildingId) => {
     setSelectedBuilding(letter)
     setSelectedFloor(1)
     setSelectedRoom(null)
@@ -91,7 +107,7 @@ export function MapFeature() {
 
   /* ── Navigate to a specific room (from search or schedule) ── */
   const navigateToRoom = useCallback(
-    (letter: BuildingLetter, floor: number, roomId: string) => {
+    (letter: BuildingId, floor: number, roomId: string) => {
       setSelectedBuilding(letter)
       setSelectedFloor(floor)
       setSelectedRoom(roomId)
@@ -110,6 +126,24 @@ export function MapFeature() {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [selectedBuilding, handleCloseSidebar])
 
+  /* ── Keyboard shortcuts ── */
+  const handleToggleFullscreen = useCallback(() => {
+    const container = document.querySelector(".map-card-matte")
+    if (!container) return
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
+  }, [])
+
+  useMapKeyboardShortcuts({
+    onSelectBuilding: handleBuildingClick,
+    onToggleFullscreen: handleToggleFullscreen,
+    onFocusSearch: () => searchInputRef.current?.focus(),
+    onToggleShortcuts: () => setShowShortcuts((prev) => !prev),
+  })
+
   /* ── Selected building/floor data ── */
   const currentBuilding: CampusBuilding | undefined = useMemo(
     () => buildings.find((b) => b.letter === selectedBuilding),
@@ -122,8 +156,8 @@ export function MapFeature() {
   )
 
   return (
-    <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip" data-weather={weatherData?.condition}>
-      <MapBackdrop isNarrow={isNarrow} prefersReducedMotion={false} />
+    <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip" data-weather={weatherData?.condition} data-time-period={timePeriod} data-season={season}>
+      <MapBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
       <div className="relative z-[1]">
         <MapHeader />
@@ -135,6 +169,7 @@ export function MapFeature() {
               buildings={buildings}
               onSelectBuilding={handleBuildingClick}
               onSelectRoom={navigateToRoom}
+              searchInputRef={searchInputRef}
             />
           </div>
           <div className="flex-1 min-w-0 overflow-x-auto">
@@ -154,16 +189,21 @@ export function MapFeature() {
             >
               <Suspense fallback={
                 <div className="h-full min-h-[inherit] flex items-center justify-center">
-                  <div className="map-poi-chip animate-pulse">Loading map...</div>
+                  <div className="map-poi-chip animate-pulse">{t("campusMap.loading")}</div>
                 </div>
               }>
                 <MapLibreMapComponent
                   selectedBuilding={selectedBuilding}
                   activeCategory={activeCategory}
-                  highlightedBuilding={nextLessonInfo?.building ?? hoveredBuilding}
+                  highlightedBuilding={nextLessonInfo?.building ?? null}
                   onSelectBuilding={handleBuildingClick}
                   mapRef={mapLibreRef}
                   isDark={isDark}
+                  timePeriod={timePeriod}
+                  weatherCondition={weatherData?.condition}
+                  showEvents={showEvents}
+                  mapEvents={mapEvents}
+                  onToggleEvents={() => setShowEvents((prev) => !prev)}
                 />
               </Suspense>
             </div>
@@ -179,11 +219,18 @@ export function MapFeature() {
                 onRoomClick={handleRoomClick}
                 onClose={handleCloseSidebar}
                 isMobile={isNarrow}
+                todayLessons={todayLessons}
               />
             )}
           </div>
         </FadeSection>
       </div>
+
+      {/* Keyboard shortcuts overlay */}
+      <MapShortcutsOverlay
+        open={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+      />
     </div>
   )
 }
