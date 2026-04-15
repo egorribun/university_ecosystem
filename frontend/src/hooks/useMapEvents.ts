@@ -46,8 +46,9 @@ export function useMapEvents(): { events: MapEvent[]; isLoading: boolean } {
       const parsed = parseBuildingRoom(location)
       if (!parsed) continue
 
+      // Validate building ID before narrowing type
+      if (!(BUILDING_IDS as readonly string[]).includes(parsed.building)) continue
       const buildingId = parsed.building as BuildingId
-      if (!(BUILDING_IDS as readonly string[]).includes(buildingId)) continue
 
       const building = buildingMap.get(buildingId)
       if (!building) continue

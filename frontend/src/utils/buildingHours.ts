@@ -22,6 +22,10 @@ export function isOpenNow(hours: BuildingHours): boolean {
   const closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
+  // Handle midnight wraparound (e.g. "22:00–02:00")
+  if (closeMinutes <= openMinutes) {
+    return nowMinutes >= openMinutes || nowMinutes < closeMinutes
+  }
   return nowMinutes >= openMinutes && nowMinutes < closeMinutes
 }
 

@@ -4,12 +4,14 @@ import {
   Dumbbell,
   Home,
   GraduationCap,
+  UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react"
 import type { MapCategory } from "@/data/campusBuildings"
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
   study: BookOpen,
+  food: UtensilsCrossed,
   services: Building2,
   sports: Dumbbell,
   housing: Home,

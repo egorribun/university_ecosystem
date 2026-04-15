@@ -22,11 +22,7 @@
   inherits: true;
   initial-value: transparent;
 }
-@property --map-atmosphere-hue {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 180;
-}
+/* --map-atmosphere-hue removed (Wave 109) — registered but never consumed */
 
 @layer base {
   /* ═══════════════════════════════════════════════════════
@@ -99,8 +95,10 @@
     --fs-map-badge: 0.45em;
     --map-accent-icon: var(--color-teal-500);
     --map-layer-active-bg: var(--color-teal-500);
-    --map-layer-active-text: var(--text-inverse);
+    /* --map-layer-active-text removed (Wave 109) — defined but never consumed */
     --map-on-accent: var(--text-inverse);
+    --map-accent: var(--color-teal-500);
+    --map-event-color: var(--color-amber-500);
 
     /* Building colors defined inline via building.colorVar/colorHex (campusBuildings.ts) */
     /* 9 buildings: ГУК (blue), ПА (amber), ЛК (emerald), А (slate), Б (rose), СК (indigo), О2 (sky), О6 (violet), ЦИТ (orange) */
@@ -163,6 +161,8 @@
     --map-badge-bg: color-mix(in srgb, var(--color-teal-400) 18%, var(--bg-surface));
     --map-accent-icon: var(--color-teal-400);
     --map-layer-active-bg: var(--color-teal-400);
+    --map-accent: var(--color-teal-400);
+    --map-event-color: var(--color-amber-400);
 
   }
 }
@@ -276,21 +276,28 @@
   --map-hero-orb: color-mix(in srgb, var(--color-violet-400) 10%, transparent);
 }
 
-/* Dark mode weather adjustments */
+/* Dark mode weather adjustments (Wave 109 — complete orb coverage) */
 .dark .map-theme[data-weather="cloudy"] {
   --map-orb-1: color-mix(in srgb, var(--color-slate-500) 12%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-slate-500) 10%, transparent);
 }
 
 .dark .map-theme[data-weather="rain"] {
   --map-orb-1: color-mix(in srgb, var(--color-blue-500) 14%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-blue-400) 10%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
 }
 
 .dark .map-theme[data-weather="snow"] {
   --map-orb-1: color-mix(in srgb, var(--color-sky-300) 18%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-sky-200) 12%, transparent);
 }
 
 .dark .map-theme[data-weather="storm"] {
   --map-orb-1: color-mix(in srgb, var(--color-violet-500) 16%, transparent);
+  --map-orb-2: color-mix(in srgb, var(--color-violet-400) 12%, transparent);
+  --map-hero-orb: color-mix(in srgb, var(--color-violet-500) 14%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -355,10 +362,19 @@
   left: 0;
   z-index: 20;
   width: min(360px, calc(100vw - 32px));
+  max-height: min(380px, calc(100dvh - 120px));
+  overflow-y: auto;
   padding: 16px;
   border-radius: 12px;
   background: var(--map-card-bg);
   box-shadow: var(--map-card-shadow-hover);
+}
+/* Flip panel upward on short viewports (FIX-110-03) */
+@media (max-height: 600px) {
+  .map-weather-panel {
+    top: auto;
+    bottom: calc(100% + 8px);
+  }
 }
 .map-weather-panel-hourly {
   display: flex;
@@ -453,6 +469,25 @@
   pointer-events: none;
 }
 
+/* Event indicator badge — small amber dot on building pin (FIX-109-11) */
+.map-event-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--map-event-color);
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 3px;
+  pointer-events: none;
+  box-shadow: 0 1px 3px color-mix(in srgb, black 30%, transparent);
+}
+
 /* Entrance stagger animation */
 @keyframes map-pin-enter {
   from {
@@ -497,12 +532,12 @@
   height: 28px;
   border-radius: 50%;
   background: var(--_poi-color, #94a3b8);
-  border: 2px solid white;
+  border: 2px solid var(--text-inverse, white);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 6px color-mix(in srgb, black 25%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   animation: map-poi-enter 0.2s var(--ease-premium, ease-out) both;
 }
@@ -511,12 +546,17 @@
 .map-poi-pin:hover {
   transform: scale(1.2);
   box-shadow:
-    0 2px 10px rgba(0,0,0,0.35),
-    0 0 0 3px color-mix(in srgb, var(--_poi-color, #94a3b8) 30%, transparent);
+    0 2px 10px color-mix(in srgb, black 35%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--_poi-color, var(--color-slate-400)) 30%, transparent);
 }
 
 .map-poi-pin:active {
   transform: scale(0.9);
+}
+
+.map-poi-pin:focus-visible {
+  outline: 2px solid var(--map-accent);
+  outline-offset: 2px;
 }
 
 /* ── Event pin markers (Wave 108) ───────── */
@@ -526,7 +566,7 @@
   justify-content: center;
   cursor: pointer;
   transition: transform 0.2s, filter 0.2s;
-  animation: map-marker-stagger 0.4s var(--ease-premium, ease-out) backwards;
+  animation: map-pin-enter 0.4s var(--ease-premium, ease-out) backwards;
   animation-delay: calc(var(--stagger-index, 0) * 60ms);
 }
 .map-event-pin:hover,
@@ -538,6 +578,15 @@
   outline: 2px solid var(--color-amber-500);
   outline-offset: 2px;
   border-radius: 50%;
+}
+
+/* Event pin icon — positioned over SVG (mirrors .map-pin-icon pattern) */
+.map-event-pin-icon {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -598,7 +647,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--map-on-accent, white) 60%, transparent);
 }
 
 .map-sidebar-photo {
@@ -616,7 +665,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-lg, 0.75rem);
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--map-on-accent, white) 50%, transparent);
 }
 
 .map-popup-header {
@@ -648,7 +697,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--map-on-accent, white);
   font-weight: 900;
   font-size: 16px;
   flex-shrink: 0;
@@ -748,37 +797,6 @@
   }
 }
 
-/* ── Mini-map overview (Wave 108) ───────── */
-.map-mini-overview {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 10;
-  width: 140px;
-  height: 100px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--map-card-bg);
-  box-shadow: var(--map-card-shadow);
-  cursor: pointer;
-  transition: opacity 0.3s;
-}
-.map-mini-overview .maplibregl-ctrl-attrib {
-  display: none;
-}
-.map-mini-viewport-dot {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-teal-500);
-  box-shadow: 0 0 4px var(--color-teal-400);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: 2;
-}
-@media print { .map-mini-overview { display: none; } }
-
 .map-control-panel {
   display: flex;
   flex-direction: column;
@@ -816,10 +834,6 @@
   transform: scale(0.92);
 }
 
-.map-control-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-teal-500);
-}
 .map-control-btn:disabled {
   opacity: 0.3;
   cursor: default;
@@ -893,6 +907,30 @@
   .map-popup-premium .maplibregl-popup-content {
     animation: none;
   }
+
+  /* Merged from second reduced-motion block (Wave 109) */
+  .map-card-matte:hover {
+    transform: none;
+  }
+  .map-category-chip:hover {
+    transform: none;
+  }
+  .map-stagger-item {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+  .map-category-chip[data-active="true"] {
+    animation: none;
+  }
+  .map-event-pin {
+    animation: none;
+  }
+  .map-sheet-slide-up {
+    animation: none;
+  }
+  .map-sidebar-fade-in {
+    animation: none;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -939,7 +977,22 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   BUILDING ACCENT TINTS (Wave 109 — color-mix dedup)
+   Scoped via --_bldg-color on parent container.
+   Three tint levels for floor buttons, room buttons, photo gradient.
+   ═══════════════════════════════════════════════════════ */
+
+.map-accent-tint-light {
+  background-color: color-mix(in srgb, var(--_bldg-color) 12%, var(--bg-surface));
+}
+.map-accent-tint-medium {
+  background-color: color-mix(in srgb, var(--_bldg-color) 15%, var(--bg-surface));
+}
+
+/* ═══════════════════════════════════════════════════════
    STAGGER ANIMATION (CSS-only)
+   Stagger units intentionally vary: 60ms (pins, stagger-item),
+   80ms (map-pin-enter delay in BuildingMarker), 360ms max cap.
    ═══════════════════════════════════════════════════════ */
 
 .map-stagger-item {
@@ -970,6 +1023,48 @@
   container-name: map-sidebar;
 }
 
+/* Hide scrollbar but keep scroll functionality (FIX-109-10) */
+.scrollbar-hide {
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
+/* ── Mobile sheet slide-up entrance (FIX-109-10) ──
+   CSS @keyframes avoids the "first paint" problem of CSS transitions:
+   transitions can flash from default position before animating,
+   @keyframes always start from the defined `from` state. */
+@keyframes map-sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.map-sheet-slide-up {
+  animation: map-sheet-enter 0.25s ease-out both;
+  will-change: transform, opacity;
+}
+
+/* ── Desktop sidebar fade-in entrance ── */
+@keyframes map-sidebar-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.map-sidebar-fade-in {
+  animation: map-sidebar-fade-in 0.3s ease-out both;
+}
+
 @container map-sidebar (max-width: 280px) {
   .map-card-matte .map-amenities { display: none; }
   .map-card-matte .map-hours { display: none; }
@@ -979,25 +1074,7 @@
   .map-card-matte .map-amenities { flex-direction: column; align-items: flex-start; }
 }
 
-/* ═══════════════════════════════════════════════════════
-   REDUCED MOTION
-   ═══════════════════════════════════════════════════════ */
-
-@media (prefers-reduced-motion: reduce) {
-  .map-card-matte:hover {
-    transform: none;
-  }
-  .map-category-chip:hover {
-    transform: none;
-  }
-  .map-stagger-item {
-    animation-duration: 0.01s;
-    animation-delay: 0s;
-  }
-  .map-category-chip[data-active="true"] {
-    animation: none;
-  }
-}
+/* Second reduced-motion block merged into main block above (Wave 109) */
 
 /* ═══════════════════════════════════════════════════════
    PRINT
@@ -1076,15 +1153,6 @@
   display: none;
 }
 
-/* POI controls overlay */
-.map-poi-controls {
-  background: var(--map-card-bg);
-  border-radius: 12px;
-  padding: 8px 10px;
-  box-shadow: var(--map-card-shadow);
-  backdrop-filter: blur(8px);
-}
-
 .map-poi-chip {
   font-size: 0.75rem;
   font-weight: 600;
@@ -1103,28 +1171,6 @@
 .map-poi-chip[data-active] {
   background: var(--map-layer-active-bg);
   color: var(--map-on-accent);
-}
-
-.map-poi-load-more {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 9999px;
-  background: color-mix(in srgb, var(--map-poi-campus) 12%, var(--bg-surface));
-  color: var(--map-poi-campus);
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.map-poi-load-more:hover {
-  background: color-mix(in srgb, var(--map-poi-campus) 20%, var(--bg-surface));
-}
-.map-poi-load-more:disabled {
-  cursor: wait;
-  opacity: 0.7;
 }
 
 /* Popup content styling */

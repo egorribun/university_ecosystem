@@ -2,12 +2,17 @@
  * campusPOI.ts — Verified points of interest around GUU campus.
  *
  * Core POIs are embedded for instant loading (no network required).
- * Additional POIs can be loaded on demand via Overpass API (useOverpassPOI).
  *
  * Wave 99 — initial; Wave 101 — all coordinates verified via 2GIS/Yandex Maps/Nominatim/Moovit.
  */
 
 export type POICategory = "transport" | "food" | "shop" | "service" | "campus"
+
+/** Lucide icon names used in POI markers — must match ICON_MAP keys in POIMarker.tsx */
+export type POIIconName =
+  | "TrainFront" | "Bus" | "UtensilsCrossed" | "Coffee"
+  | "ShoppingCart" | "ShoppingBag" | "Pill" | "Landmark"
+  | "ParkingCircle" | "MapPin" | "BookOpen"
 
 export interface CampusPOI {
   /** Unique identifier */
@@ -16,8 +21,8 @@ export interface CampusPOI {
   type: POICategory
   /** WGS84 coordinates [lat, lng] — verified April 2026 */
   coords: [number, number]
-  /** Lucide icon name */
-  icon: string
+  /** Lucide icon name — typed union to catch typos at compile time */
+  icon: POIIconName
   /** i18n key suffix — resolved as map:poi.items.<id>.name */
   i18nKey: string
 }

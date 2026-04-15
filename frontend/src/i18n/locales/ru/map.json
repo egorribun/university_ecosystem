@@ -215,6 +215,7 @@
     "other": "Другое"
   },
   "categories": {
+    "filterLabel": "Фильтр по категории здания",
     "all": "Все",
     "study": "Учёба",
     "food": "Питание",
@@ -294,7 +295,11 @@
     "participants_one": "{{count}} участник",
     "participants_few": "{{count}} участника",
     "participants_many": "{{count}} участников",
-    "participants_other": "{{count}} участников"
+    "participants_other": "{{count}} участников",
+    "badgeLabel_one": "{{count}} мероприятие",
+    "badgeLabel_few": "{{count}} мероприятия",
+    "badgeLabel_many": "{{count}} мероприятий",
+    "badgeLabel_other": "{{count}} мероприятий"
   },
   "shortcuts": {
     "title": "Горячие клавиши",
@@ -353,6 +358,8 @@
     "mapNavInstructions": "Tab — перемещение между зданиями. Enter — просмотр плана этажа. Escape — возврат.",
     "buildingSelected": "Выбран {{name}}. {{floors}} этажей, {{rooms}} аудиторий.",
     "roomSelected": "Выбрана аудитория {{room}}. {{type}}.",
-    "scheduleHighlight": "Ваша следующая пара в ауд. {{room}}."
+    "scheduleHighlight": "Ваша следующая пара в ауд. {{room}}.",
+    "mapContainer": "Интерактивная карта кампуса",
+    "miniMapLabel": "Обзор кампуса — нажмите для перецентровки"
   }
 }

@@ -5,17 +5,26 @@
  * Wave 108
  */
 
-import { useState, useMemo } from "react"
+import { useMemo } from "react"
 import { Marker, Popup } from "react-map-gl/maplibre"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { CalendarDays } from "lucide-react"
 import type { MapEvent } from "@/hooks/useMapEvents"
 
-/** Warm amber hex — visually distinct from building blue and POI grey */
+/**
+ * Event pin color — uses CSS token var(--map-event-color) in stylesheets.
+ * Hex fallback needed here because SVG `fill` in JSX is inline, not DOM CSS.
+ * Matches --color-amber-500.
+ */
 const EVENT_PIN_COLOR = "#f59e0b"
 
 interface EventMarkerProps {
   event: MapEvent
+  /** Lifted popup state (FIX-109-07) */
+  isPopupOpen?: boolean
+  onPopupOpen?: () => void
+  onPopupClose?: () => void
 }
 
 /**
@@ -30,15 +39,15 @@ function formatEventDate(isoString: string, locale: string): string {
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }).format(date)
   } catch {
     return isoString
   }
 }
 
-export function EventMarker({ event }: EventMarkerProps) {
+export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: EventMarkerProps) {
   const { t, i18n } = useTranslation("map")
-  const [showPopup, setShowPopup] = useState(false)
 
   const formattedDate = useMemo(
     () => formatEventDate(event.startsAt, i18n.language),
@@ -48,7 +57,6 @@ export function EventMarker({ event }: EventMarkerProps) {
   const ariaLabel = t("events.markerLabel", {
     title: event.title,
     date: formattedDate,
-    defaultValue: "{{title}} — {{date}}",
   })
 
   return (
@@ -59,7 +67,7 @@ export function EventMarker({ event }: EventMarkerProps) {
         anchor="bottom"
         onClick={(e) => {
           e.originalEvent.stopPropagation()
-          setShowPopup(true)
+          onPopupOpen?.()
         }}
       >
         <div
@@ -70,7 +78,7 @@ export function EventMarker({ event }: EventMarkerProps) {
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
-              setShowPopup(true)
+              onPopupOpen?.()
             }
           }}
         >
@@ -93,14 +101,14 @@ export function EventMarker({ event }: EventMarkerProps) {
             <circle cx="20" cy="19" r="10" fill="rgba(255,255,255,0.25)" />
           </svg>
 
-          {/* Calendar icon overlay */}
-          <div className="map-event-pin-icon">
+          {/* Calendar icon overlay — decorative, label is on parent button */}
+          <div className="map-event-pin-icon" aria-hidden="true">
             <CalendarDays size={15} color="white" strokeWidth={2.5} />
           </div>
         </div>
       </Marker>
 
-      {showPopup && (
+      {isPopupOpen && (
         <Popup
           longitude={event.geoCoords[1]}
           latitude={event.geoCoords[0]}
@@ -108,7 +116,7 @@ export function EventMarker({ event }: EventMarkerProps) {
           offset={48}
           closeButton
           closeOnClick={false}
-          onClose={() => setShowPopup(false)}
+          onClose={() => onPopupClose?.()}
           className="map-popup-premium"
           maxWidth="260px"
         >
@@ -141,18 +149,18 @@ export function EventMarker({ event }: EventMarkerProps) {
               <p className="text-[10px] opacity-50 mb-2">
                 {t("events.participants", {
                   count: event.participantCount,
-                  defaultValue: "{{count}} participants",
                 })}
               </p>
             )}
 
-            {/* View details link */}
-            <a
-              href={`/events/${event.id}`}
+            {/* View details link — client-side navigation (A11Y-110-03) */}
+            <Link
+              to="/events/$id"
+              params={{ id: event.id }}
               className="map-popup-link"
             >
-              {t("events.viewDetails", { defaultValue: "View details" })} &rarr;
-            </a>
+              {t("events.viewDetails")} &rarr;
+            </Link>
           </div>
         </Popup>
       )}

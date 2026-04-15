@@ -4,7 +4,7 @@
  * Wave 102 — premium redesign from plain circles.
  */
 
-import { useState, useMemo } from "react"
+import type React from "react"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
 import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
@@ -18,19 +18,23 @@ interface BuildingMarkerProps {
   onClick: (letter: BuildingId) => void
   /** Array index for stagger entrance animation */
   index?: number
+  /** Lifted popup state — only one popup open at a time (FIX-109-07) */
+  isPopupOpen?: boolean
+  onPopupOpen?: () => void
+  onPopupClose?: () => void
+  /** Number of upcoming events at this building (FIX-109-11) */
+  eventCount?: number
 }
 
-export function BuildingMarker({ building, isSelected, isHighlighted, onClick, index = 0 }: BuildingMarkerProps) {
+export function BuildingMarker({ building, isSelected, isHighlighted, onClick, index = 0, isPopupOpen, onPopupOpen, onPopupClose, eventCount = 0 }: BuildingMarkerProps) {
   const { t } = useTranslation("map")
-  const [showPopup, setShowPopup] = useState(false)
 
-  const isActive = isSelected || isHighlighted
+  // FIX-109-03: "highlighted" (schedule next lesson) is visually distinct from
+  // "selected" (user clicked). Highlighted = subtle pulse only, NOT full active state.
+  const isActive = isSelected
   const Icon = getPrimaryIcon(building.tags)
 
-  const roomCount = useMemo(
-    () => building.floors.reduce((sum, f) => sum + f.rooms.length, 0),
-    [building.floors],
-  )
+  const roomCount = building.floors.reduce((sum, f) => sum + f.rooms.length, 0)
 
   return (
     <>
@@ -41,7 +45,7 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
         onClick={(e) => {
           e.originalEvent.stopPropagation()
           onClick(building.letter)
-          setShowPopup(true)
+          onPopupOpen?.()
         }}
       >
         <div
@@ -52,13 +56,13 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
             floors: building.floorCount,
             rooms: roomCount,
           })}
-          className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}${isHighlighted ? " map-building-pin--pulse" : ""}`}
+          className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}${isHighlighted && !isActive ? " map-building-pin--pulse" : ""}`}
           style={{ "--stagger-index": index, "--_pin-color": building.colorHex } as React.CSSProperties}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
               onClick(building.letter)
-              setShowPopup(true)
+              onPopupOpen?.()
             }
           }}
         >
@@ -92,11 +96,18 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
             <Icon size={isActive ? 18 : 16} color="white" strokeWidth={2.5} />
           </div>
 
+          {/* Event indicator badge — amber dot with count (FIX-109-11) */}
+          {eventCount > 0 && (
+            <div className="map-event-badge" aria-label={t("events.badgeLabel", { count: eventCount })}>
+              {eventCount}
+            </div>
+          )}
+
           {/* Letter badge removed — not needed per user request (Wave 104) */}
         </div>
       </Marker>
 
-      {showPopup && (
+      {isPopupOpen && (
         <Popup
           longitude={building.geoCoords[1]}
           latitude={building.geoCoords[0]}
@@ -104,7 +115,7 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
           offset={isActive ? 62 : 52}
           closeButton
           closeOnClick={false}
-          onClose={() => setShowPopup(false)}
+          onClose={() => onPopupClose?.()}
           className="map-popup-premium"
           maxWidth="280px"
         >

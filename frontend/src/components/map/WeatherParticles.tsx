@@ -38,10 +38,15 @@ interface ParticleConfig {
   driftRange: [number, number]
 }
 
+/**
+ * Particle color configs. Canvas 2D fillStyle requires inline hex values —
+ * CSS custom properties cannot be read at canvas paint time.
+ * Token equivalents documented for design system traceability.
+ */
 const CONFIGS: Record<string, ParticleConfig> = {
   rain: {
     count: 200,
-    color: (dark) => (dark ? "#93c5fd" : "#60a5fa"),
+    color: (dark) => (dark ? "#93c5fd" : "#60a5fa"), // --color-blue-300 / --color-blue-400
     sizeRange: [2, 4],
     speedRange: [6, 12],
     opacityRange: [0.3, 0.7],
@@ -49,7 +54,7 @@ const CONFIGS: Record<string, ParticleConfig> = {
   },
   snow: {
     count: 100,
-    color: (dark) => (dark ? "#e2e8f0" : "#f8fafc"),
+    color: (dark) => (dark ? "#e2e8f0" : "#f8fafc"), // --color-slate-200 / --color-slate-50
     sizeRange: [1, 3],
     speedRange: [0.5, 1.5],
     opacityRange: [0.4, 0.8],
@@ -57,7 +62,7 @@ const CONFIGS: Record<string, ParticleConfig> = {
   },
   storm: {
     count: 250,
-    color: (dark) => (dark ? "#93c5fd" : "#60a5fa"),
+    color: (dark) => (dark ? "#93c5fd" : "#60a5fa"), // --color-blue-300 / --color-blue-400
     sizeRange: [2, 4],
     speedRange: [8, 16],
     opacityRange: [0.35, 0.75],
@@ -65,7 +70,7 @@ const CONFIGS: Record<string, ParticleConfig> = {
   },
   fog: {
     count: 50,
-    color: (dark) => (dark ? "#94a3b8" : "#cbd5e1"),
+    color: (dark) => (dark ? "#94a3b8" : "#cbd5e1"), // --color-slate-400 / --color-slate-300
     sizeRange: [10, 20],
     speedRange: [0.2, 0.6],
     opacityRange: [0.04, 0.12],

@@ -3,40 +3,29 @@ import { useTranslation } from "react-i18next"
 import FadeSection from "@/components/motion/FadeSection"
 
 /**
- * Premium page header — news-style layout with FadeSection stagger.
- * Icon hidden on mobile (<sm). Badge inline in h1.
+ * MapHeader — unified page header matching News/Schedule/Events/Activity pattern.
+ * Icon: h-11 w-11, hidden on mobile. Badge: inline in h1 at 0.45em.
+ * FIX-109-05: aligned to cross-page header standard (Wave 73 pattern).
  */
 export function MapHeader() {
   const { t } = useTranslation("map")
 
   return (
-    <header className="mb-8">
-      <FadeSection delay="60ms" className="flex items-center gap-4">
-        <div className="map-badge-matte hidden sm:flex items-center justify-center h-14 w-14 rounded-xl" style={{ backgroundColor: "var(--map-badge-bg)" }}>
-          <MapPin className="h-7 w-7 text-[var(--map-accent-icon)]" />
+    <header className="mb-6 sm:mb-8">
+      <FadeSection delay="60ms" className="flex items-center gap-2 sm:gap-3">
+        <div className="map-badge-matte hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-primary shrink-0">
+          <MapPin size={20} strokeWidth={2.2} />
         </div>
-        <div>
-          <h1
-            className="font-black tracking-tight text-text-primary"
-            style={{ fontSize: "var(--fs-map-hero)" }}
+        <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary">
+          {t("page.title")}
+          <span
+            className="map-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold text-[var(--map-accent-icon)] leading-none"
+            style={{ fontSize: "0.45em" }}
           >
-            {t("page.title")}{" "}
-            <span
-              className="align-middle inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-bold text-[var(--map-accent-icon)]"
-              style={{ fontSize: "var(--fs-map-badge)", backgroundColor: "var(--map-badge-bg)" }}
-            >
-              {t("page.badge")}
-            </span>
-          </h1>
-          <p
-            className="text-[var(--text-secondary)] font-medium mt-1"
-            style={{ fontSize: "var(--fs-map-subtitle)" }}
-          >
-            {t("page.subtitle")}
-          </p>
-        </div>
+            {t("page.badge")}
+          </span>
+        </h1>
       </FadeSection>
-
     </header>
   )
 }

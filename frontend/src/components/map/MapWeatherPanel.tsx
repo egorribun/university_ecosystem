@@ -48,7 +48,8 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
   useEffect(() => {
     if (!open) return
     const handle = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as Node | null
+      if (target && panelRef.current && !panelRef.current.contains(target)) {
         onClose()
       }
     }

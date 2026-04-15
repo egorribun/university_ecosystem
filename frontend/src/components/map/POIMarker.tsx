@@ -19,12 +19,14 @@ import {
   Landmark,
   ParkingCircle,
   MapPin,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react"
-import type { CampusPOI } from "@/data/campusPOI"
+import type { CampusPOI, POIIconName } from "@/data/campusPOI"
 
 /* ── Icon lookup by lucide icon name ── */
-const ICON_MAP: Record<string, LucideIcon> = {
+const ICON_MAP: Record<POIIconName, LucideIcon> = {
+  BookOpen,
   TrainFront,
   Bus,
   UtensilsCrossed,
@@ -39,16 +41,20 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 /** CSS token reference for POI category colors — defined in map.css */
 function poiColorVar(type: string): string {
-  return `var(--map-poi-${type}, #94a3b8)`
+  // Fallback = --color-slate-400 equivalent; inline because CSS var nesting limit
+  return `var(--map-poi-${type}, var(--color-slate-400, #94a3b8))`
 }
 
 interface POIMarkerProps {
   poi: CampusPOI & { osmName?: string }
+  /** Lifted popup state (FIX-109-07) */
+  isPopupOpen?: boolean
+  onPopupOpen?: () => void
+  onPopupClose?: () => void
 }
 
-export function POIMarker({ poi }: POIMarkerProps) {
+export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMarkerProps) {
   const { t } = useTranslation("map")
-  const [showPopup, setShowPopup] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
   const colorVar = poiColorVar(poi.type)
@@ -68,7 +74,7 @@ export function POIMarker({ poi }: POIMarkerProps) {
         anchor="center"
         onClick={(e) => {
           e.originalEvent.stopPropagation()
-          setShowPopup(true)
+          onPopupOpen?.()
         }}
       >
         <div
@@ -84,7 +90,7 @@ export function POIMarker({ poi }: POIMarkerProps) {
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
-              setShowPopup(true)
+              onPopupOpen?.()
             }
           }}
         >
@@ -93,7 +99,7 @@ export function POIMarker({ poi }: POIMarkerProps) {
       </Marker>
 
       {/* Hover tooltip — name only */}
-      {isHovered && !showPopup && (
+      {isHovered && !isPopupOpen && (
         <Popup
           longitude={poi.coords[1]}
           latitude={poi.coords[0]}
@@ -108,7 +114,7 @@ export function POIMarker({ poi }: POIMarkerProps) {
       )}
 
       {/* Click popup — full details */}
-      {showPopup && (
+      {isPopupOpen && (
         <Popup
           longitude={poi.coords[1]}
           latitude={poi.coords[0]}
@@ -116,7 +122,7 @@ export function POIMarker({ poi }: POIMarkerProps) {
           offset={18}
           closeButton
           closeOnClick={false}
-          onClose={() => setShowPopup(false)}
+          onClose={() => onPopupClose?.()}
           className="map-popup-premium"
           maxWidth="240px"
         >
