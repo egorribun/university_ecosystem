@@ -18,7 +18,7 @@ export function MapCategoryFilter({ active, onChange }: MapCategoryFilterProps) 
   return (
     <div
       role="radiogroup"
-      aria-label={t("categories.all")}
+      aria-label={t("categories.filterLabel")}
       className="flex flex-wrap gap-2"
     >
       {allCategories.map((cat) => {

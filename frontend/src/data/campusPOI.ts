@@ -2,7 +2,6 @@
  * campusPOI.ts — Verified points of interest around GUU campus.
  *
  * Core POIs are embedded for instant loading (no network required).
- * Additional POIs can be loaded on demand via Overpass API (useOverpassPOI).
  *
  * Wave 99 — initial; Wave 101 — all coordinates verified via 2GIS/Yandex Maps/Nominatim/Moovit.
  */

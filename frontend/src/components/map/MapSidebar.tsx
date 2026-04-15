@@ -55,9 +55,11 @@ export function MapSidebar({
   const dragStartH = useRef(0)
   const isDragging = useRef(false)
 
-  const SNAP_PEEK = 160
-  const SNAP_HALF = getViewH() * 0.5
-  const SNAP_FULL = getViewH() * 0.85
+  // Stabilize snap points — prevents snapToNearest recreation every render (CQ-110-01)
+  const { SNAP_PEEK, SNAP_HALF, SNAP_FULL } = useMemo(() => {
+    const vh = getViewH()
+    return { SNAP_PEEK: 160, SNAP_HALF: vh * 0.5, SNAP_FULL: vh * 0.85 }
+  }, [])
 
   /* ── Body scroll lock for mobile sheet ── */
   useEffect(() => {
@@ -83,12 +85,13 @@ export function MapSidebar({
     [SNAP_PEEK, SNAP_HALF, SNAP_FULL],
   )
 
+  /** setPointerCapture ensures reliable tracking even when pointer escapes the handle (CQ-110-02) */
   const handleDragStart = useCallback(
-    (clientY: number) => {
+    (e: React.PointerEvent) => {
       isDragging.current = true
-
-      dragStartY.current = clientY
+      dragStartY.current = e.clientY
       dragStartH.current = sheetHeight
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     },
     [sheetHeight],
   )
@@ -101,10 +104,10 @@ export function MapSidebar({
     setSheetHeight(newH)
   }, [])
 
-  const handleDragEnd = useCallback(() => {
+  const handleDragEnd = useCallback((e: React.PointerEvent) => {
     if (!isDragging.current) return
     isDragging.current = false
-
+    ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
     snapToNearest(sheetHeight)
   }, [sheetHeight, snapToNearest])
 
@@ -125,7 +128,8 @@ export function MapSidebar({
     if (isMobile) setSheetHeight(SNAP_HALF)
     setSheetReady(false)
     // Enable scroll AFTER CSS @keyframes entrance (350ms)
-    const id = setTimeout(() => setSheetReady(true), 380)
+    // Enable scroll AFTER CSS map-sheet-enter animation (250ms) + paint buffer
+    const id = setTimeout(() => setSheetReady(true), 260)
     return () => clearTimeout(id)
   }, [building, isMobile, SNAP_HALF])
 
@@ -366,7 +370,7 @@ export function MapSidebar({
         role="dialog"
         aria-modal="true"
         aria-label={building.name}
-        className="fixed inset-x-0 bottom-0 z-50 bg-[var(--map-sidebar-bg)] rounded-t-2xl"
+        className="fixed inset-x-0 bottom-0 z-50 bg-[var(--map-sidebar-bg)] rounded-t-2xl map-sheet-slide-up"
         style={{
           height: `${sheetHeight}px`,
           boxShadow: "var(--map-sidebar-shadow)",
@@ -377,7 +381,7 @@ export function MapSidebar({
           aria-roledescription="drag handle"
           aria-label={t("sidebar.dragToResize")}
           className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
-          onPointerDown={(e) => handleDragStart(e.clientY)}
+          onPointerDown={handleDragStart}
           onPointerMove={(e) => handleDragMove(e.clientY)}
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}

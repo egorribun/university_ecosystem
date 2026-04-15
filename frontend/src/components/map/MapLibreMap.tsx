@@ -14,8 +14,7 @@ import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import { getCampusBuildings, type BuildingId, type MapCategory } from "@/data/campusBuildings"
-import { CAMPUS_POIS, type CampusPOI } from "@/data/campusPOI"
-import { useOverpassPOI } from "@/hooks/useOverpassPOI"
+import { CAMPUS_POIS } from "@/data/campusPOI"
 import { BuildingMarker } from "./BuildingMarker"
 import { POIMarker } from "./POIMarker"
 import { MapControls } from "./MapControls"
@@ -120,7 +119,6 @@ export function MapLibreMapComponent({
   weatherCondition,
   mapEvents,
 }: MapLibreMapProps) {
-  "use no memo" // RC-109-02: useMemo with local array mutations (base.push) — React Compiler forbids
   const { t, i18n } = useTranslation("map")
   const hasAnimatedIntro = useRef(false)
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -149,29 +147,7 @@ export function MapLibreMapComponent({
     })
   }, [selectedBuilding, buildings, mapRef])
 
-  /* ── POI state — controls removed from map overlay (FIX-109-08), data still loaded ── */
-  const { pois: overpassPois, hasLoaded } = useOverpassPOI()
-
-  /* ── Merge hardcoded + Overpass POIs with O(n) spatial dedup ── */
-  const allPois = useMemo(() => {
-    const base: CampusPOI[] = [...CAMPUS_POIS]
-    if (hasLoaded) {
-      // Spatial hash for O(n) dedup — key = rounded lat/lng grid cell
-      const seen = new Set(
-        base.map((bp) =>
-          `${Math.round(bp.coords[0] / 0.0005)}_${Math.round(bp.coords[1] / 0.0005)}`,
-        ),
-      )
-      for (const op of overpassPois) {
-        const key = `${Math.round(op.coords[0] / 0.0005)}_${Math.round(op.coords[1] / 0.0005)}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          base.push(op)
-        }
-      }
-    }
-    return base
-  }, [overpassPois, hasLoaded])
+  /* ── POI data — hardcoded campus POIs (Overpass integration removed Wave 110) ── */
 
   /** Event counts per building — used for indicator badges on markers. */
   const eventCountByBuilding = useMemo(() => {
@@ -205,14 +181,8 @@ export function MapLibreMapComponent({
           bearing: 0,
         })
       } else {
-        map.jumpTo({
-          center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-          zoom: 13,
-          pitch: 0,
-          bearing: -20,
-        })
+        // Map already at intro start state via initialViewState — fly to final
         introTimeoutRef.current = setTimeout(() => {
-          // Guard against unmount during delay
           if (!mapRef?.current) return
           map.flyTo({
             center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
@@ -225,7 +195,7 @@ export function MapLibreMapComponent({
         }, 300)
       }
     }
-  }, [mapRef, isDark])
+  }, [mapRef, isDark, timePeriod])
 
   /* ── Cleanup cinematic intro timeout on unmount ── */
   useEffect(() => {
@@ -270,9 +240,9 @@ export function MapLibreMapComponent({
         initialViewState={{
           longitude: CAMPUS_COORDINATES.lon,
           latitude: CAMPUS_COORDINATES.lat,
-          zoom: 16,
-          pitch: 45,
-          bearing: 0,
+          zoom: 13,
+          pitch: 0,
+          bearing: -20,
         }}
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
@@ -301,7 +271,7 @@ export function MapLibreMapComponent({
         ))}
 
         {/* POI markers */}
-        {allPois.map((poi) => (
+        {CAMPUS_POIS.map((poi) => (
           <POIMarker
             key={poi.id}
             poi={poi}
@@ -328,8 +298,10 @@ export function MapLibreMapComponent({
         <WeatherParticles condition={weatherCondition} isDark={!!isDark} />
       )}
 
-      {/* Premium map controls — bottom right */}
-      <div className="absolute bottom-4 right-4 z-10">
+      {/* Premium map controls — bottom right; lifts above mobile bottom sheet (FIX-110-04) */}
+      <div
+        className={`absolute right-4 z-10 transition-[bottom] duration-300 ease-out ${selectedBuilding ? "bottom-[180px] sm:bottom-4" : "bottom-4"}`}
+      >
         {mapRef && <MapControls mapRef={mapRef} />}
       </div>
 

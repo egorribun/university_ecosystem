@@ -7,6 +7,7 @@
 
 import { useMemo } from "react"
 import { Marker, Popup } from "react-map-gl/maplibre"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { CalendarDays } from "lucide-react"
 import type { MapEvent } from "@/hooks/useMapEvents"
@@ -152,13 +153,14 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
               </p>
             )}
 
-            {/* View details link */}
-            <a
-              href={`/events/${event.id}`}
+            {/* View details link — client-side navigation (A11Y-110-03) */}
+            <Link
+              to="/events/$id"
+              params={{ id: event.id }}
               className="map-popup-link"
             >
               {t("events.viewDetails")} &rarr;
-            </a>
+            </Link>
           </div>
         </Popup>
       )}

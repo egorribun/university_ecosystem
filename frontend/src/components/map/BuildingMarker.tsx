@@ -26,7 +26,7 @@ interface BuildingMarkerProps {
   eventCount?: number
 }
 
-export function BuildingMarker({ building, isSelected, onClick, index = 0, isPopupOpen, onPopupOpen, onPopupClose, eventCount = 0 }: BuildingMarkerProps) {
+export function BuildingMarker({ building, isSelected, isHighlighted, onClick, index = 0, isPopupOpen, onPopupOpen, onPopupClose, eventCount = 0 }: BuildingMarkerProps) {
   const { t } = useTranslation("map")
 
   // FIX-109-03: "highlighted" (schedule next lesson) is visually distinct from
@@ -56,7 +56,7 @@ export function BuildingMarker({ building, isSelected, onClick, index = 0, isPop
             floors: building.floorCount,
             rooms: roomCount,
           })}
-          className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}`}
+          className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}${isHighlighted && !isActive ? " map-building-pin--pulse" : ""}`}
           style={{ "--stagger-index": index, "--_pin-color": building.colorHex } as React.CSSProperties}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {

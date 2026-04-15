@@ -215,6 +215,7 @@
     "other": "Other"
   },
   "categories": {
+    "filterLabel": "Filter by building category",
     "all": "All",
     "study": "Study",
     "food": "Dining",
