@@ -20,7 +20,7 @@ function MapSkeleton() {
       </div>
 
       {/* Map viewport skeleton */}
-      <Skeleton className="w-full rounded-xl" style={{ minHeight: "560px" }} />
+      <Skeleton className="map-viewport w-full rounded-xl" />
     </div>
   )
 }

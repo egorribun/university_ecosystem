@@ -261,6 +261,7 @@ export function MapLibreMapComponent({
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
         reuseMaps
+        attributionControl={false}
         onClick={() => { onDeselectBuilding(); setActivePopupId(null) }}
         maxPitch={70}
       >
@@ -311,11 +312,20 @@ export function MapLibreMapComponent({
         <WeatherParticles condition={weatherCondition} isDark={!!isDark} />
       )}
 
-      {/* Premium map controls — bottom right; lifts above mobile bottom sheet (FIX-110-04) */}
+      {/* Premium map controls — mobile: centered bottom strip, desktop: right column.
+          Controls stay at bottom:12px — mobile bottom sheet (fixed z-50) overlays them naturally. */}
       <div
-        className={`absolute right-4 z-10 transition-[bottom] duration-300 ease-out ${selectedBuilding ? "bottom-[180px] sm:bottom-4" : "bottom-4"}`}
+        className="absolute z-10 map-controls-positioner"
+        style={{ bottom: 12 }}
       >
         {mapRef && <MapControls mapRef={mapRef} />}
+      </div>
+
+      {/* Minimal OSM attribution — replaces built-in widget */}
+      <div className="absolute bottom-1 left-1 text-[9px] leading-none opacity-40 pointer-events-auto z-[1]">
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="hover:opacity-80" style={{ color: "var(--text-tertiary)" }}>
+          © OpenStreetMap
+        </a>
       </div>
     </div>
   )

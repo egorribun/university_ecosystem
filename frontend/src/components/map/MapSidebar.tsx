@@ -377,6 +377,7 @@ export function MapSidebar({
         className="fixed inset-x-0 bottom-0 z-50 bg-[var(--map-sidebar-bg)] rounded-t-2xl map-sheet-slide-up"
         style={{
           height: `${sheetHeight}px`,
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
           boxShadow: "var(--map-sidebar-shadow)",
         }}
       >

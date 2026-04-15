@@ -4,9 +4,10 @@
  * Wave 103 — premium map control panel.
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { logError } from "@/app/logger"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import {
   Plus,
   Minus,
@@ -28,6 +29,10 @@ export function MapControls({ mapRef }: MapControlsProps) {
   const { t } = useTranslation("map")
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [is3D, setIs3D] = useState(true) // starts with pitch 45
+  /** Responsive icon sizing — matches CSS breakpoints in map.css (FIX-111-02) */
+  const isMobile = useMediaQuery("(max-width: 640px)")
+  const isSmall = useMediaQuery("(max-width: 380px), (max-height: 500px)")
+  const iconSize = isSmall ? 12 : isMobile ? 14 : 16
 
   const zoomIn = useCallback(() => mapRef.current?.getMap().zoomIn(), [mapRef])
   const zoomOut = useCallback(() => mapRef.current?.getMap().zoomOut(), [mapRef])
@@ -53,49 +58,57 @@ export function MapControls({ mapRef }: MapControlsProps) {
     setIs3D(true)
   }, [mapRef])
 
+  /* FIX-111-07: Sync state when user exits fullscreen via Esc (bypasses button click) */
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener("fullscreenchange", handler)
+    return () => document.removeEventListener("fullscreenchange", handler)
+  }, [])
+
   const toggleFullscreen = useCallback(() => {
     const container = mapRef.current?.getMap().getContainer()?.closest(".map-card-matte")
     if (!container) return
 
     if (!document.fullscreenElement) {
-      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(logError)
+      container.requestFullscreen().catch(logError)
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(logError)
+      document.exitFullscreen().catch(logError)
     }
+    // State sync handled by fullscreenchange listener (FIX-111-07)
   }, [mapRef])
 
   return (
     <div className="map-control-panel" role="group" aria-label={t("zoom.ariaLabel")}>
       {/* Zoom */}
       <button type="button" onClick={zoomIn} className="map-control-btn" aria-label={t("zoom.in")}>
-        <Plus size={16} />
+        <Plus size={iconSize} />
       </button>
       <button type="button" onClick={zoomOut} className="map-control-btn" aria-label={t("zoom.out")}>
-        <Minus size={16} />
+        <Minus size={iconSize} />
       </button>
 
       <div className="map-control-divider" />
 
       {/* Compass — reset north */}
       <button type="button" onClick={resetNorth} className="map-control-btn" aria-label={t("controls.compass")}>
-        <Compass size={16} />
+        <Compass size={iconSize} />
       </button>
 
       {/* 3D / 2D toggle */}
       <button type="button" onClick={togglePitch} className="map-control-btn" aria-label={t("controls.pitchToggle")}>
-        {is3D ? <MapIcon size={16} /> : <Box size={16} />}
+        {is3D ? <MapIcon size={iconSize} /> : <Box size={iconSize} />}
       </button>
 
       <div className="map-control-divider" />
 
       {/* Recenter campus */}
       <button type="button" onClick={recenter} className="map-control-btn map-control-btn--accent" aria-label={t("zoom.reset")}>
-        <LocateFixed size={16} />
+        <LocateFixed size={iconSize} />
       </button>
 
       {/* Fullscreen */}
       <button type="button" onClick={toggleFullscreen} className="map-control-btn" aria-label={t("controls.fullscreen")}>
-        {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        {isFullscreen ? <Minimize2 size={iconSize} /> : <Maximize2 size={iconSize} />}
       </button>
     </div>
   )
