@@ -8,9 +8,10 @@
  * Wave 108 — mini overview map for spatial context.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Map } from "react-map-gl/maplibre"
 import type { MapRef } from "react-map-gl/maplibre"
+import { useTranslation } from "react-i18next"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 
 const STYLE_LIGHT = "https://tiles.openfreemap.org/styles/bright"
@@ -23,8 +24,7 @@ const OVERVIEW_ZOOM = 14
 const CONTAINER_WIDTH = 140
 const CONTAINER_HEIGHT = 100
 
-/** Interval (ms) for polling the main map's center position. */
-const POLL_INTERVAL = 500
+/* Polling replaced with MapLibre move event (Wave 109 — PERF-109-01) */
 
 interface MapMiniOverviewProps {
   mainMapRef: React.MutableRefObject<MapRef | null>
@@ -103,12 +103,15 @@ function pixelToGeo(
  * @param visible     Controls visibility — returns null when false
  */
 export function MapMiniOverview({ mainMapRef, isDark, visible }: MapMiniOverviewProps) {
+  const { t } = useTranslation("map")
   const [dotPos, setDotPos] = useState<{ x: number; y: number } | null>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  /** Poll the main map center and update the indicator dot position. */
+  /** Update dot on main map move events instead of polling (PERF-109-01). */
   useEffect(() => {
     if (!visible) return
+
+    const map = mainMapRef.current
+    if (!map) return
 
     function updateDot() {
       const center = mainMapRef.current?.getCenter()
@@ -126,14 +129,15 @@ export function MapMiniOverview({ mainMapRef, isDark, visible }: MapMiniOverview
       setDotPos(pos)
     }
 
+    // Initial position
     updateDot()
-    intervalRef.current = setInterval(updateDot, POLL_INTERVAL)
+
+    // Subscribe to map movement — fires only when viewport changes
+    const mapInstance = map.getMap()
+    mapInstance.on("move", updateDot)
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
+      mapInstance.off("move", updateDot)
     }
   }, [visible, mainMapRef])
 
@@ -185,7 +189,7 @@ export function MapMiniOverview({ mainMapRef, isDark, visible }: MapMiniOverview
       }}
       role="button"
       tabIndex={0}
-      aria-label="Campus overview — click to recenter"
+      aria-label={t("a11y.miniMapLabel", { defaultValue: "Campus overview — click to recenter" })}
     >
       <Map
         mapStyle={isDark ? STYLE_DARK : STYLE_LIGHT}
@@ -213,8 +217,8 @@ export function MapMiniOverview({ mainMapRef, isDark, visible }: MapMiniOverview
             width: 6,
             height: 6,
             borderRadius: "50%",
-            backgroundColor: "var(--map-accent, #14b8a6)",
-            boxShadow: "0 0 4px var(--map-accent, #14b8a6)",
+            backgroundColor: "var(--map-accent)",
+            boxShadow: "0 0 4px var(--map-accent)",
             pointerEvents: "none",
           }}
         />

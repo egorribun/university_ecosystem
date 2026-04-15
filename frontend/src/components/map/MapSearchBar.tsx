@@ -25,6 +25,7 @@ interface MapSearchBarProps {
  * role="combobox" + aria-expanded + aria-activedescendant.
  */
 export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, searchInputRef }: MapSearchBarProps) {
+  "use no memo" // RC-109-01: ref callback merges inputRef + searchInputRef — React Compiler forbids ref mutations in render
   const { t } = useTranslation("map")
   const baseId = useId()
   const listboxId = `${baseId}-listbox`
@@ -115,6 +116,17 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
     [isOpen, results, activeIdx, handleSelect],
   )
 
+  // Merge internal + external input refs (React Compiler safe — extracted from render)
+  const mergedInputRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+      if (searchInputRef && "current" in searchInputRef) {
+        (searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+      }
+    },
+    [searchInputRef],
+  )
+
   // Group results
   const buildingResults = results.filter((r) => r.type === "building")
   const roomResults = results.filter((r) => r.type === "room")
@@ -124,12 +136,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
       <div className="map-card-matte flex items-center gap-2 px-3 py-2">
         <Search className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
         <input
-          ref={(node: HTMLInputElement | null) => {
-            (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
-            if (searchInputRef && "current" in searchInputRef) {
-              (searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
-            }
-          }}
+          ref={mergedInputRef}
           type="text"
           role="combobox"
           aria-expanded={isOpen && results.length > 0}

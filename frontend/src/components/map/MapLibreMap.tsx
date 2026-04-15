@@ -18,11 +18,9 @@ import { CAMPUS_POIS, type CampusPOI } from "@/data/campusPOI"
 import { useOverpassPOI } from "@/hooks/useOverpassPOI"
 import { BuildingMarker } from "./BuildingMarker"
 import { POIMarker } from "./POIMarker"
-import { POIControls } from "./POIControls"
 import { MapControls } from "./MapControls"
 import { WeatherParticles } from "./WeatherParticles"
 import { EventMarker } from "./EventMarker"
-import { MapMiniOverview } from "./MapMiniOverview"
 import type { WeatherCondition } from "@/utils/weatherCodes"
 import type { MapEvent } from "@/hooks/useMapEvents"
 import "maplibre-gl/dist/maplibre-gl.css"
@@ -31,7 +29,12 @@ import "maplibre-gl/dist/maplibre-gl.css"
 const STYLE_LIGHT = "https://tiles.openfreemap.org/styles/bright"
 const STYLE_DARK = "https://tiles.openfreemap.org/styles/dark"
 
-/* ── Generic 3D buildings from vector tiles (gray, surrounding) ── */
+/**
+ * Generic 3D buildings from vector tiles (gray, surrounding).
+ * NOTE: MapLibre GL paint properties are WebGL-based — they cannot read CSS
+ * custom properties. Hex values here are intentional, with token equivalents
+ * documented in comments for design system traceability.
+ */
 const GENERIC_BUILDINGS_LAYER: LayerProps = {
   id: "3d-buildings-generic",
   type: "fill-extrusion" as const,
@@ -43,9 +46,9 @@ const GENERIC_BUILDINGS_LAYER: LayerProps = {
       "interpolate",
       ["linear"],
       ["get", "render_height"],
-      0, "#d1d5db",   // ≈ --color-gray-300
-      50, "#9ca3af",  // ≈ --color-gray-400
-      100, "#6b7280", // ≈ --color-gray-500
+      0, "#d1d5db",   // --color-gray-300
+      50, "#9ca3af",  // --color-gray-400
+      100, "#6b7280", // --color-gray-500
     ],
     "fill-extrusion-height": [
       "interpolate",
@@ -97,13 +100,12 @@ interface MapLibreMapProps {
   activeCategory: MapCategory
   highlightedBuilding: BuildingId | null
   onSelectBuilding: (letter: BuildingId) => void
+  onDeselectBuilding: () => void
   mapRef?: React.MutableRefObject<MapRef | null>
   isDark?: boolean
   timePeriod?: TimePeriod
   weatherCondition?: WeatherCondition
-  showEvents?: boolean
   mapEvents?: MapEvent[]
-  onToggleEvents?: () => void
 }
 
 export function MapLibreMapComponent({
@@ -111,18 +113,19 @@ export function MapLibreMapComponent({
   activeCategory,
   highlightedBuilding,
   onSelectBuilding,
+  onDeselectBuilding,
   mapRef,
   isDark,
   timePeriod,
   weatherCondition,
-  showEvents,
   mapEvents,
-  onToggleEvents,
 }: MapLibreMapProps) {
-  const { i18n } = useTranslation("map")
+  "use no memo" // RC-109-02: useMemo with local array mutations (base.push) — React Compiler forbids
+  const { t, i18n } = useTranslation("map")
   const hasAnimatedIntro = useRef(false)
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [currentZoom, setCurrentZoom] = useState(16)
+  /** Single active popup — only one marker popup open at a time (FIX-109-07). */
+  const [activePopupId, setActivePopupId] = useState<string | null>(null)
 
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
@@ -146,9 +149,8 @@ export function MapLibreMapComponent({
     })
   }, [selectedBuilding, buildings, mapRef])
 
-  /* ── POI state ── */
-  const { pois: overpassPois, isLoading: poisLoading, loadMore, hasLoaded } = useOverpassPOI()
-  const [poiCategory, setPoiCategory] = useState<string>("all")
+  /* ── POI state — controls removed from map overlay (FIX-109-08), data still loaded ── */
+  const { pois: overpassPois, hasLoaded } = useOverpassPOI()
 
   /* ── Merge hardcoded + Overpass POIs with O(n) spatial dedup ── */
   const allPois = useMemo(() => {
@@ -168,9 +170,17 @@ export function MapLibreMapComponent({
         }
       }
     }
-    if (poiCategory === "all") return base
-    return base.filter((p) => p.type === poiCategory)
-  }, [overpassPois, hasLoaded, poiCategory])
+    return base
+  }, [overpassPois, hasLoaded])
+
+  /** Event counts per building — used for indicator badges on markers. */
+  const eventCountByBuilding = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const evt of mapEvents ?? []) {
+      counts[evt.buildingId] = (counts[evt.buildingId] ?? 0) + 1
+    }
+    return counts
+  }, [mapEvents])
 
   const mapStyle = isDark ? STYLE_DARK : STYLE_LIGHT
 
@@ -227,6 +237,25 @@ export function MapLibreMapComponent({
     }
   }, [])
 
+  /**
+   * FIX-109-01: Force canvas resize after mount to reinitialize MapLibre GL
+   * event handlers. When navigating back to the map via View Transition API,
+   * the VT snapshot overlay intercepts pointer events during the transition.
+   * MapLibre's canvas initializes underneath, resulting in stale drag/scroll
+   * handlers. Double-rAF ensures resize runs AFTER the VT completes (~200ms).
+   */
+  useEffect(() => {
+    const map = mapRef?.current?.getMap()
+    if (!map) return
+
+    let outer = requestAnimationFrame(() => {
+      outer = requestAnimationFrame(() => {
+        map.resize()
+      })
+    })
+    return () => cancelAnimationFrame(outer)
+  }, [mapRef])
+
   /* ── Update sky on theme/time-of-day change ── */
   useEffect(() => {
     const map = mapRef?.current?.getMap()
@@ -235,7 +264,7 @@ export function MapLibreMapComponent({
   }, [isDark, timePeriod, mapRef])
 
   return (
-    <div className="maplibre-map-wrapper relative h-full min-h-[inherit]">
+    <div className="maplibre-map-wrapper relative h-full min-h-[inherit]" role="application" aria-label={t("a11y.mapContainer")}>
       <Map
         ref={mapRef}
         initialViewState={{
@@ -249,7 +278,7 @@ export function MapLibreMapComponent({
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
         reuseMaps
         onLoad={onMapLoad}
-        onZoom={(e) => setCurrentZoom(e.viewState.zoom)}
+        onClick={() => { onDeselectBuilding(); setActivePopupId(null) }}
         maxPitch={70}
       >
         {/* Generic 3D buildings (gray, surrounding area) */}
@@ -264,17 +293,33 @@ export function MapLibreMapComponent({
             isSelected={selectedBuilding === building.letter}
             isHighlighted={highlightedBuilding === building.letter}
             onClick={onSelectBuilding}
+            isPopupOpen={activePopupId === `bldg-${building.letter}`}
+            onPopupOpen={() => setActivePopupId(`bldg-${building.letter}`)}
+            onPopupClose={() => setActivePopupId(null)}
+            eventCount={eventCountByBuilding[building.letter] ?? 0}
           />
         ))}
 
         {/* POI markers */}
         {allPois.map((poi) => (
-          <POIMarker key={poi.id} poi={poi} />
+          <POIMarker
+            key={poi.id}
+            poi={poi}
+            isPopupOpen={activePopupId === `poi-${poi.id}`}
+            onPopupOpen={() => { setActivePopupId(`poi-${poi.id}`); onDeselectBuilding() }}
+            onPopupClose={() => setActivePopupId(null)}
+          />
         ))}
 
-        {/* Event markers */}
-        {showEvents && mapEvents?.map((event) => (
-          <EventMarker key={event.id} event={event} />
+        {/* Event markers — always visible (FIX-109-11) */}
+        {mapEvents?.map((event) => (
+          <EventMarker
+            key={event.id}
+            event={event}
+            isPopupOpen={activePopupId === `evt-${event.id}`}
+            onPopupOpen={() => { setActivePopupId(`evt-${event.id}`); onDeselectBuilding() }}
+            onPopupClose={() => setActivePopupId(null)}
+          />
         ))}
       </Map>
 
@@ -288,27 +333,13 @@ export function MapLibreMapComponent({
         {mapRef && <MapControls mapRef={mapRef} />}
       </div>
 
-      {/* POI controls overlay — bottom left */}
-      <div className="absolute bottom-4 left-4 z-[500]">
-        <POIControls
-          activeCategory={poiCategory}
-          onCategoryChange={setPoiCategory}
-          onLoadMore={loadMore}
-          isLoading={poisLoading}
-          hasLoadedMore={hasLoaded}
-          showEvents={!!showEvents}
-          onToggleEvents={onToggleEvents ?? (() => {})}
-        />
-      </div>
+      {/* POI controls removed from map overlay (FIX-109-08) — duplicated
+         category filter above map + overlapped on mobile. Events toggle
+         moved to MapFeature controls area. */}
 
-      {/* Mini-map overview — visible when zoomed in */}
-      {mapRef && (
-        <MapMiniOverview
-          mainMapRef={mapRef}
-          isDark={!!isDark}
-          visible={currentZoom > 16}
-        />
-      )}
+      {/* Mini-map removed (FIX-109-04) — perspective mismatch (main=45° pitch,
+         mini=top-down) confused users. Recenter button in MapControls serves
+         the same navigation purpose without the visual disconnect. */}
     </div>
   )
 }

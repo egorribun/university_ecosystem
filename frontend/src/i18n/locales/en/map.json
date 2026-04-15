@@ -290,7 +290,9 @@
     "markerLabel": "Event: {{title}}",
     "viewDetails": "View details",
     "participants_one": "{{count}} participant",
-    "participants_other": "{{count}} participants"
+    "participants_other": "{{count}} participants",
+    "badgeLabel_one": "{{count}} upcoming event",
+    "badgeLabel_other": "{{count}} upcoming events"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -345,6 +347,8 @@
     "mapNavInstructions": "Use Tab to move between buildings. Press Enter to view floor plan. Press Escape to return.",
     "buildingSelected": "{{name}} selected. {{floors}} floors, {{rooms}} rooms.",
     "roomSelected": "Room {{room}} selected. {{type}}.",
-    "scheduleHighlight": "Your next class is in {{room}}."
+    "scheduleHighlight": "Your next class is in {{room}}.",
+    "mapContainer": "Interactive campus map",
+    "miniMapLabel": "Campus overview — click to recenter"
   }
 }

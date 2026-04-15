@@ -74,11 +74,11 @@ export function POIControls({
         </button>
       )}
 
-      {/* Events toggle */}
+      {/* Events toggle — compact matte chip (FIX-109-02, FIX-109-06) */}
       <button
         type="button"
         onClick={onToggleEvents}
-        className="map-poi-chip"
+        className="map-events-toggle"
         data-active={showEvents || undefined}
         aria-pressed={showEvents}
       >

@@ -66,7 +66,6 @@ export function MapFeature() {
   const [selectedFloor, setSelectedFloor] = useState<number>(1)
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<MapCategory>("all")
-  const [showEvents, setShowEvents] = useState(true)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -197,13 +196,12 @@ export function MapFeature() {
                   activeCategory={activeCategory}
                   highlightedBuilding={nextLessonInfo?.building ?? null}
                   onSelectBuilding={handleBuildingClick}
+                  onDeselectBuilding={handleCloseSidebar}
                   mapRef={mapLibreRef}
                   isDark={isDark}
                   timePeriod={timePeriod}
                   weatherCondition={weatherData?.condition}
-                  showEvents={showEvents}
                   mapEvents={mapEvents}
-                  onToggleEvents={() => setShowEvents((prev) => !prev)}
                 />
               </Suspense>
             </div>

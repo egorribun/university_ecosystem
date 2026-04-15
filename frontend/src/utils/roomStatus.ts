@@ -46,7 +46,12 @@ export function getRoomStatus(
 
     if (Number.isNaN(start) || Number.isNaN(end)) continue
 
-    if (start <= nowMinutes && nowMinutes < end) {
+    // Handle midnight wraparound (e.g. start=22:00, end=02:00)
+    const isBusy = end <= start
+      ? (nowMinutes >= start || nowMinutes < end)
+      : (start <= nowMinutes && nowMinutes < end)
+
+    if (isBusy) {
       return { status: "busy", busyUntil: lesson.end_time }
     }
   }

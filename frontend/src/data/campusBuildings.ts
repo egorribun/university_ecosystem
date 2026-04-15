@@ -93,7 +93,8 @@ export interface CampusBuilding {
 
 /* ── Building Colors ─────────────────────────────── */
 
-const BUILDING_COLORS: Record<BuildingId, { colorVar: string; colorHex: string }> = {
+/** Canonical building→color mapping. Single source of truth — imported by buildingIcons.ts. */
+export const BUILDING_COLORS: Record<BuildingId, { colorVar: string; colorHex: string }> = {
   ГУК: { colorVar: "var(--color-blue-500)", colorHex: "#3b82f6" },
   ПА: { colorVar: "var(--color-amber-500)", colorHex: "#f59e0b" },
   ЛК: { colorVar: "var(--color-emerald-500)", colorHex: "#10b981" },
@@ -558,10 +559,17 @@ function resolveLocaleData(locale?: string): LocalizedMapData | undefined {
  * Structural data (rooms, floors, geo coords) is always the same;
  * only names, descriptions, and amenities change per locale.
  */
+/** Module-level cache — getCampusBuildings is pure for a given locale (PERF-109-02). */
+const _buildingsCache = new Map<string, CampusBuilding[]>()
+
 export function getCampusBuildings(locale?: string): CampusBuilding[] {
+  const key = locale ?? "default"
+  const cached = _buildingsCache.get(key)
+  if (cached) return cached
+
   const localeData = resolveLocaleData(locale)
 
-  return CAMPUS_STRUCTURE.map((struct) => {
+  const result = CAMPUS_STRUCTURE.map((struct) => {
     const meta = localeData?.buildings?.[struct.letter]
     const colors = BUILDING_COLORS[struct.letter]
 
@@ -589,6 +597,9 @@ export function getCampusBuildings(locale?: string): CampusBuilding[] {
       geoCoords: struct.geoCoords,
     } satisfies CampusBuilding
   })
+
+  _buildingsCache.set(key, result)
+  return result
 }
 
 /**

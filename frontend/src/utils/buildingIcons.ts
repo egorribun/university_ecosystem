@@ -1,8 +1,11 @@
 /**
  * buildingIcons.ts — Parse room strings into building + room components.
- * Maps university buildings to theme-consistent colors.
+ * Colors imported from campusBuildings.ts (single source of truth).
  * Wave 66 (Idea #4); Wave 107 — BuildingId multi-char abbreviations.
+ * Wave 109 — consolidated BUILDING_COLORS (DRY).
  */
+
+import { BUILDING_COLORS } from "@/data/campusBuildings"
 
 /** Parsed building/room result */
 export interface BuildingRoom {
@@ -12,23 +15,6 @@ export interface BuildingRoom {
   colorVar: string
   /** Hex fallback for inline SVG/canvas */
   colorHex: string
-}
-
-/**
- * Building → color mapping.
- * Keys are real GUU abbreviations (ГУК, ПА, ЛК, А, Б, СК, О2, О6, ЦИТ).
- * Matches lesson-type accent palette for visual consistency.
- */
-const BUILDING_COLORS: Record<string, { colorVar: string; colorHex: string }> = {
-  ГУК: { colorVar: "var(--color-blue-500)", colorHex: "#3b82f6" },
-  ПА:  { colorVar: "var(--color-amber-500)", colorHex: "#f59e0b" },
-  ЛК:  { colorVar: "var(--color-emerald-500)", colorHex: "#10b981" },
-  А:   { colorVar: "var(--color-slate-500)", colorHex: "#64748b" },
-  Б:   { colorVar: "var(--color-rose-500)", colorHex: "#f43f5e" },
-  СК:  { colorVar: "var(--color-indigo-500)", colorHex: "#6366f1" },
-  О2:  { colorVar: "var(--color-sky-500)", colorHex: "#0ea5e9" },
-  О6:  { colorVar: "var(--color-violet-500)", colorHex: "#8b5cf6" },
-  ЦИТ: { colorVar: "var(--color-orange-500)", colorHex: "#f97316" },
 }
 
 const DEFAULT_COLOR = { colorVar: "var(--color-slate-400)", colorHex: "#94a3b8" }
@@ -46,7 +32,7 @@ export function parseBuildingRoom(room: string | null | undefined): BuildingRoom
   const building = trimmed.slice(0, dashIdx)
   const roomNum = trimmed.slice(dashIdx + 1)
   if (!roomNum || !/^\d/.test(roomNum)) return null
-  const colors = BUILDING_COLORS[building] ?? DEFAULT_COLOR
+  const colors = (BUILDING_COLORS as Record<string, { colorVar: string; colorHex: string }>)[building] ?? DEFAULT_COLOR
   return { building, room: roomNum, ...colors }
 }
 

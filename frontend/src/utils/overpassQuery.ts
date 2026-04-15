@@ -4,7 +4,7 @@
  * Wave 99 — campus map Leaflet integration.
  */
 
-import type { CampusPOI, POICategory } from "@/data/campusPOI"
+import type { CampusPOI, POICategory, POIIconName } from "@/data/campusPOI"
 
 const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 
@@ -48,7 +48,7 @@ function categorizeElement(tags: Record<string, string>): POICategory {
   return "service"
 }
 
-function elementIcon(tags: Record<string, string>): string {
+function elementIcon(tags: Record<string, string>): POIIconName {
   if (tags.highway === "bus_stop") return "Bus"
   if (tags.amenity === "cafe" || tags.amenity === "fast_food") return "Coffee"
   if (tags.amenity === "restaurant") return "UtensilsCrossed"

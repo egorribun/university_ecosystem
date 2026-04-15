@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import { X, Clock, MapPin, Users, ChevronRight } from "lucide-react"
 import type { CampusBuilding, CampusRoom, BuildingFloor } from "@/data/campusBuildings"
@@ -47,14 +47,15 @@ export function MapSidebar({
   const isOpen = !!building
 
   /* ── Bottom sheet drag state (mobile only) ── */
-  const [sheetHeight, setSheetHeight] = useState(280)
-  const [activeDrag, setActiveDrag] = useState(false)
+  const getViewH = () => (typeof window !== "undefined" ? window.innerHeight : 800)
+  const [sheetHeight, setSheetHeight] = useState(() => getViewH() * 0.5)
+  /** Scroll locked during entrance animation — prevents focus-trap auto-scroll */
+  const [sheetReady, setSheetReady] = useState(false)
   const dragStartY = useRef(0)
   const dragStartH = useRef(0)
   const isDragging = useRef(false)
 
   const SNAP_PEEK = 160
-  const getViewH = () => (typeof window !== "undefined" ? window.innerHeight : 800)
   const SNAP_HALF = getViewH() * 0.5
   const SNAP_FULL = getViewH() * 0.85
 
@@ -85,7 +86,7 @@ export function MapSidebar({
   const handleDragStart = useCallback(
     (clientY: number) => {
       isDragging.current = true
-      setActiveDrag(true)
+
       dragStartY.current = clientY
       dragStartH.current = sheetHeight
     },
@@ -103,18 +104,80 @@ export function MapSidebar({
   const handleDragEnd = useCallback(() => {
     if (!isDragging.current) return
     isDragging.current = false
-    setActiveDrag(false)
+
     snapToNearest(sheetHeight)
   }, [sheetHeight, snapToNearest])
 
-  // Reset sheet height when building changes
+  /**
+   * FIX-109-10: Fresh scroll key forces React to remount the scroll container
+   * when building changes. This guarantees scrollTop=0 on the new DOM element,
+   * regardless of focus trap, browser scroll restoration, or content layout.
+   * A `key` change is the only approach that reliably beats all timing issues.
+   */
+  const scrollKey = building?.letter ?? ""
+
+  // Reset height + unlock scroll after CSS animation completes
   useEffect(() => {
-    if (building && isMobile) setSheetHeight(SNAP_HALF)
+    if (!building) {
+      setSheetReady(false)
+      return
+    }
+    if (isMobile) setSheetHeight(SNAP_HALF)
+    setSheetReady(false)
+    // Enable scroll AFTER CSS @keyframes entrance (350ms)
+    const id = setTimeout(() => setSheetReady(true), 380)
+    return () => clearTimeout(id)
   }, [building, isMobile, SNAP_HALF])
 
   const selectedRoomData: CampusRoom | undefined = floor?.rooms.find(
     (r) => r.id === selectedRoom,
   )
+
+  /** Memoized room list items — avoids re-rendering all buttons on unrelated state changes (PERF-109-03). */
+  const roomListItems = useMemo(() => {
+    if (!floor || !building) return null
+    return floor.rooms.map((room) => {
+      const isActive = selectedRoom === room.id
+      const status = todayLessons ? getRoomStatus(room.id, todayLessons) : null
+      return (
+        <button
+          key={room.id}
+          type="button"
+          onClick={() => onRoomClick(room.id)}
+          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left transition-colors text-xs${isActive ? " map-accent-tint-light" : ""}`}
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-bold" style={isActive ? { color: "var(--_bldg-color)" } : undefined}>
+              {room.id}
+            </span>
+            {room.name && (
+              <span className="text-[var(--text-tertiary)] truncate">{room.name}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {status && (
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                style={{
+                  backgroundColor: status.status === "free"
+                    ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
+                    : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+                  color: status.status === "free"
+                    ? "var(--color-emerald-500)"
+                    : "var(--color-rose-500)",
+                }}
+              >
+                {status.status === "free"
+                  ? t("sidebar.roomFree")
+                  : t("sidebar.roomBusy", { time: status.busyUntil })}
+              </span>
+            )}
+            <ChevronRight className="h-3 w-3 text-[var(--text-tertiary)] opacity-50" />
+          </div>
+        </button>
+      )
+    })
+  }, [floor, building, selectedRoom, todayLessons, t, onRoomClick])
 
   if (!isOpen) return null
 
@@ -122,7 +185,10 @@ export function MapSidebar({
 
   /* ── Content ── */
   const content = (
-    <div className="flex flex-col gap-4 p-4 sm:p-5">
+    <div
+      className="flex flex-col gap-4 p-4 sm:p-5"
+      style={{ "--_bldg-color": building.colorHex } as CSSProperties}
+    >
       {/* Building photo / placeholder */}
       {building.photo ? (
         <img src={building.photo} alt={building.name} className="map-sidebar-photo" loading="lazy" />
@@ -233,12 +299,10 @@ export function MapSidebar({
                   role="radio"
                   aria-checked={isActive}
                   onClick={() => onFloorChange(flNum)}
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors"
+                  className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors${isActive ? " map-accent-tint-medium" : ""}`}
                   style={{
-                    backgroundColor: isActive
-                      ? `color-mix(in srgb, ${building.colorHex} 15%, var(--bg-surface))`
-                      : "var(--bg-surface-hover)",
-                    color: isActive ? building.colorHex : "var(--text-secondary)",
+                    backgroundColor: isActive ? undefined : "var(--bg-surface-hover)",
+                    color: isActive ? "var(--_bldg-color)" : "var(--text-secondary)",
                   }}
                 >
                   {flNum}
@@ -279,59 +343,14 @@ export function MapSidebar({
         </div>
       )}
 
-      {/* Room list */}
-      {floor && (
+      {/* Room list — memoized via roomListItems (PERF-109-03) */}
+      {floor && roomListItems && (
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
             {t("sidebar.rooms")} — {t("sidebar.roomCount", { count: floor.rooms.length })}
           </p>
           <div className="flex flex-col gap-1">
-            {floor.rooms.map((room) => {
-              const isActive = selectedRoom === room.id
-              const status = todayLessons ? getRoomStatus(room.id, todayLessons) : null
-              return (
-                <button
-                  key={room.id}
-                  type="button"
-                  onClick={() => onRoomClick(room.id)}
-                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left transition-colors text-xs"
-                  style={{
-                    backgroundColor: isActive
-                      ? `color-mix(in srgb, ${building.colorHex} 12%, var(--bg-surface))`
-                      : undefined,
-                  }}
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="font-bold" style={isActive ? { color: building.colorHex } : undefined}>
-                      {room.id}
-                    </span>
-                    {room.name && (
-                      <span className="text-[var(--text-tertiary)] truncate">{room.name}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {status && (
-                      <span
-                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                        style={{
-                          backgroundColor: status.status === "free"
-                            ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
-                            : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
-                          color: status.status === "free"
-                            ? "var(--color-emerald-500)"
-                            : "var(--color-rose-500)",
-                        }}
-                      >
-                        {status.status === "free"
-                          ? t("sidebar.roomFree")
-                          : t("sidebar.roomBusy", { time: status.busyUntil })}
-                      </span>
-                    )}
-                    <ChevronRight className="h-3 w-3 text-[var(--text-tertiary)] opacity-50" />
-                  </div>
-                </button>
-              )
-            })}
+            {roomListItems}
           </div>
         </div>
       )}
@@ -342,6 +361,7 @@ export function MapSidebar({
   if (isMobile) {
     return (
       <div
+        key={scrollKey}
         ref={sheetRef}
         role="dialog"
         aria-modal="true"
@@ -350,7 +370,6 @@ export function MapSidebar({
         style={{
           height: `${sheetHeight}px`,
           boxShadow: "var(--map-sidebar-shadow)",
-          transition: activeDrag ? "none" : "height 0.3s var(--ease-premium, ease-out)",
         }}
       >
         {/* Drag handle */}
@@ -365,7 +384,7 @@ export function MapSidebar({
         >
           <div className="w-10 h-1 rounded-full bg-[var(--text-tertiary)] opacity-30" />
         </div>
-        <div className="overflow-y-auto" style={{ height: `${sheetHeight - 40}px` }}>
+        <div className={`${sheetReady ? "overflow-y-auto" : "overflow-hidden"} scrollbar-hide`} style={{ height: `${sheetHeight - 40}px` }}>
           {content}
         </div>
       </div>
@@ -375,7 +394,8 @@ export function MapSidebar({
   /* ── Desktop slide-over ── */
   return (
     <div
-      className="map-sidebar-container w-80 lg:w-96 shrink-0 overflow-y-auto rounded-xl"
+      key={scrollKey}
+      className="map-sidebar-container w-80 lg:w-96 shrink-0 overflow-y-auto rounded-xl scrollbar-hide map-sidebar-fade-in"
       style={{
         backgroundColor: "var(--map-sidebar-bg)",
         boxShadow: "var(--map-sidebar-shadow)",
