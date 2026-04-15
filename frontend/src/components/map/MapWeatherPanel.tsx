@@ -95,7 +95,7 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
             type="button"
             onClick={onClose}
             className="absolute top-2 right-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
-            aria-label={t("sidebar.close")}
+            aria-label={t("common:buttons.close")}
           >
             <X className="h-4 w-4" />
           </button>

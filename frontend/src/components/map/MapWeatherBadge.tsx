@@ -37,8 +37,6 @@ export function MapWeatherBadge() {
     <div className="relative mb-4">
       <button
         type="button"
-        role="status"
-        aria-live="polite"
         aria-expanded={isExpanded}
         aria-label={t("weather.ariaLabel", { condition: conditionText, temp: data.temperature })}
         className="map-weather-badge cursor-pointer"

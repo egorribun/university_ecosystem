@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore
 import { useTranslation } from "react-i18next"
 import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { logError } from "@/app/logger"
 import { breakpoints } from "@/theme/tokens"
 import { MapBackdrop } from "@/components/map/MapBackdrop"
 import { MapHeader } from "@/components/map/MapHeader"
@@ -130,9 +131,9 @@ export function MapFeature() {
     const container = document.querySelector(".map-card-matte")
     if (!container) return
     if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(() => {})
+      container.requestFullscreen().catch(logError)
     } else {
-      document.exitFullscreen().catch(() => {})
+      document.exitFullscreen().catch(logError)
     }
   }, [])
 

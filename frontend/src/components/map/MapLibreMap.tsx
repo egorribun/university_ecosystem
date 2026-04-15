@@ -8,7 +8,7 @@
  * Wave 107 — reduced-motion, sky dedup, extrusion fix, timeout cleanup, POI perf.
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Map, Layer } from "react-map-gl/maplibre"
 import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
@@ -160,71 +160,81 @@ export function MapLibreMapComponent({
 
   const mapStyle = isDark ? STYLE_DARK : STYLE_LIGHT
 
-  /* ── Cinematic intro + sky/fog setup on map load ── */
-  const onMapLoad = useCallback(() => {
-    const map = mapRef?.current?.getMap()
-    if (!map) return
+  /**
+   * Cinematic intro + sky/fog + canvas resize — all in one rAF polling loop.
+   *
+   * WHY NOT onLoad: MapLibre GL's `load` is a one-shot event. In React 18
+   * StrictMode, the component mounts twice: the `load` event can fire during
+   * the brief unmount gap between mounts, and the second mount's onLoad prop
+   * never receives it. Polling via rAF avoids this entirely — it checks
+   * map.loaded() every frame until true, regardless of event timing.
+   *
+   * Handles all cases:
+   * - Fresh load: polls ~1-3s until tiles ready → intro animation
+   * - StrictMode remount: map already loaded from first mount → runs on first frame
+   * - Navigation back (reuseMaps): map at final position → flyTo is a no-op
+   */
+  useEffect(() => {
+    let raf: number
+    let cancelled = false
 
-    map.setSky(getSkyConfig(!!isDark, timePeriod))
+    const check = () => {
+      if (cancelled) return
+      const map = mapRef?.current?.getMap()
 
-    // Cinematic intro — fly from high altitude (skip if reduced-motion)
-    if (!hasAnimatedIntro.current) {
-      hasAnimatedIntro.current = true
-      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      if (!map || !map.loaded()) {
+        // Map not ready yet — keep polling
+        raf = requestAnimationFrame(check)
+        return
+      }
 
-      if (prefersReduced) {
-        // Jump directly to final position — no animation
-        map.jumpTo({
-          center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-          zoom: 16,
-          pitch: 45,
-          bearing: 0,
-        })
-      } else {
-        // Map already at intro start state via initialViewState — fly to final
-        introTimeoutRef.current = setTimeout(() => {
-          if (!mapRef?.current) return
-          map.flyTo({
+      // ── Map is ready ──
+
+      // Canvas resize (FIX-109-01: fixes stale drag handlers after View Transition)
+      map.resize()
+
+      // Sky/fog atmosphere
+      map.setSky(getSkyConfig(!!isDark, timePeriod))
+
+      // Cinematic intro — only once per component lifetime
+      if (!hasAnimatedIntro.current) {
+        hasAnimatedIntro.current = true
+        const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+        if (prefersReduced) {
+          map.jumpTo({
             center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
             zoom: 16,
             pitch: 45,
             bearing: 0,
-            duration: 2500,
-            essential: true,
           })
-        }, 300)
+        } else {
+          introTimeoutRef.current = setTimeout(() => {
+            if (cancelled) return
+            map.flyTo({
+              center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+              zoom: 16,
+              pitch: 45,
+              bearing: 0,
+              duration: 2500,
+              essential: true,
+            })
+          }, 300)
+        }
       }
     }
-  }, [mapRef, isDark, timePeriod])
 
-  /* ── Cleanup cinematic intro timeout on unmount ── */
-  useEffect(() => {
+    raf = requestAnimationFrame(check)
+
     return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
       if (introTimeoutRef.current) {
         clearTimeout(introTimeoutRef.current)
         introTimeoutRef.current = null
       }
     }
-  }, [])
-
-  /**
-   * FIX-109-01: Force canvas resize after mount to reinitialize MapLibre GL
-   * event handlers. When navigating back to the map via View Transition API,
-   * the VT snapshot overlay intercepts pointer events during the transition.
-   * MapLibre's canvas initializes underneath, resulting in stale drag/scroll
-   * handlers. Double-rAF ensures resize runs AFTER the VT completes (~200ms).
-   */
-  useEffect(() => {
-    const map = mapRef?.current?.getMap()
-    if (!map) return
-
-    let outer = requestAnimationFrame(() => {
-      outer = requestAnimationFrame(() => {
-        map.resize()
-      })
-    })
-    return () => cancelAnimationFrame(outer)
-  }, [mapRef])
+  }, [mapRef, isDark, timePeriod])
 
   /* ── Update sky on theme/time-of-day change ── */
   useEffect(() => {
@@ -234,7 +244,11 @@ export function MapLibreMapComponent({
   }, [isDark, timePeriod, mapRef])
 
   return (
-    <div className="maplibre-map-wrapper relative h-full min-h-[inherit]" role="application" aria-label={t("a11y.mapContainer")}>
+    <div
+      className="maplibre-map-wrapper relative h-full min-h-[inherit]"
+      role="application"
+      aria-label={t("a11y.mapContainer")}
+    >
       <Map
         ref={mapRef}
         initialViewState={{
@@ -247,7 +261,6 @@ export function MapLibreMapComponent({
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
         reuseMaps
-        onLoad={onMapLoad}
         onClick={() => { onDeselectBuilding(); setActivePopupId(null) }}
         maxPitch={70}
       >
@@ -304,14 +317,6 @@ export function MapLibreMapComponent({
       >
         {mapRef && <MapControls mapRef={mapRef} />}
       </div>
-
-      {/* POI controls removed from map overlay (FIX-109-08) — duplicated
-         category filter above map + overlapped on mobile. Events toggle
-         moved to MapFeature controls area. */}
-
-      {/* Mini-map removed (FIX-109-04) — perspective mismatch (main=45° pitch,
-         mini=top-down) confused users. Recenter button in MapControls serves
-         the same navigation purpose without the visual disconnect. */}
     </div>
   )
 }

@@ -72,6 +72,10 @@ export function MapSidebar({
   const sheetRef = useFocusTrap<HTMLDivElement>({
     active: isMobile && isOpen,
     onDeactivate: onClose,
+    // FIX-110-sidebar: `false` prevents auto-focus on the first tabbable element,
+    // which would cause the browser to scroll the overflow container to bring a
+    // deep floor/room button into view — hiding the top content (photo, header).
+    initialFocus: false,
   })
 
   const snapToNearest = useCallback(

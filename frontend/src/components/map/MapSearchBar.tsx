@@ -133,7 +133,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
 
   return (
     <div className="relative">
-      <div className="map-card-matte flex items-center gap-2 px-3 py-2">
+      <div className="map-card-matte flex items-center gap-2 px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--color-teal-500)]/40 transition-shadow">
         <Search className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
         <input
           ref={mergedInputRef}
@@ -163,10 +163,10 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
               setIsOpen(false)
               inputRef.current?.focus()
             }}
-            className="h-5 w-5 flex items-center justify-center rounded-full hover:bg-[var(--bg-surface-hover)]"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-[var(--bg-surface-hover)]"
             aria-label={t("search.clear")}
           >
-            <X className="h-3 w-3" />
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>

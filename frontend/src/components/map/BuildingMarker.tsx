@@ -103,7 +103,6 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
             </div>
           )}
 
-          {/* Letter badge removed — not needed per user request (Wave 104) */}
         </div>
       </Marker>
 
