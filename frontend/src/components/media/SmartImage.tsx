@@ -78,10 +78,14 @@ export default function SmartImage({
 
   return (
     <img
-      {...rest}
-      alt={alt}
+      // Wave 112 SW5 — defaults FIRST, `{...rest}` AFTER so callers can
+      // override `loading="eager"` + `fetchpriority="high"` for LCP-critical
+      // above-the-fold images (Core Web Vitals optimisation). Pre-Wave 112
+      // these were forced AFTER spread, silently swallowing caller intent.
       loading="lazy"
       decoding="async"
+      {...rest}
+      alt={alt}
       style={mergedStyle}
       src={sanitizeUrl(finalSrc || "") || undefined}
       srcSet={srcSet || undefined}
