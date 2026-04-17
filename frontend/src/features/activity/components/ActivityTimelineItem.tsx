@@ -5,7 +5,7 @@ import {
   GraduationCap as GradeIcon,
   Award as ParticipationIcon,
 } from "lucide-react"
-import type { TimelineEntry } from "./activityTypes"
+import type { TimelineEntry } from "../types"
 
 const DOT_COLORS: Record<string, string> = {
   "attendance-present": "var(--activity-present-accent)",

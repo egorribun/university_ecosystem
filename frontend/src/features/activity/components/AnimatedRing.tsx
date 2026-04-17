@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, type CSSProperties } from "react"
 import { motion, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion"
-import { EASE_OUT_EXPO } from "./activityTypes"
+import { EASE_OUT_EXPO } from "../types"
 import { motion as motionTokens } from "@/theme/tokens"
 
 function useAnimatedNumber(target: number, duration = motionTokens.durationLazy, fraction = 0) {

@@ -168,10 +168,20 @@
     --motion-duration-fast: 0.2s;
     --motion-duration-base: 0.3s;
     --motion-duration-default: 0.35s;
+    --motion-duration-medium: 0.45s;
     --motion-duration-slow: 0.5s;
     --motion-duration-slower: 0.7s;
     --motion-duration-lazy: 0.9s;
     --motion-duration-hero: 1.2s;
+
+    /* Extended durations — Wave 112 (restore from pre-SW2 tokens.ts manual keys) */
+    --motion-duration-typing: 1.4s;
+    --motion-duration-shimmer: 1.6s;
+    --motion-duration-pulse: 1.8s;
+    --motion-duration-pulse-slow: 2s;
+    --motion-duration-aura: 14s;
+    --motion-nav-transition: 1.2s;
+    --motion-stagger-medium: 0.06s;
 
     /* Delays */
     --motion-delay-none: 0s;

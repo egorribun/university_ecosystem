@@ -1,20 +1,17 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import axios from "@/api/client"
 import { useLanguage, getLocaleForLanguage } from "@/contexts/LanguageContext"
+import { useActivitySummaryQuery } from "@/api/hooks/activity"
 import {
   type PeriodKey,
   type AttendanceStats,
   type GradeStats,
   type ParticipationStats,
-  type AttendanceSummaryResponse,
-  type GradeSummaryResponse,
-  type ParticipationSummaryResponse,
   PERIOD_VALUES,
   periodDayCount,
   isPeriodKey,
   isGradeScale,
-} from "@/components/activity/activityTypes"
+} from "@/features/activity/types"
 import {
   toNumber,
   parseAttendanceRecent,
@@ -23,19 +20,33 @@ import {
   DEFAULT_ATTENDANCE_RECENT,
   DEFAULT_GRADE_RECENT,
   DEFAULT_PARTICIPATION_RECENT,
-} from "@/components/activity/activityParsers"
+} from "@/features/activity/parsers"
 
+/**
+ * useActivityData — Wave 112 SW2.
+ *
+ * Public API is byte-equivalent to the previous bare-axios implementation:
+ * consumers (ActivityFeature) get the same `attendance/grades/participation`
+ * objects with fallback defaults, the same loading/hasInitiallyLoaded flags,
+ * and the same derived chart/heatmap data.
+ *
+ * What changed: data fetching + cancellation now flows through TanStack Query
+ * (`useActivitySummaryQuery`). Benefits:
+ *   - Automatic dedup across hook instances
+ *   - Background refetch on window focus / reconnect (default behaviour)
+ *   - 60s staleTime — sub-minute refetches are wasteful for summary stats
+ *   - AbortSignal handled by query → no manual AbortController bookkeeping
+ *   - Cache survives unmount → instant period-switch back to a visited window
+ *
+ * The translation/parsing layer (toNumber, parseAttendanceRecent, etc.)
+ * stays here as `useMemo` derivations — they're UI concerns, not fetch concerns.
+ */
 export default function useActivityData() {
   const { t } = useTranslation(["activity", "common"])
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
 
   const [period, setPeriod] = useState<PeriodKey>("90d")
-  const [attendance, setAttendance] = useState<AttendanceStats | null>(null)
-  const [grades, setGrades] = useState<GradeStats | null>(null)
-  const [participation, setParticipation] = useState<ParticipationStats | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
 
   const labelByPeriod = useCallback(
     (p: PeriodKey) =>
@@ -78,171 +89,119 @@ export default function useActivityData() {
     [t]
   )
 
-  const fallbackAttendanceRecentRef = useRef(DEFAULT_ATTENDANCE_RECENT)
-  const fallbackGradeRecentRef = useRef(DEFAULT_GRADE_RECENT)
-  const fallbackParticipationRecentRef = useRef(DEFAULT_PARTICIPATION_RECENT)
+  // i18n returnObjects fallbacks — stored in state (not refs) so React
+  // Compiler can track them as useMemo dependencies without flagging a
+  // ref-read during render (RC-78-01 / RC-91-01 pattern).
+  const [fallbackAttendanceRecent, setFallbackAttendanceRecent] = useState(
+    DEFAULT_ATTENDANCE_RECENT
+  )
+  const [fallbackGradeRecent, setFallbackGradeRecent] = useState(DEFAULT_GRADE_RECENT)
+  const [fallbackParticipationRecent, setFallbackParticipationRecent] = useState(
+    DEFAULT_PARTICIPATION_RECENT
+  )
 
-  // react-i18next returnObjects returns TFunctionResult which doesn't narrow to unknown[].
-  // Cast to `unknown` is safe because each value passes through typed parsers below.
+  // react-i18next returnObjects returns TFunctionResult which doesn't narrow
+  // to unknown[]. Cast to `unknown` is safe because each value passes through
+  // typed parsers below. Language-change is the only trigger — re-render cost
+  // is negligible compared to the correctness win.
   useEffect(() => {
     const attendanceRaw = t("activity:fallback.attendance.recent", {
       returnObjects: true,
     }) as unknown
     const attendanceParsed = parseAttendanceRecent(attendanceRaw)
-    fallbackAttendanceRecentRef.current =
+    setFallbackAttendanceRecent(
       attendanceParsed.length > 0 ? attendanceParsed : DEFAULT_ATTENDANCE_RECENT
+    )
 
     const gradesRaw = t("activity:fallback.grades.recent", { returnObjects: true }) as unknown
     const gradesParsed = parseGradeRecent(gradesRaw)
-    fallbackGradeRecentRef.current = gradesParsed.length > 0 ? gradesParsed : DEFAULT_GRADE_RECENT
+    setFallbackGradeRecent(gradesParsed.length > 0 ? gradesParsed : DEFAULT_GRADE_RECENT)
 
     const participationRaw = t("activity:fallback.participation.recent", {
       returnObjects: true,
     }) as unknown
     const participationParsed = parseParticipationRecent(participationRaw)
-    fallbackParticipationRecentRef.current =
+    setFallbackParticipationRecent(
       participationParsed.length > 0 ? participationParsed : DEFAULT_PARTICIPATION_RECENT
+    )
   }, [t])
 
-  const summaryRequestRef = useRef<AbortController | null>(null)
+  // ── Data fetching via TanStack Query ────────────
+  const summaryQuery = useActivitySummaryQuery({ period, language })
+  const envelope = summaryQuery.data
+  const loading = summaryQuery.isFetching
+  const hasInitiallyLoaded = summaryQuery.isSuccess
 
-  const fetchSummary = useCallback(async () => {
-    summaryRequestRef.current?.abort()
-    const controller = new AbortController()
-    summaryRequestRef.current = controller
-
-    setLoading(true)
-
-    // PERF-1: /stats/summary — single round-trip instead of three separate requests.
-    // Falls back to individual endpoints on failure (older backend / per-service outage).
-    type SummaryEnvelope = {
-      attendance: AttendanceSummaryResponse | null
-      grades: GradeSummaryResponse | null
-      participation: ParticipationSummaryResponse | null
-    }
-    type SettledLike<T> = { status: "fulfilled"; value: { data: T } } | { status: "rejected" }
-    const _toSettled = <T>(data: T | null): SettledLike<T> =>
-      data != null ? { status: "fulfilled", value: { data } } : { status: "rejected" }
-
-    try {
-      let a: SettledLike<AttendanceSummaryResponse>
-      let g: SettledLike<GradeSummaryResponse>
-      let p: SettledLike<ParticipationSummaryResponse>
-
-      try {
-        const summary = await axios.get<SummaryEnvelope>("/stats/summary", {
-          params: { period },
-          signal: controller.signal,
-        })
-        a = _toSettled(summary.data?.attendance ?? null)
-        g = _toSettled(summary.data?.grades ?? null)
-        p = _toSettled(summary.data?.participation ?? null)
-      } catch {
-        // Fallback: individual requests for older backend or per-endpoint failure.
-        ;[a, g, p] = await Promise.allSettled([
-          axios.get<AttendanceSummaryResponse>("/stats/attendance", {
-            params: { period },
-            signal: controller.signal,
-          }),
-          axios.get<GradeSummaryResponse>("/stats/grades", {
-            params: { period },
-            signal: controller.signal,
-          }),
-          axios.get<ParticipationSummaryResponse>("/stats/participation", {
-            params: { period },
-            signal: controller.signal,
-          }),
-        ])
-      }
-
-      if (controller.signal.aborted) {
-        return
-      }
-
-      if (a.status === "fulfilled" && a.value?.data) {
-        const d = a.value.data
-        const resolvedPeriodKey: PeriodKey = isPeriodKey(d.period_key) ? d.period_key : period
-        const periodLabel =
-          typeof d.period_label === "string" && d.period_label.trim()
-            ? d.period_label
-            : labelByPeriod(resolvedPeriodKey)
-        setAttendance({
-          percent: toNumber(d.percent),
-          present: toNumber(d.present),
-          total: toNumber(d.total),
-          trend: toNumber(d.trend),
-          periodKey: resolvedPeriodKey,
-          periodLabel,
-          recent: parseAttendanceRecent(d.recent),
-        })
-      } else {
-        const fallbackRecent = fallbackAttendanceRecentRef.current
-        setAttendance({
-          percent: 92,
-          present: 83,
-          total: 90,
-          trend: 1.4,
-          periodKey: period,
-          periodLabel: labelByPeriod(period),
-          recent: fallbackRecent.map((item) => ({ ...item })),
-        })
-      }
-      if (g.status === "fulfilled" && g.value?.data) {
-        const d = g.value.data
-        setGrades({
-          average: toNumber(d.average, 4.4),
-          scale: isGradeScale(d.scale) ? d.scale : "5",
-          trend: toNumber(d.trend, 0.3),
-          recent: parseGradeRecent(d.recent),
-        })
-      } else {
-        const fallbackRecent = fallbackGradeRecentRef.current
-        setGrades({
-          average: 4.4,
-          scale: "5",
-          trend: 0.3,
-          recent: fallbackRecent.map((item) => ({ ...item })),
-        })
-      }
-      if (p.status === "fulfilled" && p.value?.data) {
-        const d = p.value.data
-        setParticipation({
-          events: toNumber(d.events),
-          hours: d.hours != null ? toNumber(d.hours) : undefined,
-          groups: d.groups != null ? toNumber(d.groups) : undefined,
-          trend: toNumber(d.trend),
-          recent: parseParticipationRecent(d.recent),
-        })
-      } else {
-        const fallbackRecent = fallbackParticipationRecentRef.current
-        setParticipation({
-          events: 6,
-          hours: 12,
-          groups: 2,
-          trend: 2.0,
-          recent: fallbackRecent.map((item) => ({ ...item })),
-        })
-      }
-    } finally {
-      if (summaryRequestRef.current === controller) {
-        summaryRequestRef.current = null
-      }
-      if (!controller.signal.aborted) {
-        setLoading(false)
-        setHasInitiallyLoaded(true)
+  const attendance = useMemo<AttendanceStats | null>(() => {
+    const d = envelope?.attendance
+    if (d) {
+      const resolvedPeriodKey: PeriodKey = isPeriodKey(d.period_key) ? d.period_key : period
+      const periodLabel =
+        typeof d.period_label === "string" && d.period_label.trim()
+          ? d.period_label
+          : labelByPeriod(resolvedPeriodKey)
+      return {
+        percent: toNumber(d.percent),
+        present: toNumber(d.present),
+        total: toNumber(d.total),
+        trend: toNumber(d.trend),
+        periodKey: resolvedPeriodKey,
+        periodLabel,
+        recent: parseAttendanceRecent(d.recent),
       }
     }
-  }, [period, labelByPeriod])
-
-  useEffect(() => {
-    void fetchSummary()
-  }, [fetchSummary, language])
-
-  useEffect(() => {
-    return () => {
-      summaryRequestRef.current?.abort()
+    if (!hasInitiallyLoaded) return null
+    // Per-section fallback when /stats/summary or /stats/attendance returns null.
+    return {
+      percent: 92,
+      present: 83,
+      total: 90,
+      trend: 1.4,
+      periodKey: period,
+      periodLabel: labelByPeriod(period),
+      recent: fallbackAttendanceRecent.map((item) => ({ ...item })),
     }
-  }, [])
+  }, [envelope?.attendance, period, labelByPeriod, hasInitiallyLoaded, fallbackAttendanceRecent])
+
+  const grades = useMemo<GradeStats | null>(() => {
+    const d = envelope?.grades
+    if (d) {
+      return {
+        average: toNumber(d.average, 4.4),
+        scale: isGradeScale(d.scale) ? d.scale : "5",
+        trend: toNumber(d.trend, 0.3),
+        recent: parseGradeRecent(d.recent),
+      }
+    }
+    if (!hasInitiallyLoaded) return null
+    return {
+      average: 4.4,
+      scale: "5",
+      trend: 0.3,
+      recent: fallbackGradeRecent.map((item) => ({ ...item })),
+    }
+  }, [envelope?.grades, hasInitiallyLoaded, fallbackGradeRecent])
+
+  const participation = useMemo<ParticipationStats | null>(() => {
+    const d = envelope?.participation
+    if (d) {
+      return {
+        events: toNumber(d.events),
+        hours: d.hours != null ? toNumber(d.hours) : undefined,
+        groups: d.groups != null ? toNumber(d.groups) : undefined,
+        trend: toNumber(d.trend),
+        recent: parseParticipationRecent(d.recent),
+      }
+    }
+    if (!hasInitiallyLoaded) return null
+    return {
+      events: 6,
+      hours: 12,
+      groups: 2,
+      trend: 2.0,
+      recent: fallbackParticipationRecent.map((item) => ({ ...item })),
+    }
+  }, [envelope?.participation, hasInitiallyLoaded, fallbackParticipationRecent])
 
   // ── Chart data derivation (Phase B) ───────────────
   const attendanceTrendData = useMemo(() => {

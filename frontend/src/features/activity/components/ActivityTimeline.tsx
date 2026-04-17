@@ -6,7 +6,7 @@ import type {
   GradeStats,
   ParticipationStats,
   TimelineEntry,
-} from "./activityTypes"
+} from "../types"
 
 type ActivityTimelineProps = {
   attendance?: AttendanceStats | null

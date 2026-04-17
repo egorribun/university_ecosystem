@@ -1,4 +1,4 @@
-import type { AttendanceStats, GradeStats, ParticipationStats } from "./activityTypes"
+import type { AttendanceStats, GradeStats, ParticipationStats } from "./types"
 
 export const toNumber = (value: unknown, fallback = 0): number => {
   const num = Number(value)

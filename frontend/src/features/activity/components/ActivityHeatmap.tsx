@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { useLanguage, getLocaleForLanguage } from "@/contexts/LanguageContext"
-import { periodDayCount, type PeriodKey } from "./activityTypes"
+import { periodDayCount, type PeriodKey } from "../types"
 import CardShell from "./CardShell"
 
 type ActivityHeatmapProps = {
