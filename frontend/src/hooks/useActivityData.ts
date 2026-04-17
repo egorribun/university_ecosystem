@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useLanguage, getLocaleForLanguage } from "@/contexts/LanguageContext"
 import { useActivitySummaryQuery } from "@/api/hooks/activity"
+import { useURLState } from "@/hooks/useURLState"
 import {
   type PeriodKey,
   type AttendanceStats,
@@ -46,7 +47,17 @@ export default function useActivityData() {
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
 
-  const [period, setPeriod] = useState<PeriodKey>("90d")
+  // URL-synced period — refresh and share now preserve the selected window
+  // (Wave 112 SW3). Falls back to "90d" when absent or unrecognised.
+  const { params, setParam } = useURLState<{ p?: PeriodKey }>()
+  const period: PeriodKey = params.p && isPeriodKey(params.p) ? params.p : "90d"
+  const setPeriod = useCallback(
+    (next: PeriodKey) => {
+      // Keep the URL clean: default value → remove the param.
+      setParam("p", next === "90d" ? "" : next)
+    },
+    [setParam]
+  )
 
   const labelByPeriod = useCallback(
     (p: PeriodKey) =>

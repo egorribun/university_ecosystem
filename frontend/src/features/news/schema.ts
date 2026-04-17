@@ -48,3 +48,25 @@ export const newsFormSchema = v.object({
 })
 
 export type NewsFormValues = v.InferInput<typeof newsFormSchema>
+
+/**
+ * News route search-param schema — Wave 112 SW3 URL-sync.
+ *
+ * Mirrors Events' convention (`q/cat/sort/...`) so cross-page UX is
+ * consistent: refresh preserves filters, share links preserve filters,
+ * and users can bookmark a filtered view.
+ *
+ * Keys intentionally short — the URL bar has limited screen real estate
+ * on mobile and these surface in share-sheet previews.
+ *
+ *   q    — free-text search query (no length cap — client-side validates)
+ *   cat  — category slug | "all" | "saved" (bookmarks view)
+ *   sort — "newest" | "popular"
+ */
+export const newsSearchSchema = v.object({
+  q: v.optional(v.string()),
+  cat: v.optional(v.string()),
+  sort: v.optional(v.picklist(["newest", "popular"])),
+})
+
+export type NewsSearch = v.InferOutput<typeof newsSearchSchema>
