@@ -38,6 +38,11 @@
     "separator": " \u2022 ",
     "noData": "No data"
   },
+  "chartTableHeaders": {
+    "date": "Date",
+    "subject": "Subject",
+    "value": "Value"
+  },
   "sections": {
     "attendance": {
       "title": "Attendance",

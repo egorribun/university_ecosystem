@@ -127,6 +127,28 @@ export function ActivityBarChart({
           </g>
         ))}
       </svg>
+
+      {/*
+        Wave 112 SW4 — sr-only data table mirror (WCAG 1.1.1 + 1.3.1).
+        SVG carries the chart purpose, table carries the values for AT.
+      */}
+      <table className="sr-only">
+        <caption>{ariaLabel}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("activity:charts.tableHeaders.subject")}</th>
+            <th scope="col">{t("activity:charts.tableHeaders.value")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((bar) => (
+            <tr key={bar.label}>
+              <th scope="row">{bar.label}</th>
+              <td>{bar.max ? `${bar.value.toFixed(1)} / ${bar.max}` : bar.value.toFixed(1)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

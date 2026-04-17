@@ -361,6 +361,8 @@
     "roomSelected": "Room {{room}} selected. {{type}}.",
     "scheduleHighlight": "Your next class is in {{room}}.",
     "mapContainer": "Interactive campus map",
+    "mapRoleDescription": "Campus map",
+    "mapKeyboardHint": "Use arrow keys or click and drag to pan. Press plus or minus to zoom. Use Tab to focus building markers and Enter to open details. Press question mark for the full list of shortcuts.",
     "miniMapLabel": "Campus overview — click to recenter"
   }
 }

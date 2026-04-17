@@ -161,6 +161,30 @@ export function ActivityTrendChart({
           </text>
         ))}
       </svg>
+
+      {/*
+        Wave 112 SW4 — sr-only data table for screen readers (WCAG 1.1.1
+        non-text content + WCAG 1.3.1 info-and-relationships). The SVG above
+        carries `role="img"` + `aria-label`, which announces the chart's
+        purpose; this table announces the actual values.
+      */}
+      <table className="sr-only">
+        <caption>{ariaLabel}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("activity:charts.tableHeaders.date")}</th>
+            <th scope="col">{t("activity:charts.tableHeaders.value")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((point) => (
+            <tr key={point.date}>
+              <th scope="row">{formatDate ? formatDate(point.date) : point.date}</th>
+              <td>{point.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

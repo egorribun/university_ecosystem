@@ -248,7 +248,15 @@ export function MapLibreMapComponent({
       className="maplibre-map-wrapper relative h-full min-h-[inherit]"
       role="application"
       aria-label={t("a11y.mapContainer")}
+      aria-roledescription={t("a11y.mapRoleDescription")}
     >
+      {/*
+        Wave 112 SW4 — sr-only keyboard instructions. WCAG 2.1.1 +
+        SC 4.1.2: the application role removes implicit interaction model,
+        so we MUST surface available keys to screen reader users. Visible
+        in DOM only for AT; sighted users see the dedicated `?` overlay.
+      */}
+      <p className="sr-only">{t("a11y.mapKeyboardHint")}</p>
       <Map
         ref={mapRef}
         initialViewState={{
