@@ -254,7 +254,7 @@ const getListener = (type: string) => {
   if (!registered?.length) {
     throw new Error(`Expected listener for ${type}`)
   }
-  return registered[registered.length - 1]
+  return registered[registered.length - 1]!
 }
 
 const getSwModule = () => {
@@ -377,7 +377,7 @@ describe.skip("service worker offline queues", () => {
 
     expect(stored).toHaveLength(1)
     expect(stored[0]).toMatchObject({ url: record.url, action: record.action })
-    expect(typeof stored[0].id).toBe("number")
+    expect(typeof stored[0]!.id).toBe("number")
   })
 
   test("processPendingNavigations and processPendingReports clear processed entries", async () => {
@@ -499,7 +499,7 @@ describe.skip("service worker offline queues", () => {
       await pending
     }
 
-    const [, requestInit] = fetchMock.mock.calls[0]
+    const [, requestInit] = fetchMock.mock.calls[0]!
     const parsed = JSON.parse((requestInit?.body as string) ?? "{}")
     expect(parsed.keep).toBe("yes")
     expect(parsed.nested).toEqual({ ok: true })

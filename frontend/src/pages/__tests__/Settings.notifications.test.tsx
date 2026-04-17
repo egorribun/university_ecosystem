@@ -205,9 +205,9 @@ describe("usePushPreferences notifications flow", () => {
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
 
     expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
-    const initialArgs = ensurePushSubscriptionMock.mock.calls[0][0]
+    const initialArgs = ensurePushSubscriptionMock.mock.calls[0]![0]
     expect(initialArgs.requestPermission).toBe(false)
-    const ensureArgs = ensurePushSubscriptionMock.mock.calls[1][0]
+    const ensureArgs = ensurePushSubscriptionMock.mock.calls[1]![0]
     expect(ensureArgs.registration).toBe(registration)
     expect(ensureArgs.requestPermission).toBe(true)
     expect(ensureArgs.topics).toEqual(["schedule", "news"])
@@ -271,7 +271,7 @@ describe("usePushPreferences notifications flow", () => {
     })
 
     expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
-    const updateArgs = ensurePushSubscriptionMock.mock.calls[1][0]
+    const updateArgs = ensurePushSubscriptionMock.mock.calls[1]![0]
     expect(updateArgs.topics).toEqual(["schedule", "news"])
     expect(setPersistedTopicsMock).toHaveBeenCalledWith(
       ["schedule", "news"],

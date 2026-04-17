@@ -41,7 +41,9 @@ export function useSwipeGesture({
   const onTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (!enabled) return
-      startX.current = e.touches[0].clientX
+      const touch = e.touches[0]
+      if (!touch) return
+      startX.current = touch.clientX
       setIsDragging(true)
     },
     [enabled]
@@ -50,7 +52,9 @@ export function useSwipeGesture({
   const onTouchMove = useCallback(
     (e: React.TouchEvent) => {
       if (!enabled || !isDragging) return
-      const delta = e.touches[0].clientX - startX.current
+      const touch = e.touches[0]
+      if (!touch) return
+      const delta = touch.clientX - startX.current
       // Only allow movement in the close direction
       if (direction === "right" && delta > 0) {
         setDragOffset(delta)

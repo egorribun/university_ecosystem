@@ -222,6 +222,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
       /* -- update & draw particles -- */
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i]
+        if (!p) continue
 
         if (isSnow) {
           // Sinusoidal horizontal drift for snow

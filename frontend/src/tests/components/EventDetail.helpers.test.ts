@@ -61,6 +61,6 @@ describe("isUploadErrorState", () => {
     const errors = states.filter(isUploadErrorState)
 
     expect(errors).toHaveLength(1)
-    expect(errors[0].error).toBe("failed to upload")
+    expect(errors[0]!.error).toBe("failed to upload")
   })
 })

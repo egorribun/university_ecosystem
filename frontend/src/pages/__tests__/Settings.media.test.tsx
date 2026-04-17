@@ -177,12 +177,13 @@ describe("Settings media actions", () => {
 
     await waitFor(() => expect(postSpy).toHaveBeenCalled())
 
-    const formData = postSpy.mock.calls[0][1] as FormData
+    const formData = postSpy.mock.calls[0]![1] as FormData
     expect(formData.get("file")).toBe(file)
 
     await waitFor(() => {
       expect(getSpy).toHaveBeenCalled()
-      const [endpoint, config] = getSpy.mock.calls[getSpy.mock.calls.length - 1]
+      const lastCall = getSpy.mock.calls[getSpy.mock.calls.length - 1]!
+      const [endpoint, config] = lastCall
       expect(endpoint).toBe("/users/me")
       if (config) {
         expect(config).toEqual(expect.objectContaining({ signal: expect.any(AbortSignal) }))

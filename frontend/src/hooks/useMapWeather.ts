@@ -91,7 +91,9 @@ async function fetchWeather(): Promise<MapWeatherData> {
   const hourlyCodes: number[] = json.hourly?.weather_code ?? []
 
   for (let i = 0; i < Math.min(hourlyTimes.length, 12); i++) {
-    const dt = new Date(hourlyTimes[i])
+    const timeStr = hourlyTimes[i]
+    if (!timeStr) continue
+    const dt = new Date(timeStr)
     hourlyForecast.push({
       hour: dt.getHours(),
       temperature: Math.round(hourlyTemps[i] ?? 0),

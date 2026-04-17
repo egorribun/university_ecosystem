@@ -106,11 +106,11 @@ export function FlipCountdown({
       aria-label={t("schedule:countdown.ariaLabel", { mins, secs })}
       data-urgent={isUrgent || undefined}
     >
-      <FlipDigit value={minStr[0]} label={t("schedule:countdown.tensOfMinutes")} />
-      <FlipDigit value={minStr[1]} label={t("schedule:countdown.unitMinutes")} />
+      <FlipDigit value={minStr[0]!} label={t("schedule:countdown.tensOfMinutes")} />
+      <FlipDigit value={minStr[1]!} label={t("schedule:countdown.unitMinutes")} />
       <span className="sched-flip-colon">:</span>
-      <FlipDigit value={secStr[0]} label={t("schedule:countdown.tensOfSeconds")} />
-      <FlipDigit value={secStr[1]} label={t("schedule:countdown.unitSeconds")} />
+      <FlipDigit value={secStr[0]!} label={t("schedule:countdown.tensOfSeconds")} />
+      <FlipDigit value={secStr[1]!} label={t("schedule:countdown.unitSeconds")} />
     </div>
   )
 }

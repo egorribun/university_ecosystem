@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react"
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { Skeleton } from "@/components/ui"
+import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 
 const MapFeature = lazy(() =>
   import("@/features/map/MapFeature").then((m) => ({ default: m.MapFeature })),
@@ -29,9 +30,13 @@ export default function MapPage() {
   return (
     <Layout>
       <PageFadeIn>
-        <Suspense fallback={<MapSkeleton />}>
-          <MapFeature />
-        </Suspense>
+        {/* Wave 112 — wrap MapLibre GL in FeatureErrorBoundary so a runtime
+            error inside the heavy 3D renderer doesn't crash the navbar/layout. */}
+        <FeatureErrorBoundary featureName="map">
+          <Suspense fallback={<MapSkeleton />}>
+            <MapFeature />
+          </Suspense>
+        </FeatureErrorBoundary>
       </PageFadeIn>
     </Layout>
   )

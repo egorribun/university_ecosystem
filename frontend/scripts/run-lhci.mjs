@@ -85,15 +85,19 @@ async function createConfig() {
   const chromePath = await ensureChromiumExecutable()
   process.env.CHROME_PATH = chromePath
 
+  // Wave 112 — coverage expanded from 2 URLs (/ + /login) to 7 (home + login +
+  // 6 target pages). Auth-gated pages measure redirect-to-login CWV baseline;
+  // SW5 will switch LHCI to authenticated mode via VITE_LHCI=true bypass.
+  const targetPaths = ["/", "/login", "/dashboard", "/news", "/schedule", "/events", "/activity", "/map"]
   const collect = {
     numberOfRuns: 3,
-    url: useRemotePreview ? [base, `${base}/login`] : ["/", "/login"],
+    url: useRemotePreview ? targetPaths.map((p) => `${base}${p === "/" ? "" : p}`) : targetPaths,
     chromePath,
     settings: {
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
-      emulatedFormFactor: "desktop",
+      emulatedFormFactor: "mobile",
       maxWaitForFcp: 45000,
       maxWaitForLoad: 60000,
     },
@@ -112,13 +116,19 @@ async function createConfig() {
   return {
     ci: {
       collect,
+      // Wave 112 — thresholds per production-grade April 2026 brief.
+      // Performance stays "warn" until SW5 (perf pass); a11y/bp/seo already
+      // production-grade, so they gate. CWV numeric thresholds match plan:
+      // LCP ≤2500ms, TBT ≤200ms, CLS ≤0.1.
       assert: {
         assertions: {
-          "categories:performance": ["warn", { minScore: 0.8 }],
-          "categories:accessibility": ["error", { minScore: 0.8 }],
-          "categories:best-practices": ["error", { minScore: 0.8 }],
-          "categories:seo": ["error", { minScore: 0.8 }],
-          "total-blocking-time": ["warn", { maxNumericValue: 435, aggregationMethod: "median" }],
+          "categories:performance": ["warn", { minScore: 0.9 }],
+          "categories:accessibility": ["error", { minScore: 0.95 }],
+          "categories:best-practices": ["error", { minScore: 0.95 }],
+          "categories:seo": ["error", { minScore: 0.9 }],
+          "largest-contentful-paint": ["warn", { maxNumericValue: 2500, aggregationMethod: "median" }],
+          "total-blocking-time": ["warn", { maxNumericValue: 200, aggregationMethod: "median" }],
+          "cumulative-layout-shift": ["warn", { maxNumericValue: 0.1, aggregationMethod: "median" }],
         },
       },
     },

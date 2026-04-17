@@ -45,12 +45,14 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
     instrumentations: [
       new FetchInstrumentation({
         propagateTraceHeaderCorsUrls: [
+          // eslint-disable-next-line security/detect-non-literal-regexp -- pattern is derived from build-time env, not user input
           new RegExp(`${env.VITE_BACKEND_ORIGIN || ""}/api/.*`),
           /^\/api\/.*/,
         ],
       }),
       new XMLHttpRequestInstrumentation({
         propagateTraceHeaderCorsUrls: [
+          // eslint-disable-next-line security/detect-non-literal-regexp -- pattern is derived from build-time env, not user input
           new RegExp(`${env.VITE_BACKEND_ORIGIN || ""}/api/.*`),
           /^\/api\/.*/,
         ],

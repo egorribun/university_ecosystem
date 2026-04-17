@@ -177,7 +177,7 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (current || queue.length === 0) return
-    setCurrent(queue[0])
+    setCurrent(queue[0] ?? null)
     setQueue((prev) => prev.slice(1))
     setOpen(true)
   }, [current, queue])

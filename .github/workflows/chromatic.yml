@@ -1,0 +1,81 @@
+# Wave 112 (foundation) — Chromatic visual regression testing.
+#
+# Storybook + @chromatic-com/storybook are already wired locally
+# (.storybook/main.ts has the addon). This workflow uploads built stories
+# to Chromatic for visual diff review on every PR.
+#
+# Setup: add CHROMATIC_PROJECT_TOKEN to repo Secrets. Without the secret
+# the job is skipped (safe no-op for forks and unauthenticated PRs).
+#
+# Baselines accepted in SW3 (after consistency tokens settle) — until then
+# Chromatic runs in collect-only mode.
+
+name: Chromatic
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/chromatic.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/chromatic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: chromatic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromatic:
+    name: Chromatic Visual Regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Skip cleanly when the secret is not configured (forks, fresh checkouts).
+    if: ${{ vars.CHROMATIC_ENABLED == 'true' }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Chromatic needs full git history to detect baseline diffs.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@921a4027af787cda265c4f334a0f7f89b21d72e9 # v2.75.8
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM modules
+        run: |
+          wasm-pack build rust-crypto --target web
+          wasm-pack build wasm-sanitizer --target web
+
+      - name: Publish to Chromatic
+        # SHA-pinned per RZ-22-03 convention (no mutable @v tags).
+        uses: chromaui/action@2bd0e8db83b13ba0d6e74feb5e6a3bd61d4fe4c2 # v13.4.0
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: frontend
+          # Wave 112 SW1: collect-only mode until SW3 consistency baseline.
+          # Switch to `exitZeroOnChanges: false` after SW3 to enforce.
+          exitZeroOnChanges: true
+          onlyChanged: true
+          autoAcceptChanges: ${{ github.ref == 'refs/heads/main' }}

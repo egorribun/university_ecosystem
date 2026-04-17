@@ -64,7 +64,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
       setDigits((prev) => {
         const next = [...prev]
         for (let i = 0; i < sanitized.length && index + i < 6; i++) {
-          next[index + i] = sanitized[i]
+          next[index + i] = sanitized[i]!
         }
         return next
       })

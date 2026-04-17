@@ -90,7 +90,7 @@ function ScheduleContent() {
       const endStr = l.end_time
       if (!endStr) return true
       const [h, m] = endStr.split(":").map(Number)
-      if (isNaN(h) || isNaN(m)) return true
+      if (h === undefined || m === undefined || isNaN(h) || isNaN(m)) return true
       return h * 60 + m > minutesNow
     })
   }, [schedule, showPastLessons, hasToday, todayIdx, weekdayBackend, minutesNow])

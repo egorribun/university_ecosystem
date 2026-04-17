@@ -141,7 +141,7 @@ describe("AdminUsers page", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true)
     renderPage()
     const deleteButtons = await screen.findAllByLabelText(/Delete user/i)
-    await userEvent.click(deleteButtons[0])
+    await userEvent.click(deleteButtons[0]!)
     // Verify deletion call happened (could check server calls if we tracked them)
   })
 

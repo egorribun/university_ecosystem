@@ -50,9 +50,9 @@ export function ActivityTrendChart({
 
     const pointsStr = pts.map((p) => `${p.x},${p.y}`).join(" ")
 
-    // Area fill path (line + close to bottom)
-    const firstX = pts[0].x
-    const lastX = pts[pts.length - 1].x
+    // Area fill path (line + close to bottom). Guarded by data.length >= 2 below.
+    const firstX = pts[0]!.x
+    const lastX = pts[pts.length - 1]!.x
     const bottomY = PADDING.top + plotH
     const areaPath = `M${firstX},${bottomY} L${pointsStr} L${lastX},${bottomY} Z`
 
@@ -65,10 +65,14 @@ export function ActivityTrendChart({
 
     // X-axis labels: first, middle, last
     const indices = [0, Math.floor(data.length / 2), data.length - 1]
-    const xLabels = indices.map((idx) => ({
-      label: formatDate?.(data[idx].date) ?? data[idx].date.slice(5),
-      x: pts[idx].x,
-    }))
+    const xLabels = indices.map((idx) => {
+      const datum = data[idx]!
+      const pt = pts[idx]!
+      return {
+        label: formatDate?.(datum.date) ?? datum.date.slice(5),
+        x: pt.x,
+      }
+    })
 
     return { points: pointsStr, yLabels, xLabels, areaPath }
   }, [data, height, formatDate])

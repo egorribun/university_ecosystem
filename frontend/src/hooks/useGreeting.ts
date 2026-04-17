@@ -25,9 +25,9 @@ export function getContextualEmoji(
   dayOfWeek: number,
   specialKey: SpecialGreetingKey
 ): string {
-  if (specialKey && specialKey in SPECIAL_EMOJI) return SPECIAL_EMOJI[specialKey]
+  if (specialKey && specialKey in SPECIAL_EMOJI) return SPECIAL_EMOJI[specialKey] ?? ""
   const dayMap = GREETING_EMOJI[greetingKey]
-  return (dayMap[dayOfWeek] ?? dayMap.default) as string
+  return dayMap[dayOfWeek] ?? dayMap.default ?? ""
 }
 
 export function getGreetingKey(hour: number): GreetingKey {

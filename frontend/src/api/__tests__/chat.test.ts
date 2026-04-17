@@ -52,7 +52,7 @@ describe("chatApi", () => {
     expect(client.post).toHaveBeenCalledWith("/chats/chat1/messages", expect.any(FormData))
     expect(result).toEqual(mockMessage)
 
-    const formData = vi.mocked(client.post).mock.calls[0][1] as FormData
+    const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
     expect(formData).toBeInstanceOf(FormData)
     // Check if expected fields exist in FormData
     // Since FormData.get might be weird in some environments, we can check its internal state if needed

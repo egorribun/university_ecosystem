@@ -17,7 +17,7 @@ const toInputTime = (value: unknown): string => {
   if (!value) return ""
   const str = String(value)
   const match = str.match(/^(\d{2}:\d{2})/)
-  return match ? match[1] : ""
+  return match?.[1] ?? ""
 }
 
 /**

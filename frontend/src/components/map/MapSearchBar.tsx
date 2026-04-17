@@ -103,7 +103,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
         case "Enter":
           e.preventDefault()
           if (activeIdx >= 0 && activeIdx < results.length) {
-            handleSelect(results[activeIdx])
+            handleSelect(results[activeIdx]!)
           }
           break
         case "Escape":
@@ -117,10 +117,14 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
   )
 
   // Merge internal + external input refs (React Compiler safe — extracted from render)
+  // RC-109-01: ref-callback pattern requires mutating both refs. Component
+  // already opts out via "use no memo" directive at top. eslint-disable
+  // covers the lint plugin which doesn't recognize the directive.
   const mergedInputRef = useCallback(
     (node: HTMLInputElement | null) => {
       (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
       if (searchInputRef && "current" in searchInputRef) {
+        // eslint-disable-next-line react-compiler/react-compiler -- legitimate ref-callback prop merge; see RC-109-01
         (searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
       }
     },

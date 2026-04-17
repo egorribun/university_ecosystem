@@ -80,6 +80,11 @@ export function useBookmarks() {
     } else {
       next.add(id)
     }
+    // External-store pattern: module-level `bookmarkSet` is the source of truth
+    // for `useSyncExternalStore`. Mutating it here is the documented snapshot
+    // update mechanism, not a render-time side effect — the callback runs in
+    // response to user action, not during render.
+    // eslint-disable-next-line react-compiler/react-compiler -- intentional external-store update; see useSyncExternalStore pattern
     bookmarkSet = next
     persist()
     broadcastUpdate()

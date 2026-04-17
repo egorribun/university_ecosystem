@@ -203,7 +203,7 @@ export function buildTable(
   const maxLessons = Math.max(...lessonsByDay.map((arr) => arr.length), 0)
   const rows: (Lesson | null)[][] = []
   for (let i = 0; i < maxLessons; ++i)
-    rows.push(weekdayOrder.map((_, d) => lessonsByDay[d][i] || null))
+    rows.push(weekdayOrder.map((_, d) => lessonsByDay[d]?.[i] ?? null))
   return rows
 }
 

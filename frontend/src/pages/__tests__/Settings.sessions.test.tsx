@@ -108,10 +108,10 @@ describe("Settings sessions panel", () => {
     await user.click(screen.getByText(tSettings("sessions.title")))
 
     expect(
-      screen.getByText(testSessions[0].user_agent ?? tSettings("sessions.unknownDevice"))
+      screen.getByText(testSessions[0]!.user_agent ?? tSettings("sessions.unknownDevice"))
     ).toBeVisible()
     expect(
-      screen.getByText(testSessions[1].user_agent ?? tSettings("sessions.unknownDevice"))
+      screen.getByText(testSessions[1]!.user_agent ?? tSettings("sessions.unknownDevice"))
     ).toBeVisible()
 
     const revokeButtons = await screen.findAllByRole("button", {
@@ -125,6 +125,6 @@ describe("Settings sessions panel", () => {
     await screen.findByText(tSettings("sessions.snackbar.revoked"))
     await screen.findByText(tSettings("sessions.status.revoked"))
 
-    expect(testSessions[1].revoked_at).not.toBeNull()
+    expect(testSessions[1]!.revoked_at).not.toBeNull()
   })
 })

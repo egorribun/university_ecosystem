@@ -189,7 +189,7 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
 
 const getWeekdayName = (): string => {
   const names = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
-  return names[new Date().getDay()]
+  return names[new Date().getDay()] ?? ""
 }
 
 const mockSchedule = [

@@ -23,18 +23,20 @@ export function detectConflicts(lessons: Lesson[]): Set<string> {
     dayLessons.sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
 
     for (let i = 0; i < dayLessons.length; i++) {
+      const li = dayLessons[i]!
       for (let j = i + 1; j < dayLessons.length; j++) {
-        const s1 = parseMinutes(dayLessons[i].start_time)
-        const e1 = parseMinutes(dayLessons[i].end_time)
-        const s2 = parseMinutes(dayLessons[j].start_time)
-        const e2 = parseMinutes(dayLessons[j].end_time)
+        const lj = dayLessons[j]!
+        const s1 = parseMinutes(li.start_time)
+        const e1 = parseMinutes(li.end_time)
+        const s2 = parseMinutes(lj.start_time)
+        const e2 = parseMinutes(lj.end_time)
 
         if (s1 == null || e1 == null || s2 == null || e2 == null) continue
 
         const overlap = Math.max(s1, s2) < Math.min(e1, e2)
         if (overlap) {
-          conflicted.add(dayLessons[i].id)
-          conflicted.add(dayLessons[j].id)
+          conflicted.add(li.id)
+          conflicted.add(lj.id)
         }
       }
     }

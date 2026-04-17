@@ -29,7 +29,7 @@ export function MapWeatherBadge() {
 
   if (isLoading || !data) return null
 
-  const icons = CONDITION_ICONS[data.condition] ?? CONDITION_ICONS.clear
+  const icons = CONDITION_ICONS[data.condition] ?? CONDITION_ICONS.clear!
   const Icon = data.isDay ? icons.day : icons.night
   const conditionText = t(`weather.${data.condition}`)
 

@@ -18,7 +18,7 @@ const fromHex = (hex: string) => Number.parseInt(hex, 16)
 const tryMixHexWithWhite = (color: string, coefficient: number): string | null => {
   const hexMatch = /^#?([\da-f]{3}|[\da-f]{6})$/i.exec(color)
   if (!hexMatch) return null
-  const normalized = expandHex(hexMatch[1])
+  const normalized = expandHex(hexMatch[1]!)
   const r = mixChannelWithWhite(fromHex(normalized.slice(0, 2)), coefficient)
   const g = mixChannelWithWhite(fromHex(normalized.slice(2, 4)), coefficient)
   const b = mixChannelWithWhite(fromHex(normalized.slice(4, 6)), coefficient)
