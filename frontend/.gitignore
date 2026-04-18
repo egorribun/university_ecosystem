@@ -19,6 +19,10 @@ debug-*.log
 test-results*.json
 vitest-report.xml
 
+# Wave 113 SW6 polish — local Playwright screenshots + LHCI reports (per-URL retries)
+.screenshots/
+.lighthouseci/
+
 # Debug and temp files
 *_log.txt
 *_utf8.txt

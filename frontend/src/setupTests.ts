@@ -85,6 +85,39 @@ if (!("IntersectionObserver" in window)) {
   })
 }
 
+// ResizeObserver polyfill — jsdom lacks it, StoryList (scroll edge-fade detection) uses it
+// (Wave 113 SW6 polish — fixes 3 StoryList.test.tsx "ResizeObserver is not defined" errors).
+if (!("ResizeObserver" in window)) {
+  Object.defineProperty(window, "ResizeObserver", {
+    writable: true,
+    value: class {
+      constructor() {}
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  })
+}
+
+// PointerEvent capture polyfill — jsdom doesn't implement Element.hasPointerCapture /
+// setPointerCapture / releasePointerCapture. StoryList drag-to-scroll, StoryViewer swipe,
+// and various Radix UI triggers call them (Wave 113 SW6 polish).
+if (typeof Element !== "undefined") {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {}
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {}
+  }
+  // jsdom lacks scrollIntoView too
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {}
+  }
+}
+
 vi.mock("qrcode.react", () => ({
   QRCodeSVG: () => null,
 }))

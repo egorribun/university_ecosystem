@@ -258,6 +258,10 @@ export const StoryList = ({
                       srcRaw={story.cover_url}
                       alt={story.title}
                       className="h-full w-full object-cover"
+                      // First story = above-the-fold Dashboard LCP candidate (Wave 113 PERF-113-01, SW6 polish).
+                      {...(index === 0
+                        ? { loading: "eager" as const, fetchPriority: "high" as const }
+                        : {})}
                     />
                   ) : (
                     <span
