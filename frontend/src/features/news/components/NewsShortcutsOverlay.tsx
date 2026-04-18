@@ -35,6 +35,7 @@ export function NewsShortcutsOverlay() {
   if (!open) return null
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- backdrop with dialog semantics; Escape key handled for WCAG 2.1 1.4.13
     <div
       className="fixed inset-0 z-overlay flex items-center justify-center bg-black/(--opacity-strong) backdrop-blur-sm"
       onClick={() => setOpen(false)}

@@ -74,6 +74,8 @@ export interface EventCardViewProps {
     confirm: string
     cancel: string
   }
+  /** Forwarded to EventCardHero for LCP prioritization (Wave 113 PERF-113-01) */
+  priority?: boolean
 }
 
 export const EventCardView: FC<EventCardViewProps> = ({
@@ -115,6 +117,7 @@ export const EventCardView: FC<EventCardViewProps> = ({
   previewUrl,
   onErrorClose,
   t,
+  priority,
 }) => {
   /* ── Quick-view hover state ── */
   const articleRef = useRef<HTMLElement>(null)
@@ -207,6 +210,7 @@ export const EventCardView: FC<EventCardViewProps> = ({
           endsAt={endsAt}
           timeStatus={timeStatus}
           transitioning={transitioning}
+          priority={priority}
         />
       </div>
 

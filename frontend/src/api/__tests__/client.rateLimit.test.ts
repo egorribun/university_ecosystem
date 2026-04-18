@@ -63,8 +63,8 @@ describe("API client rate limit queue", () => {
     const relativeTimes = startTimes.map((time) => time - baseline)
 
     expect(Math.max(...relativeTimes.slice(0, 3))).toBeLessThan(60_000)
-    expect(relativeTimes[3]).toBeGreaterThanOrEqual(60_000)
-    expect(relativeTimes[4]).toBeGreaterThanOrEqual(60_000)
-    expect(relativeTimes[3] - relativeTimes[2]).toBeGreaterThanOrEqual(59_500)
+    expect(relativeTimes[3]!).toBeGreaterThanOrEqual(60_000)
+    expect(relativeTimes[4]!).toBeGreaterThanOrEqual(60_000)
+    expect(relativeTimes[3]! - relativeTimes[2]!).toBeGreaterThanOrEqual(59_500)
   })
 })

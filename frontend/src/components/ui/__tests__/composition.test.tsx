@@ -94,7 +94,7 @@ describe("ActionMenu", () => {
     await user.click(trigger)
     await user.click(screen.getByText("Edit"))
 
-    expect(mockItems[0].onClick).toHaveBeenCalledTimes(1)
+    expect(mockItems[0]!.onClick).toHaveBeenCalledTimes(1)
   })
 
   it("closes menu after item click", async () => {

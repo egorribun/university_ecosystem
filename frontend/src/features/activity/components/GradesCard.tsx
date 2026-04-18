@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next"
 import { SkeletonMorph } from "@/components/ui/SkeletonMorph"
-import AnimatedRing, { useAnimatedNumber } from "@/components/activity/AnimatedRing"
-import CardShell from "@/components/activity/CardShell"
-import TrendChip from "@/components/activity/TrendChip"
-import { toNumber } from "@/components/activity/activityParsers"
-import type { GradeStats } from "@/components/activity/activityTypes"
+import AnimatedRing, { useAnimatedNumber } from "./AnimatedRing"
+import CardShell from "./CardShell"
+import TrendChip from "./TrendChip"
+import { toNumber } from "../parsers"
+import type { GradeStats } from "../types"
 import { motion as motionTokens } from "@/theme/tokens"
 
 type GradesCardProps = {

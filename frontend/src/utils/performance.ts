@@ -69,15 +69,15 @@ export function getWebVitals(): WebVitals {
 
   try {
     // FCP
-    const fcpEntries = performance.getEntriesByName("first-contentful-paint")
-    if (fcpEntries.length > 0) {
-      vitals.fcp = fcpEntries[0].startTime
+    const [fcpEntry] = performance.getEntriesByName("first-contentful-paint")
+    if (fcpEntry) {
+      vitals.fcp = fcpEntry.startTime
     }
 
     // TTFB from navigation timing
-    const navEntries = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[]
-    if (navEntries.length > 0) {
-      vitals.ttfb = navEntries[0].responseStart - navEntries[0].requestStart
+    const [navEntry] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[]
+    if (navEntry) {
+      vitals.ttfb = navEntry.responseStart - navEntry.requestStart
     }
   } catch {
     // Metrics not available

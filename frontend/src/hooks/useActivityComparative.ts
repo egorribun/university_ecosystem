@@ -4,8 +4,8 @@ import type {
   GradeStats,
   ParticipationStats,
   PeriodKey,
-} from "@/components/activity/activityTypes"
-import { periodDayCount } from "@/components/activity/activityTypes"
+} from "@/features/activity/types"
+import { periodDayCount } from "@/features/activity/types"
 
 type HalfStat = { current: number; previous: number; delta: number }
 

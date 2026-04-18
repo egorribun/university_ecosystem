@@ -38,6 +38,11 @@
     "separator": " \u2022 ",
     "noData": "Нет данных"
   },
+  "chartTableHeaders": {
+    "date": "Дата",
+    "subject": "Предмет",
+    "value": "Значение"
+  },
   "sections": {
     "attendance": {
       "title": "Посещаемость",

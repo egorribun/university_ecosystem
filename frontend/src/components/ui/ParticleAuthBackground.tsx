@@ -75,7 +75,7 @@ const ParticleAuthBackground = () => {
           x: width / 2 + Math.cos(angle) * r, // Start at center
           y: height / 2 + Math.sin(angle) * r,
           size: Math.random() * 2.5 + 1.5, // Larger particles (1.5px - 4.0px)
-          color: colors[Math.floor(Math.random() * colors.length)],
+          color: colors[Math.floor(Math.random() * colors.length)] ?? "#ffffff",
           orbitRadius: r,
           orbitAngle: angle,
           orbitSpeed: (Math.random() * 0.002 + 0.0005) * (Math.random() > 0.5 ? 1 : -1), // Extremely slow rotation
@@ -124,7 +124,7 @@ const ParticleAuthBackground = () => {
 
       // If we have history, target the next point in history
       if (mouseHistoryRef.current.length > 0) {
-        target = mouseHistoryRef.current[0]
+        target = mouseHistoryRef.current[0]!
 
         const dx = target.x - virtualMouseRef.current.x
         const dy = target.y - virtualMouseRef.current.y
@@ -186,7 +186,7 @@ const ParticleAuthBackground = () => {
         // Update colors of existing particles without resetting position
         const colors = getThemeColors()
         particlesRef.current.forEach((p) => {
-          p.color = colors[Math.floor(Math.random() * colors.length)]
+          p.color = colors[Math.floor(Math.random() * colors.length)] ?? p.color
         })
       }
     })

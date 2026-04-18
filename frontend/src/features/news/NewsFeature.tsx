@@ -6,6 +6,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useDebounced } from "@/hooks/useDebounced"
 import { useBookmarks } from "@/hooks/useBookmarks"
 import { useNewsKeyboardNav } from "@/hooks/useNewsKeyboardNav"
+import { useURLState } from "@/hooks/useURLState"
 import { useNewsListQuery } from "@/api/hooks/news"
 import { resetEtagCache } from "@/api/client"
 import { NewsHeader } from "./components/NewsHeader"
@@ -15,6 +16,13 @@ import { NewsShortcutsOverlay } from "./components/NewsShortcutsOverlay"
 import { inferCategory, type NewsCategory } from "./categories"
 
 export type SortMode = "newest" | "popular"
+
+type NewsCategoryFilter = NewsCategory | "all" | "saved"
+type NewsURLParams = {
+  q?: string
+  cat?: NewsCategoryFilter
+  sort?: SortMode
+}
 
 export const NewsFeature = () => {
   const { user } = useAuth()
@@ -32,9 +40,25 @@ export const NewsFeature = () => {
   } = useNewsListQuery({ language })
 
   const [addOpen, setAddOpen] = useState(false)
-  const [activeCategory, setActiveCategory] = useState<NewsCategory | "all" | "saved">("all")
-  const [sortMode, setSortMode] = useState<SortMode>("newest")
-  const [searchQuery, setSearchQuery] = useState("")
+
+  // URL-synced filters — Wave 112 SW3 (mirror of EventsFeature convention).
+  // Local-only state kept for dialog open flags and text-search debouncing
+  // (debounced mirror avoids thrashing the URL on every keystroke).
+  const { params, setParam } = useURLState<NewsURLParams>()
+  const activeCategory: NewsCategoryFilter = params.cat ?? "all"
+  const sortMode: SortMode = params.sort ?? "newest"
+  const searchQuery = params.q ?? ""
+
+  const setActiveCategory = useCallback(
+    (next: NewsCategoryFilter) => setParam("cat", next === "all" ? "" : next),
+    [setParam]
+  )
+  const setSortMode = useCallback(
+    (next: SortMode) => setParam("sort", next === "newest" ? "" : next),
+    [setParam]
+  )
+  const setSearchQuery = useCallback((next: string) => setParam("q", next), [setParam])
+
   const debouncedSearch = useDebounced(searchQuery, "search")
   const { bookmarks, bookmarkCount } = useBookmarks()
 

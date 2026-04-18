@@ -194,7 +194,7 @@ const deriveKey = async (keyMaterial: CryptoKey, salt: Uint8Array) => {
 const uint8ToBase64 = (bytes: Uint8Array): string => {
   let binary = ""
   for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i])
+    binary += String.fromCharCode(bytes[i]!)
   }
   return btoa(binary)
 }
@@ -283,7 +283,7 @@ const decryptData = async (
   try {
     const parts = encryptedString.split(":")
     if (parts.length !== 3) return null
-    const [saltHex, ivHex, ciphertextBase64] = parts
+    const [saltHex, ivHex, ciphertextBase64] = parts as [string, string, string]
 
     const saltMatch = saltHex.match(/.{1,2}/g)
     const ivMatch = ivHex.match(/.{1,2}/g)

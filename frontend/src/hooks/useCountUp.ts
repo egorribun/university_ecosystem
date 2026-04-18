@@ -36,7 +36,7 @@ export function useCountUp(target: number, options: UseCountUpOptions = {}) {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
+        if (entry?.isIntersecting) {
           setHasBeenSeen(true)
           observer.disconnect()
         }

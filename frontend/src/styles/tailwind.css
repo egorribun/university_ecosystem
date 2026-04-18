@@ -743,10 +743,16 @@
 }
 
 @utility bg-footer {
-  background: var(--bg-footer-light);
+  /* Solid background-color fallback is required for axe-core contrast computation —
+     axe skips gradients and samples the parent bg instead, which misreports white-text
+     contrast as 1.04. A solid brand-hover base under the gradient makes the measurement
+     match what users actually see (A11Y-113-02, Wave 113). */
+  background-color: var(--primary-hover);
+  background-image: var(--bg-footer-light);
 
   .dark & {
-    background: var(--bg-footer-dark);
+    background-color: var(--color-slate-950);
+    background-image: var(--bg-footer-dark);
   }
 }
 

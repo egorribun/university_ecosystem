@@ -534,7 +534,7 @@ const localePattern = /locales\/([^/]+)\/map\.json$/
 const mapDataByLocale = Object.entries(localeDataModules).reduce(
   (acc, [path, module]) => {
     const match = path.match(localePattern)
-    if (match) acc[match[1]] = module.default
+    if (match?.[1]) acc[match[1]] = module.default
     return acc
   },
   {} as Record<string, LocalizedMapData>,

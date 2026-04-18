@@ -143,7 +143,7 @@ export function useScheduleData() {
     const firstDay = new Date(calYear, calMonth, 1).getDay()
     const weekdayToOffset = new Map<string, number>()
     for (let i = 0; i < weekdayBackend.length; i++) {
-      weekdayToOffset.set(weekdayBackend[i], i)
+      weekdayToOffset.set(weekdayBackend[i]!, i)
     }
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
     for (const lesson of filteredSchedule) {

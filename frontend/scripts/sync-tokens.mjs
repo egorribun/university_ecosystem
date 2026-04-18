@@ -6,8 +6,13 @@ import { fileURLToPath } from "node:url"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Paths
+// Paths — Wave 112 SW2 fix: token sources live in BOTH `partials/` (legacy
+// glass/motion primitives) and `tokens/` (feature-scoped activity/schedule/
+// news/events/map token sheets). The old sync-tokens only read partials/
+// which silently truncated `src/theme/tokens.ts` to a handful of exports on
+// every `npm run build` (run-build.mjs calls sync-tokens before vite build).
 const PARTIALS_DIR = path.resolve(__dirname, "../src/styles/partials")
+const TOKENS_DIR = path.resolve(__dirname, "../src/styles/tokens")
 const TOKENS_TS_PATH = path.resolve(__dirname, "../src/theme/tokens.ts")
 const THEME_CSS_PATH = path.resolve(__dirname, "../src/styles/theme.css")
 
@@ -42,7 +47,16 @@ function extractVariablesFromDir(dirPath) {
 const entryPath = THEME_CSS_PATH
 
 const themeVars = extractVariablesFromDir(PARTIALS_DIR)
-console.log(`✅ Found ${themeVars.size} CSS variables in ${PARTIALS_DIR}`)
+if (fs.existsSync(TOKENS_DIR)) {
+  const additional = extractVariablesFromDir(TOKENS_DIR)
+  for (const [name, value] of additional) {
+    // Later definitions win — matches CSS cascade order (tokens/ loaded after partials/).
+    themeVars.set(name, value)
+  }
+  console.log(`✅ Found ${themeVars.size} CSS variables in partials/ + tokens/`)
+} else {
+  console.log(`✅ Found ${themeVars.size} CSS variables in ${PARTIALS_DIR}`)
+}
 
 // 2. Define Groups and their prefixes/logic
 // This mapping defines which CSS variables go into which TS export object

@@ -140,7 +140,7 @@ export function initApiCaching() {
 async function getSessionIdFromRequest(request: Request): Promise<string | null> {
   const cookieHeader = request.headers.get("Cookie") || ""
   const match = cookieHeader.match(/session=([^;]+)/)
-  return match ? match[1] : null
+  return match?.[1] ?? null
 }
 
 /**

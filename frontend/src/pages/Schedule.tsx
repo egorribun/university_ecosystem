@@ -23,6 +23,7 @@ import { SEO } from "@/components/ui/SEO"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 import { useScheduleKeyboardNav } from "@/hooks/useScheduleKeyboardNav"
 import { useScrollToElement } from "@/hooks/useScrollToElement"
+import { useScheduleURLSync } from "@/hooks/useScheduleURLSync"
 import {
   useWeekOffset,
   useScheduleDisplayPreferences,
@@ -35,6 +36,9 @@ function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])
   const isOnline = useOnlineStatus()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
+  // Wave 112 SW3b — keep URL `?w=` in sync with Zustand `weekOffset` so
+  // refresh/share both preserve the selected week (mirror of Events/News).
+  useScheduleURLSync()
   const weekOffset = useWeekOffset()
   const { showPastLessons } = useScheduleDisplayPreferences()
   const { resetPreferences } = useScheduleUIActions()
@@ -90,7 +94,7 @@ function ScheduleContent() {
       const endStr = l.end_time
       if (!endStr) return true
       const [h, m] = endStr.split(":").map(Number)
-      if (isNaN(h) || isNaN(m)) return true
+      if (h === undefined || m === undefined || isNaN(h) || isNaN(m)) return true
       return h * 60 + m > minutesNow
     })
   }, [schedule, showPastLessons, hasToday, todayIdx, weekdayBackend, minutesNow])

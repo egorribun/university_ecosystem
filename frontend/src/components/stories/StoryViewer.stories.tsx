@@ -53,7 +53,7 @@ export const WithCTA: Story = {
   args: {
     stories: [
       {
-        ...mockStories[0],
+        ...mockStories[0]!,
         cta_url: "https://example.com/apply",
       },
     ],

@@ -8,13 +8,6 @@
 //     Always update `src/styles/theme.css` first, then run `npm run tokens:sync`.
 // -----------------------------------------------------------------------------
 
-/** Framer Motion spring presets (not valid CSS — JS only) */
-export const springs = {
-  stiff: { stiffness: 520, damping: 34 },
-  standard: { stiffness: 460, damping: 34 },
-  gentle: { stiffness: 260, damping: 26 },
-} as const;
-
 export const spacingScale = {
   "05": "var(--space-05)",
   "1": "var(--space-1)",
@@ -80,7 +73,6 @@ export const breakpoints = {
 export const zIndexTokens = {
   base: "var(--z-base)",
   content: "var(--z-content)",
-  debug: "var(--z-debug)",
   decor: "var(--z-decor)",
   deep: "var(--z-deep)",
   dropdown: "var(--z-dropdown)",
@@ -99,7 +91,8 @@ export const zIndexTokens = {
   tooltip: "var(--z-tooltip)",
 } as const
 
-export const focusRing = {} as const
+export const focusRing = {
+} as const
 
 export const shadows = {
   glass: "var(--shadow-glass)",
@@ -136,14 +129,14 @@ export const dimensions = {
 export const opacity = {
   dim: "var(--opacity-dim)",
   faint: "var(--opacity-faint)",
-  glass: "var(--opacity-glass)",
   heavy: "var(--opacity-heavy)",
   hover: "var(--opacity-hover)",
   medium: "var(--opacity-medium)",
+  micro: "var(--opacity-micro)",
   soft: "var(--opacity-soft)",
   strong: "var(--opacity-strong)",
   subtle: "var(--opacity-subtle)",
-  trace: "var(--opacity-trace)",
+  whisper: "var(--opacity-whisper)",
 } as const
 
 export const scale = {
@@ -174,20 +167,16 @@ export const motion = {
   navTransition: 1.2,
   scaleIn: "0.95",
   scaleOut: "1.05",
-  slideLg: "3.125rem",
-  slideMd: "1.25rem",
-  slideSm: "0.625rem",
-  staggerDelay: 0.06,
-  staggerFast: 0.04,
-  staggerSlow: 0.1,
+  slideLg: "50px",
+  slideMd: "20px",
+  slideSm: "10px",
+  staggerDelay: 0.08,
 } as const
 
 export const icon = {
-  fluid: "var(--size-icon-fluid)",
-  sm: "var(--size-icon-sm)",
 } as const
 
 export const letterSpacing = {
-  hero: "var(--tracking-hero)",
-  "widest-xl": "var(--tracking-widest-xl)",
+  body: "var(--tracking-body)",
 } as const
+

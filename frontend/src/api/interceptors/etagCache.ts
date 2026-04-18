@@ -178,7 +178,7 @@ function flushEtagCache(): void {
     if (err instanceof DOMException && err.name === "QuotaExceededError") {
       const entries = Array.from(_etagMap.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
       const evictCount = Math.ceil(_etagMap.size / 2)
-      for (let i = 0; i < evictCount; i++) _etagMap.delete(entries[i][0])
+      for (let i = 0; i < evictCount; i++) _etagMap.delete(entries[i]![0])
       try {
         localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(Array.from(_etagMap.entries())))
       } catch {
@@ -195,7 +195,7 @@ function evictLruEtag(cache: Map<string, EtagEntry>): void {
   if (cache.size <= MAX_CACHE_ENTRIES) return
   const sorted = Array.from(cache.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
   for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
-    cache.delete(sorted[i][0])
+    cache.delete(sorted[i]![0])
   }
 }
 
@@ -252,7 +252,7 @@ function evictLruResponse(): void {
   if (_responseMap.size <= MAX_CACHE_ENTRIES) return
   const sorted = Array.from(_responseMap.entries()).sort((a, b) => a[1].ts - b[1].ts)
   for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
-    _responseMap.delete(sorted[i][0])
+    _responseMap.delete(sorted[i]![0])
   }
 }
 

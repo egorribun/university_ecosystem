@@ -59,10 +59,10 @@ describe("notificationStore", () => {
 
     const toasts = useNotificationStore.getState().toasts
     expect(toasts).toHaveLength(1)
-    expect(toasts[0].message).toBe("Test message")
-    expect(toasts[0].severity).toBe("success")
+    expect(toasts[0]!.message).toBe("Test message")
+    expect(toasts[0]!.severity).toBe("success")
 
-    const toastId = toasts[0].id
+    const toastId = toasts[0]!.id
 
     act(() => {
       useNotificationStore.getState().removeToast(toastId)

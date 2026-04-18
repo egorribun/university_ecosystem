@@ -17,10 +17,32 @@ const IGNORED_PATH_PREFIXES: string[] = [
   // 'events.synonyms',
 ]
 
+/**
+ * CLDR plural suffixes that some target locales (e.g. RU) require but base
+ * locale (EN) does not. RU has 4 plural forms — `_one`/`_few`/`_many`/`_other`.
+ * EN has 2 — `_one`/`_other`. When checking "missing in base", we skip
+ * `_few`/`_many`/`_zero`/`_two` suffixes if the corresponding `_one`/`_other`
+ * key exists in base — those are legitimate language-specific plurals,
+ * not real parity gaps.
+ *
+ * Wave 112: introduced when wiring i18n:check as a CI gate.
+ */
+const TARGET_ONLY_PLURAL_SUFFIXES = ["_few", "_many", "_zero", "_two"]
+
 const isIgnored = (keyPath: string) =>
   IGNORED_PATH_PREFIXES.some(
     (ignoredPrefix) => keyPath === ignoredPrefix || keyPath.startsWith(`${ignoredPrefix}.`)
   )
+
+const filterTargetOnlyPlurals = (missingInBase: string[], baseKeys: Set<string>): string[] =>
+  missingInBase.filter((key) => {
+    const suffix = TARGET_ONLY_PLURAL_SUFFIXES.find((s) => key.endsWith(s))
+    if (!suffix) return true
+    const root = key.slice(0, -suffix.length)
+    const hasBasePlural =
+      baseKeys.has(`${root}_one`) || baseKeys.has(`${root}_other`) || baseKeys.has(root)
+    return !hasBasePlural
+  })
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
 
@@ -117,11 +139,14 @@ describe("i18n locales parity against base en", () => {
         const baseJson = readJson(baseFiles.get(relativePath)!)
         const targetJson = readJson(localeFiles.get(relativePath)!)
 
-        const baseKeys = Array.from(flattenKeys(baseJson)).sort()
-        const targetKeys = Array.from(flattenKeys(targetJson)).sort()
+        const baseKeySet = flattenKeys(baseJson)
+        const targetKeySet = flattenKeys(targetJson)
+        const baseKeys = Array.from(baseKeySet).sort()
+        const targetKeys = Array.from(targetKeySet).sort()
 
-        const missingInTarget = baseKeys.filter((key) => !targetKeys.includes(key))
-        const missingInBase = targetKeys.filter((key) => !baseKeys.includes(key))
+        const missingInTarget = baseKeys.filter((key) => !targetKeySet.has(key))
+        const missingInBaseRaw = targetKeys.filter((key) => !baseKeySet.has(key))
+        const missingInBase = filterTargetOnlyPlurals(missingInBaseRaw, baseKeySet)
 
         const errorMessages = [] as string[]
         if (missingInTarget.length > 0) {
@@ -139,8 +164,6 @@ describe("i18n locales parity against base en", () => {
         if (errorMessages.length > 0) {
           throw new Error(errorMessages.join("\n"))
         }
-
-        expect(targetKeys).toEqual(baseKeys)
       })
     }
   }

@@ -5,7 +5,7 @@ import {
   GraduationCap as GradeIcon,
   Award as ParticipationIcon,
 } from "lucide-react"
-import type { TimelineEntry } from "./activityTypes"
+import type { TimelineEntry } from "../types"
 
 const DOT_COLORS: Record<string, string> = {
   "attendance-present": "var(--activity-present-accent)",
@@ -16,8 +16,11 @@ const DOT_COLORS: Record<string, string> = {
 }
 
 function getDotColor(entry: TimelineEntry): string {
-  if (entry.type === "attendance") return DOT_COLORS[`attendance-${entry.status}`] ?? DOT_COLORS["attendance-present"]
-  return DOT_COLORS[entry.type] ?? "var(--text-tertiary)"
+  const fallback = "var(--text-tertiary)"
+  if (entry.type === "attendance") {
+    return DOT_COLORS[`attendance-${entry.status}`] ?? DOT_COLORS["attendance-present"] ?? fallback
+  }
+  return DOT_COLORS[entry.type] ?? fallback
 }
 
 function getIcon(entry: TimelineEntry) {

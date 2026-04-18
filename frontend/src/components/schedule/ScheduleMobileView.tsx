@@ -204,7 +204,7 @@ export function ScheduleMobileView({
            because mobile shows only 1 DayColumn at a time — single remount is cheap. ──── */}
       <AnimatePresence mode="wait" initial={false} custom={swipeDir}>
         <motion.div
-          key={`${weekOffset}-${weekdayBackend[activeDayIdx]}`}
+          key={`${weekOffset}-${weekdayBackend[activeDayIdx] ?? activeDayIdx}`}
           custom={swipeDir}
           variants={panelVariants}
           initial="enter"
@@ -216,32 +216,38 @@ export function ScheduleMobileView({
               : { type: "spring", stiffness: 260, damping: 26, mass: 0.9 }
           }
         >
-          <DayColumn
-            ref={(el) => {
-              dayCardRefs.current[activeDayIdx] = el
-            }}
-            day={weekdayBackend[activeDayIdx]}
-            label={weekdayLabels[activeDayIdx] ?? weekdayBackend[activeDayIdx]}
-            lessons={lessonsByDay.get(weekdayBackend[activeDayIdx]) ?? []}
-            isToday={hasToday && activeDayIdx === todayIdx}
-            isOnline={isOnline}
-            hasSchedule={rawSchedule.length > 0}
-            userRole={user?.role}
-            conflictedIds={conflictedIds}
-            compact={compactMode}
-            currentLessonId={currentLesson?.id}
-            currentProgress={currentProgress}
-            dayComplete={hasToday && activeDayIdx === todayIdx && todayComplete}
-            notesMap={notesMap}
-            onAdd={() => {
-              setAddDay(weekdayBackend[activeDayIdx])
-              openDialog("add")
-            }}
-            onLessonDelete={onDeleteLesson}
-            onRetry={refresh}
-            getLessonTypeColor={getLessonTypeColor}
-            getLessonTypeLabel={getLessonTypeLabel}
-          />
+          {(() => {
+            const activeDay = weekdayBackend[activeDayIdx]!
+            const activeLabel = weekdayLabels[activeDayIdx] ?? activeDay
+            return (
+              <DayColumn
+                ref={(el) => {
+                  dayCardRefs.current[activeDayIdx] = el
+                }}
+                day={activeDay}
+                label={activeLabel}
+                lessons={lessonsByDay.get(activeDay) ?? []}
+                isToday={hasToday && activeDayIdx === todayIdx}
+                isOnline={isOnline}
+                hasSchedule={rawSchedule.length > 0}
+                userRole={user?.role}
+                conflictedIds={conflictedIds}
+                compact={compactMode}
+                currentLessonId={currentLesson?.id}
+                currentProgress={currentProgress}
+                dayComplete={hasToday && activeDayIdx === todayIdx && todayComplete}
+                notesMap={notesMap}
+                onAdd={() => {
+                  setAddDay(activeDay)
+                  openDialog("add")
+                }}
+                onLessonDelete={onDeleteLesson}
+                onRetry={refresh}
+                getLessonTypeColor={getLessonTypeColor}
+                getLessonTypeLabel={getLessonTypeLabel}
+              />
+            )
+          })()}
         </motion.div>
       </AnimatePresence>
     </div>

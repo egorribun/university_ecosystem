@@ -85,6 +85,10 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
             "h-full w-full",
             aspectMode === "portrait" ? "object-contain" : "object-cover"
           )}
+          // Hero is the LCP candidate on /events/:id — override SmartImage defaults
+          // (Wave 113 PERF-113-01, uses Wave 112 SW5 prop ordering).
+          loading="eager"
+          fetchPriority="high"
         />
 
         {/* Zoom button */}

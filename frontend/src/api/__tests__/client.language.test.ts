@@ -78,13 +78,13 @@ describe("API language interceptor", () => {
     )
 
     const newsResponse = await api.get<NewsPayload[]>("/news")
-    expect(newsResponse.data[0].title).toBe("Campus renovation update")
+    expect(newsResponse.data[0]!.title).toBe("Campus renovation update")
 
     const eventsResponse = await api.get<PaginatedResponse<EventPayload>>("/events")
-    expect(eventsResponse.data.items[0].title).toBe("Career fair")
+    expect(eventsResponse.data.items[0]!.title).toBe("Career fair")
 
     const notificationsResponse = await api.get<NotificationPayload[]>("/notifications")
-    expect(notificationsResponse.data[0].message).toBe("New grade posted in Calculus.")
+    expect(notificationsResponse.data[0]!.message).toBe("New grade posted in Calculus.")
 
     const loginResponse = await api.post<{ detail: string }>("/auth/login", new URLSearchParams(), {
       validateStatus: () => true,
@@ -114,7 +114,7 @@ describe("API language interceptor", () => {
       headers: { "Accept-Language": "ru" },
     })
 
-    expect(response.data[0].title).toBe("ru")
+    expect(response.data[0]!.title).toBe("ru")
   })
 
   it("falls back to the default locale for unsupported languages", async () => {

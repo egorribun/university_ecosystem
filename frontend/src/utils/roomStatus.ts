@@ -19,6 +19,7 @@ interface LessonSlot {
 /** Parse "HH:MM" into minutes since midnight. Returns NaN on invalid input. */
 function parseMinutes(time: string): number {
   const [h, m] = time.split(":")
+  if (h === undefined || m === undefined) return Number.NaN
   return parseInt(h, 10) * 60 + parseInt(m, 10)
 }
 

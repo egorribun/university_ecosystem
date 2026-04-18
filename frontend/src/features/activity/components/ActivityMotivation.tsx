@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Flame } from "lucide-react"
-import type { AttendanceStats, GradeStats, ParticipationStats } from "./activityTypes"
+import type { AttendanceStats, GradeStats, ParticipationStats } from "../types"
 
 type ActivityMotivationProps = {
   attendance?: AttendanceStats | null

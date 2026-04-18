@@ -27,6 +27,20 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    // Wave 112 — multi-browser coverage (Safari/WebKit surfaces iOS-specific
+    // CSS/backdrop-filter/touch-events bugs not visible in Chromium).
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+    },
+    {
+      name: "mobile-webkit",
+      use: { ...devices["iPhone 15"] },
+    },
   ],
   webServer: {
     command: `npm run build && npm run preview -- --host ${HOST} --port ${PORT}`,

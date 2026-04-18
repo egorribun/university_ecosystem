@@ -18,8 +18,8 @@ export function isOpenNow(hours: BuildingHours): boolean {
   const match = todayHours.match(/(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})/)
   if (!match) return false
 
-  const openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10)
-  const closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10)
+  const openMinutes = parseInt(match[1]!, 10) * 60 + parseInt(match[2]!, 10)
+  const closeMinutes = parseInt(match[3]!, 10) * 60 + parseInt(match[4]!, 10)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
   // Handle midnight wraparound (e.g. "22:00–02:00")

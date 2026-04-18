@@ -41,8 +41,9 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
       const keyNum = parseInt(e.key, 10)
       if (keyNum >= 1 && keyNum <= 9) {
         const index = keyNum - 1
-        if (index < BUILDING_IDS.length) {
-          onSelectBuilding(BUILDING_IDS[index])
+        const buildingId = BUILDING_IDS[index]
+        if (buildingId) {
+          onSelectBuilding(buildingId)
         }
         return
       }

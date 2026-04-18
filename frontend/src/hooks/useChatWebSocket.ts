@@ -448,7 +448,7 @@ export function useChatWebSocket({
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `typing:${chatId}`
     const now = Date.now()
-    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing) return
+    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing!) return
     lastSentRef.current.set(key, now)
     try {
       // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
@@ -462,7 +462,7 @@ export function useChatWebSocket({
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `read:${chatId}`
     const now = Date.now()
-    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read) return
+    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read!) return
     lastSentRef.current.set(key, now)
     try {
       // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
