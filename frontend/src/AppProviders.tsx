@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { MotionConfig } from "framer-motion"
 
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
@@ -34,10 +35,17 @@ function ProvidersInner({ children }: AppProvidersProps) {
 export function AppProviders({ children }: AppProvidersProps) {
   return (
     <LanguageProvider>
-      <ProvidersInner>
-        <GlobalHapticsListener />
-        {children}
-      </ProvidersInner>
+      {/* `reducedMotion="user"` makes Framer Motion honour the OS
+          `prefers-reduced-motion` setting — animations snap to their end
+          state when the user has opted in. WCAG 2.3.3 improvement (Level
+          AAA) + eliminates the 900ms Framer settle wait previously needed
+          by `tests/e2e/a11y-public.spec.ts` (A11Y-113-03 closed). */}
+      <MotionConfig reducedMotion="user">
+        <ProvidersInner>
+          <GlobalHapticsListener />
+          {children}
+        </ProvidersInner>
+      </MotionConfig>
     </LanguageProvider>
   )
 }

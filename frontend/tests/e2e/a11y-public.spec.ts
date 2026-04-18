@@ -59,11 +59,14 @@ for (const route of PUBLIC_ROUTES) {
       await page.goto(route.path, { waitUntil: "domcontentloaded" })
       // Give the SPA shell a beat to mount + i18n to apply.
       await page.waitForLoadState("networkidle").catch(() => {})
-      // Framer Motion FadeIn animations take up to ~750ms (0.45s duration + 0.3s max delay).
-      // Wait for the resting state so axe-core samples final colors, not mid-animation opacity
-      // blends. SW2b wires MotionConfig reducedMotion="user" at AppProviders so the wait
-      // shortens to a small buffer; keep 500ms for layout settle / paint flush.
-      await page.waitForTimeout(500)
+      // `<MotionConfig reducedMotion="user">` at AppProviders (Wave 114 SW2b)
+      // snaps Framer Motion to end state under the emulateMedia directive
+      // above. A small settle buffer still pays for itself: Login mounts a
+      // handful of React Query observers that briefly render their loading
+      // state, and axe sampling pre-settle surfaces flicker-state colour
+      // violations that don't exist at rest. 300ms is ~2× the queue flush
+      // measured locally — shorter than the 900ms Wave 113 workaround.
+      await page.waitForTimeout(300)
 
       const results = await new AxeBuilder({ page })
         // Stay focused on user-impacting violations; informational tags pass-through
