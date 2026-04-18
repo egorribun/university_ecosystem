@@ -68,8 +68,9 @@
 
     /* Text */
     --text-primary: var(--color-slate-900);
-    --text-secondary: var(--color-slate-500);
-    --text-tertiary: var(--color-slate-400);
+    /* slate-600 (not slate-500) — WCAG 2.2 AA 4.5:1 on --bg-page slate-50 (A11Y-113-01, Wave 113) */
+    --text-secondary: var(--color-slate-600);
+    --text-tertiary: var(--color-slate-500);
     --text-inverse: var(--color-white);
 
     /* Borders */
@@ -268,8 +269,15 @@
     /* UI Specialty Colors (Light) */
     --bg-nav-light: color-mix(in srgb, var(--color-white) var(--opacity-heavy), transparent);
     --bg-nav-dark: color-mix(in srgb, var(--color-slate-950) var(--opacity-heavy), transparent);
-    --bg-footer-light: var(--color-slate-50);
-    --bg-footer-dark: var(--color-slate-950);
+    /* Footer uses premium gradient (blue + primary) so text-white has contrast — slate-50 had 1.04 ratio (A11Y-113-02, Wave 113) */
+    --bg-footer-light:
+      radial-gradient(
+        120% 180% at -10% -20%,
+        color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
+        transparent 60%
+      ),
+      linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
+    --bg-footer-dark: var(--grad-nav-dark);
 
     /* Messenger Semantic Colors (Light) */
     --msg-sidebar-bg: var(--color-slate-50);
@@ -304,8 +312,9 @@
 
     /* Text */
     --text-primary: var(--color-slate-50);
-    --text-secondary: var(--color-slate-400);
-    --text-tertiary: var(--color-slate-500);
+    /* slate-300 (not slate-400) — WCAG 2.2 AA 4.5:1 even with semi-transparent glass overlays on slate-950 (A11Y-113-01, Wave 113) */
+    --text-secondary: var(--color-slate-300);
+    --text-tertiary: var(--color-slate-400);
     --text-inverse: var(--color-slate-950);
 
     /* Borders */
