@@ -62,6 +62,8 @@ export interface NewsCardViewProps {
     confirm: string
     cancel: string
   }
+  /** Forwarded to NewsCardHero for LCP prioritization (Wave 113 PERF-113-01) */
+  priority?: boolean
 }
 
 export const NewsCardView: FC<NewsCardViewProps> = ({
@@ -94,6 +96,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   onEditSuccess,
   onErrorClose,
   t,
+  priority,
 }) => {
   /* ── Quick-view hover state ── */
   const articleRef = useRef<HTMLElement>(null)
@@ -180,6 +183,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           title={title}
           created_at={created_at}
           transitioning={transitioning}
+          priority={priority}
         />
       </div>
 

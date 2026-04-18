@@ -91,6 +91,10 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           onLoad={handleHeroLoad}
           className={cn("h-full w-full", heroFrame.image)}
           style={heroFrame.imageStyle}
+          // Hero is the LCP candidate on /news/:id — override SmartImage defaults
+          // (Wave 113 PERF-113-01, uses Wave 112 SW5 prop ordering).
+          loading="eager"
+          fetchPriority="high"
         />
       </div>
       {!displayTitle && (

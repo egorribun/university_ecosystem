@@ -23,10 +23,12 @@ interface EventCardProps extends Partial<Event> {
   animationIndex?: number
   onChange?: () => void
   maxWidth?: string
+  /** First card in grid — forwards LCP priority to SmartImage (Wave 113 PERF-113-01) */
+  priority?: boolean
 }
 
 const EventCardComponent: FC<EventCardProps> = (props) => {
-  const { id, title, speaker, location, description, starts_at, ends_at, event_type, event_type_en } = props
+  const { id, title, speaker, location, description, starts_at, ends_at, event_type, event_type_en, priority } = props
   const { t } = useTranslation(["events", "common"])
 
   const {
@@ -105,6 +107,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
           confirm: t("common:buttons.delete"),
           cancel: t("common:buttons.cancel"),
         }}
+        priority={priority}
       />
     </Suspense>
   )

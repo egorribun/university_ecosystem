@@ -25,6 +25,8 @@ export type NewsCardProps = {
   comments_count?: number
   is_liked?: boolean
   onChange?: () => void
+  /** First card in grid — forwards LCP priority to SmartImage (Wave 113 PERF-113-01) */
+  priority?: boolean
 }
 
 const NewsCardComponent: FC<NewsCardProps> = ({
@@ -39,6 +41,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   comments_count: initialComments = 0,
   is_liked: initialIsLiked = false,
   onChange,
+  priority,
 }) => {
   const { user } = useAuth()
   const { t } = useTranslation(["news", "common"])
@@ -160,6 +163,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         confirm: t("common:buttons.delete"),
         cancel: t("common:buttons.cancel"),
       }}
+      priority={priority}
     />
   )
 }
@@ -172,7 +176,8 @@ const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.content_en === next.content_en &&
   prev.created_at === next.created_at &&
   prev.image_url === next.image_url &&
-  prev.onChange === next.onChange
+  prev.onChange === next.onChange &&
+  prev.priority === next.priority
 
 // PERF-27-02-KEPT: custom areEqual comparator
 export default memo(NewsCardComponent, areNewsCardPropsEqual)

@@ -14,9 +14,11 @@ interface NewsCardHeroProps {
   created_at: string
   /** Set by parent on pointerdown for forward view-transition morphing */
   transitioning?: boolean
+  /** First card in grid — promotes hero image to LCP candidate (Wave 113 PERF-113-01) */
+  priority?: boolean
 }
 
-const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsCardHeroProps) => {
+const NewsCardHero = ({ id, image_url, title, created_at, transitioning, priority }: NewsCardHeroProps) => {
   const { t, i18n } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
   const [ready, setReady] = useState(!image_url)
@@ -107,6 +109,8 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning }: NewsC
             className="absolute inset-0 h-full w-full object-cover will-change-transform transition-transform duration-slower ease-out scale-[1.12] group-hover:scale-[1.16]"
             onLoad={onLoad}
             onError={onLoad}
+            // First-card LCP override (Wave 113 PERF-113-01).
+            {...(priority ? { loading: "eager" as const, fetchPriority: "high" as const } : {})}
           />
 
           {/* Bottom gradient */}

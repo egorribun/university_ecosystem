@@ -169,6 +169,7 @@ export const EventsList = ({
                 onChange={handleRetry}
                 maxWidth="100%"
                 animationIndex={index}
+                priority={index === 0}
               />
             </FeatureErrorBoundary>
           </div>

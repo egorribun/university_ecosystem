@@ -146,6 +146,7 @@ export const NewsList = ({
                   {...news}
                   image_url={news.image_url ?? undefined}
                   onChange={handleRetry}
+                  priority={index === 0}
                 />
               </FeatureErrorBoundary>
             </motion.div>
