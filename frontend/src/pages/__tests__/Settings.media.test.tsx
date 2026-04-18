@@ -1,17 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor, act } from "@testing-library/react"
+import { screen, waitFor, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
-import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
 import { AuthContext } from "@/contexts/AuthContext"
 import Settings from "@/pages/Settings"
 import type { User } from "@/types/User"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import i18n from "../../i18n/config"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const tSettings = (key: string, options?: Record<string, unknown>) =>
   i18n.t(`settings:${key}`, options)
@@ -105,36 +103,40 @@ const baseUser: User = {
   mfa_challenges: [],
 }
 
-const renderSettings = () => {
+const renderSettings = async () => {
   const queryClient = createQueryClient()
   const mockSetUser = vi.fn()
   const mockLogout = vi.fn().mockResolvedValue(undefined)
 
-  const utils = render(
-    <MemoryRouter initialEntries={["/settings"]}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <LanguageProvider>
-            <AuthContext.Provider
-              value={{
-                setUser: mockSetUser,
-                logout: mockLogout,
-                login: vi.fn(),
-                loginWithPasskey: vi.fn(),
-                refresh: vi.fn(),
-                submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
-                requireMfa: vi.fn().mockResolvedValue(null),
-                resetEtagCache: vi.fn(),
-                authOperation: false,
-              }}
-            >
-              <Settings />
-            </AuthContext.Provider>
-          </LanguageProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </MemoryRouter>
+  const WrappedSettings = () => (
+    <ThemeProvider>
+      <AuthContext.Provider
+        value={{
+          setUser: mockSetUser,
+          logout: mockLogout,
+          login: vi.fn(),
+          loginWithPasskey: vi.fn(),
+          refresh: vi.fn(),
+          submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
+          requireMfa: vi.fn().mockResolvedValue(null),
+          resetEtagCache: vi.fn(),
+          authOperation: false,
+        }}
+      >
+        <Settings />
+      </AuthContext.Provider>
+    </ThemeProvider>
   )
+
+  const utils = await renderWithRouter({
+    ui: WrappedSettings,
+    path: "/settings",
+    initialPath: "/settings",
+    queryClient,
+    // Test mounts its own AuthContext.Provider — skip helper's AuthProvider
+    // so useProfileSync doesn't call the mocked useAuthStore (missing setState).
+    authProvider: false,
+  })
 
   return { ...utils, mockSetUser }
 }
@@ -148,18 +150,14 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Settings media actions", () => {
+describe("Settings media actions", () => {
   it("uploads avatar and refreshes the profile", async () => {
     const user = userEvent.setup()
     const updatedUser = { ...baseUser, avatar_url: "/media/avatars/new.png" }
     const postSpy = vi.spyOn(api, "post").mockResolvedValue({ data: updatedUser } as any)
     const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
-    const { mockSetUser } = renderSettings()
+    const { mockSetUser } = await renderSettings()
 
     await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
     await user.click(await screen.findByText(tSettings("media.avatar.title")))
@@ -203,7 +201,7 @@ describe.skip("Settings media actions", () => {
   it("shows an error when avatar upload fails", async () => {
     vi.spyOn(api, "post").mockRejectedValue({ response: { data: { detail: "Upload error" } } })
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
     await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
     await user.click(await screen.findByText(tSettings("media.avatar.title")))
     await waitFor(() => expect(document.querySelector("input[type='file']")).toBeTruthy())
@@ -232,7 +230,7 @@ describe.skip("Settings media actions", () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
     const user = userEvent.setup()
-    const { mockSetUser } = renderSettings()
+    const { mockSetUser } = await renderSettings()
 
     await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
     await user.click(await screen.findByText(tSettings("media.cover.title")))
@@ -269,7 +267,7 @@ describe.skip("Settings media actions", () => {
     const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
     const user = userEvent.setup()
-    const { mockSetUser } = renderSettings()
+    const { mockSetUser } = await renderSettings()
 
     await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
     await user.click(await screen.findByText(tSettings("media.avatar.title")))
@@ -293,7 +291,7 @@ describe.skip("Settings media actions", () => {
     const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: updatedUser } as any)
 
     const user = userEvent.setup()
-    const { mockSetUser } = renderSettings()
+    const { mockSetUser } = await renderSettings()
 
     await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
     await user.click(await screen.findByText(tSettings("media.cover.title")))

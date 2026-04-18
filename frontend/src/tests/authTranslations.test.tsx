@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from "vitest"
-import { MemoryRouter } from "react-router-dom"
-import { render, screen } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
-import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext"
+
+import { useLanguage } from "@/contexts/LanguageContext"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("@/contexts/AuthContext", () => ({
+  // Passthrough AuthProvider so renderWithRouter's import still resolves while
+  // useAuth is mocked for this translations-focused test.
+  AuthProvider: ({ children }: { children: ReactNode }) => children,
   useAuth: () => ({
     login: vi.fn(),
   }),
@@ -13,9 +17,8 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 import Login from "@/pages/Login"
 
-function LanguageToggleHarness({ children }: { children: ReactNode }) {
+function LoginWithLanguageToggle() {
   const { language, setLanguage } = useLanguage()
-
   return (
     <>
       <button
@@ -25,34 +28,24 @@ function LanguageToggleHarness({ children }: { children: ReactNode }) {
       >
         toggle
       </button>
-      {children}
+      <Login />
     </>
   )
 }
 
-function renderLogin() {
+async function renderLogin() {
   const user = userEvent.setup()
-
-  const renderResult = render(
-    <LanguageProvider>
-      <MemoryRouter initialEntries={["/login"]}>
-        <LanguageToggleHarness>
-          <Login />
-        </LanguageToggleHarness>
-      </MemoryRouter>
-    </LanguageProvider>
-  )
-
-  return { user, ...renderResult }
+  const result = await renderWithRouter({
+    ui: LoginWithLanguageToggle,
+    path: "/login",
+    initialPath: "/login",
+  })
+  return { user, ...result }
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("auth page translations", () => {
+describe("auth page translations", () => {
   it("renders login content for Russian and English locales", async () => {
-    const { user } = renderLogin()
+    const { user } = await renderLogin()
 
     const toggle = screen.getByTestId("lang-toggle")
 

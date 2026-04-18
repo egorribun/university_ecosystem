@@ -1,54 +1,37 @@
-import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { axe } from "jest-axe"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
+
 import Login from "../Login"
 import { server } from "@/tests/mocks/server"
-import { AuthProvider } from "@/contexts/AuthContext"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import { testUser } from "@/tests/mocks/handlers"
 import i18n from "../../i18n/config"
+import {
+  createTestQueryClient,
+  renderWithRouter,
+} from "@/tests/helpers/renderWithRouter"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
 
 const clients: QueryClient[] = []
 
-const createClient = () =>
-  new QueryClient({
-    defaultOptions: {
-      queries: { staleTime: 30000, retry: 1, refetchOnWindowFocus: false },
-      mutations: { retry: 0 },
-    },
-  })
-
 const renderLogin = () => {
-  const client = createClient()
+  const client = createTestQueryClient()
   clients.push(client)
-  return render(
-    <QueryClientProvider client={client}>
-      <LanguageProvider>
-        <AuthProvider>
-          <MemoryRouter initialEntries={["/login"]}>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/dashboard" element={<div>Welcome!</div>} />
-            </Routes>
-          </MemoryRouter>
-        </AuthProvider>
-      </LanguageProvider>
-    </QueryClientProvider>
-  )
+  return renderWithRouter({
+    ui: Login,
+    path: "/login",
+    initialPath: "/login",
+    extraRoutes: [{ path: "/dashboard", Component: () => <div>Welcome!</div> }],
+    queryClient: client,
+  })
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Login page", () => {
+describe("Login page", () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem("ue:language", "en")
@@ -61,7 +44,7 @@ describe.skip("Login page", () => {
 
   it("blocks submission for invalid email", async () => {
     const user = userEvent.setup()
-    renderLogin()
+    await renderLogin()
 
     const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")), {
       selector: 'input[type="email"]',
@@ -96,7 +79,7 @@ describe.skip("Login page", () => {
     )
 
     const user = userEvent.setup()
-    renderLogin()
+    await renderLogin()
 
     const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")), {
       selector: 'input[type="email"]',
@@ -125,7 +108,7 @@ describe.skip("Login page", () => {
     )
 
     const user = userEvent.setup()
-    renderLogin()
+    await renderLogin()
 
     const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")), {
       selector: 'input[type="email"]',
@@ -157,7 +140,7 @@ describe.skip("Login page", () => {
     )
 
     const user = userEvent.setup()
-    renderLogin()
+    await renderLogin()
 
     const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")), {
       selector: 'input[type="email"]',
@@ -192,7 +175,7 @@ describe.skip("Login page", () => {
     )
 
     const user = userEvent.setup()
-    renderLogin()
+    await renderLogin()
 
     // Wait for initial auth check to complete
     await waitFor(() => expect(screen.queryByText(/loading|загрузка/i)).not.toBeInTheDocument(), {
@@ -237,7 +220,7 @@ describe.skip("Login page", () => {
     )
 
     const user = userEvent.setup()
-    renderLogin()
+    await renderLogin()
 
     await user.type(
       screen.getByLabelText(matchText(tAuth("fields.email")), {
@@ -276,7 +259,7 @@ describe.skip("Login page", () => {
   }, 15000)
 
   it("meets basic accessibility requirements", async () => {
-    const { container } = renderLogin()
+    const { container } = await renderLogin()
     // Wait for AuthProvider and Login component to settle (initial check/loading)
     await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument())
 

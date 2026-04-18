@@ -1,13 +1,13 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, beforeEach, vi } from "vitest"
 import type { ContextType } from "react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { Event } from "@/types/Event"
 import { setTestEvents } from "../mocks/handlers"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("../../components/EventCard", () => ({
   __esModule: true,
@@ -62,10 +62,9 @@ const authValue: AuthContextValue = {
   authOperation: false,
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but Events feature uses TanStack Router hooks → useRouterState
-// returns null → TypeError. Fix requires shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
+// Wave 115 SW1-remainder: Wave 76 redesigned the Events feature — the "Load
+// more" button is gone (infinite scroll handles pagination). Stale UI assertion,
+// not router. Kept `describe.skip` until rewritten against the new feed.
 describe.skip("Events pagination UI", () => {
   beforeEach(() => {
     const events = Array.from({ length: 15 }, (_, index) => buildEvent(index + 1))
@@ -82,15 +81,17 @@ describe.skip("Events pagination UI", () => {
       },
     })
 
-    render(
+    const WrappedEvents = () => (
       <AuthContext.Provider value={authValue}>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <Events />
-          </MemoryRouter>
-        </QueryClientProvider>
+        <Events />
       </AuthContext.Provider>
     )
+
+    await renderWithRouter({
+      ui: WrappedEvents,
+      queryClient,
+      authProvider: false,
+    })
 
     expect(await screen.findByText("Paginated event 1")).toBeInTheDocument()
     await waitFor(() => expect(screen.getAllByTestId("event-card")).toHaveLength(12))

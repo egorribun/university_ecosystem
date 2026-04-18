@@ -1,15 +1,15 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
 import type { ContextType } from "react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { Event } from "@/types/Event"
 import { server } from "../mocks/server"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const buildEvent = (id: string, title: string, isActive: boolean): Event => {
   const start = new Date(Date.now() + 60 * 60 * 1000)
@@ -55,11 +55,7 @@ const authValue: AuthContextValue = {
   authOperation: false,
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but Events feature uses TanStack Router hooks → useRouterState
-// returns null → TypeError. Fix requires shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Events caching", () => {
+describe("Events caching", () => {
   it("restores cached data when a 304 response is received after switching tabs", async () => {
     const user = userEvent.setup()
     const activeEvents = [buildEvent("event-1", "Active event 1", true)]
@@ -124,15 +120,17 @@ describe.skip("Events caching", () => {
       })
     )
 
-    render(
+    const WrappedEvents = () => (
       <AuthContext.Provider value={authValue}>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <Events />
-          </MemoryRouter>
-        </QueryClientProvider>
+        <Events />
       </AuthContext.Provider>
     )
+
+    await renderWithRouter({
+      ui: WrappedEvents,
+      queryClient,
+      authProvider: false,
+    })
 
     expect(await screen.findByText("Active event 1")).toBeInTheDocument()
     expect(activeRequestCount).toBe(1)

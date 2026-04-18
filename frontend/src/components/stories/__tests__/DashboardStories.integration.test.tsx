@@ -1,16 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { MemoryRouter } from "react-router-dom"
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import type { ComponentProps } from "react"
 
 import DashboardStories from "../DashboardStories"
-// Wave 113 SW6 polish: integration tests import MemoryRouter from react-router-dom
-// but DashboardStories uses TanStack Router `Link` internally → useRouterState returns
-// null → TypeError. Fix requires shared renderWithTanStackRouter helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
 import type { StoryItem } from "@/types/Story"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt }: { alt?: string }) => <img alt={alt ?? ""} data-testid="smart-image" />,
@@ -88,7 +84,7 @@ type RenderOptions = {
   user?: ReturnType<typeof userEvent.setup>
 }
 
-function renderStories(
+async function renderStories(
   overrides: Partial<ComponentProps<typeof DashboardStories>> = {},
   options: RenderOptions = {}
 ) {
@@ -103,13 +99,13 @@ function renderStories(
 
   const user = options.user ?? userEvent.setup()
 
-  const result = render(
+  const Wrapped = () => (
     <ThemeProvider>
-      <MemoryRouter>
-        <DashboardStories {...props} />
-      </MemoryRouter>
+      <DashboardStories {...props} />
     </ThemeProvider>
   )
+
+  const result = await renderWithRouter({ ui: Wrapped })
 
   return { user, props, ...result }
 }
@@ -134,7 +130,7 @@ function setupMatchMedia({ mobile = false, reducedMotion = false } = {}) {
   )
 }
 
-describe.skip("DashboardStories", () => {
+describe("DashboardStories", () => {
   beforeEach(() => {
     setupMatchMedia()
   })
@@ -146,7 +142,7 @@ describe.skip("DashboardStories", () => {
 
   it("opens a story and allows navigation via buttons", async () => {
     const onStoryOpen = vi.fn()
-    const { user } = renderStories({ onStoryOpen })
+    const { user } = await renderStories({ onStoryOpen })
 
     const storyTrigger = await screen.findByRole("button", { name: "Story: Orientation" })
     await user.click(storyTrigger)
@@ -180,7 +176,7 @@ describe.skip("DashboardStories", () => {
     })
 
     const user = userEvent.setup()
-    renderStories({}, { user })
+    await renderStories({}, { user })
 
     const storyTrigger = await screen.findByRole("button", { name: "Story: Orientation" })
     await user.click(storyTrigger)
@@ -200,7 +196,7 @@ describe.skip("DashboardStories", () => {
   })
 
   it("responds to keyboard shortcuts", async () => {
-    const { user } = renderStories()
+    const { user } = await renderStories()
 
     const storyTrigger = await screen.findByRole("button", { name: "Story: Orientation" })
     await user.click(storyTrigger)
@@ -217,8 +213,8 @@ describe.skip("DashboardStories", () => {
     })
   })
 
-  it("omits the stories heading when there are no stories", () => {
-    renderStories({ stories: [] })
+  it("omits the stories heading when there are no stories", async () => {
+    await renderStories({ stories: [] })
 
     expect(screen.queryByRole("heading", { name: "Stories" })).not.toBeInTheDocument()
   })

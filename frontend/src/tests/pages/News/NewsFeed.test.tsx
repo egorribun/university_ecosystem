@@ -1,11 +1,11 @@
-import { render, screen } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
+import { screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 import { HttpResponse, http } from "msw"
 
 import type { User } from "@/types/User"
 import { server } from "../../mocks/server"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const baseUser: User = {
   id: "uuid-1",
@@ -38,10 +38,7 @@ const baseUser: User = {
 }
 
 const renderNewsPage = async (queryClient?: QueryClient) => {
-  const [{ AuthContext }, { LanguageProvider }] = await Promise.all([
-    import("@/contexts/AuthContext"),
-    import("@/contexts/LanguageContext"),
-  ])
+  const [{ AuthContext }] = await Promise.all([import("@/contexts/AuthContext")])
 
   const authValue = {
     login: vi.fn().mockResolvedValue(null),
@@ -68,22 +65,27 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
 
   const { default: News } = await import("@/pages/News")
 
-  render(
+  const WrappedNews = () => (
     <AuthContext.Provider value={authValue}>
-      <LanguageProvider>
-        <QueryClientProvider client={client}>
-          <MemoryRouter initialEntries={["/news"]}>
-            <News />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </LanguageProvider>
+      <News />
     </AuthContext.Provider>
   )
+
+  await renderWithRouter({
+    ui: WrappedNews,
+    path: "/news",
+    initialPath: "/news",
+    queryClient: client,
+    authProvider: false,
+  })
 
   return { queryClient: client }
 }
 
-// Note: Skipped due to "async Client Component" error from dynamic imports in Vitest
+// Wave 115 SW1-remainder: This test hit a pre-existing Vitest "async Client Component"
+// failure from dynamic imports inside the factory — unrelated to the Wave 37 router
+// migration gap that the rest of Batch 5 fixed. Leaving describe.skip until the
+// dynamic-import pattern is rewritten.
 describe.skip("News page interaction", () => {
   beforeEach(() => {
     vi.resetModules()

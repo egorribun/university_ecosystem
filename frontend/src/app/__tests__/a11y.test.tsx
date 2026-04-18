@@ -1,9 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { PropsWithChildren } from "react"
+import { screen, waitFor } from "@testing-library/react"
+import { QueryClient } from "@tanstack/react-query"
 import { describe, it, beforeEach, afterEach, vi } from "vitest"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
+import type { ComponentType } from "react"
 
 import Navbar from "@/components/navbar"
 import Dashboard from "@/pages/Dashboard"
@@ -14,9 +13,9 @@ import { createQueryClient } from "@/app/queryClient"
 import api from "@/api/client"
 import * as sdk from "@/api/generated/sdk.gen"
 import type { User } from "@/types/User"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { AppShellProvider } from "@/contexts/AppShellContext"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("@/components/feedback/NotificationsBell", () => ({
   default: ({ iconColor }: { iconColor?: string }) => (
@@ -108,7 +107,7 @@ const baseUser: User = {
 
 const activeClients: QueryClient[] = []
 
-const createWrapper = (route = "/dashboard") => {
+async function renderForA11y(Component: ComponentType, route = "/dashboard") {
   const queryClient = createQueryClient()
   activeClients.push(queryClient)
   const authValue = {
@@ -127,21 +126,23 @@ const createWrapper = (route = "/dashboard") => {
     authOperation: false,
   }
 
-  const Wrapper = ({ children }: PropsWithChildren) => (
-    <MemoryRouter initialEntries={[route]}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <LanguageProvider>
-            <AppShellProvider>
-              <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
-            </AppShellProvider>
-          </LanguageProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </MemoryRouter>
+  const Wrapped = () => (
+    <ThemeProvider>
+      <AppShellProvider>
+        <AuthContext.Provider value={authValue}>
+          <Component />
+        </AuthContext.Provider>
+      </AppShellProvider>
+    </ThemeProvider>
   )
 
-  return { Wrapper }
+  return renderWithRouter({
+    ui: Wrapped,
+    path: route,
+    initialPath: route,
+    queryClient,
+    authProvider: false,
+  })
 }
 
 describe("Accessibility checks", () => {
@@ -169,20 +170,15 @@ describe("Accessibility checks", () => {
     vi.clearAllMocks()
   })
 
-  // Wave 113 SW6 polish: skipped pending Wave 114 SW1 — test wrapper uses MemoryRouter
-  // from react-router-dom, but Navbar uses TanStack Router internally (useRouterState
-  // + useNavigate). Fix via shared renderWithTanStackRouter helper.
-  it.skip("Navbar has no axe violations", async () => {
-    const { Wrapper } = createWrapper("/dashboard")
-    const { container } = render(<Navbar />, { wrapper: Wrapper })
+  it("Navbar has no axe violations", async () => {
+    const { container } = await renderForA11y(Navbar, "/dashboard")
 
     await waitFor(() => expect(screen.getByRole("navigation")).toBeInTheDocument())
 
     await checkA11y(container)
   })
 
-  // Wave 113 SW6 polish: same skip reason as "Navbar has no axe violations" above.
-  it.skip("Dashboard page has no axe violations", async () => {
+  it("Dashboard page has no axe violations", async () => {
     const stories = [
       {
         id: "uuid-1",
@@ -226,8 +222,7 @@ describe("Accessibility checks", () => {
       })
     })
 
-    const { Wrapper } = createWrapper("/dashboard")
-    const { container } = render(<Dashboard />, { wrapper: Wrapper })
+    const { container } = await renderForA11y(Dashboard, "/dashboard")
 
     await waitFor(() => expect(api.get).toHaveBeenCalled())
     // Wait for internal components to finish loading (e.g. ScheduleCard)
@@ -241,8 +236,7 @@ describe("Accessibility checks", () => {
   })
 
   it("Profile page has no axe violations", async () => {
-    const { Wrapper } = createWrapper("/profile")
-    const { container } = render(<Profile />, { wrapper: Wrapper })
+    const { container } = await renderForA11y(Profile, "/profile")
 
     await waitFor(() => expect(screen.getByTestId("profile-root")).toBeInTheDocument())
 

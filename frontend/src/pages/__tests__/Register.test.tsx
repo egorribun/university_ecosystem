@@ -1,31 +1,26 @@
-import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { describe, expect, it } from "vitest"
 import { axe } from "jest-axe"
+
 import Register from "../Register"
 import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
 
 const renderRegister = () =>
-  render(
-    <MemoryRouter initialEntries={["/register"]}>
-      <Routes>
-        <Route path="/register" element={<Register />} />
-        <Route path="/login" element={<div>Sign in page</div>} />
-      </Routes>
-    </MemoryRouter>
-  )
+  renderWithRouter({
+    ui: Register,
+    path: "/register",
+    initialPath: "/register",
+    extraRoutes: [{ path: "/login", Component: () => <div>Sign in page</div> }],
+  })
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Register page", () => {
+describe("Register page", () => {
   it("surfaces API error messages", async () => {
     server.use(
       http.post("*/auth/register", () =>
@@ -34,7 +29,7 @@ describe.skip("Register page", () => {
     )
 
     const user = userEvent.setup()
-    renderRegister()
+    await renderRegister()
 
     await user.type(screen.getByLabelText(matchText(tAuth("fields.name"))), "Test User")
     await user.type(screen.getByLabelText(matchText(tAuth("fields.email"))), "user@example.com")
@@ -59,7 +54,7 @@ describe.skip("Register page", () => {
     )
 
     const user = userEvent.setup()
-    renderRegister()
+    await renderRegister()
 
     await user.type(screen.getByLabelText(matchText(tAuth("fields.name"))), "Test User")
     await user.type(screen.getByLabelText(matchText(tAuth("fields.email"))), "user@example.com")
@@ -85,7 +80,7 @@ describe.skip("Register page", () => {
   })
 
   it("passes automated accessibility checks", async () => {
-    const { container } = renderRegister()
+    const { container } = await renderRegister()
     const results = await axe(container)
     expect(results).toHaveNoViolations()
   })
