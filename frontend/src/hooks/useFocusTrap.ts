@@ -70,7 +70,8 @@ export default function useFocusTrap<T extends HTMLElement>({
       fallbackFocus: fallbackTarget,
     }
 
-    if (initialFocusRef.current) options.initialFocus = initialFocusRef.current
+    // `!== undefined` (not truthy) — supports `initialFocus: false` to prevent auto-focus
+    if (initialFocusRef.current !== undefined) options.initialFocus = initialFocusRef.current
 
     const trap = createFocusTrap(container, {
       ...options,

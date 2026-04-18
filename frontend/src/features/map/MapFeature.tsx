@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore
 import { useTranslation } from "react-i18next"
 import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { logError } from "@/app/logger"
 import { breakpoints } from "@/theme/tokens"
 import { MapBackdrop } from "@/components/map/MapBackdrop"
 import { MapHeader } from "@/components/map/MapHeader"
@@ -23,6 +24,7 @@ import {
   type MapCategory,
   type CampusBuilding,
 } from "@/data/campusBuildings"
+import { WidgetErrorBoundary } from "@/components/error"
 import FadeSection from "@/components/motion/FadeSection"
 import type { MapRef } from "react-map-gl/maplibre"
 
@@ -130,9 +132,9 @@ export function MapFeature() {
     const container = document.querySelector(".map-card-matte")
     if (!container) return
     if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(() => {})
+      container.requestFullscreen().catch(logError)
     } else {
-      document.exitFullscreen().catch(() => {})
+      document.exitFullscreen().catch(logError)
     }
   }, [])
 
@@ -183,9 +185,17 @@ export function MapFeature() {
         <FadeSection delay="140ms">
           <div className={`flex gap-4 ${!isNarrow && currentBuilding ? "flex-row" : "flex-col"}`}>
             <div
-              className="map-card-matte flex-1 min-w-0 overflow-hidden relative"
-              style={{ minHeight: isNarrow ? "400px" : "560px" }}
+              className="map-card-matte map-viewport flex-1 min-w-0 overflow-hidden relative"
             >
+              <WidgetErrorBoundary
+                widgetName="MapLibreGL"
+                showFallback
+                fallback={
+                  <div className="h-full min-h-[inherit] flex items-center justify-center text-text-secondary text-sm">
+                    {t("campusMap.loadError")}
+                  </div>
+                }
+              >
               <Suspense fallback={
                 <div className="h-full min-h-[inherit] flex items-center justify-center">
                   <div className="map-poi-chip animate-pulse">{t("campusMap.loading")}</div>
@@ -204,6 +214,7 @@ export function MapFeature() {
                   mapEvents={mapEvents}
                 />
               </Suspense>
+              </WidgetErrorBoundary>
             </div>
 
             {/* Sidebar — desktop: inline panel, mobile: bottom sheet */}

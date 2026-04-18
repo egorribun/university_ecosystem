@@ -72,6 +72,10 @@ export function MapSidebar({
   const sheetRef = useFocusTrap<HTMLDivElement>({
     active: isMobile && isOpen,
     onDeactivate: onClose,
+    // FIX-110-sidebar: `false` prevents auto-focus on the first tabbable element,
+    // which would cause the browser to scroll the overflow container to bring a
+    // deep floor/room button into view — hiding the top content (photo, header).
+    initialFocus: false,
   })
 
   const snapToNearest = useCallback(
@@ -373,6 +377,7 @@ export function MapSidebar({
         className="fixed inset-x-0 bottom-0 z-50 bg-[var(--map-sidebar-bg)] rounded-t-2xl map-sheet-slide-up"
         style={{
           height: `${sheetHeight}px`,
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
           boxShadow: "var(--map-sidebar-shadow)",
         }}
       >

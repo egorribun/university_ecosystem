@@ -11,6 +11,7 @@ import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { CalendarDays } from "lucide-react"
 import type { MapEvent } from "@/hooks/useMapEvents"
+import { logError } from "@/app/logger"
 
 /**
  * Event pin color — uses CSS token var(--map-event-color) in stylesheets.
@@ -41,7 +42,8 @@ function formatEventDate(isoString: string, locale: string): string {
       minute: "2-digit",
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }).format(date)
-  } catch {
+  } catch (err) {
+    logError(err)
     return isoString
   }
 }

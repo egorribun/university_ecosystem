@@ -306,6 +306,19 @@
    --_accent scopes top gradient color per card type.
    ═══════════════════════════════════════════════════════ */
 
+/* ── Map viewport sizing (FIX-111-01) ──────── */
+/* Mobile: fill available viewport; desktop: fixed minimum. */
+.map-viewport {
+  min-height: calc(100dvh - 220px); /* header + search + padding */
+}
+@media (min-width: 640px) {
+  .map-viewport { min-height: 560px; }
+}
+/* Landscape phones — prevent overflow on very short viewports */
+@media (max-height: 500px) {
+  .map-viewport { min-height: 300px; }
+}
+
 .map-card-matte {
   background: var(--map-card-bg);
   box-shadow: var(--map-card-shadow);
@@ -797,22 +810,47 @@
   }
 }
 
+/* ── Controls positioner — mobile: centered, desktop: right-aligned ── */
+.map-controls-positioner {
+  right: 16px; /* desktop default */
+}
+@media (max-width: 640px) {
+  .map-controls-positioner {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* ── Desktop: vertical right-aligned panel ── */
 .map-control-panel {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  background: var(--map-card-bg);
-  box-shadow: var(--map-card-shadow);
+  /* Explicit white — not var(--bg-surface) which may not track theme inside MapLibre */
+  background: color-mix(in srgb, white 92%, transparent);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow:
+    0 2px 8px color-mix(in srgb, black 12%, transparent),
+    0 0 0 1px color-mix(in srgb, black 8%, transparent),
+    inset 0 0.5px 0 color-mix(in srgb, white 40%, transparent);
   border-radius: 12px;
   animation: map-controls-enter 0.4s var(--ease-premium, ease-out) 0.8s both;
 }
 
+.dark .map-control-panel {
+  background: color-mix(in srgb, #1e293b 82%, transparent);
+  box-shadow:
+    0 2px 12px color-mix(in srgb, black 30%, transparent),
+    0 0 0 1px color-mix(in srgb, white 6%, transparent),
+    inset 0 0.5px 0 color-mix(in srgb, white 8%, transparent);
+}
+
 .map-control-btn {
-  width: 36px;
-  height: 36px;
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 40px;
+  min-width: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -858,6 +896,41 @@
   height: 1px;
   background: color-mix(in srgb, var(--text-tertiary) 20%, transparent);
   margin: 2px auto;
+}
+
+/* ── Mobile (≤640px): horizontal bottom strip, centered for thumb reach ── */
+/* Budget: 7 btns × 36px + 2 dividers × 5px + padding 6px = ~264px — fits 320px+ */
+@media (max-width: 640px) {
+  .map-control-panel {
+    flex-direction: row;
+    gap: 0;
+    padding: 3px;
+    border-radius: 22px;
+  }
+  .map-control-btn {
+    min-height: 36px;
+    min-width: 36px;
+    border-radius: 50%;
+  }
+  .map-control-divider {
+    width: 1px;
+    height: 16px;
+    margin: auto 2px;
+  }
+}
+
+/* ── Small phones (≤380px): even tighter to fit 320px screens ── */
+@media (max-width: 380px) {
+  .map-control-panel { padding: 2px; border-radius: 18px; }
+  .map-control-btn { min-height: 32px; min-width: 32px; }
+  .map-control-divider { height: 12px; margin: auto 1px; }
+}
+
+/* ── Landscape: compact horizontal ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .map-control-panel { flex-direction: row; gap: 0; padding: 2px; border-radius: 18px; }
+  .map-control-btn { min-height: 32px; min-width: 32px; border-radius: 50%; }
+  .map-control-divider { width: 1px; height: 12px; margin: auto 1px; }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1129,26 +1202,62 @@
   border-top-color: var(--map-poi-popup-bg, var(--bg-surface));
 }
 .map-theme .maplibregl-popup-close-button {
-  color: var(--text-secondary);
-  font-size: 1.25rem;
-  padding: 4px 8px;
+  /* Prominent round close button — visible against popup photo/gradient */
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-primary);
+  background: color-mix(in srgb, white 85%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow:
+    0 1px 4px color-mix(in srgb, black 12%, transparent),
+    0 0 0 1px color-mix(in srgb, black 6%, transparent);
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+/* Invisible 44px touch target (WCAG 2.5.8) without growing visual circle */
+.map-theme .maplibregl-popup-close-button::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
 }
 .map-theme .maplibregl-popup-close-button:hover {
+  background: color-mix(in srgb, white 95%, transparent);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, black 16%, transparent),
+    0 0 0 1px color-mix(in srgb, black 8%, transparent);
+  transform: scale(1.1);
+}
+.map-theme .maplibregl-popup-close-button:active {
+  transform: scale(0.92);
+}
+.dark .map-theme .maplibregl-popup-close-button,
+.dark.map-theme .maplibregl-popup-close-button {
   color: var(--text-primary);
-  background: transparent;
+  background: color-mix(in srgb, #334155 75%, transparent);
+  box-shadow:
+    0 1px 4px color-mix(in srgb, black 30%, transparent),
+    0 0 0 1px color-mix(in srgb, white 6%, transparent);
+}
+.dark .map-theme .maplibregl-popup-close-button:hover,
+.dark.map-theme .maplibregl-popup-close-button:hover {
+  background: color-mix(in srgb, #334155 90%, transparent);
 }
 
-/* Attribution → subtle */
-.map-theme .maplibregl-ctrl-attrib {
-  background: var(--map-attribution-bg, rgba(255,255,255,0.8));
-  font-size: 0.625rem;
-  border-radius: 4px 0 0 0;
-}
-.map-theme .maplibregl-ctrl-attrib a {
-  color: var(--text-secondary);
-}
-
-/* Hide default navigation/compass controls (we use MapControls) */
+/* Built-in attribution removed (attributionControl={false}) — custom © OSM in JSX.
+   Hide default navigation/compass controls (we use MapControls). */
 .map-theme .maplibregl-ctrl-group {
   display: none;
 }

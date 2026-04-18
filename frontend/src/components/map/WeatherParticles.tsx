@@ -127,6 +127,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
   const flashRef = useRef({ active: false, opacity: 0, nextFlash: 0 })
 
   useEffect(() => {
+    if (prefersReducedMotion) return
     const config = CONFIGS[condition]
     if (!config) return
 
@@ -283,7 +284,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
       resizeObserver.disconnect()
       document.removeEventListener("visibilitychange", onVisibilityChange)
     }
-  }, [condition, isDark])
+  }, [condition, isDark, prefersReducedMotion])
 
   // No particles for clear/cloudy, or when user prefers reduced motion
   if (prefersReducedMotion || condition === "clear" || condition === "cloudy") {

@@ -23,8 +23,6 @@ interface NextLessonMapInfo {
   subject: string
   /** Time remaining text (e.g. "7ч 22м") */
   timeLeft: string
-  /** Raw room string */
-  room: string
 }
 
 export function useNextLesson(): NextLessonMapInfo | null {
@@ -49,7 +47,6 @@ export function useNextLesson(): NextLessonMapInfo | null {
       roomId: nextLesson.room,
       subject: nextLesson.subject ?? "",
       timeLeft: timeLeftShort,
-      room: nextLesson.room,
     }
   }, [nextLesson, timeLeftShort])
 }

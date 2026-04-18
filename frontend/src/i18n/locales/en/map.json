@@ -7,7 +7,8 @@
   "campusMap": {
     "ariaLabel": "Interactive isometric campus map with eight buildings of the State University of Management",
     "groundLabel": "Campus grounds and pathways",
-    "loading": "Loading map..."
+    "loading": "Loading map...",
+    "loadError": "Failed to load the map. Please refresh the page."
   },
   "buildings": {
     "ГУК": {
@@ -237,6 +238,8 @@
     "amenities": "Amenities",
     "rooms": "Rooms",
     "roomCount_one": "{{count}} room",
+    "roomCount_few": "{{count}} rooms",
+    "roomCount_many": "{{count}} rooms",
     "roomCount_other": "{{count}} rooms",
     "floor": "Floor",
     "capacity": "Capacity: {{count}}",
@@ -291,8 +294,12 @@
     "markerLabel": "Event: {{title}}",
     "viewDetails": "View details",
     "participants_one": "{{count}} participant",
+    "participants_few": "{{count}} participants",
+    "participants_many": "{{count}} participants",
     "participants_other": "{{count}} participants",
     "badgeLabel_one": "{{count}} upcoming event",
+    "badgeLabel_few": "{{count}} upcoming events",
+    "badgeLabel_many": "{{count}} upcoming events",
     "badgeLabel_other": "{{count}} upcoming events"
   },
   "shortcuts": {
@@ -306,8 +313,12 @@
   "tooltip": {
     "clickToExplore": "Click to explore",
     "floors_one": "{{count}} floor",
+    "floors_few": "{{count}} floors",
+    "floors_many": "{{count}} floors",
     "floors_other": "{{count}} floors",
     "rooms_one": "{{count}} room",
+    "rooms_few": "{{count}} rooms",
+    "rooms_many": "{{count}} rooms",
     "rooms_other": "{{count}} rooms"
   },
   "poi": {

@@ -63,6 +63,7 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
 
       // ?: open shortcuts overlay
       if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        e.preventDefault()
         onToggleShortcuts()
       }
     }
