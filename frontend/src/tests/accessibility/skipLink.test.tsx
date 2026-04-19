@@ -6,13 +6,29 @@ import { checkA11y } from "../axeTest"
 import { AuthContext } from "@/contexts/AuthContext"
 import Profile from "@/pages/Profile"
 import Login from "@/pages/Login"
-// Wave 115 SW1-remainder: Dashboard route omitted — Dashboard uses framer-motion
-// `useScroll` which throws "Target ref is defined but not hydrated" under jsdom.
-// `a11y.test.tsx` mocks the dashboard hooks to work around this; this file
-// intentionally renders the real page, so the route gets restored once the
-// hook mocks move to a shared helper or framer's scroll primitives get a jsdom
-// polyfill.
+import Dashboard from "@/pages/Dashboard"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+
+// Wave 115 SW2 closed SW1-remainder: Dashboard uses framer-motion `useScroll`
+// which requires a hydrated container ref to compute scroll progress. jsdom
+// doesn't run layout, so `useScroll` throws "Target ref is defined but not
+// hydrated" on mount. Returning real MotionValue instances from a mocked
+// `useScroll` sidesteps the hydration check while keeping `useTransform`
+// untouched (it accepts MotionValues normally). `a11y.test.tsx` uses a
+// different workaround via hook-level mocks of DashboardHero sub-components;
+// both patterns coexist.
+vi.mock("framer-motion", async () => {
+  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion")
+  return {
+    ...actual,
+    useScroll: () => ({
+      scrollY: actual.motionValue(0),
+      scrollYProgress: actual.motionValue(0),
+      scrollX: actual.motionValue(0),
+      scrollXProgress: actual.motionValue(0),
+    }),
+  }
+})
 
 vi.mock("@/hooks/useDashboardStories", () => ({
   useDashboardStories: () => ({ data: [], isLoading: false }),
@@ -78,6 +94,12 @@ const routes: RouteTestCase[] = [
     element: <Login />,
     initialEntries: ["/login"],
     authValue: unauthenticatedAuthValue,
+  },
+  {
+    name: "dashboard",
+    element: <Dashboard />,
+    initialEntries: ["/dashboard"],
+    authValue: baseAuthValue,
   },
 ]
 

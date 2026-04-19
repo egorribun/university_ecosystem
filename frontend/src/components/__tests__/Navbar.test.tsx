@@ -176,12 +176,18 @@ describe("Navbar", () => {
     document.body.style.overflow = ""
   })
 
-  // Wave 115 SW1-remainder: drawer focus-trap relies on real framer-motion
-  // transitions to toggle backdrop pointer-events / drawer translate classes.
-  // With the inline motion mock the assertions about `-translate-x-full` /
-  // `pointer-events-none` never flip. Rewrite once the mock covers AnimatePresence
-  // exit lifecycle or test via playwright instead.
-  it.skip("traps focus within the mobile drawer and closes on Escape", async () => {
+  // Wave 115 SW2 closed SW1-remainder: the original assertions expected
+  // `-translate-x-full` / `pointer-events-none` classes on the drawer /
+  // backdrop AFTER closing. That matched a pre-Wave-?? drawer that
+  // permanently rendered both and toggled transform via class. The current
+  // `MobileMenu` uses declarative framer-motion `exit={{ x: "100%" }}` and
+  // wraps the backdrop+drawer pair inside `<AnimatePresence>{isOpen && (...)}`
+  // — the elements unmount on close. The rewritten assertions read the
+  // post-close DOM (drawer/backdrop unmounted, burger refocused, body
+  // overflow cleared) which matches the real close behaviour the user
+  // experiences. Focus-trap semantics are verified while the drawer is still
+  // open, before the close transition.
+  it("traps focus within the mobile drawer and closes on Escape", async () => {
     const user = userEvent.setup()
     await renderNavbar()
 
@@ -189,12 +195,12 @@ describe("Navbar", () => {
     await user.click(burger)
 
     await screen.findByTestId("mobile-menu-backdrop")
-    // Focus should move to the drawer content
     const drawer = screen.getByRole("dialog")
     await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement))
-    expect(document.body.classList.contains("blurred")).toBe(true)
+    expect(burger).toHaveAttribute("aria-expanded", "true")
     expect(document.body.style.overflow).toBe("hidden")
 
+    // Focus trap — tabbing forward stays inside the drawer.
     await user.tab()
     expect(drawer).toContainElement(document.activeElement as HTMLElement)
 
@@ -203,37 +209,36 @@ describe("Navbar", () => {
 
     await user.keyboard("{Escape}")
 
+    // Drawer + backdrop unmount (AnimatePresence pass-through mock snaps to
+    // removed state when `isOpen` flips false).
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.queryByTestId("mobile-menu-backdrop")).not.toBeInTheDocument()
     await waitFor(() => expect(burger).toHaveAttribute("aria-expanded", "false"))
     await waitFor(() => expect(burger).toHaveFocus())
     expect(document.body.classList.contains("blurred")).toBe(false)
     expect(document.body.style.overflow).toBe("")
-    const backdrop = screen.getByTestId("mobile-menu-backdrop")
-    expect(backdrop).toHaveClass("pointer-events-none")
-    expect(drawer).toHaveClass("-translate-x-full")
   })
 
-  // Wave 115 SW1-remainder: same framer-motion mock limitation as the
-  // focus-trap test above. Also depends on TanStack `<Link>` triggering a real
-  // route transition; currently returns immediately without updating the
-  // mocked location-display div.
-  it.skip("closes the drawer when navigating to another route", async () => {
+  it("closes the drawer when navigating to another route", async () => {
     const user = userEvent.setup()
     await renderNavbar()
 
     const burger = await screen.findByRole("button", { name: "Open menu" })
     await user.click(burger)
-    const newsLink = await screen.findByRole("link", { name: "News" })
 
     expect(document.body.style.overflow).toBe("hidden")
 
+    const newsLink = await screen.findByRole("link", { name: "News" })
     await user.click(newsLink)
 
     await waitFor(() => expect(burger).toHaveAttribute("aria-expanded", "false"))
-    const drawer = screen.getByRole("dialog")
-    const backdrop = screen.getByTestId("mobile-menu-backdrop")
-    expect(backdrop).toHaveClass("pointer-events-none")
-    expect(drawer).toHaveClass("-translate-x-full")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.queryByTestId("mobile-menu-backdrop")).not.toBeInTheDocument()
     expect(document.body.style.overflow).toBe("")
-    expect(screen.getByTestId("location-display")).toHaveTextContent("/news")
+    // LocationDisplay only renders under the /dashboard route component —
+    // after navigation the router swaps to the /news extraRoute which only
+    // emits "News route". Asserting on that string confirms the click
+    // actually performed a route transition (not just a no-op close).
+    await waitFor(() => expect(screen.getByText("News route")).toBeInTheDocument())
   })
 })

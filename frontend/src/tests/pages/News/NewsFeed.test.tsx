@@ -6,6 +6,8 @@ import { HttpResponse, http } from "msw"
 import type { User } from "@/types/User"
 import { server } from "../../mocks/server"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { AuthContext } from "@/contexts/AuthContext"
+import News from "@/pages/News"
 
 const baseUser: User = {
   id: "uuid-1",
@@ -38,8 +40,6 @@ const baseUser: User = {
 }
 
 const renderNewsPage = async (queryClient?: QueryClient) => {
-  const [{ AuthContext }] = await Promise.all([import("@/contexts/AuthContext")])
-
   const authValue = {
     login: vi.fn().mockResolvedValue(null),
     loginWithPasskey: vi.fn().mockResolvedValue(null),
@@ -63,8 +63,6 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
       },
     })
 
-  const { default: News } = await import("@/pages/News")
-
   const WrappedNews = () => (
     <AuthContext.Provider value={authValue}>
       <News />
@@ -82,11 +80,14 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
   return { queryClient: client }
 }
 
-// Wave 115 SW1-remainder: This test hit a pre-existing Vitest "async Client Component"
-// failure from dynamic imports inside the factory — unrelated to the Wave 37 router
-// migration gap that the rest of Batch 5 fixed. Leaving describe.skip until the
-// dynamic-import pattern is rewritten.
-describe.skip("News page interaction", () => {
+// Wave 115 SW2 closed SW1-remainder: the original test used an async factory with
+// `await import("@/pages/News")` + `await import("@/contexts/AuthContext")` inside
+// `renderNewsPage`. Under Vitest, that pattern intermittently surfaces the "async
+// Client Component" diagnostic and leaves the tested render in a half-mounted
+// state. Moving both imports to the module top-level (standard pattern for vitest
+// + `vi.resetModules()` is no longer required here because neither AuthContext
+// nor the News page mutate module state between runs) fixes the flake.
+describe("News page interaction", () => {
   beforeEach(() => {
     vi.resetModules()
     server.resetHandlers()
