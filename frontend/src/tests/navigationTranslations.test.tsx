@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { MemoryRouter } from "react-router-dom"
-import { render, screen } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { ComponentType, ReactNode } from "react"
+
 import Footer from "@/components/layout/Footer"
 import MobileBottomNav from "@/components/layout/MobileBottomNav"
-import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext"
-import type { ReactNode } from "react"
+import { useLanguage } from "@/contexts/LanguageContext"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 function LanguageToggleHarness({ children }: { children: ReactNode }) {
   const { language, setLanguage } = useLanguage()
-
   return (
     <>
       <button
@@ -24,27 +24,27 @@ function LanguageToggleHarness({ children }: { children: ReactNode }) {
   )
 }
 
-function renderWithLanguage(ui: ReactNode, initialEntry = "/dashboard") {
+async function renderWithLanguage(Ui: ComponentType, initialEntry = "/dashboard") {
   const user = userEvent.setup()
 
-  const renderResult = render(
-    <LanguageProvider>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <LanguageToggleHarness>{ui}</LanguageToggleHarness>
-      </MemoryRouter>
-    </LanguageProvider>
+  const Wrapped = () => (
+    <LanguageToggleHarness>
+      <Ui />
+    </LanguageToggleHarness>
   )
 
-  return { user, ...renderResult }
+  const result = await renderWithRouter({
+    ui: Wrapped,
+    path: initialEntry,
+    initialPath: initialEntry,
+  })
+
+  return { user, ...result }
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("navigation components translations", () => {
+describe("navigation components translations", () => {
   it("updates footer translations when switching languages", async () => {
-    const { user } = renderWithLanguage(<Footer />)
+    const { user } = await renderWithLanguage(Footer)
 
     const toggle = screen.getByTestId("lang-toggle")
 
@@ -67,7 +67,7 @@ describe.skip("navigation components translations", () => {
   })
 
   it("switches bottom navigation labels with locale", async () => {
-    const { user } = renderWithLanguage(<MobileBottomNav />)
+    const { user } = await renderWithLanguage(MobileBottomNav)
 
     const toggle = screen.getByTestId("lang-toggle")
 

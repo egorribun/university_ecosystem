@@ -1,14 +1,13 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 
 import AdminNotifications from "@/pages/AdminNotifications"
 import { AuthContext } from "@/contexts/AuthContext"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import type { User } from "@/types/User"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import { resetAdminDeadLetterJobs } from "@/tests/mocks/handlers"
 import { server } from "@/tests/mocks/server"
 
@@ -53,7 +52,7 @@ const authValue = {
 
 type RenderResult = { queryClient: QueryClient }
 
-const renderPage = (): RenderResult => {
+const renderPage = async (): Promise<RenderResult> => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -62,32 +61,28 @@ const renderPage = (): RenderResult => {
     },
   })
 
-  render(
+  const WrappedPage = () => (
     <AuthContext.Provider value={authValue}>
-      <LanguageProvider>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <AdminNotifications />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </LanguageProvider>
+      <AdminNotifications />
     </AuthContext.Provider>
   )
+
+  await renderWithRouter({
+    ui: WrappedPage,
+    queryClient,
+    authProvider: false,
+  })
 
   return { queryClient }
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("AdminNotifications page", () => {
+describe("AdminNotifications page", () => {
   beforeEach(() => {
     resetAdminDeadLetterJobs()
   })
 
   it("lists dead-letter jobs and supports selection", async () => {
-    const { queryClient } = renderPage()
+    const { queryClient } = await renderPage()
 
     expect(await screen.findByText(/Notification queue/i)).toBeInTheDocument()
     expect(await screen.findByText("Timeout")).toBeInTheDocument()
@@ -104,7 +99,7 @@ describe.skip("AdminNotifications page", () => {
   })
 
   it("retries and purges selected jobs", async () => {
-    const { queryClient } = renderPage()
+    const { queryClient } = await renderPage()
 
     const firstJobCheckbox = await screen.findByRole("checkbox", {
       name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
@@ -136,7 +131,7 @@ describe.skip("AdminNotifications page", () => {
       )
     )
 
-    const { queryClient } = renderPage()
+    const { queryClient } = await renderPage()
 
     expect(await screen.findByText("nope")).toBeInTheDocument()
 

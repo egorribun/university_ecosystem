@@ -1,13 +1,11 @@
 import { type PropsWithChildren } from "react"
-import { MemoryRouter } from "react-router-dom"
-import { QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import Settings from "@/pages/Settings"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import { AuthContext } from "@/contexts/AuthContext"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 import type { MfaTotpEnrollment } from "@/types/Mfa"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -47,7 +45,7 @@ const createPendingEnrollment = (
   created_at: overrides.created_at ?? new Date().toISOString(),
 })
 
-const renderSettings = () => {
+const renderSettings = async () => {
   const queryClient = createQueryClient()
 
   const TestAuthProvider = ({ children }: PropsWithChildren) => {
@@ -72,19 +70,20 @@ const renderSettings = () => {
     )
   }
 
-  const result = render(
-    <MemoryRouter initialEntries={["/settings"]}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <LanguageProvider>
-            <TestAuthProvider>
-              <Settings />
-            </TestAuthProvider>
-          </LanguageProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </MemoryRouter>
+  const WrappedSettings = () => (
+    <ThemeProvider>
+      <TestAuthProvider>
+        <Settings />
+      </TestAuthProvider>
+    </ThemeProvider>
   )
+
+  const result = await renderWithRouter({
+    ui: WrappedSettings,
+    path: "/settings",
+    initialPath: "/settings",
+    queryClient,
+  })
 
   return { ...result, queryClient }
 }
@@ -93,11 +92,7 @@ const matchTotpAddButton = /Set up authenticator app|Подключить при
 const matchSecurityTab = /Security|Безопасность/i
 const matchSecurityHeading = /Security & MFA|Безопасность и MFA/i
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Settings TOTP enrollment", () => {
+describe("Settings TOTP enrollment", () => {
   beforeEach(() => {
     resetTestMfa()
     localStorage.clear()
@@ -112,7 +107,7 @@ describe.skip("Settings TOTP enrollment", () => {
 
   it("starts and completes a new TOTP enrollment", async () => {
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
@@ -159,7 +154,7 @@ describe.skip("Settings TOTP enrollment", () => {
     )
 
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
@@ -187,7 +182,7 @@ describe.skip("Settings TOTP enrollment", () => {
 
   it("cancels a pending TOTP enrollment", async () => {
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
@@ -214,7 +209,7 @@ describe.skip("Settings TOTP enrollment", () => {
     )
 
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
@@ -238,7 +233,7 @@ describe.skip("Settings TOTP enrollment", () => {
     useAuthStore.setState({ user: JSON.parse(JSON.stringify(testUser)) })
 
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
@@ -263,7 +258,7 @@ describe.skip("Settings TOTP enrollment", () => {
     useAuthStore.setState({ user: JSON.parse(JSON.stringify(testUser)) })
 
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })

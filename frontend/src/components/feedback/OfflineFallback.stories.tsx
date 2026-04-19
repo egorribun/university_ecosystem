@@ -1,19 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import { OfflineFallback } from "./OfflineFallback"
-import { MemoryRouter } from "react-router-dom"
 import { fn } from "storybook/test"
 
+// Wave 115 SW5 — removed the per-story `<MemoryRouter>` decorator. The
+// global `.storybook/preview.tsx` decorator now provides a TanStack Router
+// context that covers all stories; adding a second router here created a
+// nested context that broke `<Link>` navigation semantics.
 const meta: Meta<typeof OfflineFallback> = {
   title: "Components/OfflineFallback",
   component: OfflineFallback,
   tags: ["autodocs"],
-  decorators: [
-    (Story) => (
-      <MemoryRouter>
-        <Story />
-      </MemoryRouter>
-    ),
-  ],
   parameters: {
     layout: "fullscreen",
     backgrounds: {

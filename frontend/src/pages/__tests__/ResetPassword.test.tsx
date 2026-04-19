@@ -1,11 +1,12 @@
-import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+
 import ResetPassword from "../ResetPassword"
 import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
@@ -15,19 +16,14 @@ vi.mock("zxcvbn", () => ({
 }))
 
 const renderWithToken = () =>
-  render(
-    <MemoryRouter initialEntries={["/reset/token123"]}>
-      <Routes>
-        <Route path="/reset/:token" element={<ResetPassword />} />
-      </Routes>
-    </MemoryRouter>
-  )
+  renderWithRouter({
+    ui: ResetPassword,
+    // TanStack Router path param syntax is `$token` (vs react-router-dom `:token`).
+    path: "/reset/$token",
+    initialPath: "/reset/token123",
+  })
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("ResetPassword page", () => {
+describe("ResetPassword page", () => {
   beforeEach(() => {
     localStorage.clear()
   })
@@ -40,7 +36,7 @@ describe.skip("ResetPassword page", () => {
     )
 
     const user = userEvent.setup()
-    renderWithToken()
+    await renderWithToken()
 
     await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "Password123!")
     await user.type(
@@ -63,7 +59,7 @@ describe.skip("ResetPassword page", () => {
     )
 
     const user = userEvent.setup()
-    renderWithToken()
+    await renderWithToken()
 
     await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "Password123!")
     await user.type(

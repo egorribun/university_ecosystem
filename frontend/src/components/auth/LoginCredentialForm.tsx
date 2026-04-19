@@ -202,9 +202,20 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
         </div>
 
         <div className="space-y-2 text-center text-sm">
+          {/* Wave 115 SW3 — WCAG 2.2 AA 2.5.8 defensive hit-box sizing.
+              The forgot-password + register links render at 19 × ~109 px by
+              default (text-sm 14 px + line-height 20 px + no padding), which
+              is below the 24 × 24 px target-size minimum. axe-core 4.11.2
+              differs between Playwright chromium (passes — likely applies the
+              "Inline text" exception) and live dev in chrome-devtools MCP
+              (fails — reports 19 × 105 px). `inline-block min-h-[24px]
+              px-2 py-1.5 rounded-md` preserves the link's visual weight while
+              giving it a 24 × 24 px minimum hit target regardless of axe's
+              interpretation. Same treatment applied to the register link —
+              the visual pair shouldn't diverge. */}
           <Link
             to="/forgot-password"
-            className="font-semibold text-brand underline-offset-4 transition hover:underline"
+            className="inline-block min-h-[24px] rounded-md px-2 py-1.5 font-semibold text-brand underline-offset-4 transition hover:underline"
           >
             {t("auth:login.forgot")}
           </Link>
@@ -212,7 +223,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             {t("auth:login.noAccount")}{" "}
             <Link
               to="/register"
-              className="font-semibold text-brand underline-offset-4 transition hover:underline"
+              className="inline-block min-h-[24px] rounded-md px-2 py-1.5 font-semibold text-brand underline-offset-4 transition hover:underline"
             >
               {t("auth:login.ctaRegister")}
             </Link>

@@ -1,15 +1,13 @@
-import { QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
-import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { createQueryClient } from "@/app/queryClient"
 import { AuthContext } from "@/contexts/AuthContext"
 import Settings from "@/pages/Settings"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import i18n from "../../i18n/config"
 import { resetTestSessions, testSessions } from "@/tests/mocks/handlers"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("@/stores/useAuthStore", () => {
   const user = {
@@ -54,36 +52,39 @@ vi.mock("@/stores/useAuthStore", () => {
   }
 })
 
-const renderSettings = () => {
+const renderSettings = async () => {
   const queryClient = createQueryClient()
   const mockSetUser = vi.fn()
   const mockLogout = vi.fn().mockResolvedValue(undefined)
 
-  const result = render(
-    <MemoryRouter initialEntries={["/settings"]}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <LanguageProvider>
-            <AuthContext.Provider
-              value={{
-                setUser: mockSetUser,
-                logout: mockLogout,
-                login: vi.fn(),
-                loginWithPasskey: vi.fn(),
-                refresh: vi.fn(),
-                submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
-                requireMfa: vi.fn().mockResolvedValue(null),
-                resetEtagCache: vi.fn(),
-                authOperation: false,
-              }}
-            >
-              <Settings />
-            </AuthContext.Provider>
-          </LanguageProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </MemoryRouter>
+  const WrappedSettings = () => (
+    <ThemeProvider>
+      <AuthContext.Provider
+        value={{
+          setUser: mockSetUser,
+          logout: mockLogout,
+          login: vi.fn(),
+          loginWithPasskey: vi.fn(),
+          refresh: vi.fn(),
+          submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
+          requireMfa: vi.fn().mockResolvedValue(null),
+          resetEtagCache: vi.fn(),
+          authOperation: false,
+        }}
+      >
+        <Settings />
+      </AuthContext.Provider>
+    </ThemeProvider>
   )
+
+  const result = await renderWithRouter({
+    ui: WrappedSettings,
+    path: "/settings",
+    initialPath: "/settings",
+    queryClient,
+    // Test mounts its own AuthContext.Provider — skip helper's AuthProvider.
+    authProvider: false,
+  })
 
   return { ...result, mockLogout }
 }
@@ -91,18 +92,14 @@ const renderSettings = () => {
 const tSettings = (key: string, options?: Record<string, unknown>) =>
   i18n.t(`settings:${key}`, options)
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Settings sessions panel", () => {
+describe("Settings sessions panel", () => {
   beforeEach(() => {
     resetTestSessions()
   })
 
   it("lists sessions and revokes a secondary session", async () => {
     const user = userEvent.setup()
-    renderSettings()
+    await renderSettings()
 
     await user.click(screen.getByRole("tab", { name: tSettings("tabs.security") }))
 

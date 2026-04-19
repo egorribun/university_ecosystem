@@ -1,11 +1,13 @@
-import { render, screen } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
+import { screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 import { HttpResponse, http } from "msw"
 
 import type { User } from "@/types/User"
 import { server } from "../../mocks/server"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { AuthContext } from "@/contexts/AuthContext"
+import News from "@/pages/News"
 
 const baseUser: User = {
   id: "uuid-1",
@@ -38,11 +40,6 @@ const baseUser: User = {
 }
 
 const renderNewsPage = async (queryClient?: QueryClient) => {
-  const [{ AuthContext }, { LanguageProvider }] = await Promise.all([
-    import("@/contexts/AuthContext"),
-    import("@/contexts/LanguageContext"),
-  ])
-
   const authValue = {
     login: vi.fn().mockResolvedValue(null),
     loginWithPasskey: vi.fn().mockResolvedValue(null),
@@ -66,25 +63,31 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
       },
     })
 
-  const { default: News } = await import("@/pages/News")
-
-  render(
+  const WrappedNews = () => (
     <AuthContext.Provider value={authValue}>
-      <LanguageProvider>
-        <QueryClientProvider client={client}>
-          <MemoryRouter initialEntries={["/news"]}>
-            <News />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </LanguageProvider>
+      <News />
     </AuthContext.Provider>
   )
+
+  await renderWithRouter({
+    ui: WrappedNews,
+    path: "/news",
+    initialPath: "/news",
+    queryClient: client,
+    authProvider: false,
+  })
 
   return { queryClient: client }
 }
 
-// Note: Skipped due to "async Client Component" error from dynamic imports in Vitest
-describe.skip("News page interaction", () => {
+// Wave 115 SW2 closed SW1-remainder: the original test used an async factory with
+// `await import("@/pages/News")` + `await import("@/contexts/AuthContext")` inside
+// `renderNewsPage`. Under Vitest, that pattern intermittently surfaces the "async
+// Client Component" diagnostic and leaves the tested render in a half-mounted
+// state. Moving both imports to the module top-level (standard pattern for vitest
+// + `vi.resetModules()` is no longer required here because neither AuthContext
+// nor the News page mutate module state between runs) fixes the flake.
+describe("News page interaction", () => {
   beforeEach(() => {
     vi.resetModules()
     server.resetHandlers()

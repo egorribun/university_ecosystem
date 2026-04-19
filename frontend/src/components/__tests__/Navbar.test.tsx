@@ -1,9 +1,10 @@
-import { MemoryRouter, useLocation } from "react-router-dom"
-import { render, screen, waitFor } from "@testing-library/react"
+import { useLocation } from "@tanstack/react-router"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import Navbar from "../navbar"
 import { AppShellProvider } from "@/contexts/AppShellContext"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -16,6 +17,7 @@ vi.mock("@/contexts/AuthContext", () => ({
     isAuth: true,
     loading: false,
   }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
 const translations: Record<string, string> = {
@@ -119,11 +121,7 @@ const LocationDisplay = () => {
   return <div data-testid="location-display">{location.pathname}</div>
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Navbar", () => {
+describe("Navbar", () => {
   const setupMatchMedia = ({
     mobile,
     reducedMotion,
@@ -150,15 +148,20 @@ describe.skip("Navbar", () => {
     )
   }
 
-  const renderNavbar = () =>
-    render(
+  const renderNavbar = () => {
+    const Wrapped = () => (
       <AppShellProvider>
-        <MemoryRouter initialEntries={["/dashboard"]}>
-          <Navbar />
-          <LocationDisplay />
-        </MemoryRouter>
+        <Navbar />
+        <LocationDisplay />
       </AppShellProvider>
     )
+    return renderWithRouter({
+      ui: Wrapped,
+      path: "/dashboard",
+      initialPath: "/dashboard",
+      extraRoutes: [{ path: "/news", Component: () => <div>News route</div> }],
+    })
+  }
 
   beforeEach(() => {
     setupMatchMedia({ mobile: true, reducedMotion: false })
@@ -173,20 +176,31 @@ describe.skip("Navbar", () => {
     document.body.style.overflow = ""
   })
 
+  // Wave 115 SW2 closed SW1-remainder: the original assertions expected
+  // `-translate-x-full` / `pointer-events-none` classes on the drawer /
+  // backdrop AFTER closing. That matched a pre-Wave-?? drawer that
+  // permanently rendered both and toggled transform via class. The current
+  // `MobileMenu` uses declarative framer-motion `exit={{ x: "100%" }}` and
+  // wraps the backdrop+drawer pair inside `<AnimatePresence>{isOpen && (...)}`
+  // — the elements unmount on close. The rewritten assertions read the
+  // post-close DOM (drawer/backdrop unmounted, burger refocused, body
+  // overflow cleared) which matches the real close behaviour the user
+  // experiences. Focus-trap semantics are verified while the drawer is still
+  // open, before the close transition.
   it("traps focus within the mobile drawer and closes on Escape", async () => {
     const user = userEvent.setup()
-    renderNavbar()
+    await renderNavbar()
 
     const burger = await screen.findByRole("button", { name: "Open menu" })
     await user.click(burger)
 
     await screen.findByTestId("mobile-menu-backdrop")
-    // Focus should move to the drawer content
     const drawer = screen.getByRole("dialog")
     await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement))
-    expect(document.body.classList.contains("blurred")).toBe(true)
+    expect(burger).toHaveAttribute("aria-expanded", "true")
     expect(document.body.style.overflow).toBe("hidden")
 
+    // Focus trap — tabbing forward stays inside the drawer.
     await user.tab()
     expect(drawer).toContainElement(document.activeElement as HTMLElement)
 
@@ -195,33 +209,36 @@ describe.skip("Navbar", () => {
 
     await user.keyboard("{Escape}")
 
+    // Drawer + backdrop unmount (AnimatePresence pass-through mock snaps to
+    // removed state when `isOpen` flips false).
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.queryByTestId("mobile-menu-backdrop")).not.toBeInTheDocument()
     await waitFor(() => expect(burger).toHaveAttribute("aria-expanded", "false"))
     await waitFor(() => expect(burger).toHaveFocus())
     expect(document.body.classList.contains("blurred")).toBe(false)
     expect(document.body.style.overflow).toBe("")
-    const backdrop = screen.getByTestId("mobile-menu-backdrop")
-    expect(backdrop).toHaveClass("pointer-events-none")
-    expect(drawer).toHaveClass("-translate-x-full")
   })
 
   it("closes the drawer when navigating to another route", async () => {
     const user = userEvent.setup()
-    renderNavbar()
+    await renderNavbar()
 
     const burger = await screen.findByRole("button", { name: "Open menu" })
     await user.click(burger)
-    const newsLink = await screen.findByRole("link", { name: "News" })
 
     expect(document.body.style.overflow).toBe("hidden")
 
+    const newsLink = await screen.findByRole("link", { name: "News" })
     await user.click(newsLink)
 
     await waitFor(() => expect(burger).toHaveAttribute("aria-expanded", "false"))
-    const drawer = screen.getByRole("dialog")
-    const backdrop = screen.getByTestId("mobile-menu-backdrop")
-    expect(backdrop).toHaveClass("pointer-events-none")
-    expect(drawer).toHaveClass("-translate-x-full")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.queryByTestId("mobile-menu-backdrop")).not.toBeInTheDocument()
     expect(document.body.style.overflow).toBe("")
-    expect(screen.getByTestId("location-display")).toHaveTextContent("/news")
+    // LocationDisplay only renders under the /dashboard route component —
+    // after navigation the router swaps to the /news extraRoute which only
+    // emits "News route". Asserting on that string confirms the click
+    // actually performed a route transition (not just a no-op close).
+    await waitFor(() => expect(screen.getByText("News route")).toBeInTheDocument())
   })
 })

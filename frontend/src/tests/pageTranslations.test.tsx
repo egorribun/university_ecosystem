@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { MemoryRouter } from "react-router-dom"
-import { render, screen, waitFor } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 
-import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { ThemeProvider } from "@/contexts/ThemeContext"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import UserActivity from "@/pages/Activity"
 import Schedule from "@/pages/Schedule"
 import Settings from "@/pages/Settings"
@@ -357,6 +357,9 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
   currentUserQueryKey: ["users", "me"] as const,
   fetchCurrentUser: fetchCurrentUserMock,
+  // Passthrough AuthProvider so renderWithRouter's import resolves while
+  // this test owns the auth state via the mocked useAuth.
+  AuthProvider: ({ children }: { children: ReactNode }) => children,
 }))
 
 vi.mock("@/hooks/useScheduleData", () => ({
@@ -468,7 +471,7 @@ type RenderOptions = {
   initialLanguage?: "en" | "ru"
 }
 
-function renderWithProviders(ui: ReactNode, options: RenderOptions = {}) {
+async function renderWithProviders(ui: ReactNode, options: RenderOptions = {}) {
   const { initialPath = "/", initialLanguage = "en" } = options
   localStorage.setItem("ue:language", initialLanguage)
   document.documentElement.setAttribute("lang", initialLanguage)
@@ -481,17 +484,22 @@ function renderWithProviders(ui: ReactNode, options: RenderOptions = {}) {
   clients.push(client)
   const user = userEvent.setup()
 
-  const result = render(
-    <QueryClientProvider client={client}>
-      <ThemeProvider>
-        <LanguageProvider>
-          <MemoryRouter initialEntries={[initialPath]}>
-            <LanguageToggleHarness>{ui}</LanguageToggleHarness>
-          </MemoryRouter>
-        </LanguageProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+  const Wrapped = () => (
+    <ThemeProvider>
+      <LanguageToggleHarness>{ui}</LanguageToggleHarness>
+    </ThemeProvider>
   )
+
+  // Strip query string from route path — TanStack Router route paths are
+  // pathname-only; query is part of history location.
+  const routePath = initialPath.split("?")[0] || "/"
+
+  const result = await renderWithRouter({
+    ui: Wrapped,
+    path: routePath,
+    initialPath,
+    queryClient: client,
+  })
 
   return { user, client, ...result }
 }
@@ -544,23 +552,23 @@ afterAll(() => {
   CSSStyleDeclaration.prototype.setProperty = originalSetProperty
 })
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("page translations", () => {
+// Wave 114 polish: retry covers a pre-existing flake where under parallel
+// load the i18n.changeLanguage → languageChanged → React state → re-render
+// chain misses the default 1s `findByText` retry window. All tests in the
+// describe switch language mid-render, so the retry applies uniformly.
+describe("page translations", { retry: 2 }, () => {
   it("switches activity page translations", async () => {
-    const { user } = renderWithProviders(<UserActivity />)
+    const { user } = await renderWithProviders(<UserActivity />)
 
     expect(await screen.findByText("Activity")).toBeInTheDocument()
 
     await user.click(screen.getByTestId("lang-toggle"))
 
-    expect(await screen.findByText("Активность")).toBeInTheDocument()
+    expect(await screen.findByText("Активность", {}, { timeout: 3000 })).toBeInTheDocument()
   })
 
   it("switches schedule page translations", async () => {
-    const { user } = renderWithProviders(<Schedule />, { initialPath: "/schedule" })
+    const { user } = await renderWithProviders(<Schedule />, { initialPath: "/schedule" })
 
     expect(await screen.findByText("My schedule")).toBeInTheDocument()
 
@@ -570,7 +578,7 @@ describe.skip("page translations", () => {
   })
 
   it("switches settings translations including notifications", async () => {
-    const { user } = renderWithProviders(<Settings />, { initialPath: "/settings" })
+    const { user } = await renderWithProviders(<Settings />, { initialPath: "/settings" })
 
     expect(await screen.findByText("Settings")).toBeInTheDocument()
     expect(screen.getByText("Notifications")).toBeInTheDocument()
@@ -582,7 +590,7 @@ describe.skip("page translations", () => {
   })
 
   it("switches profile translations", async () => {
-    const { user } = renderWithProviders(<Profile />, { initialPath: "/profile" })
+    const { user } = await renderWithProviders(<Profile />, { initialPath: "/profile" })
 
     expect(await screen.findByLabelText("Profile")).toBeInTheDocument()
 
@@ -592,7 +600,7 @@ describe.skip("page translations", () => {
   })
 
   it("switches events page translations", async () => {
-    const { user } = renderWithProviders(<Events />, { initialPath: "/events" })
+    const { user } = await renderWithProviders(<Events />, { initialPath: "/events" })
 
     expect(await screen.findByText("Events")).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Upcoming" })).toBeInTheDocument()
@@ -604,7 +612,7 @@ describe.skip("page translations", () => {
   })
 
   it("switches admin users page translations", async () => {
-    const { user } = renderWithProviders(<AdminUsers />, { initialPath: "/admin/users" })
+    const { user } = await renderWithProviders(<AdminUsers />, { initialPath: "/admin/users" })
 
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument()
     // The legacy MUI select still exposes its label text without a name. Assert the
@@ -622,7 +630,7 @@ describe.skip("page translations", () => {
     vi.setSystemTime(new Date("2025-09-15T09:30:00"))
 
     try {
-      const { user } = renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
+      const { user } = await renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
 
       expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
       const weatherBadgeEn = await screen.findByLabelText("Weather. Clear sky. Temperature +21°C.")
@@ -667,17 +675,24 @@ describe.skip("page translations", () => {
   })
 
   it("switches news page translations", async () => {
-    const { user } = renderWithProviders(<News />, { initialPath: "/news" })
+    const { user } = await renderWithProviders(<News />, { initialPath: "/news" })
 
-    expect(await screen.findByRole("heading", { name: "University news" })).toBeInTheDocument()
+    // Wave 55+ added an optional newsCount badge inside the h1, so the
+    // accessible name is "University news <n>" at render time. Match the
+    // leading translation instead of the full composite.
+    expect(
+      await screen.findByRole("heading", { name: /^University news/ })
+    ).toBeInTheDocument()
 
     await user.click(screen.getByTestId("lang-toggle"))
 
-    expect(await screen.findByRole("heading", { name: "Новости университета" })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: /^Новости университета/ })
+    ).toBeInTheDocument()
   })
 
   it("renders login page in Russian when seeded and toggles to English", async () => {
-    const { user } = renderWithProviders(<Login />, {
+    const { user } = await renderWithProviders(<Login />, {
       initialPath: "/login",
       initialLanguage: "ru",
     })
@@ -690,7 +705,7 @@ describe.skip("page translations", () => {
   })
 
   it("switches register page translations", async () => {
-    const { user } = renderWithProviders(<Register />, { initialPath: "/register" })
+    const { user } = await renderWithProviders(<Register />, { initialPath: "/register" })
 
     expect(await screen.findByRole("heading", { name: "Sign up" })).toBeInTheDocument()
 
@@ -700,7 +715,7 @@ describe.skip("page translations", () => {
   })
 
   it("switches forgot password page translations", async () => {
-    const { user } = renderWithProviders(<ForgotPassword />, { initialPath: "/forgot-password" })
+    const { user } = await renderWithProviders(<ForgotPassword />, { initialPath: "/forgot-password" })
 
     expect(await screen.findByRole("heading", { name: "Reset password" })).toBeInTheDocument()
 
@@ -712,7 +727,7 @@ describe.skip("page translations", () => {
   })
 
   it("switches reset password page translations", async () => {
-    const { user } = renderWithProviders(<ResetPassword />, {
+    const { user } = await renderWithProviders(<ResetPassword />, {
       initialPath: "/reset-password?token=example",
     })
 

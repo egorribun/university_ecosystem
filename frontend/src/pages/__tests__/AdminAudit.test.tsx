@@ -1,15 +1,14 @@
-import { render, screen } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 import { server } from "@/tests/mocks/server"
 
 import AdminAudit from "@/pages/AdminAudit"
 import { AuthContext } from "@/contexts/AuthContext"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import type { User } from "@/types/User"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const mockLogs = {
   items: [
@@ -86,7 +85,7 @@ const authValue = {
   authOperation: false,
 }
 
-const renderPage = () => {
+const renderPage = async () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -95,30 +94,27 @@ const renderPage = () => {
     },
   })
 
-  return render(
+  const WrappedPage = () => (
     <AuthContext.Provider value={authValue}>
-      <LanguageProvider>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <AdminAudit />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </LanguageProvider>
+      <AdminAudit />
     </AuthContext.Provider>
   )
+
+  return renderWithRouter({
+    ui: WrappedPage,
+    queryClient,
+    // Test mounts its own AuthContext.Provider with admin user.
+    authProvider: false,
+  })
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("AdminAudit page", () => {
+describe("AdminAudit page", () => {
   beforeEach(() => {
     server.use(http.get("*/admin/audit", () => HttpResponse.json(mockLogs)))
   })
 
   it("renders audit logs", async () => {
-    renderPage()
+    await renderPage()
 
     expect(await screen.findByText(/Secure Audit Logs/i)).toBeInTheDocument()
     expect(await screen.findByText("John Doe")).toBeInTheDocument()
@@ -128,7 +124,7 @@ describe.skip("AdminAudit page", () => {
   })
 
   it("expands log details", async () => {
-    renderPage()
+    await renderPage()
 
     const expandButtons = await screen.findAllByRole("button")
     // Second log row expand button
@@ -140,7 +136,7 @@ describe.skip("AdminAudit page", () => {
   })
 
   it("filters logs by resource type", async () => {
-    renderPage()
+    await renderPage()
 
     const resourceFilter = screen.getByLabelText(/Resource Type/i)
     await userEvent.type(resourceFilter, "user")

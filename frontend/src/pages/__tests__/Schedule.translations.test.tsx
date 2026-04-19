@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { MemoryRouter } from "react-router-dom"
-import { render, screen, cleanup } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { LanguageProvider } from "@/contexts/LanguageContext"
+import { screen, cleanup } from "@testing-library/react"
+import { QueryClient } from "@tanstack/react-query"
 import Schedule from "@/pages/Schedule"
 import type { User } from "@/types/User"
 import type { ReactNode } from "react"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 type AuthState = {
   isAuth: boolean
@@ -116,6 +115,9 @@ const { scheduleDataMock } = vi.hoisted(() => {
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
   currentUserQueryKey: ["users", "me"] as const,
+  // Passthrough AuthProvider so renderWithRouter's import resolves while
+  // this test owns the auth state via the mocked useAuth.
+  AuthProvider: ({ children }: { children: ReactNode }) => children,
 }))
 
 vi.mock("@/hooks/useScheduleData", () => ({
@@ -144,29 +146,22 @@ vi.mock("@/components/motion/PageFadeIn", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
 
-function renderSchedule() {
+async function renderSchedule() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 0 } },
   })
 
-  const result = render(
-    <QueryClientProvider client={client}>
-      <LanguageProvider>
-        <MemoryRouter initialEntries={["/schedule"]}>
-          <Schedule />
-        </MemoryRouter>
-      </LanguageProvider>
-    </QueryClientProvider>
-  )
+  const result = await renderWithRouter({
+    ui: Schedule,
+    path: "/schedule",
+    initialPath: "/schedule",
+    queryClient: client,
+  })
 
   return { client, ...result }
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Schedule translations", () => {
+describe("Schedule translations", () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem("ue:language", "en")
@@ -212,7 +207,7 @@ describe.skip("Schedule translations", () => {
       throw new Error(`Unhandled GET ${url}`)
     })
 
-    const { client } = renderSchedule()
+    const { client } = await renderSchedule()
 
     try {
       expect(await screen.findByText("My schedule")).toBeInTheDocument()

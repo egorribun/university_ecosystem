@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { render, screen } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { StoryViewer } from "../StoryViewer"
 import type { StoryItem } from "@/types/Story"
-import { BrowserRouter } from "react-router-dom"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 // Mock translations
 vi.mock("react-i18next", () => ({
@@ -52,11 +52,7 @@ const mockStories: StoryItem[] = [
   },
 ]
 
-// Wave 113 SW6 polish: imports BrowserRouter from react-router-dom but StoryViewer
-// uses TanStack Router internals → useRouterState null → dialog portal doesn't
-// render. Fix requires shared renderWithTanStackRouter helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("StoryViewer", () => {
+describe("StoryViewer", () => {
   const defaultProps = {
     stories: mockStories,
     activeStoryIndex: 0,
@@ -68,28 +64,33 @@ describe.skip("StoryViewer", () => {
     onResume: vi.fn(),
   }
 
-  const renderViewer = (props = {}) =>
-    render(
-      <BrowserRouter>
-        <StoryViewer {...defaultProps} {...props} />
-      </BrowserRouter>
-    )
+  const renderViewer = (props = {}) => {
+    const merged = { ...defaultProps, ...props }
+    const Wrapped = () => <StoryViewer {...merged} />
+    return renderWithRouter({ ui: Wrapped })
+  }
 
-  it("renders nothing when activeStoryIndex is null", () => {
-    const { container } = renderViewer({ activeStoryIndex: null })
-    expect(container).toBeEmptyDOMElement()
+  it("renders nothing when activeStoryIndex is null", async () => {
+    const { container } = await renderViewer({ activeStoryIndex: null })
+    // TanStack Router renders an <Outlet /> which wraps the ui; even when the
+    // tested component returns null the container still has the router shell.
+    // Assert the StoryViewer-specific dialog is absent instead.
+    expect(container.querySelector("[role='dialog']")).toBeNull()
   })
 
-  it("renders the active story", () => {
-    renderViewer({ activeStoryIndex: 0 })
-    expect(screen.getByRole("dialog", { name: /Story Viewer: Story 1/i })).toBeInTheDocument()
+  it("renders the active story", async () => {
+    await renderViewer({ activeStoryIndex: 0 })
+    // StoryViewer now uses aria-labelledby pointing to the heading, so the
+    // dialog's accessible name is the story title rather than the mocked
+    // "Story Viewer: <title>" aria-label key the test originally expected.
+    expect(screen.getByRole("dialog", { name: "Story 1" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Story 1" })).toBeInTheDocument()
   })
 
   it("calls onClose when close button clicked", async () => {
     const user = userEvent.setup()
     const handleClose = vi.fn()
-    renderViewer({ onClose: handleClose })
+    await renderViewer({ onClose: handleClose })
     await user.click(screen.getByLabelText("Close"))
     expect(handleClose).toHaveBeenCalled()
   })
@@ -97,7 +98,7 @@ describe.skip("StoryViewer", () => {
   it("calls onNext when next button clicked", async () => {
     const user = userEvent.setup()
     const handleNext = vi.fn()
-    renderViewer({ onNext: handleNext })
+    await renderViewer({ onNext: handleNext })
     await user.click(screen.getByLabelText("Next"))
     expect(handleNext).toHaveBeenCalled()
   })
@@ -105,7 +106,7 @@ describe.skip("StoryViewer", () => {
   it("calls onPrev when prev button clicked", async () => {
     const user = userEvent.setup()
     const handlePrev = vi.fn()
-    renderViewer({ onPrev: handlePrev })
+    await renderViewer({ onPrev: handlePrev })
     await user.click(screen.getByLabelText("Previous"))
     expect(handlePrev).toHaveBeenCalled()
   })

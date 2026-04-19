@@ -1,8 +1,10 @@
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
-import { render, screen, within } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { screen, within } from "@testing-library/react"
+import { QueryClient } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("@/api/news", () => ({
   createNews: vi.fn(),
@@ -55,6 +57,7 @@ vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
     user: { id: 1, role: "admin" },
   }),
+  AuthProvider: ({ children }: { children: ReactNode }) => children,
 }))
 
 vi.mock("../../contexts/LanguageContext", () => ({
@@ -63,6 +66,7 @@ vi.mock("../../contexts/LanguageContext", () => ({
     setLanguage: vi.fn(),
     available: ["en", "ru"] as const,
   }),
+  LanguageProvider: ({ children }: { children: ReactNode }) => children,
 }))
 
 import News from "../News"
@@ -70,25 +74,20 @@ import { createNews } from "@/api/news"
 
 const createNewsMock = vi.mocked(createNews)
 
-const renderNews = () => {
+const renderNews = async () => {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
     },
   })
 
-  return render(
-    <QueryClientProvider client={client}>
-      <News />
-    </QueryClientProvider>
-  )
+  return renderWithRouter({
+    ui: News,
+    queryClient: client,
+  })
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — renders NewsCardEditDialog which
-// transitively uses TanStack Router hooks (Link → useRouterState) → null → TypeError.
-// Fix requires shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("News creation dialog", () => {
+describe("News creation dialog", () => {
   beforeEach(() => {
     createNewsMock.mockReset()
   })
@@ -102,7 +101,7 @@ describe.skip("News creation dialog", () => {
       response: { data: { detail: errorMessage } },
     })
 
-    renderNews()
+    await renderNews()
 
     const addButtons = screen.getAllByRole("button", { name: /\+ add news/i })
     await user.click(addButtons[0]!)

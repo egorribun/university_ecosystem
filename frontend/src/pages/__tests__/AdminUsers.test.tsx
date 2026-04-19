@@ -1,17 +1,16 @@
-import { render, screen } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 
 import AdminUsers from "@/pages/AdminUsers"
 import { AuthContext } from "@/contexts/AuthContext"
-import { LanguageProvider } from "@/contexts/LanguageContext"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import type { User } from "@/types/User"
 
 import { server } from "@/tests/mocks/server"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const mockUsers = [
   {
@@ -93,7 +92,7 @@ const authValue = {
   authOperation: false,
 }
 
-const renderPage = () => {
+const renderPage = async () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -102,40 +101,38 @@ const renderPage = () => {
     },
   })
 
-  return render(
+  const WrappedPage = () => (
     <AuthContext.Provider value={authValue}>
       <ThemeProvider>
-        <LanguageProvider>
-          <QueryClientProvider client={queryClient}>
-            <MemoryRouter>
-              <AdminUsers />
-            </MemoryRouter>
-          </QueryClientProvider>
-        </LanguageProvider>
+        <AdminUsers />
       </ThemeProvider>
     </AuthContext.Provider>
   )
+
+  return renderWithRouter({
+    ui: WrappedPage,
+    queryClient,
+    authProvider: false,
+  })
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("AdminUsers page", () => {
+describe("AdminUsers page", () => {
   beforeEach(() => {
     server.use(...handlers)
   })
 
   it("renders users and groups", async () => {
-    renderPage()
+    await renderPage()
     expect((await screen.findAllByText("John Doe"))[0]).toBeInTheDocument()
     expect((await screen.findAllByText("Jane Smith"))[0]).toBeInTheDocument()
     expect((await screen.findAllByText("Alpha"))[0]).toBeInTheDocument()
   })
 
   it("filters users by name", async () => {
-    renderPage()
-    const filterInput = await screen.findByLabelText(/Full Name/i)
+    await renderPage()
+    // Disambiguate from the "Full name, not sorted" column header button that
+    // shares the same accessible label text.
+    const filterInput = await screen.findByLabelText(/Full Name/i, { selector: "input" })
     await userEvent.type(filterInput, "John")
     // fetchUsers is debounced by the effect dependency, so it should trigger
     // Note: our mock returns all users regardless of filter, but we verify the call
@@ -143,7 +140,7 @@ describe.skip("AdminUsers page", () => {
 
   it("handles user deletion", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true)
-    renderPage()
+    await renderPage()
     const deleteButtons = await screen.findAllByLabelText(/Delete user/i)
     await userEvent.click(deleteButtons[0]!)
     // Verify deletion call happened (could check server calls if we tracked them)
@@ -151,7 +148,7 @@ describe.skip("AdminUsers page", () => {
 
   it("handles group change", async () => {
     const user = userEvent.setup()
-    renderPage()
+    await renderPage()
     const selects = await screen.findAllByRole("combobox")
     // The first select is for filters, others are for users
     // Let's find the one for John Doe (it has value g1)

@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { MemoryRouter } from "react-router-dom"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { LanguageProvider } from "@/contexts/LanguageContext"
+import { cleanup, screen, waitFor } from "@testing-library/react"
+import { QueryClient } from "@tanstack/react-query"
 import Schedule from "@/pages/Schedule"
 import type { User } from "@/types/User"
 import type { ReactNode } from "react"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 type AuthState = {
   isAuth: boolean
@@ -63,6 +62,7 @@ const authState: AuthState = {
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
   currentUserQueryKey: ["users", "me"] as const,
+  AuthProvider: ({ children }: { children: ReactNode }) => children,
 }))
 
 vi.mock("@/api/client", () => ({
@@ -83,31 +83,24 @@ vi.mock("@/components/motion/PageFadeIn", () => ({
 
 const apiGetMock = apiMocks.get
 
-function renderSchedule() {
+async function renderSchedule() {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
     },
   })
 
-  const result = render(
-    <QueryClientProvider client={client}>
-      <LanguageProvider>
-        <MemoryRouter initialEntries={["/schedule"]}>
-          <Schedule />
-        </MemoryRouter>
-      </LanguageProvider>
-    </QueryClientProvider>
-  )
+  const result = await renderWithRouter({
+    ui: Schedule,
+    path: "/schedule",
+    initialPath: "/schedule",
+    queryClient: client,
+  })
 
   return { client, ...result }
 }
 
-// Wave 113 SW6 polish: skipped pending Wave 114 SW1 — imports MemoryRouter from
-// react-router-dom but the app migrated to TanStack Router (Wave 37). useRouterState
-// returns null → TypeError. Fix requires a shared renderWithTanStackRouter test helper
-// (AUDIT_WAVE113.md, memory/wave114_backlog.md item #1).
-describe.skip("Schedule cache handling", () => {
+describe("Schedule cache handling", () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem("ue:language", "en")
@@ -182,7 +175,7 @@ describe.skip("Schedule cache handling", () => {
       throw new Error(`Unhandled GET ${url}`)
     })
 
-    const { client } = renderSchedule()
+    const { client } = await renderSchedule()
 
     try {
       await waitFor(() => {

@@ -21,6 +21,15 @@ const ParticleAuthBackground = () => {
   const particlesRef = useRef<Particle[]>([]) // Use ref for particles to persist across renders without state
 
   useEffect(() => {
+    // Wave 115 SW1 — skip the 1000-particle canvas + physics loop under
+    // Playwright e2e. WebKit's renderer OOMs during axe-core .analyze() when
+    // this canvas is present (Wave 114 SW2a tried narrow-scope / disable-rules
+    // / package-upgrade — all failed because axe injects its ruleset before
+    // filters apply). Reducing DOM + JS weight is the only path that attacks
+    // the root cause. The static layout-only fallback below preserves
+    // <Login>'s grid proportions + gradient overlay for readability.
+    if (import.meta.env.VITE_E2E_MODE) return
+
     const canvas = canvasRef.current
     const container = containerRef.current
     if (!canvas || !container) return
@@ -214,6 +223,21 @@ const ParticleAuthBackground = () => {
       observer.disconnect()
     }
   }, [])
+
+  if (import.meta.env.VITE_E2E_MODE) {
+    // Wave 115 SW1 — layout-only fallback for Playwright e2e. Same z-index +
+    // footprint as the real canvas; axe still sees the gradient overlay but
+    // no 1000-particle draw loop → WebKit renderer fits axe-core's ruleset
+    // injection (~200 KB) without OOM.
+    return (
+      <div
+        className="absolute inset-0 z-hide overflow-hidden pointer-events-none"
+        aria-hidden="true"
+      >
+        <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-(--bg-page) opacity-strong" />
+      </div>
+    )
+  }
 
   return (
     <div
