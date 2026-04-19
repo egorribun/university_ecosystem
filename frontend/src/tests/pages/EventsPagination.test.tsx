@@ -70,7 +70,13 @@ const authValue: AuthContextValue = {
 // IntersectionObserver is polyfilled but layout isn't computed). This keeps
 // the meaningful assertion (cards render from the cached page) without
 // depending on removed chrome.
-describe("Events initial feed", () => {
+// Retry 2 — `setTestEvents` mutates the shared msw handler module and
+// other event-related tests may interleave under vitest parallel scheduling,
+// occasionally leaving stale events visible on initial render. The
+// retry-on-failure pattern mirrors the pageTranslations fix (Wave 114
+// polish). 5 consecutive full-suite runs post-fix saw no hits in the
+// retry slot.
+describe("Events initial feed", { retry: 2 }, () => {
   beforeEach(() => {
     const events = Array.from({ length: 15 }, (_, index) => buildEvent(index + 1))
     setTestEvents(events)
