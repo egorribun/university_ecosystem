@@ -4,9 +4,14 @@ import { QueryClient } from "@tanstack/react-query"
 
 import { checkA11y } from "../axeTest"
 import { AuthContext } from "@/contexts/AuthContext"
-import Dashboard from "@/pages/Dashboard"
 import Profile from "@/pages/Profile"
 import Login from "@/pages/Login"
+// Wave 115 SW1-remainder: Dashboard route omitted — Dashboard uses framer-motion
+// `useScroll` which throws "Target ref is defined but not hydrated" under jsdom.
+// `a11y.test.tsx` mocks the dashboard hooks to work around this; this file
+// intentionally renders the real page, so the route gets restored once the
+// hook mocks move to a shared helper or framer's scroll primitives get a jsdom
+// polyfill.
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 vi.mock("@/hooks/useDashboardStories", () => ({
@@ -61,11 +66,6 @@ type RouteTestCase = {
   authValue: typeof baseAuthValue
 }
 
-// Wave 115 SW1-remainder: dashboard case omitted — Dashboard uses framer-motion
-// `useScroll` which fails with "Target ref is defined but not hydrated" under
-// jsdom. `a11y.test.tsx` mocks the dashboard hooks to get around this; this
-// test file intentionally renders the real page, so skip until either the
-// hook mocks are shared or framer's scroll primitives get a jsdom polyfill.
 const routes: RouteTestCase[] = [
   {
     name: "profile",
@@ -80,10 +80,6 @@ const routes: RouteTestCase[] = [
     authValue: unauthenticatedAuthValue,
   },
 ]
-
-// Dashboard route would go here — restored once the scroll-ref issue above is
-// addressed.
-void Dashboard
 
 const GlobalSkipLink = () => (
   <a href="#main" className="skip-link">

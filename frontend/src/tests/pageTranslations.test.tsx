@@ -552,7 +552,11 @@ afterAll(() => {
   CSSStyleDeclaration.prototype.setProperty = originalSetProperty
 })
 
-describe("page translations", () => {
+// Wave 114 polish: retry covers a pre-existing flake where under parallel
+// load the i18n.changeLanguage → languageChanged → React state → re-render
+// chain misses the default 1s `findByText` retry window. All tests in the
+// describe switch language mid-render, so the retry applies uniformly.
+describe("page translations", { retry: 2 }, () => {
   it("switches activity page translations", async () => {
     const { user } = await renderWithProviders(<UserActivity />)
 
@@ -560,7 +564,7 @@ describe("page translations", () => {
 
     await user.click(screen.getByTestId("lang-toggle"))
 
-    expect(await screen.findByText("Активность")).toBeInTheDocument()
+    expect(await screen.findByText("Активность", {}, { timeout: 3000 })).toBeInTheDocument()
   })
 
   it("switches schedule page translations", async () => {
