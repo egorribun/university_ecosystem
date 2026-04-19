@@ -1,6 +1,4 @@
 import type { Preview } from "@storybook/react-vite"
-import { CssVarsProvider } from "@mui/material/styles"
-import CssBaseline from "@mui/material/CssBaseline"
 import { I18nextProvider } from "react-i18next"
 import {
   createMemoryHistory,
@@ -10,11 +8,14 @@ import {
 } from "@tanstack/react-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ComponentType } from "react"
-import theme from "../src/theme"
 import i18n from "../src/i18n/config"
 import { AuthContext } from "../src/contexts/AuthContext"
 
-import "../src/assets/themes.css"
+// Wave 116 SW-Stretch — dropped stale `@mui/material` CssVarsProvider +
+// CssBaseline + `../src/theme` + `../src/assets/themes.css` imports.
+// MUI was uninstalled long ago (Tailwind v4 + CSS tokens replaced it) and
+// src/assets/themes.css never existed in this codebase. Residue from an
+// earlier Storybook setup that blocked `build-storybook` from completing.
 import "../src/styles/tailwind.css"
 
 const queryClient = new QueryClient({
@@ -93,12 +94,15 @@ const preview: Preview = {
                 resetEtagCache: () => {},
               }}
             >
-              <CssVarsProvider theme={theme} defaultMode="system">
-                <CssBaseline />
-                <div style={{ padding: "2rem", minHeight: "100vh", background: "var(--page-bg)" }}>
-                  <RouterProvider router={router as never} />
-                </div>
-              </CssVarsProvider>
+              <div
+                style={{
+                  padding: "2rem",
+                  minHeight: "100vh",
+                  background: "var(--bg-page)",
+                }}
+              >
+                <RouterProvider router={router as never} />
+              </div>
             </AuthContext.Provider>
           </I18nextProvider>
         </QueryClientProvider>

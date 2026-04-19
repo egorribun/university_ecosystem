@@ -215,6 +215,13 @@ export default defineConfig(({ mode }) => {
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
         globIgnores: ["**/bundle-stats.*", "**/offline.html"],
+        // Wave 116 SW-Stretch — Storybook builds route through this same
+        // plugin and ship `sb-manager/globals-runtime.js` (3.25 MB) which
+        // exceeds Workbox's default 2 MB cache limit, failing
+        // `build-storybook`. The prod bundle's largest precache entry is
+        // `maplibre-gl-*.js` (~1.03 MB), well under 5 MB. Raising the cap
+        // unblocks Chromatic baseline setup without weakening prod caching.
+        maximumFileSizeToCacheInBytes: 5_000_000,
       },
       devOptions: {
         enabled:
