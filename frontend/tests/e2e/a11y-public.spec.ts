@@ -41,8 +41,11 @@ import AxeBuilder from "@axe-core/playwright"
  * suppresses chrome via `useRouteType().isCompactPage`. iPhone 15 WebKit
  * emulation's renderer memory envelope can't hold the full layout DOM +
  * axe-core's 564 KB bundle even in legacy mode. This is an
- * iOS-emulation-specific constraint that does NOT reproduce on real iOS
- * devices with their larger memory allocation. Wave 116 SW1-remainder
+ * iOS-emulation-specific constraint — believed to not surface on real
+ * iOS devices (larger memory allocation), but NOT instrumented against a
+ * real device in this wave; the hypothesis is based on observing the
+ * crash only under Playwright's webkit iPhone 15 emulation. Wave 116
+ * SW1-remainder
  * options: (a) mini-axe via page.addScriptTag with a tag-filtered bundle;
  * (b) conditionally render a stripped MainLayout under
  * VITE_E2E_MODE that preserves only landmark roles; (c) real-device

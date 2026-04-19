@@ -30,12 +30,17 @@ type AxeViolation = { id: string; impact: string; nodes: AxeNode[]; help: string
 type AxeResult = { violations: AxeViolation[] }
 
 test.describe("@a11y CDN-injected axe-core regression", () => {
-  test.skip(
-    ({ browserName }) => browserName !== "chromium",
-    "CDN axe injection compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)",
-  )
+  test("/login — no WCAG 2.2 AA target-size violations", async ({ page }, testInfo) => {
+    // Wave 115 polish — standardised on `testInfo.project.name` across both
+    // `a11y-public.spec.ts` and this spec so skip conditions stay consistent
+    // (per Wave 113 convention: `browserName` returns "webkit" for both the
+    // `webkit` and `mobile-webkit` Playwright projects because they share
+    // the same browser binary — only `project.name` distinguishes them).
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "CDN axe injection compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)",
+    )
 
-  test("/login — no WCAG 2.2 AA target-size violations", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/login", { waitUntil: "domcontentloaded" })
     await page.waitForLoadState("networkidle").catch(() => {})

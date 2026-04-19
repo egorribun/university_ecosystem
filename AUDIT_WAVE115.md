@@ -10,7 +10,7 @@
 
 This wave closes **both** Wave 114 structural remainders plus the inherited /login target-size item and ships the stretch `react-router-dom` removal:
 
-- ✅ **SW1** — WebKit axe OOM (A11Y-113-04): test-mode canvas gate + serial WebKit projects + legacy axe mode + cold-start retries. 10p/6s → 13p/2s direct pass + retries absorb cold-start flake. Mobile-webkit /404 × 2 skipped with Wave 116 SW1-remainder pointer (iOS-emulation envelope, not reproducible on real iOS devices).
+- ✅ **SW1** — WebKit axe OOM (A11Y-113-04): test-mode canvas gate + serial WebKit projects + legacy axe mode + cold-start retries. 10p/6s → 13p/2s direct pass + retries absorb cold-start flake. Mobile-webkit /404 × 2 skipped with Wave 116 SW1-remainder pointer (iOS-emulation envelope; believed not to surface on real iOS devices but **not instrumented against a real device** in this wave).
 - ✅ **SW2** — 5 vitest skips (SW1-remainder from Wave 114). News.performance × 2 + NewsFeed + EventsPagination + Navbar × 2 + skipLink dashboard all unlocked. 286p/18s → **293p/12s** (+7 tests).
 - ✅ **SW3** — `/login` target-size + `/news` a11y (item #4). Applied defensive 24 × 24 px hit-box to forgot-password + register links. Added `tests/e2e/a11y-cdn-axe.spec.ts` as a CI regression guard. Full WCAG 2.2 AA axe scan reports **0 violations** on both /login and /news at 1280 × 720 Playwright chromium — documented discrepancy with Wave 114's chrome-devtools-MCP finding as a rendering-context delta.
 - ✅ **SW4** — npm audit triage (item #12). `npm audit fix` (non-force) closed 11 vulns including the critical protobufjs. **20 → 9** (1c/4h/4m remaining, all fixable only via semver-major bumps queued for Renovate).
@@ -49,7 +49,7 @@ $ grep -l "particleCount" dist/assets/*.js
 
 ### Targeted skip — mobile-webkit /404
 
-Mobile-webkit's iPhone 15 emulation has the smallest memory envelope; even with the canvas gate + serial execution + legacy mode it still crashes on `/404` because the full `MainLayout` (Navbar + Footer + MobileBottomNav + BackToTop — 4 heavy components with glass effects, Framer Motion, and i18n) renders there (`/login` suppresses chrome via `useRouteType().isCompactPage`). This is an iOS-emulation-specific constraint; does not reproduce on real iOS devices (larger memory allocation). Wave 116 SW1-remainder paths documented in the spec header.
+Mobile-webkit's iPhone 15 emulation has the smallest memory envelope; even with the canvas gate + serial execution + legacy mode it still crashes on `/404` because the full `MainLayout` (Navbar + Footer + MobileBottomNav + BackToTop — 4 heavy components with glass effects, Framer Motion, and i18n) renders there (`/login` suppresses chrome via `useRouteType().isCompactPage`). This is an iOS-emulation-specific constraint — believed not to surface on real iOS devices (which have larger memory allocation than Playwright's emulated 3 GB iPhone 15 target), but **not instrumented against a real device in this wave**; the hypothesis rests on the crash only occurring under webkit iPhone 15 emulation and not real devices users have reported against. Wave 116 SW1-remainder paths documented in the spec header include a BrowserStack real-device run specifically to settle this.
 
 ### Verification (verbatim)
 
@@ -121,7 +121,7 @@ The 3 unhandled-rejection errors in vitest output come from `useLessonNotes.ts` 
 
 The plan expected the CDN-axe Playwright test to FAIL red on the current codebase (forgot-password link is 19 × 109 px, below WCAG 2.5.8's 24 × 24 px minimum), so the fix + test commit would flip it green together. **Reality**: `axe-core@4.11.2` (confirmed version via `axe.version` in a throwaway diag spec) loaded via CDN in Playwright chromium **reports 0 `target-size` violations on /login**, even though the link geometry is genuinely under the threshold. One of WCAG 2.5.8's exceptions (Inline Text or Spacing) is being applied, at least in Playwright chromium's rendering context.
 
-Wave 114 polish-v2's chrome-devtools-MCP finding (`{"id":"target-size","impact":"serious","nodes":1}`) did not reproduce under Playwright. The delta is almost certainly a rendering-context difference between chrome-devtools-MCP's launched Chrome and Playwright's headless chromium. Not instrumented via heap snapshot.
+Wave 114 polish-v2's chrome-devtools-MCP finding (`{"id":"target-size","impact":"serious","nodes":1}`) did not reproduce under Playwright. The delta **is most likely** a rendering-context difference between chrome-devtools-MCP's launched Chrome and Playwright's headless chromium (both loaded the same `axe-core@4.11.2` via CDN in this wave's verification — version was confirmed via `axe.version` at runtime). The exact rule path (Inline Text exception applying in one context but not the other) **was not instrumented** via axe rule-trace or side-by-side DOM diff in this wave. Wave 115 polish chrome-devtools-MCP live-axe verification of the fix **did run successfully** (profile lock released): 0 target-size violations on /login at 1280×720 post-fix, with forgot-password measured at 32 × 121 px and register at 32 × 146 px (both above the 24 × 24 px threshold) — so whichever rendering context originally flagged the pre-fix geometry, the post-fix geometry closes it.
 
 ### Decision
 
@@ -162,7 +162,7 @@ axe runs the target-size rule, finds 1 applicable element (the forgot-password l
 
 ### /news a11y
 
-Wave 113 recorded "/news a11y 0.94" as an LHCI baseline. Wave 115 ran the same full WCAG 2.2 AA axe scan on /news via the CDN injection in Playwright chromium: **0 violations**. The `_auth` `beforeLoad` guard redirects unauth visitors to /login, so the LHCI URL label is `/news` but the scored page is actually /login (and /login axe is also 0 violations). The 0.94 LHCI score is likely:
+Wave 113 recorded "/news a11y 0.94" as an LHCI baseline. Wave 115 ran the same full WCAG 2.2 AA axe scan on /news via the CDN injection in Playwright chromium: **0 violations**. The `_auth` `beforeLoad` guard redirects unauth visitors to /login, so the LHCI URL label is `/news` but the scored page is actually /login (and /login axe is also 0 violations). The 0.94 LHCI score **was not reproduced** in this wave and the three candidate causes below are unverified (no LHCI collect pass was run on /news to settle which one fired):
 
 1. Wave 113's LHCI Windows EPERM flake (documented in Wave 113 SW3 notes), OR
 2. A non-axe Lighthouse heuristic audit (Lighthouse's a11y category includes some audits axe skips), OR
