@@ -126,7 +126,7 @@ export const NewsHeader = ({
             className={cn(
               "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
               activeCategory === "all"
-                ? "bg-brand text-white shadow-sm"
+                ? "bg-brand text-[var(--text-inverse)] shadow-sm"
                 : "matte-chip text-(--text-secondary)"
             )}
           >
@@ -178,20 +178,26 @@ export const NewsHeader = ({
             </button>
           )}
 
-          {/* Sort toggle */}
-          <button
-            type="button"
-            onClick={() => onSortChange(sortMode === "newest" ? "popular" : "newest")}
-            className="ml-auto flex items-center gap-1.5 rounded-full matte-chip px-3 py-1.5 text-xs font-semibold text-(--text-secondary) shrink-0"
-            aria-label={t("news:sort.label", { defaultValue: "Sort" })}
-          >
-            <ArrowUpDown size={13} />
-            <span>
-              {sortMode === "newest"
-                ? t("news:sort.newest", { defaultValue: "Newest" })
-                : t("news:sort.popular", { defaultValue: "Popular" })}
-            </span>
-          </button>
+          {/* Sort toggle — Wave 116 SW3: aria-label includes visible text
+              ("Sort: Newest"/"Sort: Popular") so axe label-content-name-mismatch
+              does not fire (visible "Newest" must appear in accessible name). */}
+          {(() => {
+            const currentSortLabel = sortMode === "newest"
+              ? t("news:sort.newest", { defaultValue: "Newest" })
+              : t("news:sort.popular", { defaultValue: "Popular" })
+            const sortPrefix = t("news:sort.label", { defaultValue: "Sort" })
+            return (
+              <button
+                type="button"
+                onClick={() => onSortChange(sortMode === "newest" ? "popular" : "newest")}
+                className="ml-auto flex items-center gap-1.5 rounded-full matte-chip px-3 py-1.5 text-xs font-semibold text-(--text-secondary) shrink-0"
+                aria-label={`${sortPrefix}: ${currentSortLabel}`}
+              >
+                <ArrowUpDown size={13} />
+                <span>{currentSortLabel}</span>
+              </button>
+            )
+          })()}
 
         </FadeSection>
       </div>

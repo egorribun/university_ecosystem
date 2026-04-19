@@ -7,9 +7,15 @@ interface EmptyStateProps {
   description?: string
   action?: ReactNode
   className?: string
+  /**
+   * Heading level for the title. Defaults to "h2" so empty states under a page
+   * `<h1>` (News, Events, Schedule) keep a valid sequential heading order for
+   * WCAG 2.4.6 + Lighthouse heading-order audit. Wave 116 SW3.
+   */
+  titleAs?: "h2" | "h3" | "h4"
 }
 
-export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, className, titleAs: TitleTag = "h2" }: EmptyStateProps) {
   return (
     <div
       className={cn(
@@ -23,7 +29,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
         </div>
       )}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-text-primary">{title}</h3>
+        <TitleTag className="text-lg font-semibold text-text-primary">{title}</TitleTag>
         {description && <p className="text-sm text-(--text-secondary)">{description}</p>}
       </div>
       {action && <div className="mt-2">{action}</div>}

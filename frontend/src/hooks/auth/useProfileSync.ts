@@ -794,6 +794,39 @@ export const useProfileSync = (
       return
     }
 
+    // Wave 116 SW3 — LHCI auth mock. scripts/run-lhci.mjs builds with
+    // VITE_LHCI=true and needs authenticated routes (/dashboard, /news,
+    // /events, /schedule, /activity, /map) to render their real content
+    // for Lighthouse a11y/perf scoring. Skip the /users/me API call and
+    // populate the store with a synthetic user so _auth.tsx beforeLoad
+    // sees isAuth=true. Tree-shakes in prod (CI builds without the flag).
+    if (import.meta.env.VITE_LHCI === "true") {
+      setUser({
+        id: "lhci-mock-user",
+        email: "",
+        full_name: "LHCI Test User",
+        role: "student",
+        group_id: null,
+        avatar_url: null,
+        cover_url: null,
+        spotify_connected: false,
+        profile_detail: undefined,
+        education_path: undefined,
+        preferences: null,
+        is_active: true,
+        mfa_required: false,
+        mfa_default_method: null,
+        mfa_last_verified_at: null,
+        totp_enrollments: [],
+        mfa_challenges: [],
+        recovery_codes_left: 0,
+        avatar_url_optimized: null,
+        cover_url_optimized: null,
+      } as User)
+      setInitializing(false)
+      return
+    }
+
     const controller = new AbortController()
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
