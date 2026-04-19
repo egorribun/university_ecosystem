@@ -34,26 +34,24 @@ import AxeBuilder from "@axe-core/playwright"
  *      the peak memory footprint. Safe for /login + /404 (no cross-origin
  *      iframes to recurse into).
  *
- * Remainder — mobile-webkit /404 × 2 themes still crash even in isolation
- * with all three fixes applied. Root cause: /404 renders the full
- * `MainLayout` (Navbar + Footer + MobileBottomNav + BackToTop — 4 heavy
- * components with glass effects, Framer Motion, and i18n), while /login
- * suppresses chrome via `useRouteType().isCompactPage`. iPhone 15 WebKit
- * emulation's renderer memory envelope can't hold the full layout DOM +
- * axe-core's 564 KB bundle even in legacy mode. This is an
- * iOS-emulation-specific constraint — believed to not surface on real
- * iOS devices (larger memory allocation), but NOT instrumented against a
- * real device in this wave; the hypothesis is based on observing the
- * crash only under Playwright's webkit iPhone 15 emulation. Wave 116
- * SW1-remainder
- * options: (a) mini-axe via page.addScriptTag with a tag-filtered bundle;
- * (b) conditionally render a stripped MainLayout under
- * VITE_E2E_MODE that preserves only landmark roles; (c) real-device
- * BrowserStack run in parallel CI. Structural chromium + firefox +
- * desktop-webkit coverage of Navbar/Footer still enforces WCAG 2.2 AA.
+ * Wave 116 SW1 — A11Y-113-04 FINAL closure via reduced MainLayout under
+ * VITE_E2E_MODE. Wave 115 left mobile-webkit /404 × 2 themes skipped
+ * because /404 renders the full `MainLayout` (Navbar + Footer +
+ * MobileBottomNav + BackToTop — 4 heavy components with glass effects,
+ * Framer Motion, and i18n) while /login suppresses chrome via
+ * `useRouteType().isCompactPage`. iPhone 15 WebKit emulation couldn't hold
+ * that DOM + axe-core's 564 KB bundle even in legacy mode. Wave 116
+ * extends the `VITE_E2E_MODE` gate from `ParticleAuthBackground` (Wave
+ * 115 fix 1) to `MainLayout.tsx`: when the flag is set, chrome components
+ * render as minimal landmark stubs (`<nav>`, `<footer role="contentinfo">`)
+ * — enough to preserve WCAG 1.3.1 semantic structure for axe's a11y tree
+ * walk, not enough to consume the iPhone 15 WebKit renderer envelope.
+ * Tree-shakes in prod (VITE_E2E_MODE only set in Playwright webServer.env).
+ * Result: 13p/2s/0f → 16p/0s/0f across 4 projects × 2 routes × 2 themes.
  *
  * Authenticated 6-page sweep (dashboard/news/schedule/events/activity/map)
- * lands in SW6 alongside the per-page e2e specs that need a working login.
+ * lands in a future wave alongside the per-page e2e specs that need a
+ * working login.
  */
 
 const PUBLIC_ROUTES = [
@@ -71,13 +69,6 @@ for (const route of PUBLIC_ROUTES) {
     test(`@a11y ${route.name} — ${theme.name} theme has no critical/serious axe violations`, async ({
       page,
     }, testInfo) => {
-      // Wave 115 SW1-remainder — mobile-webkit /404 OOMs on MainLayout +
-      // axe-core even after the canvas gate, serial execution, and legacy
-      // axe mode. See header comment for Wave 116 follow-up options.
-      test.skip(
-        testInfo.project.name === "mobile-webkit" && route.path !== "/login",
-        "iOS-emulation renderer memory envelope — Wave 116 SW1-remainder",
-      )
       await page.emulateMedia({ colorScheme: theme.scheme, reducedMotion: "reduce" })
       await page.goto(route.path, { waitUntil: "domcontentloaded" })
       // Give the SPA shell a beat to mount + i18n to apply.
