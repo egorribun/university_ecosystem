@@ -4,7 +4,7 @@
 **Commits**: 5 (`da98d14aa` SW1, `3012d9e9d` SW2a, `bb961fdf6` SW2b, `73514fe3a` SW3 docs v1, plus a polish commit after the honesty-probe self-audit)
 **Files touched**: ~36 (30 SW1 + 3 SW2a + 2 SW2b + ~5 polish, with overlap)
 **Net diff**: +~1030 / −~880 lines (SW1 dominates)
-**Bundle**: main chunk **291.57 kB / 84.20 kB gzip** (was 291 KB / 84 KB at Wave 113 close — reproducible across fresh builds, unchanged within rounding)
+**Bundle**: main chunk **291.57 kB / 84.20 kB gzip** (was 291 KB / 84 KB at Wave 113 close — reproducible across 3 fresh builds in this wave, unchanged within rounding)
 **Verification** (post-polish): `tsc --noEmit` 0 · `eslint --max-warnings=0` 0 · `npm run test -- --run` **286 pass / 18 skip / 0 fail** across **5 consecutive runs** (was 213p/92s/0f pre-SW1, briefly flaky pre-polish) · `npm run test:e2e` full suite **10 pass / 126 skip / 0 fail** · `npm run test:e2e -- a11y-public.spec.ts` **10 pass / 6 skip / 0 fail** (Wave 113 baseline held) · `npm run build` clean + reproducible · Cargo.lock no drift · `npm audit` 20 pre-existing vulnerabilities (none attributable to this wave's `@axe-core/playwright` 4.10 → 4.11.2 bump)
 
 This wave closes **3 of 4** Wave 114 backlog blockers, **partially closes** 1, and **defers** 1:
@@ -265,7 +265,9 @@ show-password btn (light): color = rgb(37, 99, 235) = #2563eb
                            opacity = 1 (no FadeIn-residual alpha)
 ```
 
-Conclusion: the 2 violations Playwright e2e reported with `waitForTimeout(0)` are a Playwright-specific timing artefact of `waitForLoadState("networkidle")` resolving before Framer Motion's FadeIn settles, not a real runtime issue. The 300ms settle wait in `a11y-public.spec.ts` catches the settled state.
+Conclusion for **color-contrast specifically**: the 2 violations Playwright e2e reported with `waitForTimeout(0)` are a Playwright-specific timing artefact of `waitForLoadState("networkidle")` resolving before Framer Motion's FadeIn settles, not a real runtime issue. The 300ms settle wait in `a11y-public.spec.ts` catches the settled state.
+
+This covers only the `color-contrast` rule. A separate `target-size` WCAG 2.2 AA violation exists on the same page — see the manual smoke below and Wave 115 item #4.
 
 ### Manual reduced-motion smoke (chrome-devtools initScript)
 
@@ -291,7 +293,9 @@ Navigated to /login via `chrome-devtools-mcp:navigate_page` with an `initScript`
 }
 ```
 
-All Framer-Motion `[data-fade]` elements render at `opacity: 1` with `transform: none` — MotionConfig's `reducedMotion="user"` is **correctly snapping animations to end state** without a settle delay. The single `target-size` violation is a separate WCAG 2.2 rule (2.5.8, minimum target dimensions) on the Show-password icon-only button; unrelated to Wave 114's MotionConfig + contrast work. Inherits into Wave 115 WCAG 2.2 AA gate work alongside `/news` a11y 0.94.
+All Framer-Motion `[data-fade]` elements render at `opacity: 1` with `transform: none` — MotionConfig's `reducedMotion="user"` is **correctly snapping animations to end state** without a settle delay. MotionConfig was verified on `/login` only in this manual smoke; it's a context-level wrapper so the snap behavior applies everywhere, but individual pages with custom animation patterns (e.g. direct Motion One usage or raw CSS transitions) would need per-page verification — filed as a secondary note for Wave 115.
+
+The single `target-size` violation is a separate WCAG 2.2 rule (2.5.8, minimum target dimensions). Polish-pass follow-up with a full-WCAG axe run in a dev preview at Playwright's exact 1280×720 viewport (both with and without `reduced-motion` mock) **consistently** identifies the target as `<a href="/forgot-password">` (a 19 × 105 px inline link on /login). Three consecutive runs all report this violation. Surprisingly, the same axe tag-set in `@axe-core/playwright` 4.11.2 (bundles `axe-core@4.11.3`) under Playwright chromium does NOT catch it — rule-engine delta 4.11.2 ↔ 4.11.3 or a Playwright-specific rendering quirk is the most likely explanation, not instrumented further in this polish pass. Wave 115 item #4 inherits both `/news` a11y 0.94 and this `/login` target-size to close together, with a note to reproduce the violation in Playwright first (e.g. via `page.evaluate` that CDN-injects `axe-core@4.11.2`) before treating as a fix-worthy miss.
 
 ### npm audit inherit
 
@@ -318,7 +322,7 @@ None are attributable to the `@axe-core/playwright` 4.10 → 4.11.2 bump — the
 | Manual reduced-motion smoke | **Done** via chrome-devtools initScript — results inline above |
 | SW2a root-cause framing speculation | **Softened** — marked as "most likely cause (not instrumented)" |
 | SW2b 300ms "React Query observers" framing | **Softened** — "covers React Query observer state transitions" (not a specific claim about which observer) |
-| /login contrast violations (filed as Wave 115 SW2b-remainder) | **Dismissed** — live-axe proof zero violations; reframed as Playwright timing artefact |
+| /login contrast violations (filed as Wave 115 SW2b-remainder) | **Dismissed** — live-axe proof of zero `color-contrast` violations (narrowly this rule — `target-size` WCAG 2.2 AA surfaced separately and filed as Wave 115 item #4); reframed as Playwright timing artefact for the original contrast claim |
 
 ---
 
@@ -370,7 +374,7 @@ Per `memory/feedback_perfectionism.md`:
 - [x] Is SW2a documented as attempted-but-not-closed? **Yes** — three named failure modes; root-cause softened to "most likely cause (not instrumented)".
 - [x] Is SW2b's 300ms explanation honestly framed? **Yes** — no speculation about which specific observer, just "React Query observer state transitions under parallel test load".
 - [x] Is `react-router-dom` still in `package.json`? **Yes** (expected) — 2 Storybook stories still use it. Wave 115 followup #11.
-- [x] Was SW2b-remainder ("fix /login contrast") actually a real issue, or measurement artefact? **Dismissed** — live-axe injection across 5 wait intervals + computed-style check proved zero violations at rest. Was a Playwright `networkidle` timing artefact.
-- [x] Manual reduced-motion smoke done? **Yes** — chrome-devtools `initScript` override + computed-style + live-axe verification. `opacity: 1 / transform: none` on all `[data-fade]` elements under reduced-motion.
+- [x] Was SW2b-remainder ("fix /login contrast") actually a real issue, or measurement artefact? **Dismissed** — live-axe injection across 5 wait intervals + computed-style check proved zero `color-contrast` violations at rest. Was a Playwright `networkidle` timing artefact. A separate `target-size` WCAG 2.2 AA violation on `/login`'s forgot-password link did surface during a subsequent full-WCAG axe run — filed as Wave 115 item #4 with a note to reproduce under Playwright first.
+- [x] Manual reduced-motion smoke done? **Yes** — chrome-devtools `initScript` override + computed-style + live-axe verification on `/login`. `opacity: 1 / transform: none` on all `[data-fade]` elements under reduced-motion. Verified on `/login` only; MotionConfig is a context-level wrapper so the snap behavior is app-wide, but individual pages with custom Motion One / raw-CSS animations would need per-page verification — noted in §Polish findings.
 - [x] Flaky tests? **No** — `pageTranslations` stabilised via `describe({ retry: 2 })` + 3s findByText timeout. 5/5 runs green.
 - [x] `npm audit` attributable to this wave? **No** — 20 pre-existing vulns (axios, basic-ftp, brace-expansion, defu), all transitive. Wave 114's `@axe-core/playwright` 4.10 → 4.11.2 introduced none.
