@@ -1,18 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import LoadingState from "./LoadingState"
-import { MemoryRouter } from "react-router-dom"
 
+// Wave 115 SW5 — see OfflineFallback.stories.tsx comment. Global
+// `.storybook/preview.tsx` provides the router context.
 const meta: Meta<typeof LoadingState> = {
   title: "Components/LoadingState",
   component: LoadingState,
   tags: ["autodocs"],
-  decorators: [
-    (Story) => (
-      <MemoryRouter>
-        <Story />
-      </MemoryRouter>
-    ),
-  ],
   parameters: {
     layout: "fullscreen",
     docs: {
