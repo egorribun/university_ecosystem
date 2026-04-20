@@ -310,6 +310,15 @@ export default defineConfig(({ mode }) => {
             // PERF-05: Sentry isolated from i18n — release bump won't re-download i18n.
             if (id.includes("node_modules/@sentry/react") || id.includes("node_modules/@sentry/core"))
               return "vendor-sentry"
+            // Wave 117 SW3 — split @opentelemetry/* into its own async chunk.
+            // Previously OTEL's 50+ KB of instrumentation + SDK code lived in
+            // the main chunk (verified via Plan-agent grep: 8 @opentelemetry
+            // markers in main-232KB minified). Paired with the dynamic-import
+            // of `./app/observability` + `./app/telemetry` in `main.tsx`, this
+            // moves all OTEL runtime off the critical path to an idle-callback
+            // load. Main chunk drops accordingly; prod Sentry init still works
+            // because Sentry package is in vendor-sentry (loaded sync).
+            if (id.includes("node_modules/@opentelemetry")) return "vendor-otel"
             if (id.includes("node_modules/i18next") || id.includes("node_modules/react-i18next"))
               return "vendor-i18n"
             if (id.includes("node_modules/axios")) return "vendor-http"
