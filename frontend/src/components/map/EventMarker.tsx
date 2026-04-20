@@ -5,13 +5,15 @@
  * Wave 108
  */
 
-import { useMemo } from "react"
+import { useMemo, useRef } from "react"
+import type { MarkerInstance } from "react-map-gl/maplibre"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { CalendarDays } from "lucide-react"
 import type { MapEvent } from "@/hooks/useMapEvents"
 import { logError } from "@/app/logger"
+import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
 
 /**
  * Event pin color — uses CSS token var(--map-event-color) in stylesheets.
@@ -50,6 +52,9 @@ function formatEventDate(isoString: string, locale: string): string {
 
 export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: EventMarkerProps) {
   const { t, i18n } = useTranslation("map")
+  const markerRef = useRef<MarkerInstance | null>(null)
+  // Wave 116 polish — see BuildingMarker + utils/stripMaplibreMarkerChrome.ts.
+  useStripMaplibreMarkerChrome(markerRef)
 
   const formattedDate = useMemo(
     () => formatEventDate(event.startsAt, i18n.language),
@@ -64,19 +69,20 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
   return (
     <>
       <Marker
+        ref={markerRef}
         longitude={event.geoCoords[1]}
         latitude={event.geoCoords[0]}
         anchor="bottom"
-        onClick={(e) => {
-          e.originalEvent.stopPropagation()
-          onPopupOpen?.()
-        }}
       >
         <div
           role="button"
           tabIndex={0}
           aria-label={ariaLabel}
           className="map-event-pin"
+          onClick={(e) => {
+            e.stopPropagation()
+            onPopupOpen?.()
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()

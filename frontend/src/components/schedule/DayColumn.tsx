@@ -227,14 +227,18 @@ export function DayColumn({
             </div>
           </>
         )}
-        <h3
+        {/* Wave 116 polish — h2 under the page <h1> (Schedule) keeps
+            heading-order sequential for WCAG 2.4.6. Lighthouse a11y caught
+            this on /schedule full-sweep: `<h3 class="text-lg font-extrabold
+            tracking-tight ...">` skipped h2 under the page title h1. */}
+        <h2
           className={cn(
             "text-lg font-extrabold tracking-tight text-text-primary transition-colors duration-fast",
             isToday && "text-brand"
           )}
         >
           {label}
-        </h3>
+        </h2>
         {lessons.length > 0 && (
           <Badge size="xs" variant="outline" className="font-medium opacity-70">
             {lessons.length}

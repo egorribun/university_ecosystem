@@ -8,14 +8,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
-      "@mui/material/styles/CssVarsProvider": path.resolve(
-        __dirname,
-        "src/shims/muiCssVarsProvider.ts"
-      ),
-      "@mui/material/styles/useColorScheme": path.resolve(
-        __dirname,
-        "src/shims/muiUseColorScheme.ts"
-      ),
+      // Wave 116 polish — removed dead aliases for @mui/material/styles/
+      // CssVarsProvider + useColorScheme. MUI was uninstalled long ago;
+      // these pointed to src/shims/ which doesn't exist. No source file
+      // imports @mui/* (verified via grep). Legacy test-harness residue.
     },
   },
   test: {

@@ -188,7 +188,15 @@ export const EventsHeader = ({
               type="button"
               role="tab"
               aria-selected={tab === tabItem.key}
-              aria-controls={`events-tabpanel-${tabItem.key}`}
+              // Wave 116 polish — single stable tabpanel ID instead of
+              // per-tab suffix. Only the active tab's panel is rendered (the
+              // other tabs act as a filter over the same EventsList section),
+              // so per-tab aria-controls pointed to IDs that don't exist for
+              // inactive tabs — Lighthouse aria-valid-attr-value fires at 0.
+              // All three tabs now point to the same rendered panel which
+              // always exists; aria-labelledby on the panel still resolves
+              // to the active tab button, preserving the tablist contract.
+              aria-controls="events-tabpanel"
               onClick={() => onTabChange(tabItem.key)}
               className={cn(
                 "relative z-base px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-fast",

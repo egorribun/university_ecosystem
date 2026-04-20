@@ -169,11 +169,15 @@ background color: #38bdf8, font size: 9.0pt (12px), font weight: normal).
 Expected contrast ratio of 4.5:1
 ```
 
-**2. heading-order (weight 3)** — `/news` page structure went `<h1>` (page title) → `<h3>` (news cards or empty-state title), skipping `<h2>`.
+**2. heading-order (weight 3)** — `/news` page structure went `<h1>` (page title) → `<h3>` (empty-state or news-card title), skipping `<h2>`. Axe reported the selector `div.w-full > div.flex > div.space-y-2 > h3.text-lg` — that's specifically the EmptyState pattern (`<h3 className="text-lg font-semibold text-text-primary">` at `EmptyState.tsx:26`).
 
-Fix (two places):
-- `frontend/src/components/ui/EmptyState.tsx` — added `titleAs?: "h2" | "h3" | "h4"` prop defaulting to `"h2"`. Empty states under a page `<h1>` now render `<h2>` by default; the 7 current callers (News, Events, Schedule × 2, Admin, ui-components) all inherit the fix without any call-site change.
-- `frontend/src/components/news/NewsCardContent.tsx` — `<h3>` → `<h2>` (news cards are top-level sections under the page h1, semantically peer-level within the feed).
+The LHCI run rendered /news with a mock user but no live backend, so the News feed landed on the **empty state** render path (no news items) — that's the path the LHCI audit actually measured. The News-card h3 (`text-base`, not `text-lg`) was NOT the element axe flagged.
+
+**Primary fix (this is what cleared the measured audit):**
+- `frontend/src/components/ui/EmptyState.tsx` — added `titleAs?: "h2" | "h3" | "h4"` prop defaulting to `"h2"`. Empty states under a page `<h1>` now render `<h2>` by default; all 7 current callers (News, Events, Schedule × 2, Admin, ui-components) inherit the fix without any call-site change.
+
+**Defensive fix (semantically correct but NOT measured by this LHCI run):**
+- `frontend/src/components/news/NewsCardContent.tsx` — `<h3>` → `<h2>` card title (news cards are top-level sections peer-level within the feed under the page h1). Prevents heading-order from firing in a future LHCI run that exercises the **populated-feed** path with real news data — which we didn't LHCI-measure in this wave because no backend was mocked at that layer. Honest attribution: this is a pro-active fix, not a regression fix.
 
 **3. label-content-name-mismatch (weight 0, informational)** — sort button had `aria-label="Sort"` but visible text "Newest"/"Popular". Even though weight-0 doesn't affect score, fixed for completeness.
 
@@ -270,6 +274,162 @@ Storybook build completed successfully
 ```
 
 Prod build unaffected — main chunk still 291.84 kB / 84.39 kB gzip, PWA still 183 precache entries, identical asset hashes.
+
+---
+
+## Polish pass (post-"безупречно?" probe)
+
+User probed "всё безупречно?" after the main wave docs landed. Self-audit surfaced 9 honest gaps which the polish pass addressed.
+
+### Polish findings
+
+**1. SW1 5-run stability re-verify post all-commits** — previous 5-run check happened before SW3+Stretch landed. Re-ran 5 times after all 4 Wave 116 commits were pushed to confirm no regression.
+
+```
+=== RUN 1 === 3 flaky (all /login)   + 13 passed = 16 ✓
+=== RUN 2 === 2 flaky (all /login)   + 14 passed = 16 ✓
+=== RUN 3 === 3 flaky (all /login)   + 13 passed = 16 ✓
+=== RUN 4 === 1 flaky (webkit /login)+ 15 passed = 16 ✓
+=== RUN 5 === 1 flaky (webkit /login)+ 15 passed = 16 ✓
+```
+
+JSON reporter authoritative breakdown (one run as sample):
+```
+stats: {"expected":15,"skipped":0,"unexpected":0,"flaky":1}
+```
+
+Earlier `tail -5` truncation obscured the real count (cut "X passed" line in high-flake runs); `tail -20` + list/json reporter confirms 16/16 every run. Mobile-webkit /404 × 2 themes pass direct in every run — never in flaky list.
+
+**2. Full 8-URL LHCI sweep** — Wave 116 SW3 intentionally scoped to /news. Polish attempted the full default sweep to catch regressions on other URLs.
+
+Got through 5 of 8 URLs before Windows EPERM Chrome cleanup fired (Wave 113 known issue). Per-URL a11y median:
+
+| URL | Runs | a11y median | Status |
+|---|---|---|---|
+| `/` | 3 | **1.00** | ✓ above 0.95 gate |
+| `/login` | 3 | **1.00** | ✓ above 0.95 gate |
+| `/dashboard` | 3 | **1.00** | ✓ above 0.95 gate |
+| `/news` | 3 | **1.00** | ✓ SW3 fix confirmed in full-sweep context |
+| `/schedule` | 1 (EPERM) | **0.94** | ✗ below 0.95 gate — **NEW FINDING** |
+| `/events`, `/activity`, `/map`, `/404` | 0 | N/A | EPERM before reach |
+
+**3. /schedule 0.94 — same root causes as /news**
+
+Polish parsed the single `/schedule` lhr-*.json and found **the same two Lighthouse audits** that drove /news to 0.94:
+
+```
+[
+  { "id": "color-contrast", "weight": 7, "score": 0 },
+  { "id": "heading-order",  "weight": 3, "score": 0 }
+]
+```
+
+**color-contrast** — active day-tab button in mobile view:
+```
+[color-contrast] div.scrollbar-hide > button#day-tab-monday
+  Element has insufficient color contrast of 2.14 (foreground color: #ffffff,
+  background color: #38bdf8, font size: 11.4pt)
+```
+
+Root cause: `--sched-on-accent: white` in both light + dark `.schedule-theme` scope (schedule.css:133, 209). Comment said "intentional white on colored bg (FIX-67-03)". The intent was *contrast on a colored bg* — but dark-mode `bg-brand` is sky-400, not blue-600, so `white` produces 2.14:1 contrast. Same bug class as the News `bg-brand text-white` I fixed in SW3.
+
+Fix: `--sched-on-accent: var(--text-inverse)` — light-mode `--text-inverse` = `white` (matches the original "intentional white" for light's blue-600 bg → 4.56:1), dark-mode = `slate-950` (on sky-400 → 9.9:1). Single token edit, both themes covered.
+
+**heading-order** — `DayColumn.tsx:230` renders `<h3>` for each weekday label. Page structure: `<h1>` "Schedule" → `<h3>` day name, skipping h2.
+
+Fix: `<h3>` → `<h2>`. Day columns are peer sections under page h1.
+
+**4. MUI grep bonus finding + cleanup** — while verifying SW-Stretch's preview.tsx cleanup, grep for `@mui/material` imports surfaced dead aliases in `vitest.config.ts:11-18`:
+
+```ts
+"@mui/material/styles/CssVarsProvider": path.resolve(__dirname, "src/shims/muiCssVarsProvider.ts")
+"@mui/material/styles/useColorScheme":  path.resolve(__dirname, "src/shims/muiUseColorScheme.ts")
+```
+
+`src/shims/` directory doesn't exist and no source file imports `@mui/*`. Pure dead-code legacy from MUI phase-out. Removed. Vitest: 294p/12s/0f unchanged.
+
+**5. Skip pointer grep verified empty** — AUDIT claim `grep -rn "Wave 116" src tests` = empty was previously unverified. Polish ran the grep: no stale skip pointers. All 6 "Wave 116" refs in src/ + 2 in tests/ are legitimate convention comments explaining fixes (MainLayout, NewsHeader, NewsCardContent, EmptyState, _auth, useProfileSync, a11y-public spec header).
+
+**6. AUDIT_WAVE116.md heading-order attribution corrected** — original AUDIT presented EmptyState + NewsCardContent fixes as equally addressing the SW3 audit. Polish correction: EmptyState was the PRIMARY fix (axe reported selector `div.space-y-2 > h3.text-lg` = exact EmptyState pattern; LHCI run rendered /news with mock user + no backend → empty-state path). NewsCardContent h3→h2 is DEFENSIVE (text-base, not matched by the LHCI audit; prevents the populated-feed regression we didn't measure).
+
+**7. CLAUDE.md VITE_LHCI safety gotcha added** — explicit note: VITE_LHCI set ONLY by `scripts/run-lhci.mjs:14` before its build spawn; `npm run build` does not; never set outside LHCI script invocation; CI pipeline is safe. Prevents accidental prod-ship of the auth bypass.
+
+**8. Full-sweep per-URL LHCI retry** — restarted the 8-URL sweep post-polish. 5 URLs completed before Windows EPERM Chrome-cleanup fired (Wave 113 known issue):
+
+| URL | Runs | a11y median |
+|---|---|---|
+| `/` | 3 | **1.00** |
+| `/login` | 3 | **1.00** |
+| `/dashboard` | 3 | **1.00** |
+| `/news` | 3 | **1.00** (confirmed post-SW3 fixes in full-sweep context) |
+| `/schedule` | 1 (EPERM) | **0.94** — surfaced 2 new failing audits |
+| `/events`, `/activity`, `/map`, `/404` | 0 | EPERM before reach |
+
+**9. `/schedule` 0.94 → 1.00** — the two failing audits on `/schedule` matched the pattern /news had pre-SW3:
+
+- `color-contrast` (weight 7) — active day-tab in mobile view rendered `#ffffff` on `#38bdf8` (2.14:1). Root: `--sched-on-accent: white` hardcoded in both light + dark `.schedule-theme` blocks. Fix: switched to `var(--text-inverse)` (white in light — 4.56:1 on blue-600; slate-950 in dark — 9.9:1 on sky-400).
+- `heading-order` (weight 3) — page `<h1>` "Schedule" → `<h3>` day label in `DayColumn.tsx:230`, skipping h2. Fix: `<h3>` → `<h2>`.
+
+Post-fix `/schedule` LHCI a11y = **1.00 × 2 runs, 0 failing audits**.
+
+**10. `/events` 0.95 → 1.00** — ran `/events` per-URL post-schedule. New failing audit:
+
+- `aria-valid-attr-value` (weight 10) — tab buttons had `aria-controls="events-tabpanel-active"` but the `<section id="events-tabpanel-${tab}">` was only rendered for the currently-active tab AND only when not loading/empty (loading + empty-state branches returned a plain `<div>` without the id).
+
+Fix in two places:
+- `EventsHeader.tsx` — all 3 tabs now use a single stable `aria-controls="events-tabpanel"` (all tabs filter the same underlying section; each tab is NOT a separate panel in this pattern).
+- `EventsList.tsx` — refactored so the `<section id="events-tabpanel" role="tabpanel" aria-labelledby="events-tab-${tab}">` wrapper is ALWAYS rendered; loading + empty-state + card-grid branches render INSIDE it.
+
+Post-fix `/events` LHCI a11y = **1.00 × 3 runs, 0 failing audits**.
+
+**11. `/404` confirmed a11y = 1.00** — fallback route scored 1.00 via per-URL LHCI.
+
+**12. Lighthouse Lantern blocker on `/activity` + `/map`** — both URLs fail Lighthouse collection with `LanternError: Invalid dependency graph created, cycle detected`. Known upstream Lighthouse issue when the page has specific dynamic-import / chunk dependency patterns (maplibre-gl for /map, html-to-image + jspdf for /activity's export bundles). `throttlingMethod: "devtools"` does NOT avoid this — Lantern runs for certain perf audits regardless. **Workaround applied**: verified a11y via live axe-core (CDN-injected at runtime via chrome-devtools-mcp) against a fresh local preview of the VITE_LHCI=true dist.
+
+**13. `/activity` live-axe found 2 real violations that LHCI couldn't score** (and that `a11y-public.spec.ts` doesn't reach because it doesn't cover authenticated routes):
+
+- `aria-progressbar-name` (serious) — `AttendanceCard.tsx:89` rendered `<ProgressBar value={progressAttendance} />` with no `ariaLabel`. Fix: pass `${t("activity:sections.attendance.title")}: ${attendancePctAnimated}%` (e.g. "ПОСЕЩАЕМОСТЬ: 92%").
+- `aria-required-children` (critical) — `ActivityTimeline.tsx:128` rendered `<div role="feed">` but its children were plain `<div>` wrappers, not `role="article"`. `role="feed"` (ARIA 1.2) requires article-role children. The timeline is a **static date-grouped history**, not an infinite-scroll feed, so `role="feed"` was misapplied. Fix: removed `role="feed"`; outer `<section aria-label>` already provides the accessible region.
+
+Live-axe re-verify post-fix: **0 violations** on /activity.
+
+**14. `/map` live-axe found 1 violation × 20 markers** — the MapLibre GL Marker class unconditionally stamps `role="button"` + `aria-label="Map marker"` (generic) onto its wrapper DOM element inside its constructor (not conditional on `onClick` prop, contrary to my initial hypothesis). Nesting our rich inner `role="button"` inside that generic outer created `nested-interactive` (serious, 20 nodes — one per BuildingMarker / POIMarker / EventMarker instance).
+
+Fix: new utility `src/utils/stripMaplibreMarkerChrome.ts` exports `useStripMaplibreMarkerChrome(ref)` — uses `ref.current.getElement()` to strip `role`, `aria-label`, `tabindex` from the outer MapLibre wrapper post-mount. The inner div stays the sole interactive element in the a11y tree, carrying the localized building / POI / event aria-label. Wired into all 3 marker components (`BuildingMarker`, `POIMarker`, `EventMarker`) via `useRef<MarkerInstance>` + the shared hook.
+
+Live-axe re-verify post-fix: **0 violations** on /map. Accessibility tree now shows single buttons with rich labels (e.g. `button "Выбран Главный учебный корпус (ГУК). 8 этажей, 37 аудиторий."`), not nested buttons.
+
+**15. Bonus dead-code cleanup in `vitest.config.ts`** — removed two MUI aliases pointing to a non-existent `src/shims/` directory (MUI uninstalled long ago, no source imports `@mui/*`, verified via grep). Pure test-harness dead code. Vitest: 294p/12s/0f unchanged.
+
+### Polish-session a11y coverage summary
+
+| URL | Verified via | Median a11y | Status |
+|---|---|---|---|
+| `/` | LHCI | **1.00** | ✓ |
+| `/login` | LHCI + e2e a11y-public | **1.00** | ✓ |
+| `/dashboard` | LHCI | **1.00** | ✓ |
+| `/news` | LHCI | **1.00** | ✓ |
+| `/schedule` | LHCI | **1.00** (0.94 → 1.00 via polish) | ✓ |
+| `/events` | LHCI | **1.00** (0.95 → 1.00 via polish) | ✓ |
+| `/activity` | live axe (LHCI blocked by Lantern) | **0 violations** (fixed 2) | ✓ |
+| `/map` | live axe (LHCI blocked by Lantern) | **0 violations** (fixed 1 × 20 markers) | ✓ |
+| `/404` (fallback) | LHCI + e2e a11y-public | **1.00** | ✓ |
+
+**All 9 URLs are now a11y-clean.** Three methods used: LHCI (primary, where it works), live axe via chrome-devtools-mcp (where Lighthouse Lantern blocks), and Playwright e2e a11y-public (structural regression guard for public routes).
+
+### Polish gates (final, post-all-fixes)
+
+```
+$ npx tsc --noEmit                                    # 0 errors
+$ npx eslint --max-warnings=0 <all polished files>    # 0 errors
+$ npm run test -- --run                               # 294 passed | 12 skipped | 0 fail
+$ for i in 1 2 3; do npm run build; done              # identical hash × 3:
+                                                      #   index-cZqLySQg.js  291.84 kB / 84.39 kB gzip
+                                                      #   index-0R-67xN_.css 398.82 kB / 57.22 kB gzip
+$ git diff --stat rust-crypto/Cargo.lock              # empty — idempotent
+$ grep -l "lhci-mock-user\|data-e2e-stub" dist/assets/*.js
+                                                      # empty — both branches tree-shaken
+```
 
 ### What Wave 116 did NOT fix
 

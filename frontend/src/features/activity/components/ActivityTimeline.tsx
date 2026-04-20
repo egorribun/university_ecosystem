@@ -125,7 +125,11 @@ export function ActivityTimeline({
         {t("activity:timeline.title")}
       </h2>
 
-      <div className="relative" role="feed">
+      {/* Wave 116 polish — removed `role="feed"` (requires children with
+          `role="article"` per ARIA 1.2 `aria-required-children`). This is a
+          static date-grouped history, not an infinite-scroll feed; the outer
+          `<section aria-label>` preserves the accessible region semantics. */}
+      <div className="relative">
         {/* Vertical timeline line */}
         <div className="activity-timeline-line" />
 
