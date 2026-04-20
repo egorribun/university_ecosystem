@@ -157,6 +157,90 @@ See commit `16554a726` body. Gate strictly stronger (warn never blocked CI; erro
 
 ---
 
+## Polish pass (post-"безупречно?" probe)
+
+User probed "абсолютно всё выполнено и всё безупречно?" after the main wave docs landed. Self-audit surfaced 10 honest gaps (feedback_perfectionism.md pattern). This section documents the polish pass:
+
+### Polish findings + actions
+
+**1. Per-SW verification gates incomplete** — only ran vitest after SW1/SW3/SW4 in main pass. Polish ran the full bar fresh:
+   - `tsc --noEmit` = 0 errors
+   - `eslint --max-warnings=0` = 0 warnings on touched files
+   - `vitest run` = **294 passed / 12 skipped / 0 fail** (Wave 116 baseline held verbatim)
+   - `npm audit` = 9 vulns (1 critical / 4 high / 4 moderate — unchanged from Wave 115 baseline)
+   - `Cargo.lock no drift` = `git diff --stat rust-crypto/Cargo.lock` empty
+   - **3× `npm run build` reproducibility**: all three produced `index-f8AmEscb.js` 175.77 kB / 55.34 kB gzip (identical raw + gzip sizes, hash stable)
+   - `npx playwright test a11y-public.spec.ts` = 15 passed + 1 flaky-retry-passed = **16/16 effective** (Wave 116 baseline pattern held: /login WebKit cold-start retry is baseline, not wave-introduced)
+   - `npx playwright test a11y-cdn-axe.spec.ts` = 1 passed chromium / 3 project-skipped (firefox/webkit/mobile-webkit per spec skip config)
+
+**2. Phase 0 throttling ambiguity resolved** — `chrome-devtools-mcp` `performance_start_trace` output line `CPU throttling: none / Network throttling: none` was ambiguous. Per Context7 docs + empirical LCP ratio analysis:
+   - Phase 0 `/dashboard` LCP 1544 ms vs real LHCI `/dashboard` LCP ~11000 ms = **~7× ratio**. That magnitude is broadly consistent with 4× CPU + Slow 4G throttling being applied (real LHCI mobile adds additional overhead from Lighthouse headless + protocol latency).
+   - The summary line `CPU throttling: none` is the **CrUX field-data section** (shows real-user throttling — empty for localhost because localhost has no CrUX data), **NOT** the CDP emulation state applied by the preceding `emulate` call.
+   - Emulation IS applied to the trace capture; the trace just doesn't surface it in the summary header. Confirmed: my SW1+SW3 traces showed expected emulation behaviour.
+   - Takeaway (updated convention — see CLAUDE.md): Phase 0 is useful for **relative** comparisons (what dominates rendering cost), but absolute numbers should always be cross-verified with `lhci collect --numberOfRuns=3`.
+
+**3. SW1 commit message framing corrected** — original SW1 claim "CLS 0.90 → 0.00 on 3 URLs" was technically true for chrome-devtools-mcp-measured CLS but misleading for LHCI-measured CLS. Real LHCI on the same dist showed CLS 0.82 unchanged. The commit stays on origin (rewrite would require force-push which this session doesn't authorise), but §Honesty probe below now calls this out as "chrome-devtools-mcp measurement error exposed by LHCI" — not just "misleading".
+
+**4. NotificationsPermissionPrompt component discovery** — Wave 118 Item #1(b) called for locating the `div.fixed` inside `main` that LHCI flagged. Polish located it: `src/components/pwa/InstallPrompt.tsx:226-425`. It's the dual PWA-install + push-notification prompt rendered unconditionally in `src/routes/__root.tsx`. The exact class string on line 234 (`fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem]`) + line 239 GlassCard (`z-toast w-auto max-w-[24rem] border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6`) matches Phase 0's LCP element class **exactly**. Wave 118 SW1 now has a concrete target.
+
+**5. InstallPrompt VITE_LHCI-gate attempted + reverted** — polish tried the Wave 116-pattern fix (gate `<InstallPrompt />` under `VITE_LHCI !== "true"`). Post-fix LHCI × 3 URLs × 3 runs:
+
+| URL | Perf (before) | Perf (after gate) | CLS (before) | CLS (after) | LCP (before) | LCP (after) |
+|---|---|---|---|---|---|---|
+| `/events` | 0.18-0.20 | **0.12** (regression) | 0.822 | 0.813 (±0.01) | ~10900ms | **~12700ms (+1800ms regression)** |
+| `/news` | 0.26-0.27 | 0.17-0.19 (regression) | 0.822 | 0.813 (marginal) | ~9650ms | ~9800ms (flat) |
+| `/dashboard` | 0.20-0.22 | 0.12-0.19 (regression) | 0.82-0.86 | 0.82-0.84 (flat) | ~11000ms | ~11200ms (flat) |
+
+**Gate reverted** (`src/routes/__root.tsx` restored to pre-polish state) per Iron Law "don't ship fixes that regress". Removing InstallPrompt shifted LCP candidate to a later-painting content element (likely a text heading deeper in the feed) — raw LCP increased even though visual quality improved. Wave 118 needs a different approach: reserve fixed space for InstallPrompt OR delay render via IntersectionObserver after first paint OR move it outside the layout flow entirely.
+
+**6. SW7 keyframe fix honesty** — commit `94aa88d4b` shipped opacity-only fade-in/fade-in-up/navbar-fade-in keyframes as "defense in depth". Polish acknowledges: the fix did NOT move LHCI CLS on authenticated routes (measured 0.822 before + after). Staying in as a latent-CLS safeguard for any new page using `.animate-fade-in`, but **it did not deliver the Wave 117 CLS target**. Not a revert candidate (still correct on its own terms — 22 potential CLS contributors eliminated) but framing corrected.
+
+**7. SW6 conditional (`useDeferredValue` Dashboard queries) — not attempted** — plan said "skip if /dashboard Perf ≥ 0.5 after SW1-5"; /dashboard was 0.20 (not ≥ 0.5). Per-plan, SW6 should have been attempted. Polish acknowledges: skip was based on the separate conclusion that content CLS dominates, so `useDeferredValue` on queries couldn't move the needle. Still a plan deviation — documented as Wave 118 candidate if CLS work doesn't unblock /dashboard.
+
+**8. `/`, `/schedule`, `/404` LHCI data** — still uncaptured after polish (Windows EPERM fires after 6 URLs in one run). Wave 118 Item #2 retains the "complete LHCI sweep" work.
+
+**9. Gate floor 0.15 calibration** — polish confirms the floor is honest: lowest measured median in the main pass was 0.18 (`/events`). After the polish LHCI sweep (with InstallPrompt gate active, later reverted), medians dropped to 0.12 temporarily. If I had shipped the gate, the `error@0.15` floor would have BLOCKED CI — which would have caught my regression. So the gate flip DOES work as a safety net, validated by this aborted fix.
+
+**10. Preview server background process** — was still running on port 5000 after main wave (PID 6308). Polish killed it via `taskkill //PID 6308 //F` + netstat verification (port 5000 free).
+
+### Polish-pass verification evidence (verbatim)
+
+```
+$ cd frontend
+$ npx tsc --noEmit                                 → 0 errors (silent)
+$ npx eslint --max-warnings=0 <touched>            → 0 warnings (silent)
+$ npm run test -- --run                            → 294 passed | 12 skipped | 0 fail
+$ for i in 1 2 3; do npm run build; done           → identical hash × 3:
+                                                     index-f8AmEscb.js 175.77 kB / 55.34 kB gzip
+$ git diff --stat rust-crypto/Cargo.lock           → empty (idempotent)
+$ npm audit                                        → 9 vulns (1c/4h/4m) unchanged
+$ npx playwright test a11y-public.spec.ts         → 15 pass + 1 flaky-retry / 46.2s / 0f
+                                                     = 16/16 effective (Wave 116 baseline)
+$ npx playwright test a11y-cdn-axe.spec.ts        → 1 pass chromium + 3 project-skip / 25.1s / 0f
+```
+
+### Polish LHCI sweep numeric (post-all-SWs, pre-revert — InstallPrompt gate ON):
+
+```
+/events:    perf=0.12 CLS=0.813 LCP=12780ms  (3 runs)
+/events:    perf=0.12 CLS=0.813 LCP=12734ms
+/events:    perf=0.12 CLS=0.813 LCP=12679ms
+/news:      perf=0.17-0.19 CLS=0.813 LCP=9726-9890ms
+/dashboard: perf=0.12-0.19 CLS=0.816-0.845 LCP=11079-11459ms
+```
+
+Comparison to pre-polish (InstallPrompt gate OFF — current shipped state):
+
+```
+/events:    perf=0.18-0.20 CLS=0.822 LCP=~10900ms
+/news:      perf=0.26-0.27 CLS=0.822 LCP=~9650ms
+/dashboard: perf=0.20-0.22 CLS=0.82-0.86 LCP=~11000ms
+```
+
+**Shipped state = pre-polish state** (InstallPrompt gate reverted). The polish sweep is kept as measurement-only evidence.
+
+---
+
 ## Honesty probe self-audit (per `memory/feedback_perfectionism.md`)
 
 Pre-empting the expected "безупречно?" probe by listing honest caveats up-front:
