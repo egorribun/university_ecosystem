@@ -28,6 +28,14 @@ import type { MarkerInstance } from "react-map-gl/maplibre"
 export function useStripMaplibreMarkerChrome(
   markerRef: RefObject<MarkerInstance | null>,
 ): void {
+  // Strip on mount + after any parent re-render that could have swapped out
+  // the Marker instance. maplibre-gl mutates wrapper contents in-place but
+  // reuses the same wrapper element across parent re-renders, so
+  // `removeAttribute` on an already-stripped element is a cheap no-op.
+  // Including `markerRef` in deps satisfies both ESLint's
+  // react-hooks/exhaustive-deps AND React Compiler's no-suppression policy;
+  // the ref object identity is stable across renders so this effectively
+  // runs once in practice.
   useEffect(() => {
     const marker = markerRef.current
     if (!marker) return
@@ -36,7 +44,7 @@ export function useStripMaplibreMarkerChrome(
     el.removeAttribute("role")
     el.removeAttribute("aria-label")
     el.removeAttribute("tabindex")
-  })
+  }, [markerRef])
 }
 
 // Non-hook variant used inside existing useEffect blocks where composing a new
