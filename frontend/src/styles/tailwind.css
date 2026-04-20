@@ -297,14 +297,17 @@
 /* ── Animation Keyframes ── */
 
 @keyframes navbar-fade-in {
+  /* Wave 117 SW7 — removed translateY(-0.625rem → 0) that was flagged as
+     a CLS contributor (TARGET_HAS_INCOMPATIBLE_ANIMATIONS + non-composited).
+     Real LHCI runs showed CLS 0.82 on /dashboard + /news despite VT
+     disabled. Opacity-only entrance keeps the fade aesthetic without
+     the 10px translate that forced layout shift. */
   from {
     opacity: 0;
-    transform: translateY(-0.625rem);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -320,14 +323,18 @@
 }
 
 @keyframes fade-in {
+  /* Wave 117 SW7 — removed translateY(0.25rem → 0) that fired 22 times
+     per /dashboard initial render (Phase 0 CLSCulprits insight). The 4px
+     translate was decorative "lift" on fade-in but cost CLS 0.82 because
+     Chrome couldn't composite the animation (each element counts as
+     layout-shift potential). Opacity-only now aligns with the
+     _modern-css.css fade-in sibling (also opacity-only since Wave 39). */
   0% {
     opacity: 0;
-    transform: translateY(0.25rem);
   }
 
   100% {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -1120,20 +1127,22 @@
   }
 
   .animate-premium-in {
+    /* Wave 117 SW7 — removed initial transform translateY(1.25rem) +
+       matching keyframe values. The 20px translate was a major CLS
+       contributor on any page using `.animate-premium-in`. Opacity
+       only preserves the "gentle reveal" aesthetic without layout
+       shift. */
     opacity: 0;
-    transform: translateY(1.25rem);
     animation: fade-in-up 0.8s var(--ease-premium) forwards;
   }
 
   @keyframes fade-in-up {
     from {
       opacity: 0;
-      transform: translateY(1.25rem);
     }
 
     to {
       opacity: 1;
-      transform: translateY(0);
     }
   }
 
