@@ -123,6 +123,20 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+  <!--
+    Wave 117 SW5 — preconnect + dns-prefetch to picsum.photos (placeholder
+    image CDN used by NewsCard + EventCard heroes). Phase 0 chrome-devtools
+    LCPDiscovery insight on /news flagged "Request is discoverable in
+    initial document: FAILED" — image URL is seeded from client state, so
+    we can't preload the specific URL, but we CAN pre-establish the TCP +
+    TLS + DNS connection to the origin. Saves ~150-300ms on mobile 3G for
+    the first above-the-fold hero image. `crossorigin` attribute is
+    required so the preconnect reuses the credentialed-CORS connection
+    established when the img fetch fires (image requests go out with
+    crossorigin semantics).
+  -->
+  <link rel="preconnect" href="https://picsum.photos" crossorigin />
+  <link rel="dns-prefetch" href="https://picsum.photos" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
