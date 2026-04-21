@@ -42,10 +42,22 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       {!isCompactPage && !E2E_MODE && <Navbar />}
       {!isCompactPage && E2E_MODE && <nav data-e2e-stub="main-nav" />}
 
+      {/*
+       * Wave 118 SW1 (CLS-118-01): replaced `flex-1` with `min-h-dvh`.
+       * `flex-1` made main fill remaining column space (~dvh−164px on short
+       * initial-paint content), seating the footer AT viewport bottom.
+       * Content growing past that pushed footer from visible (~y=dvh−100) to
+       * offscreen (~y=content+64), which LHCI measured as a 0.813 shift
+       * (94% of authenticated-route CLS 0.87 per Wave 118 Phase 0 baseline).
+       * With `min-h-dvh` main is always ≥ viewport height from first paint,
+       * so the footer sits at y ≥ dvh — offscreen — and content growth keeps
+       * it offscreen. Per web.dev CLS spec, shifts outside the viewport do
+       * not count toward CLS.
+       */}
       <main
         id="main-content"
         className={cn(
-          "vt-page-content flex-1 w-full outline-none",
+          "vt-page-content w-full outline-none min-h-dvh",
           isMessenger && "overflow-hidden"
         )}
       >
