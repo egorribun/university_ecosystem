@@ -91,7 +91,6 @@ async function createConfig() {
   // in _auth.tsx + useProfileSync.ts. Optional LHCI_URLS env var narrows the
   // set for focused iteration (Windows EPERM mitigation — Wave 113 note).
   const defaultPaths = [
-    "/",
     "/login",
     "/dashboard",
     "/news",
