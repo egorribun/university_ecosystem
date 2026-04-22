@@ -413,7 +413,7 @@ dev = [
   # MOD-07 (audit 2026-03-16 Wave 10): Consumer-driven contract tests for the
   # Python backend → ws-hub NATS message boundary.  pact-python v2 wraps the
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
-  "pact-python>=3.2.1",
+  "pact-python==3.2.1",
 ]
 
 # MOD-06 (audit Wave 11): dedicated security scanning group.
