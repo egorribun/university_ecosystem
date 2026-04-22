@@ -50,7 +50,7 @@ export function DashboardHero({
   const showHeaderMotion = !prefersReducedMotion && !isNarrow
 
   return (
-    <section className="relative flex w-full flex-col px-4 pb-3 pt-5 text-text-primary sm:px-6 md:px-10 lg:px-14">
+    <section className="relative flex w-full flex-col px-4 pb-3 pt-5 text-text-primary sm:px-6 md:px-10 lg:px-14 min-h-[260px]">
       <div className="relative z-deep">
         <ScrollReveal mode="pop" delay={0.1} width="100%">
           <header

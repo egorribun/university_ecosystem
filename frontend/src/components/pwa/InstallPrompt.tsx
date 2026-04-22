@@ -319,7 +319,12 @@ export default function InstallPrompt() {
                 )}
 
                 {showPushPanel && (
-                  <div className="space-y-4">
+                  // Wave 118 SW4 (CLS-118-04): inner space-y-4 grew as
+                  // pushInitializing flipped + permission-state branch
+                  // resolved, contributing 0.124 CLS on /dashboard after
+                  // SW1/2/3. min-h-[260px] reserves space matching the
+                  // worst push-panel branch (granted-with-toggles).
+                  <div className="space-y-4 min-h-[260px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
