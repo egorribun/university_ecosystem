@@ -195,8 +195,14 @@ warn_unused_ignores = false
 [[tool.mypy.overrides]]
 module = ["app.services.webpush"]
 disallow_untyped_defs = false
+warn_unused_ignores = false
 # TD-20-06: Large service modules with complex async callback signatures.
 # Gradual typing in progress — aim to remove this by end of Q2 2026.
+
+[[tool.mypy.overrides]]
+module = ["app.graphql.queries", "app.services.chat.command_service"]
+warn_unused_ignores = false
+# Suppress unused-ignore warnings where CI mypy and pre-commit mypy disagree on error codes.
 
 [[tool.mypy.overrides]]
 module = [
