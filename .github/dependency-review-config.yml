@@ -1,22 +1,32 @@
 # Dependency Review Configuration
 # Used by the dependency-review-action
 
-fail-on-severity: critical
+fail-on-severity: high
 
 allow-licenses:
   - MIT
+  - MIT-CMU
+  - HPND
   - Apache-2.0
   - BSD-2-Clause
   - BSD-3-Clause
   - ISC
   - Python-2.0
   - PSF-2.0
+  - LGPL-2.0-or-later
   - LGPL-2.1
+  - LGPL-2.1-only
   - LGPL-3.0
+  - MPL-1.1
   - MPL-2.0
   - Unlicense
   - CC0-1.0
   - 0BSD
+  - BlueOak-1.0.0
+  - Artistic-2.0
+  - Zlib
+  - BSL-1.0
+  - LicenseRef-scancode-protobuf
 
 allow-ghsas: []
 
