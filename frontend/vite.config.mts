@@ -332,7 +332,12 @@ export default defineConfig(({ mode }) => {
             if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
             // Address large chunks identified in LHCI build warnings
             if (id.includes("node_modules/maplibre-gl")) return "vendor-map"
-            if (id.includes("node_modules/jspdf") || id.includes("node_modules/html2canvas") || id.includes("node_modules/dompurify")) return "vendor-pdf"
+            if (
+              id.includes("node_modules/jspdf") ||
+              id.includes("node_modules/html2canvas") ||
+              id.includes("node_modules/dompurify")
+            )
+              return "vendor-pdf"
             if (id.includes("node_modules/protobufjs")) return "vendor-protobuf"
           },
         },

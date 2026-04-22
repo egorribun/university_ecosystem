@@ -205,7 +205,9 @@ async function run() {
     )
   } catch (error) {
     if (process.platform === "win32" && error.message.includes("code 1")) {
-      console.warn("lhci collect exited with code 1. This is often caused by an EPERM error when chrome-launcher attempts to clean up its temp profile on Windows. Proceeding to assert phase...")
+      console.warn(
+        "lhci collect exited with code 1. This is often caused by an EPERM error when chrome-launcher attempts to clean up its temp profile on Windows. Proceeding to assert phase..."
+      )
     } else {
       throw error
     }

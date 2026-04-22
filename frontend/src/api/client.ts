@@ -70,7 +70,7 @@ if (import.meta.env.VITE_LHCI === "true") {
       statusText: "OK",
       headers: new AxiosHeaders(),
       config,
-      request: {}
+      request: {},
     }
   }
 }
