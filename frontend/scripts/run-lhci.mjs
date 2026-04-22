@@ -122,18 +122,20 @@ async function createConfig() {
       collect,
       // Wave 112 — thresholds per production-grade April 2026 brief.
       // Wave 117 SW8 — flipped `categories:performance` from `warn@0.9`
-      // (aspirational, never blocked CI) to `error@0.15` (strictly
-      // stronger enforcement — this DOES block CI). 0.15 is a RATCHET
-      // FLOOR based on the lowest measured median post-Wave-117
-      // (authenticated routes /dashboard + /news + /events scored
-      // 0.18-0.27, /login 0.56 — floor = 0.18 - 0.05 safety margin,
-      // rounded conservatively to 0.15). This is NOT the target — it is
-      // the floor we clear with margin. Wave 118 will ratchet higher
-      // once CLS content-shift culprits are addressed on authenticated
-      // routes. A11y/BP/SEO already production-grade (error@0.95).
+      // → `error@0.15` (ratchet floor based on Wave-117 measured medians
+      // 0.18-0.56). Wave 118 SW5 — ratcheted again to `error@0.30` after
+      // SW1-SW4 dropped CLS 86%+ on authenticated routes by addressing
+      // four content-shift culprits (footer anchor, InstallPrompt
+      // bottom-anchored variable height, EventsBackdrop %-based sizing,
+      // Dashboard hero + dash-tilt-card growing-content). Wave 118
+      // measured medians: /dashboard 0.44, /events 0.52, /news 0.58 —
+      // floor = min(0.44) - 0.05 safety - 0.09 variance margin = 0.30.
+      // Still NOT the target; the bar should keep ratcheting as content-
+      // CLS culprits get addressed. A11y/BP/SEO already production-grade
+      // (error@0.95).
       assert: {
         assertions: {
-          "categories:performance": ["error", { minScore: 0.15 }],
+          "categories:performance": ["error", { minScore: 0.30 }],
           "categories:accessibility": ["error", { minScore: 0.95 }],
           "categories:best-practices": ["error", { minScore: 0.95 }],
           "categories:seo": ["error", { minScore: 0.9 }],
