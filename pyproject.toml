@@ -428,6 +428,11 @@ security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit>=2.10.0"]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 
 [tool.uv]
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
+]
 override-dependencies = [
     "protobuf>=7.34.1",
     "grpcio>=1.80.0",
