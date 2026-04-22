@@ -427,6 +427,21 @@ security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit>=2.10.0"]
 [tool.uv.workspace]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 
+[tool.uv]
+override-dependencies = [
+    "protobuf>=7.34.1",
+    "grpcio>=1.80.0",
+    "opentelemetry-api>=1.41.0",
+    "opentelemetry-sdk>=1.41.0",
+    "opentelemetry-exporter-otlp>=1.41.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.41.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.41.0",
+    "opentelemetry-proto>=1.41.0",
+    "opentelemetry-semantic-conventions>=0.62b0",
+    "click>=8.2.1",
+    "tomli>=2.2.1",
+]
+
 [tool.uv.sources]
 rust_ext = { workspace = true }
 pyo3_sanitizer = { workspace = true }
