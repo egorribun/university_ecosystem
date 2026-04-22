@@ -5,11 +5,14 @@
  */
 
 import type React from "react"
+import { useRef } from "react"
+import type { MarkerInstance } from "react-map-gl/maplibre"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
 import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
 import { isOpenNow } from "@/utils/buildingHours"
 import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
+import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
 
 interface BuildingMarkerProps {
   building: CampusBuilding
@@ -28,6 +31,15 @@ interface BuildingMarkerProps {
 
 export function BuildingMarker({ building, isSelected, isHighlighted, onClick, index = 0, isPopupOpen, onPopupOpen, onPopupClose, eventCount = 0 }: BuildingMarkerProps) {
   const { t } = useTranslation("map")
+  const markerRef = useRef<MarkerInstance | null>(null)
+  // Wave 116 polish — maplibre-gl's Marker class unconditionally stamps
+  // role="button" + generic aria-label="Map marker" onto its wrapper element.
+  // Nesting our rich inner role="button" inside that generic outer button
+  // triggered axe `nested-interactive` × 20 markers. See
+  // utils/stripMaplibreMarkerChrome.ts for the full rationale — TL;DR: strip
+  // outer role/aria-label/tabindex post-mount so the inner stays the single
+  // interactive element with the localized building accessible name.
+  useStripMaplibreMarkerChrome(markerRef)
 
   // FIX-109-03: "highlighted" (schedule next lesson) is visually distinct from
   // "selected" (user clicked). Highlighted = subtle pulse only, NOT full active state.
@@ -39,14 +51,10 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
   return (
     <>
       <Marker
+        ref={markerRef}
         longitude={building.geoCoords[1]}
         latitude={building.geoCoords[0]}
         anchor="bottom"
-        onClick={(e) => {
-          e.originalEvent.stopPropagation()
-          onClick(building.letter)
-          onPopupOpen?.()
-        }}
       >
         <div
           role="button"
@@ -58,6 +66,11 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
           })}
           className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}${isHighlighted && !isActive ? " map-building-pin--pulse" : ""}`}
           style={{ "--stagger-index": index, "--_pin-color": building.colorHex } as React.CSSProperties}
+          onClick={(e) => {
+            e.stopPropagation()
+            onClick(building.letter)
+            onPopupOpen?.()
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()

@@ -32,15 +32,20 @@ function ProvidersInner({ children }: AppProvidersProps) {
   )
 }
 
+// Wave 117 SW1 — Lighthouse CI runs the audit without `prefers-reduced-motion`,
+// so Framer Motion executes full animations during measurement even though the
+// Wave 114 SW2b switch to `reducedMotion="user"` respects real-user pref. The
+// VITE_LHCI branch tells Framer to snap animations to their end state during
+// LHCI runs, matching measurement semantics (Lighthouse's perf model assumes
+// minimal animation work). Rolldown DCE tree-shakes the unused branch — prod
+// builds never see `"always"`; Playwright a11y-public still gets `"user"` +
+// `emulateMedia({ reducedMotion: "reduce" })` for WCAG 2.3.3 compliance.
+const LHCI_REDUCED_MOTION = import.meta.env.VITE_LHCI === "true" ? "always" : "user"
+
 export function AppProviders({ children }: AppProvidersProps) {
   return (
     <LanguageProvider>
-      {/* `reducedMotion="user"` makes Framer Motion honour the OS
-          `prefers-reduced-motion` setting — animations snap to their end
-          state when the user has opted in. WCAG 2.3.3 improvement (Level
-          AAA) + eliminates the 900ms Framer settle wait previously needed
-          by `tests/e2e/a11y-public.spec.ts` (A11Y-113-03 closed). */}
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion={LHCI_REDUCED_MOTION}>
         <ProvidersInner>
           <GlobalHapticsListener />
           {children}

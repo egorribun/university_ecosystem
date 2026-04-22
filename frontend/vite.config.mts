@@ -215,6 +215,13 @@ export default defineConfig(({ mode }) => {
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
         globIgnores: ["**/bundle-stats.*", "**/offline.html"],
+        // Wave 116 SW-Stretch — Storybook builds route through this same
+        // plugin and ship `sb-manager/globals-runtime.js` (3.25 MB) which
+        // exceeds Workbox's default 2 MB cache limit, failing
+        // `build-storybook`. The prod bundle's largest precache entry is
+        // `maplibre-gl-*.js` (~1.03 MB), well under 5 MB. Raising the cap
+        // unblocks Chromatic baseline setup without weakening prod caching.
+        maximumFileSizeToCacheInBytes: 5_000_000,
       },
       devOptions: {
         enabled:
@@ -303,6 +310,15 @@ export default defineConfig(({ mode }) => {
             // PERF-05: Sentry isolated from i18n — release bump won't re-download i18n.
             if (id.includes("node_modules/@sentry/react") || id.includes("node_modules/@sentry/core"))
               return "vendor-sentry"
+            // Wave 117 SW3 — split @opentelemetry/* into its own async chunk.
+            // Previously OTEL's 50+ KB of instrumentation + SDK code lived in
+            // the main chunk (verified via Plan-agent grep: 8 @opentelemetry
+            // markers in main-232KB minified). Paired with the dynamic-import
+            // of `./app/observability` + `./app/telemetry` in `main.tsx`, this
+            // moves all OTEL runtime off the critical path to an idle-callback
+            // load. Main chunk drops accordingly; prod Sentry init still works
+            // because Sentry package is in vendor-sentry (loaded sync).
+            if (id.includes("node_modules/@opentelemetry")) return "vendor-otel"
             if (id.includes("node_modules/i18next") || id.includes("node_modules/react-i18next"))
               return "vendor-i18n"
             if (id.includes("node_modules/axios")) return "vendor-http"

@@ -20,16 +20,32 @@ const DISMISS_TTL = 7 * 24 * 60 * 60 * 1000 // 7 days
 const PWA_DISMISS_STORAGE_KEY = "ecosystem.pwa.install.dismissedAt"
 const PUSH_DISMISS_STORAGE_KEY = "ecosystem.push.education.dismissedAt"
 
+// Wave 118 SW2 (CLS-118-02): pure-opacity entrance variants. Framer Motion's
+// JS-driven inline-style mutations of `transform` DO count toward Chromium's
+// layout-shift observer (unlike CSS transitions, which are excluded per the
+// Layout Instability spec). The install panel's 380×532 px bounding box at
+// 64% of viewport area × ~50 px translate = ~0.23 CLS shift — confirmed via
+// Wave 118 Phase 0 LHCI audit `nodeLabel: "Установить «Экосистема ГУУ»"`.
+// Removing `y` alone (first-pass SW2) was insufficient because `scale` is
+// also a transform whose bounding-box deltas get measured. Pure opacity
+// entrance is the only shift-free animation under the current mount model.
+// Matches Wave 117 SW7 app-wide pattern (opacity-only fade-in keyframes).
 const ANIMATION_VARIANTS = {
-  initial: { opacity: 0, y: 50, scale: 0.95 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: 50, scale: 0.95 },
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
 }
 
 const FEEDBACK_VARIANTS = {
-  initial: { opacity: 0, scale: 0.9, y: -20 },
-  animate: { opacity: 1, scale: 1, y: 0 },
-  exit: { opacity: 0, scale: 0.9, y: -20 },
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+}
+
+const UPDATE_TOAST_VARIANTS = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
 }
 
 const isStandalone = () => {
@@ -231,7 +247,18 @@ export default function InstallPrompt() {
             initial={ANIMATION_VARIANTS.initial}
             animate={ANIMATION_VARIANTS.animate}
             exit={ANIMATION_VARIANTS.exit}
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem]"
+            // Wave 118 SW2 (CLS-118-02): `min-h-[540px]` reserves vertical
+            // space so content-progressive mounting (i18n load, push-
+            // permission state flips, panel-type swap) doesn't grow the
+            // element from 0 to final height. Because `bottom-24` anchors
+            // from viewport bottom, a height-growing element shifts its TOP
+            // edge UP — the 0.234 CLS shift LHCI flagged is this top-edge
+            // travel, not the Framer Motion transforms (opacity-only since
+            // first-pass SW2). 540 px matches the worst-case final height
+            // (install + push + default-permission combined panel) observed
+            // in Phase 0 boundingRect 380×532; 540 gives 8 px safety margin
+            // so content-driven growth never exceeds the reservation.
+            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] min-h-[540px]"
           >
             <GlassCard
               intensity="high"
@@ -292,7 +319,12 @@ export default function InstallPrompt() {
                 )}
 
                 {showPushPanel && (
-                  <div className="space-y-4">
+                  // Wave 118 SW4 (CLS-118-04): inner space-y-4 grew as
+                  // pushInitializing flipped + permission-state branch
+                  // resolved, contributing 0.124 CLS on /dashboard after
+                  // SW1/2/3. min-h-[260px] reserves space matching the
+                  // worst push-panel branch (granted-with-toggles).
+                  <div className="space-y-4 min-h-[260px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
@@ -459,9 +491,9 @@ export default function InstallPrompt() {
       <AnimatePresence>
         {updateToastOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
+            initial={UPDATE_TOAST_VARIANTS.initial}
+            animate={UPDATE_TOAST_VARIANTS.animate}
+            exit={UPDATE_TOAST_VARIANTS.exit}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-[28rem] px-6"
           >
             <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/(--opacity-dim) bg-brand/(--opacity-faint) backdrop-blur-2xl shadow-2xl text-brand">

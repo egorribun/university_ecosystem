@@ -52,8 +52,8 @@ const NewsCardContent = ({
 
   return (
     <div className="flex flex-1 flex-col gap-3 p-5">
-      {/* Title */}
-      <h3 className="font-semibold leading-snug text-text-primary text-base line-clamp-2"
+      {/* Title — Wave 116 SW3: h2 keeps heading-order sequential under page h1 */}
+      <h2 className="font-semibold leading-snug text-text-primary text-base line-clamp-2"
       >
         <Link
           to="/news/$id"
@@ -65,7 +65,7 @@ const NewsCardContent = ({
         >
           {title}
         </Link>
-      </h3>
+      </h2>
 
       {/* Preview */}
       <p className="text-sm leading-relaxed text-(--text-secondary) line-clamp-2">

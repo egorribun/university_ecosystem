@@ -344,4 +344,39 @@
       inset 0 1px 3px color-mix(in srgb, black 12%, transparent),
       0 0 0 2px color-mix(in srgb, var(--color-brand) 40%, transparent);
   }
+
+  /*
+   * ── Mobile backdrop-filter reduction (Wave 117 SW6) ───────
+   * Phase 0 chrome-devtools-mcp surveyed 53 backdrop-filter layers
+   * on the 3 target routes. Mobile GPU rasterises each layer
+   * per paint; blur cost scales ~quadratic with radius. Halving
+   * the blur radius on viewports ≤640px reduces GPU work ~4×
+   * while the visual difference at phone sizes is
+   * near-imperceptible (the saturate multiplier stays the same
+   * so the tinted-glass aesthetic is preserved). Targets only
+   * surface/elevated/floating/matte — decorative blurs inside
+   * backdrop orbs (filter: blur(40-48px) on radial gradients)
+   * stay full-strength because they're purely cosmetic and
+   * don't rasterise on every interaction.
+   */
+  @media (max-width: 640px) {
+    @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+      .glass-layer-surface {
+        backdrop-filter: blur(4px) saturate(1.2);
+        -webkit-backdrop-filter: blur(4px) saturate(1.2);
+      }
+      .glass-layer-elevated {
+        backdrop-filter: blur(8px) saturate(1.3);
+        -webkit-backdrop-filter: blur(8px) saturate(1.3);
+      }
+      .glass-layer-floating {
+        backdrop-filter: blur(12px) saturate(1.4);
+        -webkit-backdrop-filter: blur(12px) saturate(1.4);
+      }
+      .glass-layer-matte {
+        backdrop-filter: blur(6px) saturate(1.15);
+        -webkit-backdrop-filter: blur(6px) saturate(1.15);
+      }
+    }
+  }
 }

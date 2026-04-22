@@ -294,7 +294,7 @@ export default function Dashboard() {
               <div
                 ref={tiltSchedule.ref}
                 style={tiltSchedule.style}
-                className="dash-tilt-card vt-dash-schedule"
+                className="dash-tilt-card vt-dash-schedule min-h-[400px]"
                 onMouseMove={tiltSchedule.onMouseMove}
                 onMouseLeave={tiltSchedule.onMouseLeave}
               >
@@ -314,7 +314,7 @@ export default function Dashboard() {
               <div
                 ref={tiltNews.ref}
                 style={tiltNews.style}
-                className="dash-tilt-card vt-dash-news"
+                className="dash-tilt-card vt-dash-news min-h-[400px]"
                 onMouseMove={tiltNews.onMouseMove}
                 onMouseLeave={tiltNews.onMouseLeave}
               >
@@ -334,7 +334,7 @@ export default function Dashboard() {
               <div
                 ref={tiltEvents.ref}
                 style={tiltEvents.style}
-                className="dash-tilt-card vt-dash-events"
+                className="dash-tilt-card vt-dash-events min-h-[400px]"
                 onMouseMove={tiltEvents.onMouseMove}
                 onMouseLeave={tiltEvents.onMouseLeave}
               >

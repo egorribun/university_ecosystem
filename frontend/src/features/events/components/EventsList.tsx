@@ -72,78 +72,83 @@ export const EventsList = ({
 
   const handleRetry = useCallback(() => refreshEvents(), [refreshEvents])
 
-  /* ── Loading skeleton ── */
-  if (isInitialLoading) {
-    return (
-      <div
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"
-        aria-busy="true"
-        aria-label={t("events:pageTitle")}
-      >
-        {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
-          <div key={`event-skel-${i}`}>
-            <EventCardSkeleton />
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  /* ── Empty state ── */
-  if (showEmptyState) {
-    return (
-      <div className="w-full flex justify-center py-20">
-        {!isOnline ? (
-          <OfflineFallback onRetry={handleRetry} />
-        ) : (
-          <EmptyState
-            icon={<EventIcon className="h-8 w-8" />}
-            title={t("events:states.empty")}
-            description={
-              tab === "my"
-                ? t("events:states.emptyHint.my")
-                : tab === "active"
-                  ? t("events:states.emptyHint.active")
-                  : t("events:states.emptyHint.archive")
-            }
-            action={
-              tab !== "my" ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onTabChange(tab === "active" ? "archive" : "active")}
-                  className="text-brand hover:bg-brand/(--opacity-subtle)"
-                >
-                  {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
-                </Button>
-              ) : isAdmin ? (
-                <Button
-                  id="events-empty-add-btn"
-                  variant="glass"
-                  size="lg"
-                  onClick={onAddClick}
-                  className="px-6"
-                >
-                  {t("events:actions.openCreate")}
-                </Button>
-              ) : undefined
-            }
-          />
-        )}
-      </div>
-    )
-  }
-
   /* ── Card grid ── */
   const showRefetchBar = isFetching && !isInitialLoading && !isFetchingNextPage
 
+  /**
+   * Wave 116 polish — ALWAYS render the `<section id="events-tabpanel">`
+   * wrapper so `aria-controls="events-tabpanel"` on the EventsHeader tabs
+   * always resolves to a real element. Previously the loading + empty-state
+   * early returns rendered a plain `<div>` without the tabpanel id, which
+   * made Lighthouse `aria-valid-attr-value` fire (weight 10, dropping
+   * /events a11y to 0.95). All three variants (skeleton / empty state / card
+   * grid) now render INSIDE the same section wrapper.
+   */
   return (
     <section
       aria-label={t("events:pageTitle")}
       role="tabpanel"
-      id={`events-tabpanel-${tab}`}
+      id="events-tabpanel"
       aria-labelledby={`events-tab-${tab}`}
+      aria-busy={isInitialLoading || undefined}
     >
+      {/* ── Loading skeleton ── */}
+      {isInitialLoading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+          {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+            <div key={`event-skel-${i}`}>
+              <EventCardSkeleton />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Empty state (offline fallback or zero events) ── */}
+      {!isInitialLoading && showEmptyState && (
+        <div className="w-full flex justify-center py-20">
+          {!isOnline ? (
+            <OfflineFallback onRetry={handleRetry} />
+          ) : (
+            <EmptyState
+              icon={<EventIcon className="h-8 w-8" />}
+              title={t("events:states.empty")}
+              description={
+                tab === "my"
+                  ? t("events:states.emptyHint.my")
+                  : tab === "active"
+                    ? t("events:states.emptyHint.active")
+                    : t("events:states.emptyHint.archive")
+              }
+              action={
+                tab !== "my" ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onTabChange(tab === "active" ? "archive" : "active")}
+                    className="text-brand hover:bg-brand/(--opacity-subtle)"
+                  >
+                    {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
+                  </Button>
+                ) : isAdmin ? (
+                  <Button
+                    id="events-empty-add-btn"
+                    variant="glass"
+                    size="lg"
+                    onClick={onAddClick}
+                    className="px-6"
+                  >
+                    {t("events:actions.openCreate")}
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Card grid (populated feed) ── */}
+      {!isInitialLoading && !showEmptyState && (
+        <>
       {/* Refetch indicator */}
       {showRefetchBar && (
         <div
@@ -184,8 +189,10 @@ export const EventsList = ({
           ))}
       </div>
 
-      {/* Infinite scroll sentinel */}
-      {hasNextPage && <div ref={sentinelRef} className="h-1" aria-hidden="true" />}
+          {/* Infinite scroll sentinel */}
+          {hasNextPage && <div ref={sentinelRef} className="h-1" aria-hidden="true" />}
+        </>
+      )}
     </section>
   )
 }

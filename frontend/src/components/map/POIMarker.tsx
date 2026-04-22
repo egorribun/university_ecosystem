@@ -5,9 +5,11 @@
  * Wave 107 — replace hardcoded hex with CSS tokens.
  */
 
-import { useState } from "react"
+import { useRef, useState } from "react"
+import type { MarkerInstance } from "react-map-gl/maplibre"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
+import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
 import {
   TrainFront,
   Bus,
@@ -56,6 +58,9 @@ interface POIMarkerProps {
 export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMarkerProps) {
   const { t } = useTranslation("map")
   const [isHovered, setIsHovered] = useState(false)
+  const markerRef = useRef<MarkerInstance | null>(null)
+  // Wave 116 polish — see BuildingMarker + utils/stripMaplibreMarkerChrome.ts.
+  useStripMaplibreMarkerChrome(markerRef)
 
   const colorVar = poiColorVar(poi.type)
   const Icon = ICON_MAP[poi.icon] ?? MapPin
@@ -69,13 +74,10 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
   return (
     <>
       <Marker
+        ref={markerRef}
         longitude={poi.coords[1]}
         latitude={poi.coords[0]}
         anchor="center"
-        onClick={(e) => {
-          e.originalEvent.stopPropagation()
-          onPopupOpen?.()
-        }}
       >
         <div
           role="button"
@@ -87,6 +89,10 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
           } as React.CSSProperties}
           onPointerEnter={() => setIsHovered(true)}
           onPointerLeave={() => setIsHovered(false)}
+          onClick={(e) => {
+            e.stopPropagation()
+            onPopupOpen?.()
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()

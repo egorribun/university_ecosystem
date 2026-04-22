@@ -88,6 +88,7 @@ export function AttendanceCard({
             </div>
             <ProgressBar
               value={progressAttendance}
+              ariaLabel={`${t("activity:sections.attendance.title")}: ${attendancePctAnimated}%`}
               className="h-2 rounded-full"
               barClassName="bg-[var(--activity-present-accent)] rounded-full transition-[width] duration-slow"
             />
