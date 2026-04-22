@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import "vitest"
 import "@testing-library/jest-dom/vitest"
+import "fake-indexeddb/auto"
 import { TextEncoder, TextDecoder } from "node:util"
 import { webcrypto } from "node:crypto"
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
@@ -118,6 +119,10 @@ if (typeof Element !== "undefined") {
   }
 }
 
+if (typeof window !== "undefined") {
+  window.scrollTo = vi.fn()
+}
+
 vi.mock("qrcode.react", () => ({
   QRCodeSVG: () => null,
 }))
@@ -150,7 +155,7 @@ try {
   const dirname = path.dirname(fileURLToPath(import.meta.url))
   const sanitizerWasmPath = path.resolve(dirname, "../wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm")
   const sanitizerWasmBuffer = fs.readFileSync(sanitizerWasmPath)
-  initSanitizer(sanitizerWasmBuffer)
+  initSanitizer({ module: sanitizerWasmBuffer })
 } catch (e) {
   console.error("Failed to initialize WASM modules for tests:", e)
 }
@@ -179,7 +184,12 @@ if (typeof HTMLCanvasElement !== "undefined") {
   )
 }
 
-const IGNORED_WARNINGS = ["Warning:"]
+const IGNORED_WARNINGS = [
+  "Warning:",
+  "The current testing environment is not configured to support act(...)",
+  "You are trying to animate backgroundColor from",
+  "An update to",
+]
 
 const originalConsoleError = console.error
 const originalConsoleWarn = console.warn
