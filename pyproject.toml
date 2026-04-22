@@ -145,7 +145,7 @@ warn_return_any = true
 
 # Per-module overrides for gradual adoption
 [[tool.mypy.overrides]]
-module = ["alembic.*", "tests.*", "pact.*"]
+module = ["alembic.*"]
 disallow_untyped_defs = false
 check_untyped_defs = false
 
@@ -193,7 +193,7 @@ warn_unused_ignores = false
 # pre-commit mypy lacks minio stubs / full socket types; CI mypy has all deps installed.
 
 [[tool.mypy.overrides]]
-module = ["app.services.chat_service", "app.services.webpush"]
+module = ["app.services.webpush"]
 disallow_untyped_defs = false
 # TD-20-06: Large service modules with complex async callback signatures.
 # Gradual typing in progress — aim to remove this by end of Q2 2026.
@@ -240,7 +240,6 @@ module = [
   "maxminddb.*",
   "authzed.*",
   "grpcutil.*",
-  "grpclib.*",
   "pyroscope",
   "magic",
   "rust_ext",
@@ -251,7 +250,6 @@ module = [
   "grpc.*",
   "grpc",
   "clamd",
-  "pact.*",
   "elasticsearch.*",
   "structlog.*",
 ]
