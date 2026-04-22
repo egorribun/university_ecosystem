@@ -292,8 +292,11 @@ export default defineConfig(({ mode }) => {
       // so browsers and attackers cannot download the full TypeScript source.
       sourcemap: mode === "production" ? "hidden" : true,
       chunkSizeWarningLimit: 768,
-      // Vite 8: rollupOptions → rolldownOptions (Rolldown replaces Rollup)
       rolldownOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === "EVAL" && warning.id?.includes("@protobufjs/inquire")) return
+          warn(warning)
+        },
         output: {
           // Vite 8: object-form manualChunks removed — use function form
           manualChunks(id: string) {
@@ -327,6 +330,10 @@ export default defineConfig(({ mode }) => {
               return "vendor-i18n"
             if (id.includes("node_modules/axios")) return "vendor-http"
             if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
+            // Address large chunks identified in LHCI build warnings
+            if (id.includes("node_modules/maplibre-gl")) return "vendor-map"
+            if (id.includes("node_modules/jspdf") || id.includes("node_modules/html2canvas") || id.includes("node_modules/dompurify")) return "vendor-pdf"
+            if (id.includes("node_modules/protobufjs")) return "vendor-protobuf"
           },
         },
       },

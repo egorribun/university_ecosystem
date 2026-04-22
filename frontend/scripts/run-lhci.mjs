@@ -196,12 +196,20 @@ async function run() {
   // them to the Lighthouse CLI subprocess (shell: true is required for
   // `npx` resolution on Windows).
   const lhciEnv = { MSYS_NO_PATHCONV: "1" }
-  await runCommand(
-    "npx",
-    ["-y", "@lhci/cli@^0.15.1", "collect", `--config=${tempConfigPath}`],
-    "lhci collect",
-    lhciEnv
-  )
+  try {
+    await runCommand(
+      "npx",
+      ["-y", "@lhci/cli@^0.15.1", "collect", `--config=${tempConfigPath}`],
+      "lhci collect",
+      lhciEnv
+    )
+  } catch (error) {
+    if (process.platform === "win32" && error.message.includes("code 1")) {
+      console.warn("lhci collect exited with code 1. This is often caused by an EPERM error when chrome-launcher attempts to clean up its temp profile on Windows. Proceeding to assert phase...")
+    } else {
+      throw error
+    }
+  }
   await runCommand(
     "npx",
     ["-y", "@lhci/cli@^0.15.1", "assert", `--config=${tempConfigPath}`],
@@ -209,7 +217,7 @@ async function run() {
     lhciEnv
   )
 
-  await rm(tempDir, { recursive: true, force: true })
+  await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 })
 }
 
 run().catch((error) => {
