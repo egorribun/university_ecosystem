@@ -64,14 +64,13 @@ function broadcastUpdate() {
  * Persisted in localStorage with cross-tab sync via BroadcastChannel.
  */
 export function useBookmarks() {
-  useEffect(() => { ensureChannel() }, [])
+  useEffect(() => {
+    ensureChannel()
+  }, [])
 
   const bookmarks = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
-  const isBookmarked = useCallback(
-    (id: string) => bookmarks.has(id),
-    [bookmarks]
-  )
+  const isBookmarked = useCallback((id: string) => bookmarks.has(id), [bookmarks])
 
   const toggleBookmark = useCallback((id: string) => {
     const next = new Set(bookmarkSet)

@@ -44,7 +44,14 @@ export function ScheduleSettingsPanel({
   const weekOffset = useWeekOffset()
   const hiddenWeekdays = useHiddenWeekdays()
   const { showPastLessons, compactMode } = useScheduleDisplayPreferences()
-  const { toggleWeekday, togglePastLessons, toggleCompactMode, nextWeek, previousWeek, goToCurrentWeek } = useScheduleUIActions()
+  const {
+    toggleWeekday,
+    togglePastLessons,
+    toggleCompactMode,
+    nextWeek,
+    previousWeek,
+    goToCurrentWeek,
+  } = useScheduleUIActions()
 
   const handleClose = useCallback(() => onClose(), [onClose])
 
@@ -80,7 +87,9 @@ export function ScheduleSettingsPanel({
             initial={prefersReduced ? false : { scale: 0.95, y: 8, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={prefersReduced ? { opacity: 0 } : { scale: 0.95, y: 8, opacity: 0 }}
-            transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
+            transition={
+              prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }
+            }
           >
             {/* ── Header ──────────────────────────────────── */}
             <div className="relative z-surface px-6 pt-5 pb-4">
@@ -180,7 +189,11 @@ export function ScheduleSettingsPanel({
                         <motion.span
                           layoutId="settings-parity-pill"
                           className="absolute inset-0 rounded-xl bg-brand shadow-glow-primary"
-                          transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
+                          transition={
+                            prefersReduced
+                              ? { duration: 0 }
+                              : { type: "spring", stiffness: 400, damping: 30 }
+                          }
                         />
                       )}
                       <span className="relative z-surface">{t(`schedule:parity.${p}`)}</span>
@@ -223,7 +236,11 @@ export function ScheduleSettingsPanel({
                         aria-pressed={!isHidden}
                       >
                         {isHidden ? (
-                          <HiddenIcon size={16} className="text-text-muted-subtle" aria-hidden="true" />
+                          <HiddenIcon
+                            size={16}
+                            className="text-text-muted-subtle"
+                            aria-hidden="true"
+                          />
                         ) : (
                           <VisibleIcon size={16} className="text-brand" aria-hidden="true" />
                         )}

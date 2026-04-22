@@ -57,16 +57,17 @@
     --news-sticky-blur: 16px;
 
     /* ── Featured card gradient mesh ───────────────────── */
-    --news-featured-mesh: radial-gradient(
-      ellipse at 20% 50%,
-      color-mix(in srgb, var(--color-sky-400) 8%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 20%,
-      color-mix(in srgb, var(--color-indigo-400) 6%, transparent) 0%,
-      transparent 50%
-    );
+    --news-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-sky-400) 8%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-indigo-400) 6%, transparent) 0%,
+        transparent 50%
+      );
   }
 
   /* Dark mode overrides for code blocks / tables */
@@ -112,16 +113,17 @@
     --cat-slate-text: var(--color-slate-400);
 
     /* ── Featured card gradient mesh (dark — brighter) ─── */
-    --news-featured-mesh: radial-gradient(
-      ellipse at 20% 50%,
-      color-mix(in srgb, var(--color-sky-400) 12%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 20%,
-      color-mix(in srgb, var(--color-indigo-400) 10%, transparent) 0%,
-      transparent 50%
-    );
+    --news-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-sky-400) 12%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-indigo-400) 10%, transparent) 0%,
+        transparent 50%
+      );
   }
 
   /* ═══════════════════════════════════════════════════════
@@ -210,8 +212,12 @@
     padding-inline-start: 1.5em;
   }
 
-  .news-article-body ul { list-style-type: disc; }
-  .news-article-body ol { list-style-type: decimal; }
+  .news-article-body ul {
+    list-style-type: disc;
+  }
+  .news-article-body ol {
+    list-style-type: decimal;
+  }
 
   .news-article-body li {
     margin-block: 0.35em;
@@ -294,12 +300,7 @@
     border: none;
     height: 1px;
     margin-block: 2.5em;
-    background: linear-gradient(
-      to right,
-      transparent 5%,
-      var(--glass-border) 50%,
-      transparent 95%
-    );
+    background: linear-gradient(to right, transparent 5%, var(--glass-border) 50%, transparent 95%);
   }
 
   /* Strong / em */
@@ -369,8 +370,12 @@
 }
 
 @keyframes news-reading-progress {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -419,19 +424,31 @@
 }
 
 @container news-card (max-width: 280px) {
-  .news-card-title { font-size: 0.875rem; }
-  .news-card-preview { display: none; }
-  .news-card-footer { gap: 0.5rem; }
+  .news-card-title {
+    font-size: 0.875rem;
+  }
+  .news-card-preview {
+    display: none;
+  }
+  .news-card-footer {
+    gap: 0.5rem;
+  }
 }
 
 /* Intermediate — preview visible but clamped */
 @container news-card (min-width: 281px) and (max-width: 399px) {
-  .news-card-title { font-size: 1rem; }
-  .news-card-preview { -webkit-line-clamp: 2; }
+  .news-card-title {
+    font-size: 1rem;
+  }
+  .news-card-preview {
+    -webkit-line-clamp: 2;
+  }
 }
 
 @container news-card (min-width: 400px) {
-  .news-card-title { font-size: 1.25rem; }
+  .news-card-title {
+    font-size: 1.25rem;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -447,7 +464,9 @@
     0 1px 3px rgb(0 0 0 / 0.12),
     0 0 0 1px rgb(0 0 0 / 0.06),
     inset 0 1px 0 rgb(255 255 255 / 0.6);
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
 }
 
 .dark .news-badge-matte {
@@ -464,10 +483,18 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes news-heart-celebrate {
-  0% { transform: scale(1); }
-  30% { transform: scale(1.35); }
-  60% { transform: scale(0.9); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.35);
+  }
+  60% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .news-heart-celebrate {

@@ -53,13 +53,15 @@ const RULES: CategoryRule[] = [
     id: "social",
     labelKey: "events:categories.social",
     color: "sky",
-    patterns: /встреча|meetup|вечер|party|концерт|concert|фестиваль|festival|выставка|exhibition|праздник|celebration/i,
+    patterns:
+      /встреча|meetup|вечер|party|концерт|concert|фестиваль|festival|выставка|exhibition|праздник|celebration/i,
   },
   {
     id: "sport",
     labelKey: "events:categories.sport",
     color: "rose",
-    patterns: /спорт|sport|футбол|football|баскетбол|basketball|турнир|tournament|соревнован|competition|забег|race/i,
+    patterns:
+      /спорт|sport|футбол|football|баскетбол|basketball|турнир|tournament|соревнован|competition|забег|race/i,
   },
 ]
 

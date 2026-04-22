@@ -42,10 +42,18 @@ export function NewsQuickView({
         <motion.div
           role="tooltip"
           aria-hidden="true"
-          initial={prefersReduced ? false : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }}
+          initial={
+            prefersReduced ? false : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }
+          }
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 }}
-          transition={prefersReduced ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          exit={
+            prefersReduced
+              ? { opacity: 0 }
+              : { opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 }
+          }
+          transition={
+            prefersReduced ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }
+          }
           className={`absolute left-0 right-0 z-floating pointer-events-none ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}
         >
           <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/(--opacity-soft) max-w-[24rem] mx-auto">
@@ -61,9 +69,7 @@ export function NewsQuickView({
             </div>
 
             {/* Title */}
-            <h4 className="text-sm font-bold text-text-primary line-clamp-2 mb-1.5">
-              {title}
-            </h4>
+            <h4 className="text-sm font-bold text-text-primary line-clamp-2 mb-1.5">{title}</h4>
 
             {/* Extended preview */}
             <p className="text-xs leading-relaxed text-(--text-secondary) line-clamp-4 mb-3">

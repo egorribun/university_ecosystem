@@ -231,7 +231,9 @@
     --orb-dx: 0px;
     --orb-dy: 0px;
     translate: var(--orb-dx) var(--orb-dy);
-    transition: translate 0.8s var(--ease-premium), animation-duration 0.6s var(--ease-premium);
+    transition:
+      translate 0.8s var(--ease-premium),
+      animation-duration 0.6s var(--ease-premium);
   }
 
   /* When parent card is hovered, orbs speed up — doubled-class specificity (no !important) */
@@ -278,6 +280,5 @@
       var(--color-sky-400) var(--opacity-dim),
       transparent
     );
-
   }
 }

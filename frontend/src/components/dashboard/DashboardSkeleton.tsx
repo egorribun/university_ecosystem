@@ -36,7 +36,10 @@ export function DashboardSkeleton() {
           <Skeleton width="60%" height="1.5rem" className="mb-5" />
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3">
+              <div
+                key={i}
+                className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3"
+              >
                 <div className="flex items-center gap-2">
                   <Skeleton width="5rem" height="1.125rem" />
                   <Skeleton width="7.5rem" height="1.25rem" />
@@ -52,7 +55,10 @@ export function DashboardSkeleton() {
           <Skeleton width="50%" height="1.5rem" className="mb-5" />
           <div className="space-y-3">
             {Array.from({ length: 2 }).map((_, i) => (
-              <div key={i} className="flex items-start gap-4 rounded-xl bg-(--bg-matte-list) px-4 py-3">
+              <div
+                key={i}
+                className="flex items-start gap-4 rounded-xl bg-(--bg-matte-list) px-4 py-3"
+              >
                 <Skeleton width="2.75rem" height="2.75rem" rounded="9999rem" className="shrink-0" />
                 <div className="flex-1 space-y-2">
                   <Skeleton width="90%" height="1rem" />
@@ -72,7 +78,10 @@ export function DashboardSkeleton() {
           </div>
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3">
+              <div
+                key={i}
+                className="flex flex-col gap-2 rounded-xl bg-(--bg-matte-list) px-4 py-3"
+              >
                 <Skeleton width="80%" height="1rem" />
                 <div className="flex items-center gap-2">
                   <Skeleton width="7.5rem" height="0.875rem" />

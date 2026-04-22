@@ -21,7 +21,7 @@ export function useActivityComparative(
   attendance: AttendanceStats | null | undefined,
   grades: GradeStats | null | undefined,
   participation: ParticipationStats | null | undefined,
-  period: PeriodKey,
+  period: PeriodKey
 ): ComparativeStats {
   // RC-78-01: extract to primitives for React Compiler
   const attRecent = attendance?.recent
@@ -42,7 +42,10 @@ export function useActivityComparative(
     }
 
     // Attendance: % in current half vs previous half
-    let attCurPresent = 0, attCurTotal = 0, attPrevPresent = 0, attPrevTotal = 0
+    let attCurPresent = 0,
+      attCurTotal = 0,
+      attPrevPresent = 0,
+      attPrevTotal = 0
     for (const item of attRecent ?? []) {
       if (isCurrentHalf(item.date)) {
         attCurTotal++
@@ -56,7 +59,10 @@ export function useActivityComparative(
     const attPrevPct = attPrevTotal > 0 ? (attPrevPresent / attPrevTotal) * 100 : 0
 
     // Grades: avg score in current half vs previous half
-    let grdCurSum = 0, grdCurCount = 0, grdPrevSum = 0, grdPrevCount = 0
+    let grdCurSum = 0,
+      grdCurCount = 0,
+      grdPrevSum = 0,
+      grdPrevCount = 0
     for (const item of grdRecent ?? []) {
       if (isCurrentHalf(item.date)) {
         grdCurSum += item.score
@@ -70,7 +76,8 @@ export function useActivityComparative(
     const grdPrevAvg = grdPrevCount > 0 ? grdPrevSum / grdPrevCount : 0
 
     // Participation: event count in current half vs previous half
-    let prtCurCount = 0, prtPrevCount = 0
+    let prtCurCount = 0,
+      prtPrevCount = 0
     for (const item of prtRecent ?? []) {
       if (isCurrentHalf(item.date)) prtCurCount++
       else prtPrevCount++
@@ -79,12 +86,25 @@ export function useActivityComparative(
     const computeDelta = (current: number, previous: number) =>
       previous > 0 ? ((current - previous) / previous) * 100 : current > 0 ? 100 : 0
 
-    const hasData = (attRecent?.length ?? 0) > 0 || (grdRecent?.length ?? 0) > 0 || (prtRecent?.length ?? 0) > 0
+    const hasData =
+      (attRecent?.length ?? 0) > 0 || (grdRecent?.length ?? 0) > 0 || (prtRecent?.length ?? 0) > 0
 
     return {
-      attendance: { current: attCurPct, previous: attPrevPct, delta: computeDelta(attCurPct, attPrevPct) },
-      grades: { current: grdCurAvg, previous: grdPrevAvg, delta: computeDelta(grdCurAvg, grdPrevAvg) },
-      participation: { current: prtCurCount, previous: prtPrevCount, delta: computeDelta(prtCurCount, prtPrevCount) },
+      attendance: {
+        current: attCurPct,
+        previous: attPrevPct,
+        delta: computeDelta(attCurPct, attPrevPct),
+      },
+      grades: {
+        current: grdCurAvg,
+        previous: grdPrevAvg,
+        delta: computeDelta(grdCurAvg, grdPrevAvg),
+      },
+      participation: {
+        current: prtCurCount,
+        previous: prtPrevCount,
+        delta: computeDelta(prtCurCount, prtPrevCount),
+      },
       hasData,
     }
   }, [attRecent, grdRecent, prtRecent, period])

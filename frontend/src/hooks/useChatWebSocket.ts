@@ -216,7 +216,7 @@ export function useChatWebSocket({
         const resp = await api.post<{ ticket: string; expires_in: number }>(
           "/ws/ticket",
           undefined,
-          { signal: ticketController.signal, baseURL: "" },
+          { signal: ticketController.signal, baseURL: "" }
         )
         ticket = resp.data.ticket
       } catch (e: unknown) {

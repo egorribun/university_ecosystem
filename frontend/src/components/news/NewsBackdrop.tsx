@@ -18,8 +18,7 @@ export function NewsBackdrop({ isNarrow, prefersReducedMotion = false }: NewsBac
         style={{
           width: isNarrow ? "100%" : "85%",
           height: isNarrow ? "260px" : "420px",
-          background:
-            "radial-gradient(ellipse at 50% 0%, var(--news-hero-orb), transparent 72%)",
+          background: "radial-gradient(ellipse at 50% 0%, var(--news-hero-orb), transparent 72%)",
           filter: prefersReducedMotion ? "none" : "blur(40px)",
         }}
       />
@@ -29,8 +28,7 @@ export function NewsBackdrop({ isNarrow, prefersReducedMotion = false }: NewsBac
         <div
           className="absolute right-[8%] top-[4%] h-52 w-52 rounded-full opacity-soft"
           style={{
-            background:
-              "radial-gradient(circle, var(--news-hero-highlight), transparent)",
+            background: "radial-gradient(circle, var(--news-hero-highlight), transparent)",
             filter: "blur(60px)",
           }}
         />

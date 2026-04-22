@@ -310,9 +310,15 @@
 /* ═══════════════════════════════════════════════ */
 
 /* Dashboard cards get unique view-transition-name for morph effect */
-.vt-dash-schedule { view-transition-name: dash-schedule; }
-.vt-dash-news { view-transition-name: dash-news; }
-.vt-dash-events { view-transition-name: dash-events; }
+.vt-dash-schedule {
+  view-transition-name: dash-schedule;
+}
+.vt-dash-news {
+  view-transition-name: dash-news;
+}
+.vt-dash-events {
+  view-transition-name: dash-events;
+}
 
 ::view-transition-old(dash-schedule),
 ::view-transition-old(dash-news),
@@ -365,7 +371,8 @@
 }
 
 @keyframes border-glow-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow:
       0 0 0 1px color-mix(in srgb, var(--primary-main) 25%, transparent),
       0 0 16px -2px color-mix(in srgb, var(--primary-main) 20%, transparent),

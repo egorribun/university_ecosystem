@@ -58,10 +58,7 @@ function RelatedEventCard({ event, language }: { event: Event; language: "en" | 
   )
 
   const dateLabel = useMemo(
-    () =>
-      event.starts_at
-        ? formatDate(event.starts_at, { day: "numeric", month: "short" })
-        : "",
+    () => (event.starts_at ? formatDate(event.starts_at, { day: "numeric", month: "short" }) : ""),
     [event.starts_at]
   )
 
@@ -97,9 +94,7 @@ function RelatedEventCard({ event, language }: { event: Event; language: "en" | 
         <h3 className="text-sm font-bold text-text-primary line-clamp-2 leading-snug">
           {localizedTitle}
         </h3>
-        {dateLabel && (
-          <span className="text-[11px] text-(--text-secondary)">{dateLabel}</span>
-        )}
+        {dateLabel && <span className="text-[11px] text-(--text-secondary)">{dateLabel}</span>}
         <span className="mt-auto flex items-center gap-1 text-[11px] font-semibold text-brand opacity-0 group-hover:opacity-100 transition-opacity">
           {t("events:quickView.viewDetails")}
           <ArrowRight size={11} />

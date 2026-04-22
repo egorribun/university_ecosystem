@@ -64,11 +64,15 @@ export function DashboardHero({
             )}
             style={{
               background: "var(--hero-card-bg)",
-              boxShadow: "0 1px 3px color-mix(in srgb, black 8%, transparent), 0 4px 16px color-mix(in srgb, black 6%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent), 0 8px 48px color-mix(in srgb, var(--hero-grad-start) 18%, transparent)",
+              boxShadow:
+                "0 1px 3px color-mix(in srgb, black 8%, transparent), 0 4px 16px color-mix(in srgb, black 6%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent), 0 8px 48px color-mix(in srgb, var(--hero-grad-start) 18%, transparent)",
             }}
           >
             {/* Wave 54: Decorative clip wrapper — contains shimmer/flare overflow without clipping stories scroll (FIX-54-01) */}
-            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]" aria-hidden="true">
+            <div
+              className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
+              aria-hidden="true"
+            >
               {/* Blue accent line at top */}
               <span
                 className="absolute inset-x-[20%] top-0 z-10 h-px"
@@ -77,9 +81,7 @@ export function DashboardHero({
 
               {/* Shimmer on hover */}
               {showHeaderMotion && (
-                <span
-                  className="absolute -inset-y-24 -left-1 w-[170%] skew-x-[-18deg] bg-linear-to-r from-transparent via-white/(--opacity-dim) to-transparent opacity-0 transition-all duration-slower ease-out group-hover:translate-x-[35%] group-hover:opacity-soft"
-                />
+                <span className="absolute -inset-y-24 -left-1 w-[170%] skew-x-[-18deg] bg-linear-to-r from-transparent via-white/(--opacity-dim) to-transparent opacity-0 transition-all duration-slower ease-out group-hover:translate-x-[35%] group-hover:opacity-soft" />
               )}
 
               {/* Decorative flare — top right corner glow */}
@@ -134,7 +136,12 @@ export function DashboardHero({
                   >
                     <span className="flex items-baseline gap-1.5 font-mono text-xl leading-none tabular-nums">
                       <span>{hh}</span>
-                      <span aria-hidden="true" className="inline-block animate-dash-colon-blink opacity-soft">:</span>
+                      <span
+                        aria-hidden="true"
+                        className="inline-block animate-dash-colon-blink opacity-soft"
+                      >
+                        :
+                      </span>
                       <span>{mm}</span>
                     </span>
                   </Badge>
@@ -142,15 +149,11 @@ export function DashboardHero({
                     {t("dashboard:academicWeek", { week: weekNumber })}
                     {" · "}
                     <span className="text-brand">
-                      {parity === "even"
-                        ? t("dashboard:parityEven")
-                        : t("dashboard:parityOdd")}
+                      {parity === "even" ? t("dashboard:parityEven") : t("dashboard:parityOdd")}
                     </span>
                   </span>
                   <WeatherWidget className="shrink-0" />
-                  <span className="text-base font-medium opacity-heavy">
-                    {dateStr}
-                  </span>
+                  <span className="text-base font-medium opacity-heavy">{dateStr}</span>
                 </div>
               </div>
 

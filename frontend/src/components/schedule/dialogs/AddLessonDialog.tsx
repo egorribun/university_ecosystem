@@ -107,7 +107,10 @@ export function AddLessonDialog({
         <DialogContent className="space-y-5 pt-4">
           <div className="space-y-5" role="presentation">
             <div>
-              <label htmlFor="add-lesson-subject" className="mb-2 block text-sm font-semibold opacity-strong">
+              <label
+                htmlFor="add-lesson-subject"
+                className="mb-2 block text-sm font-semibold opacity-strong"
+              >
                 {t("schedule:form.subject")}
               </label>
               <Input
@@ -118,7 +121,10 @@ export function AddLessonDialog({
               />
             </div>
             <div>
-              <label htmlFor="add-lesson-teacher" className="mb-2 block text-sm font-semibold opacity-strong">
+              <label
+                htmlFor="add-lesson-teacher"
+                className="mb-2 block text-sm font-semibold opacity-strong"
+              >
                 {t("schedule:form.teacher")}
               </label>
               <Input
@@ -129,7 +135,10 @@ export function AddLessonDialog({
               />
             </div>
             <div>
-              <label htmlFor="add-lesson-room" className="mb-2 block text-sm font-semibold opacity-strong">
+              <label
+                htmlFor="add-lesson-room"
+                className="mb-2 block text-sm font-semibold opacity-strong"
+              >
                 {t("schedule:form.room")}
               </label>
               <Input
@@ -140,7 +149,10 @@ export function AddLessonDialog({
               />
             </div>
             <div>
-              <label htmlFor="add-lesson-type" className="mb-2 block text-sm font-semibold opacity-strong">
+              <label
+                htmlFor="add-lesson-type"
+                className="mb-2 block text-sm font-semibold opacity-strong"
+              >
                 {t("schedule:form.lessonType")}
               </label>
               <Select
@@ -153,7 +165,10 @@ export function AddLessonDialog({
             </div>
             <div className="flex gap-4">
               <div className="flex-1">
-                <label htmlFor="add-lesson-start-time" className="mb-2 block text-sm font-semibold opacity-strong">
+                <label
+                  htmlFor="add-lesson-start-time"
+                  className="mb-2 block text-sm font-semibold opacity-strong"
+                >
                   {t("schedule:form.startTime")}
                 </label>
                 <Input
@@ -167,7 +182,10 @@ export function AddLessonDialog({
                 />
               </div>
               <div className="flex-1">
-                <label htmlFor="add-lesson-end-time" className="mb-2 block text-sm font-semibold opacity-strong">
+                <label
+                  htmlFor="add-lesson-end-time"
+                  className="mb-2 block text-sm font-semibold opacity-strong"
+                >
                   {t("schedule:form.endTime")}
                 </label>
                 <Input
@@ -180,7 +198,10 @@ export function AddLessonDialog({
               </div>
             </div>
             <div>
-              <label htmlFor="add-lesson-parity" className="mb-2 block text-sm font-semibold opacity-strong">
+              <label
+                htmlFor="add-lesson-parity"
+                className="mb-2 block text-sm font-semibold opacity-strong"
+              >
                 {t("schedule:form.week")}
               </label>
               <Select

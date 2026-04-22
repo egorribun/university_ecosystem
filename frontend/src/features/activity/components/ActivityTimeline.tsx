@@ -1,12 +1,7 @@
 import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ActivityTimelineItem } from "./ActivityTimelineItem"
-import type {
-  AttendanceStats,
-  GradeStats,
-  ParticipationStats,
-  TimelineEntry,
-} from "../types"
+import type { AttendanceStats, GradeStats, ParticipationStats, TimelineEntry } from "../types"
 
 type ActivityTimelineProps = {
   attendance?: AttendanceStats | null
@@ -20,7 +15,12 @@ type ActivityTimelineProps = {
 const INITIAL_VISIBLE = 10
 const LOAD_MORE_COUNT = 10
 
-function getDateGroup(dateStr: string, todayStr: string, yesterdayStr: string, t: (key: string) => string): string {
+function getDateGroup(
+  dateStr: string,
+  todayStr: string,
+  yesterdayStr: string,
+  t: (key: string) => string
+): string {
   if (dateStr === todayStr) return t("activity:timeline.today")
   if (dateStr === yesterdayStr) return t("activity:timeline.yesterday")
   return dateStr
@@ -42,10 +42,21 @@ export function ActivityTimeline({
     const entries: TimelineEntry[] = []
 
     for (const item of attendance?.recent ?? []) {
-      entries.push({ type: "attendance", date: item.date, course: item.course, status: item.status })
+      entries.push({
+        type: "attendance",
+        date: item.date,
+        course: item.course,
+        status: item.status,
+      })
     }
     for (const item of grades?.recent ?? []) {
-      entries.push({ type: "grade", date: item.date, course: item.course, score: item.score, max: item.max })
+      entries.push({
+        type: "grade",
+        date: item.date,
+        course: item.course,
+        score: item.score,
+        max: item.max,
+      })
     }
     for (const item of participation?.recent ?? []) {
       entries.push({ type: "participation", date: item.date, title: item.title, role: item.role })
@@ -78,7 +89,8 @@ export function ActivityTimeline({
 
   // Stable key builder — avoids collision when same type+date (A15)
   const getEntryKey = useCallback((entry: TimelineEntry, index: number): string => {
-    if (entry.type === "attendance") return `att-${entry.date}-${entry.status}-${entry.course ?? ""}-${index}`
+    if (entry.type === "attendance")
+      return `att-${entry.date}-${entry.status}-${entry.course ?? ""}-${index}`
     if (entry.type === "grade") return `grd-${entry.date}-${entry.course}-${entry.score}-${index}`
     return `prt-${entry.date}-${entry.title}-${index}`
   }, [])

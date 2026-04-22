@@ -89,10 +89,7 @@ const EventCardHero = ({
     () => (startsAt ? formatRelativeTime(startsAt, locale) : ""),
     [startsAt, locale]
   )
-  const isoDate = useMemo(
-    () => (startsAt ? new Date(startsAt).toISOString() : ""),
-    [startsAt]
-  )
+  const isoDate = useMemo(() => (startsAt ? new Date(startsAt).toISOString() : ""), [startsAt])
 
   /* ── Parallax on scroll — image shifts 8% vertically ── */
   useEffect(() => {

@@ -63,10 +63,7 @@ export function AttendanceCard({
   }, [attendance?.percent, reduceMotion, progressAttendanceMv])
 
   return (
-    <CardShell
-      tone="success"
-      aria-label={t("activity:a11y.attendanceCard")}
-    >
+    <CardShell tone="success" aria-label={t("activity:a11y.attendanceCard")}>
       <SkeletonMorph loaded={hasInitiallyLoaded} skeleton={<AttendanceCardSkeleton />}>
         <div className="flex items-center gap-4">
           <AnimatedRing
@@ -74,7 +71,9 @@ export function AttendanceCard({
             size={ringSize}
             mode="percent"
             colorVar="var(--activity-present-accent)"
-            ariaLabel={t("activity:a11y.ringAttendance", { value: Math.round(attendance?.percent ?? 0) })}
+            ariaLabel={t("activity:a11y.ringAttendance", {
+              value: Math.round(attendance?.percent ?? 0),
+            })}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p className="text-micro font-semibold uppercase tracking-wider text-text-tertiary">

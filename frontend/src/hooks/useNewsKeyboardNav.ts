@@ -81,7 +81,9 @@ export function useNewsKeyboardNav(items: NewsItem[]) {
   }, [items, activeIndex, navigate, scrollToCard])
 
   // Reset when items change (filter/search)
-  useEffect(() => { setActiveIndex(-1) }, [items])
+  useEffect(() => {
+    setActiveIndex(-1)
+  }, [items])
 
   return { activeIndex, registerRef } as const
 }

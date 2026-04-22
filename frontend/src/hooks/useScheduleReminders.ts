@@ -89,7 +89,8 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
     if (prefs.minutesBefore === 0) return
     if (permission !== "granted") {
       if (prefs.minutesBefore > 0 && todayLessons.length > 0) {
-        if (import.meta.env.DEV) logError("[schedule:reminders] Reminders enabled but notification permission denied")
+        if (import.meta.env.DEV)
+          logError("[schedule:reminders] Reminders enabled but notification permission denied")
       }
       return
     }
@@ -116,11 +117,16 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       const timer = setTimeout(async () => {
         // Mark as reminded
         remindedRef.current.add(lesson.id)
-        set(`${REMINDED_TODAY_KEY}:${todayKey}`, [...remindedRef.current]).catch((err) => logError("[schedule:reminders]", err))
+        set(`${REMINDED_TODAY_KEY}:${todayKey}`, [...remindedRef.current]).catch((err) =>
+          logError("[schedule:reminders]", err)
+        )
 
         // Show notification
         const title = t("schedule:reminder.title", { defaultValue: "Lesson starting soon" })
-        const body = t("schedule:reminder.body", { subject: lesson.subject ?? "", minutes: lessonMinutesBefore })
+        const body = t("schedule:reminder.body", {
+          subject: lesson.subject ?? "",
+          minutes: lessonMinutesBefore,
+        })
         const options: NotificationOptions = {
           body,
           icon: "/assets/guu_logo.png",

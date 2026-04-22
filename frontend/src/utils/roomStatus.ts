@@ -30,11 +30,7 @@ function parseMinutes(time: string): number {
  * @param todayLessons  Today's lessons (may include other rooms)
  * @param now       Override for testability (defaults to current time)
  */
-export function getRoomStatus(
-  roomId: string,
-  todayLessons: LessonSlot[],
-  now?: Date,
-): RoomStatus {
+export function getRoomStatus(roomId: string, todayLessons: LessonSlot[], now?: Date): RoomStatus {
   const current = now ?? new Date()
   const nowMinutes = current.getHours() * 60 + current.getMinutes()
 
@@ -48,9 +44,10 @@ export function getRoomStatus(
     if (Number.isNaN(start) || Number.isNaN(end)) continue
 
     // Handle midnight wraparound (e.g. start=22:00, end=02:00)
-    const isBusy = end <= start
-      ? (nowMinutes >= start || nowMinutes < end)
-      : (start <= nowMinutes && nowMinutes < end)
+    const isBusy =
+      end <= start
+        ? nowMinutes >= start || nowMinutes < end
+        : start <= nowMinutes && nowMinutes < end
 
     if (isBusy) {
       return { status: "busy", busyUntil: lesson.end_time }

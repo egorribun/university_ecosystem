@@ -49,8 +49,20 @@ export function ActivityComparativeCard({
         </span>
       </div>
       <div className="mt-1.5 flex items-center gap-1">
-        {isPositive && <TrendingUp size={14} className="text-[var(--activity-positive-accent)]" aria-hidden="true" />}
-        {isNegative && <TrendingDown size={14} className="text-[var(--activity-negative-accent)]" aria-hidden="true" />}
+        {isPositive && (
+          <TrendingUp
+            size={14}
+            className="text-[var(--activity-positive-accent)]"
+            aria-hidden="true"
+          />
+        )}
+        {isNegative && (
+          <TrendingDown
+            size={14}
+            className="text-[var(--activity-negative-accent)]"
+            aria-hidden="true"
+          />
+        )}
         {isNeutral && <Minus size={14} className="text-text-tertiary" aria-hidden="true" />}
         <span
           className={cn(

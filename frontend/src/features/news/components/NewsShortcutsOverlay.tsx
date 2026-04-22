@@ -16,7 +16,8 @@ export function NewsShortcutsOverlay() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+        return
       if (target.closest("dialog, [role='dialog']")) return
 
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
@@ -39,7 +40,9 @@ export function NewsShortcutsOverlay() {
     <div
       className="fixed inset-0 z-overlay flex items-center justify-center bg-black/(--opacity-strong) backdrop-blur-sm"
       onClick={() => setOpen(false)}
-      onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setOpen(false)
+      }}
       role="dialog"
       aria-modal="true"
       aria-label={t("news:keyboard.overlayTitle")}

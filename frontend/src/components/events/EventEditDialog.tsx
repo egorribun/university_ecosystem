@@ -111,10 +111,11 @@ export function EventEditDialog({
     >
       <div className="space-y-4">
         <div>
-          <label htmlFor={`${baseId}-title`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
-            {language === "en"
-              ? t("events:form.title_en")
-              : t("events:form.title")}
+          <label
+            htmlFor={`${baseId}-title`}
+            className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy"
+          >
+            {language === "en" ? t("events:form.title_en") : t("events:form.title")}
           </label>
           <input
             id={`${baseId}-title`}
@@ -125,10 +126,11 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label htmlFor={`${baseId}-desc`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
-            {language === "en"
-              ? t("events:form.description_en")
-              : t("events:form.description")}
+          <label
+            htmlFor={`${baseId}-desc`}
+            className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy"
+          >
+            {language === "en" ? t("events:form.description_en") : t("events:form.description")}
           </label>
           <textarea
             id={`${baseId}-desc`}
@@ -139,10 +141,11 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label htmlFor={`${baseId}-type`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
-            {language === "en"
-              ? t("events:form.type_en")
-              : t("events:form.type")}
+          <label
+            htmlFor={`${baseId}-type`}
+            className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy"
+          >
+            {language === "en" ? t("events:form.type_en") : t("events:form.type")}
           </label>
           <input
             id={`${baseId}-type`}
@@ -153,10 +156,11 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label htmlFor={`${baseId}-loc`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
-            {language === "en"
-              ? t("events:form.location_en")
-              : t("events:form.location")}
+          <label
+            htmlFor={`${baseId}-loc`}
+            className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy"
+          >
+            {language === "en" ? t("events:form.location_en") : t("events:form.location")}
           </label>
           <input
             id={`${baseId}-loc`}
@@ -167,7 +171,10 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label htmlFor={`${baseId}-start`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label
+            htmlFor={`${baseId}-start`}
+            className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy"
+          >
             {t("events:form.start")}
           </label>
           <input
@@ -179,7 +186,10 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label htmlFor={`${baseId}-end`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label
+            htmlFor={`${baseId}-end`}
+            className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy"
+          >
             {t("events:form.end")}
           </label>
           <input
@@ -196,7 +206,10 @@ export function EventEditDialog({
           )}
         </div>
         <div>
-          <label htmlFor={`${baseId}-speaker`} className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
+          <label
+            htmlFor={`${baseId}-speaker`}
+            className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy"
+          >
             {t("events:form.speaker")}
           </label>
           <input

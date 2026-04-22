@@ -174,11 +174,7 @@ export const EventCardView: FC<EventCardViewProps> = ({
       />
 
       {/* Spotlight */}
-      <SpotlightOverlay
-        mouseX={spotlight.mouseX}
-        mouseY={spotlight.mouseY}
-        className="z-hide"
-      />
+      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
 
       {/* Admin menu */}
       {isAdmin && (

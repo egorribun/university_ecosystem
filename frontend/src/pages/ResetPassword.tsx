@@ -49,7 +49,10 @@ export default function ResetPassword() {
   const { t } = useTranslation(["auth", "common"])
   const routeParameters = useParams({ strict: false })
   const searchParameters = useSearch({ strict: false })
-  const token = (routeParameters as { token?: string }).token || (searchParameters as { token?: string }).token || ""
+  const token =
+    (routeParameters as { token?: string }).token ||
+    (searchParameters as { token?: string }).token ||
+    ""
 
   const [capsPass, setCapsPass] = useState(false)
   const [capsConfirm, setCapsConfirm] = useState(false)

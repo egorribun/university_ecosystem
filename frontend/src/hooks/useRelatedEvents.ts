@@ -11,11 +11,7 @@ import { inferEventCategory, type EventCategory } from "@/features/events/catego
  *
  * Pattern source: hooks/useRelatedNews.ts
  */
-export function useRelatedEvents(
-  currentId: string,
-  category: EventCategory,
-  limit = 3
-): Event[] {
+export function useRelatedEvents(currentId: string, category: EventCategory, limit = 3): Event[] {
   const queryClient = useQueryClient()
 
   return useMemo(() => {

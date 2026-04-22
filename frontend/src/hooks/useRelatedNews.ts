@@ -7,11 +7,7 @@ import { inferCategory, type NewsCategory } from "@/features/news/categories"
  * Returns related news articles from the cached query data.
  * Filters by matching inferred category, excluding current article.
  */
-export function useRelatedNews(
-  currentId: string,
-  category: NewsCategory,
-  limit = 3
-): NewsItem[] {
+export function useRelatedNews(currentId: string, category: NewsCategory, limit = 3): NewsItem[] {
   const queryClient = useQueryClient()
 
   return useMemo(() => {
@@ -40,9 +36,7 @@ export function useRelatedNews(
     }
 
     // Filter by same category, then by recent
-    const sameCategory = unique.filter(
-      (n) => inferCategory(n.title, n.content) === category
-    )
+    const sameCategory = unique.filter((n) => inferCategory(n.title, n.content) === category)
 
     // If not enough in same category, fill with recent from other categories
     if (sameCategory.length >= limit) return sameCategory.slice(0, limit)

@@ -112,16 +112,8 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
               label={t("weather.wind")}
               value={`${data.windSpeed} ${t("weather.speedUnit")}`}
             />
-            <StatCard
-              icon={Droplets}
-              label={t("weather.humidity")}
-              value={`${data.humidity}%`}
-            />
-            <StatCard
-              icon={Sun}
-              label={t("weather.uvIndex")}
-              value={`${data.uvIndex}`}
-            />
+            <StatCard icon={Droplets} label={t("weather.humidity")} value={`${data.humidity}%`} />
+            <StatCard icon={Sun} label={t("weather.uvIndex")} value={`${data.uvIndex}`} />
           </div>
 
           {/* Hourly forecast */}
@@ -144,7 +136,15 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
 }
 
 /* ── Stat card ── */
-function StatCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon
+  label: string
+  value: string
+}) {
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[var(--bg-surface-hover)]">
       <Icon className="h-3.5 w-3.5 text-[var(--map-accent-icon)] shrink-0" />
@@ -158,7 +158,8 @@ function StatCard({ icon: Icon, label, value }: { icon: LucideIcon; label: strin
 
 /* ── Hourly column ── */
 function HourlyColumn({ point, isDay }: { point: HourlyPoint; isDay: boolean }) {
-  const Icon = (point.condition === "clear" && !isDay) ? Moon : (CONDITION_ICONS[point.condition] ?? Sun)
+  const Icon =
+    point.condition === "clear" && !isDay ? Moon : (CONDITION_ICONS[point.condition] ?? Sun)
   return (
     <div className="map-weather-panel-hour">
       <span className="text-[9px] text-[var(--text-tertiary)]">
@@ -166,7 +167,8 @@ function HourlyColumn({ point, isDay }: { point: HourlyPoint; isDay: boolean }) 
       </span>
       <Icon className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
       <span className="text-[10px] font-bold text-text-primary">
-        {point.temperature > 0 ? "+" : ""}{point.temperature}°
+        {point.temperature > 0 ? "+" : ""}
+        {point.temperature}°
       </span>
     </div>
   )

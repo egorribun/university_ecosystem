@@ -78,7 +78,8 @@
 
     /* ── Period selector ──────────────────────────── */
     --activity-selector-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-100) 10%);
-    --activity-period-indicator-shadow: 0 2px 8px color-mix(in srgb, var(--activity-present-accent) 30%, transparent);
+    --activity-period-indicator-shadow: 0 2px 8px
+      color-mix(in srgb, var(--activity-present-accent) 30%, transparent);
 
     /* ── Timeline ─────────────────────────────────── */
     --activity-timeline-line: color-mix(in srgb, var(--color-slate-300) 50%, transparent);
@@ -88,7 +89,11 @@
     --activity-streak-accent: var(--color-emerald-500);
 
     /* ── Skeleton placeholders ────────────────────── */
-    --activity-skeleton-bg: color-mix(in srgb, var(--color-emerald-200) 20%, var(--color-slate-200) 80%);
+    --activity-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-emerald-200) 20%,
+      var(--color-slate-200) 80%
+    );
 
     /* ── Heatmap levels ──────────────────────────── */
     --activity-heat-0: color-mix(in srgb, var(--color-slate-200) 60%, var(--bg-surface) 40%);
@@ -107,16 +112,17 @@
     --activity-negative-accent: var(--color-rose-500);
 
     /* ── Featured mesh ────────────────────────────── */
-    --activity-featured-mesh: radial-gradient(
-      ellipse at 20% 50%,
-      color-mix(in srgb, var(--color-emerald-400) 8%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 20%,
-      color-mix(in srgb, var(--color-cyan-400) 6%, transparent) 0%,
-      transparent 50%
-    );
+    --activity-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-emerald-400) 8%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-cyan-400) 6%, transparent) 0%,
+        transparent 50%
+      );
   }
 
   /* ── Dark Theme Overrides ──────────────────────── */
@@ -144,7 +150,11 @@
     --activity-card-glow: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
     --activity-timeline-line: color-mix(in srgb, var(--color-slate-600) 50%, transparent);
     --activity-selector-bg: color-mix(in srgb, var(--bg-surface) 85%, var(--color-slate-700) 15%);
-    --activity-skeleton-bg: color-mix(in srgb, var(--color-emerald-900) 20%, var(--color-slate-700) 80%);
+    --activity-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-emerald-900) 20%,
+      var(--color-slate-700) 80%
+    );
     --activity-heat-0: color-mix(in srgb, var(--color-slate-700) 60%, var(--bg-surface) 40%);
     --activity-heat-1: color-mix(in srgb, var(--color-emerald-700) 35%, var(--bg-surface) 65%);
     --activity-heat-2: color-mix(in srgb, var(--color-emerald-600) 55%, var(--bg-surface) 45%);
@@ -153,16 +163,17 @@
     --activity-chart-grid: color-mix(in srgb, var(--color-slate-600) 30%, transparent);
     --activity-chart-label: var(--color-slate-400);
 
-    --activity-featured-mesh: radial-gradient(
-      ellipse at 20% 50%,
-      color-mix(in srgb, var(--color-emerald-400) 12%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 20%,
-      color-mix(in srgb, var(--color-cyan-400) 10%, transparent) 0%,
-      transparent 50%
-    );
+    --activity-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-emerald-400) 12%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-cyan-400) 10%, transparent) 0%,
+        transparent 50%
+      );
   }
 }
 
@@ -178,8 +189,9 @@
   border-radius: var(--radius-xl, 1rem);
   overflow: clip;
   position: relative;
-  transition: transform 0.2s var(--ease-premium, ease-out),
-              box-shadow 0.2s var(--ease-premium, ease-out);
+  transition:
+    transform 0.2s var(--ease-premium, ease-out),
+    box-shadow 0.2s var(--ease-premium, ease-out);
 }
 
 .activity-card-matte::before {
@@ -187,7 +199,11 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 3px;
-  background: linear-gradient(to right, var(--_accent, var(--activity-present-accent)), transparent 80%);
+  background: linear-gradient(
+    to right,
+    var(--_accent, var(--activity-present-accent)),
+    transparent 80%
+  );
   opacity: 0.7;
 }
 
@@ -317,7 +333,10 @@
 }
 
 @container activity-card (max-width: 280px) {
-  .activity-card-matte .flex { flex-direction: column; align-items: flex-start; }
+  .activity-card-matte .flex {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* Ring sizing handled by JS breakpoints (isLgCompact/isSm/isMd/isXl).
@@ -341,11 +360,17 @@
 }
 
 @container activity-heatmap (max-width: 480px) {
-  .activity-heatmap-cell { width: 10px; height: 10px; }
+  .activity-heatmap-cell {
+    width: 10px;
+    height: 10px;
+  }
 }
 
 @container activity-heatmap (max-width: 320px) {
-  .activity-heatmap-cell { width: 8px; height: 8px; }
+  .activity-heatmap-cell {
+    width: 8px;
+    height: 8px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -361,7 +386,9 @@
 }
 
 @media (min-width: 768px) {
-  .activity-chart-card { padding: 1.5rem; }
+  .activity-chart-card {
+    padding: 1.5rem;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -373,8 +400,9 @@
   box-shadow: var(--activity-card-shadow);
   border-radius: var(--radius-xl, 1rem);
   padding: 1rem 1.25rem;
-  transition: transform 0.2s var(--ease-premium, ease-out),
-              box-shadow 0.2s var(--ease-premium, ease-out);
+  transition:
+    transform 0.2s var(--ease-premium, ease-out),
+    box-shadow 0.2s var(--ease-premium, ease-out);
 }
 
 .activity-comparative-card:hover {
@@ -390,7 +418,9 @@
   background: var(--activity-card-bg);
   box-shadow: var(--activity-card-shadow);
   border-radius: var(--radius-lg, 0.75rem);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .activity-export-btn:hover {

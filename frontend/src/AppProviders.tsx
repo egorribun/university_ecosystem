@@ -21,9 +21,7 @@ function ProvidersInner({ children }: AppProvidersProps) {
         <AuthProvider>
           <WebSocketProvider>
             <MessengerProvider>
-              <ErrorBoundary>
-                {children}
-              </ErrorBoundary>
+              <ErrorBoundary>{children}</ErrorBoundary>
             </MessengerProvider>
           </WebSocketProvider>
         </AuthProvider>

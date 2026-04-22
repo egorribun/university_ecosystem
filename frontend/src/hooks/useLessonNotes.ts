@@ -52,7 +52,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
         }
       }, 300)
     },
-    [lessonId],
+    [lessonId]
   )
 
   // Clear note
@@ -96,7 +96,7 @@ export function useLessonNotesMap(lessonIds: string[]) {
       lessonIds.map(async (id) => {
         const stored = await get<LessonNote>(`${KEY_PREFIX}${id}`).catch(() => null)
         map.set(id, !!stored?.text?.trim())
-      }),
+      })
     ).then(() => setNotesMap(new Map(map)))
   }, [depKey]) // eslint-disable-line react-hooks/exhaustive-deps -- stable join key
 

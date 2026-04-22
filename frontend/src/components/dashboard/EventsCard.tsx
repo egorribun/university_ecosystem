@@ -103,7 +103,10 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
     >
       <div className="relative z-base space-y-5">
         <div className="relative z-base flex items-center justify-between gap-3">
-          <h2 className="font-extrabold text-text-primary" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>
+          <h2
+            className="font-extrabold text-text-primary"
+            style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}
+          >
             {t("dashboard:events.heading")}
           </h2>
           <Button
@@ -123,7 +126,10 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
         </div>
 
         {/* Scope toggle — segment control, inline-flex so it doesn't stretch */}
-        <div className="mb-4 inline-flex items-center gap-1 rounded-lg p-1" style={{ background: "var(--dash-btn-bg)" }}>
+        <div
+          className="mb-4 inline-flex items-center gap-1 rounded-lg p-1"
+          style={{ background: "var(--dash-btn-bg)" }}
+        >
           {(["today", "week"] as const).map((scope) => (
             <button
               key={scope}
@@ -173,62 +179,68 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             }
           >
             <AnimatePresence mode="popLayout" initial={false}>
-            {scopedEvents.map((e, idx) => {
-              return (
-                <motion.li
-                  key={`${eventsScope}-${e.id}`}
-                  initial={prefersReduced ? false : { opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                  transition={prefersReduced ? { duration: 0 } : { duration: 0.2, delay: idx * 0.04 }}
-                  className="dash-list-item px-0 py-0"
-                >
-                  <button
-                    type="button"
-                    className={cn(
-                      "group list-item-blue list-item-blue-hover",
-                      "flex items-center gap-4 sm:gap-5",
-                      "active:scale-(--scale-active)"
-                    )}
-                    onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
-                    aria-label={t("dashboard:aria.eventItem", { title: e.title })}
-                    style={{ "--stagger-i": idx } as React.CSSProperties}
+              {scopedEvents.map((e, idx) => {
+                return (
+                  <motion.li
+                    key={`${eventsScope}-${e.id}`}
+                    initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    transition={
+                      prefersReduced ? { duration: 0 } : { duration: 0.2, delay: idx * 0.04 }
+                    }
+                    className="dash-list-item px-0 py-0"
                   >
-                    <DateBullet date={e.starts_at ?? undefined} locale={language} size="compact" />
-                    <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-                      <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
-                        {e.title}
-                      </span>
-                      <span className="flex flex-wrap items-center gap-2">
-                        {!isNaN(e.d.getTime()) && (
-                          <span className="font-mono text-sm font-medium text-brand">
-                            {formatDate(e.d, {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: false,
-                            })}
-                          </span>
-                        )}
-                        {!!e.location && (
-                          <Badge
-                            size="sm"
-                            variant="outline"
-                            className="max-w-32 truncate text-[0.625rem]"
-                            label={e.location}
-                          />
-                        )}
-                      </span>
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:bg-brand/(--opacity-faint) group-hover:border-brand/(--opacity-soft)"
+                    <button
+                      type="button"
+                      className={cn(
+                        "group list-item-blue list-item-blue-hover",
+                        "flex items-center gap-4 sm:gap-5",
+                        "active:scale-(--scale-active)"
+                      )}
+                      onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
+                      aria-label={t("dashboard:aria.eventItem", { title: e.title })}
+                      style={{ "--stagger-i": idx } as React.CSSProperties}
                     >
-                      <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
-                    </span>
-                  </button>
-                </motion.li>
-              )
-            })}
+                      <DateBullet
+                        date={e.starts_at ?? undefined}
+                        locale={language}
+                        size="compact"
+                      />
+                      <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
+                        <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
+                          {e.title}
+                        </span>
+                        <span className="flex flex-wrap items-center gap-2">
+                          {!isNaN(e.d.getTime()) && (
+                            <span className="font-mono text-sm font-medium text-brand">
+                              {formatDate(e.d, {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: false,
+                              })}
+                            </span>
+                          )}
+                          {!!e.location && (
+                            <Badge
+                              size="sm"
+                              variant="outline"
+                              className="max-w-32 truncate text-[0.625rem]"
+                              label={e.location}
+                            />
+                          )}
+                        </span>
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:bg-brand/(--opacity-faint) group-hover:border-brand/(--opacity-soft)"
+                      >
+                        <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+                      </span>
+                    </button>
+                  </motion.li>
+                )
+              })}
             </AnimatePresence>
           </ul>
         )}

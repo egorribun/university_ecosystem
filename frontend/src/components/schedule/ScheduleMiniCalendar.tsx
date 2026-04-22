@@ -40,9 +40,7 @@ export function ScheduleMiniCalendar({
   const weekdayLabels = useMemo(() => {
     const formatter = new Intl.DateTimeFormat(i18n.language, { weekday: "narrow" })
     // Jan 6 2025 is a Monday — generate Mon→Sun labels
-    return Array.from({ length: 7 }, (_, i) =>
-      formatter.format(new Date(2025, 0, 6 + i)),
-    )
+    return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(2025, 0, 6 + i)))
   }, [i18n.language])
 
   const { days, firstDayOffset } = useMemo(() => {
@@ -71,29 +69,24 @@ export function ScheduleMiniCalendar({
       setInternalMonth(next)
       onMonthChange?.(next)
     },
-    [year, monthIdx, onMonthChange],
+    [year, monthIdx, onMonthChange]
   )
 
   const handleDayClick = useCallback(
     (day: number) => {
       onDayClick?.(new Date(year, monthIdx, day))
     },
-    [year, monthIdx, onDayClick],
+    [year, monthIdx, onDayClick]
   )
 
   // Date formatter for day aria-labels
   const dayFormatter = useMemo(
     () => new Intl.DateTimeFormat(i18n.language, { dateStyle: "long" }),
-    [i18n.language],
+    [i18n.language]
   )
 
   return (
-    <div
-      className={cn(
-        "sched-matte-card rounded-xl p-4",
-        className,
-      )}
-    >
+    <div className={cn("sched-matte-card rounded-xl p-4", className)}>
       {/* ── Month navigation ──────────────────────────── */}
       <div className="mb-3 flex items-center justify-between">
         <button
@@ -104,9 +97,7 @@ export function ScheduleMiniCalendar({
         >
           <ChevronLeft size={14} aria-hidden="true" />
         </button>
-        <span className="text-sm font-semibold capitalize text-text-primary">
-          {monthLabel}
-        </span>
+        <span className="text-sm font-semibold capitalize text-text-primary">{monthLabel}</span>
         {/* FEAT-71-05: quick-return to current month when navigated away */}
         {!isCurrentMonth && (
           <button
@@ -148,36 +139,42 @@ export function ScheduleMiniCalendar({
         {/* Loading skeleton (FIX-67-07) */}
         {isLoading ? (
           Array.from({ length: 35 }).map((_, i) => (
-            <div key={`skel-${i}`} className="flex h-8 items-center justify-center" role="presentation">
+            <div
+              key={`skel-${i}`}
+              className="flex h-8 items-center justify-center"
+              role="presentation"
+            >
               {/* THEME-71-03: use sched-skeleton-shimmer instead of Tailwind animate-pulse */}
               <div className="h-6 w-6 sched-skeleton-shimmer rounded-full" />
             </div>
           ))
-        ) : (<>
-        {/* Empty cells for offset */}
-        {Array.from({ length: firstDayOffset }).map((_, i) => (
-          <div key={`empty-${i}`} className="h-8" role="presentation" />
-        ))}
-        {/* Day cells */}
-        {days.map((day) => {
-          const isToday = isCurrentMonth && day === todayDate
-          const fullDate = new Date(year, monthIdx, day)
-          return (
-            <button
-              key={day}
-              type="button"
-              className="sched-cal-day text-text-primary"
-              data-today={isToday ? "true" : undefined}
-              data-has-lessons={lessonDays.has(day) ? "true" : undefined}
-              aria-label={dayFormatter.format(fullDate)}
-              aria-current={isToday ? "date" : undefined}
-              onClick={() => handleDayClick(day)}
-            >
-              {day}
-            </button>
-          )
-        })}
-        </>)}
+        ) : (
+          <>
+            {/* Empty cells for offset */}
+            {Array.from({ length: firstDayOffset }).map((_, i) => (
+              <div key={`empty-${i}`} className="h-8" role="presentation" />
+            ))}
+            {/* Day cells */}
+            {days.map((day) => {
+              const isToday = isCurrentMonth && day === todayDate
+              const fullDate = new Date(year, monthIdx, day)
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  className="sched-cal-day text-text-primary"
+                  data-today={isToday ? "true" : undefined}
+                  data-has-lessons={lessonDays.has(day) ? "true" : undefined}
+                  aria-label={dayFormatter.format(fullDate)}
+                  aria-current={isToday ? "date" : undefined}
+                  onClick={() => handleDayClick(day)}
+                >
+                  {day}
+                </button>
+              )
+            })}
+          </>
+        )}
       </div>
     </div>
   )

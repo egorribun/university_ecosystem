@@ -11,7 +11,10 @@ export interface ExportResult {
 
 const IMAGE_LOAD_TIMEOUT_MS = 10_000
 
-function loadImageWithTimeout(src: string, timeoutMs = IMAGE_LOAD_TIMEOUT_MS): Promise<HTMLImageElement> {
+function loadImageWithTimeout(
+  src: string,
+  timeoutMs = IMAGE_LOAD_TIMEOUT_MS
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const timer = setTimeout(() => {
@@ -33,7 +36,7 @@ function loadImageWithTimeout(src: string, timeoutMs = IMAGE_LOAD_TIMEOUT_MS): P
 
 export async function exportActivityAsPng(
   element: HTMLElement,
-  filename = "activity.png",
+  filename = "activity.png"
 ): Promise<ExportResult> {
   try {
     const { toPng } = await import("html-to-image")
@@ -53,13 +56,10 @@ export async function exportActivityAsPng(
 export async function exportActivityAsPdf(
   element: HTMLElement,
   title = "Activity",
-  filename = "activity.pdf",
+  filename = "activity.pdf"
 ): Promise<ExportResult> {
   try {
-    const [{ toPng }, { jsPDF }] = await Promise.all([
-      import("html-to-image"),
-      import("jspdf"),
-    ])
+    const [{ toPng }, { jsPDF }] = await Promise.all([import("html-to-image"), import("jspdf")])
 
     const dataUrl = await toPng(element, { pixelRatio: 2 })
     const img = await loadImageWithTimeout(dataUrl)

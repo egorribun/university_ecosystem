@@ -25,9 +25,7 @@ import type { MarkerInstance } from "react-map-gl/maplibre"
  * Safe against re-renders: the DOM element is the same across renders (maplibre
  * reuses the wrapper) so `removeAttribute` is idempotent.
  */
-export function useStripMaplibreMarkerChrome(
-  markerRef: RefObject<MarkerInstance | null>,
-): void {
+export function useStripMaplibreMarkerChrome(markerRef: RefObject<MarkerInstance | null>): void {
   // Strip on mount + after any parent re-render that could have swapped out
   // the Marker instance. maplibre-gl mutates wrapper contents in-place but
   // reuses the same wrapper element across parent re-renders, so

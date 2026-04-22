@@ -17,7 +17,9 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
   const isDesktop = useMediaQuery("(min-width: 1024px)")
 
   // Reset collapsed state when headings change (article navigation)
-  useEffect(() => { setCollapsed(true) }, [headings])
+  useEffect(() => {
+    setCollapsed(true)
+  }, [headings])
 
   // On desktop, always show expanded
   const isExpanded = isDesktop || !collapsed
@@ -50,14 +52,17 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
     return () => observer.disconnect()
   }, [headings])
 
-  const scrollToHeading = useCallback((id: string) => {
-    const el = document.getElementById(id)
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" })
-      setActiveId(id)
-      if (!isDesktop) setCollapsed(true)
-    }
-  }, [isDesktop])
+  const scrollToHeading = useCallback(
+    (id: string) => {
+      const el = document.getElementById(id)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" })
+        setActiveId(id)
+        if (!isDesktop) setCollapsed(true)
+      }
+    },
+    [isDesktop]
+  )
 
   if (headings.length < 3) return null
 
@@ -65,9 +70,7 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
     <nav
       className={cn(
         "news-toc rounded-xl border border-glass-border/(--opacity-soft) overflow-hidden transition-all duration-base",
-        isDesktop
-          ? "glass-layer-surface glass-noise"
-          : "glass-layer-surface"
+        isDesktop ? "glass-layer-surface glass-noise" : "glass-layer-surface"
       )}
       aria-label={t("news:toc.label")}
     >

@@ -64,10 +64,7 @@ export function ScheduleDesktopTable({
   }, [weekdayBackend, weekdayLabels, hiddenWeekdays])
 
   /* ── Build grid data ──────────────────────────────────── */
-  const tableRows = useMemo(
-    () => buildTable(schedule, weekdayBackend),
-    [schedule, weekdayBackend],
-  )
+  const tableRows = useMemo(() => buildTable(schedule, weekdayBackend), [schedule, weekdayBackend])
 
   const canEdit = user?.role === "admin" || user?.role === "teacher"
   const colCount = visibleDays.length + 1
@@ -129,10 +126,12 @@ export function ScheduleDesktopTable({
                   "sched-column-item sched-sticky-header sched-day-snap flex items-center justify-center gap-2 border-b px-3 py-3 text-sm font-semibold",
                   isTodayCol && "sched-today-header"
                 )}
-                style={{
-                  "--sched-col-i": colI,
-                  borderColor: "var(--sched-grid-border)",
-                } as React.CSSProperties}
+                style={
+                  {
+                    "--sched-col-i": colI,
+                    borderColor: "var(--sched-grid-border)",
+                  } as React.CSSProperties
+                }
               >
                 <span className={cn("tracking-tight", isTodayCol && "text-brand font-bold")}>
                   {label}
@@ -178,7 +177,9 @@ export function ScheduleDesktopTable({
                     </div>
                   }
                   title={t("schedule:table.noLessons")}
-                  description={t("schedule:empty.selectGroup", { defaultValue: "Select a group to view the schedule" })}
+                  description={t("schedule:empty.selectGroup", {
+                    defaultValue: "Select a group to view the schedule",
+                  })}
                 />
               )}
             </div>
@@ -218,7 +219,11 @@ export function ScheduleDesktopTable({
                         tabIndex={-1}
                         aria-rowindex={rowIdx + 2}
                         aria-colindex={colI + 2}
-                        aria-label={t("schedule:table.emptyCell", { day: visibleDays[colI]?.label ?? "", row: rowIdx + 1, defaultValue: "Empty" })}
+                        aria-label={t("schedule:table.emptyCell", {
+                          day: visibleDays[colI]?.label ?? "",
+                          row: rowIdx + 1,
+                          defaultValue: "Empty",
+                        })}
                         className={cn(
                           "sched-grid-cell sched-day-snap flex items-center justify-center border-b outline-none",
                           isTodayCol && "sched-today-col"

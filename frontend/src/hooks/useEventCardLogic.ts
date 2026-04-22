@@ -171,7 +171,10 @@ export function useEventCardLogic({
     }
   }
 
-  const navigateToDetails = useCallback(() => navigate({ to: "/events/$id", params: { id: String(id) } }), [id, navigate])
+  const navigateToDetails = useCallback(
+    () => navigate({ to: "/events/$id", params: { id: String(id) } }),
+    [id, navigate]
+  )
 
   const handleCardClick = (e: React.MouseEvent) => {
     if (editOpen) return

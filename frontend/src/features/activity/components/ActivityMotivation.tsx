@@ -53,11 +53,7 @@ export function ActivityMotivation({
           <span>{t("activity:motivation.streakDays", { count: streak })}</span>
         </div>
       )}
-      {message && (
-        <p className="text-sm font-medium text-text-secondary">
-          {message}
-        </p>
-      )}
+      {message && <p className="text-sm font-medium text-text-secondary">{message}</p>}
     </div>
   )
 }

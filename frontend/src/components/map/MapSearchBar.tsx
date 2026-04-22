@@ -24,7 +24,12 @@ interface MapSearchBarProps {
  * MapSearchBar — fuzzy autocomplete over buildings + rooms.
  * role="combobox" + aria-expanded + aria-activedescendant.
  */
-export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, searchInputRef }: MapSearchBarProps) {
+export function MapSearchBar({
+  buildings,
+  onSelectBuilding,
+  onSelectRoom,
+  searchInputRef,
+}: MapSearchBarProps) {
   "use no memo" // RC-109-01: ref callback merges inputRef + searchInputRef — React Compiler forbids ref mutations in render
   const { t } = useTranslation("map")
   const baseId = useId()
@@ -84,7 +89,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
       setIsOpen(false)
       inputRef.current?.blur()
     },
-    [onSelectBuilding, onSelectRoom],
+    [onSelectBuilding, onSelectRoom]
   )
 
   const handleKeyDown = useCallback(
@@ -113,7 +118,7 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
           break
       }
     },
-    [isOpen, results, activeIdx, handleSelect],
+    [isOpen, results, activeIdx, handleSelect]
   )
 
   // Merge internal + external input refs (React Compiler safe — extracted from render)
@@ -122,13 +127,13 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
   // covers the lint plugin which doesn't recognize the directive.
   const mergedInputRef = useCallback(
     (node: HTMLInputElement | null) => {
-      (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+      ;(inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
       if (searchInputRef && "current" in searchInputRef) {
         // eslint-disable-next-line react-compiler/react-compiler -- legitimate ref-callback prop merge; see RC-109-01
-        (searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+        ;(searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
       }
     },
-    [searchInputRef],
+    [searchInputRef]
   )
 
   // Group results
@@ -201,7 +206,11 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
                 onClick={() => handleSelect(r)}
                 onPointerEnter={() => setActiveIdx(globalIdx)}
                 className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--map-accent-icon)] focus-visible:outline-none"
-                style={activeIdx === globalIdx ? { backgroundColor: "var(--bg-surface-hover)" } : undefined}
+                style={
+                  activeIdx === globalIdx
+                    ? { backgroundColor: "var(--bg-surface-hover)" }
+                    : undefined
+                }
               >
                 <span className="font-bold">{r.label}</span>
                 {r.sublabel && (
@@ -230,7 +239,11 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
                 onClick={() => handleSelect(r)}
                 onPointerEnter={() => setActiveIdx(globalIdx)}
                 className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--map-accent-icon)] focus-visible:outline-none"
-                style={activeIdx === globalIdx ? { backgroundColor: "var(--bg-surface-hover)" } : undefined}
+                style={
+                  activeIdx === globalIdx
+                    ? { backgroundColor: "var(--bg-surface-hover)" }
+                    : undefined
+                }
               >
                 <span className="font-bold">{r.label}</span>
                 {r.sublabel && (
@@ -239,7 +252,6 @@ export function MapSearchBar({ buildings, onSelectBuilding, onSelectRoom, search
               </button>
             )
           })}
-
         </div>
       )}
     </div>

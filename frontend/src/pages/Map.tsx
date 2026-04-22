@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 
 const MapFeature = lazy(() =>
-  import("@/features/map/MapFeature").then((m) => ({ default: m.MapFeature })),
+  import("@/features/map/MapFeature").then((m) => ({ default: m.MapFeature }))
 )
 
 function MapSkeleton() {

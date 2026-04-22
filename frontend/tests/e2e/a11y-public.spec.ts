@@ -103,7 +103,7 @@ for (const route of PUBLIC_ROUTES) {
       const results = await builder.analyze()
 
       const blocking = results.violations.filter(
-        (v) => v.impact === "critical" || v.impact === "serious",
+        (v) => v.impact === "critical" || v.impact === "serious"
       )
       // Surface the violation list in the test failure for fast triage.
       expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([])

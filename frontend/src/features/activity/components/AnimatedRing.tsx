@@ -96,8 +96,18 @@ export default function AnimatedRing({
   const strokeColor = colorVar ?? "var(--activity-present-accent)"
 
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size, "--_ring-color": strokeColor } as CSSProperties}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block" role="img" aria-label={ariaLabel}>
+    <div
+      className="relative shrink-0"
+      style={{ width: size, height: size, "--_ring-color": strokeColor } as CSSProperties}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="block"
+        role="img"
+        aria-label={ariaLabel}
+      >
         <circle
           className="activity-ring-track"
           cx={size / 2}

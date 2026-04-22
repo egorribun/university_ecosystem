@@ -127,7 +127,10 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
       ref={articleRef}
       onMouseMove={spotlight.onMouseMove}
       onMouseEnter={showQuickView}
-      onMouseLeave={() => { hideQuickView(); handleTransitionReset() }}
+      onMouseLeave={() => {
+        hideQuickView()
+        handleTransitionReset()
+      }}
       onPointerDown={handlePointerDown}
       className={cn(
         "news-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-[transform,box-shadow] duration-slower ease-premium",
@@ -139,22 +142,18 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
     >
       {/* Quick-view popover */}
       <NewsQuickView
-          visible={quickViewVisible}
-          title={title}
-          preview={previewText}
-          created_at={created_at}
-          likesCount={likesCount}
-          commentsCount={commentsCount}
-          category={category}
-          position={quickViewPosition}
-        />
+        visible={quickViewVisible}
+        title={title}
+        preview={previewText}
+        created_at={created_at}
+        likesCount={likesCount}
+        commentsCount={commentsCount}
+        category={category}
+        position={quickViewPosition}
+      />
 
       {/* Spotlight */}
-      <SpotlightOverlay
-        mouseX={spotlight.mouseX}
-        mouseY={spotlight.mouseY}
-        className="z-hide"
-      />
+      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
 
       {/* Admin menu */}
       {isAdmin && (

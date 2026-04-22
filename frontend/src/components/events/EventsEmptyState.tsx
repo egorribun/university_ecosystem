@@ -22,7 +22,10 @@ export function EventsEmptyState({ tab, onTabChange }: EventsEmptyStateProps) {
   return (
     <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-slow">
       <div className="flex w-full max-w-[28rem] flex-col items-center gap-5 rounded-lg border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
-        <div className="relative z-base flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg" aria-hidden="true">
+        <div
+          className="relative z-base flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg"
+          aria-hidden="true"
+        >
           <EventNoteIcon className="h-8 w-8 text-brand" />
         </div>
         <div className="space-y-2">

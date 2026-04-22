@@ -49,8 +49,15 @@ export function ConfirmDialog({
             className="w-full max-w-[28rem] overflow-hidden rounded-2xl border border-(--glass-border) bg-(--bg-surface) shadow-premium dark:bg-page"
           >
             <div className="flex flex-col gap-4 p-8">
-              <h3 id={titleId} className="sf-pro text-xl font-bold tracking-tight">{title}</h3>
-              <p id={messageId} className="text-base font-medium leading-relaxed text-text-secondary">{message}</p>
+              <h3 id={titleId} className="sf-pro text-xl font-bold tracking-tight">
+                {title}
+              </h3>
+              <p
+                id={messageId}
+                className="text-base font-medium leading-relaxed text-text-secondary"
+              >
+                {message}
+              </p>
               <div className="flex justify-end gap-3 pt-4">
                 <motion.button
                   type="button"
@@ -79,7 +86,10 @@ export function ConfirmDialog({
                   )}
                 >
                   {isLoading && (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />
+                    <div
+                      className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                      aria-hidden="true"
+                    />
                   )}
                   {confirmText}
                 </motion.button>

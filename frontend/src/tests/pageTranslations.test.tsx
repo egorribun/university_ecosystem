@@ -680,9 +680,7 @@ describe("page translations", { retry: 2 }, () => {
     // Wave 55+ added an optional newsCount badge inside the h1, so the
     // accessible name is "University news <n>" at render time. Match the
     // leading translation instead of the full composite.
-    expect(
-      await screen.findByRole("heading", { name: /^University news/ })
-    ).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: /^University news/ })).toBeInTheDocument()
 
     await user.click(screen.getByTestId("lang-toggle"))
 
@@ -715,7 +713,9 @@ describe("page translations", { retry: 2 }, () => {
   })
 
   it("switches forgot password page translations", async () => {
-    const { user } = await renderWithProviders(<ForgotPassword />, { initialPath: "/forgot-password" })
+    const { user } = await renderWithProviders(<ForgotPassword />, {
+      initialPath: "/forgot-password",
+    })
 
     expect(await screen.findByRole("heading", { name: "Reset password" })).toBeInTheDocument()
 

@@ -4,7 +4,10 @@
  * Average reading speed: 220 words/min (accommodates multilingual text).
  */
 export function estimateReadingTime(content: string): number | null {
-  const text = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+  const text = content
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
   if (!text) return null
   const words = text.split(/\s+/).filter(Boolean).length
   return words ? Math.max(1, Math.round(words / 220)) : null

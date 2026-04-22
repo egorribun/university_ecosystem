@@ -40,26 +40,26 @@ ensureTrustedTypesPolicies()
 const idle =
   typeof window.requestIdleCallback === "function"
     ? window.requestIdleCallback.bind(window)
-    : ((cb: IdleRequestCallback) =>
+    : (cb: IdleRequestCallback) =>
         window.setTimeout(
           () => cb({ didTimeout: false, timeRemaining: () => 0 } as IdleDeadline),
           0
-        ))
+        )
 
 function deferObservability(bootstrapStart: number): void {
   idle(() => {
     void Promise.all([
-      import("./app/observability").then(m => {
+      import("./app/observability").then((m) => {
         m.initObservability()
       }),
-      import("./app/webVitals").then(m => {
+      import("./app/webVitals").then((m) => {
         const enabled = m.initWebVitals()
         if (enabled) {
           const bootstrapEnd = performance.now()
           m.reportBootstrapTTI(bootstrapEnd - bootstrapStart)
         }
       }),
-    ]).catch(error => {
+    ]).catch((error) => {
       logError("Deferred observability init failed", error)
     })
   })

@@ -54,7 +54,7 @@ export const activityQueryKey = (params: ActivityQueryParams): ActivityQueryKey 
 
 const fetchActivitySummary = async (
   period: PeriodKey,
-  signal: AbortSignal | undefined,
+  signal: AbortSignal | undefined
 ): Promise<ActivitySummaryEnvelope> => {
   try {
     const summary = await api.get<ActivitySummaryEnvelope>("/stats/summary", {
@@ -110,7 +110,7 @@ type UseActivitySummaryOptions = Omit<
 
 export const useActivitySummaryQuery = (
   params: ActivityQueryParams,
-  options?: UseActivitySummaryOptions,
+  options?: UseActivitySummaryOptions
 ): UseQueryResult<ActivitySummaryEnvelope, Error> => {
   return useQuery({ ...activitySummaryOptions(params), ...options })
 }

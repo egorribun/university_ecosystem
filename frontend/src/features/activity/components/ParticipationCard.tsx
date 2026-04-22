@@ -35,13 +35,14 @@ export function ParticipationCard({
   const { t } = useTranslation(["activity"])
 
   const goal = participation?.goal ?? 10
-  const partEventsAnimated = useAnimatedNumber(Math.round(participation?.events ?? 0), motionTokens.durationLazy, 0)
+  const partEventsAnimated = useAnimatedNumber(
+    Math.round(participation?.events ?? 0),
+    motionTokens.durationLazy,
+    0
+  )
 
   return (
-    <CardShell
-      tone="warning"
-      aria-label={t("activity:a11y.participationCard")}
-    >
+    <CardShell tone="warning" aria-label={t("activity:a11y.participationCard")}>
       <SkeletonMorph loaded={hasInitiallyLoaded} skeleton={<ParticipationCardSkeleton />}>
         <div className="flex items-center gap-4">
           <AnimatedRing

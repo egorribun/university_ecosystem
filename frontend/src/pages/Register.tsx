@@ -208,8 +208,7 @@ const Register = () => {
                   disabled={isSubmitting}
                   error={!!errors.full_name}
                   placeholder={
-                    t("auth:register.namePlaceholder", { defaultValue: "Full name" }) ??
-                    undefined
+                    t("auth:register.namePlaceholder", { defaultValue: "Full name" }) ?? undefined
                   }
                 />
                 {errors.full_name && (

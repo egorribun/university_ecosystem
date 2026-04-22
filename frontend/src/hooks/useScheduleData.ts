@@ -38,10 +38,7 @@ export function useScheduleData() {
 
   // ── Config (i18n weekdays + lesson types) ──────────
   const config = useScheduleConfig()
-  const {
-    weekdayBackend,
-    normalizeLessons,
-  } = config
+  const { weekdayBackend, normalizeLessons } = config
 
   // ── TanStack Query: Groups ─────────────────────────
   const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
@@ -129,10 +126,7 @@ export function useScheduleData() {
   const time = useScheduleTime(todayLessons, hasToday)
 
   // ── Conflict detection ─────────────────────────────
-  const conflictedIds = useMemo(
-    () => detectConflicts(filteredSchedule),
-    [filteredSchedule],
-  )
+  const conflictedIds = useMemo(() => detectConflicts(filteredSchedule), [filteredSchedule])
 
   // ── Lesson days for MiniCalendar ───────────────────
   // PERF-70-07: use year/month primitives — only recalculates on month change, not every 30s tick

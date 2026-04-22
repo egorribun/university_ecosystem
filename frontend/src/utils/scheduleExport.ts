@@ -18,7 +18,10 @@ export interface ExportResult {
 const IMAGE_LOAD_TIMEOUT_MS = 10_000
 
 /** Load an image from dataUrl with a timeout to prevent hangs (FIX-68-01). */
-function loadImageWithTimeout(src: string, timeoutMs = IMAGE_LOAD_TIMEOUT_MS): Promise<HTMLImageElement> {
+function loadImageWithTimeout(
+  src: string,
+  timeoutMs = IMAGE_LOAD_TIMEOUT_MS
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const timer = setTimeout(() => {
@@ -44,7 +47,7 @@ function loadImageWithTimeout(src: string, timeoutMs = IMAGE_LOAD_TIMEOUT_MS): P
  */
 export async function exportScheduleAsPng(
   gridElement: HTMLElement,
-  filename = "schedule.png",
+  filename = "schedule.png"
 ): Promise<ExportResult> {
   try {
     const { toPng } = await import("html-to-image")
@@ -74,13 +77,10 @@ export interface ScheduleExportLabels {
 export async function exportScheduleAsPdf(
   gridElement: HTMLElement,
   title = "Schedule",
-  filename = "schedule.pdf",
+  filename = "schedule.pdf"
 ): Promise<ExportResult> {
   try {
-    const [{ toPng }, { jsPDF }] = await Promise.all([
-      import("html-to-image"),
-      import("jspdf"),
-    ])
+    const [{ toPng }, { jsPDF }] = await Promise.all([import("html-to-image"), import("jspdf")])
 
     const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
 
@@ -128,7 +128,7 @@ export async function exportScheduleAsPdf(
 export function generateGoogleCalendarUrl(
   lesson: Lesson,
   date: Date,
-  labels?: ScheduleExportLabels,
+  labels?: ScheduleExportLabels
 ): string {
   const subject = lesson.subject ?? labels?.lessonFallback ?? "Lesson"
   const teacher = lesson.teacher ? ` (${lesson.teacher})` : ""
@@ -155,7 +155,7 @@ export function generateGoogleCalendarUrl(
     location,
     details: labels?.typePrefix
       ? labels.typePrefix.replace("{{type}}", lesson.lesson_type ?? "")
-      : lesson.lesson_type ?? "",
+      : (lesson.lesson_type ?? ""),
   })
 
   return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`

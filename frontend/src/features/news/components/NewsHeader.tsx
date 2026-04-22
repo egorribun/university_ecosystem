@@ -43,7 +43,9 @@ export const NewsHeader = ({
     if (!sentinel) return
 
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry) setIsStuck(!entry.isIntersecting) },
+      ([entry]) => {
+        if (entry) setIsStuck(!entry.isIntersecting)
+      },
       { threshold: 0 }
     )
     observer.observe(sentinel)
@@ -61,7 +63,10 @@ export const NewsHeader = ({
           <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary whitespace-nowrap">
             {t("news:pageTitle")}
             {newsCount != null && (
-              <span className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none" style={{ fontSize: "0.45em" }}>
+              <span
+                className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none"
+                style={{ fontSize: "0.45em" }}
+              >
                 {newsCount}
               </span>
             )}
@@ -112,12 +117,11 @@ export const NewsHeader = ({
       <div ref={sentinelRef} className="h-0" aria-hidden="true" />
 
       {/* Row 2: Category pills + sort toggle — sticky on scroll */}
-      <div
-        ref={stickyRef}
-        className="news-sticky-categories"
-        data-stuck={isStuck}
-      >
-        <FadeSection delay="100ms" className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4">
+      <div ref={stickyRef} className="news-sticky-categories" data-stuck={isStuck}>
+        <FadeSection
+          delay="100ms"
+          className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4"
+        >
           {/* "All" pill */}
           <button
             type="button"
@@ -142,9 +146,7 @@ export const NewsHeader = ({
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
-                activeCategory === cat.id
-                  ? "shadow-sm"
-                  : "matte-chip text-(--text-secondary)"
+                activeCategory === cat.id ? "shadow-sm" : "matte-chip text-(--text-secondary)"
               )}
               style={
                 activeCategory === cat.id
@@ -182,9 +184,10 @@ export const NewsHeader = ({
               ("Sort: Newest"/"Sort: Popular") so axe label-content-name-mismatch
               does not fire (visible "Newest" must appear in accessible name). */}
           {(() => {
-            const currentSortLabel = sortMode === "newest"
-              ? t("news:sort.newest", { defaultValue: "Newest" })
-              : t("news:sort.popular", { defaultValue: "Popular" })
+            const currentSortLabel =
+              sortMode === "newest"
+                ? t("news:sort.newest", { defaultValue: "Newest" })
+                : t("news:sort.popular", { defaultValue: "Popular" })
             const sortPrefix = t("news:sort.label", { defaultValue: "Sort" })
             return (
               <button
@@ -198,7 +201,6 @@ export const NewsHeader = ({
               </button>
             )
           })()}
-
         </FadeSection>
       </div>
     </header>

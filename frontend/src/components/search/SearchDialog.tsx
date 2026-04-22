@@ -70,7 +70,10 @@ export function SearchDialog() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
-  const isMac = useMemo(() => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform ?? ""), [])
+  const isMac = useMemo(
+    () => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform ?? ""),
+    []
+  )
 
   const debouncedQuery = useDebounced(query, "search")
 
@@ -269,7 +272,9 @@ export function SearchDialog() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold">{result.title}</p>
                         {result.summary && (
-                          <p className="truncate text-xs text-(--text-tertiary)">{result.summary}</p>
+                          <p className="truncate text-xs text-(--text-tertiary)">
+                            {result.summary}
+                          </p>
                         )}
                       </div>
                       <ArrowRight

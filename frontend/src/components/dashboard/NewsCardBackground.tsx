@@ -16,8 +16,7 @@ export function NewsCardBackground() {
         aria-hidden="true"
         className="pointer-events-none absolute -bottom-12 left-1/3 z-hide h-40 w-40 rounded-full opacity-medium blur-3xl mix-blend-soft-light transition-opacity duration-slower motion-reduce:!animate-none"
         style={{
-          background:
-            "radial-gradient(circle, var(--dash-card-news-orb), transparent)",
+          background: "radial-gradient(circle, var(--dash-card-news-orb), transparent)",
           animation: "orb-drift 8.5s ease-in-out infinite",
         }}
       />

@@ -139,7 +139,9 @@ export default function NewsDetail() {
   const comments = interactions?.comments ?? []
 
   /* ── Store hero ID for back-navigation view transition ── */
-  useEffect(() => { setNewsHeroId(id) }, [id])
+  useEffect(() => {
+    setNewsHeroId(id)
+  }, [id])
 
   /* ── Side-effects ── */
   useEffect(() => {
@@ -206,11 +208,14 @@ export default function NewsDetail() {
   )
 
   const createdAt = query.data?.created_at
-  const createdAtIso = useMemo(() => createdAt ? toDate(createdAt).toISOString() : "", [createdAt])
-  const createdAtLabel = useMemo(() => createdAt ? getMoscowDate(createdAt) : "", [createdAt])
+  const createdAtIso = useMemo(
+    () => (createdAt ? toDate(createdAt).toISOString() : ""),
+    [createdAt]
+  )
+  const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
 
   const category = useMemo(
-    () => query.data ? inferCategory(query.data.title, query.data.content) : "general" as const,
+    () => (query.data ? inferCategory(query.data.title, query.data.content) : ("general" as const)),
     [query.data]
   )
   const relatedArticles = useRelatedNews(id, category, 3)
@@ -239,9 +244,7 @@ export default function NewsDetail() {
       <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
         <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
         <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
-          <p className="text-lg font-semibold text-(--error-text)">
-            {t("news:states.loadError")}
-          </p>
+          <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
           <Button variant="glass" onClick={handleBack}>
             {t("common:buttons.back")}
           </Button>
@@ -256,13 +259,20 @@ export default function NewsDetail() {
       {/* Reading progress — CSS scroll-driven animation (JS fallback for Firefox via W59-19) */}
       <div ref={progressRef} className="news-reading-progress" aria-hidden="true" />
 
-      <div className="news-theme aurora-mesh relative min-h-screen overflow-clip touch-pan-y" {...swipeHandlers}>
+      <div
+        className="news-theme aurora-mesh relative min-h-screen overflow-clip touch-pan-y"
+        {...swipeHandlers}
+      >
         <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
         <div className="relative z-[1] px-4 sm:px-6 md:px-10 lg:px-14 pb-20 pt-6 sm:pt-8">
           <SEO
             title={displayTitle}
-            description={content.replace(/[#*_`[\]!|>-]/g, "").replace(/\s+/g, " ").trim().slice(0, 160)}
+            description={content
+              .replace(/[#*_`[\]!|>-]/g, "")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 160)}
             image={imageUrl}
           />
 
@@ -289,7 +299,9 @@ export default function NewsDetail() {
               saving={false}
               deleting={deleting}
               sharing={sharing}
-              onShare={() => { void handleShare() }}
+              onShare={() => {
+                void handleShare()
+              }}
               onToggleLike={() => toggleLike()}
               onToggleBookmark={handleToggleBookmark}
               onEditOpen={() => setEditOpen(true)}
@@ -354,9 +366,7 @@ export default function NewsDetail() {
                   >
                     <Icon className="h-5 w-5" />
                   </span>
-                  <span className="text-sm font-semibold text-text-primary">
-                    {option.label}
-                  </span>
+                  <span className="text-sm font-semibold text-text-primary">{option.label}</span>
                 </a>
               )
             })}
@@ -365,15 +375,15 @@ export default function NewsDetail() {
         <DialogActions className="p-6">
           <Button
             variant="solid"
-            onClick={() => { void handleCopyLink() }}
+            onClick={() => {
+              void handleCopyLink()
+            }}
             disabled={copyingLink}
             className="w-full sm:w-auto"
           >
             <div className="flex items-center gap-2">
               <CopyIcon className="h-4 w-4" />
-              {copiedLink
-                ? t("news:shareDialog.copySuccess")
-                : t("news:shareDialog.copy")}
+              {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
             </div>
           </Button>
         </DialogActions>

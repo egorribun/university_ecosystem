@@ -104,9 +104,7 @@ export function NewsDetailHeader({
             <HeartIcon
               size={16}
               className={cn(
-                isLiked
-                  ? "fill-(--error-text) text-(--error-text)"
-                  : "text-(--text-secondary)"
+                isLiked ? "fill-(--error-text) text-(--error-text)" : "text-(--text-secondary)"
               )}
             />
           }
@@ -124,29 +122,34 @@ export function NewsDetailHeader({
           size="sm"
           onClick={onToggleBookmark}
           leadingIcon={
-            bookmarked
-              ? <BookmarkCheckIcon size={16} className="fill-brand text-brand" />
-              : <BookmarkIcon size={16} />
+            bookmarked ? (
+              <BookmarkCheckIcon size={16} className="fill-brand text-brand" />
+            ) : (
+              <BookmarkIcon size={16} />
+            )
           }
           className={cn(
             "transition-colors duration-fast",
             bookmarked && "border-brand/(--opacity-dim) bg-brand/(--opacity-subtle)"
           )}
-          aria-label={bookmarked
-            ? t("news:actions.removeBookmark", { defaultValue: "Remove bookmark" })
-            : t("news:actions.bookmark", { defaultValue: "Bookmark" })
+          aria-label={
+            bookmarked
+              ? t("news:actions.removeBookmark", { defaultValue: "Remove bookmark" })
+              : t("news:actions.bookmark", { defaultValue: "Bookmark" })
           }
         >
           {bookmarked
             ? t("news:actions.saved", { defaultValue: "Saved" })
-            : t("news:actions.bookmark", { defaultValue: "Save" })
-          }
+            : t("news:actions.bookmark", { defaultValue: "Save" })}
         </Button>
 
         {/* Admin actions — separated by border */}
         {isAdmin && (
           <>
-            <span className="h-6 w-px bg-glass-border/(--opacity-soft) mx-1 hidden sm:block" aria-hidden="true" />
+            <span
+              className="h-6 w-px bg-glass-border/(--opacity-soft) mx-1 hidden sm:block"
+              aria-hidden="true"
+            />
             <button
               type="button"
               onClick={onEditOpen}

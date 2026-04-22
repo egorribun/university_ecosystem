@@ -21,9 +21,17 @@
 
     /* ── Light Theme ───────────────────────────────────── */
     --events-hero-orb: color-mix(in srgb, var(--color-amber-400) 10%, transparent);
-    --events-hero-highlight: color-mix(in srgb, var(--color-orange-500, var(--color-amber-500)) 6%, transparent);
+    --events-hero-highlight: color-mix(
+      in srgb,
+      var(--color-orange-500, var(--color-amber-500)) 6%,
+      transparent
+    );
     --events-orb-1: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
-    --events-orb-2: color-mix(in srgb, var(--color-orange-400, var(--color-amber-500)) 8%, transparent);
+    --events-orb-2: color-mix(
+      in srgb,
+      var(--color-orange-400, var(--color-amber-500)) 8%,
+      transparent
+    );
     --events-orb-3: color-mix(in srgb, var(--color-rose-400) 6%, transparent);
     --events-accent-line: linear-gradient(
       to right,
@@ -57,24 +65,33 @@
     --events-sticky-top: 64px;
 
     /* ── Featured card gradient mesh ───────────────────── */
-    --events-featured-mesh: radial-gradient(
-      ellipse at 20% 50%,
-      color-mix(in srgb, var(--color-amber-400) 8%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 20%,
-      color-mix(in srgb, var(--color-rose-400) 6%, transparent) 0%,
-      transparent 50%
-    );
+    --events-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-amber-400) 8%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-rose-400) 6%, transparent) 0%,
+        transparent 50%
+      );
   }
 
   /* ── Dark Theme Overrides ──────────────────────────── */
   .dark .events-theme {
     --events-hero-orb: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
-    --events-hero-highlight: color-mix(in srgb, var(--color-orange-400, var(--color-amber-500)) 10%, transparent);
+    --events-hero-highlight: color-mix(
+      in srgb,
+      var(--color-orange-400, var(--color-amber-500)) 10%,
+      transparent
+    );
     --events-orb-1: color-mix(in srgb, var(--color-amber-400) 18%, transparent);
-    --events-orb-2: color-mix(in srgb, var(--color-orange-400, var(--color-amber-500)) 14%, transparent);
+    --events-orb-2: color-mix(
+      in srgb,
+      var(--color-orange-400, var(--color-amber-500)) 14%,
+      transparent
+    );
     --events-orb-3: color-mix(in srgb, var(--color-rose-400) 10%, transparent);
     --events-accent-line: linear-gradient(
       to right,
@@ -101,16 +118,17 @@
     --cat-slate-text: var(--color-slate-400);
 
     /* Featured card gradient mesh (dark — brighter) */
-    --events-featured-mesh: radial-gradient(
-      ellipse at 20% 50%,
-      color-mix(in srgb, var(--color-amber-400) 12%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 20%,
-      color-mix(in srgb, var(--color-rose-400) 10%, transparent) 0%,
-      transparent 50%
-    );
+    --events-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-amber-400) 12%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-rose-400) 10%, transparent) 0%,
+        transparent 50%
+      );
   }
 }
 
@@ -146,8 +164,12 @@
 }
 
 @keyframes events-reading-progress {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 /* Firefox fallback — JS sets transform via inline style */
@@ -203,18 +225,30 @@
 }
 
 @container events-card (max-width: 280px) {
-  .events-card-title { font-size: 0.875rem; }
-  .events-card-preview { display: none; }
-  .events-card-footer { gap: 0.5rem; }
+  .events-card-title {
+    font-size: 0.875rem;
+  }
+  .events-card-preview {
+    display: none;
+  }
+  .events-card-footer {
+    gap: 0.5rem;
+  }
 }
 
 @container events-card (min-width: 281px) and (max-width: 399px) {
-  .events-card-title { font-size: 1rem; }
-  .events-card-preview { -webkit-line-clamp: 2; }
+  .events-card-title {
+    font-size: 1rem;
+  }
+  .events-card-preview {
+    -webkit-line-clamp: 2;
+  }
 }
 
 @container events-card (min-width: 400px) {
-  .events-card-title { font-size: 1.25rem; }
+  .events-card-title {
+    font-size: 1.25rem;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -229,7 +263,9 @@
     0 1px 3px rgb(0 0 0 / 0.12),
     0 0 0 1px rgb(0 0 0 / 0.06),
     inset 0 1px 0 rgb(255 255 255 / 0.6);
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
 }
 
 .dark .events-badge-matte {
@@ -303,9 +339,15 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes events-register-pulse {
-  0% { box-shadow: 0 0 0 0 var(--color-brand); }
-  70% { box-shadow: 0 0 0 8px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
+  0% {
+    box-shadow: 0 0 0 0 var(--color-brand);
+  }
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 .events-register-pulse {

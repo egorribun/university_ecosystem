@@ -82,11 +82,11 @@ export function MapSidebar({
     (h: number) => {
       const snaps = [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
       const closest = snaps.reduce((prev, curr) =>
-        Math.abs(curr - h) < Math.abs(prev - h) ? curr : prev,
+        Math.abs(curr - h) < Math.abs(prev - h) ? curr : prev
       )
       setSheetHeight(closest)
     },
-    [SNAP_PEEK, SNAP_HALF, SNAP_FULL],
+    [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
   )
 
   /** setPointerCapture ensures reliable tracking even when pointer escapes the handle (CQ-110-02) */
@@ -97,7 +97,7 @@ export function MapSidebar({
       dragStartH.current = sheetHeight
       ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     },
-    [sheetHeight],
+    [sheetHeight]
   )
 
   const handleDragMove = useCallback((clientY: number) => {
@@ -108,12 +108,15 @@ export function MapSidebar({
     setSheetHeight(newH)
   }, [])
 
-  const handleDragEnd = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current) return
-    isDragging.current = false
-    ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
-    snapToNearest(sheetHeight)
-  }, [sheetHeight, snapToNearest])
+  const handleDragEnd = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
+      snapToNearest(sheetHeight)
+    },
+    [sheetHeight, snapToNearest]
+  )
 
   /**
    * FIX-109-10: Fresh scroll key forces React to remount the scroll container
@@ -137,9 +140,7 @@ export function MapSidebar({
     return () => clearTimeout(id)
   }, [building, isMobile, SNAP_HALF])
 
-  const selectedRoomData: CampusRoom | undefined = floor?.rooms.find(
-    (r) => r.id === selectedRoom,
-  )
+  const selectedRoomData: CampusRoom | undefined = floor?.rooms.find((r) => r.id === selectedRoom)
 
   /** Memoized room list items — avoids re-rendering all buttons on unrelated state changes (PERF-109-03). */
   const roomListItems = useMemo(() => {
@@ -155,24 +156,25 @@ export function MapSidebar({
           className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left transition-colors text-xs${isActive ? " map-accent-tint-light" : ""}`}
         >
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="font-bold" style={isActive ? { color: "var(--_bldg-color)" } : undefined}>
+            <span
+              className="font-bold"
+              style={isActive ? { color: "var(--_bldg-color)" } : undefined}
+            >
               {room.id}
             </span>
-            {room.name && (
-              <span className="text-[var(--text-tertiary)] truncate">{room.name}</span>
-            )}
+            {room.name && <span className="text-[var(--text-tertiary)] truncate">{room.name}</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {status && (
               <span
                 className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
                 style={{
-                  backgroundColor: status.status === "free"
-                    ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
-                    : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
-                  color: status.status === "free"
-                    ? "var(--color-emerald-500)"
-                    : "var(--color-rose-500)",
+                  backgroundColor:
+                    status.status === "free"
+                      ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
+                      : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+                  color:
+                    status.status === "free" ? "var(--color-emerald-500)" : "var(--color-rose-500)",
                 }}
               >
                 {status.status === "free"
@@ -199,11 +201,18 @@ export function MapSidebar({
     >
       {/* Building photo / placeholder */}
       {building.photo ? (
-        <img src={building.photo} alt={building.name} className="map-sidebar-photo" loading="lazy" />
+        <img
+          src={building.photo}
+          alt={building.name}
+          className="map-sidebar-photo"
+          loading="lazy"
+        />
       ) : (
         <div
           className="map-sidebar-photo-placeholder"
-          style={{ background: `linear-gradient(135deg, ${building.colorHex}, color-mix(in srgb, ${building.colorHex} 60%, black))` }}
+          style={{
+            background: `linear-gradient(135deg, ${building.colorHex}, color-mix(in srgb, ${building.colorHex} 60%, black))`,
+          }}
         >
           <BuildingIcon size={40} strokeWidth={1.5} />
         </div>
@@ -239,9 +248,7 @@ export function MapSidebar({
       </div>
 
       {/* Description */}
-      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-        {building.description}
-      </p>
+      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{building.description}</p>
 
       {/* Hours — structured Пн-Пт / Сб / Вс */}
       <div className="flex flex-col gap-1 text-xs">
@@ -262,9 +269,15 @@ export function MapSidebar({
           </span>
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[var(--text-secondary)]">
-          <span><span className="font-semibold">{t("hours.weekday")}:</span> {building.hours.weekday}</span>
-          <span><span className="font-semibold">{t("hours.saturday")}:</span> {building.hours.saturday}</span>
-          <span><span className="font-semibold">{t("hours.sunday")}:</span> {building.hours.sunday}</span>
+          <span>
+            <span className="font-semibold">{t("hours.weekday")}:</span> {building.hours.weekday}
+          </span>
+          <span>
+            <span className="font-semibold">{t("hours.saturday")}:</span> {building.hours.saturday}
+          </span>
+          <span>
+            <span className="font-semibold">{t("hours.sunday")}:</span> {building.hours.sunday}
+          </span>
         </div>
       </div>
 
@@ -276,10 +289,7 @@ export function MapSidebar({
           </p>
           <div className="flex flex-wrap gap-1.5">
             {building.amenities.map((a) => (
-              <span
-                key={a}
-                className="map-category-chip text-[10px] px-2 py-0.5"
-              >
+              <span key={a} className="map-category-chip text-[10px] px-2 py-0.5">
                 {a}
               </span>
             ))}
@@ -357,9 +367,7 @@ export function MapSidebar({
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
             {t("sidebar.rooms")} — {t("sidebar.roomCount", { count: floor.rooms.length })}
           </p>
-          <div className="flex flex-col gap-1">
-            {roomListItems}
-          </div>
+          <div className="flex flex-col gap-1">{roomListItems}</div>
         </div>
       )}
     </div>
@@ -393,7 +401,10 @@ export function MapSidebar({
         >
           <div className="w-10 h-1 rounded-full bg-[var(--text-tertiary)] opacity-30" />
         </div>
-        <div className={`${sheetReady ? "overflow-y-auto" : "overflow-hidden"} scrollbar-hide`} style={{ height: `${sheetHeight - 40}px` }}>
+        <div
+          className={`${sheetReady ? "overflow-y-auto" : "overflow-hidden"} scrollbar-hide`}
+          style={{ height: `${sheetHeight - 40}px` }}
+        >
           {content}
         </div>
       </div>

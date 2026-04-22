@@ -5,13 +5,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, motion } from "framer-motion"
-import {
-  Download,
-  ChevronDown,
-  FileText,
-  Image,
-  FileDown,
-} from "lucide-react"
+import { Download, ChevronDown, FileText, Image, FileDown } from "lucide-react"
 import { logError } from "@/app/logger"
 import { cn } from "@/utils/cn"
 
@@ -22,11 +16,7 @@ interface ExportDropdownProps {
   className?: string
 }
 
-export function ExportDropdown({
-  isExporting,
-  gridRef,
-  className,
-}: ExportDropdownProps) {
+export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdownProps) {
   const { t } = useTranslation(["schedule"])
   const [open, setOpen] = useState(false)
   const [exporting, setExporting] = useState<string | null>(null)
@@ -48,17 +38,23 @@ export function ExportDropdown({
   useEffect(() => {
     if (!open) return
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpen(false); return }
+      if (e.key === "Escape") {
+        setOpen(false)
+        return
+      }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault()
         const menu = dropdownRef.current?.querySelector('[role="menu"]')
         if (!menu) return
-        const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'))
+        const items = Array.from(
+          menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')
+        )
         const focused = document.activeElement as HTMLElement
         const idx = items.indexOf(focused)
-        const next = e.key === "ArrowDown"
-          ? items[(idx + 1) % items.length]
-          : items[(idx - 1 + items.length) % items.length]
+        const next =
+          e.key === "ArrowDown"
+            ? items[(idx + 1) % items.length]
+            : items[(idx - 1 + items.length) % items.length]
         next?.focus()
       }
     }
@@ -138,12 +134,19 @@ export function ExportDropdown({
         className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         {isExporting || exporting ? (
-          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden="true" />
+          <div
+            className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"
+            aria-hidden="true"
+          />
         ) : (
           <Download size={14} aria-hidden="true" className="shrink-0" />
         )}
         {t("schedule:toolbar.export")}
-        <ChevronDown size={11} aria-hidden="true" className={`shrink-0 opacity-50 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        <ChevronDown
+          size={11}
+          aria-hidden="true"
+          className={`shrink-0 opacity-50 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
       </button>
 
       <AnimatePresence>

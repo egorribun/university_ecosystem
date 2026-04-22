@@ -18,18 +18,14 @@ interface MapBackdropProps {
  */
 export function MapBackdrop({ isNarrow, prefersReducedMotion }: MapBackdropProps) {
   return (
-    <div
-      className="pointer-events-none absolute inset-0 -z-1 overflow-hidden"
-      aria-hidden="true"
-    >
+    <div className="pointer-events-none absolute inset-0 -z-1 overflow-hidden" aria-hidden="true">
       {/* Primary hero orb — top center (teal glow) */}
       <div
         className="absolute -top-20 left-1/2 max-w-full -translate-x-1/2"
         style={{
           width: HERO_W,
           height: HERO_H,
-          background:
-            "radial-gradient(ellipse at 50% 0%, var(--map-hero-orb), transparent 72%)",
+          background: "radial-gradient(ellipse at 50% 0%, var(--map-hero-orb), transparent 72%)",
           filter: "blur(40px)",
         }}
       />
@@ -68,8 +64,7 @@ export function MapBackdrop({ isNarrow, prefersReducedMotion }: MapBackdropProps
         style={{
           width: BOTTOM_W,
           height: BOTTOM_H,
-          background:
-            "radial-gradient(ellipse at 20% 80%, var(--map-orb-3), transparent 65%)",
+          background: "radial-gradient(ellipse at 20% 80%, var(--map-orb-3), transparent 65%)",
           filter: "blur(50px)",
         }}
       />

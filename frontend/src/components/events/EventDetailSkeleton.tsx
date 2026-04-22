@@ -55,7 +55,10 @@ export function EventDetailSkeleton({
             <div className="h-6 w-40 rounded glass-layer-surface animate-pulse" />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="rounded-xl glass-layer-surface glass-noise overflow-hidden animate-pulse">
+                <div
+                  key={i}
+                  className="rounded-xl glass-layer-surface glass-noise overflow-hidden animate-pulse"
+                >
                   <div className="h-32 bg-input-mix" />
                   <div className="p-4 space-y-2">
                     <div className="h-4 w-[80%] rounded bg-input-mix" />

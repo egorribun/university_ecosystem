@@ -9,10 +9,7 @@ import Login from "../Login"
 import { server } from "@/tests/mocks/server"
 import { testUser } from "@/tests/mocks/handlers"
 import i18n from "../../i18n/config"
-import {
-  createTestQueryClient,
-  renderWithRouter,
-} from "@/tests/helpers/renderWithRouter"
+import { createTestQueryClient, renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)

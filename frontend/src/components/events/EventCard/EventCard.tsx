@@ -28,7 +28,18 @@ interface EventCardProps extends Partial<Event> {
 }
 
 const EventCardComponent: FC<EventCardProps> = (props) => {
-  const { id, title, speaker, location, description, starts_at, ends_at, event_type, event_type_en, priority } = props
+  const {
+    id,
+    title,
+    speaker,
+    location,
+    description,
+    starts_at,
+    ends_at,
+    event_type,
+    event_type_en,
+    priority,
+  } = props
   const { t } = useTranslation(["events", "common"])
 
   const {

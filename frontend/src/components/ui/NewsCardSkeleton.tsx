@@ -17,17 +17,24 @@ const NewsCardSkeleton = ({ featured }: NewsCardSkeletonProps) => {
       <div
         className={cn(
           "shrink-0 bg-input-mix",
-          featured
-            ? "h-56 sm:h-64 lg:w-[55%] lg:h-auto lg:min-h-[20rem]"
-            : "h-48 sm:h-52"
+          featured ? "h-56 sm:h-64 lg:w-[55%] lg:h-auto lg:min-h-[20rem]" : "h-48 sm:h-52"
         )}
       >
         <Skeleton className="h-full w-full" rounded={false} aria-hidden />
       </div>
 
       {/* Content area */}
-      <div className={cn("flex flex-1 flex-col gap-4 p-5", featured && "sm:p-6 lg:p-8 lg:justify-center")}>
-        <Skeleton width={featured ? "85%" : "70%"} height={featured ? "1.5rem" : "1.25rem"} aria-hidden />
+      <div
+        className={cn(
+          "flex flex-1 flex-col gap-4 p-5",
+          featured && "sm:p-6 lg:p-8 lg:justify-center"
+        )}
+      >
+        <Skeleton
+          width={featured ? "85%" : "70%"}
+          height={featured ? "1.5rem" : "1.25rem"}
+          aria-hidden
+        />
 
         <div className="space-y-2">
           <Skeleton width="100%" height="0.875rem" aria-hidden />

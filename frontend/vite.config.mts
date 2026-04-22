@@ -283,9 +283,7 @@ export default defineConfig(({ mode }) => {
     modulepreload: { polyfill: false },
     oxc: {
       define:
-        mode === "production"
-          ? { "console.log": "(() => {})", "console.debug": "(() => {})" }
-          : {},
+        mode === "production" ? { "console.log": "(() => {})", "console.debug": "(() => {})" } : {},
     },
     build: {
       minify: true,
@@ -304,11 +302,17 @@ export default defineConfig(({ mode }) => {
             // gets its own chunking (see below).
             if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/"))
               return "vendor-react"
-            if (id.includes("node_modules/framer-motion") || id.includes("node_modules/lucide-react"))
+            if (
+              id.includes("node_modules/framer-motion") ||
+              id.includes("node_modules/lucide-react")
+            )
               return "vendor-ui"
             if (id.includes("node_modules/@tanstack/react-query")) return "vendor-query"
             // PERF-05: Sentry isolated from i18n — release bump won't re-download i18n.
-            if (id.includes("node_modules/@sentry/react") || id.includes("node_modules/@sentry/core"))
+            if (
+              id.includes("node_modules/@sentry/react") ||
+              id.includes("node_modules/@sentry/core")
+            )
               return "vendor-sentry"
             // Wave 117 SW3 — split @opentelemetry/* into its own async chunk.
             // Previously OTEL's 50+ KB of instrumentation + SDK code lived in

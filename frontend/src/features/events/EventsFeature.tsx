@@ -189,9 +189,7 @@ export const EventsFeature = () => {
       const now = Date.now()
       list = [...list]
         .filter((e) => e.starts_at && new Date(e.starts_at).getTime() > now)
-        .sort(
-          (a, b) => new Date(a.starts_at!).getTime() - new Date(b.starts_at!).getTime()
-        )
+        .sort((a, b) => new Date(a.starts_at!).getTime() - new Date(b.starts_at!).getTime())
     }
 
     return list
@@ -207,10 +205,7 @@ export const EventsFeature = () => {
 
   /* ── Derived flags ── */
   const canFetchMore =
-    tab !== "my" &&
-    hasNextPage &&
-    activeCategory === "all" &&
-    !debouncedSearch.trim()
+    tab !== "my" && hasNextPage && activeCategory === "all" && !debouncedSearch.trim()
 
   const isAdmin = user?.role === "admin" || user?.role === "teacher"
 

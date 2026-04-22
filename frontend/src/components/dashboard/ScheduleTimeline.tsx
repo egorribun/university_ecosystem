@@ -82,8 +82,9 @@ export function ScheduleTimeline({
           isNext: nextLesson?.id === l.id,
         }
       })
-      .filter((l): l is NonNullable<typeof l> =>
-        l != null && l.endMin > RANGE_START && l.startMin < RANGE_END
+      .filter(
+        (l): l is NonNullable<typeof l> =>
+          l != null && l.endMin > RANGE_START && l.startMin < RANGE_END
       )
   }, [lessons, currentLesson, nextLesson])
 
@@ -93,10 +94,7 @@ export function ScheduleTimeline({
   return (
     <div className="space-y-2">
       {/* Scrollable timeline container */}
-      <div
-        ref={scrollRef}
-        className="overflow-x-auto scroll-smooth scrollbar-none"
-      >
+      <div ref={scrollRef} className="overflow-x-auto scroll-smooth scrollbar-none">
         <div className="relative" style={{ height: "5.5rem", minWidth: "100%" }}>
           {/* Track background */}
           <div
@@ -188,15 +186,9 @@ export function ScheduleTimeline({
                     {fmtTime(l.start_time)}–{fmtTime(l.end_time)}
                   </p>
                   {l.teacher && (
-                    <p className="text-xs text-(--text-secondary) mt-0.5 truncate">
-                      {l.teacher}
-                    </p>
+                    <p className="text-xs text-(--text-secondary) mt-0.5 truncate">{l.teacher}</p>
                   )}
-                  {l.room && (
-                    <p className="text-xs text-(--text-tertiary) truncate">
-                      {l.room}
-                    </p>
-                  )}
+                  {l.room && <p className="text-xs text-(--text-tertiary) truncate">{l.room}</p>}
                   {/* Tooltip arrow — positioned relative to tooltip alignment */}
                   <div
                     className="absolute h-2 w-2 rotate-45 bg-(--bg-surface)"
@@ -224,10 +216,7 @@ export function ScheduleTimeline({
               {/* Top dot */}
               <div className="h-2 w-2 rounded-full bg-brand shadow-sm shadow-brand/(--opacity-dim)" />
               {/* Vertical line */}
-              <div
-                className="w-0.5 bg-brand opacity-heavy"
-                style={{ height: "3rem" }}
-              />
+              <div className="w-0.5 bg-brand opacity-heavy" style={{ height: "3rem" }} />
               {/* Pulse ring */}
               <div className="absolute top-0 h-2 w-2 rounded-full bg-brand animate-ping opacity-dim" />
             </div>
@@ -254,9 +243,7 @@ function LessonCountLegend({ count }: { count: number }) {
       </span>
       {count > 0 && (
         <span ref={countRef} className="opacity-dim tabular-nums">
-          {animatedCount}
-          {" "}
-          {t("dashboard:timeline.lessonCount", { count })}
+          {animatedCount} {t("dashboard:timeline.lessonCount", { count })}
         </span>
       )}
     </div>

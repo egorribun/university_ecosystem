@@ -18,14 +18,23 @@ interface NewsCardHeroProps {
   priority?: boolean
 }
 
-const NewsCardHero = ({ id, image_url, title, created_at, transitioning, priority }: NewsCardHeroProps) => {
+const NewsCardHero = ({
+  id,
+  image_url,
+  title,
+  created_at,
+  transitioning,
+  priority,
+}: NewsCardHeroProps) => {
   const { t, i18n } = useTranslation(["news", "common"])
   const isOnline = useOnlineStatus()
   const [ready, setReady] = useState(!image_url)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const src = useMemo(() => image_url || "", [image_url])
-  useEffect(() => { setReady(!src) }, [src])
+  useEffect(() => {
+    setReady(!src)
+  }, [src])
 
   /* ── Back-nav view transition: set VT name via DOM ref in layout phase ──
      useLayoutEffect fires synchronously after DOM commit but before paint/snapshot.
@@ -41,8 +50,13 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning, priorit
     el.style.viewTransitionName = "news-hero"
     clearNewsHeroId()
 
-    const cleanup = setTimeout(() => { el.style.viewTransitionName = "" }, 0)
-    return () => { clearTimeout(cleanup); el.style.viewTransitionName = "" }
+    const cleanup = setTimeout(() => {
+      el.style.viewTransitionName = ""
+    }, 0)
+    return () => {
+      clearTimeout(cleanup)
+      el.style.viewTransitionName = ""
+    }
   }, [id])
   const onLoad = useCallback(() => setReady(true), [])
 
@@ -50,12 +64,10 @@ const NewsCardHero = ({ id, image_url, title, created_at, transitioning, priorit
     () => (created_at ? new Date(created_at).toISOString() : ""),
     [created_at]
   )
-  const label = useMemo(
-    () => (created_at ? getMoscowDate(created_at) : ""),
-    [created_at]
-  )
+  const label = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])
   const relativeLabel = useMemo(
-    () => (created_at ? formatRelativeTime(created_at, i18n.language === "ru" ? "ru-RU" : "en-US") : ""),
+    () =>
+      created_at ? formatRelativeTime(created_at, i18n.language === "ru" ? "ru-RU" : "en-US") : "",
     [created_at, i18n.language]
   )
 

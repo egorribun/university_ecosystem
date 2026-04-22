@@ -1,4 +1,13 @@
-import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, lazy, Suspense } from "react"
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  lazy,
+  Suspense,
+} from "react"
 import { useTranslation } from "react-i18next"
 import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -34,7 +43,10 @@ function subscribeToDarkMode(cb: () => void) {
   mq.addEventListener("change", cb)
   const observer = new MutationObserver(cb)
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
-  return () => { mq.removeEventListener("change", cb); observer.disconnect() }
+  return () => {
+    mq.removeEventListener("change", cb)
+    observer.disconnect()
+  }
 }
 function getIsDark() {
   return document.documentElement.classList.contains("dark")
@@ -60,7 +72,7 @@ export function MapFeature() {
   /* ── Campus data ── */
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
-    [i18n.resolvedLanguage, i18n.language],
+    [i18n.resolvedLanguage, i18n.language]
   )
 
   /* ── View state ── */
@@ -107,14 +119,11 @@ export function MapFeature() {
   }, [])
 
   /* ── Navigate to a specific room (from search or schedule) ── */
-  const navigateToRoom = useCallback(
-    (letter: BuildingId, floor: number, roomId: string) => {
-      setSelectedBuilding(letter)
-      setSelectedFloor(floor)
-      setSelectedRoom(roomId)
-    },
-    [],
-  )
+  const navigateToRoom = useCallback((letter: BuildingId, floor: number, roomId: string) => {
+    setSelectedBuilding(letter)
+    setSelectedFloor(floor)
+    setSelectedRoom(roomId)
+  }, [])
 
   /* ── Escape key → close sidebar ── */
   useEffect(() => {
@@ -148,16 +157,21 @@ export function MapFeature() {
   /* ── Selected building/floor data ── */
   const currentBuilding: CampusBuilding | undefined = useMemo(
     () => buildings.find((b) => b.letter === selectedBuilding),
-    [buildings, selectedBuilding],
+    [buildings, selectedBuilding]
   )
 
   const currentFloor = useMemo(
     () => currentBuilding?.floors.find((f) => f.floor === selectedFloor),
-    [currentBuilding, selectedFloor],
+    [currentBuilding, selectedFloor]
   )
 
   return (
-    <div className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip" data-weather={weatherData?.condition} data-time-period={timePeriod} data-season={season}>
+    <div
+      className="map-theme aurora-mesh relative w-full text-text-primary py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 overflow-x-clip"
+      data-weather={weatherData?.condition}
+      data-time-period={timePeriod}
+      data-season={season}
+    >
       <MapBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
 
       <div className="relative z-[1]">
@@ -174,19 +188,14 @@ export function MapFeature() {
             />
           </div>
           <div className="flex-1 min-w-0 overflow-x-auto">
-            <MapCategoryFilter
-              active={activeCategory}
-              onChange={setActiveCategory}
-            />
+            <MapCategoryFilter active={activeCategory} onChange={setActiveCategory} />
           </div>
         </FadeSection>
 
         {/* Map viewport + sidebar layout */}
         <FadeSection delay="140ms">
           <div className={`flex gap-4 ${!isNarrow && currentBuilding ? "flex-row" : "flex-col"}`}>
-            <div
-              className="map-card-matte map-viewport flex-1 min-w-0 overflow-hidden relative"
-            >
+            <div className="map-card-matte map-viewport flex-1 min-w-0 overflow-hidden relative">
               <WidgetErrorBoundary
                 widgetName="MapLibreGL"
                 showFallback
@@ -196,24 +205,26 @@ export function MapFeature() {
                   </div>
                 }
               >
-              <Suspense fallback={
-                <div className="h-full min-h-[inherit] flex items-center justify-center">
-                  <div className="map-poi-chip animate-pulse">{t("campusMap.loading")}</div>
-                </div>
-              }>
-                <MapLibreMapComponent
-                  selectedBuilding={selectedBuilding}
-                  activeCategory={activeCategory}
-                  highlightedBuilding={nextLessonInfo?.building ?? null}
-                  onSelectBuilding={handleBuildingClick}
-                  onDeselectBuilding={handleCloseSidebar}
-                  mapRef={mapLibreRef}
-                  isDark={isDark}
-                  timePeriod={timePeriod}
-                  weatherCondition={weatherData?.condition}
-                  mapEvents={mapEvents}
-                />
-              </Suspense>
+                <Suspense
+                  fallback={
+                    <div className="h-full min-h-[inherit] flex items-center justify-center">
+                      <div className="map-poi-chip animate-pulse">{t("campusMap.loading")}</div>
+                    </div>
+                  }
+                >
+                  <MapLibreMapComponent
+                    selectedBuilding={selectedBuilding}
+                    activeCategory={activeCategory}
+                    highlightedBuilding={nextLessonInfo?.building ?? null}
+                    onSelectBuilding={handleBuildingClick}
+                    onDeselectBuilding={handleCloseSidebar}
+                    mapRef={mapLibreRef}
+                    isDark={isDark}
+                    timePeriod={timePeriod}
+                    weatherCondition={weatherData?.condition}
+                    mapEvents={mapEvents}
+                  />
+                </Suspense>
               </WidgetErrorBoundary>
             </div>
 
@@ -236,10 +247,7 @@ export function MapFeature() {
       </div>
 
       {/* Keyboard shortcuts overlay */}
-      <MapShortcutsOverlay
-        open={showShortcuts}
-        onClose={() => setShowShortcuts(false)}
-      />
+      <MapShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   )
 }

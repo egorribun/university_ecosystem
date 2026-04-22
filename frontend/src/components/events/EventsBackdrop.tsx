@@ -23,10 +23,7 @@ export function EventsBackdrop({
   prefersReducedMotion = false,
 }: EventsBackdropProps) {
   return (
-    <div
-      className="pointer-events-none absolute inset-0 overflow-hidden -z-1"
-      aria-hidden="true"
-    >
+    <div className="pointer-events-none absolute inset-0 overflow-hidden -z-1" aria-hidden="true">
       {/* Primary hero glow — amber */}
       <div
         className="absolute rounded-full opacity-60"
@@ -65,8 +62,7 @@ export function EventsBackdrop({
           height: isNarrow ? "160px" : "220px",
           top: isNarrow ? "520px" : "760px",
           left: "10%",
-          background:
-            "radial-gradient(ellipse at center, var(--events-orb-3), transparent 70%)",
+          background: "radial-gradient(ellipse at center, var(--events-orb-3), transparent 70%)",
           filter: prefersReducedMotion ? "none" : "blur(50px)",
         }}
       />

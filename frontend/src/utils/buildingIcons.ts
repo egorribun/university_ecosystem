@@ -32,7 +32,9 @@ export function parseBuildingRoom(room: string | null | undefined): BuildingRoom
   const building = trimmed.slice(0, dashIdx)
   const roomNum = trimmed.slice(dashIdx + 1)
   if (!roomNum || !/^\d/.test(roomNum)) return null
-  const colors = (BUILDING_COLORS as Record<string, { colorVar: string; colorHex: string }>)[building] ?? DEFAULT_COLOR
+  const colors =
+    (BUILDING_COLORS as Record<string, { colorVar: string; colorHex: string }>)[building] ??
+    DEFAULT_COLOR
   return { building, room: roomNum, ...colors }
 }
 

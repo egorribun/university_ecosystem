@@ -39,9 +39,17 @@ export const NavbarLogo = ({
       aria-label={t("navigation:aria.homeLink")}
       className={cn(
         "inline-flex min-w-0 items-center rounded-2xl no-underline group",
-        "transition-[gap,padding]", dur, ease,
+        "transition-[gap,padding]",
+        dur,
+        ease,
         "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
-        isCompact ? "gap-0 px-1 py-1" : isPhone ? "gap-0 px-1 py-1" : isMobile ? "gap-fluid-gap px-3 py-1.5" : "gap-3 px-3 py-1.5"
+        isCompact
+          ? "gap-0 px-1 py-1"
+          : isPhone
+            ? "gap-0 px-1 py-1"
+            : isMobile
+              ? "gap-fluid-gap px-3 py-1.5"
+              : "gap-3 px-3 py-1.5"
       )}
       onPointerDown={markScrollFromBottom}
       onClick={onLogoClick}
@@ -51,11 +59,17 @@ export const NavbarLogo = ({
         className={cn(
           "flex items-center justify-center shrink-0 rounded-full",
           "bg-(--bg-surface-raised) dark:bg-(--bg-surface-hover) shadow-sm border border-border-subtle",
-          "transition-[width,height,transform,box-shadow]", dur, ease,
-          isCompact ? "w-8 h-8" : isPhone ? "w-(--nav-action-size) h-(--nav-action-size)" : "w-11 h-11",
+          "transition-[width,height,transform,box-shadow]",
+          dur,
+          ease,
+          isCompact
+            ? "w-8 h-8"
+            : isPhone
+              ? "w-(--nav-action-size) h-(--nav-action-size)"
+              : "w-11 h-11",
           "hover:scale-105 hover:shadow-[var(--nav-link-hover-glow)] active:scale-95",
           !prefersReducedMotion && "hover:transition-transform hover:duration-200",
-          !prefersReducedMotion && "animate-logo-shimmer",
+          !prefersReducedMotion && "animate-logo-shimmer"
         )}
         style={
           !prefersReducedMotion

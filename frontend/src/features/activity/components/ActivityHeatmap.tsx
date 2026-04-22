@@ -40,7 +40,8 @@ function buildDateGrid(days: number) {
   const mondayOffset = dayOfWeek === 0 ? -6 : -(dayOfWeek - 1)
   startDate.setDate(startDate.getDate() + mondayOffset)
 
-  const cells: Array<{ date: string; dayOfWeek: number; weekIndex: number; isInRange: boolean }> = []
+  const cells: Array<{ date: string; dayOfWeek: number; weekIndex: number; isInRange: boolean }> =
+    []
   const cursor = new Date(startDate)
 
   const rangeStart = new Date(today)
@@ -61,7 +62,10 @@ function buildDateGrid(days: number) {
 }
 
 /** Extract month labels positioned at the first Monday of each month */
-function getMonthLabels(cells: Array<{ date: string; dayOfWeek: number; weekIndex: number }>, locale: string) {
+function getMonthLabels(
+  cells: Array<{ date: string; dayOfWeek: number; weekIndex: number }>,
+  locale: string
+) {
   const seen = new Set<string>()
   const labels: Array<{ label: string; weekIndex: number }> = []
   for (const cell of cells) {
@@ -89,10 +93,7 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
 
   const { cells, totalWeeks } = useMemo(() => buildDateGrid(days), [days])
 
-  const monthLabels = useMemo(
-    () => getMonthLabels(cells, locale),
-    [cells, locale]
-  )
+  const monthLabels = useMemo(() => getMonthLabels(cells, locale), [cells, locale])
 
   // Day-of-week labels (Mon, Wed, Fri)
   const dayLabels = useMemo(() => {
@@ -122,17 +123,22 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
           {Array.from({ length: totalWeeks }, (_, wi) => {
             const monthLabel = monthLabels.find((m) => m.weekIndex === wi)
             return (
-              <div key={`month-${wi}`} className="text-[10px] text-text-tertiary text-center leading-tight">
+              <div
+                key={`month-${wi}`}
+                className="text-[10px] text-text-tertiary text-center leading-tight"
+              >
                 {monthLabel?.label ?? ""}
               </div>
             )
           })}
-
           {/* Day rows */}
           {Array.from({ length: 7 }, (_, dow) => {
             const dayLabel = dayLabels.find((d) => d.row === dow)
             return [
-              <div key={`dl-${dow}`} className="flex items-center pr-1 text-[10px] text-text-tertiary">
+              <div
+                key={`dl-${dow}`}
+                className="flex items-center pr-1 text-[10px] text-text-tertiary"
+              >
                 {dayLabel?.label ?? ""}
               </div>,
               ...Array.from({ length: totalWeeks }, (_, wi) => {

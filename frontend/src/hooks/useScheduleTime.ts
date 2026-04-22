@@ -7,10 +7,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import {
-  type Lesson,
-  parseMinutes,
-} from "@/components/schedule/scheduleUtils"
+import { type Lesson, parseMinutes } from "@/components/schedule/scheduleUtils"
 
 /**
  * Tick every 30s — sub-minute precision isn't needed for schedule display,
@@ -20,10 +17,7 @@ import {
  */
 const TICKER_INTERVAL_MS = 30_000
 
-export function useScheduleTime(
-  todayLessons: Lesson[],
-  hasToday: boolean,
-) {
+export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
   const { t } = useTranslation(["schedule"])
   const [nowTick, setNowTick] = useState(new Date())
 
@@ -122,7 +116,8 @@ export function useScheduleTime(
     if (mins <= 0 && !currentLesson && !nextLesson) return ""
     const h = Math.floor(mins / 60)
     const m = mins % 60
-    if (h > 0 && m > 0) return `${h}${t("schedule:time.hoursShort", { defaultValue: "h" })} ${m}${t("schedule:time.minutesShort", { defaultValue: "m" })}`
+    if (h > 0 && m > 0)
+      return `${h}${t("schedule:time.hoursShort", { defaultValue: "h" })} ${m}${t("schedule:time.minutesShort", { defaultValue: "m" })}`
     if (h > 0) return `${h}${t("schedule:time.hoursShort", { defaultValue: "h" })}`
     return `${m}${t("schedule:time.minutesShort", { defaultValue: "m" })}`
   }, [currentLesson, nextLesson, minutesNow, t])

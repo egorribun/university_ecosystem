@@ -149,45 +149,45 @@ export const EventsList = ({
       {/* ── Card grid (populated feed) ── */}
       {!isInitialLoading && !showEmptyState && (
         <>
-      {/* Refetch indicator */}
-      {showRefetchBar && (
-        <div
-          className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse"
-          aria-hidden="true"
-        />
-      )}
+          {/* Refetch indicator */}
+          {showRefetchBar && (
+            <div
+              className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse"
+              aria-hidden="true"
+            />
+          )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
-        {eventsList.map((event, index) => (
-          <div
-            key={event.id}
-            ref={(el) => registerCardRef?.(index, el)}
-            style={{ "--stagger-index": Math.min(index, 12) } as CSSProperties}
-            className={cn(
-              "css-stagger-item",
-              activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
-            )}
-          >
-            <FeatureErrorBoundary>
-              <EventCard
-                {...event}
-                onChange={handleRetry}
-                maxWidth="100%"
-                animationIndex={index}
-                priority={index === 0}
-              />
-            </FeatureErrorBoundary>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+            {eventsList.map((event, index) => (
+              <div
+                key={event.id}
+                ref={(el) => registerCardRef?.(index, el)}
+                style={{ "--stagger-index": Math.min(index, 12) } as CSSProperties}
+                className={cn(
+                  "css-stagger-item",
+                  activeKeyboardIndex === index && "ring-2 ring-brand rounded-2xl"
+                )}
+              >
+                <FeatureErrorBoundary>
+                  <EventCard
+                    {...event}
+                    onChange={handleRetry}
+                    maxWidth="100%"
+                    animationIndex={index}
+                    priority={index === 0}
+                  />
+                </FeatureErrorBoundary>
+              </div>
+            ))}
+
+            {/* Next-page loading skeletons */}
+            {isFetchingNextPage &&
+              Array.from({ length: NEXT_PAGE_SKELETON_COUNT }).map((_, i) => (
+                <div key={`next-skel-${i}`}>
+                  <EventCardSkeleton />
+                </div>
+              ))}
           </div>
-        ))}
-
-        {/* Next-page loading skeletons */}
-        {isFetchingNextPage &&
-          Array.from({ length: NEXT_PAGE_SKELETON_COUNT }).map((_, i) => (
-            <div key={`next-skel-${i}`}>
-              <EventCardSkeleton />
-            </div>
-          ))}
-      </div>
 
           {/* Infinite scroll sentinel */}
           {hasNextPage && <div ref={sentinelRef} className="h-1" aria-hidden="true" />}

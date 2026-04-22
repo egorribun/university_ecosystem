@@ -6,7 +6,11 @@ import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"
 import { buildLessonsByDay } from "@/components/schedule/scheduleUtils"
-import { useScheduleDisplayPreferences, useScheduleUIActions, useWeekOffset } from "@/stores/scheduleUIStore"
+import {
+  useScheduleDisplayPreferences,
+  useScheduleUIActions,
+  useWeekOffset,
+} from "@/stores/scheduleUIStore"
 import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/utils/cn"
 
@@ -106,7 +110,7 @@ export function ScheduleMobileView({
   // CQ-71-05: shared utility (also used by ScheduleListView)
   const lessonsByDay = useMemo(
     () => buildLessonsByDay(schedule, weekdayBackend),
-    [schedule, weekdayBackend],
+    [schedule, weekdayBackend]
   )
 
   /* ── Scroll to day section ───────────────────────────── */
@@ -116,34 +120,31 @@ export function ScheduleMobileView({
   }, [])
 
   // Arrow key navigation between day tabs
-  const handleTabKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-      e.preventDefault()
-      const tabs = e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')
-      const current = document.activeElement
-      const idx = Array.from(tabs).indexOf(current as HTMLElement)
-      if (idx < 0) return
-      const next =
-        e.key === "ArrowRight"
-          ? (idx + 1) % tabs.length
-          : (idx - 1 + tabs.length) % tabs.length
-      tabs[next]?.focus()
-      scrollToDay(next)
-    }
-  }, [scrollToDay])
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault()
+        const tabs = e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')
+        const current = document.activeElement
+        const idx = Array.from(tabs).indexOf(current as HTMLElement)
+        if (idx < 0) return
+        const next =
+          e.key === "ArrowRight" ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length
+        tabs[next]?.focus()
+        scrollToDay(next)
+      }
+    },
+    [scrollToDay]
+  )
 
   /* ── Animation variants for week/day transitions ── */
   const slideX = 100 // px — wide enough to clearly show direction
   const panelVariants = {
     enter: (d: number) =>
-      prefersReduced
-        ? { opacity: 0 }
-        : { opacity: 0, x: d * slideX, scale: 0.97 },
+      prefersReduced ? { opacity: 0 } : { opacity: 0, x: d * slideX, scale: 0.97 },
     center: { opacity: 1, x: 0, scale: 1 },
     exit: (d: number) =>
-      prefersReduced
-        ? { opacity: 0 }
-        : { opacity: 0, x: d * -slideX, scale: 0.97 },
+      prefersReduced ? { opacity: 0 } : { opacity: 0, x: d * -slideX, scale: 0.97 },
   }
 
   return (
@@ -158,44 +159,46 @@ export function ScheduleMobileView({
           className="scrollbar-hide flex gap-2 overflow-x-auto px-3 pb-2"
           onKeyDown={handleTabKeyDown}
         >
-        {weekdayBackend.map((day, i) => {
-          const count = lessonsByDay.get(day)?.length ?? 0
-          const isToday = hasToday && i === todayIdx
-          const isActive = i === activeDayIdx
-          return (
-            <Badge
-              key={day}
-              id={`day-tab-${day}`}
-              as="button"
-              role="tab"
-              aria-controls={`day-panel-${day}`}
-              aria-selected={isActive}
-              tabIndex={isActive ? 0 : -1}
-              variant={isActive ? "solid" : "outline"}
-              tone={isActive ? "primary" : "default"}
-              className={cn(
-                "relative shrink-0 font-semibold transition-all duration-fast hover:scale-105",
-                isActive ? "text-[var(--sched-on-accent)]" : "sched-badge-matte",
-                isToday && !isActive && "ring-1 ring-brand/(--opacity-dim)"
-              )}
-              onClick={() => scrollToDay(i)}
-            >
-              {isActive && (
-                <motion.span
-                  layoutId="schedule-mobile-day"
-                  className="absolute inset-0 rounded-full bg-brand shadow-glow-primary"
-                  transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-              <span className="relative z-surface flex items-center gap-0.5">
-                {weekdayShort[i] ?? getDayLabel(day)}
-                {count > 0 && (
-                  <sup className="text-[0.625rem] font-bold opacity-70">{count}</sup>
+          {weekdayBackend.map((day, i) => {
+            const count = lessonsByDay.get(day)?.length ?? 0
+            const isToday = hasToday && i === todayIdx
+            const isActive = i === activeDayIdx
+            return (
+              <Badge
+                key={day}
+                id={`day-tab-${day}`}
+                as="button"
+                role="tab"
+                aria-controls={`day-panel-${day}`}
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                variant={isActive ? "solid" : "outline"}
+                tone={isActive ? "primary" : "default"}
+                className={cn(
+                  "relative shrink-0 font-semibold transition-all duration-fast hover:scale-105",
+                  isActive ? "text-[var(--sched-on-accent)]" : "sched-badge-matte",
+                  isToday && !isActive && "ring-1 ring-brand/(--opacity-dim)"
                 )}
-              </span>
-            </Badge>
-          )
-        })}
+                onClick={() => scrollToDay(i)}
+              >
+                {isActive && (
+                  <motion.span
+                    layoutId="schedule-mobile-day"
+                    className="absolute inset-0 rounded-full bg-brand shadow-glow-primary"
+                    transition={
+                      prefersReduced
+                        ? { duration: 0 }
+                        : { type: "spring", stiffness: 400, damping: 30 }
+                    }
+                  />
+                )}
+                <span className="relative z-surface flex items-center gap-0.5">
+                  {weekdayShort[i] ?? getDayLabel(day)}
+                  {count > 0 && <sup className="text-[0.625rem] font-bold opacity-70">{count}</sup>}
+                </span>
+              </Badge>
+            )
+          })}
         </div>
       </div>
 
