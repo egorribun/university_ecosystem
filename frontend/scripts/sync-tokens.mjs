@@ -333,6 +333,6 @@ GROUPS.forEach((group) => {
 })
 
 // 4. Write File
-fs.writeFileSync(TOKENS_TS_PATH, output, "utf-8")
+fs.writeFileSync(TOKENS_TS_PATH, output.trim() + "\n", "utf-8")
 console.log(`✅ Generated tokens.ts at ${TOKENS_TS_PATH}`)
 console.log("✨ Token synchronization complete.")
