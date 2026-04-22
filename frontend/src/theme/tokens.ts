@@ -91,7 +91,8 @@ export const zIndexTokens = {
   tooltip: "var(--z-tooltip)",
 } as const
 
-export const focusRing = {} as const
+export const focusRing = {
+} as const
 
 export const shadows = {
   glass: "var(--shadow-glass)",
@@ -172,8 +173,10 @@ export const motion = {
   staggerDelay: 0.08,
 } as const
 
-export const icon = {} as const
+export const icon = {
+} as const
 
 export const letterSpacing = {
   body: "var(--tracking-body)",
 } as const
+
