@@ -14,9 +14,7 @@ export function DateBullet({ date, locale, size = "default" }: DateBulletProps) 
   const { t } = useTranslation("common")
   const d = date ? new Date(date) : null
   const dd = d ? pad(d.getDate()) : "—"
-  const mmLabel = d
-    ? new Intl.DateTimeFormat(locale, { month: "short" }).format(d)
-    : "--"
+  const mmLabel = d ? new Intl.DateTimeFormat(locale, { month: "short" }).format(d) : "--"
   const fallback = t("dateUnknown")
   const full = d
     ? d.toLocaleString(locale, {
@@ -46,17 +44,21 @@ export function DateBullet({ date, locale, size = "default" }: DateBulletProps) 
         )}
       >
         {/* Day number */}
-        <span className={cn(
-          "relative z-[1] font-black leading-none tracking-tight text-brand",
-          isCompact ? "text-sm" : "text-base"
-        )}>
+        <span
+          className={cn(
+            "relative z-[1] font-black leading-none tracking-tight text-brand",
+            isCompact ? "text-sm" : "text-base"
+          )}
+        >
           {dd}
         </span>
         {/* Month abbreviation */}
-        <span className={cn(
-          "relative z-[1] font-bold uppercase leading-tight text-brand/(--opacity-strong)",
-          isCompact ? "text-[0.5rem]" : "text-[0.6rem]"
-        )}>
+        <span
+          className={cn(
+            "relative z-[1] font-bold uppercase leading-tight text-brand/(--opacity-strong)",
+            isCompact ? "text-[0.5rem]" : "text-[0.6rem]"
+          )}
+        >
           {mmLabel}
         </span>
       </span>

@@ -163,7 +163,6 @@
     --map-layer-active-bg: var(--color-teal-400);
     --map-accent: var(--color-teal-400);
     --map-event-color: var(--color-amber-400);
-
   }
 }
 
@@ -224,7 +223,9 @@
 }
 /* Night building pin glow — "lit windows" effect */
 .map-theme[data-time-period="night"] .map-building-pin {
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--_pin-color, var(--color-teal-400)) 40%, transparent));
+  filter: drop-shadow(
+    0 0 6px color-mix(in srgb, var(--_pin-color, var(--color-teal-400)) 40%, transparent)
+  );
 }
 
 .dark .map-theme[data-time-period="dawn"] {
@@ -312,11 +313,15 @@
   min-height: calc(100dvh - 220px); /* header + search + padding */
 }
 @media (min-width: 640px) {
-  .map-viewport { min-height: 560px; }
+  .map-viewport {
+    min-height: 560px;
+  }
 }
 /* Landscape phones — prevent overflow on very short viewports */
 @media (max-height: 500px) {
-  .map-viewport { min-height: 300px; }
+  .map-viewport {
+    min-height: 300px;
+  }
 }
 
 .map-card-matte {
@@ -422,23 +427,22 @@
   flex-direction: column;
   align-items: center;
   cursor: pointer;
-  transition: transform 0.2s var(--ease-premium, ease-out),
-              filter 0.2s var(--ease-premium, ease-out);
+  transition:
+    transform 0.2s var(--ease-premium, ease-out),
+    filter 0.2s var(--ease-premium, ease-out);
 }
 
 /* Color-matched hover glow */
 .map-building-pin:hover {
   transform: scale(1.1) translateY(-2px);
-  filter:
-    drop-shadow(0 4px 12px rgba(0,0,0,0.3))
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3))
     drop-shadow(0 0 8px color-mix(in srgb, var(--_pin-color, #94a3b8) 50%, transparent));
 }
 
 /* Selected building — glow + ring */
 .map-building-pin--active {
   transform: scale(1.15) translateY(-3px);
-  filter:
-    drop-shadow(0 6px 16px rgba(0,0,0,0.35))
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.35))
     drop-shadow(0 0 12px color-mix(in srgb, var(--_pin-color, #94a3b8) 40%, transparent));
   z-index: 10;
 }
@@ -520,8 +524,13 @@
 
 /* Schedule-active building pulse */
 @keyframes map-pin-pulse {
-  0%, 100% { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
-  50% { filter: drop-shadow(0 4px 20px rgba(0,0,0,0.4)) drop-shadow(0 0 12px var(--color-brand)); }
+  0%,
+  100% {
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 12px var(--color-brand));
+  }
 }
 
 .map-building-pin--pulse {
@@ -551,7 +560,9 @@
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 1px 6px color-mix(in srgb, black 25%, transparent);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
   animation: map-poi-enter 0.2s var(--ease-premium, ease-out) both;
 }
 
@@ -578,7 +589,9 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.2s, filter 0.2s;
+  transition:
+    transform 0.2s,
+    filter 0.2s;
   animation: map-pin-enter 0.4s var(--ease-premium, ease-out) backwards;
   animation-delay: calc(var(--stagger-index, 0) * 60ms);
 }
@@ -791,7 +804,7 @@
   background: var(--map-card-bg);
   border-radius: 6px;
   padding: 4px 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .map-poi-tooltip .maplibregl-popup-tip {
@@ -857,7 +870,10 @@
   border-radius: 8px;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
   background: transparent;
   border: none;
   font: inherit;
@@ -921,16 +937,38 @@
 
 /* ── Small phones (≤380px): even tighter to fit 320px screens ── */
 @media (max-width: 380px) {
-  .map-control-panel { padding: 2px; border-radius: 18px; }
-  .map-control-btn { min-height: 32px; min-width: 32px; }
-  .map-control-divider { height: 12px; margin: auto 1px; }
+  .map-control-panel {
+    padding: 2px;
+    border-radius: 18px;
+  }
+  .map-control-btn {
+    min-height: 32px;
+    min-width: 32px;
+  }
+  .map-control-divider {
+    height: 12px;
+    margin: auto 1px;
+  }
 }
 
 /* ── Landscape: compact horizontal ── */
 @media (max-height: 500px) and (orientation: landscape) {
-  .map-control-panel { flex-direction: row; gap: 0; padding: 2px; border-radius: 18px; }
-  .map-control-btn { min-height: 32px; min-width: 32px; border-radius: 50%; }
-  .map-control-divider { width: 1px; height: 12px; margin: auto 1px; }
+  .map-control-panel {
+    flex-direction: row;
+    gap: 0;
+    padding: 2px;
+    border-radius: 18px;
+  }
+  .map-control-btn {
+    min-height: 32px;
+    min-width: 32px;
+    border-radius: 50%;
+  }
+  .map-control-divider {
+    width: 1px;
+    height: 12px;
+    margin: auto 1px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1020,7 +1058,10 @@
   padding: 6px 14px;
   font-size: var(--fs-sm, 0.875rem);
   font-weight: 600;
-  transition: box-shadow 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .map-category-chip:hover {
@@ -1033,9 +1074,15 @@
 }
 
 @keyframes map-chip-select {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .map-category-chip[data-active="true"] {
@@ -1139,12 +1186,19 @@
 }
 
 @container map-sidebar (max-width: 280px) {
-  .map-card-matte .map-amenities { display: none; }
-  .map-card-matte .map-hours { display: none; }
+  .map-card-matte .map-amenities {
+    display: none;
+  }
+  .map-card-matte .map-hours {
+    display: none;
+  }
 }
 
 @container map-sidebar (max-width: 320px) {
-  .map-card-matte .map-amenities { flex-direction: column; align-items: flex-start; }
+  .map-card-matte .map-amenities {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* Second reduced-motion block merged into main block above (Wave 109) */
@@ -1192,7 +1246,7 @@
   background: var(--map-poi-popup-bg, var(--bg-surface));
   color: var(--text-primary);
   border-radius: 12px;
-  box-shadow: var(--map-poi-popup-shadow, 0 4px 12px rgba(0,0,0,0.1));
+  box-shadow: var(--map-poi-popup-shadow, 0 4px 12px rgba(0, 0, 0, 0.1));
   padding: 12px 14px;
   border: none;
   font-size: 0.875rem;
@@ -1225,7 +1279,10 @@
   box-shadow:
     0 1px 4px color-mix(in srgb, black 12%, transparent),
     0 0 0 1px color-mix(in srgb, black 6%, transparent);
-  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
 }
 /* Invisible 44px touch target (WCAG 2.5.8) without growing visual circle */
 .map-theme .maplibregl-popup-close-button::after {
@@ -1271,7 +1328,9 @@
   color: var(--text-secondary);
   border: none;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   white-space: nowrap;
 }
 .map-poi-chip:hover {

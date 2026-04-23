@@ -57,7 +57,7 @@ export function useScheduleKeyboardNav({
         el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
       }
     },
-    [colCount, rowCount, onSelect],
+    [colCount, rowCount, onSelect]
   )
 
   const handleKeyDown = useCallback(
@@ -66,7 +66,11 @@ export function useScheduleKeyboardNav({
 
       // Skip if user is typing in an input/textarea
       const target = e.target as HTMLElement
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") {
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT"
+      ) {
         return
       }
 
@@ -124,7 +128,18 @@ export function useScheduleKeyboardNav({
           break
       }
     },
-    [enabled, activeCell, rowCount, colCount, moveTo, todayColIdx, onOpen, onEdit, onDelete, onToggleShortcuts],
+    [
+      enabled,
+      activeCell,
+      rowCount,
+      colCount,
+      moveTo,
+      todayColIdx,
+      onOpen,
+      onEdit,
+      onDelete,
+      onToggleShortcuts,
+    ]
   )
 
   useEffect(() => {

@@ -40,7 +40,9 @@ export function StaggerChildren({
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     if (prefersReduced) {
       const items = container.querySelectorAll<HTMLElement>(".stagger-item")
-      items.forEach((item) => { item.dataset.visible = "true" })
+      items.forEach((item) => {
+        item.dataset.visible = "true"
+      })
       return
     }
 
@@ -48,7 +50,9 @@ export function StaggerChildren({
       ([entry]) => {
         if (entry?.isIntersecting) {
           const items = container.querySelectorAll<HTMLElement>(".stagger-item")
-          items.forEach((item) => { item.dataset.visible = "true" })
+          items.forEach((item) => {
+            item.dataset.visible = "true"
+          })
           if (once) observer.disconnect()
         }
       },

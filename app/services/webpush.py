@@ -199,7 +199,7 @@ def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
     extra["event"] = event
     logger.log(level, "webpush.%s", event, extra=extra)
     root_logger = logging.getLogger()
-    if root_logger is not logger:
+    if root_logger is not logger:  # type: ignore[comparison-overlap]
         root_logger.log(level, "webpush.%s", event, extra={**extra})
 
 

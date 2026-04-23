@@ -103,9 +103,8 @@ export default function useActivityData() {
   // i18n returnObjects fallbacks — stored in state (not refs) so React
   // Compiler can track them as useMemo dependencies without flagging a
   // ref-read during render (RC-78-01 / RC-91-01 pattern).
-  const [fallbackAttendanceRecent, setFallbackAttendanceRecent] = useState(
-    DEFAULT_ATTENDANCE_RECENT
-  )
+  const [fallbackAttendanceRecent, setFallbackAttendanceRecent] =
+    useState(DEFAULT_ATTENDANCE_RECENT)
   const [fallbackGradeRecent, setFallbackGradeRecent] = useState(DEFAULT_GRADE_RECENT)
   const [fallbackParticipationRecent, setFallbackParticipationRecent] = useState(
     DEFAULT_PARTICIPATION_RECENT
@@ -222,10 +221,16 @@ export default function useActivityData() {
     for (const item of recent) {
       const key = item.date.slice(0, 10)
       const prev = byDate.get(key) ?? { present: 0, total: 0 }
-      byDate.set(key, { present: prev.present + (item.status === "present" ? 1 : 0), total: prev.total + 1 })
+      byDate.set(key, {
+        present: prev.present + (item.status === "present" ? 1 : 0),
+        total: prev.total + 1,
+      })
     }
     return [...byDate.entries()]
-      .map(([date, { present, total }]) => ({ date, value: total > 0 ? Math.round((present / total) * 100) : 0 }))
+      .map(([date, { present, total }]) => ({
+        date,
+        value: total > 0 ? Math.round((present / total) * 100) : 0,
+      }))
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [attendance?.recent])
 
@@ -235,7 +240,11 @@ export default function useActivityData() {
     const bySubject = new Map<string, { sum: number; count: number; max: number }>()
     for (const item of recent) {
       const prev = bySubject.get(item.course) ?? { sum: 0, count: 0, max: item.max ?? 5 }
-      bySubject.set(item.course, { sum: prev.sum + item.score, count: prev.count + 1, max: item.max ?? prev.max })
+      bySubject.set(item.course, {
+        sum: prev.sum + item.score,
+        count: prev.count + 1,
+        max: item.max ?? prev.max,
+      })
     }
     return [...bySubject.entries()].map(([label, { sum, count, max }]) => ({
       label,

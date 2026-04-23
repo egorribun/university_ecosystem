@@ -248,9 +248,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@055f5df8c3f65ea01cd41e9dc855becd88953486 # v2.75.18
+        with:
+          tool: wasm-pack
+
       - name: Run Lighthouse CI
-        env:
-          SKIP_BUILD: "true"
         run: npm run lhci
 
       - name: Upload Lighthouse reports

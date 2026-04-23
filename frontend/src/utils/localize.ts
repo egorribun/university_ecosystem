@@ -5,7 +5,7 @@
 export function localizeField(
   primary: string,
   english: string | null | undefined,
-  language: string,
+  language: string
 ): string {
   const en = english ?? ""
   if (language === "en" && en.trim()) return en

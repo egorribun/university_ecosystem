@@ -41,20 +41,22 @@ const NewsCardContent = ({
   const { t } = useTranslation(["common"])
   const [celebrating, setCelebrating] = useState(false)
 
-  const handleLike = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!isLiked) {
-      setCelebrating(true)
-      setTimeout(() => setCelebrating(false), 400)
-    }
-    onToggleLike()
-  }, [isLiked, onToggleLike])
+  const handleLike = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (!isLiked) {
+        setCelebrating(true)
+        setTimeout(() => setCelebrating(false), 400)
+      }
+      onToggleLike()
+    },
+    [isLiked, onToggleLike]
+  )
 
   return (
     <div className="flex flex-1 flex-col gap-3 p-5">
       {/* Title — Wave 116 SW3: h2 keeps heading-order sequential under page h1 */}
-      <h2 className="font-semibold leading-snug text-text-primary text-base line-clamp-2"
-      >
+      <h2 className="font-semibold leading-snug text-text-primary text-base line-clamp-2">
         <Link
           to="/news/$id"
           params={{ id }}
@@ -68,9 +70,7 @@ const NewsCardContent = ({
       </h2>
 
       {/* Preview */}
-      <p className="text-sm leading-relaxed text-(--text-secondary) line-clamp-2">
-        {preview}
-      </p>
+      <p className="text-sm leading-relaxed text-(--text-secondary) line-clamp-2">{preview}</p>
 
       {/* Footer — likes, comments, CTA */}
       <div className="mt-auto flex items-center justify-between pt-3 border-t border-glass-border/(--opacity-soft)">
@@ -85,7 +85,11 @@ const NewsCardContent = ({
                 ? "text-error-text"
                 : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
             )}
-            aria-label={isLiked ? t("common:aria.unlike", { defaultValue: "Unlike" }) : t("common:aria.like", { defaultValue: "Like" })}
+            aria-label={
+              isLiked
+                ? t("common:aria.unlike", { defaultValue: "Unlike" })
+                : t("common:aria.like", { defaultValue: "Like" })
+            }
           >
             <span className={cn(celebrating && "news-heart-celebrate")}>
               <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} />
@@ -103,7 +107,9 @@ const NewsCardContent = ({
           {readingTime != null && (
             <div className="flex items-center gap-1 text-(--text-secondary)">
               <ClockIcon size={14} />
-              <span className="text-[11px] font-medium tabular-nums">{readingTime} {t("common:time.minuteShort", { defaultValue: "min" })}</span>
+              <span className="text-[11px] font-medium tabular-nums">
+                {readingTime} {t("common:time.minuteShort", { defaultValue: "min" })}
+              </span>
             </div>
           )}
 
@@ -121,7 +127,11 @@ const NewsCardContent = ({
                   ? "text-brand"
                   : "text-(--text-secondary) hover:text-brand/(--opacity-hover)"
               )}
-              aria-label={isBookmarked ? t("common:aria.removeBookmark", { defaultValue: "Remove bookmark" }) : t("common:aria.addBookmark", { defaultValue: "Bookmark" })}
+              aria-label={
+                isBookmarked
+                  ? t("common:aria.removeBookmark", { defaultValue: "Remove bookmark" })
+                  : t("common:aria.addBookmark", { defaultValue: "Bookmark" })
+              }
             >
               {isBookmarked ? (
                 <BookmarkCheckIcon size={16} fill="currentColor" />

@@ -73,12 +73,16 @@ export function LessonCard({
     <div
       id={`lesson-card-${lesson.id}`}
       onClick={onOpen}
-      onKeyDown={onOpen ? (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onOpen()
-        }
-      } : undefined}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                onOpen()
+              }
+            }
+          : undefined
+      }
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
       aria-current={isCurrent ? "time" : undefined}
@@ -87,7 +91,9 @@ export function LessonCard({
         `${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`,
         lesson.room,
         isConflict ? t("schedule:lesson.conflict") : null,
-      ].filter(Boolean).join(", ")}
+      ]
+        .filter(Boolean)
+        .join(", ")}
       className={cn(
         "sched-card-matte sched-card-item sched-lesson-card group relative flex min-w-0 flex-col glass-noise",
         onOpen && "cursor-pointer",
@@ -97,7 +103,12 @@ export function LessonCard({
         isCurrent && "sched-current-glow",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       )}
-      style={{ "--sched-stagger-i": index, "--sched-progress": isCurrent ? currentProgress : 0 } as React.CSSProperties}
+      style={
+        {
+          "--sched-stagger-i": index,
+          "--sched-progress": isCurrent ? currentProgress : 0,
+        } as React.CSSProperties
+      }
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
       {/* ── Type badge ─────────────────────────────────── */}
@@ -129,7 +140,11 @@ export function LessonCard({
         <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.6875rem] text-text-secondary">
           {lesson.teacher && (
             <span className="inline-flex min-w-0 items-center gap-1">
-              <TeacherIcon size={10} className="shrink-0 text-brand opacity-60" aria-hidden="true" />
+              <TeacherIcon
+                size={10}
+                className="shrink-0 text-brand opacity-60"
+                aria-hidden="true"
+              />
               <span className="truncate">{lesson.teacher}</span>
             </span>
           )}
@@ -148,7 +163,11 @@ export function LessonCard({
                 </>
               ) : (
                 <>
-                  <RoomIcon size={10} className="shrink-0 text-brand opacity-60" aria-hidden="true" />
+                  <RoomIcon
+                    size={10}
+                    className="shrink-0 text-brand opacity-60"
+                    aria-hidden="true"
+                  />
                   <span>{lesson.room}</span>
                 </>
               )}
@@ -157,7 +176,11 @@ export function LessonCard({
           {/* Note indicator */}
           {hasNote && (
             <span title={t("schedule:notes.hasNote", { defaultValue: "Has note" })}>
-              <NoteIcon size={10} className="shrink-0 text-[var(--lt-lab-accent)] opacity-60" aria-hidden="true" />
+              <NoteIcon
+                size={10}
+                className="shrink-0 text-[var(--lt-lab-accent)] opacity-60"
+                aria-hidden="true"
+              />
             </span>
           )}
         </div>

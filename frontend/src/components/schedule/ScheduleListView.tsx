@@ -60,7 +60,7 @@ export function ScheduleListView({
   /* ── Group lessons by day, sorted by time (CQ-71-05: shared utility) ── */
   const lessonsByDay = useMemo(
     () => buildLessonsByDay(schedule, weekdayBackend),
-    [schedule, weekdayBackend],
+    [schedule, weekdayBackend]
   )
 
   // CQ-71-01: no useMemo needed for primitive .length access
@@ -71,7 +71,7 @@ export function ScheduleListView({
       setAddDay(day)
       openDialog("add")
     },
-    [setAddDay, openDialog],
+    [setAddDay, openDialog]
   )
 
   // Pre-compute cumulative lesson counts per day for stable stagger index
@@ -81,7 +81,7 @@ export function ScheduleListView({
     let total = 0
     for (const day of weekdayBackend) {
       counts.push(total)
-      total += (lessonsByDay.get(day)?.length ?? 0)
+      total += lessonsByDay.get(day)?.length ?? 0
     }
     return counts
   }, [weekdayBackend, lessonsByDay])
@@ -105,7 +105,9 @@ export function ScheduleListView({
             </div>
           }
           title={t("schedule:list.noLessons", { defaultValue: t("schedule:table.noLessons") })}
-          description={t("schedule:empty.selectGroup", { defaultValue: "Select a group to view the schedule" })}
+          description={t("schedule:empty.selectGroup", {
+            defaultValue: "Select a group to view the schedule",
+          })}
         />
       </div>
     )
@@ -156,7 +158,10 @@ export function ScheduleListView({
                 <button
                   type="button"
                   onClick={() => handleAdd(day)}
-                  aria-label={t("schedule:actions.addLesson", { day: label, defaultValue: `Add lesson for ${label}` })}
+                  aria-label={t("schedule:actions.addLesson", {
+                    day: label,
+                    defaultValue: `Add lesson for ${label}`,
+                  })}
                   className="ml-auto flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg sched-settings-btn text-brand hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                 >
                   {/* A11Y-71-01: consistent SVG icon instead of text + */}
@@ -194,7 +199,7 @@ export function ScheduleListView({
                         </div>
                       )}
                       {/* FIX-71-01: thread currentProgress for glow urgency */}
-                    <LessonCard
+                      <LessonCard
                         lesson={lesson}
                         isConflict={isConflict}
                         isCurrent={isCurrent}

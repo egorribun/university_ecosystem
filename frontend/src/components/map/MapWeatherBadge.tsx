@@ -7,7 +7,13 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
-  Sun, Moon, Cloud, CloudRain, Snowflake, CloudFog, CloudLightning,
+  Sun,
+  Moon,
+  Cloud,
+  CloudRain,
+  Snowflake,
+  CloudFog,
+  CloudLightning,
   type LucideIcon,
 } from "lucide-react"
 import { useMapWeather } from "@/hooks/useMapWeather"
@@ -43,15 +49,14 @@ export function MapWeatherBadge() {
         onClick={() => setIsExpanded((prev) => !prev)}
       >
         <Icon size={14} strokeWidth={2.5} />
-        <span className="font-bold">{data.temperature > 0 ? "+" : ""}{data.temperature}°</span>
+        <span className="font-bold">
+          {data.temperature > 0 ? "+" : ""}
+          {data.temperature}°
+        </span>
         <span className="hidden sm:inline text-[var(--text-tertiary)]">{conditionText}</span>
       </button>
 
-      <MapWeatherPanel
-        data={data}
-        open={isExpanded}
-        onClose={() => setIsExpanded(false)}
-      />
+      <MapWeatherPanel data={data} open={isExpanded} onClose={() => setIsExpanded(false)} />
     </div>
   )
 }

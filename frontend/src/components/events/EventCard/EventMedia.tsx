@@ -72,7 +72,9 @@ export function EventMedia({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--text-inverse)] opacity-strong" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--text-inverse)]" />
             </span>
-            <span className="text-xs font-bold text-[var(--text-inverse)]">{t("common:statuses.live")}</span>
+            <span className="text-xs font-bold text-[var(--text-inverse)]">
+              {t("common:statuses.live")}
+            </span>
           </div>
         )}
 

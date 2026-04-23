@@ -58,7 +58,10 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     >
       <div className="relative z-deep space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-extrabold text-text-primary" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>
+          <h2
+            className="font-extrabold text-text-primary"
+            style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}
+          >
             {t("dashboard:news.heading")}
           </h2>
           <Button

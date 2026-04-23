@@ -15,7 +15,8 @@ import { describe, expect, it } from "vitest"
 describe("jspdf + dompurify post-audit-fix smoke", () => {
   it("imports jspdf dynamically and instantiates a document", async () => {
     const mod = await import("jspdf")
-    const JsPDFCtor = (mod as { jsPDF?: typeof mod.jsPDF }).jsPDF ?? (mod as { default: typeof mod.jsPDF }).default
+    const JsPDFCtor =
+      (mod as { jsPDF?: typeof mod.jsPDF }).jsPDF ?? (mod as { default: typeof mod.jsPDF }).default
     expect(JsPDFCtor).toBeTypeOf("function")
 
     const doc = new JsPDFCtor({ orientation: "portrait", unit: "mm", format: "a4" })

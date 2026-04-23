@@ -23,17 +23,17 @@ export function RelatedNews({ items }: RelatedNewsProps) {
   if (items.length === 0) return null
 
   return (
-      <section aria-label={t("news:related.title", { defaultValue: "Related articles" })}>
-        <h2 className="text-lg font-bold tracking-tight text-text-primary mb-4">
-          {t("news:related.title", { defaultValue: "Related articles" })}
-        </h2>
+    <section aria-label={t("news:related.title", { defaultValue: "Related articles" })}>
+      <h2 className="text-lg font-bold tracking-tight text-text-primary mb-4">
+        {t("news:related.title", { defaultValue: "Related articles" })}
+      </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {items.map((item) => (
-            <RelatedCard key={item.id} item={item} language={language} />
-          ))}
-        </div>
-      </section>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {items.map((item) => (
+          <RelatedCard key={item.id} item={item} language={language} />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -51,7 +51,7 @@ function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
   )
 
   const dateLabel = useMemo(
-    () => item.created_at ? getMoscowDate(item.created_at) : "",
+    () => (item.created_at ? getMoscowDate(item.created_at) : ""),
     [item.created_at]
   )
 

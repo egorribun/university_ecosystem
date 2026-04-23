@@ -62,9 +62,7 @@ export function EventsShortcutsOverlay() {
         <dl className="space-y-2.5">
           {shortcuts.map(({ key, action }) => (
             <div key={key} className="flex items-center justify-between">
-              <dt className="text-sm text-(--text-secondary)">
-                {t(`events:${action}`)}
-              </dt>
+              <dt className="text-sm text-(--text-secondary)">{t(`events:${action}`)}</dt>
               <dd>
                 <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg glass-layer-surface border border-glass-border/(--opacity-soft) px-2 text-xs font-bold text-text-primary shadow-sm">
                   {key}

@@ -21,14 +21,7 @@ export function DraggableLessonCard({
   dragEnabled = false,
   ...cardProps
 }: DraggableLessonCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: dragId,
     disabled: !dragEnabled,
   })
@@ -45,14 +38,7 @@ export function DraggableLessonCard({
   }
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "relative",
-        isDragging && "sched-dragging",
-      )}
-    >
+    <div ref={setNodeRef} style={style} className={cn("relative", isDragging && "sched-dragging")}>
       {/* Drag handle — top-left grip icon */}
       <button
         type="button"

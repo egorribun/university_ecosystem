@@ -118,7 +118,11 @@ export default function MobileBottomNav() {
                     initial={prefersReducedMotion ? false : { opacity: 0, height: 0, scale: 0.8 }}
                     animate={{ opacity: 1, height: "auto", scale: 1 }}
                     exit={{ opacity: 0, height: 0, scale: 0.8 }}
-                    transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0 }
+                        : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
+                    }
                     className="z-surface text-[10px] font-bold uppercase tracking-tight text-(--nav-active-color) mt-0.5 leading-tight"
                   >
                     {it.label}

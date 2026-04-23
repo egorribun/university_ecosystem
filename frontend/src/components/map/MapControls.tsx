@@ -83,31 +83,56 @@ export function MapControls({ mapRef }: MapControlsProps) {
       <button type="button" onClick={zoomIn} className="map-control-btn" aria-label={t("zoom.in")}>
         <Plus size={iconSize} />
       </button>
-      <button type="button" onClick={zoomOut} className="map-control-btn" aria-label={t("zoom.out")}>
+      <button
+        type="button"
+        onClick={zoomOut}
+        className="map-control-btn"
+        aria-label={t("zoom.out")}
+      >
         <Minus size={iconSize} />
       </button>
 
       <div className="map-control-divider" />
 
       {/* Compass — reset north */}
-      <button type="button" onClick={resetNorth} className="map-control-btn" aria-label={t("controls.compass")}>
+      <button
+        type="button"
+        onClick={resetNorth}
+        className="map-control-btn"
+        aria-label={t("controls.compass")}
+      >
         <Compass size={iconSize} />
       </button>
 
       {/* 3D / 2D toggle */}
-      <button type="button" onClick={togglePitch} className="map-control-btn" aria-label={t("controls.pitchToggle")}>
+      <button
+        type="button"
+        onClick={togglePitch}
+        className="map-control-btn"
+        aria-label={t("controls.pitchToggle")}
+      >
         {is3D ? <MapIcon size={iconSize} /> : <Box size={iconSize} />}
       </button>
 
       <div className="map-control-divider" />
 
       {/* Recenter campus */}
-      <button type="button" onClick={recenter} className="map-control-btn map-control-btn--accent" aria-label={t("zoom.reset")}>
+      <button
+        type="button"
+        onClick={recenter}
+        className="map-control-btn map-control-btn--accent"
+        aria-label={t("zoom.reset")}
+      >
         <LocateFixed size={iconSize} />
       </button>
 
       {/* Fullscreen */}
-      <button type="button" onClick={toggleFullscreen} className="map-control-btn" aria-label={t("controls.fullscreen")}>
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        className="map-control-btn"
+        aria-label={t("controls.fullscreen")}
+      >
         {isFullscreen ? <Minimize2 size={iconSize} /> : <Maximize2 size={iconSize} />}
       </button>
     </div>

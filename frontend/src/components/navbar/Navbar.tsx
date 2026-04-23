@@ -54,7 +54,8 @@ const Navbar = () => {
           "flex items-center justify-center",
           // Only visual properties transition (no height, no padding)
           "transition-[background,backdrop-filter,box-shadow]",
-          dur, ease,
+          dur,
+          ease,
           showPill
             ? "bg-transparent"
             : isScrolled && isMobile

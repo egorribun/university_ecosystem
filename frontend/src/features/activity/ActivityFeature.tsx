@@ -145,7 +145,10 @@ export function ActivityFeature() {
         {/* ── Stat Cards ──────────────────────────── */}
         <section aria-label={t("activity:title")} className="mb-8 md:mb-10">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 md:gap-6">
-            <div className="activity-card-container activity-stagger-item" style={{ "--stagger-index": 0 } as CSSProperties}>
+            <div
+              className="activity-card-container activity-stagger-item"
+              style={{ "--stagger-index": 0 } as CSSProperties}
+            >
               <AttendanceCard
                 attendance={attendance}
                 hasInitiallyLoaded={hasInitiallyLoaded}
@@ -153,14 +156,20 @@ export function ActivityFeature() {
                 ringSize={ringSize}
               />
             </div>
-            <div className="activity-card-container activity-stagger-item" style={{ "--stagger-index": 1 } as CSSProperties}>
+            <div
+              className="activity-card-container activity-stagger-item"
+              style={{ "--stagger-index": 1 } as CSSProperties}
+            >
               <GradesCard
                 grades={grades}
                 hasInitiallyLoaded={hasInitiallyLoaded}
                 ringSize={ringSize}
               />
             </div>
-            <div className="activity-card-container activity-stagger-item" style={{ "--stagger-index": 2 } as CSSProperties}>
+            <div
+              className="activity-card-container activity-stagger-item"
+              style={{ "--stagger-index": 2 } as CSSProperties}
+            >
               <ParticipationCard
                 participation={participation}
                 hasInitiallyLoaded={hasInitiallyLoaded}
@@ -179,7 +188,10 @@ export function ActivityFeature() {
                 {t("activity:charts.title")}
               </h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-                <div className="activity-stagger-item" style={{ "--stagger-index": 3 } as CSSProperties}>
+                <div
+                  className="activity-stagger-item"
+                  style={{ "--stagger-index": 3 } as CSSProperties}
+                >
                   <ActivityTrendChart
                     data={attendanceTrendData}
                     colorVar="var(--activity-present-accent)"
@@ -187,7 +199,10 @@ export function ActivityFeature() {
                     formatDate={formatDate}
                   />
                 </div>
-                <div className="activity-stagger-item" style={{ "--stagger-index": 4 } as CSSProperties}>
+                <div
+                  className="activity-stagger-item"
+                  style={{ "--stagger-index": 4 } as CSSProperties}
+                >
                   <ActivityBarChart
                     data={gradesBySubject}
                     colorVar="var(--activity-grade-accent)"
@@ -220,7 +235,10 @@ export function ActivityFeature() {
                 {t("activity:comparative.title")}
               </h2>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 md:gap-6">
-                <div className="activity-stagger-item" style={{ "--stagger-index": 5 } as CSSProperties}>
+                <div
+                  className="activity-stagger-item"
+                  style={{ "--stagger-index": 5 } as CSSProperties}
+                >
                   <ActivityComparativeCard
                     label={t("activity:comparative.attendanceLabel")}
                     current={comparative.attendance.current}
@@ -230,7 +248,10 @@ export function ActivityFeature() {
                     colorVar="var(--activity-present-accent)"
                   />
                 </div>
-                <div className="activity-stagger-item" style={{ "--stagger-index": 6 } as CSSProperties}>
+                <div
+                  className="activity-stagger-item"
+                  style={{ "--stagger-index": 6 } as CSSProperties}
+                >
                   <ActivityComparativeCard
                     label={t("activity:comparative.gradesLabel")}
                     current={comparative.grades.current}
@@ -240,7 +261,10 @@ export function ActivityFeature() {
                     colorVar="var(--activity-grade-accent)"
                   />
                 </div>
-                <div className="activity-stagger-item" style={{ "--stagger-index": 7 } as CSSProperties}>
+                <div
+                  className="activity-stagger-item"
+                  style={{ "--stagger-index": 7 } as CSSProperties}
+                >
                   <ActivityComparativeCard
                     label={t("activity:comparative.participationLabel")}
                     current={comparative.participation.current}

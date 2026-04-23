@@ -71,7 +71,15 @@ export function ScheduleCard({
       map.set(name.toLowerCase(), index)
     })
     // English backend names — API returns weekday as "sunday", "monday", etc.
-    const englishDays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+    const englishDays = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ]
     englishDays.forEach((name, index) => {
       map.set(name, index)
     })
@@ -126,7 +134,10 @@ export function ScheduleCard({
 
   return (
     <Card
-      className={cn("glass-noise refetch-shimmer dash-border-shimmer dash-panel-schedule p-6 md:p-7", className)}
+      className={cn(
+        "glass-noise refetch-shimmer dash-border-shimmer dash-panel-schedule p-6 md:p-7",
+        className
+      )}
       padding="none"
       aria-busy={loadingSched}
       data-refetching={dashboardScheduleQuery.isFetching && !dashboardScheduleQuery.isLoading}
@@ -135,7 +146,9 @@ export function ScheduleCard({
     >
       <div className="relative z-base space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-extrabold" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>{t("dashboard:todaySchedule")}</h2>
+          <h2 className="font-extrabold" style={{ fontSize: "clamp(1.35rem, 2.5vw, 1.75rem)" }}>
+            {t("dashboard:todaySchedule")}
+          </h2>
           <div className="flex items-center gap-2">
             <Button
               as={Link}

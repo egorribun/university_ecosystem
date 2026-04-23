@@ -91,14 +91,19 @@ async def revoke_sessions_matching(
 ) -> int:
     """Mark matching sessions as revoked without deleting their rows."""
 
-    stmt = select(ActiveSession).where(whereclause).execution_options(yield_per=1000)  # type: ignore[arg-type]
-    exec_result = await db.stream(stmt)
+    # MED-W20: db.stream() with yield_per triggers asyncpg's server-side cursor
+    # protocol, which reuses prepared statements from the same connection and
+    # causes ProtocolViolationError when the statement cache is polluted by a
+    # prior query with a different parameter count.  Sessions per user are a
+    # bounded set, so fetching them all at once with execute() is safe.
+    stmt = select(ActiveSession).where(whereclause)  # type: ignore[arg-type]
+    exec_result = await db.execute(stmt)
 
     session_backend = await get_session_backend()
     now = datetime.now(UTC)
     revoked = 0
 
-    async for session in exec_result.scalars():
+    for session in exec_result.scalars():
         revoked += 1
         if session.revoked_at is None:
             session.revoked_at = now

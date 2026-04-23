@@ -12,12 +12,7 @@ import * as v from "valibot"
  *       previous, +1 = next). Absent when w=0 (clean URL).
  */
 export const scheduleSearchSchema = v.object({
-  w: v.optional(
-    v.pipe(
-      v.string(),
-      v.regex(/^-?\d+$/, "Week offset must be an integer"),
-    ),
-  ),
+  w: v.optional(v.pipe(v.string(), v.regex(/^-?\d+$/, "Week offset must be an integer"))),
 })
 
 export type ScheduleSearch = v.InferOutput<typeof scheduleSearchSchema>

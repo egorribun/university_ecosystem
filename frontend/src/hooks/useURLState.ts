@@ -55,7 +55,7 @@ export function useURLState<T extends Record<string, unknown>>(): {
         viewTransition: false,
       })
     },
-    [navigate],
+    [navigate]
   )
 
   const setParams = useCallback(
@@ -77,7 +77,7 @@ export function useURLState<T extends Record<string, unknown>>(): {
         viewTransition: false,
       })
     },
-    [navigate],
+    [navigate]
   )
 
   return { params, setParam, setParams }

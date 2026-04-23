@@ -538,10 +538,11 @@
   background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-subtle), transparent);
   backdrop-filter: blur(8px);
   box-shadow: var(--shadow-xs);
-  transition: background 200ms var(--ease-premium),
-              border-color 200ms var(--ease-premium),
-              box-shadow 200ms var(--ease-premium),
-              transform 200ms var(--ease-premium);
+  transition:
+    background 200ms var(--ease-premium),
+    border-color 200ms var(--ease-premium),
+    box-shadow 200ms var(--ease-premium),
+    transform 200ms var(--ease-premium);
 }
 .nav-action-btn:hover {
   background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-dim), transparent);
@@ -569,18 +570,31 @@
 /* Unread state — subtle brand glow on the button itself */
 .nav-action-btn[data-unread] {
   border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-main) var(--opacity-faint), transparent),
-              var(--shadow-xs);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--brand-main) var(--opacity-faint), transparent),
+    var(--shadow-xs);
 }
 
 /* Bell wiggle on hover — playful micro-interaction */
 @keyframes bell-wiggle {
-  0%   { transform: rotate(0deg); }
-  20%  { transform: rotate(12deg); }
-  40%  { transform: rotate(-10deg); }
-  60%  { transform: rotate(6deg); }
-  80%  { transform: rotate(-3deg); }
-  100% { transform: rotate(0deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(12deg);
+  }
+  40% {
+    transform: rotate(-10deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+  80% {
+    transform: rotate(-3deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
 }
 .nav-action-btn:hover .bell-wiggle {
   animation: bell-wiggle 0.5s ease-in-out;
@@ -612,7 +626,12 @@
   letter-spacing: -0.025em;
   color: var(--text-secondary);
   border: 1px solid transparent;
-  transition: color 0.25s, background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.15s;
+  transition:
+    color 0.25s,
+    background 0.25s,
+    border-color 0.25s,
+    box-shadow 0.25s,
+    transform 0.15s;
 }
 
 .nav-link-premium:hover {
@@ -953,7 +972,8 @@
   @apply relative overflow-hidden rounded-2xl text-text-primary;
   background: var(--dash-card-bg, var(--bg-matte-card));
   border: 1px solid var(--dash-border, var(--border-matte));
-  box-shadow: 0 4px 24px color-mix(in srgb, black 15%, transparent),
+  box-shadow:
+    0 4px 24px color-mix(in srgb, black 15%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
   transition:
     box-shadow var(--motion-duration-base) var(--ease-premium),
@@ -1032,7 +1052,10 @@
       0 1px 3px color-mix(in srgb, black 8%, transparent),
       0 4px 16px color-mix(in srgb, black 6%, transparent),
       inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
-    transition: border-color 300ms var(--ease-premium), box-shadow 300ms var(--ease-premium), transform 300ms var(--ease-premium);
+    transition:
+      border-color 300ms var(--ease-premium),
+      box-shadow 300ms var(--ease-premium),
+      transform 300ms var(--ease-premium);
     position: relative;
     overflow: hidden;
   }
@@ -1050,7 +1073,9 @@
     z-index: 2;
     background: var(--dash-accent-line);
     opacity: 0.4;
-    transition: opacity 300ms var(--ease-premium), inset 300ms var(--ease-premium);
+    transition:
+      opacity 300ms var(--ease-premium),
+      inset 300ms var(--ease-premium);
   }
 
   .dash-panel-schedule:hover,
@@ -1093,8 +1118,16 @@
   /* Wave 49: Premium DateBullet — 3D depth with layered shadows and radial gradient */
   .date-bullet-premium {
     background:
-      radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--brand-main) 18%, transparent), transparent 70%),
-      radial-gradient(circle at 65% 70%, color-mix(in srgb, var(--brand-main) 10%, transparent), transparent 60%),
+      radial-gradient(
+        circle at 35% 30%,
+        color-mix(in srgb, var(--brand-main) 18%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        circle at 65% 70%,
+        color-mix(in srgb, var(--brand-main) 10%, transparent),
+        transparent 60%
+      ),
       color-mix(in srgb, var(--brand-main) 6%, var(--bg-matte-card));
     border: 1.5px solid color-mix(in srgb, var(--brand-main) 22%, transparent);
     box-shadow:
@@ -1115,8 +1148,16 @@
 
   :is(.dark) .date-bullet-premium {
     background:
-      radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--brand-main) 24%, transparent), transparent 70%),
-      radial-gradient(circle at 65% 70%, color-mix(in srgb, var(--brand-main) 14%, transparent), transparent 60%),
+      radial-gradient(
+        circle at 35% 30%,
+        color-mix(in srgb, var(--brand-main) 24%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        circle at 65% 70%,
+        color-mix(in srgb, var(--brand-main) 14%, transparent),
+        transparent 60%
+      ),
       color-mix(in srgb, var(--brand-main) 8%, var(--bg-matte-card));
     border-color: color-mix(in srgb, var(--brand-main) 30%, transparent);
     box-shadow:

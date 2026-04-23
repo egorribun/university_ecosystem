@@ -19,20 +19,52 @@
       var(--dash-hero-conic-tertiary),
       var(--dash-hero-conic-accent)
     );
-    --grad-dash-conic-90: conic-gradient(from 90deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), var(--dash-hero-conic-tertiary), var(--dash-hero-conic-accent));
-    --grad-dash-conic-130: conic-gradient(from 130deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), transparent 85%);
-    --grad-dash-conic-simple: conic-gradient(from 140deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), transparent 85%);
-    --grad-schedule-flare: radial-gradient(circle at top, var(--dash-card-schedule-radial), transparent 72%);
+    --grad-dash-conic-90: conic-gradient(
+      from 90deg at 50% 50%,
+      var(--dash-hero-conic-primary),
+      var(--dash-hero-conic-secondary),
+      var(--dash-hero-conic-tertiary),
+      var(--dash-hero-conic-accent)
+    );
+    --grad-dash-conic-130: conic-gradient(
+      from 130deg at 50% 50%,
+      var(--dash-hero-conic-primary),
+      var(--dash-hero-conic-secondary),
+      transparent 85%
+    );
+    --grad-dash-conic-simple: conic-gradient(
+      from 140deg at 50% 50%,
+      var(--dash-hero-conic-primary),
+      var(--dash-hero-conic-secondary),
+      transparent 85%
+    );
+    --grad-schedule-flare: radial-gradient(
+      circle at top,
+      var(--dash-card-schedule-radial),
+      transparent 72%
+    );
     --flare-schedule-orb: radial-gradient(circle, var(--dash-card-schedule-orb), transparent);
 
     /* ── Light Theme — must match dashboard-theme.css (no hardcoded hex) ── */
     --hero-grad-start: var(--color-slate-50);
     --hero-grad-end: var(--color-sky-100);
 
-    --dash-hero-radial-top: color-mix(in srgb, var(--color-sky-400) var(--opacity-dim), transparent);
+    --dash-hero-radial-top: color-mix(
+      in srgb,
+      var(--color-sky-400) var(--opacity-dim),
+      transparent
+    );
     --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) var(--glass-alpha-med), transparent);
-    --dash-hero-highlight: color-mix(in srgb, var(--color-indigo-500) var(--opacity-subtle), transparent);
-    --dash-hero-highlight-soft: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
+    --dash-hero-highlight: color-mix(
+      in srgb,
+      var(--color-indigo-500) var(--opacity-subtle),
+      transparent
+    );
+    --dash-hero-highlight-soft: color-mix(
+      in srgb,
+      var(--primary-main) var(--opacity-faint),
+      transparent
+    );
 
     --hero-card-bg: var(--bg-surface);
     --dash-card-bg: var(--bg-surface);
@@ -41,11 +73,20 @@
     --dash-card-news-radial: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
     --dash-card-news-orb: color-mix(in srgb, var(--color-sky-400) 12%, transparent);
     --dash-card-events-radial: color-mix(in srgb, var(--color-indigo-400) 8%, transparent);
-    --grad-events-flare: radial-gradient(circle at bottom right, var(--dash-card-events-radial), transparent 70%);
+    --grad-events-flare: radial-gradient(
+      circle at bottom right,
+      var(--dash-card-events-radial),
+      transparent 70%
+    );
 
     --dash-border: color-mix(in srgb, var(--color-slate-200) 80%, transparent);
     --dash-border-hover: var(--color-sky-400);
-    --dash-accent-line: linear-gradient(to right, transparent 10%, var(--color-sky-400) 50%, transparent 90%);
+    --dash-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-sky-400) 50%,
+      transparent 90%
+    );
     --dash-btn-bg: var(--color-slate-50);
     --dash-btn-border: var(--color-slate-200);
   }
@@ -75,7 +116,12 @@
     /* Border: desaturated slate with faint blue, NOT cyan glow */
     --dash-border: #1e2a3e;
     --dash-border-hover: color-mix(in srgb, var(--color-sky-400) 50%, #1e2a3e 50%);
-    --dash-accent-line: linear-gradient(to right, transparent 10%, color-mix(in srgb, var(--color-sky-400) 60%, transparent) 50%, transparent 90%);
+    --dash-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      color-mix(in srgb, var(--color-sky-400) 60%, transparent) 50%,
+      transparent 90%
+    );
 
     /* Buttons: clearly lighter than card bg */
     --dash-btn-bg: #1a2540;

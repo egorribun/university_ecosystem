@@ -20,7 +20,9 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
     onDeactivate: () => setLightboxOpen(false),
   })
 
-  useEffect(() => { setHeroRatio(null) }, [imageUrl])
+  useEffect(() => {
+    setHeroRatio(null)
+  }, [imageUrl])
 
   const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
     const img = event.currentTarget
@@ -70,82 +72,82 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
 
   return (
     <>
-    <figure
-      className="relative overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft) shadow-glass"
-      style={{ viewTransitionName: "news-hero" }}
-    >
-      <div
-        className={cn(
-          "flex w-full items-center justify-center overflow-hidden",
-          heroFrame.container,
-          heroFrame.backdrop
+      <figure
+        className="relative overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft) shadow-glass"
+        style={{ viewTransitionName: "news-hero" }}
+      >
+        <div
+          className={cn(
+            "flex w-full items-center justify-center overflow-hidden",
+            heroFrame.container,
+            heroFrame.backdrop
+          )}
+        >
+          <SmartImage
+            srcRaw={imageUrl}
+            alt={
+              displayTitle
+                ? t("news:alt.hero", { title: displayTitle })
+                : t("news:alt.heroFallback")
+            }
+            onLoad={handleHeroLoad}
+            className={cn("h-full w-full", heroFrame.image)}
+            style={heroFrame.imageStyle}
+            // Hero is the LCP candidate on /news/:id — override SmartImage defaults
+            // (Wave 113 PERF-113-01, uses Wave 112 SW5 prop ordering).
+            loading="eager"
+            fetchPriority="high"
+          />
+        </div>
+        {!displayTitle && (
+          <figcaption className="border-t border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
+            {t("news:alt.heroFallback")}
+          </figcaption>
         )}
-      >
-        <SmartImage
-          srcRaw={imageUrl}
-          alt={
-            displayTitle
-              ? t("news:alt.hero", { title: displayTitle })
-              : t("news:alt.heroFallback")
-          }
-          onLoad={handleHeroLoad}
-          className={cn("h-full w-full", heroFrame.image)}
-          style={heroFrame.imageStyle}
-          // Hero is the LCP candidate on /news/:id — override SmartImage defaults
-          // (Wave 113 PERF-113-01, uses Wave 112 SW5 prop ordering).
-          loading="eager"
-          fetchPriority="high"
-        />
-      </div>
-      {!displayTitle && (
-        <figcaption className="border-t border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
-          {t("news:alt.heroFallback")}
-        </figcaption>
-      )}
 
-      {/* Zoom button */}
-      {imageUrl && (
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="absolute bottom-3 right-3 z-surface inline-flex h-9 w-9 items-center justify-center rounded-xl bg-black/(--opacity-strong) backdrop-blur-sm text-white/(--opacity-heavy) shadow-sm transition hover:bg-black/(--opacity-heavy) hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
+        {/* Zoom button */}
+        {imageUrl && (
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="absolute bottom-3 right-3 z-surface inline-flex h-9 w-9 items-center justify-center rounded-xl bg-black/(--opacity-strong) backdrop-blur-sm text-white/(--opacity-heavy) shadow-sm transition hover:bg-black/(--opacity-heavy) hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
+            aria-label={t("news:actions.zoomImage")}
+          >
+            <ZoomIn size={16} />
+          </button>
+        )}
+      </figure>
+
+      {/* Lightbox — focus-trapped modal */}
+      {lightboxOpen && imageUrl && (
+        <div
+          ref={lightboxRef}
+          className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
           aria-label={t("news:actions.zoomImage")}
+          tabIndex={-1}
         >
-          <ZoomIn size={16} />
-        </button>
+          {/* Backdrop click to close */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+          <div className="absolute inset-0" onClick={() => setLightboxOpen(false)} />
+
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-4 right-4 z-surface inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-white transition hover:bg-white/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
+            aria-label={t("common:buttons.close")}
+          >
+            <CloseIcon size={20} />
+          </button>
+          <img
+            src={imageUrl}
+            alt={displayTitle || t("news:alt.heroFallback")}
+            className="relative z-base max-h-[90vh] max-w-[90vw] object-contain rounded-lg select-none"
+            draggable={false}
+          />
+        </div>
       )}
-    </figure>
-
-    {/* Lightbox — focus-trapped modal */}
-    {lightboxOpen && imageUrl && (
-      <div
-        ref={lightboxRef}
-        className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("news:actions.zoomImage")}
-        tabIndex={-1}
-      >
-        {/* Backdrop click to close */}
-        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-        <div className="absolute inset-0" onClick={() => setLightboxOpen(false)} />
-
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(false)}
-          className="absolute top-4 right-4 z-surface inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-white transition hover:bg-white/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
-          aria-label={t("common:buttons.close")}
-        >
-          <CloseIcon size={20} />
-        </button>
-        <img
-          src={imageUrl}
-          alt={displayTitle || t("news:alt.heroFallback")}
-          className="relative z-base max-h-[90vh] max-w-[90vw] object-contain rounded-lg select-none"
-          draggable={false}
-        />
-      </div>
-    )}
     </>
   )
 }

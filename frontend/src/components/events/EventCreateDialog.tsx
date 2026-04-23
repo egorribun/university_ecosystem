@@ -120,20 +120,14 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
           {/* Left column — localized fields */}
           <div className="space-y-4">
             <TextField
-              label={
-                language === "en"
-                  ? t("events:form.title_en")
-                  : t("events:form.title")
-              }
+              label={language === "en" ? t("events:form.title_en") : t("events:form.title")}
               value={getLocalizedValue("title")}
               onChange={(event) => updateLocalizedValue("title", event.target.value)}
               fullWidth
             />
             <TextField
               label={
-                language === "en"
-                  ? t("events:form.description_en")
-                  : t("events:form.description")
+                language === "en" ? t("events:form.description_en") : t("events:form.description")
               }
               value={getLocalizedValue("description")}
               onChange={(event) => updateLocalizedValue("description", event.target.value)}
@@ -142,21 +136,13 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
               fullWidth
             />
             <TextField
-              label={
-                language === "en"
-                  ? t("events:form.type_en")
-                  : t("events:form.type")
-              }
+              label={language === "en" ? t("events:form.type_en") : t("events:form.type")}
               value={getLocalizedValue("event_type")}
               onChange={(event) => updateLocalizedValue("event_type", event.target.value)}
               fullWidth
             />
             <TextField
-              label={
-                language === "en"
-                  ? t("events:form.location_en")
-                  : t("events:form.location")
-              }
+              label={language === "en" ? t("events:form.location_en") : t("events:form.location")}
               value={getLocalizedValue("location")}
               onChange={(event) => updateLocalizedValue("location", event.target.value)}
               fullWidth

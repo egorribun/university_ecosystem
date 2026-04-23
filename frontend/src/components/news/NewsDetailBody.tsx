@@ -30,7 +30,8 @@ const articleMarked = new Marked({
  * (drop-cap on first paragraph, > pull-quotes).
  */
 function hasMarkdownSyntax(text: string): boolean {
-  return /^#{1,6}\s/m.test(text) ||
+  return (
+    /^#{1,6}\s/m.test(text) ||
     /\*\*[^*]+\*\*/m.test(text) ||
     /\*[^*]+\*/m.test(text) ||
     /^[-*+]\s/m.test(text) ||
@@ -39,6 +40,7 @@ function hasMarkdownSyntax(text: string): boolean {
     /^```/m.test(text) ||
     /\|.*\|.*\|/m.test(text) ||
     /^---+$/m.test(text)
+  )
 }
 
 /**

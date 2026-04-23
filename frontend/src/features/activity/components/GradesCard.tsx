@@ -26,11 +26,7 @@ function GradesCardSkeleton() {
   )
 }
 
-export function GradesCard({
-  grades,
-  hasInitiallyLoaded,
-  ringSize,
-}: GradesCardProps) {
+export function GradesCard({ grades, hasInitiallyLoaded, ringSize }: GradesCardProps) {
   const { t } = useTranslation(["activity"])
 
   const gradeAverage = toNumber(grades?.average)
@@ -43,10 +39,7 @@ export function GradesCard({
   )
 
   return (
-    <CardShell
-      tone="info"
-      aria-label={t("activity:a11y.gradesCard")}
-    >
+    <CardShell tone="info" aria-label={t("activity:a11y.gradesCard")}>
       <SkeletonMorph loaded={hasInitiallyLoaded} skeleton={<GradesCardSkeleton />}>
         <div className="flex items-center gap-4">
           <AnimatedRing
@@ -56,7 +49,10 @@ export function GradesCard({
             mode="gauge"
             colorVar="var(--activity-grade-accent)"
             fraction={grades?.scale === "gpa" ? 2 : grades?.scale === "5" ? 1 : 0}
-            ariaLabel={t("activity:a11y.ringGrades", { value: gradeAverage.toFixed(1), max: gradeMax })}
+            ariaLabel={t("activity:a11y.ringGrades", {
+              value: gradeAverage.toFixed(1),
+              max: gradeMax,
+            })}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p className="text-micro font-semibold uppercase tracking-wider text-text-tertiary">

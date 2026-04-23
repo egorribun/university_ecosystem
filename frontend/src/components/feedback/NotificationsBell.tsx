@@ -129,10 +129,7 @@ export default function NotificationsBell() {
         aria-label={t("system:notificationsBell.open")}
       >
         <Bell
-          className={cn(
-            "nav-action-icon bell-wiggle",
-            isOpen && "rotate-[-10deg]"
-          )}
+          className={cn("nav-action-icon bell-wiggle", isOpen && "rotate-[-10deg]")}
           strokeWidth={2}
         />
         {unreadCount ? (

@@ -49,15 +49,15 @@ function cascadeProps(delay: number, active: boolean, reduced: boolean) {
 /** Wave 49: Dev-only mock stories — shown when API returns empty.
  *  Wave 75: text moved to i18n (dashboard:mockStories.*). */
 const MOCK_STORY_DEFS = [
-  { id: "mock-1", key: "unihack",      seed: "unihack",     cta: "/events", days: 7  },
-  { id: "mock-2", key: "library",      seed: "library",     cta: null,      days: 14 },
-  { id: "mock-3", key: "openDay",      seed: "openday",     cta: "/events", days: 10 },
-  { id: "mock-4", key: "careerForum",  seed: "career",      cta: null,      days: 12 },
-  { id: "mock-5", key: "sports",       seed: "sport",       cta: null,      days: 30 },
-  { id: "mock-6", key: "scholarships", seed: "scholarship", cta: null,      days: 20 },
-  { id: "mock-7", key: "volunteer",    seed: "volunteer",   cta: null,      days: 8  },
-  { id: "mock-8", key: "exchange",     seed: "exchange",    cta: null,      days: 25 },
-  { id: "mock-9", key: "conference",   seed: "science",     cta: null,      days: 15 },
+  { id: "mock-1", key: "unihack", seed: "unihack", cta: "/events", days: 7 },
+  { id: "mock-2", key: "library", seed: "library", cta: null, days: 14 },
+  { id: "mock-3", key: "openDay", seed: "openday", cta: "/events", days: 10 },
+  { id: "mock-4", key: "careerForum", seed: "career", cta: null, days: 12 },
+  { id: "mock-5", key: "sports", seed: "sport", cta: null, days: 30 },
+  { id: "mock-6", key: "scholarships", seed: "scholarship", cta: null, days: 20 },
+  { id: "mock-7", key: "volunteer", seed: "volunteer", cta: null, days: 8 },
+  { id: "mock-8", key: "exchange", seed: "exchange", cta: null, days: 25 },
+  { id: "mock-9", key: "conference", seed: "science", cta: null, days: 15 },
 ] as const
 
 function buildMockStories(t: (key: string) => string): StoryItem[] {

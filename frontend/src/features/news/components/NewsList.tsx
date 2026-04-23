@@ -119,7 +119,10 @@ export const NewsList = ({
     <section aria-label={t("news:pageTitle")}>
       {/* Refetch indicator — thin bar during background refresh */}
       {showRefetchBar && (
-        <div className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse" aria-hidden="true" />
+        <div
+          className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse"
+          aria-hidden="true"
+        />
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
         {/* Wave 117 SW4 — mirrors Events PERF-77-01 pattern: plain <div>

@@ -190,7 +190,11 @@ export function MobileMenu({
 
             {/* Navigation items */}
             <div className="flex-1 overflow-y-auto px-3 py-2">
-              <ul className="flex flex-col gap-1" role="navigation" aria-label={t("navigation:aria.mobileMenu")}>
+              <ul
+                className="flex flex-col gap-1"
+                role="navigation"
+                aria-label={t("navigation:aria.mobileMenu")}
+              >
                 {menuLinks.map((item, index) => {
                   const Icon = item.icon
                   const active = isActive(item.to)
@@ -212,12 +216,7 @@ export function MobileMenu({
                         className="mobile-nav-link"
                         data-active={active || undefined}
                       >
-                        {Icon && (
-                          <Icon
-                            className="mobile-nav-link-icon shrink-0"
-                            size={18}
-                          />
-                        )}
+                        {Icon && <Icon className="mobile-nav-link-icon shrink-0" size={18} />}
                         {item.label}
                       </Link>
                     </motion.li>

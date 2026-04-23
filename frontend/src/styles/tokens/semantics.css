@@ -115,8 +115,7 @@
     --gradient-brand: linear-gradient(135deg, var(--primary-main), var(--primary-hover));
 
     /* Shadows */
-    --raw-shadow-xs:
-      0 1px 2px color-mix(in srgb, black var(--opacity-faint), transparent);
+    --raw-shadow-xs: 0 1px 2px color-mix(in srgb, black var(--opacity-faint), transparent);
     --raw-shadow-sm:
       0 1px 3px color-mix(in srgb, black var(--opacity-subtle), transparent),
       0 1px 2px color-mix(in srgb, black var(--opacity-faint), transparent);
@@ -213,7 +212,11 @@
       0 8px 32px color-mix(in srgb, black 4%, transparent),
       0 0 24px color-mix(in srgb, var(--color-blue-500) 10%, transparent);
     --pill-inner-glow: inset 0 1px 0 0 color-mix(in srgb, white 50%, transparent);
-    --pill-gradient: linear-gradient(180deg, color-mix(in srgb, white 8%, transparent) 0%, transparent 60%);
+    --pill-gradient: linear-gradient(
+      180deg,
+      color-mix(in srgb, white 8%, transparent) 0%,
+      transparent 60%
+    );
     --pill-glow: color-mix(in srgb, var(--color-blue-500) 10%, transparent);
 
     /* Active Indicator — Wave 51 (Light) */
@@ -221,10 +224,12 @@
     --nav-active-glow: color-mix(in srgb, var(--color-blue-600) 15%, transparent);
 
     /* Nav capsule — iOS glass button (Light) */
-    --nav-capsule-bg: linear-gradient(180deg,
+    --nav-capsule-bg: linear-gradient(
+      180deg,
       color-mix(in srgb, white 22%, transparent) 0%,
       color-mix(in srgb, white 10%, transparent) 50%,
-      color-mix(in srgb, white 14%, transparent) 100%);
+      color-mix(in srgb, white 14%, transparent) 100%
+    );
     --nav-capsule-border-top: color-mix(in srgb, white 55%, transparent);
     --nav-capsule-border-side: color-mix(in srgb, white 20%, transparent);
     --nav-capsule-border-bottom: color-mix(in srgb, white 10%, transparent);
@@ -237,7 +242,8 @@
     --nav-capsule-specular: radial-gradient(
       ellipse 70% 30% at 50% 0%,
       color-mix(in srgb, white 30%, transparent) 0%,
-      transparent 100%);
+      transparent 100%
+    );
     --nav-hover-bg: color-mix(in srgb, white 8%, transparent);
     --nav-hover-border: color-mix(in srgb, white 12%, transparent);
 
@@ -246,13 +252,19 @@
     --nav-glow-spread: color-mix(in srgb, var(--color-blue-500) 35%, transparent);
 
     /* Avatar Ring — Wave 51 (Light) */
-    --avatar-ring-glow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 30%, transparent),
+    --avatar-ring-glow:
+      0 0 0 3px color-mix(in srgb, var(--color-blue-500) 30%, transparent),
       0 0 12px color-mix(in srgb, var(--color-blue-500) 15%, transparent);
 
     /* Mobile Drawer — Wave 51 (Light) */
     --drawer-bg: color-mix(in srgb, var(--color-white) 92%, transparent);
     --drawer-overlay: color-mix(in srgb, black 20%, transparent);
-    --drawer-accent-gradient: linear-gradient(90deg, var(--color-blue-500), var(--color-blue-400), var(--color-blue-500));
+    --drawer-accent-gradient: linear-gradient(
+      90deg,
+      var(--color-blue-500),
+      var(--color-blue-400),
+      var(--color-blue-500)
+    );
     --quick-action-icon-bg: color-mix(in srgb, var(--color-blue-500) 8%, transparent);
 
     /* Bottom Nav Pill — Wave 51 (Light) */
@@ -260,7 +272,11 @@
     --bottom-pill-border: color-mix(in srgb, var(--color-blue-600) 20%, transparent);
     --bottom-nav-bg: color-mix(in srgb, var(--color-white) 90%, transparent);
     --bottom-nav-pill-glow: 0 2px 12px color-mix(in srgb, var(--color-blue-500) 20%, transparent);
-    --bottom-nav-pill-gradient: linear-gradient(135deg, color-mix(in srgb, var(--color-blue-500) 15%, transparent), color-mix(in srgb, var(--color-blue-600) 10%, transparent));
+    --bottom-nav-pill-gradient: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-blue-500) 15%, transparent),
+      color-mix(in srgb, var(--color-blue-600) 10%, transparent)
+    );
 
     /* Notification Badge — Wave 50 (Light) */
     --notif-badge: var(--color-red-500);
@@ -385,7 +401,11 @@
       0 8px 32px color-mix(in srgb, black 15%, transparent),
       0 0 24px color-mix(in srgb, var(--color-sky-400) 8%, transparent);
     --pill-inner-glow: inset 0 1px 0 0 color-mix(in srgb, white 8%, transparent);
-    --pill-gradient: linear-gradient(180deg, color-mix(in srgb, white 4%, transparent) 0%, transparent 60%);
+    --pill-gradient: linear-gradient(
+      180deg,
+      color-mix(in srgb, white 4%, transparent) 0%,
+      transparent 60%
+    );
     --pill-glow: color-mix(in srgb, var(--color-sky-400) 8%, transparent);
 
     /* Active Indicator — Wave 51 (Dark) */
@@ -393,10 +413,12 @@
     --nav-active-glow: color-mix(in srgb, var(--color-sky-400) 20%, transparent);
 
     /* Nav capsule — iOS glass button (Dark) */
-    --nav-capsule-bg: linear-gradient(180deg,
+    --nav-capsule-bg: linear-gradient(
+      180deg,
       color-mix(in srgb, white 16%, transparent) 0%,
       color-mix(in srgb, white 6%, transparent) 50%,
-      color-mix(in srgb, white 9%, transparent) 100%);
+      color-mix(in srgb, white 9%, transparent) 100%
+    );
     --nav-capsule-border-top: color-mix(in srgb, white 35%, transparent);
     --nav-capsule-border-side: color-mix(in srgb, white 12%, transparent);
     --nav-capsule-border-bottom: color-mix(in srgb, white 6%, transparent);
@@ -409,7 +431,8 @@
     --nav-capsule-specular: radial-gradient(
       ellipse 70% 30% at 50% 0%,
       color-mix(in srgb, white 20%, transparent) 0%,
-      transparent 100%);
+      transparent 100%
+    );
     --nav-hover-bg: color-mix(in srgb, white 6%, transparent);
     --nav-hover-border: color-mix(in srgb, white 8%, transparent);
 
@@ -418,13 +441,19 @@
     --nav-glow-spread: color-mix(in srgb, var(--color-sky-500) 30%, transparent);
 
     /* Avatar Ring — Wave 51 (Dark) */
-    --avatar-ring-glow: 0 0 0 3px color-mix(in srgb, var(--color-sky-400) 25%, transparent),
+    --avatar-ring-glow:
+      0 0 0 3px color-mix(in srgb, var(--color-sky-400) 25%, transparent),
       0 0 12px color-mix(in srgb, var(--color-sky-400) 12%, transparent);
 
     /* Mobile Drawer — Wave 51 (Dark) */
     --drawer-bg: color-mix(in srgb, var(--color-slate-900) 88%, transparent);
     --drawer-overlay: color-mix(in srgb, black 40%, transparent);
-    --drawer-accent-gradient: linear-gradient(90deg, var(--color-sky-400), var(--color-blue-500), var(--color-sky-400));
+    --drawer-accent-gradient: linear-gradient(
+      90deg,
+      var(--color-sky-400),
+      var(--color-blue-500),
+      var(--color-sky-400)
+    );
     --quick-action-icon-bg: color-mix(in srgb, var(--color-sky-400) 10%, transparent);
 
     /* Bottom Nav Pill — Wave 51 (Dark) */
@@ -432,7 +461,11 @@
     --bottom-pill-border: color-mix(in srgb, var(--color-sky-400) 20%, transparent);
     --bottom-nav-bg: color-mix(in srgb, var(--color-slate-950) 88%, transparent);
     --bottom-nav-pill-glow: 0 2px 12px color-mix(in srgb, var(--color-sky-400) 15%, transparent);
-    --bottom-nav-pill-gradient: linear-gradient(135deg, color-mix(in srgb, var(--color-sky-400) 12%, transparent), color-mix(in srgb, var(--color-blue-500) 8%, transparent));
+    --bottom-nav-pill-gradient: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-sky-400) 12%, transparent),
+      color-mix(in srgb, var(--color-blue-500) 8%, transparent)
+    );
 
     /* Notification Badge — Wave 50 (Dark) */
     --notif-badge: var(--color-red-400);

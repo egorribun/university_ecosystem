@@ -189,7 +189,12 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
         const res = await api.patch(`/news/comments/${commentId}`, { content })
         return res.data
       } catch (error: unknown) {
-        return handleMutationError(error, `/api/v1/news/comments/${commentId}`, { content }, "PATCH")
+        return handleMutationError(
+          error,
+          `/api/v1/news/comments/${commentId}`,
+          { content },
+          "PATCH"
+        )
       }
     },
     onMutate: async ({ commentId, content }) => {

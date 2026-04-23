@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
-import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-} from "@/components/settings"
+import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import SmartImage from "@/components/media/SmartImage"
 import { Button, Input, Textarea } from "@/components/ui"
 import { updateNews, uploadNewsImage } from "@/api/news"
@@ -75,10 +70,18 @@ export function NewsDetailEditDialog({
   }, [open, initialData])
 
   // Cleanup preview URL on unmount
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
+  useEffect(
+    () => () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    },
+    [previewUrl]
+  )
 
   const resetPreview = useCallback(() => {
-    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl)
+      setPreviewUrl(null)
+    }
     if (imageInputRef.current) imageInputRef.current.value = ""
     setNewImage(null)
   }, [previewUrl])
@@ -184,17 +187,10 @@ export function NewsDetailEditDialog({
                 {t("news:form.image")}
               </label>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Button
-                  as="label"
-                  variant="glass"
-                  className="w-full sm:w-auto"
-                  disabled={saving}
-                >
+                <Button as="label" variant="glass" className="w-full sm:w-auto" disabled={saving}>
                   <div className="flex items-center gap-2">
                     <PhotoCamera className="h-4 w-4" />
-                    {newImage
-                      ? t("common:buttons.changePhoto")
-                      : t("common:buttons.uploadPhoto")}
+                    {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
                   </div>
                   <input
                     type="file"

@@ -147,24 +147,38 @@ export const StoryList = ({
     }
   }, [])
 
-  const handleStoryClick = useCallback((story: StoryItem, index: number) => {
-    if (hasDragged.current) {
-      hasDragged.current = false
-      return
-    }
-    onOpenStory(story, index)
-  }, [onOpenStory])
+  const handleStoryClick = useCallback(
+    (story: StoryItem, index: number) => {
+      if (hasDragged.current) {
+        hasDragged.current = false
+        return
+      }
+      onOpenStory(story, index)
+    },
+    [onOpenStory]
+  )
 
   if (!shouldShowHeading && !hasStories) return null
 
   /** Wave 54: CSS mask for edge fade indicators (DESIGN-54-01) */
   const fadeMaskStyle: CSSProperties | undefined =
     scrollEdge === "start"
-      ? { maskImage: "linear-gradient(to right, black 85%, transparent 100%)", WebkitMaskImage: "linear-gradient(to right, black 85%, transparent 100%)" }
+      ? {
+          maskImage: "linear-gradient(to right, black 85%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(to right, black 85%, transparent 100%)",
+        }
       : scrollEdge === "end"
-        ? { maskImage: "linear-gradient(to left, black 85%, transparent 100%)", WebkitMaskImage: "linear-gradient(to left, black 85%, transparent 100%)" }
+        ? {
+            maskImage: "linear-gradient(to left, black 85%, transparent 100%)",
+            WebkitMaskImage: "linear-gradient(to left, black 85%, transparent 100%)",
+          }
         : scrollEdge === "middle"
-          ? { maskImage: "linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)" }
+          ? {
+              maskImage:
+                "linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)",
+              WebkitMaskImage:
+                "linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)",
+            }
           : undefined
 
   return (
@@ -208,7 +222,7 @@ export const StoryList = ({
           )}
           style={fadeMaskStyle}
           aria-label={listLabel}
-          onDragStart={e => e.preventDefault()}
+          onDragStart={(e) => e.preventDefault()}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

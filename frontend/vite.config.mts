@@ -283,9 +283,7 @@ export default defineConfig(({ mode }) => {
     modulepreload: { polyfill: false },
     oxc: {
       define:
-        mode === "production"
-          ? { "console.log": "(() => {})", "console.debug": "(() => {})" }
-          : {},
+        mode === "production" ? { "console.log": "(() => {})", "console.debug": "(() => {})" } : {},
     },
     build: {
       minify: true,
@@ -294,8 +292,11 @@ export default defineConfig(({ mode }) => {
       // so browsers and attackers cannot download the full TypeScript source.
       sourcemap: mode === "production" ? "hidden" : true,
       chunkSizeWarningLimit: 768,
-      // Vite 8: rollupOptions → rolldownOptions (Rolldown replaces Rollup)
       rolldownOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === "EVAL" && warning.id?.includes("@protobufjs/inquire")) return
+          warn(warning)
+        },
         output: {
           // Vite 8: object-form manualChunks removed — use function form
           manualChunks(id: string) {
@@ -304,11 +305,17 @@ export default defineConfig(({ mode }) => {
             // gets its own chunking (see below).
             if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/"))
               return "vendor-react"
-            if (id.includes("node_modules/framer-motion") || id.includes("node_modules/lucide-react"))
+            if (
+              id.includes("node_modules/framer-motion") ||
+              id.includes("node_modules/lucide-react")
+            )
               return "vendor-ui"
             if (id.includes("node_modules/@tanstack/react-query")) return "vendor-query"
             // PERF-05: Sentry isolated from i18n — release bump won't re-download i18n.
-            if (id.includes("node_modules/@sentry/react") || id.includes("node_modules/@sentry/core"))
+            if (
+              id.includes("node_modules/@sentry/react") ||
+              id.includes("node_modules/@sentry/core")
+            )
               return "vendor-sentry"
             // Wave 117 SW3 — split @opentelemetry/* into its own async chunk.
             // Previously OTEL's 50+ KB of instrumentation + SDK code lived in
@@ -323,6 +330,15 @@ export default defineConfig(({ mode }) => {
               return "vendor-i18n"
             if (id.includes("node_modules/axios")) return "vendor-http"
             if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
+            // Address large chunks identified in LHCI build warnings
+            if (id.includes("node_modules/maplibre-gl")) return "vendor-map"
+            if (
+              id.includes("node_modules/jspdf") ||
+              id.includes("node_modules/html2canvas") ||
+              id.includes("node_modules/dompurify")
+            )
+              return "vendor-pdf"
+            if (id.includes("node_modules/protobufjs")) return "vendor-protobuf"
           },
         },
       },

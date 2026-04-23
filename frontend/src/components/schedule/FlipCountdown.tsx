@@ -64,11 +64,7 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
   )
 }
 
-export function FlipCountdown({
-  targetMinutes,
-  onComplete,
-  className,
-}: FlipCountdownProps) {
+export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCountdownProps) {
   const { t } = useTranslation(["schedule"])
   const [secondsLeft, setSecondsLeft] = useState(() => {
     const now = new Date()
@@ -76,7 +72,9 @@ export function FlipCountdown({
     return Math.max(0, targetMinutes * 60 - nowSecs)
   })
   const onCompleteRef = useRef(onComplete)
-  useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
 
   /* FIX-67-06: setInterval(1000) replaces rAF — countdown only needs 1fps.
      Pauses when tab hidden (Page Visibility API) to save battery. */

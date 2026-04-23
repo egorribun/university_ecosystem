@@ -71,9 +71,7 @@ function LessonList({
           <div className="mb-2.5 flex items-center gap-2 px-1">
             <div className="sched-timeline-dot" />
             <div className="sched-timeline-line flex-1" />
-            <span className="sched-break-pill">
-              {t("schedule:break", { minutes: gap })}
-            </span>
+            <span className="sched-break-pill">{t("schedule:break", { minutes: gap })}</span>
             <div className="sched-timeline-line flex-1" />
             <div className="sched-timeline-dot" />
           </div>
@@ -185,7 +183,7 @@ export function DayColumn({
       const newIdx = lessons.findIndex((l) => l.id === over.id)
       if (newIdx >= 0) onLessonReorder(String(active.id), newIdx)
     },
-    [lessons, onLessonReorder],
+    [lessons, onLessonReorder]
   )
 
   // Heatmap: color intensity based on lesson count
@@ -216,9 +214,16 @@ export function DayColumn({
         {/* Confetti burst (FIX-68-23) */}
         {showConfetti && (
           <>
-            <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
+            <div
+              className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
+              aria-hidden="true"
+            >
               {[0, 1, 2, 3, 4, 5].map((i) => (
-                <span key={i} className="sched-confetti-dot" style={{ "--_i": i } as React.CSSProperties} />
+                <span
+                  key={i}
+                  className="sched-confetti-dot"
+                  style={{ "--_i": i } as React.CSSProperties}
+                />
               ))}
             </div>
             {/* A11Y-71-03: screen reader announcement for day completion */}

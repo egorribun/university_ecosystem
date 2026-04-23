@@ -130,7 +130,7 @@ export const useScheduleDisplayPreferences = () =>
     useShallow((state) => ({
       showPastLessons: state.showPastLessons,
       compactMode: state.compactMode,
-    })),
+    }))
   )
 
 // PERF: extract selector to module scope — inline closures cause useShallow identity issues
@@ -147,5 +147,4 @@ const actionsSelector = (state: ScheduleUIState) => ({
   resetPreferences: state.resetPreferences,
 })
 
-export const useScheduleUIActions = () =>
-  useScheduleUIStore(useShallow(actionsSelector))
+export const useScheduleUIActions = () => useScheduleUIStore(useShallow(actionsSelector))

@@ -261,8 +261,6 @@ GROUPS.forEach((group) => {
     return
   }
 
-  output += `export const ${group.name} = {\n`
-
   const entries = []
 
   // Find matching vars
@@ -313,22 +311,28 @@ GROUPS.forEach((group) => {
   // Sort for stability
   entries.sort((a, b) => a.key.localeCompare(b.key))
 
-  entries.forEach(({ key, value }) => {
-    // Quote keys if they start with number or invalid chars
-    const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : `"${key}"`
+  if (entries.length === 0) {
+    output += `export const ${group.name} = {} as const\n\n`
+  } else {
+    output += `export const ${group.name} = {\n`
 
-    // If value is a string, quote it. If number, don't.
-    if (typeof value === "string") {
-      output += `  ${safeKey}: "${value}",\n`
-    } else {
-      output += `  ${safeKey}: ${value},\n`
-    }
-  })
+    entries.forEach(({ key, value }) => {
+      // Quote keys if they start with number or invalid chars
+      const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : `"${key}"`
 
-  output += `} as const\n\n`
+      // If value is a string, quote it. If number, don't.
+      if (typeof value === "string") {
+        output += `  ${safeKey}: "${value}",\n`
+      } else {
+        output += `  ${safeKey}: ${value},\n`
+      }
+    })
+
+    output += `} as const\n\n`
+  }
 })
 
 // 4. Write File
-fs.writeFileSync(TOKENS_TS_PATH, output, "utf-8")
+fs.writeFileSync(TOKENS_TS_PATH, output.trim() + "\n", "utf-8")
 console.log(`✅ Generated tokens.ts at ${TOKENS_TS_PATH}`)
 console.log("✨ Token synchronization complete.")

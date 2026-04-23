@@ -71,10 +71,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       {!isCompactPage && !E2E_MODE && <BackToTop />}
       {!isCompactPage && !E2E_MODE && <MobileBottomNav />}
       {!isCompactPage && E2E_MODE && (
-        <nav
-          data-e2e-stub="mobile-bottom-nav"
-          aria-label={t("navigation:aria.mainNavigation")}
-        />
+        <nav data-e2e-stub="mobile-bottom-nav" aria-label={t("navigation:aria.mainNavigation")} />
       )}
     </div>
   )

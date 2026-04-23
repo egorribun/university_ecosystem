@@ -75,8 +75,15 @@ function ScheduleContent() {
   const lessonIds = useMemo(() => schedule.map((l) => l.id), [schedule])
   const notesMap = useLessonNotesMap(lessonIds)
 
-  const { snackbarMessage, snackbarSeverity, hideSnackbar, showSnackbar, openDialog, selectedLesson, activeDialog } =
-    useSchedulePage()
+  const {
+    snackbarMessage,
+    snackbarSeverity,
+    hideSnackbar,
+    showSnackbar,
+    openDialog,
+    selectedLesson,
+    activeDialog,
+  } = useSchedulePage()
 
   /* ── Confirm dialog + export state ─────────────────────── */
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -105,7 +112,7 @@ function ScheduleContent() {
   // PERF-70-05: compute rowCount inline — avoids duplicate buildTable() call (also in DesktopTable)
   const rowCount = useMemo(() => {
     const counts = weekdayBackend.map(
-      (day) => displaySchedule.filter((l) => l.weekday === day).length,
+      (day) => displaySchedule.filter((l) => l.weekday === day).length
     )
     return Math.max(...counts, 0)
   }, [displaySchedule, weekdayBackend])
@@ -133,7 +140,12 @@ function ScheduleContent() {
     colCount: weekdayBackend.length,
     rowCount,
     todayColIdx: todayIdx,
-    enabled: !isMobile && !shortcutsOpen && activeDialog === null && !settingsOpen && pendingDeleteId === null,
+    enabled:
+      !isMobile &&
+      !shortcutsOpen &&
+      activeDialog === null &&
+      !settingsOpen &&
+      pendingDeleteId === null,
     onEdit: handleKbEdit,
     onDelete: handleKbDelete,
     onToggleShortcuts: handleToggleShortcuts,
@@ -141,7 +153,7 @@ function ScheduleContent() {
 
   const getLessonTypeLabel = useCallback(
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
-    [lessonTypeLabels],
+    [lessonTypeLabels]
   )
   const prefersReduced = useReducedMotion()
 
@@ -170,10 +182,10 @@ function ScheduleContent() {
   const allFilteredOut = displaySchedule.length === 0 && schedule.length > 0
 
   /* ── Scroll to current lesson on initial load (FIX-67-07, FIX-68-06) ── */
-  useScrollToElement(
-    !isLoading && currentLesson ? `lesson-card-${currentLesson.id}` : null,
-    { behavior: "smooth", block: "center" },
-  )
+  useScrollToElement(!isLoading && currentLesson ? `lesson-card-${currentLesson.id}` : null, {
+    behavior: "smooth",
+    block: "center",
+  })
 
   const sharedViewProps = {
     schedule: displaySchedule,
@@ -199,7 +211,10 @@ function ScheduleContent() {
       <SEO title={t("schedule:title.default")} />
       <div className="schedule-theme relative w-full py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14 text-text-primary">
         {/* ── Page-level aurora backdrop — lower orbs only (Wave 71b: orbs 1+2 moved into hero card) ── */}
-        <div className="pointer-events-none absolute inset-0 -z-1 overflow-hidden" aria-hidden="true">
+        <div
+          className="pointer-events-none absolute inset-0 -z-1 overflow-hidden"
+          aria-hidden="true"
+        >
           <div className="sched-orb-3 absolute bottom-20 left-1/4 h-32 w-32 rounded-full opacity-30 blur-[70px] sm:h-48 sm:w-48 lg:h-64 lg:w-64" />
           <div className="sched-orb-4 absolute right-1/3 top-1/2 h-28 w-28 rounded-full opacity-25 blur-[60px] sm:h-40 sm:w-40 lg:h-56 lg:w-56" />
         </div>
@@ -212,13 +227,21 @@ function ScheduleContent() {
 
         <div className="flex gap-4 lg:gap-6">
           {/* ── Main content ──────────────────────────────── */}
-          <section ref={gridRef} aria-label={t("schedule:title.default")} className="min-w-0 flex-1">
+          <section
+            ref={gridRef}
+            aria-label={t("schedule:title.default")}
+            className="min-w-0 flex-1"
+          >
             <SkeletonMorph loaded={!isLoading} skeleton={<ScheduleSkeleton />}>
               <FadeSection delay="var(--motion-duration-base)">
                 {/* ── All lessons filtered out — show reset action (FIX-65-05) ── */}
                 {allFilteredOut && (
                   <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/(--opacity-dim) bg-amber-500/(--opacity-subtle) px-4 py-3 text-sm text-text-secondary">
-                    <span>{t("schedule:empty.allFiltered", { defaultValue: "All lessons are hidden by current filters" })}</span>
+                    <span>
+                      {t("schedule:empty.allFiltered", {
+                        defaultValue: "All lessons are hidden by current filters",
+                      })}
+                    </span>
                     <button
                       type="button"
                       onClick={resetPreferences}
@@ -251,7 +274,11 @@ function ScheduleContent() {
                     initial={prefersReduced ? false : { opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={prefersReduced ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
-                    transition={prefersReduced ? { duration: 0 } : { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                    transition={
+                      prefersReduced
+                        ? { duration: 0 }
+                        : { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }
+                    }
                   >
                     {isMobile ? (
                       <ScheduleMobileView
@@ -277,17 +304,18 @@ function ScheduleContent() {
           {!isMobile && (
             <aside className="hidden w-48 shrink-0 md:block lg:w-56">
               <FadeSection delay="var(--motion-duration-slow)">
-                <ScheduleMiniCalendar className="sticky top-20" lessonDays={lessonDays} isLoading={isLoading} />
+                <ScheduleMiniCalendar
+                  className="sticky top-20"
+                  lessonDays={lessonDays}
+                  isLoading={isLoading}
+                />
               </FadeSection>
             </aside>
           )}
         </div>
 
         <ScheduleDialogs {...scheduleData} getLessonTypeLabel={getLessonTypeLabel} />
-        <ScheduleShortcutsOverlay
-          open={shortcutsOpen}
-          onClose={() => setShortcutsOpen(false)}
-        />
+        <ScheduleShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
         {/* ── Settings panel ─────────────────────────────── */}
         <ScheduleSettingsPanel
@@ -315,8 +343,13 @@ function ScheduleContent() {
         <div className="sr-only" role="status" aria-live="polite">
           {weekOffset === 0
             ? t("schedule:toolbar.thisWeek")
-            : t("schedule:toolbar.weekOffset", { offset: weekOffset > 0 ? `+${weekOffset}` : String(weekOffset) })}.{" "}
-          {t(`schedule:parity.${scheduleData.currentParity}`, { defaultValue: scheduleData.currentParity })}
+            : t("schedule:toolbar.weekOffset", {
+                offset: weekOffset > 0 ? `+${weekOffset}` : String(weekOffset),
+              })}
+          .{" "}
+          {t(`schedule:parity.${scheduleData.currentParity}`, {
+            defaultValue: scheduleData.currentParity,
+          })}
         </div>
 
         <Snackbar

@@ -5,10 +5,7 @@ type ActivityBackdropProps = {
 
 export function ActivityBackdrop({ isNarrow, prefersReducedMotion }: ActivityBackdropProps) {
   return (
-    <div
-      className="pointer-events-none absolute inset-0 -z-1 overflow-hidden"
-      aria-hidden="true"
-    >
+    <div className="pointer-events-none absolute inset-0 -z-1 overflow-hidden" aria-hidden="true">
       {/* Primary hero orb — top center (emerald glow) */}
       <div
         className="absolute -top-20 left-1/2 h-[500px] w-[800px] max-w-full -translate-x-1/2"
@@ -47,8 +44,7 @@ export function ActivityBackdrop({ isNarrow, prefersReducedMotion }: ActivityBac
       <div
         className="absolute bottom-0 left-0 h-[300px] w-[400px]"
         style={{
-          background:
-            "radial-gradient(ellipse at 20% 80%, var(--activity-orb-3), transparent 65%)",
+          background: "radial-gradient(ellipse at 20% 80%, var(--activity-orb-3), transparent 65%)",
           filter: "blur(50px)",
         }}
       />

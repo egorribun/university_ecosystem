@@ -70,7 +70,6 @@ export const DesktopNav = ({
               >
                 {item.label}
               </span>
-
             </Link>
           </li>
         )

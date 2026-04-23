@@ -29,7 +29,8 @@ export function NavbarPill({ isCompact, prefersReducedMotion, children }: Navbar
       className={cn(
         "flex w-full items-center box-border",
         "transition-[max-width,height,border-radius,background,border-color,box-shadow,backdrop-filter]",
-        dur, ease,
+        dur,
+        ease,
         isCompact
           ? [
               // Compact pill: centered, rounded, premium glass

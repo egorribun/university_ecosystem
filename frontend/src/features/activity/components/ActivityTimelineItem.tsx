@@ -91,9 +91,7 @@ export function ActivityTimelineItem({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-text-primary">{title}</p>
-          {subtitle && (
-            <p className="text-xs text-text-secondary">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-xs text-text-secondary">{subtitle}</p>}
           <p className="text-xs text-text-tertiary">{formatDate(entry.date)}</p>
         </div>
       </div>

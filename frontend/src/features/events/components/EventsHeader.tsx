@@ -1,11 +1,4 @@
-import {
-  Calendar,
-  Plus,
-  Search,
-  X,
-  ArrowUpDown,
-  Filter as FilterIcon,
-} from "lucide-react"
+import { Calendar, Plus, Search, X, ArrowUpDown, Filter as FilterIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useRef, useEffect, useState } from "react"
 import FadeSection from "@/components/motion/FadeSection"
@@ -148,7 +141,9 @@ export const EventsHeader = ({
               {...filter.referenceProps}
               className={cn(
                 "relative rounded-full p-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-brand",
-                filter.filtersActive ? "text-brand" : "text-(--text-secondary) hover:text-text-primary"
+                filter.filtersActive
+                  ? "text-brand"
+                  : "text-(--text-secondary) hover:text-text-primary"
               )}
               aria-label={t("events:aria.openFilters")}
             >
@@ -223,10 +218,7 @@ export const EventsHeader = ({
       <div ref={sentinelRef} className="h-0" aria-hidden="true" />
 
       {/* Row 3: Category pills + sort toggle -- sticky on scroll */}
-      <div
-        className="events-sticky-categories"
-        data-stuck={isStuck}
-      >
+      <div className="events-sticky-categories" data-stuck={isStuck}>
         <FadeSection
           delay="140ms"
           className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4"
@@ -234,14 +226,17 @@ export const EventsHeader = ({
           aria-label={t("events:aria.categoryFilter")}
           onKeyDown={(e: React.KeyboardEvent) => {
             if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
-            const buttons = (e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>("button")
+            const buttons = (e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>(
+              "button"
+            )
             const focused = document.activeElement as HTMLElement
             const idx = Array.from(buttons).indexOf(focused as HTMLButtonElement)
             if (idx === -1) return
             e.preventDefault()
-            const next = e.key === "ArrowRight"
-              ? buttons[(idx + 1) % buttons.length]
-              : buttons[(idx - 1 + buttons.length) % buttons.length]
+            const next =
+              e.key === "ArrowRight"
+                ? buttons[(idx + 1) % buttons.length]
+                : buttons[(idx - 1 + buttons.length) % buttons.length]
             next?.focus()
           }}
         >
@@ -269,9 +264,7 @@ export const EventsHeader = ({
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
                 "rounded-full px-3 py-2 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
-                activeCategory === cat.id
-                  ? "shadow-sm"
-                  : "matte-chip text-(--text-secondary)"
+                activeCategory === cat.id ? "shadow-sm" : "matte-chip text-(--text-secondary)"
               )}
               style={
                 activeCategory === cat.id

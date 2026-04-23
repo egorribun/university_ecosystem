@@ -25,14 +25,7 @@ export type RoomType =
   | "study"
   | "other"
 
-export type MapCategory =
-  | "all"
-  | "study"
-  | "food"
-  | "sports"
-  | "services"
-  | "housing"
-  | "events"
+export type MapCategory = "all" | "study" | "food" | "sports" | "services" | "housing" | "events"
 
 export interface BuildingHours {
   weekday: string
@@ -221,7 +214,7 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
     letter: "ПА",
     structureId: "стр. 5",
     tags: ["study", "services"],
-    geoCoords: [55.71350, 37.81669],
+    geoCoords: [55.7135, 37.81669],
     floors: [
       {
         floor: 1,
@@ -413,7 +406,7 @@ const CAMPUS_STRUCTURE: BuildingStructure[] = [
     letter: "СК",
     structureId: "стр. 7",
     tags: ["sports", "events"],
-    geoCoords: [55.71490, 37.81272],
+    geoCoords: [55.7149, 37.81272],
     floors: [
       {
         floor: 1,
@@ -526,7 +519,7 @@ interface LocalizedMapData {
 
 const localeDataModules = import.meta.glob<{ default: LocalizedMapData }>(
   "../i18n/locales/*/map.json",
-  { eager: true },
+  { eager: true }
 )
 
 const localePattern = /locales\/([^/]+)\/map\.json$/
@@ -537,7 +530,7 @@ const mapDataByLocale = Object.entries(localeDataModules).reduce(
     if (match?.[1]) acc[match[1]] = module.default
     return acc
   },
-  {} as Record<string, LocalizedMapData>,
+  {} as Record<string, LocalizedMapData>
 )
 
 const FALLBACK_LOCALE = "en"
@@ -605,10 +598,7 @@ export function getCampusBuildings(locale?: string): CampusBuilding[] {
 /**
  * Find a specific building by its ID.
  */
-export function getBuildingById(
-  letter: BuildingId,
-  locale?: string,
-): CampusBuilding | undefined {
+export function getBuildingById(letter: BuildingId, locale?: string): CampusBuilding | undefined {
   return getCampusBuildings(locale).find((b) => b.letter === letter)
 }
 
@@ -618,7 +608,7 @@ export function getBuildingById(
  */
 export function findRoom(
   roomId: string,
-  locale?: string,
+  locale?: string
 ): { room: CampusRoom; floor: BuildingFloor; building: CampusBuilding } | undefined {
   for (const building of getCampusBuildings(locale)) {
     for (const floor of building.floors) {
@@ -644,7 +634,17 @@ export function extractFloorFromRoomId(roomId: string): number | null {
 /**
  * All building IDs in display order.
  */
-export const BUILDING_IDS: readonly BuildingId[] = ["ГУК", "ПА", "ЛК", "А", "Б", "СК", "О2", "О6", "ЦИТ"]
+export const BUILDING_IDS: readonly BuildingId[] = [
+  "ГУК",
+  "ПА",
+  "ЛК",
+  "А",
+  "Б",
+  "СК",
+  "О2",
+  "О6",
+  "ЦИТ",
+]
 
 /**
  * All filterable categories (excluding "all").

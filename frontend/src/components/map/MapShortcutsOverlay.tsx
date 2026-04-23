@@ -72,18 +72,14 @@ export function MapShortcutsOverlay({ open, onClose }: MapShortcutsOverlayProps)
             animate={{ scale: 1, y: 0 }}
             exit={prefersReduced ? { opacity: 0 } : { scale: 0.95, y: 8 }}
             transition={
-              prefersReduced
-                ? { duration: 0 }
-                : { type: "spring", stiffness: 400, damping: 30 }
+              prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }
             }
           >
             {/* Header */}
             <div className="mb-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <KeyboardIcon size={18} className="text-brand" aria-hidden="true" />
-                <h2 className="text-lg font-bold text-text-primary">
-                  {t("shortcuts.title")}
-                </h2>
+                <h2 className="text-lg font-bold text-text-primary">{t("shortcuts.title")}</h2>
               </div>
               <button
                 type="button"

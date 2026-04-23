@@ -9,7 +9,7 @@ import { useRef, useEffect } from "react"
 
 export function useScrollToElement(
   elementId: string | null,
-  { behavior = "smooth", block = "center" }: ScrollIntoViewOptions = {},
+  { behavior = "smooth", block = "center" }: ScrollIntoViewOptions = {}
 ) {
   const scrolledRef = useRef(false)
 

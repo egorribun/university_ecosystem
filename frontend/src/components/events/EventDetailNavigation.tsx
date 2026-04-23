@@ -25,10 +25,7 @@ export function EventDetailNavigation({
   if (!prevId && !nextId) return null
 
   return (
-    <nav
-      aria-label={t("events:detail.nav.label")}
-      className="flex items-stretch gap-4 mt-10"
-    >
+    <nav aria-label={t("events:detail.nav.label")} className="flex items-stretch gap-4 mt-10">
       {/* Previous event */}
       {prevId ? (
         <Link

@@ -24,7 +24,13 @@ interface EventQuickViewProps {
 }
 
 const formatShortDate = (s: string) =>
-  formatDate(s, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) || ""
+  formatDate(s, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }) || ""
 
 export function EventQuickView({
   visible,
@@ -46,9 +52,7 @@ export function EventQuickView({
         <motion.div
           aria-hidden="true"
           initial={
-            prefersReduced
-              ? false
-              : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }
+            prefersReduced ? false : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }
           }
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={

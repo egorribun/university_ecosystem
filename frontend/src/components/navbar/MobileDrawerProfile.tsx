@@ -45,9 +45,7 @@ export function MobileDrawerProfile({ user, onProfileClick, t }: MobileDrawerPro
         />
       </div>
       <div className="flex flex-col min-w-0">
-        <span className="font-bold text-base text-(--text-primary) truncate">
-          {user.full_name}
-        </span>
+        <span className="font-bold text-base text-(--text-primary) truncate">{user.full_name}</span>
         {user.role && (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-(--text-secondary) mt-0.5">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-(--nav-active-color) animate-pulse" />

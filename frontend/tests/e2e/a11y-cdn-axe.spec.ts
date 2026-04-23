@@ -38,7 +38,7 @@ test.describe("@a11y CDN-injected axe-core regression", () => {
     // the same browser binary — only `project.name` distinguishes them).
     test.skip(
       testInfo.project.name !== "chromium",
-      "CDN axe injection compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)",
+      "CDN axe injection compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)"
     )
 
     await page.emulateMedia({ reducedMotion: "reduce" })
@@ -57,7 +57,7 @@ test.describe("@a11y CDN-injected axe-core regression", () => {
         axe: {
           run: (
             context: Document,
-            options: { runOnly: { type: string; values: string[] } },
+            options: { runOnly: { type: string; values: string[] } }
           ) => Promise<AxeResult>
         }
       }

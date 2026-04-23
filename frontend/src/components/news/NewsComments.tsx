@@ -53,7 +53,10 @@ export function NewsComments({
   }
 
   return (
-    <section aria-labelledby="comments-heading" className="w-full glass-layer-surface glass-noise rounded-2xl p-6 sm:p-8">
+    <section
+      aria-labelledby="comments-heading"
+      className="w-full glass-layer-surface glass-noise rounded-2xl p-6 sm:p-8"
+    >
       {/* ── Section header ── */}
       <div className="flex items-center gap-3 mb-8">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-brand">
@@ -124,7 +127,9 @@ export function NewsComments({
                 <div className="flex flex-col gap-3 mt-1">
                   <Textarea
                     value={editingCommentText}
-                    onChange={(event) => setEditingCommentText(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
+                    onChange={(event) =>
+                      setEditingCommentText(event.target.value.slice(0, COMMENT_MAX_LENGTH))
+                    }
                     aria-label={t("news:form.editCommentAriaLabel")}
                     className="min-h-20 text-sm"
                     maxLength={COMMENT_MAX_LENGTH}
@@ -132,23 +137,21 @@ export function NewsComments({
                     autoFocus
                   />
                   <div className="flex items-center justify-between gap-2">
-                    <span className={cn(
-                      "text-[11px] tabular-nums transition-colors",
-                      editingCommentText.length >= COMMENT_MAX_LENGTH * 0.95
-                        ? "text-(--error-text) font-bold"
-                        : editingCommentText.length >= COMMENT_MAX_LENGTH * 0.8
-                          ? "text-warning-text font-semibold"
-                          : "text-(--text-secondary)/(--opacity-medium)"
-                    )}>
+                    <span
+                      className={cn(
+                        "text-[11px] tabular-nums transition-colors",
+                        editingCommentText.length >= COMMENT_MAX_LENGTH * 0.95
+                          ? "text-(--error-text) font-bold"
+                          : editingCommentText.length >= COMMENT_MAX_LENGTH * 0.8
+                            ? "text-warning-text font-semibold"
+                            : "text-(--text-secondary)/(--opacity-medium)"
+                      )}
+                    >
                       {editingCommentText.length}/{COMMENT_MAX_LENGTH}
                     </span>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button
-                      variant="glass"
-                      size="sm"
-                      onClick={() => setEditingCommentId(null)}
-                    >
+                    <Button variant="glass" size="sm" onClick={() => setEditingCommentId(null)}>
                       {t("common:buttons.cancel")}
                     </Button>
                     <Button
@@ -182,14 +185,16 @@ export function NewsComments({
             className="min-h-24"
           />
           <div className="flex justify-end">
-            <span className={cn(
-              "text-[11px] tabular-nums transition-colors",
-              commentText.length >= COMMENT_MAX_LENGTH * 0.95
-                ? "text-(--error-text) font-bold"
-                : commentText.length >= COMMENT_MAX_LENGTH * 0.8
-                  ? "text-warning-text font-semibold"
-                  : "text-(--text-secondary)/(--opacity-medium)"
-            )}>
+            <span
+              className={cn(
+                "text-[11px] tabular-nums transition-colors",
+                commentText.length >= COMMENT_MAX_LENGTH * 0.95
+                  ? "text-(--error-text) font-bold"
+                  : commentText.length >= COMMENT_MAX_LENGTH * 0.8
+                    ? "text-warning-text font-semibold"
+                    : "text-(--text-secondary)/(--opacity-medium)"
+              )}
+            >
               {commentText.length}/{COMMENT_MAX_LENGTH}
             </span>
           </div>

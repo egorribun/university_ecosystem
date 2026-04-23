@@ -58,7 +58,7 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
 
   const formattedDate = useMemo(
     () => formatEventDate(event.startsAt, i18n.language),
-    [event.startsAt, i18n.language],
+    [event.startsAt, i18n.language]
   )
 
   const ariaLabel = t("events.markerLabel", {
@@ -137,20 +137,14 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
               >
                 <CalendarDays size={14} color="white" strokeWidth={2.5} />
               </div>
-              <p className="font-bold text-sm leading-tight line-clamp-2">
-                {event.title}
-              </p>
+              <p className="font-bold text-sm leading-tight line-clamp-2">{event.title}</p>
             </div>
 
             {/* Date/time */}
-            <p className="text-xs opacity-70 mb-1">
-              {formattedDate}
-            </p>
+            <p className="text-xs opacity-70 mb-1">{formattedDate}</p>
 
             {/* Location */}
-            <p className="text-[10px] opacity-50 mb-1">
-              {event.location}
-            </p>
+            <p className="text-[10px] opacity-50 mb-1">{event.location}</p>
 
             {/* Participant count */}
             {event.participantCount != null && event.participantCount > 0 && (
@@ -162,11 +156,7 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
             )}
 
             {/* View details link — client-side navigation (A11Y-110-03) */}
-            <Link
-              to="/events/$id"
-              params={{ id: event.id }}
-              className="map-popup-link"
-            >
+            <Link to="/events/$id" params={{ id: event.id }} className="map-popup-link">
               {t("events.viewDetails")} &rarr;
             </Link>
           </div>

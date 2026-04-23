@@ -67,26 +67,23 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
 
   const displayName = poi.i18nKey
     ? t(`poi.items.${poi.i18nKey}.name`)
-    : poi.osmName ?? t(`poi.categories.${poi.type}`)
+    : (poi.osmName ?? t(`poi.categories.${poi.type}`))
 
   const yandexMapsUrl = `https://yandex.ru/maps/?pt=${poi.coords[1]},${poi.coords[0]}&z=17&l=map`
 
   return (
     <>
-      <Marker
-        ref={markerRef}
-        longitude={poi.coords[1]}
-        latitude={poi.coords[0]}
-        anchor="center"
-      >
+      <Marker ref={markerRef} longitude={poi.coords[1]} latitude={poi.coords[0]} anchor="center">
         <div
           role="button"
           tabIndex={0}
           aria-label={`${displayName} — ${t(`poi.categories.${poi.type}`)}`}
           className={`map-poi-pin${isHovered ? " map-poi-pin--hover" : ""}`}
-          style={{
-            "--_poi-color": colorVar,
-          } as React.CSSProperties}
+          style={
+            {
+              "--_poi-color": colorVar,
+            } as React.CSSProperties
+          }
           onPointerEnter={() => setIsHovered(true)}
           onPointerLeave={() => setIsHovered(false)}
           onClick={(e) => {

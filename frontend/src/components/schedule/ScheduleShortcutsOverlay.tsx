@@ -58,7 +58,9 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
             initial={prefersReduced ? false : { scale: 0.95, y: 8 }}
             animate={{ scale: 1, y: 0 }}
             exit={prefersReduced ? { opacity: 0 } : { scale: 0.95, y: 8 }}
-            transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
+            transition={
+              prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }
+            }
           >
             {/* Header */}
             <div className="mb-5 flex items-center justify-between">

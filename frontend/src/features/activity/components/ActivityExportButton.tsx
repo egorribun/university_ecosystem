@@ -52,27 +52,31 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
   }, [open])
 
   // H2: Show feedback on export success/failure
-  const handleExport = useCallback(async (format: "pdf" | "png") => {
-    const el = contentRef.current
-    if (!el || exporting) return
-    setExporting(true)
-    setOpen(false)
-    try {
-      const result = format === "pdf"
-        ? await exportActivityAsPdf(el, t("activity:title"))
-        : await exportActivityAsPng(el)
-      if (result.success) {
-        setFeedback({ type: "success", message: t("activity:export.success") })
-      } else {
-        setFeedback({ type: "error", message: result.error ?? t("activity:export.error") })
+  const handleExport = useCallback(
+    async (format: "pdf" | "png") => {
+      const el = contentRef.current
+      if (!el || exporting) return
+      setExporting(true)
+      setOpen(false)
+      try {
+        const result =
+          format === "pdf"
+            ? await exportActivityAsPdf(el, t("activity:title"))
+            : await exportActivityAsPng(el)
+        if (result.success) {
+          setFeedback({ type: "success", message: t("activity:export.success") })
+        } else {
+          setFeedback({ type: "error", message: result.error ?? t("activity:export.error") })
+        }
+      } catch {
+        setFeedback({ type: "error", message: t("activity:export.error") })
+      } finally {
+        setExporting(false)
+        triggerRef.current?.focus()
       }
-    } catch {
-      setFeedback({ type: "error", message: t("activity:export.error") })
-    } finally {
-      setExporting(false)
-      triggerRef.current?.focus()
-    }
-  }, [contentRef, exporting, t])
+    },
+    [contentRef, exporting, t]
+  )
 
   return (
     <div ref={menuRef} className="relative">
@@ -94,7 +98,11 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
         ) : feedback?.type === "success" ? (
           <Check size={16} className="text-[var(--activity-positive-accent)]" aria-hidden="true" />
         ) : feedback?.type === "error" ? (
-          <AlertCircle size={16} className="text-[var(--activity-negative-accent)]" aria-hidden="true" />
+          <AlertCircle
+            size={16}
+            className="text-[var(--activity-negative-accent)]"
+            aria-hidden="true"
+          />
         ) : (
           <Download size={16} aria-hidden="true" />
         )}

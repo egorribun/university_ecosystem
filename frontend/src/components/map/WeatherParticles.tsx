@@ -97,11 +97,7 @@ function createParticle(config: ParticleConfig, width: number, height: number): 
   }
 }
 
-function recycleParticle(
-  p: Particle,
-  config: ParticleConfig,
-  width: number,
-): void {
+function recycleParticle(p: Particle, config: ParticleConfig, width: number): void {
   p.x = Math.random() * width
   p.y = -p.size - Math.random() * 20
   p.speed = rand(config.speedRange[0], config.speedRange[1])

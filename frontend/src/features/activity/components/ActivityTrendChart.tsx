@@ -79,7 +79,10 @@ export function ActivityTrendChart({
 
   if (data.length < 2) {
     return (
-      <div className="activity-chart-card flex items-center justify-center" style={{ minHeight: "var(--activity-chart-min-h, 120px)" }}>
+      <div
+        className="activity-chart-card flex items-center justify-center"
+        style={{ minHeight: "var(--activity-chart-min-h, 120px)" }}
+      >
         <p className="text-sm text-text-secondary">{t("activity:charts.noChartData")}</p>
       </div>
     )

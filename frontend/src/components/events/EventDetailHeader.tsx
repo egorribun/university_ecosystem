@@ -3,15 +3,7 @@
  * Pattern source: components/news/NewsDetailHeader.tsx
  */
 
-import {
-  Calendar,
-  MapPin,
-  Users,
-  Mic2,
-  Share2,
-  Pencil,
-  Trash2,
-} from "lucide-react"
+import { Calendar, MapPin, Users, Mic2, Share2, Pencil, Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { formatDate } from "@/utils/date"
 import { Button } from "@/components/ui"
@@ -76,9 +68,7 @@ export function EventDetailHeader({
       <EventCategoryBadge category={category} size="md" />
 
       {/* Title */}
-      <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary">
-        {title}
-      </h1>
+      <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary">{title}</h1>
 
       {/* Meta pills row */}
       <div className="flex flex-wrap items-center gap-2">
@@ -135,14 +125,10 @@ export function EventDetailHeader({
         </Button>
 
         {/* Register / Unregister — aria-live for screen reader announcements */}
-        {!isEnded && !isAdmin && (
-          isRegistered ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onUnregister}
-              disabled={registering}
-            >
+        {!isEnded &&
+          !isAdmin &&
+          (isRegistered ? (
+            <Button variant="outline" size="sm" onClick={onUnregister} disabled={registering}>
               {t("events:card.actions.unregister")}
             </Button>
           ) : (
@@ -155,8 +141,7 @@ export function EventDetailHeader({
             >
               {t("events:card.actions.register")}
             </Button>
-          )
-        )}
+          ))}
 
         {/* Admin actions */}
         {isAdmin && (

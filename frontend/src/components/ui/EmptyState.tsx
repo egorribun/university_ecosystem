@@ -15,7 +15,14 @@ interface EmptyStateProps {
   titleAs?: "h2" | "h3" | "h4"
 }
 
-export function EmptyState({ icon, title, description, action, className, titleAs: TitleTag = "h2" }: EmptyStateProps) {
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+  className,
+  titleAs: TitleTag = "h2",
+}: EmptyStateProps) {
   return (
     <div
       className={cn(

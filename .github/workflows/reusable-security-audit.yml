@@ -161,9 +161,17 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck on all Go modules
-        # Audit the entire workspace. Running govulncheck ./... from the root
-        # correctly leverages go.work to resolve all local dependencies.
-        run: govulncheck ./...
+        # Audit all workspace modules. govulncheck fails if a directory has no packages,
+        # so we iterate over all modules and run it only where packages exist.
+        run: |
+          exit_code=0
+          for dir in $(go list -m -f '{{.Dir}}'); do
+            if [ -n "$(go list -C "$dir" ./... 2>/dev/null)" ]; then
+              echo "Scanning module: $dir"
+              govulncheck -C "$dir" ./... || exit_code=$?
+            fi
+          done
+          exit $exit_code
 
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:

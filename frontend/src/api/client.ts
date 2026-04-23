@@ -62,6 +62,19 @@ const api = axios.create({
   },
 })
 
+if (import.meta.env.VITE_LHCI === "true") {
+  api.defaults.adapter = async (config) => {
+    return {
+      data: { items: [] }, // Provide a safe default object/array combo
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      config,
+      request: {},
+    }
+  }
+}
+
 // Hook the generated client to our customized axios instance
 generatedClient.setConfig({
   axios: api,

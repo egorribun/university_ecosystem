@@ -26,15 +26,6 @@ jobs:
             - name: Dependency Review
               uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
               with:
-                  fail-on-severity: high
-                  allow-licenses: >-
-                    MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD,
-                    Unlicense, CC0-1.0, BlueOak-1.0.0, PSF-2.0, MPL-2.0,
-                    Python-2.0, Artistic-2.0, Zlib, BSL-1.0
-                  comment-summary-in-pr: always
-                  warn-only: false
-                  vulnerability-check: true
-                  license-check: true
                   config-file: .github/dependency-review-config.yml
 
             - name: Upload dependency review report

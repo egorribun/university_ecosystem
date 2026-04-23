@@ -11,7 +11,8 @@
  *   even if marked's escaping were bypassed
  */
 
-const DANGEROUS_TAGS = /<\/?(?:script|style|iframe|object|embed|form|input|textarea|select|button)\b[^>]*>/gi
+const DANGEROUS_TAGS =
+  /<\/?(?:script|style|iframe|object|embed|form|input|textarea|select|button)\b[^>]*>/gi
 const EVENT_HANDLERS = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi
 const JS_URLS = /(?:href|src|action)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi
 const DATA_URLS = /(?:src)\s*=\s*(?:"data:(?!image\/)[^"]*"|'data:(?!image\/)[^']*')/gi

@@ -49,7 +49,11 @@ export const UserMenu = ({
 
   if (loading) {
     return (
-      <div className="ml-auto flex items-center gap-3" aria-busy="true" aria-label="Loading user menu">
+      <div
+        className="ml-auto flex items-center gap-3"
+        aria-busy="true"
+        aria-label="Loading user menu"
+      >
         <Skeleton className="rounded-full w-9 h-9 bg-brand/(--opacity-dim)" />
         {!isCompact && <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />}
       </div>
@@ -62,7 +66,9 @@ export const UserMenu = ({
     <div
       className={cn(
         "ml-auto flex min-w-0 items-center whitespace-nowrap",
-        "transition-[gap]", dur, ease,
+        "transition-[gap]",
+        dur,
+        ease,
         isCompact ? "gap-2" : "gap-3"
       )}
     >
@@ -72,7 +78,9 @@ export const UserMenu = ({
       <div
         className={cn(
           "flex items-center",
-          "transition-[gap,padding,height]", dur, ease,
+          "transition-[gap,padding,height]",
+          dur,
+          ease,
           isCompact ? "gap-2 ml-1 h-8" : "gap-3 ml-3 h-10"
         )}
       >
@@ -85,7 +93,9 @@ export const UserMenu = ({
           title={profileTitle}
           className={cn(
             "block cursor-pointer rounded-full border bg-(--bg-surface-raised) object-cover",
-            "transition-[width,height,box-shadow,transform]", dur, ease,
+            "transition-[width,height,box-shadow,transform]",
+            dur,
+            ease,
             isCompact ? "h-7 w-7" : "h-9 w-9",
             "border-(--border-subtle)",
             "hover:shadow-[var(--avatar-ring-glow)]",
@@ -118,20 +128,26 @@ export const UserMenu = ({
           type="button"
           className={cn(
             "flex items-center justify-center rounded-2xl text-text-primary cursor-pointer border-none",
-            "transition-[width,height,transform,background]", dur, ease,
+            "transition-[width,height,transform,background]",
+            dur,
+            ease,
             isCompact ? "w-8 h-8" : "w-10 h-10",
             "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
-            !prefersReducedMotion && "hover:rotate-90 hover:scale-110 active:scale-90",
+            !prefersReducedMotion && "hover:rotate-90 hover:scale-110 active:scale-90"
           )}
           style={{ willChange: "transform" }}
           onClick={() => go("/settings")}
           aria-label={t("navigation:menu.settings")}
           title={t("navigation:menu.settings")}
         >
-          <SettingsIcon className={cn(
-            "transition-[width,height]", dur, ease,
-            isCompact ? "h-4 w-4" : "h-5 w-5"
-          )} />
+          <SettingsIcon
+            className={cn(
+              "transition-[width,height]",
+              dur,
+              ease,
+              isCompact ? "h-4 w-4" : "h-5 w-5"
+            )}
+          />
         </button>
       </div>
     </div>

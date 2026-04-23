@@ -29,7 +29,17 @@ interface BuildingMarkerProps {
   eventCount?: number
 }
 
-export function BuildingMarker({ building, isSelected, isHighlighted, onClick, index = 0, isPopupOpen, onPopupOpen, onPopupClose, eventCount = 0 }: BuildingMarkerProps) {
+export function BuildingMarker({
+  building,
+  isSelected,
+  isHighlighted,
+  onClick,
+  index = 0,
+  isPopupOpen,
+  onPopupOpen,
+  onPopupClose,
+  eventCount = 0,
+}: BuildingMarkerProps) {
   const { t } = useTranslation("map")
   const markerRef = useRef<MarkerInstance | null>(null)
   // Wave 116 polish — maplibre-gl's Marker class unconditionally stamps
@@ -65,7 +75,9 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
             rooms: roomCount,
           })}
           className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}${isHighlighted && !isActive ? " map-building-pin--pulse" : ""}`}
-          style={{ "--stagger-index": index, "--_pin-color": building.colorHex } as React.CSSProperties}
+          style={
+            { "--stagger-index": index, "--_pin-color": building.colorHex } as React.CSSProperties
+          }
           onClick={(e) => {
             e.stopPropagation()
             onClick(building.letter)
@@ -102,20 +114,19 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
           </svg>
 
           {/* Icon overlay */}
-          <div
-            className="map-pin-icon"
-            style={{ top: isActive ? 12 : 10 }}
-          >
+          <div className="map-pin-icon" style={{ top: isActive ? 12 : 10 }}>
             <Icon size={isActive ? 18 : 16} color="white" strokeWidth={2.5} />
           </div>
 
           {/* Event indicator badge — amber dot with count (FIX-109-11) */}
           {eventCount > 0 && (
-            <div className="map-event-badge" aria-label={t("events.badgeLabel", { count: eventCount })}>
+            <div
+              className="map-event-badge"
+              aria-label={t("events.badgeLabel", { count: eventCount })}
+            >
               {eventCount}
             </div>
           )}
-
         </div>
       </Marker>
 
@@ -132,18 +143,28 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
           maxWidth="280px"
         >
           {building.photo ? (
-            <img src={building.photo} alt={building.name} className="map-popup-photo" loading="lazy" />
+            <img
+              src={building.photo}
+              alt={building.name}
+              className="map-popup-photo"
+              loading="lazy"
+            />
           ) : (
             <div
               className="map-photo-placeholder"
-              style={{ background: `linear-gradient(135deg, ${building.colorHex}, color-mix(in srgb, ${building.colorHex} 60%, black))` }}
+              style={{
+                background: `linear-gradient(135deg, ${building.colorHex}, color-mix(in srgb, ${building.colorHex} 60%, black))`,
+              }}
             >
               <Icon size={32} strokeWidth={1.5} />
             </div>
           )}
           <div className="map-popup-card">
             {/* Header: color bar + letter badge + name */}
-            <div className="map-popup-header" style={{ "--_popup-accent": building.colorHex } as React.CSSProperties}>
+            <div
+              className="map-popup-header"
+              style={{ "--_popup-accent": building.colorHex } as React.CSSProperties}
+            >
               <div className="map-popup-badge" style={{ backgroundColor: building.colorHex }}>
                 {building.letter}
               </div>
@@ -154,9 +175,7 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
             </div>
 
             {/* Description */}
-            {building.description && (
-              <p className="map-popup-desc">{building.description}</p>
-            )}
+            {building.description && <p className="map-popup-desc">{building.description}</p>}
 
             {/* Stats row */}
             <div className="map-popup-stats">
@@ -183,7 +202,9 @@ export function BuildingMarker({ building, isSelected, isHighlighted, onClick, i
             {building.amenities.length > 0 && (
               <div className="map-popup-amenities">
                 {building.amenities.slice(0, 4).map((a) => (
-                  <span key={a} className="map-popup-chip">{a}</span>
+                  <span key={a} className="map-popup-chip">
+                    {a}
+                  </span>
                 ))}
               </div>
             )}

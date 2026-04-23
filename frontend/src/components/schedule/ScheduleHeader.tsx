@@ -37,16 +37,33 @@ type ScheduleHeaderProps = Pick<
 }
 
 /** SVG Circular Progress Ring */
-function ProgressRing({ progress, size = 80, stroke = 6 }: { progress: number; size?: number; stroke?: number }) {
+function ProgressRing({
+  progress,
+  size = 80,
+  stroke = 6,
+}: {
+  progress: number
+  size?: number
+  stroke?: number
+}) {
   const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
   const offset = (progress / 100) * circumference
   return (
     <svg width={size} height={size} className="sched-progress-ring" aria-hidden="true">
-      <circle className="sched-progress-ring-bg" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke} />
+      <circle
+        className="sched-progress-ring-bg"
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        strokeWidth={stroke}
+      />
       <circle
         className="sched-progress-ring-fill"
-        cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        strokeWidth={stroke}
         strokeDasharray={circumference}
         strokeDashoffset={offset}
       />
@@ -88,7 +105,7 @@ export function ScheduleHeader({
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   const activeGroupName = useMemo(
     () => groups.find((g) => g.id === selectedGroup)?.name || "",
-    [groups, selectedGroup],
+    [groups, selectedGroup]
   )
   const dayStats = useDayStats(todayLessons ?? [])
 
@@ -117,7 +134,10 @@ export function ScheduleHeader({
           <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary whitespace-nowrap">
             {user?.role === "student" ? t("schedule:title.student") : t("schedule:title.default")}
             {activeGroupName && (
-              <span className="sched-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold leading-none" style={{ fontSize: "0.45em" }}>
+              <span
+                className="sched-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold leading-none"
+                style={{ fontSize: "0.45em" }}
+              >
                 {t("schedule:header.groupName", { name: activeGroupName })}
               </span>
             )}
@@ -139,99 +159,119 @@ export function ScheduleHeader({
       {/* ── Status card: Current / Next / Stats ─────── */}
       <FadeSection delay="120ms">
         <div className={cn("no-print", !isMobile && "max-w-4xl")}>
-            {currentLesson ? (
-              /* ── CURRENT LESSON — premium card with progress ring ── */
-              <div className="sched-status-card sched-current-glow p-5 sm:p-6">
-                <div className="relative z-base flex items-center gap-5">
-                  <div className="relative shrink-0">
-                    <ProgressRing progress={currentProgress} size={isMobile ? 64 : 80} />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-lg font-extrabold text-brand tabular-nums">
-                        {Math.max(0, 100 - currentProgress)}%
-                      </span>
-                    </div>
+          {currentLesson ? (
+            /* ── CURRENT LESSON — premium card with progress ring ── */
+            <div className="sched-status-card sched-current-glow p-5 sm:p-6">
+              <div className="relative z-base flex items-center gap-5">
+                <div className="relative shrink-0">
+                  <ProgressRing progress={currentProgress} size={isMobile ? 64 : 80} />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-lg font-extrabold text-brand tabular-nums">
+                      {Math.max(0, 100 - currentProgress)}%
+                    </span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <Badge size="sm" tone="primary" className="sched-badge-matte font-semibold shadow-glow-primary">
-                        {t("schedule:chips.current")}
-                      </Badge>
-                      {timeLeftShort && (
-                        <span className="inline-flex items-center gap-1 rounded-lg matte-chip px-2 py-0.5 text-xs font-semibold font-mono tabular-nums text-text-secondary" aria-live="polite" aria-label={timeLeftText}>
-                          <ClockIcon size={11} className="text-brand opacity-70" aria-hidden="true" />
-                          {timeLeftShort}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="mb-1.5 text-xl font-extrabold tracking-tight text-text-primary">{currentLesson.subject}</h3>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-                      {currentLesson.teacher && (
-                        <span className="flex items-center gap-1">
-                          <TeacherIcon size={14} className="text-brand" aria-hidden="true" />
-                          {currentLesson.teacher}
-                        </span>
-                      )}
-                      {currentLesson.room && (
-                        <span className="flex items-center gap-1">
-                          <RoomIcon size={14} className="text-brand" aria-hidden="true" />
-                          {currentLesson.room}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1 font-mono tabular-nums">
-                        <ClockIcon size={14} className="text-brand" aria-hidden="true" />
-                        {`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge
+                      size="sm"
+                      tone="primary"
+                      className="sched-badge-matte font-semibold shadow-glow-primary"
+                    >
+                      {t("schedule:chips.current")}
+                    </Badge>
+                    {timeLeftShort && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-lg matte-chip px-2 py-0.5 text-xs font-semibold font-mono tabular-nums text-text-secondary"
+                        aria-live="polite"
+                        aria-label={timeLeftText}
+                      >
+                        <ClockIcon size={11} className="text-brand opacity-70" aria-hidden="true" />
+                        {timeLeftShort}
                       </span>
-                    </div>
+                    )}
+                  </div>
+                  <h3 className="mb-1.5 text-xl font-extrabold tracking-tight text-text-primary">
+                    {currentLesson.subject}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
+                    {currentLesson.teacher && (
+                      <span className="flex items-center gap-1">
+                        <TeacherIcon size={14} className="text-brand" aria-hidden="true" />
+                        {currentLesson.teacher}
+                      </span>
+                    )}
+                    {currentLesson.room && (
+                      <span className="flex items-center gap-1">
+                        <RoomIcon size={14} className="text-brand" aria-hidden="true" />
+                        {currentLesson.room}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1 font-mono tabular-nums">
+                      <ClockIcon size={14} className="text-brand" aria-hidden="true" />
+                      {`${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}`}
+                    </span>
                   </div>
                 </div>
               </div>
-            ) : nextLesson ? (
-              /* ── NEXT LESSON — compact status card ─────────── */
-              <div className="sched-status-card px-4 py-3">
-                <div className="relative z-base flex flex-wrap items-center gap-2">
-                  <Badge size="xs" tone="primary" className="sched-badge-matte font-semibold">
-                    {t("schedule:chips.next")}
-                  </Badge>
-                  <h3 className="text-base font-extrabold tracking-tight text-text-primary">{nextLesson.subject}</h3>
-                  {/* Inline metadata — same row */}
-                  {nextLesson.teacher && (
-                    <span className="flex items-center gap-1 text-xs text-text-secondary">
-                      <TeacherIcon size={12} className="text-brand opacity-60" aria-hidden="true" />
-                      {nextLesson.teacher}
-                    </span>
-                  )}
-                  {nextLesson.room && (
-                    <span className="flex items-center gap-1 text-xs text-text-secondary">
-                      <RoomIcon size={12} className="text-brand opacity-60" aria-hidden="true" />
-                      {nextLesson.room}
-                    </span>
-                  )}
-                  <span className="flex items-center gap-1 text-xs font-mono tabular-nums text-text-secondary">
-                    <ClockIcon size={12} className="text-brand opacity-60" aria-hidden="true" />
-                    {`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
+            </div>
+          ) : nextLesson ? (
+            /* ── NEXT LESSON — compact status card ─────────── */
+            <div className="sched-status-card px-4 py-3">
+              <div className="relative z-base flex flex-wrap items-center gap-2">
+                <Badge size="xs" tone="primary" className="sched-badge-matte font-semibold">
+                  {t("schedule:chips.next")}
+                </Badge>
+                <h3 className="text-base font-extrabold tracking-tight text-text-primary">
+                  {nextLesson.subject}
+                </h3>
+                {/* Inline metadata — same row */}
+                {nextLesson.teacher && (
+                  <span className="flex items-center gap-1 text-xs text-text-secondary">
+                    <TeacherIcon size={12} className="text-brand opacity-60" aria-hidden="true" />
+                    {nextLesson.teacher}
                   </span>
-                  {timeLeftShort && (
-                    <span className="inline-flex items-center gap-1 rounded-md matte-chip px-1.5 py-0.5 text-[0.625rem] font-semibold font-mono tabular-nums text-text-secondary" aria-live="polite" aria-label={timeLeftText}>
-                      <ClockIcon size={10} className="text-brand opacity-70" aria-hidden="true" />
-                      {timeLeftShort}
-                    </span>
-                  )}
-                  {showCountdown && nextStartMinutes != null && (
-                    <FlipCountdown targetMinutes={nextStartMinutes} />
-                  )}
-                </div>
+                )}
+                {nextLesson.room && (
+                  <span className="flex items-center gap-1 text-xs text-text-secondary">
+                    <RoomIcon size={12} className="text-brand opacity-60" aria-hidden="true" />
+                    {nextLesson.room}
+                  </span>
+                )}
+                <span className="flex items-center gap-1 text-xs font-mono tabular-nums text-text-secondary">
+                  <ClockIcon size={12} className="text-brand opacity-60" aria-hidden="true" />
+                  {`${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}`}
+                </span>
+                {timeLeftShort && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-md matte-chip px-1.5 py-0.5 text-[0.625rem] font-semibold font-mono tabular-nums text-text-secondary"
+                    aria-live="polite"
+                    aria-label={timeLeftText}
+                  >
+                    <ClockIcon size={10} className="text-brand opacity-70" aria-hidden="true" />
+                    {timeLeftShort}
+                  </span>
+                )}
+                {showCountdown && nextStartMinutes != null && (
+                  <FlipCountdown targetMinutes={nextStartMinutes} />
+                )}
               </div>
-            ) : (
-              /* ── DAY COMPLETE — warm motivational message ── */
-              <div className="sched-stats-card p-5">
-                <p className="text-center text-sm font-medium text-text-secondary">
-                  <CompleteIcon size={16} className="mr-1.5 inline-block align-[-0.15em] text-brand" aria-hidden="true" />
-                  {dayStats.totalLessons > 0
-                    ? t("schedule:dayComplete")
-                    : t("schedule:summary.noMoreToday")}
-                </p>
-              </div>
-            )}
+            </div>
+          ) : (
+            /* ── DAY COMPLETE — warm motivational message ── */
+            <div className="sched-stats-card p-5">
+              <p className="text-center text-sm font-medium text-text-secondary">
+                <CompleteIcon
+                  size={16}
+                  className="mr-1.5 inline-block align-[-0.15em] text-brand"
+                  aria-hidden="true"
+                />
+                {dayStats.totalLessons > 0
+                  ? t("schedule:dayComplete")
+                  : t("schedule:summary.noMoreToday")}
+              </p>
+            </div>
+          )}
         </div>
       </FadeSection>
 

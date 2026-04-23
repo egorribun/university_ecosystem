@@ -58,16 +58,17 @@
       transparent 85%
     );
 
-    --sched-hero-mesh: radial-gradient(
-      ellipse at 20% 40%,
-      color-mix(in srgb, var(--color-sky-400) 8%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 25%,
-      color-mix(in srgb, var(--color-blue-400) 6%, transparent) 0%,
-      transparent 50%
-    );
+    --sched-hero-mesh:
+      radial-gradient(
+        ellipse at 20% 40%,
+        color-mix(in srgb, var(--color-sky-400) 8%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 25%,
+        color-mix(in srgb, var(--color-blue-400) 6%, transparent) 0%,
+        transparent 50%
+      );
 
     /* ── MATTE CARD SYSTEM (aligned with dashboard.css) ── */
     --sched-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-slate-100) 5%);
@@ -154,16 +155,17 @@
     --sched-orb-3: color-mix(in srgb, var(--color-indigo-400) 10%, transparent);
     --sched-orb-4: color-mix(in srgb, var(--color-amber-400) 9%, transparent);
 
-    --sched-hero-mesh: radial-gradient(
-      ellipse at 20% 40%,
-      color-mix(in srgb, var(--color-sky-400) 12%, transparent) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 25%,
-      color-mix(in srgb, var(--color-blue-400) 10%, transparent) 0%,
-      transparent 50%
-    );
+    --sched-hero-mesh:
+      radial-gradient(
+        ellipse at 20% 40%,
+        color-mix(in srgb, var(--color-sky-400) 12%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 25%,
+        color-mix(in srgb, var(--color-blue-400) 10%, transparent) 0%,
+        transparent 50%
+      );
 
     /* Matte card — slightly elevated from page bg for depth separation (FIX-68-24) */
     --sched-card-bg: color-mix(in srgb, var(--bg-surface) 82%, var(--color-slate-600) 18%);
@@ -247,7 +249,11 @@
 
 .dark .sched-hero-card {
   /* FIX-72-01: replaced hardcoded hex with semantic dark tokens */
-  background: linear-gradient(145deg, color-mix(in srgb, var(--bg-surface) 80%, var(--color-slate-900)), color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950)));
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--bg-surface) 80%, var(--color-slate-900)),
+    color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950))
+  );
   box-shadow:
     0 1px 3px color-mix(in srgb, black 16%, transparent),
     0 4px 16px color-mix(in srgb, black 12%, transparent),
@@ -263,7 +269,12 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--color-sky-400), var(--color-blue-500), var(--color-indigo-500));
+  background: linear-gradient(
+    90deg,
+    var(--color-sky-400),
+    var(--color-blue-500),
+    var(--color-indigo-500)
+  );
   opacity: 0.7;
   z-index: 2;
 }
@@ -276,13 +287,21 @@
   width: 50%;
   height: 80%;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--color-sky-400) 6%, transparent), transparent 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-sky-400) 6%, transparent),
+    transparent 70%
+  );
   pointer-events: none;
   z-index: 1;
 }
 
 .dark .sched-hero-flare {
-  background: radial-gradient(circle, color-mix(in srgb, var(--color-sky-400) 10%, transparent), transparent 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-sky-400) 10%, transparent),
+    transparent 70%
+  );
 }
 
 /* ── Status cards inside hero ── */
@@ -290,8 +309,11 @@
   position: relative;
   border-radius: 0.875rem;
   border: 1px solid color-mix(in srgb, var(--color-sky-400) 20%, var(--sched-card-border));
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-sky-400) 5%, var(--bg-surface)) 0%, var(--bg-surface) 100%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-sky-400) 5%, var(--bg-surface)) 0%,
+    var(--bg-surface) 100%
+  );
   box-shadow:
     0 1px 4px color-mix(in srgb, black 6%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 40%, transparent);
@@ -300,8 +322,16 @@
 
 .dark .sched-status-card {
   /* FIX-72-01: replaced hardcoded hex with semantic dark tokens */
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-sky-400) 8%, color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950))) 0%, color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950)) 100%);
+  background: linear-gradient(
+    135deg,
+    color-mix(
+        in srgb,
+        var(--color-sky-400) 8%,
+        color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950))
+      )
+      0%,
+    color-mix(in srgb, var(--bg-surface) 70%, var(--color-slate-950)) 100%
+  );
   border-color: color-mix(in srgb, var(--color-sky-400) 15%, var(--sched-card-border));
   box-shadow:
     0 1px 4px color-mix(in srgb, black 16%, transparent),
@@ -355,7 +385,9 @@
   border-radius: 50%;
   background: var(--text-secondary);
   transform: translateY(-50%);
-  transition: transform 0.2s var(--ease-premium, ease), background 0.2s;
+  transition:
+    transform 0.2s var(--ease-premium, ease),
+    background 0.2s;
 }
 
 .sched-toggle-input:checked::after {
@@ -427,7 +459,11 @@
     var(--sched-card-shadow-hover),
     var(--sched-card-inner-glow),
     0 0 0 1px color-mix(in srgb, var(--_accent, var(--color-brand)) 12%, transparent);
-  border-color: color-mix(in srgb, var(--_accent, var(--color-brand)) 35%, var(--sched-card-border));
+  border-color: color-mix(
+    in srgb,
+    var(--_accent, var(--color-brand)) 35%,
+    var(--sched-card-border)
+  );
   transform: translateY(-2px);
 }
 
@@ -438,7 +474,11 @@
 /* Focus-visible gets same lift as hover (FIX-68-09: a11y parity) */
 .sched-card-matte:focus-visible {
   box-shadow: var(--sched-card-shadow-hover), var(--sched-card-inner-glow);
-  border-color: color-mix(in srgb, var(--_accent, var(--color-brand)) 20%, var(--sched-card-border));
+  border-color: color-mix(
+    in srgb,
+    var(--_accent, var(--color-brand)) 20%,
+    var(--sched-card-border)
+  );
   transform: translateY(-2px);
 }
 
@@ -447,11 +487,25 @@
 }
 
 /* Lesson type accent colors via CSS custom property */
-.sched-accent-lecture { --_accent: var(--lt-lecture-accent); background: var(--lt-lecture-bg); }
-.sched-accent-practice { --_accent: var(--lt-practice-accent); background: var(--lt-practice-bg); }
-.sched-accent-lab { --_accent: var(--lt-lab-accent); background: var(--lt-lab-bg); }
-.sched-accent-project { --_accent: var(--lt-project-accent); background: var(--lt-project-bg); }
-.sched-accent-default { --_accent: var(--sched-card-border); }
+.sched-accent-lecture {
+  --_accent: var(--lt-lecture-accent);
+  background: var(--lt-lecture-bg);
+}
+.sched-accent-practice {
+  --_accent: var(--lt-practice-accent);
+  background: var(--lt-practice-bg);
+}
+.sched-accent-lab {
+  --_accent: var(--lt-lab-accent);
+  background: var(--lt-lab-bg);
+}
+.sched-accent-project {
+  --_accent: var(--lt-project-accent);
+  background: var(--lt-project-bg);
+}
+.sched-accent-default {
+  --_accent: var(--sched-card-border);
+}
 
 /* Conflict state — pulsing rose border */
 .sched-conflict {
@@ -465,7 +519,8 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-pulse-glow {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow:
       0 0 0 1px var(--sched-current-border),
       0 0 12px var(--sched-current-glow),
@@ -510,8 +565,13 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-progress-head {
-  0%, 100% { box-shadow: 0 0 6px var(--sched-progress-glow); }
-  50% { box-shadow: 0 0 14px var(--sched-progress-glow); }
+  0%,
+  100% {
+    box-shadow: 0 0 6px var(--sched-progress-glow);
+  }
+  50% {
+    box-shadow: 0 0 14px var(--sched-progress-glow);
+  }
 }
 
 .sched-progress-bar {
@@ -594,7 +654,9 @@
     0 1px 3px color-mix(in srgb, black 10%, transparent),
     0 0 0 1px var(--glass-border),
     inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
 }
 
 .dark .sched-badge-matte {
@@ -622,9 +684,17 @@
 }
 
 @keyframes sched-badge-enter {
-  0% { opacity: 0; transform: scale(0.85); }
-  60% { transform: scale(1.05); }
-  100% { opacity: 1; transform: scale(1); }
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Time badge — subtle matte pill, compact (FIX-65-02: removed hex fallback) */
@@ -776,11 +846,18 @@
   border: 1px solid var(--sched-empty-border);
   border-radius: 0.75rem;
   min-height: 4.5rem;
-  background:
-    var(--sched-empty-bg)
-    radial-gradient(circle, color-mix(in srgb, var(--color-slate-400) 12%, transparent) 1px, transparent 1px);
-  background-size: auto, 12px 12px;
-  transition: background-color 0.15s, border-color 0.15s;
+  background: var(--sched-empty-bg)
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--color-slate-400) 12%, transparent) 1px,
+      transparent 1px
+    );
+  background-size:
+    auto,
+    12px 12px;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
 }
 
 .sched-empty-cell:hover {
@@ -850,11 +927,24 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-aurora-shift {
-  0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
-  25% { background-position: 50% 0%; }
-  50% { background-position: 100% 50%; filter: hue-rotate(15deg); }
-  75% { background-position: 50% 100%; }
-  100% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+  0% {
+    background-position: 0% 50%;
+    filter: hue-rotate(0deg);
+  }
+  25% {
+    background-position: 50% 0%;
+  }
+  50% {
+    background-position: 100% 50%;
+    filter: hue-rotate(15deg);
+  }
+  75% {
+    background-position: 50% 100%;
+  }
+  100% {
+    background-position: 0% 50%;
+    filter: hue-rotate(0deg);
+  }
 }
 
 .sched-aurora-hero {
@@ -887,7 +977,8 @@
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg,
+  background: linear-gradient(
+    90deg,
     transparent 10%,
     var(--sched-current-border) 50%,
     transparent 90%
@@ -896,8 +987,15 @@
 }
 
 @keyframes sched-today-badge-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.85; transform: scale(1.05); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.05);
+  }
 }
 
 .sched-today-badge {
@@ -933,15 +1031,31 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-empty-float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-6px) rotate(-2deg); }
-  75% { transform: translateY(-3px) rotate(1deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-6px) rotate(-2deg);
+  }
+  75% {
+    transform: translateY(-3px) rotate(1deg);
+  }
 }
 
 @keyframes sched-empty-ring {
-  0% { transform: scale(0.8); opacity: 0.6; }
-  50% { transform: scale(1.1); opacity: 0.2; }
-  100% { transform: scale(1.3); opacity: 0; }
+  0% {
+    transform: scale(0.8);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
 }
 
 .sched-empty-icon {
@@ -985,8 +1099,13 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-confetti-burst {
-  0% { transform: translate(0, 0) scale(1); opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .sched-confetti-dot {
@@ -1000,17 +1119,39 @@
   animation-delay: calc(var(--_i, 0) * 0.08s);
 }
 
-.sched-confetti-dot:nth-child(1) { background: var(--color-sky-400); transform: translate(-30px, -40px); }
-.sched-confetti-dot:nth-child(2) { background: var(--color-emerald-400); transform: translate(25px, -35px); }
-.sched-confetti-dot:nth-child(3) { background: var(--color-amber-400); transform: translate(-15px, -50px); }
-.sched-confetti-dot:nth-child(4) { background: var(--color-violet-400); transform: translate(35px, -25px); }
-.sched-confetti-dot:nth-child(5) { background: var(--color-rose-400); transform: translate(-40px, -20px); }
-.sched-confetti-dot:nth-child(6) { background: var(--color-blue-400); transform: translate(10px, -55px); }
+.sched-confetti-dot:nth-child(1) {
+  background: var(--color-sky-400);
+  transform: translate(-30px, -40px);
+}
+.sched-confetti-dot:nth-child(2) {
+  background: var(--color-emerald-400);
+  transform: translate(25px, -35px);
+}
+.sched-confetti-dot:nth-child(3) {
+  background: var(--color-amber-400);
+  transform: translate(-15px, -50px);
+}
+.sched-confetti-dot:nth-child(4) {
+  background: var(--color-violet-400);
+  transform: translate(35px, -25px);
+}
+.sched-confetti-dot:nth-child(5) {
+  background: var(--color-rose-400);
+  transform: translate(-40px, -20px);
+}
+.sched-confetti-dot:nth-child(6) {
+  background: var(--color-blue-400);
+  transform: translate(10px, -55px);
+}
 
 /* Orbiting dots around empty state icon (FIX-68-18: visual delight) */
 @keyframes sched-orbit {
-  from { rotate: 0deg; }
-  to { rotate: 360deg; }
+  from {
+    rotate: 0deg;
+  }
+  to {
+    rotate: 360deg;
+  }
 }
 
 .sched-empty-orbit {
@@ -1023,20 +1164,23 @@
 }
 
 .sched-empty-orbit:nth-child(1) {
-  top: -20px; left: 50%;
+  top: -20px;
+  left: 50%;
   animation: sched-orbit 6s linear infinite;
   transform-origin: 0 calc(50% + 20px);
 }
 
 .sched-empty-orbit:nth-child(2) {
-  bottom: -24px; right: -8px;
+  bottom: -24px;
+  right: -8px;
   animation: sched-orbit 8s linear infinite reverse;
   transform-origin: 8px calc(-50% - 24px);
   opacity: 0.35;
 }
 
 .sched-empty-orbit:nth-child(3) {
-  top: 50%; left: -28px;
+  top: 50%;
+  left: -28px;
   animation: sched-orbit 10s linear infinite;
   transform-origin: calc(50% + 28px) 0;
   opacity: 0.25;
@@ -1048,10 +1192,18 @@
    AURORA ORB CLASSES
    ═══════════════════════════════════════════════════════ */
 
-.sched-orb-1 { background: var(--sched-orb-1); }
-.sched-orb-2 { background: var(--sched-orb-2); }
-.sched-orb-3 { background: var(--sched-orb-3); }
-.sched-orb-4 { background: var(--sched-orb-4); }
+.sched-orb-1 {
+  background: var(--sched-orb-1);
+}
+.sched-orb-2 {
+  background: var(--sched-orb-2);
+}
+.sched-orb-3 {
+  background: var(--sched-orb-3);
+}
+.sched-orb-4 {
+  background: var(--sched-orb-4);
+}
 
 /* ═══════════════════════════════════════════════════════
    FLIP-CLOCK COUNTDOWN — Wave 66 (Idea #13)
@@ -1157,13 +1309,21 @@
 }
 
 @keyframes sched-flip-top-anim {
-  from { transform: rotateX(0deg); }
-  to { transform: rotateX(-90deg); }
+  from {
+    transform: rotateX(0deg);
+  }
+  to {
+    transform: rotateX(-90deg);
+  }
 }
 
 @keyframes sched-flip-bottom-anim {
-  from { transform: rotateX(90deg); }
-  to { transform: rotateX(0deg); }
+  from {
+    transform: rotateX(90deg);
+  }
+  to {
+    transform: rotateX(0deg);
+  }
 }
 
 .sched-flip-colon {
@@ -1175,8 +1335,13 @@
 }
 
 @keyframes sched-colon-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* Urgency mode — last 5 minutes: red glow + colon bounce (FIX-68-17) */
@@ -1191,8 +1356,15 @@
 }
 
 @keyframes sched-colon-bounce {
-  0%, 100% { transform: translateY(0); opacity: 1; }
-  50% { transform: translateY(-2px); opacity: 0.6; }
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 0.6;
+  }
 }
 
 /* ── Building badge — colored dot + letter (FIX-67-03: on-accent token) ──────────── */
@@ -1298,8 +1470,13 @@
 }
 
 @keyframes sched-drop-pulse {
-  0%, 100% { outline-color: var(--color-brand); }
-  50% { outline-color: color-mix(in srgb, var(--color-brand) 40%, transparent); }
+  0%,
+  100% {
+    outline-color: var(--color-brand);
+  }
+  50% {
+    outline-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
+  }
 }
 
 /* ── Export dropdown ──────────────────────────────────── */
@@ -1343,9 +1520,16 @@
 }
 
 @container sched-day (max-width: 320px) {
-  .sched-card-title { font-size: 0.875rem; }
-  .sched-type-badge { font-size: 0.5625rem; padding: 0.125rem 0.375rem; }
-  .sched-time-badge { font-size: 0.5625rem; }
+  .sched-card-title {
+    font-size: 0.875rem;
+  }
+  .sched-type-badge {
+    font-size: 0.5625rem;
+    padding: 0.125rem 0.375rem;
+  }
+  .sched-time-badge {
+    font-size: 0.5625rem;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1353,9 +1537,15 @@
    ═══════════════════════════════════════════════════════ */
 
 /* FIX-72-03: heat map colors now reference tokens (theme-aware via .schedule-theme) */
-.sched-heat-light { background: var(--sched-heat-light-bg); }
-.sched-heat-medium { background: var(--sched-heat-medium-bg); }
-.sched-heat-heavy { background: var(--sched-heat-heavy-bg); }
+.sched-heat-light {
+  background: var(--sched-heat-light-bg);
+}
+.sched-heat-medium {
+  background: var(--sched-heat-medium-bg);
+}
+.sched-heat-heavy {
+  background: var(--sched-heat-heavy-bg);
+}
 
 /* ═══════════════════════════════════════════════════════
    MINI-CALENDAR — DOT INDICATORS
@@ -1499,12 +1689,11 @@
 
 .sched-settings-dialog {
   /* Subtle gradient tint — 135° diagonal with sky warmth (matches sched-status-card) */
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-sky-400) 3%, var(--bg-surface)) 0%,
-      var(--bg-surface) 100%
-    );
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-sky-400) 3%, var(--bg-surface)) 0%,
+    var(--bg-surface) 100%
+  );
 
   /* 4-layer shadow: close + mid + inner highlight + colored glow */
   box-shadow:
@@ -1523,7 +1712,12 @@
   right: 0;
   height: 2px;
   border-radius: 1rem 1rem 0 0;
-  background: linear-gradient(90deg, var(--color-sky-400), var(--color-blue-500), var(--color-indigo-500));
+  background: linear-gradient(
+    90deg,
+    var(--color-sky-400),
+    var(--color-blue-500),
+    var(--color-indigo-500)
+  );
   opacity: 0.7;
   z-index: 1;
 }
@@ -1559,12 +1753,11 @@
 
 /* Dark mode — adjusted shadow intensities */
 .dark .sched-settings-dialog {
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-sky-400) 2%, var(--bg-page)) 0%,
-      var(--bg-page) 100%
-    );
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-sky-400) 2%, var(--bg-page)) 0%,
+    var(--bg-page) 100%
+  );
 
   box-shadow:
     0 1px 3px color-mix(in srgb, black 20%, transparent),
@@ -1590,7 +1783,10 @@
     0 1px 3px color-mix(in srgb, black 6%, transparent),
     0 2px 6px color-mix(in srgb, black 4%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
-  transition: box-shadow 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .sched-settings-btn:hover {
@@ -1685,11 +1881,15 @@
 }
 
 .sched-list-day-header {
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 @container sched-list (max-width: 480px) {
-  .sched-list-day-header { padding: 0.5rem 0.75rem; }
+  .sched-list-day-header {
+    padding: 0.5rem 0.75rem;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1717,13 +1917,22 @@
 
 @supports not (container-type: inline-size) {
   @media (max-width: 320px) {
-    .sched-card-title { font-size: 0.875rem; }
-    .sched-type-badge { font-size: 0.5625rem; padding: 0.125rem 0.375rem; }
-    .sched-time-badge { font-size: 0.5625rem; }
+    .sched-card-title {
+      font-size: 0.875rem;
+    }
+    .sched-type-badge {
+      font-size: 0.5625rem;
+      padding: 0.125rem 0.375rem;
+    }
+    .sched-time-badge {
+      font-size: 0.5625rem;
+    }
   }
 
   @media (max-width: 480px) {
-    .sched-list-day-header { padding: 0.5rem 0.75rem; }
+    .sched-list-day-header {
+      padding: 0.5rem 0.75rem;
+    }
   }
 }
 
@@ -1753,8 +1962,12 @@
    ═══════════════════════════════════════════════════════ */
 
 @keyframes sched-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* FIX-70-SKEL: replaced hardcoded #f0f0f0 with color-mix token */
@@ -1850,7 +2063,9 @@
 @media (prefers-reduced-motion: reduce) {
   .sched-current-glow {
     animation: none;
-    box-shadow: 0 0 0 2px var(--sched-current-border), var(--sched-card-inner-glow);
+    box-shadow:
+      0 0 0 2px var(--sched-current-border),
+      var(--sched-card-inner-glow);
     will-change: auto;
   }
 
