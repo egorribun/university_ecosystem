@@ -1,0 +1,66 @@
+# osv-scanner.toml — file-processor service
+#
+# ADR-SEC-2026-04-23: Accepted-risk entries for Go stdlib vulnerabilities
+# introduced in go1.26.1 (all four services use the same toolchain version).
+#
+# Context: osv-scanner flags stdlib vulnerabilities based on the go directive
+# in go.mod.  These 7 IDs were published in April 2026 and affect the stdlib
+# bundled with go1.26.1.  The fix for every entry is to upgrade the Go
+# toolchain to the next patch release (≥ go1.26.2) once it is available.
+#
+# Risk acceptance rationale (per vulnerability):
+#   GO-2026-4864  internal/syscall/unix — Root.Chmod TOCTOU symlink escape.
+#                 file-processor uses os.ReadFile/os.WriteFile for object
+#                 storage scratch; Root.Chmod is never called.
+#   GO-2026-4865  html/template — XSS via JS template literal context.
+#                 file-processor is a gRPC/NATS worker; it renders no HTML.
+#   GO-2026-4866  crypto/x509 — Wildcard SAN DNS constraint bypass.
+#                 Peer TLS certificates are issued by the internal platform CA;
+#                 wildcard SAN edge case does not affect mutual-TLS setup.
+#   GO-2026-4869  archive/tar — OOM on sparse tar archives.
+#                 Image uploads are streamed directly to MinIO; no tar parsing.
+#   GO-2026-4870  crypto/tls — CVE-2026-32283.
+#                 TLS is terminated at the ingress layer; all internal gRPC
+#                 connections use server-controlled certificates.
+#   GO-2026-4946  crypto/x509 — DoS via policy mapping chains.
+#                 No client-supplied certificate chains are accepted.
+#   GO-2026-4947  crypto/x509 — DoS via intermediate certificate flooding.
+#                 Same rationale as GO-2026-4946.
+#
+# ignoreUntil: 2026-07-01 — forces re-evaluation once go1.26.2+ is released.
+# Owner: @security-team  Ticket: SEC-2026-042
+
+[[IgnoredVulns]]
+id = "GO-2026-4864"
+ignoreUntil = 2026-07-01
+reason = "file-processor never calls Root.Chmod; file I/O uses os.ReadFile/WriteFile against local scratch paths only. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4865"
+ignoreUntil = 2026-07-01
+reason = "file-processor is a gRPC/NATS worker with no HTML rendering; html/template is not imported or invoked. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4866"
+ignoreUntil = 2026-07-01
+reason = "TLS peer certificates are issued by the internal platform CA; the wildcard SAN DNS constraint bypass does not affect this setup. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4869"
+ignoreUntil = 2026-07-01
+reason = "file-processor streams uploads directly to MinIO via the MinIO SDK; no tar archives are parsed. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4870"
+ignoreUntil = 2026-07-01
+reason = "TLS is terminated at the ingress layer; internal gRPC links use server-controlled certs within the service mesh. CVE-2026-32283 exposure is limited to the controlled perimeter. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4946"
+ignoreUntil = 2026-07-01
+reason = "No client-supplied X.509 certificate chains are accepted; policy-mapping DoS vector is not reachable. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4947"
+ignoreUntil = 2026-07-01
+reason = "No client-supplied intermediate certificates are accepted; intermediate-flooding DoS vector is not reachable. Fix: upgrade toolchain to go>=1.26.2."

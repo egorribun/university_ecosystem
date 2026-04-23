@@ -1,0 +1,65 @@
+# osv-scanner.toml — uni-cli (cmd/uni-cli)
+#
+# ADR-SEC-2026-04-23: Accepted-risk entries for Go stdlib vulnerabilities
+# introduced in go1.26.1 (all four services use the same toolchain version).
+#
+# Context: osv-scanner flags stdlib vulnerabilities based on the go directive
+# in go.mod.  These 7 IDs were published in April 2026 and affect the stdlib
+# bundled with go1.26.1.  The fix for every entry is to upgrade the Go
+# toolchain to the next patch release (≥ go1.26.2) once it is available.
+#
+# Risk acceptance rationale (per vulnerability):
+#   GO-2026-4864  internal/syscall/unix — Root.Chmod TOCTOU symlink escape.
+#                 uni-cli only reads Redis keys; no file-system root ops.
+#   GO-2026-4865  html/template — XSS via JS template literal context.
+#                 uni-cli is a CLI tool; it renders no HTML.
+#   GO-2026-4866  crypto/x509 — Wildcard SAN DNS constraint bypass.
+#                 uni-cli connects only to internal Redis; no untrusted
+#                 wildcard certificates are evaluated.
+#   GO-2026-4869  archive/tar — OOM on sparse tar archives.
+#                 uni-cli does not read tar archives.
+#   GO-2026-4870  crypto/tls — CVE-2026-32283.
+#                 uni-cli is a local developer/ops tool; connections are to
+#                 internal Redis with server-controlled certificates.
+#   GO-2026-4946  crypto/x509 — DoS via policy mapping chains.
+#                 No client-supplied certificate chains are accepted.
+#   GO-2026-4947  crypto/x509 — DoS via intermediate certificate flooding.
+#                 Same rationale as GO-2026-4946.
+#
+# ignoreUntil: 2026-07-01 — forces re-evaluation once go1.26.2+ is released.
+# Owner: @security-team  Ticket: SEC-2026-042
+
+[[IgnoredVulns]]
+id = "GO-2026-4864"
+ignoreUntil = 2026-07-01
+reason = "uni-cli only interacts with Redis; Root.Chmod and os/root APIs are not called. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4865"
+ignoreUntil = 2026-07-01
+reason = "uni-cli is a CLI tool that renders no HTML; html/template is not imported or invoked. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4866"
+ignoreUntil = 2026-07-01
+reason = "uni-cli connects only to internal Redis with platform-controlled certificates; no untrusted wildcard SAN certificates are evaluated. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4869"
+ignoreUntil = 2026-07-01
+reason = "uni-cli does not parse tar archives; the OOM vector in archive/tar is unexploitable here. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4870"
+ignoreUntil = 2026-07-01
+reason = "uni-cli is a local ops tool connecting to internal Redis with server-controlled certs. CVE-2026-32283 exposure is limited to the controlled operator environment. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4946"
+ignoreUntil = 2026-07-01
+reason = "No client-supplied X.509 certificate chains are accepted; policy-mapping DoS vector is not reachable. Fix: upgrade toolchain to go>=1.26.2."
+
+[[IgnoredVulns]]
+id = "GO-2026-4947"
+ignoreUntil = 2026-07-01
+reason = "No client-supplied intermediate certificates are accepted; intermediate-flooding DoS vector is not reachable. Fix: upgrade toolchain to go>=1.26.2."
