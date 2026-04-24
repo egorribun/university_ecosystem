@@ -295,8 +295,11 @@ async def confirm_webauthn_registration(
 
     service = WebAuthnService(db)
 
+    if challenge.payload is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid challenge payload")
+    payload_dict = challenge.payload
+
     try:
-        payload_dict: dict[str, Any] = challenge.payload  # type: ignore[assignment]
         await service.verify_registration(
             user,
             str(payload_dict.get("options", {}).get("challenge", "")),

@@ -6,7 +6,7 @@ import json
 import os
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Any, ParamSpec, Protocol, TypeVar, cast
 
 import nats
 from nats.aio.client import Client as NATS
@@ -19,7 +19,15 @@ from app.core.config import settings
 from app.core.logging import get_logger
 
 P = ParamSpec("P")
-R = TypeVar("R")
+R_co = TypeVar("R_co", covariant=True)
+
+
+class Task(Protocol[P, R_co]):
+    """Protocol for NATS tasks with 'kick' method."""
+
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R_co: ...
+    async def kick(self, *args: P.args, **kwargs: P.kwargs) -> None: ...
+
 
 _logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -142,10 +150,10 @@ class NatsTaskBroker:
 
     def task(
         self, name: str | None = None
-    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    ) -> Callable[[Callable[P, R_co]], Task[P, R_co]]:
         """Decorator to register a function as a background task."""
 
-        def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        def decorator(func: Callable[P, R_co]) -> Task[P, R_co]:
             task_name = name or f"{func.__module__}.{func.__name__}"
             self._tasks[task_name] = func
 
@@ -153,14 +161,14 @@ class NatsTaskBroker:
             async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 # If we are in 'delay' mode (task.delay()), we push to NATS.
                 # Here we just execute synchronously if called directly.
-                return await cast("Awaitable[R]", func(*args, **kwargs))
+                return await cast("Awaitable[R_co]", func(*args, **kwargs))
 
             # Add 'kick' method to the wrapper (similar to standard background job 'delay')
             async def kick(*args: P.args, **kwargs: P.kwargs) -> None:
                 await self.enqueue(task_name, *args, **kwargs)
 
             wrapper.kick = kick  # type: ignore[attr-defined]
-            return cast(Callable[P, R], wrapper)
+            return cast(Task[P, R_co], wrapper)
 
         return decorator
 

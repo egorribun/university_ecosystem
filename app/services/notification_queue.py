@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from app.core import metrics
 from app.core.logging import get_logger
 from app.tasks.notifications import (
+    enqueue_comment_notification_task,
     enqueue_event_notification_task,
     enqueue_news_notification_task,
 )
@@ -40,7 +41,7 @@ async def enqueue_event_notification(
     event_id: uuid.UUID | int, *, locale: str | None = None
 ) -> None:
     """Enqueue an event notification job using NATS JetStream."""
-    await enqueue_event_notification_task.kick(  # type: ignore[attr-defined]
+    await enqueue_event_notification_task.kick(
         uuid.UUID(str(event_id)) if isinstance(event_id, int) else event_id,
         locale=locale,
     )
@@ -50,8 +51,24 @@ async def enqueue_news_notification(
     news_id: uuid.UUID | int, *, locale: str | None = None
 ) -> None:
     """Enqueue a news notification job using NATS JetStream."""
-    await enqueue_news_notification_task.kick(  # type: ignore[attr-defined]
+    await enqueue_news_notification_task.kick(
         uuid.UUID(str(news_id)) if isinstance(news_id, int) else news_id, locale=locale
+    )
+
+
+async def enqueue_comment_notification(
+    news_id: uuid.UUID | int,
+    comment_id: uuid.UUID | int,
+    user_id: uuid.UUID | int,
+    *,
+    locale: str | None = None,
+) -> None:
+    """Enqueue a comment notification job using NATS JetStream."""
+    await enqueue_comment_notification_task.kick(
+        uuid.UUID(str(news_id)) if isinstance(news_id, int) else news_id,
+        uuid.UUID(str(comment_id)) if isinstance(comment_id, int) else comment_id,
+        uuid.UUID(str(user_id)) if isinstance(user_id, int) else user_id,
+        locale=locale,
     )
 
 

@@ -108,7 +108,7 @@ class AuthService:
 
                 # RZ-1 Fix: Offload email fully to background to not block response
                 bg.add_task(
-                    send_auth_email.kick,  # type: ignore[attr-defined]
+                    send_auth_email.kick,
                     str(user.email),
                     reset_link,
                     user.full_name or "",
@@ -276,10 +276,12 @@ class AuthService:
 
         base = settings.app_base_url_clean
         confirm_link = f"{base}/settings/email-confirm?token={token}"
-        await send_auth_email.kick(  # type: ignore[attr-defined]
+        await send_auth_email.kick(
             validated_email,
             confirm_link,
-            user.profile.full_name if user.profile else "",
+            str(user.profile.full_name)
+            if user.profile and user.profile.full_name
+            else "",
             locale,
         )
 

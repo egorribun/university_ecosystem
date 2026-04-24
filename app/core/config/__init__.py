@@ -30,7 +30,10 @@ from .storage import StorageSettings
 _logger = get_logger(__name__)
 
 
-class _NamespaceView:
+T = typing.TypeVar("T")
+
+
+class _NamespaceView[T]:
     """Lightweight proxy that delegates attribute access to the parent Settings.
 
     TD-21-01 (audit 2026-03-25 Wave 21): Phase 2 of the config composition
@@ -47,11 +50,11 @@ class _NamespaceView:
 
     __slots__ = ("_mixin_cls", "_parent")
 
-    def __init__(self, parent: object, mixin_cls: type) -> None:
+    def __init__(self, parent: object, mixin_cls: type[T]) -> None:
         object.__setattr__(self, "_parent", parent)
         object.__setattr__(self, "_mixin_cls", mixin_cls)
 
-    def __getattr__(self, name: str) -> object:
+    def __getattr__(self, name: str) -> typing.Any:
         return getattr(object.__getattribute__(self, "_parent"), name)
 
     def __repr__(self) -> str:

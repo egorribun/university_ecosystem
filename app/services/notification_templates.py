@@ -536,10 +536,61 @@ class NotificationBuilder(Protocol):
         """Build a notification payload for the given scenario."""
 
 
+def _build_comment(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
+    news_title = context.get_text("news_title", "headline", "title")
+    comment_body = _clean_text(context.get("comment_body", "body", "text"), limit=220)
+    user_name = context.get_text("user_name", "author")
+    news_id = context.get_identifier("news_id", "newsId")
+    url = f"/news/{news_id}" if news_id else "/news"
+
+    lines: list[str] = []
+    if comment_body:
+        lines.append(comment_body)
+    if user_name:
+        lines.append(
+            translate(
+                "notifications.news.comment.from_author",
+                locale=locale,
+                author=user_name,
+            )
+        )
+
+    if news_title:
+        title = translate(
+            "notifications.news.comment.title_with_news",
+            locale=locale,
+            news=news_title,
+        )
+    else:
+        title = translate("notifications.news.comment.title", locale=locale)
+
+    tag = f"news-comment:{news_id}" if news_id else "news-comment"
+
+    return {
+        "title": title,
+        "body": "\n".join(lines),
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_BADGE,
+        "tag": tag,
+        "renotify": True,
+        "requireInteraction": False,
+        "url": url,
+        "topic": "news",
+        "data": {
+            "url": url,
+            "category": "news",
+            "newsId": news_id,
+        },
+    }
+
+
 _BUILDERS: dict[str, NotificationBuilder] = {
     "schedule.change": _build_schedule_change,
     "schedule.reminder": _build_schedule_reminder,
     "news.new": _build_news,
+    "news.comment": _build_comment,
     "events.new": _build_event,
     "system.message": _build_system,
 }

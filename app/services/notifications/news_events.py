@@ -25,7 +25,7 @@ from app.services.notifications.delivery import create_notifications_for_users
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
-    from app.models import Event, News
+    from app.models import Event, News, NewsComment, User
 
 
 async def notify_about_news(
@@ -368,4 +368,56 @@ async def notify_about_event(
         payload_data=payload_data,
         user_ids=user_ids,
         topic="events",
+    )
+
+
+async def notify_about_comment(
+    db: AsyncSession,
+    news: News,
+    comment: NewsComment,
+    author: User,
+    *,
+    locale: str | None = None,
+) -> int:
+    """Create and send notifications to admins about a new comment."""
+    from app.services.notifications.core import _fetch_admin_ids
+
+    resolved_locale = resolve_locale(locale=locale)
+    news_title = localized_text(
+        resolved_locale,
+        ru=getattr(news, "title", None),
+        en=getattr(news, "title_en", None),
+    )
+    user_name = getattr(author, "full_name", None) or getattr(
+        author, "username", "User"
+    )
+
+    template_payload = {
+        "news_title": news_title or getattr(news, "title", None),
+        "comment_body": comment.content,
+        "user_name": user_name,
+        "news_id": news.id,
+    }
+
+    template = render_notification_template(
+        "news.comment", template_payload, locale=resolved_locale
+    )
+
+    if not template:
+        return 0
+
+    admin_ids = await _fetch_admin_ids(db)
+    if not admin_ids:
+        return 0
+
+    return await create_notifications_for_users(
+        db,
+        title=str(template["title"]),
+        body=str(template["body"]),
+        type="news.comment",
+        url=str(template["url"]),
+        tag=str(template["tag"]),
+        payload_data=template.get("data", {}),
+        user_ids=admin_ids,
+        topic="news",
     )

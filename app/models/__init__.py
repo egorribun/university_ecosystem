@@ -98,8 +98,5 @@ from app.models.users import (
     UserProfile as UserProfile,
 )
 
-# LOW-W19: DeadLetterJob lives in app.workers which is an upper layer;
-# importing it here creates a layer violation (models must not depend on workers).
-# Kept for backward-compat re-export only — callers should import from
-# app.workers.dead_letter_queue directly and this re-export will be removed.
-from app.workers.dead_letter_queue import DeadLetterJob as DeadLetterJob
+
+# Removed DeadLetterJob re-export (layer violation fixed)

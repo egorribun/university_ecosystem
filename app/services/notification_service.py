@@ -60,6 +60,29 @@ class NotificationService:
                 "Failed to enqueue news notification", extra={"news_id": news_id}
             )
 
+    async def dispatch_comment_created(
+        self,
+        news_id: uuid.UUID | int,
+        comment_id: uuid.UUID | int,
+        user_id: uuid.UUID | int,
+        locale: str,
+        background: BackgroundTasks,
+    ) -> None:
+        """Enqueue comment notification in background."""
+        try:
+            background.add_task(
+                notification_queue.enqueue_comment_notification,
+                news_id,
+                comment_id,
+                user_id,
+                locale=locale,
+            )
+        except (RuntimeError, OSError):
+            logger.exception(
+                "Failed to enqueue comment notification",
+                extra={"news_id": news_id, "comment_id": comment_id},
+            )
+
     async def send_security_notification(
         self, user_ids: list[uuid.UUID | int], title: str, body: str
     ) -> int:

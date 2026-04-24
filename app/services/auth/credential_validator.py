@@ -255,4 +255,4 @@ class CredentialValidator:
     ) -> None:
         from app.tasks.email import send_lockout_alert
 
-        await send_lockout_alert.kick(email, full_name, locale)  # type: ignore[attr-defined]
+        await send_lockout_alert.kick(email, full_name, locale)

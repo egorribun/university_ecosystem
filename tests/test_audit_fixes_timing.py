@@ -40,7 +40,7 @@ async def test_password_reset_timing_normalization(
     ):
         password = "Existing123!"
         hashed = await get_password_hash(password)
-        user = await user_factory(email="real@example.com", hashed_password=hashed)
+        await user_factory(email="real@example.com", hashed_password=hashed)
 
         async def measure_request(email: str):
             start = time.perf_counter()
