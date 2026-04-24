@@ -51,6 +51,7 @@ pytest_plugins = [
     "tests.fixtures.database.database",
     "tests.fixtures.infrastructure.infrastructure",
     "tests.fixtures.auth.auth_fixtures",
+    "tests.fixtures.auth.mfa_fixtures",
     "tests.fixtures.services.service_fixtures",
     "tests.fixtures.services.notification_fixtures",
     "tests.fixtures.services.websocket_fixtures",

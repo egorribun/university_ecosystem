@@ -3,6 +3,9 @@ from app.models.auth import (
     ActiveSession as ActiveSession,
 )
 from app.models.auth import (
+    ChallengeState as ChallengeState,
+)
+from app.models.auth import (
     EmailChangeToken as EmailChangeToken,
 )
 from app.models.auth import (

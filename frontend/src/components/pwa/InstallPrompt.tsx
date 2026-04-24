@@ -244,21 +244,17 @@ export default function InstallPrompt() {
       <AnimatePresence>
         {shouldRenderPrompt && (
           <motion.div
-            initial={ANIMATION_VARIANTS.initial}
-            animate={ANIMATION_VARIANTS.animate}
-            exit={ANIMATION_VARIANTS.exit}
-            // Wave 118 SW2 (CLS-118-02): `min-h-[540px]` reserves vertical
-            // space so content-progressive mounting (i18n load, push-
-            // permission state flips, panel-type swap) doesn't grow the
-            // element from 0 to final height. Because `bottom-24` anchors
-            // from viewport bottom, a height-growing element shifts its TOP
-            // edge UP — the 0.234 CLS shift LHCI flagged is this top-edge
-            // travel, not the Framer Motion transforms (opacity-only since
-            // first-pass SW2). 540 px matches the worst-case final height
-            // (install + push + default-permission combined panel) observed
-            // in Phase 0 boundingRect 380×532; 540 gives 8 px safety margin
-            // so content-driven growth never exceeds the reservation.
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] min-h-[540px]"
+            key="install-prompt-root"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            // Wave 118 SW3 (CLS-118-03): Enforced `flex-col justify-start` to anchor
+            // inner GlassCard to the TOP of the reserved 600px area. This ensures
+            // that as internal components mount (i18n, push state), they grow
+            // DOWN into the reserved space, keeping the visual top edge rock-solid.
+            // Increased to 600px (was 540) to accommodate potential Russian text 
+            // expansion in low-res viewports without breaching the reservation.
+            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] min-h-[600px] flex flex-col justify-start"
           >
             <GlassCard
               intensity="high"

@@ -367,6 +367,7 @@ async def consume_challenge(
         user_id=user_id,
         session_id=session_id,
         consume=False,
+        for_update=True,  # TD-W5-01: Acquire lock to prevent race conditions
         locale=locale,
     )
 
