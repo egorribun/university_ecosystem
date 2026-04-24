@@ -17,6 +17,12 @@ var (
 )
 
 func main() {
+	if err := newRootCmd().Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "uni-cli",
 		Short: "University Ecosystem CLI tools",
@@ -32,9 +38,7 @@ func main() {
 	rootCmd.AddCommand(healthCmd())
 	rootCmd.AddCommand(metricsCmd())
 
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+	return rootCmd
 }
 
 func getEnv(key, defaultValue string) string {

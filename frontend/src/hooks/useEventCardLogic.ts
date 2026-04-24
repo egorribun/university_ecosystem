@@ -11,17 +11,9 @@ import type { Event, EventEditDraft } from "@/types/Event"
 
 // dayjs extensions removed
 
-/** Normalize ISO 8601 date string to locale-friendly display format.
- *  Handles both "2024-01-15T10:30:00Z" and "2024-01-15 10:30:00" inputs. */
-const normalizeDate = (d?: string) => {
-  if (!d) return ""
-  try {
-    const date = new Date(d)
-    if (Number.isNaN(date.getTime())) return d
-    return date.toLocaleString()
-  } catch {
-    return d.replace("T", " ").replace("Z", "")
-  }
+const parseDate = (d?: string) => {
+  if (!d) return new Date(NaN)
+  return new Date(d.includes(" ") && !d.includes("T") ? d.replace(" ", "T") : d)
 }
 
 interface UseEventCardLogicProps extends Partial<Event> {
@@ -98,8 +90,8 @@ export function useEventCardLogic({
   // -- Computed Properties --
   const timeStatus = useMemo(() => {
     const now = new Date()
-    const start = toDate(normalizeDate(starts_at).replace(" ", "T"))
-    const end = toDate(normalizeDate(ends_at).replace(" ", "T"))
+    const start = parseDate(starts_at)
+    const end = parseDate(ends_at)
 
     if (now > start && now < end) return { status: "live" as const }
 
@@ -111,7 +103,7 @@ export function useEventCardLogic({
   }, [starts_at, ends_at])
 
   const eventEnded = useMemo(() => {
-    const end = toDate(normalizeDate(ends_at).replace(" ", "T"))
+    const end = parseDate(ends_at)
     return !isNaN(end.getTime()) && end < new Date()
   }, [ends_at])
 
@@ -142,8 +134,8 @@ export function useEventCardLogic({
       }
       const payload = {
         ...editData,
-        starts_at: normalizeDate(editData.starts_at || undefined),
-        ends_at: normalizeDate(editData.ends_at || undefined),
+        starts_at: parseDate(editData.starts_at || undefined).toISOString(),
+        ends_at: parseDate(editData.ends_at || undefined).toISOString(),
         image_url: imgUrl,
       }
       await api.patch(`/events/${id}`, payload)

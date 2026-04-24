@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import ValidationError
@@ -239,7 +239,7 @@ async def _fetch_notification_rows(
     )
     try:
         rows = (await db.execute(stmt)).mappings().all()
-        return rows, None  # type: ignore[return-value]
+        return cast(list[Mapping[str, Any]], rows), None
     except SQLAlchemyError as exc:
         if not _is_missing_column_error(exc):
             raise
@@ -310,7 +310,7 @@ async def _fetch_notification_rows_fallback(
         .limit(limit + 1)
     )
     rows = (await db.execute(stmt)).mappings().all()
-    return rows, available  # type: ignore[return-value]
+    return cast(list[Mapping[str, Any]], rows), available
 
 
 def _serialize_notification(
