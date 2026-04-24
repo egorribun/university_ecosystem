@@ -71,6 +71,7 @@ export const fetchNewsItem = async (
     path: { id },
     headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
     signal,
+    throwOnError: true,
     validateStatus: (status: number) => status === 304 || (status >= 200 && status < 300),
   })
   if (response.status !== 304) {
@@ -82,6 +83,7 @@ export const fetchNewsItem = async (
 export const createNews = async (payload: CreateNewsPayload) => {
   const response = await createNewsApiV1NewsPost({
     body: payload,
+    throwOnError: true,
   })
   applyParsedData(response, newsItemSchema, "POST /api/v1/news")
   return response
@@ -91,6 +93,7 @@ export const updateNews = async (id: string, payload: UpdateNewsPayload) => {
   const response = await updateNewsApiV1NewsIdPatch({
     path: { id },
     body: payload ?? undefined,
+    throwOnError: true,
   })
   applyParsedData(response, newsItemSchema, "PATCH /api/v1/news/{id}")
   return response

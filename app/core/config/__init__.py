@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import typing
 from functools import cached_property
 
 from pydantic import ValidationInfo, field_validator, model_validator
@@ -210,42 +211,48 @@ class Settings(
     @cached_property
     def db(self) -> DatabaseSettings:
         """Namespace: ``settings.db.database_pool_size``."""
-        return _NamespaceView(self, DatabaseSettings)  # type: ignore[return-value]
+        return typing.cast(DatabaseSettings, _NamespaceView(self, DatabaseSettings))
 
     @cached_property
     def security(self) -> SecuritySettings:
         """Namespace: ``settings.security.jwt_signing_active_secret``."""
-        return _NamespaceView(self, SecuritySettings)  # type: ignore[return-value]
+        return typing.cast(SecuritySettings, _NamespaceView(self, SecuritySettings))
 
     @cached_property
     def cache(self) -> CacheSettings:
         """Namespace: ``settings.cache.cache_redis_url``."""
-        return _NamespaceView(self, CacheSettings)  # type: ignore[return-value]
+        return typing.cast(CacheSettings, _NamespaceView(self, CacheSettings))
 
     @cached_property
     def observability(self) -> ObservabilitySettings:
         """Namespace: ``settings.observability.enable_otel``."""
-        return _NamespaceView(self, ObservabilitySettings)  # type: ignore[return-value]
+        return typing.cast(
+            ObservabilitySettings, _NamespaceView(self, ObservabilitySettings)
+        )
 
     @cached_property
     def storage(self) -> StorageSettings:
         """Namespace: ``settings.storage.storage_backend``."""
-        return _NamespaceView(self, StorageSettings)  # type: ignore[return-value]
+        return typing.cast(StorageSettings, _NamespaceView(self, StorageSettings))
 
     @cached_property
     def notifications(self) -> NotificationSettings:
         """Namespace: ``settings.notifications.smtp_host``."""
-        return _NamespaceView(self, NotificationSettings)  # type: ignore[return-value]
+        return typing.cast(
+            NotificationSettings, _NamespaceView(self, NotificationSettings)
+        )
 
     @cached_property
     def integrations(self) -> IntegrationSettings:
         """Namespace: ``settings.integrations.spotify_client_id``."""
-        return _NamespaceView(self, IntegrationSettings)  # type: ignore[return-value]
+        return typing.cast(
+            IntegrationSettings, _NamespaceView(self, IntegrationSettings)
+        )
 
     @cached_property
     def app(self) -> AppGeneralSettings:
         """Namespace: ``settings.app.environment``."""
-        return _NamespaceView(self, AppGeneralSettings)  # type: ignore[return-value]
+        return typing.cast(AppGeneralSettings, _NamespaceView(self, AppGeneralSettings))
 
 
 def _load_settings() -> Settings:

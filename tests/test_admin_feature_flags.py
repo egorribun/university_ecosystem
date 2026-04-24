@@ -4,23 +4,14 @@ NOTE: FeatureFlag/FlagStatus classes were removed during the OpenFeature migrati
 Tests have been rewritten against the new app.core.feature_flags API.
 """
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from httpx import AsyncClient
 
 from app.auth.security import get_password_hash
-from app.core.feature_flags import FLAG_PUSH_BATCHING, feature_flags
+from app.core.feature_flags import FLAG_PUSH_BATCHING
 
 # Common strong password for tests
 TEST_PASSWORD = "StrongPass123!"  # NOSONAR
-
-
-@pytest.fixture(autouse=True)
-def mock_feature_flags_redis():
-    """Mock Redis connection for feature flags to avoid persistence errors in tests."""
-    with patch.object(feature_flags, "_redis", new_callable=AsyncMock) as mock:
-        yield mock
 
 
 @pytest.mark.asyncio
