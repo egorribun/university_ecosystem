@@ -60,7 +60,7 @@ async def test_concurrent_sessions_enforced(
 
         password = "RacePassword123!"
         hashed = await get_password_hash(password)
-        user = await user_factory(email="race@example.com", hashed_password=hashed)
+        await user_factory(email="race@example.com", hashed_password=hashed)
 
         login_url = "auth/login/json"
 

@@ -147,8 +147,11 @@ async def login_passkey_verify(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
 
     service = WebAuthnService(db)
+    if challenge.payload is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid challenge payload")
+    payload_dict = challenge.payload
+
     try:
-        payload_dict: dict[str, Any] = challenge.payload  # type: ignore[assignment]
         await service.verify_authentication(
             user,
             str(payload_dict.get("options", {}).get("challenge", "")),

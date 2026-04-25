@@ -253,7 +253,7 @@ def _sanitize_vibrate(raw: Any) -> list[int]:
 class WebPushResult:
     subscription_id: uuid.UUID
     endpoint: str
-    user_id: uuid.UUID
+    user_id: uuid.UUID | None
     status: Literal["sent", "gone", "error"]
     status_code: int | None = None
     error: str | None = None
@@ -586,7 +586,9 @@ def build_payload(
         options["silent"] = bool(source.get("silent"))
         if "timestamp" in source and source.get("timestamp") is not None:
             with contextlib.suppress(TypeError, ValueError):
-                options["timestamp"] = int(source.get("timestamp"))  # type: ignore[arg-type]
+                ts_val = source.get("timestamp")
+                if ts_val is not None:
+                    options["timestamp"] = int(ts_val)
     meta: dict[str, Any] = {}
     for key in _META_KEYS:
         value = source.get(key)
@@ -650,7 +652,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             return WebPushResult(
                 subscription_id=sub.id,
                 endpoint=str(sub.endpoint),
-                user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+                user_id=uuid.UUID(str(user_id)) if user_id else None,
                 status="gone",
                 status_code=status_code,
                 error=message or None,
@@ -665,7 +667,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         return WebPushResult(
             subscription_id=sub.id,
             endpoint=str(sub.endpoint),
-            user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+            user_id=uuid.UUID(str(user_id)) if user_id else None,
             status="error",
             status_code=status_code,
             error=message or None,
@@ -686,7 +688,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         return WebPushResult(
             subscription_id=sub.id,
             endpoint=str(sub.endpoint),
-            user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+            user_id=uuid.UUID(str(user_id)) if user_id else None,
             status="error",
             error=str(exc),
         )
@@ -695,7 +697,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     return WebPushResult(
         subscription_id=sub.id,
         endpoint=str(sub.endpoint),
-        user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+        user_id=uuid.UUID(str(user_id)) if user_id else None,
         status="sent",
     )
 
@@ -731,7 +733,7 @@ async def _send_push_async(
             return WebPushResult(
                 subscription_id=sub.id,
                 endpoint=str(sub.endpoint),
-                user_id=_uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+                user_id=_uuid.UUID(str(user_id)) if user_id else None,
                 status="error",
                 error="push delivery timed out",
             )

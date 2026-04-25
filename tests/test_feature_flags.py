@@ -1,178 +1,84 @@
-"""Tests for Feature Flags system.
+"""Modern tests for Feature Flags system using OpenFeature.
 
-NOTE: FeatureFlag/FlagStatus/FeatureFlagService classes were removed during
-the OpenFeature migration. These tests are skipped until rewritten against
-the new is_enabled/is_enabled_sync API.
+These tests replace the legacy FeatureFlag/FlagStatus/FeatureFlagService tests
+which were skipped during the OpenFeature migration.
 """
 
-import pytest
+from unittest.mock import MagicMock, patch
 
-pytestmark = pytest.mark.skip(
-    reason="FeatureFlag class API removed in OpenFeature migration"
+import pytest
+from openfeature.evaluation_context import EvaluationContext
+
+from app.core.feature_flags import (
+    FLAG_NEW_CHAT_UI,
+    FLAG_PUSH_BATCHING,
+    feature_flags,
+    is_enabled,
+    is_enabled_sync,
 )
 
-# Stubs to allow the module to parse without ImportError
-FeatureFlag = None
-FeatureFlagService = None
-FlagStatus = None
-feature_flags = None
+
+@pytest.mark.asyncio
+async def test_is_enabled_calls_openfeature():
+    """Test that is_enabled correctly interacts with OpenFeature API."""
+    with patch("openfeature.api.get_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.get_boolean_value.return_value = True
+        mock_get_client.return_value = mock_client
+
+        result = await is_enabled(FLAG_NEW_CHAT_UI, context={"user_id": "42"})
+
+        assert result is True
+        mock_client.get_boolean_value.assert_called_once()
+        args, _kwargs = mock_client.get_boolean_value.call_args
+        assert args[0] == FLAG_NEW_CHAT_UI
+        assert isinstance(args[2], EvaluationContext)
+        assert args[2].attributes == {"user_id": "42"}
 
 
-class TestFeatureFlag:
-    """Tests for FeatureFlag dataclass."""
+def test_is_enabled_sync_calls_openfeature():
+    """Test that is_enabled_sync correctly interacts with OpenFeature API."""
+    with patch("openfeature.api.get_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.get_boolean_value.return_value = False
+        mock_get_client.return_value = mock_client
 
-    def test_disabled_flag(self):
-        """Test disabled flag returns False."""
-        flag = FeatureFlag(name="test", status=FlagStatus.DISABLED)
-        assert flag.is_enabled_for_user(1) is False
-        assert flag.is_enabled_for_user(None) is False
+        result = is_enabled_sync(FLAG_PUSH_BATCHING, default=True)
 
-    def test_enabled_flag(self):
-        """Test enabled flag returns True."""
-        flag = FeatureFlag(name="test", status=FlagStatus.ENABLED)
-        assert flag.is_enabled_for_user(1) is True
-        assert flag.is_enabled_for_user(None) is True
-
-    def test_user_allowlist(self):
-        """Test user allowlist bypasses percentage."""
-        flag = FeatureFlag(
-            name="test",
-            status=FlagStatus.PERCENTAGE,
-            percentage=0,  # Would normally be False
-            allowed_users={42},
+        assert result is False
+        mock_client.get_boolean_value.assert_called_once_with(
+            FLAG_PUSH_BATCHING, True, None
         )
-        assert flag.is_enabled_for_user(42) is True
-        assert flag.is_enabled_for_user(1) is False
-
-    def test_percentage_rollout_deterministic(self):
-        """Test percentage rollout is deterministic for same user."""
-        flag = FeatureFlag(
-            name="test",
-            status=FlagStatus.PERCENTAGE,
-            percentage=50,
-        )
-        # Same user should get same result
-        result1 = flag.is_enabled_for_user(123)
-        result2 = flag.is_enabled_for_user(123)
-        assert result1 == result2
-
-    def test_percentage_100(self):
-        """Test 100% rollout enables for all."""
-        flag = FeatureFlag(
-            name="test",
-            status=FlagStatus.PERCENTAGE,
-            percentage=100,
-        )
-        # Check multiple users
-        for user_id in range(1, 20):
-            assert flag.is_enabled_for_user(user_id) is True
-
-    def test_percentage_0(self):
-        """Test 0% rollout disables for all."""
-        flag = FeatureFlag(
-            name="test",
-            status=FlagStatus.PERCENTAGE,
-            percentage=0,
-        )
-        for user_id in range(1, 20):
-            assert flag.is_enabled_for_user(user_id) is False
 
 
-class TestFeatureFlagService:
-    """Tests for FeatureFlagService."""
+@pytest.mark.asyncio
+async def test_is_enabled_handles_exceptions():
+    """Test that is_enabled falls back to default on provider errors."""
+    with patch("openfeature.api.get_client", side_effect=Exception("Provider down")):
+        result = await is_enabled("some-flag", default=True)
+        assert result is True
 
-    def test_register_and_get(self):
-        """Test registering and retrieving flags."""
-        service = FeatureFlagService()
-        flag = FeatureFlag(name="my_feature", status=FlagStatus.ENABLED)
 
-        service.register(flag)
-
-        retrieved = service.get("my_feature")
-        assert retrieved is not None
-        assert retrieved.name == "my_feature"
-
-    def test_is_enabled_unknown_flag(self):
-        """Test unknown flag returns default."""
-        service = FeatureFlagService()
-
-        assert service.is_enabled("unknown", default=False) is False
-        assert service.is_enabled("unknown", default=True) is True
-
-    def test_is_enabled_with_user(self):
-        """Test is_enabled with user ID."""
-        service = FeatureFlagService()
-        flag = FeatureFlag(
-            name="user_feature",
-            status=FlagStatus.PERCENTAGE,
-            percentage=100,
-        )
-        service.register(flag)
-
-        assert service.is_enabled("user_feature", user_id=1) is True
-
-    def test_enable_disable(self):
-        """Test enable and disable methods."""
-        service = FeatureFlagService()
-        flag = FeatureFlag(name="toggle", status=FlagStatus.DISABLED)
-        service.register(flag)
-
-        assert service.is_enabled("toggle") is False
-
-        service.enable("toggle")
-        assert service.is_enabled("toggle") is True
-
-        service.disable("toggle")
-        assert service.is_enabled("toggle") is False
-
-    def test_set_percentage(self):
-        """Test setting percentage rollout."""
-        service = FeatureFlagService()
-        flag = FeatureFlag(name="gradual", status=FlagStatus.DISABLED)
-        service.register(flag)
-
-        service.set_percentage("gradual", 50)
-
-        retrieved = service.get("gradual")
-        assert retrieved is not None
-        assert retrieved.status == FlagStatus.PERCENTAGE
-        assert retrieved.percentage == 50
-
-    def test_set_percentage_clamps_values(self):
-        """Test percentage is clamped to 0-100."""
-        service = FeatureFlagService()
-        flag = FeatureFlag(name="clamp", status=FlagStatus.DISABLED)
-        service.register(flag)
-
-        service.set_percentage("clamp", 150)
-        assert service.get("clamp").percentage == 100
-
-        service.set_percentage("clamp", -50)
-        assert service.get("clamp").percentage == 0
+class TestLegacyFeatureFlagsBridge:
+    """Tests for the backward-compatibility bridge."""
 
     def test_list_flags(self):
-        """Test listing all flags."""
-        service = FeatureFlagService()
-        service.register(FeatureFlag(name="flag1"))
-        service.register(FeatureFlag(name="flag2"))
+        with patch("app.core.feature_flags.is_enabled_sync", return_value=True):
+            flags = feature_flags.list_flags()
+            assert len(flags) > 0
+            assert all("name" in f and "enabled" in f for f in flags)
+            assert any(f["name"] == FLAG_PUSH_BATCHING for f in flags)
 
-        flags = service.list_flags()
-        assert len(flags) == 2
-        names = {f.name for f in flags}
-        assert names == {"flag1", "flag2"}
+    @pytest.mark.asyncio
+    async def test_update_shim(self):
+        # Update is a no-op in flagd but returns the updated state
+        result = await feature_flags.update(FLAG_NEW_CHAT_UI, enabled=True)
+        assert result["name"] == FLAG_NEW_CHAT_UI
+        assert result["enabled"] is True
 
-
-class TestGlobalFeatureFlags:
-    """Test global feature_flags instance."""
-
-    def test_global_instance_exists(self):
-        """Test global instance is available."""
-        assert feature_flags is not None
-        assert isinstance(feature_flags, FeatureFlagService)
-
-    def test_default_flags_registered(self):
-        """Test default flags are pre-registered."""
-        # These are registered in the module
-        assert feature_flags.get("new_dashboard") is not None
-        assert feature_flags.get("websocket_v2") is not None
-        assert feature_flags.get("push_batching") is not None
+    def test_to_dict(self):
+        with patch("app.core.feature_flags.is_enabled_sync", return_value=False):
+            d = feature_flags.to_dict()
+            assert isinstance(d, dict)
+            assert FLAG_NEW_CHAT_UI in d
+            assert d[FLAG_NEW_CHAT_UI] is False

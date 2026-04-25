@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import typing
 from functools import cached_property
 
 from pydantic import ValidationInfo, field_validator, model_validator
@@ -29,7 +30,10 @@ from .storage import StorageSettings
 _logger = get_logger(__name__)
 
 
-class _NamespaceView:
+T = typing.TypeVar("T")
+
+
+class _NamespaceView[T]:
     """Lightweight proxy that delegates attribute access to the parent Settings.
 
     TD-21-01 (audit 2026-03-25 Wave 21): Phase 2 of the config composition
@@ -46,11 +50,11 @@ class _NamespaceView:
 
     __slots__ = ("_mixin_cls", "_parent")
 
-    def __init__(self, parent: object, mixin_cls: type) -> None:
+    def __init__(self, parent: object, mixin_cls: type[T]) -> None:
         object.__setattr__(self, "_parent", parent)
         object.__setattr__(self, "_mixin_cls", mixin_cls)
 
-    def __getattr__(self, name: str) -> object:
+    def __getattr__(self, name: str) -> typing.Any:
         return getattr(object.__getattribute__(self, "_parent"), name)
 
     def __repr__(self) -> str:
@@ -210,42 +214,48 @@ class Settings(
     @cached_property
     def db(self) -> DatabaseSettings:
         """Namespace: ``settings.db.database_pool_size``."""
-        return _NamespaceView(self, DatabaseSettings)  # type: ignore[return-value]
+        return typing.cast(DatabaseSettings, _NamespaceView(self, DatabaseSettings))
 
     @cached_property
     def security(self) -> SecuritySettings:
         """Namespace: ``settings.security.jwt_signing_active_secret``."""
-        return _NamespaceView(self, SecuritySettings)  # type: ignore[return-value]
+        return typing.cast(SecuritySettings, _NamespaceView(self, SecuritySettings))
 
     @cached_property
     def cache(self) -> CacheSettings:
         """Namespace: ``settings.cache.cache_redis_url``."""
-        return _NamespaceView(self, CacheSettings)  # type: ignore[return-value]
+        return typing.cast(CacheSettings, _NamespaceView(self, CacheSettings))
 
     @cached_property
     def observability(self) -> ObservabilitySettings:
         """Namespace: ``settings.observability.enable_otel``."""
-        return _NamespaceView(self, ObservabilitySettings)  # type: ignore[return-value]
+        return typing.cast(
+            ObservabilitySettings, _NamespaceView(self, ObservabilitySettings)
+        )
 
     @cached_property
     def storage(self) -> StorageSettings:
         """Namespace: ``settings.storage.storage_backend``."""
-        return _NamespaceView(self, StorageSettings)  # type: ignore[return-value]
+        return typing.cast(StorageSettings, _NamespaceView(self, StorageSettings))
 
     @cached_property
     def notifications(self) -> NotificationSettings:
         """Namespace: ``settings.notifications.smtp_host``."""
-        return _NamespaceView(self, NotificationSettings)  # type: ignore[return-value]
+        return typing.cast(
+            NotificationSettings, _NamespaceView(self, NotificationSettings)
+        )
 
     @cached_property
     def integrations(self) -> IntegrationSettings:
         """Namespace: ``settings.integrations.spotify_client_id``."""
-        return _NamespaceView(self, IntegrationSettings)  # type: ignore[return-value]
+        return typing.cast(
+            IntegrationSettings, _NamespaceView(self, IntegrationSettings)
+        )
 
     @cached_property
     def app(self) -> AppGeneralSettings:
         """Namespace: ``settings.app.environment``."""
-        return _NamespaceView(self, AppGeneralSettings)  # type: ignore[return-value]
+        return typing.cast(AppGeneralSettings, _NamespaceView(self, AppGeneralSettings))
 
 
 def _load_settings() -> Settings:

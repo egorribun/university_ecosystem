@@ -344,7 +344,7 @@ async def comment_on_news(
     comment = await service.create_comment(id, user.id, content)
 
     # Notify admins about new comment
-    await notifications.dispatch_comment_created(  # type: ignore[attr-defined]
+    await notifications.dispatch_comment_created(
         id, comment.id, user.id, locale, background
     )
 

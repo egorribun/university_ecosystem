@@ -377,7 +377,7 @@ omit = [
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 78  # TD-29-01: lowered from 80 — skipped FeatureFlag tests reduce covered lines
+fail_under = 79  # Raised from 78 — new tests for utils/img, uuid_v7, request_coalescing bring actual coverage to 79%
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",

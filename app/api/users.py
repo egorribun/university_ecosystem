@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import (
@@ -497,8 +498,8 @@ async def delete_user_admin(
     # TD-6: same fail-closed SpiceDB check at the route boundary.
     user: models.User = Depends(get_current_admin_user),
     service: UserComplianceService = Depends(get_user_compliance_service),
-) -> dict[str, bool]:
-    return await service.admin_delete_user(user_id, request, user)  # type: ignore[arg-type]
+) -> dict[str, Any]:
+    return await service.admin_delete_user(user_id, request, user)
 
 
 @groups_router.get("", response_model=list[schemas.GroupOut])

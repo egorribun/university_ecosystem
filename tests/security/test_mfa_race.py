@@ -1,43 +1,62 @@
 import asyncio
+from unittest.mock import AsyncMock
 
+import pyotp
 import pytest
 
 
-@pytest.mark.skip(reason="Requires complex MFA/TOTP fixtures not yet implemented")
+@pytest.mark.security
 @pytest.mark.asyncio
-async def test_mfa_challenge_race_condition(async_client):
+async def test_mfa_challenge_race_condition(
+    async_client, user_with_totp, mfa_challenge_factory, monkeypatch
+):
     """
-    Test that multiple parallel requests to consume the same challenge fail.
-    Only one should succeed.
-
-    Note: This test requires MFA challenge fixtures which are not yet available.
-    The test verifies race condition protection in the MFA verification flow.
+    Test that concurrent MFA verification attempts for the same challenge
+    result in only one success due to row-level locking.
     """
-    # This test needs complex setup:
-    # 1. User with TOTP enabled
-    # 2. Valid MFA challenge token
-    # 3. Proper test isolation for race conditions
+    # 1. Setup: Create a real TOTP secret and a challenge
+    challenge = await mfa_challenge_factory(user_with_totp)
+    totp = pyotp.TOTP(user_with_totp._totp_secret)
+    valid_code = totp.now()
 
-    challenge_token = "test-challenge-token"
-
-    async def call_verify():
-        return await async_client.post(
-            "/auth/mfa/verify",
-            json={
-                "challenge_token": challenge_token,
-                "method": "totp",
-                "code": "123456",
-            },
-        )
-
-    # Trigger 5 parallel requests
-    results = await asyncio.gather(
-        *[call_verify() for _ in range(5)], return_exceptions=True
+    # 2. Mock fingerprint verification to bypass Redis/Context requirements in test
+    monkeypatch.setattr(
+        "app.api.auth.login.verify_mfa_fingerprint", AsyncMock(return_value=True)
     )
 
-    # Analyze results: only ONE should potentially be "Processing" (not 400 Invalid)
-    status_codes = [r.status_code for r in results if not isinstance(r, Exception)]
+    # 3. Simulate row-level locking for SQLite (which doesn't support SELECT FOR UPDATE)
+    # We wrap the real get_challenge with an asyncio lock if for_update=True
+    from app.auth.mfa.challenge import get_challenge as real_get_challenge
 
-    # If the check is atomic, we shouldn't see multiple 200/202 responses.
-    success_or_processing = [s for s in status_codes if s < 400]
-    assert len(success_or_processing) <= 1
+    lock = asyncio.Lock()
+
+    async def mocked_get_challenge(*args, **kwargs):
+        if kwargs.get("for_update"):
+            async with lock:
+                # Add a tiny delay to ensure concurrent tasks actually contend for the lock
+                await asyncio.sleep(0.05)
+                return await real_get_challenge(*args, **kwargs)
+        return await real_get_challenge(*args, **kwargs)
+
+    monkeypatch.setattr("app.auth.mfa.challenge.get_challenge", mocked_get_challenge)
+
+    # 4. Execution: Send 10 concurrent requests
+    async def send_request():
+        payload = {
+            "challenge_token": challenge.token,
+            "code": valid_code,
+            "method": "totp",
+        }
+        # Use the correct API path relative to base_url /api/v1
+        return await async_client.post("/auth/mfa/verify", json=payload)
+
+    tasks = [send_request() for _ in range(10)]
+    results = await asyncio.gather(*tasks)
+
+    # 5. Verification
+    successes = sum(1 for r in results if r.status_code == 200)
+    failures = sum(1 for r in results if r.status_code == 400)
+
+    # Assert that exactly one request succeeded and the rest were rejected as already consumed
+    assert successes == 1, f"Expected exactly 1 success, got {successes}"
+    assert failures == 9, f"Expected exactly 9 failures, got {failures}"

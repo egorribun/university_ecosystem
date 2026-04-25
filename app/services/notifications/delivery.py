@@ -286,7 +286,7 @@ async def create_notifications_for_users(
                     return WebPushResult(
                         subscription_id=subscription.id,
                         endpoint=str(subscription.endpoint),
-                        user_id=_uuid_local.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
+                        user_id=_uuid_local.UUID(str(user_id)) if user_id else None,
                         status="error",
                         error="push delivery timed out",
                     )

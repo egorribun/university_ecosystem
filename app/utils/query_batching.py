@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.core.database import Base
+from app.core.protocols import Identifiable
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
     from sqlalchemy.sql import Select
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
+    from app.core.protocols import Identifiable
 
 
 async def batch_load_ids[T: Base](
@@ -44,7 +46,7 @@ async def batch_load_ids[T: Base](
     if not ids:
         return []
 
-    column = id_column if id_column is not None else model.id  # type: ignore[attr-defined]
+    column = id_column if id_column is not None else cast(type[Identifiable], model).id
     unique_ids = list(set(ids))
     results: list[T] = []
 
@@ -121,7 +123,9 @@ class QueryBatcher[T: Base]:
     ) -> None:
         self._session = session
         self._model = model
-        self._id_column = id_column if id_column is not None else model.id  # type: ignore[attr-defined]
+        self._id_column = (
+            id_column if id_column is not None else cast(type[Identifiable], model).id
+        )
         self._pending_ids: list[int | str] = []
 
     def add(self, item_id: int | str) -> None:

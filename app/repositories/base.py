@@ -5,10 +5,10 @@ import re
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from app.core.protocols import AsyncDatabaseSession
+    from app.core.protocols import AsyncDatabaseSession, Identifiable
 
 from pydantic import BaseModel
 from sqlalchemy import delete, exists, func, select
@@ -48,7 +48,9 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
     async def _get_orm(self, id: Any, *, with_for_update: bool = False) -> T | None:
         """Internal helper to get the ORM object."""
         target_id = self._cast_id(id)
-        stmt = select(self.model).where(self.model.id == target_id)  # type: ignore[attr-defined]
+        stmt = select(self.model).where(
+            cast("type[Identifiable]", self.model).id == target_id
+        )
         if with_for_update:
             stmt = stmt.with_for_update()
         result = await self.db.execute(stmt)
@@ -82,7 +84,9 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         if not ids:
             return []
         target_ids = [self._cast_id(idx) for idx in ids]
-        stmt = select(self.model).where(self.model.id.in_(target_ids))  # type: ignore[attr-defined]
+        stmt = select(self.model).where(
+            cast("type[Identifiable]", self.model).id.in_(target_ids)
+        )
         if with_for_update:
             stmt = stmt.with_for_update()
         result = await self.db.execute(stmt)
@@ -132,7 +136,11 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         - Requires an index on ``order_column`` (or a composite index that starts
           with ``order_column``) for the O(log N) guarantee.
         """
-        col = order_column if order_column is not None else self.model.id  # type: ignore[attr-defined]
+        col = (
+            order_column
+            if order_column is not None
+            else cast("type[Identifiable]", self.model).id
+        )
         stmt = select(self.model).order_by(col.asc()).limit(limit)
         if extra_filters:
             for f in extra_filters:
@@ -145,7 +153,7 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
             # is always sargable and allows the optimizer to use the full range.
             cursor_val = await self.db.scalar(
                 select(col).where(
-                    self.model.id == self._cast_id(after_id)  # type: ignore[attr-defined]
+                    cast("type[Identifiable]", self.model).id == self._cast_id(after_id)
                 )
             )
             if cursor_val is None:
@@ -165,7 +173,7 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
         # PERF-W19-05: use EXISTS instead of COUNT(*) — short-circuits at first row
         target_id = self._cast_id(id)
         stmt = select(
-            exists().where(self.model.id == target_id)  # type: ignore[attr-defined]
+            exists().where(cast("type[Identifiable]", self.model).id == target_id)
         )
         result = await self.db.execute(stmt)
         return bool(result.scalar())

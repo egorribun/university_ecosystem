@@ -185,6 +185,15 @@ async def _fetch_active_user_ids(
     return result
 
 
+async def _fetch_admin_ids(db: AsyncDatabaseSession) -> list[uuid.UUID]:
+    """Fetch IDs of all active admin users."""
+    from app.models.enums import UserRole
+
+    stmt = select(User.id).where(User.is_active.is_(True), User.role == UserRole.ADMIN)
+    rows = await db.execute(stmt)
+    return list(rows.scalars().all())
+
+
 def _ensure_aware(value: dt.datetime | None) -> dt.datetime:
     """Ensure a datetime value is timezone-aware (defaults to UTC)."""
     if value is None:

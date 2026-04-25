@@ -152,10 +152,19 @@ Authorization: Bearer <token>
       "created_at": "2024-12-30T09:00:00Z",
       "read": false,
       "action_url": "/events/1"
+    },
+    {
+      "id": "notif_def456",
+      "type": "news.comment",
+      "title": "New Comment",
+      "body": "John Doe commented on 'Spring Semester Updates'",
+      "created_at": "2024-12-30T10:15:00Z",
+      "read": false,
+      "action_url": "/news/123#comment-456"
     }
   ],
-  "total": 5,
-  "unread_count": 3
+  "total": 6,
+  "unread_count": 4
 }
 ```
 
