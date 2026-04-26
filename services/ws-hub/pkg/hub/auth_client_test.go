@@ -35,19 +35,19 @@ func TestIsValidUUID(t *testing.T) {
 
 func TestAuthClientMaxConnsPerHost(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
-		os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST")
+		_ = os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST")
 		assert.Equal(t, 20, authClientMaxConnsPerHost())
 	})
 
 	t.Run("override", func(t *testing.T) {
-		os.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "50")
-		defer os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST")
+		_ = os.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "50")
+		defer func() { _ = os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST") }()
 		assert.Equal(t, 50, authClientMaxConnsPerHost())
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		os.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "abc")
-		defer os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST")
+		_ = os.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "abc")
+		defer func() { _ = os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST") }()
 		assert.Equal(t, 20, authClientMaxConnsPerHost())
 	})
 }
@@ -60,9 +60,9 @@ func TestInternalAPIAuthClient_Invalidate(t *testing.T) {
 	t.Run("single room invalidation", func(t *testing.T) {
 		key := userID + ":" + roomID
 		client.cache.Add(key, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Hour)})
-		
+
 		client.Invalidate(userID, roomID)
-		
+
 		_, ok := client.cache.Get(key)
 		assert.False(t, ok, "entry should be removed from cache")
 	})
@@ -70,7 +70,7 @@ func TestInternalAPIAuthClient_Invalidate(t *testing.T) {
 	t.Run("wildcard user invalidation", func(t *testing.T) {
 		room1 := "660e8400-e29b-41d4-a716-446655441111"
 		room2 := "770e8400-e29b-41d4-a716-446655442222"
-		
+
 		client.cache.Add(userID+":"+room1, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Hour)})
 		client.cache.Add(userID+":"+room2, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Hour)})
 		client.cache.Add("other-user:"+room1, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Hour)})
@@ -137,7 +137,7 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		defer server.Close()
 
 		client := NewInternalAPIAuthClient(server.URL, nil)
-		
+
 		// Trip the breaker (threshold is 10 consecutive failures)
 		for i := 0; i < 11; i++ {
 			client.CanJoinRoom(context.Background(), userID, roomID)
@@ -146,7 +146,7 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		}
 
 		assert.GreaterOrEqual(t, callCount, 10)
-		
+
 		// Next call should fail immediately without hitting the server
 		lastCallCount := callCount
 		assert.False(t, client.CanJoinRoom(context.Background(), userID, roomID))
