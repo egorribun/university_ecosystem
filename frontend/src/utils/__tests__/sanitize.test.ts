@@ -113,9 +113,7 @@ describe("sanitizeTelegramUrl", () => {
   })
 
   it("passes through telegram.me URL", () => {
-    expect(sanitizeTelegramUrl("https://telegram.me/channel")).toBe(
-      "https://telegram.me/channel"
-    )
+    expect(sanitizeTelegramUrl("https://telegram.me/channel")).toBe("https://telegram.me/channel")
   })
 
   // Invalid usernames

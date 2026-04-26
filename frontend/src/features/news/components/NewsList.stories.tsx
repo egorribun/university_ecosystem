@@ -19,7 +19,8 @@ const sampleNews: NewsItem[] = [
     is_published: true,
     published_at: new Date().toISOString(),
     author_id: "author-1",
-    image_url_optimized: "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&q=80&w=1000",
+    image_url_optimized:
+      "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&q=80&w=1000",
     image_url_original: "https://images.unsplash.com/photo-1531482615713-2afd69097998",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

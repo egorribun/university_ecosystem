@@ -32,13 +32,13 @@ describe("EventsHeader", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    
+
     // Mock IntersectionObserver
     const mockIntersectionObserver = vi.fn()
     mockIntersectionObserver.mockReturnValue({
       observe: () => null,
       unobserve: () => null,
-      disconnect: () => null
+      disconnect: () => null,
     })
     window.IntersectionObserver = mockIntersectionObserver
   })
@@ -77,7 +77,7 @@ describe("EventsHeader", () => {
     rerender(<EventsHeader {...defaultProps} searchQuery="test" />)
     const clearBtn = screen.getByLabelText(/Clear search/i)
     expect(clearBtn).toBeInTheDocument()
-    
+
     fireEvent.click(clearBtn)
     expect(defaultProps.onSearchChange).toHaveBeenCalledWith("")
   })

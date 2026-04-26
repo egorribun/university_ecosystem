@@ -51,7 +51,7 @@ describe("NewsFormDialog", () => {
           image_url_optimized: null,
           likes_count: 0,
           comments_count: 0,
-          is_liked: false
+          is_liked: false,
         })
       })
     )
@@ -95,7 +95,7 @@ describe("NewsFormDialog", () => {
 
     const alert = await screen.findByRole("alert")
     expect(alert).toHaveTextContent("Title must be unique")
-    
+
     // Ensure dialog remains open
     expect(defaultProps.onClose).not.toHaveBeenCalled()
     expect(defaultProps.onSuccess).not.toHaveBeenCalled()

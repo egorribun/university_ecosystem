@@ -55,7 +55,7 @@ describe("trustedTypes util", () => {
         if (name === "app") {
           policyCallback = options.createScriptURL
           return {
-            createScriptURL: (val: string) => policyCallback(val)
+            createScriptURL: (val: string) => policyCallback(val),
           }
         }
         return {}
@@ -65,12 +65,12 @@ describe("trustedTypes util", () => {
 
     // This creates the policy and captures the callback
     createTrustedScriptURL("/foo.js")
-    
+
     expect(mockFactory.createPolicy).toHaveBeenCalledWith("app", expect.anything())
 
     // Should allow same origin (relative URL)
     expect(() => policyCallback("/valid.js")).not.toThrow()
-    
+
     // Should allow same origin (absolute URL)
     expect(() => policyCallback(window.location.origin + "/valid.js")).not.toThrow()
 
@@ -85,24 +85,26 @@ describe("trustedTypes util", () => {
       }),
     }
     ;(window as unknown as { trustedTypes: unknown }).trustedTypes = mockFactory
-    
+
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    
+
     const result = await sanitizeHTML("hello")
-    
+
     // Result should be from WASM sanitizer directly
     expect(result).toBe("hello (sanitized)")
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("Failed to create sanitize policy"),
       expect.anything()
     )
-    
+
     consoleSpy.mockRestore()
   })
 
   it("propagates createScriptURL errors to caller", () => {
     const mockPolicy = {
-      createScriptURL: vi.fn(() => { throw new TypeError("Blocked origin") }),
+      createScriptURL: vi.fn(() => {
+        throw new TypeError("Blocked origin")
+      }),
     }
     const mockFactory = {
       createPolicy: vi.fn(() => mockPolicy),

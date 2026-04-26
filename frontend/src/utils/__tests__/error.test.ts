@@ -6,7 +6,6 @@ import { extractApiError, createFallback } from "../error"
 // Helpers — build a minimal AxiosError shape without importing internals
 // ---------------------------------------------------------------------------
 
-
 // Actually — just use axios.create to get a typed AxiosError via real axios Error type:
 const buildAxiosError = (status: number, data: Record<string, unknown>) => {
   const error = axios.create().interceptors // doesn't matter

@@ -14,7 +14,7 @@ describe("useScheduleURLSync", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    
+
     // Default mocks
     vi.mocked(useURLState).mockReturnValue({
       params: { w: "" },
@@ -63,7 +63,7 @@ describe("useScheduleURLSync", () => {
       setParam: mockSetParam,
       setParams: vi.fn(),
     })
-    
+
     vi.mocked(useScheduleUIStore).mockImplementation((selector) => {
       const state = {
         weekOffset: 0,

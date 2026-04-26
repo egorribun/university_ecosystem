@@ -6,7 +6,9 @@ import { useScheduleTime } from "../useScheduleTime"
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, options?: unknown) => {
-      const opts = options as { count?: number; duration?: string; defaultValue?: string } | undefined
+      const opts = options as
+        | { count?: number; duration?: string; defaultValue?: string }
+        | undefined
       if (key === "schedule:time.hours") return `${opts?.count}h`
       if (key === "schedule:time.minutes") return `${opts?.count}m`
       if (key === "schedule:timeLeft.current") return `left ${opts?.duration}`
@@ -93,7 +95,7 @@ describe("useScheduleTime", () => {
     })
 
     const { result } = renderHook(() => useScheduleTime(mockLessons, true))
-    
+
     act(() => {
       vi.advanceTimersByTime(60000)
     })

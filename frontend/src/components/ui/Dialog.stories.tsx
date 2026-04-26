@@ -34,8 +34,8 @@ export const Default: Story = {
         <Dialog {...args} open={open} onClose={() => setOpen(false)}>
           <div className="space-y-4">
             <p>
-              This is a standard dialog component. It uses a portal to render at the top level
-              of the DOM and includes a focus trap for accessibility.
+              This is a standard dialog component. It uses a portal to render at the top level of
+              the DOM and includes a focus trap for accessibility.
             </p>
             <Input placeholder="Focusable element inside" />
           </div>

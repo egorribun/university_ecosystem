@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from '@storybook/react-vite-vite';
-import { NewsCard } from './NewsCard';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LanguageProvider } from '@/contexts/LanguageContext';
-import { I18nextProvider } from 'react-i18next';
-import i18n from '@/i18n/config';
+import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import { NewsCard } from "./NewsCard"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { LanguageProvider } from "@/contexts/LanguageContext"
+import { I18nextProvider } from "react-i18next"
+import i18n from "@/i18n/config"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -11,20 +11,20 @@ const queryClient = new QueryClient({
       retry: false,
     },
   },
-});
+})
 
 const meta: Meta<typeof NewsCard> = {
-  title: 'Dashboard/NewsCard',
+  title: "Dashboard/NewsCard",
   component: NewsCard,
   parameters: {
-    layout: 'centered',
+    layout: "centered",
   },
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
         <I18nextProvider i18n={i18n}>
           <LanguageProvider>
-            <div style={{ width: '400px' }}>
+            <div style={{ width: "400px" }}>
               <Story />
             </div>
           </LanguageProvider>
@@ -32,15 +32,15 @@ const meta: Meta<typeof NewsCard> = {
       </QueryClientProvider>
     ),
   ],
-  tags: ['autodocs'],
-};
+  tags: ["autodocs"],
+}
 
-export default meta;
-type Story = StoryObj<typeof NewsCard>;
+export default meta
+type Story = StoryObj<typeof NewsCard>
 
 export const Default: Story = {
   args: {
-    locale: 'ru-RU',
+    locale: "ru-RU",
   },
   parameters: {
     msw: {
@@ -49,10 +49,10 @@ export const Default: Story = {
       ],
     },
   },
-};
+}
 
 export const English: Story = {
   args: {
-    locale: 'en-US',
+    locale: "en-US",
   },
-};
+}

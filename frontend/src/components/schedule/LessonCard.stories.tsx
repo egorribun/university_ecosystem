@@ -34,14 +34,18 @@ const meta: Meta<typeof LessonCard> = {
     onOpen: () => console.warn("Card clicked"),
     getLessonTypeColor: (type) => {
       switch (type?.toLowerCase()) {
-        case "lecture": return "var(--lt-lecture-accent)"
-        case "practice": return "var(--lt-practice-accent)"
-        case "lab": return "var(--lt-lab-accent)"
-        default: return "var(--lesson-type-default)"
+        case "lecture":
+          return "var(--lt-lecture-accent)"
+        case "practice":
+          return "var(--lt-practice-accent)"
+        case "lab":
+          return "var(--lt-lab-accent)"
+        default:
+          return "var(--lesson-type-default)"
       }
     },
     getLessonTypeLabel: (type) => type || "Lesson",
-  }
+  },
 }
 
 export default meta

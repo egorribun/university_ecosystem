@@ -24,16 +24,10 @@ export const Default: Story = {
     const [checked, setChecked] = useState(args.checked ?? false)
     return (
       <div className="flex items-center gap-4">
-        <Switch
-          {...args}
-          checked={checked}
-          onCheckedChange={(val) => setChecked(val)}
-        />
+        <Switch {...args} checked={checked} onCheckedChange={(val) => setChecked(val)} />
         <div className="flex flex-col">
           <span className="text-sm font-medium">Dark Mode</span>
-          <span className="text-xs text-text-secondary">
-            Enable or disable dark mode interface
-          </span>
+          <span className="text-xs text-text-secondary">Enable or disable dark mode interface</span>
         </div>
       </div>
     )

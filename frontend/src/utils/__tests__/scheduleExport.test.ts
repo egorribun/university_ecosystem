@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest"
-import { generateGoogleCalendarUrl, exportScheduleAsPng, exportScheduleAsPdf } from "../scheduleExport"
+import {
+  generateGoogleCalendarUrl,
+  exportScheduleAsPng,
+  exportScheduleAsPdf,
+} from "../scheduleExport"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 
 // Mock dependencies

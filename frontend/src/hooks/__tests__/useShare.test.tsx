@@ -13,7 +13,7 @@ describe("useShare", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
-    
+
     // Mock navigator APIs
     Object.defineProperty(navigator, "share", {
       value: vi.fn().mockResolvedValue(undefined),
@@ -37,21 +37,19 @@ describe("useShare", () => {
   })
 
   it("returns share options based on provided URL", () => {
-    const { result } = renderHook(() => 
-      useShare({ title: "Test", url: "https://example.com/foo" })
-    )
-    
+    const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com/foo" }))
+
     expect(result.current.shareOptions).toHaveLength(3)
-    const telegram = result.current.shareOptions.find(o => o.id === "telegram")
+    const telegram = result.current.shareOptions.find((o) => o.id === "telegram")
     expect(telegram?.href).toContain("https%3A%2F%2Fexample.com%2Ffoo")
     expect(telegram?.href).toContain("text=Test")
   })
 
   it("uses native share when available", async () => {
-    const { result } = renderHook(() => 
+    const { result } = renderHook(() =>
       useShare({ title: "Test Title", url: "https://example.com", onNotify, translations })
     )
-    
+
     await act(async () => {
       await result.current.handleShare()
     })
@@ -68,11 +66,11 @@ describe("useShare", () => {
   it("opens fallback dialog when native share is unavailable", async () => {
     // @ts-expect-error - navigator.share is read-only in some environments or types
     navigator.share = undefined
-    
-    const { result } = renderHook(() => 
+
+    const { result } = renderHook(() =>
       useShare({ title: "Test", url: "https://example.com", onNotify, translations })
     )
-    
+
     await act(async () => {
       await result.current.handleShare()
     })
@@ -82,10 +80,10 @@ describe("useShare", () => {
   })
 
   it("copies link to clipboard and clears state after timeout", async () => {
-    const { result } = renderHook(() => 
+    const { result } = renderHook(() =>
       useShare({ title: "Test", url: "https://example.com", onNotify, translations })
     )
-    
+
     await act(async () => {
       await result.current.handleCopyLink()
     })
@@ -102,11 +100,11 @@ describe("useShare", () => {
 
   it("handles AbortError in handleShare by doing nothing", async () => {
     vi.mocked(navigator.share).mockRejectedValue({ name: "AbortError" })
-    
-    const { result } = renderHook(() => 
+
+    const { result } = renderHook(() =>
       useShare({ title: "Test", url: "https://example.com", onNotify, translations })
     )
-    
+
     await act(async () => {
       await result.current.handleShare()
     })
@@ -117,11 +115,11 @@ describe("useShare", () => {
 
   it("handles general error in handleShare with notification", async () => {
     vi.mocked(navigator.share).mockRejectedValue(new Error("Boom"))
-    
-    const { result } = renderHook(() => 
+
+    const { result } = renderHook(() =>
       useShare({ title: "Test", url: "https://example.com", onNotify, translations })
     )
-    
+
     await act(async () => {
       await result.current.handleShare()
     })

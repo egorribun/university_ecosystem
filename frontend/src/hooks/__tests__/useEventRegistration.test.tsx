@@ -108,7 +108,7 @@ describe("useEventRegistration", () => {
 
   it("restores state from localStorage on mount", () => {
     localStorage.setItem(`event:reg:${eventId}:123`, "1")
-    
+
     const { result } = renderHook(() =>
       useEventRegistration({
         eventId,
