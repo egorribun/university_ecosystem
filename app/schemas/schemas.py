@@ -778,15 +778,17 @@ class NotificationDeadLetterPurgeIn(_NotificationDeadLetterJobIds):
 
 class FeatureFlagOut(BaseModel):
     name: str
-    status: str
-    description: str
-    percentage: int
-    allowed_users: list[str | Any]
-    allowed_groups: list[str]
-    metadata: dict[str, Any]
+    enabled: bool
+    status: str = "active"
+    description: str = ""
+    percentage: int = 100
+    allowed_users: list[str | Any] = Field(default_factory=list)
+    allowed_groups: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class FeatureFlagUpdateIn(BaseModel):
+    enabled: bool | None = None
     status: str | None = None
     percentage: int | None = None
     description: str | None = None
