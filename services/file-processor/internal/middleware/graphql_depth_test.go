@@ -41,7 +41,8 @@ func TestEstimateQueryDepth(t *testing.T) {
 func TestMaxQueryDepthMiddleware(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
+		_, err := w.Write([]byte("OK"))
+		assert.NoError(t, err)
 	})
 
 	handler := MaxQueryDepthMiddleware(3, nextHandler)
@@ -71,14 +72,15 @@ func TestMaxQueryDepthMiddleware(t *testing.T) {
 	t.Run("pass variables", func(t *testing.T) {
 		// Verify that body is restored correctly and includes variables
 		body := `{"query": "query($id: ID!) { user(id: $id) { name } }", "variables": {"id": "123"}}`
-		
+
 		capturedBody := ""
 		nextWithCapture := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			b, _ := io.ReadAll(r.Body)
+			b, err := io.ReadAll(r.Body)
+			assert.NoError(t, err)
 			capturedBody = string(b)
 			w.WriteHeader(http.StatusOK)
 		})
-		
+
 		h := MaxQueryDepthMiddleware(5, nextWithCapture)
 		req := httptest.NewRequest(http.MethodPost, "/graphql", bytes.NewBufferString(body))
 		rr := httptest.NewRecorder()
