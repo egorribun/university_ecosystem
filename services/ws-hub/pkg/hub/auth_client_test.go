@@ -35,19 +35,18 @@ func TestIsValidUUID(t *testing.T) {
 
 func TestAuthClientMaxConnsPerHost(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
-		_ = os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST")
+		err := os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST")
+		require.NoError(t, err)
 		assert.Equal(t, 20, authClientMaxConnsPerHost())
 	})
 
 	t.Run("override", func(t *testing.T) {
-		_ = os.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "50")
-		defer func() { _ = os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST") }()
+		t.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "50")
 		assert.Equal(t, 50, authClientMaxConnsPerHost())
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		_ = os.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "abc")
-		defer func() { _ = os.Unsetenv("AUTH_CLIENT_MAX_CONNS_PER_HOST") }()
+		t.Setenv("AUTH_CLIENT_MAX_CONNS_PER_HOST", "abc")
 		assert.Equal(t, 20, authClientMaxConnsPerHost())
 	})
 }
