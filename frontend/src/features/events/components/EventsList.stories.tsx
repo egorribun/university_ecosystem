@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { EventsList } from "./EventsList"
 import type { Event } from "@/types/Event"
 
@@ -7,35 +7,31 @@ const mockEvents: Event[] = [
     id: "1",
     title: "University Festival 2024",
     description: "The biggest event of the year with music, food, and games.",
-    start_date: "2024-12-30T10:00:00Z",
-    end_date: "2024-12-30T22:00:00Z",
+    starts_at: "2024-12-30T10:00:00Z",
+    ends_at: "2024-12-30T22:00:00Z",
     location: "Main Square",
     image_url:
       "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800&auto=format&fit=crop&q=60",
-    registered_count: 450,
-    organizer_id: "5",
-    organizer: {
-      id: "5",
-      full_name: "Events Committee",
-      avatar_url: "",
-    },
+    participant_count: 450,
+    created_by: "5",
+    created_at: new Date().toISOString(),
+    is_active: true,
+    image_url_optimized: null,
   },
   {
     id: "2",
     title: "Career Fair",
     description: "Meet representatives from top companies.",
-    start_date: "2024-12-31T09:00:00Z",
-    end_date: "2024-12-31T17:00:00Z",
+    starts_at: "2024-12-31T09:00:00Z",
+    ends_at: "2024-12-31T17:00:00Z",
     location: "Hall B",
     image_url:
       "https://images.unsplash.com/photo-1511578314322-379afb476865?w=800&auto=format&fit=crop&q=60",
-    registered_count: 120,
-    organizer_id: "3",
-    organizer: {
-      id: "3",
-      full_name: "Career Center",
-      avatar_url: "",
-    },
+    participant_count: 120,
+    created_by: "3",
+    created_at: new Date().toISOString(),
+    is_active: true,
+    image_url_optimized: null,
   },
 ]
 

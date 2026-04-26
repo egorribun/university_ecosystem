@@ -72,7 +72,8 @@ describe("useURLState", () => {
     })
 
     // Extract the search updater function from the navigate call
-    const navigateArg = mockNavigateFn.mock.calls[0][0]
+    const navigateArg = mockNavigateFn.mock.calls[0]?.[0]
+    if (!navigateArg) throw new Error("mockNavigateFn was not called")
     const updatedSearch = navigateArg.search({ tab: "active" })
     expect(updatedSearch).toEqual({ tab: "active", q: "physics" })
   })
@@ -85,7 +86,8 @@ describe("useURLState", () => {
       result.current.setParam("q", "")
     })
 
-    const navigateArg = mockNavigateFn.mock.calls[0][0]
+    const navigateArg = mockNavigateFn.mock.calls[0]?.[0]
+    if (!navigateArg) throw new Error("mockNavigateFn was not called")
     const updatedSearch = navigateArg.search({ tab: "archive", q: "math" })
     expect(updatedSearch).not.toHaveProperty("q")
   })
@@ -98,7 +100,8 @@ describe("useURLState", () => {
       result.current.setParam("q", undefined)
     })
 
-    const navigateArg = mockNavigateFn.mock.calls[0][0]
+    const navigateArg = mockNavigateFn.mock.calls[0]?.[0]
+    if (!navigateArg) throw new Error("mockNavigateFn was not called")
     const updatedSearch = navigateArg.search({ tab: "active", q: "bio" })
     expect(updatedSearch).not.toHaveProperty("q")
   })
@@ -111,7 +114,8 @@ describe("useURLState", () => {
       result.current.setParam("q", null)
     })
 
-    const navigateArg = mockNavigateFn.mock.calls[0][0]
+    const navigateArg = mockNavigateFn.mock.calls[0]?.[0]
+    if (!navigateArg) throw new Error("mockNavigateFn was not called")
     const updatedSearch = navigateArg.search({ tab: "active", q: "chem" })
     expect(updatedSearch).not.toHaveProperty("q")
   })
@@ -127,7 +131,8 @@ describe("useURLState", () => {
       result.current.setParams({ q: "math", tab: "archive" })
     })
 
-    const navigateArg = mockNavigateFn.mock.calls[0][0]
+    const navigateArg = mockNavigateFn.mock.calls[0]?.[0]
+    if (!navigateArg) throw new Error("mockNavigateFn was not called")
     const updatedSearch = navigateArg.search({ tab: "active" })
     expect(updatedSearch).toEqual({ tab: "archive", q: "math" })
   })
@@ -140,7 +145,8 @@ describe("useURLState", () => {
       result.current.setParams({ q: "" })
     })
 
-    const navigateArg = mockNavigateFn.mock.calls[0][0]
+    const navigateArg = mockNavigateFn.mock.calls[0]?.[0]
+    if (!navigateArg) throw new Error("mockNavigateFn was not called")
     const updatedSearch = navigateArg.search({ tab: "active", q: "bio" })
     expect(updatedSearch).not.toHaveProperty("q")
     expect(updatedSearch).toHaveProperty("tab", "active")
@@ -154,7 +160,8 @@ describe("useURLState", () => {
       result.current.setParams({ q: null as unknown as string })
     })
 
-    const navigateArg = mockNavigateFn.mock.calls[0][0]
+    const navigateArg = mockNavigateFn.mock.calls[0]?.[0]
+    if (!navigateArg) throw new Error("mockNavigateFn was not called")
     const updatedSearch = navigateArg.search({ tab: "active", q: "chem" })
     expect(updatedSearch).not.toHaveProperty("q")
   })

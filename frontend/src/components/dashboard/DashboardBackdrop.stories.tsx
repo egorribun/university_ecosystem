@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { DashboardBackdrop } from "./DashboardBackdrop"
 
 const meta: Meta<typeof DashboardBackdrop> = {

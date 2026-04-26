@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { EventCategoryBadge } from "./EventCategoryBadge"
-import { EVENT_CATEGORIES } from "@/features/events/categories"
+import { ALL_EVENT_CATEGORIES } from "@/features/events/categories"
 
 const meta: Meta<typeof EventCategoryBadge> = {
   title: "Events/EventCategoryBadge",
@@ -9,7 +9,7 @@ const meta: Meta<typeof EventCategoryBadge> = {
   argTypes: {
     category: {
       control: "select",
-      options: EVENT_CATEGORIES,
+      options: ALL_EVENT_CATEGORIES.map((c) => c.id),
     },
     size: {
       control: "radio",
@@ -35,9 +35,9 @@ export const Workshop: Story = {
   },
 }
 
-export const Hackathon: Story = {
+export const Social: Story = {
   args: {
-    category: "hackathon",
+    category: "social",
     size: "md",
   },
 }

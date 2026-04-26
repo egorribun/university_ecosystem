@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { ScheduleShortcutsOverlay } from "./ScheduleShortcutsOverlay"
 
 const meta: Meta<typeof ScheduleShortcutsOverlay> = {

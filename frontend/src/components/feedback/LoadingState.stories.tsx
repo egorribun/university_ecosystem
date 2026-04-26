@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import LoadingState from "./LoadingState"
 
 // Wave 115 SW5 — see OfflineFallback.stories.tsx comment. Global

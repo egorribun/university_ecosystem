@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { ScheduleSettingsPanel } from "./ScheduleSettingsPanel"
 
 const meta: Meta<typeof ScheduleSettingsPanel> = {

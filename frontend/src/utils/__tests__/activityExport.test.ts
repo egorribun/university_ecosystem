@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { exportActivityAsPng, exportActivityAsPdf } from "../activityExport"
 
 // Mock dependencies
@@ -33,7 +33,9 @@ describe("activityExport", () => {
       mockElement = document.createElement("div")
       vi.spyOn(document, "createElement")
       const mockAnchor = { click: vi.fn(), href: "", download: "" } as unknown as HTMLAnchorElement
-      ;(document.createElement as unknown as Mock).mockReturnValueOnce(mockAnchor)
+      vi.mocked(document.createElement).mockReturnValueOnce(
+        mockAnchor as unknown as HTMLAnchorElement
+      )
     })
 
     it("successfully triggers a PNG download", async () => {

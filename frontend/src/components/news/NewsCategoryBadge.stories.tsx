@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { NewsCategoryBadge } from "./NewsCategoryBadge"
-import { NEWS_CATEGORIES } from "@/features/news/categories"
+import { ALL_CATEGORIES } from "@/features/news/categories"
 
 const meta: Meta<typeof NewsCategoryBadge> = {
   title: "News/NewsCategoryBadge",
@@ -9,7 +9,7 @@ const meta: Meta<typeof NewsCategoryBadge> = {
   argTypes: {
     category: {
       control: "select",
-      options: NEWS_CATEGORIES,
+      options: ALL_CATEGORIES.map((c) => c.id),
     },
     size: {
       control: "radio",
@@ -23,28 +23,28 @@ type Story = StoryObj<typeof NewsCategoryBadge>
 
 export const Announcement: Story = {
   args: {
-    category: "announcement",
+    category: "general",
     size: "md",
   },
 }
 
 export const Academic: Story = {
   args: {
-    category: "academic",
+    category: "education",
     size: "sm",
   },
 }
 
 export const Research: Story = {
   args: {
-    category: "research",
+    category: "science",
     size: "md",
   },
 }
 
-export const CampusLife: Story = {
+export const Campus: Story = {
   args: {
-    category: "campus_life",
+    category: "campus",
     size: "sm",
   },
 }

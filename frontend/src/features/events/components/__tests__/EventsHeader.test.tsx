@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, fireEvent } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { EventsHeader } from "../EventsHeader"
@@ -24,7 +25,7 @@ describe("EventsHeader", () => {
     onSortChange: vi.fn(),
     tab: "active" as const,
     onTabChange: vi.fn(),
-    dateRange: { start: undefined, end: undefined },
+    dateRange: "" as any,
     onDateRangeChange: vi.fn(),
     locationFilter: "",
     onLocationChange: vi.fn(),

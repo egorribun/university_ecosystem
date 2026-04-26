@@ -1,28 +1,28 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { NewsList } from "../NewsList"
-import type { NewsItem } from "@/api/news"
 
 // Mock NewsCard to avoid deep rendering issues and MSW dependencies for this specific component test
 vi.mock("@/components/news/NewsCard", () => ({
   default: ({ title }: { title: string }) => <div data-testid="news-card">{title}</div>,
 }))
 
-const mockNews: NewsItem[] = [
+const mockNews: any[] = [
   {
     id: "1",
     title: "Test News 1",
     content: "Content 1",
-    author_id: "a1",
     created_at: "2023-01-01T00:00:00Z",
-  } as NewsItem,
+    image_url_optimized: null,
+  },
   {
     id: "2",
     title: "Test News 2",
     content: "Content 2",
-    author_id: "a2",
     created_at: "2023-01-02T00:00:00Z",
-  } as NewsItem,
+    image_url_optimized: null,
+  },
 ]
 
 describe("NewsList", () => {

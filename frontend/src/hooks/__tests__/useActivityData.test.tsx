@@ -85,14 +85,14 @@ describe("useActivityData", () => {
     // Attendance trend: one day present, one day absent
     expect(result.current.attendanceTrendData).toHaveLength(2)
     // 2026-04-20 is present (100%)
-    expect(result.current.attendanceTrendData[0].value).toBe(100)
+    expect(result.current.attendanceTrendData[0]!.value).toBe(100)
     // 2026-04-21 is absent (0%)
-    expect(result.current.attendanceTrendData[1].value).toBe(0)
+    expect(result.current.attendanceTrendData[1]!.value).toBe(0)
 
     // Grades by subject
     expect(result.current.gradesBySubject).toHaveLength(1)
-    expect(result.current.gradesBySubject[0].label).toBe("Math")
-    expect(result.current.gradesBySubject[0].value).toBe(4.5) // (5+4)/2
+    expect(result.current.gradesBySubject[0]!.label).toBe("Math")
+    expect(result.current.gradesBySubject[0]!.value).toBe(4.5) // (5+4)/2
   })
 
   it("handles loading state correctly", () => {

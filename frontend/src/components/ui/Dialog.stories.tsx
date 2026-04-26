@@ -51,7 +51,7 @@ export const Default: Story = {
     footer: (
       <>
         <Button variant="ghost">Cancel</Button>
-        <Button variant="primary">Confirm Action</Button>
+        <Button variant="solid">Confirm Action</Button>
       </>
     ),
   },

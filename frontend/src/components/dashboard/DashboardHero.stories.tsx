@@ -1,15 +1,18 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { DashboardHero } from "./DashboardHero"
 import type { User } from "@/types/User"
 
 const mockUser: User = {
-  id: 1,
+  id: "1",
   email: "john.doe@university.edu",
   full_name: "John Doe",
   role: "student",
   avatar_url:
     "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=60",
-  mfa_enabled: true,
+  mfa_required: true,
+  is_active: true,
+  avatar_url_optimized: null,
+  cover_url_optimized: null,
 }
 
 const meta: Meta<typeof DashboardHero> = {

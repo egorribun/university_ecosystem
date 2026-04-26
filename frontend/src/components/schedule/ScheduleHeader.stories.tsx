@@ -1,15 +1,18 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { ScheduleHeader } from "./ScheduleHeader"
 import type { Lesson } from "./scheduleUtils"
 import type { User } from "@/types/User"
 
 const mockUser: User = {
-  id: 1,
+  id: "1",
   email: "student@university.edu",
   full_name: "John Doe",
   role: "student",
   avatar_url: "",
-  mfa_enabled: true,
+  mfa_required: true,
+  is_active: true,
+  avatar_url_optimized: null,
+  cover_url_optimized: null,
 }
 
 const mockLessons: Lesson[] = [
@@ -20,7 +23,8 @@ const mockLessons: Lesson[] = [
     room: "Room 301",
     start_time: "08:30",
     end_time: "10:00",
-    day_of_week: 1,
+    weekday: "Monday",
+    parity: "both",
     lesson_type: "lecture",
   },
   {
@@ -30,7 +34,8 @@ const mockLessons: Lesson[] = [
     room: "Lab 1",
     start_time: "10:15",
     end_time: "11:45",
-    day_of_week: 1,
+    weekday: "Monday",
+    parity: "both",
     lesson_type: "practice",
   },
 ]

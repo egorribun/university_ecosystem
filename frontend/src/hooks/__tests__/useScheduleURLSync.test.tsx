@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { renderHook } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { useScheduleURLSync } from "../useScheduleURLSync"
@@ -26,7 +27,7 @@ describe("useScheduleURLSync", () => {
       const state = {
         weekOffset: 0,
         setWeekOffset: mockSetWeekOffset,
-      }
+      } as any
       return selector(state)
     })
   })
@@ -48,7 +49,7 @@ describe("useScheduleURLSync", () => {
       const state = {
         weekOffset: 3,
         setWeekOffset: mockSetWeekOffset,
-      }
+      } as any
       return selector(state)
     })
 
@@ -68,7 +69,7 @@ describe("useScheduleURLSync", () => {
       const state = {
         weekOffset: 0,
         setWeekOffset: mockSetWeekOffset,
-      }
+      } as any
       return selector(state)
     })
 

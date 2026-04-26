@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { EventCardSkeleton } from "@/components/events/EventCard/EventCardSkeleton"
 import NewsCardSkeleton from "./NewsCardSkeleton"
 import { ProfileCardSkeleton } from "./ProfileCardSkeleton"

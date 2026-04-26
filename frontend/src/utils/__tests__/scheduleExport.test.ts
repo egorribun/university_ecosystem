@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   generateGoogleCalendarUrl,
   exportScheduleAsPng,
@@ -40,6 +40,8 @@ describe("scheduleExport", () => {
       start_time: "10:00",
       end_time: "11:30",
       lesson_type: "Lecture",
+      weekday: "mon",
+      parity: "both",
     }
     const mockDate = new Date(2026, 3, 25) // April 25, 2026
 
@@ -69,7 +71,9 @@ describe("scheduleExport", () => {
       vi.spyOn(document, "createElement")
       // Mock click on anchor
       const mockAnchor = { click: vi.fn(), href: "", download: "" } as unknown as HTMLAnchorElement
-      ;(document.createElement as unknown as Mock).mockReturnValueOnce(mockAnchor)
+      vi.mocked(document.createElement).mockReturnValueOnce(
+        mockAnchor as unknown as HTMLAnchorElement
+      )
     })
 
     it("successfully triggers a PNG download", async () => {

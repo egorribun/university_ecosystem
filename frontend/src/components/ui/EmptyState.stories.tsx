@@ -41,7 +41,7 @@ export const Events: Story = {
     title: "No upcoming events",
     description: "Be the first to create one and invite your colleagues.",
     action: (
-      <Button variant="primary">
+      <Button variant="solid">
         <Plus className="mr-2 h-4 w-4" />
         Create Event
       </Button>

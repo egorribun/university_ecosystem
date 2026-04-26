@@ -1,6 +1,7 @@
 import { renderHook, act } from "@testing-library/react"
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import { useScheduleTime } from "../useScheduleTime"
+import type { Lesson } from "@/components/schedule/scheduleUtils"
 
 // Mock useTranslation
 vi.mock("react-i18next", () => ({
@@ -18,14 +19,17 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-const mockLessons = [
+const mockLessons: Lesson[] = [
   {
     id: "1",
     subject: "Math",
     start_time: "09:00",
     end_time: "10:30",
     room: "101",
-    type: "lecture",
+    teacher: "Teacher 1",
+    lesson_type: "lecture",
+    weekday: "mon",
+    parity: "both",
   },
   {
     id: "2",
@@ -33,9 +37,12 @@ const mockLessons = [
     start_time: "11:00",
     end_time: "12:30",
     room: "102",
-    type: "practice",
+    teacher: "Teacher 2",
+    lesson_type: "practice",
+    weekday: "mon",
+    parity: "both",
   },
-] as unknown as Lesson[]
+]
 
 describe("useScheduleTime", () => {
   beforeEach(() => {

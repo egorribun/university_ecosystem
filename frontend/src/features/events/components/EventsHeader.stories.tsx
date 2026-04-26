@@ -41,12 +41,15 @@ export const Default: Story = {
     activeCategory: "all",
     sortMode: "newest",
     tab: "active",
-    dateRange: {
-      type: "all",
-      start: null,
-      end: null,
-    },
-    locationFilter: "all",
+    dateRange: "",
+    locationFilter: "",
+    onAddClick: () => {},
+    onSearchChange: () => {},
+    onCategoryChange: () => {},
+    onSortChange: () => {},
+    onTabChange: () => {},
+    onDateRangeChange: () => {},
+    onLocationChange: () => {},
   },
 }
 
