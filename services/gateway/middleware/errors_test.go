@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ func TestAbortWithProblem(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 
 		// Setup mock request for Instance path
-		req, err := http.NewRequest("GET", "/test-endpoint", nil)
+		req, err := http.NewRequestWithContext(context.Background(), "GET", "/test-endpoint", nil)
 		assert.NoError(t, err)
 		c.Request = req
 
