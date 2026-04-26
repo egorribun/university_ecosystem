@@ -1,5 +1,11 @@
 # CLAUDE.md — University Ecosystem Platform
 
+- [Project Structure](#project-structure)
+- [Commands](#commands)
+- [Code Conventions](#code-conventions)
+- [Gotchas](#gotchas)
+- [Audit Trail](#audit-trail)
+
 ## Project Structure
 - Python backend: `app/` (FastAPI + SQLAlchemy 2.0 + Pydantic v2) — **Python >=3.13,<3.15**
 - TypeScript frontend: `frontend/src/` (React 19 + Vite 8/Rolldown + TanStack Router + TanStack Query + Zustand + Framer Motion)

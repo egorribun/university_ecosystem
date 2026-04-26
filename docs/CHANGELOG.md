@@ -5,6 +5,15 @@ All notable changes to the API will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Unit tests for Go `InternalAPIAuthClient` in `ws-hub` service (Pkg/Hub).
+- Unit tests for `MaxQueryDepthMiddleware` and query depth estimation in `file-processor`.
+- Expanded frontend hook coverage: `useScheduleTime`, `useShare`, `useActivityData`.
+- Unit tests for Trusted Types utilities in frontend.
+- Property-based tests for UUIDv7 (monotonicity), HTML sanitization (idempotency), and pagination bounds.
+
+## [1.1.0] - 2026-04-26
+
+### Added
 - Per-endpoint rate limiting with path-specific rules
 - Tag-based cache invalidation (`CacheTag` enum)
 - Enhanced audit logging with `SecurityEvent` types
