@@ -7,22 +7,22 @@ vi.mock("wasm-sanitizer", () => ({
 }))
 
 describe("trustedTypes util", () => {
-  const originalTrustedTypes = (window as any).trustedTypes
+  const originalTrustedTypes = (window as unknown as { trustedTypes: unknown }).trustedTypes
 
   beforeEach(() => {
     vi.clearAllMocks()
     // Clear cached policies from window
-    delete (window as any).__ttSanitizePolicy
-    delete (window as any).__ttAppPolicy
-    ;(window as any).trustedTypes = originalTrustedTypes
+    delete (window as unknown as { __ttSanitizePolicy?: unknown }).__ttSanitizePolicy
+    delete (window as unknown as { __ttAppPolicy?: unknown }).__ttAppPolicy
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = originalTrustedTypes
   })
 
   afterEach(() => {
-    ;(window as any).trustedTypes = originalTrustedTypes
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = originalTrustedTypes
   })
 
   it("sanitizes HTML directly when TrustedTypes is not supported", async () => {
-    ;(window as any).trustedTypes = undefined
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = undefined
     const input = "<b>hello</b>"
     const result = await sanitizeHTML(input)
     expect(result).toBe("<b>hello</b> (sanitized)")
@@ -40,7 +40,7 @@ describe("trustedTypes util", () => {
         return {}
       }),
     }
-    ;(window as any).trustedTypes = mockFactory
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = mockFactory
 
     const result = await sanitizeHTML("<b>test</b>")
     expect(result).toBe("<b>test</b> (policy sanitized)")
@@ -49,7 +49,7 @@ describe("trustedTypes util", () => {
   })
 
   it("enforces allowed script origins in app policy", () => {
-    let policyCallback: any
+    let policyCallback: (val: string) => string
     const mockFactory = {
       createPolicy: vi.fn((name, options) => {
         if (name === "app") {
@@ -61,7 +61,7 @@ describe("trustedTypes util", () => {
         return {}
       }),
     }
-    ;(window as any).trustedTypes = mockFactory
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = mockFactory
 
     // This creates the policy and captures the callback
     createTrustedScriptURL("/foo.js")
@@ -84,7 +84,7 @@ describe("trustedTypes util", () => {
         throw new Error("Creation forbidden by CSP or browser extension")
       }),
     }
-    ;(window as any).trustedTypes = mockFactory
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = mockFactory
     
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     
@@ -107,7 +107,7 @@ describe("trustedTypes util", () => {
     const mockFactory = {
       createPolicy: vi.fn(() => mockPolicy),
     }
-    ;(window as any).trustedTypes = mockFactory
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = mockFactory
 
     expect(() => createTrustedScriptURL("https://evil.com")).toThrow("Blocked origin")
   })

@@ -22,7 +22,7 @@ describe("useScheduleURLSync", () => {
       setParams: vi.fn(),
     })
 
-    vi.mocked(useScheduleUIStore).mockImplementation((selector: any) => {
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) => {
       const state = {
         weekOffset: 0,
         setWeekOffset: mockSetWeekOffset,
@@ -44,7 +44,7 @@ describe("useScheduleURLSync", () => {
   })
 
   it("syncs store to URL when weekOffset changes", () => {
-    vi.mocked(useScheduleUIStore).mockImplementation((selector: any) => {
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) => {
       const state = {
         weekOffset: 3,
         setWeekOffset: mockSetWeekOffset,
@@ -64,7 +64,7 @@ describe("useScheduleURLSync", () => {
       setParams: vi.fn(),
     })
     
-    vi.mocked(useScheduleUIStore).mockImplementation((selector: any) => {
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) => {
       const state = {
         weekOffset: 0,
         setWeekOffset: mockSetWeekOffset,

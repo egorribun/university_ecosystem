@@ -5,21 +5,7 @@ import { extractApiError, createFallback } from "../error"
 // ---------------------------------------------------------------------------
 // Helpers — build a minimal AxiosError shape without importing internals
 // ---------------------------------------------------------------------------
-const makeAxiosError = (
-  status: number,
-  data: Record<string, unknown>,
-  message = "Request failed"
-) => {
-  const err = new Error(message) as ReturnType<typeof axios.get> extends Promise<infer R>
-    ? never
-    : never
-  Object.assign(err, {
-    isAxiosError: true,
-    response: { status, data },
-    message,
-  })
-  return err as unknown as ReturnType<typeof axios.create>
-}
+
 
 // Actually — just use axios.create to get a typed AxiosError via real axios Error type:
 const buildAxiosError = (status: number, data: Record<string, unknown>) => {

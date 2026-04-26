@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import ParticleAuthBackground from "./ParticleAuthBackground"
 
 const meta: Meta<typeof ParticleAuthBackground> = {

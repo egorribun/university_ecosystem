@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite-vite"
 import { LessonCard } from "./LessonCard"
 
 const mockLesson = {
@@ -30,8 +30,8 @@ const meta: Meta<typeof LessonCard> = {
     isConflict: false,
     isCurrent: false,
     compact: false,
-    onDelete: () => console.log("Delete clicked"),
-    onOpen: () => console.log("Card clicked"),
+    onDelete: () => console.warn("Delete clicked"),
+    onOpen: () => console.warn("Card clicked"),
     getLessonTypeColor: (type) => {
       switch (type?.toLowerCase()) {
         case "lecture": return "var(--lt-lecture-accent)"

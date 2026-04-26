@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite"
+import type { Meta, StoryObj } from "@storybook/react-vite-vite"
 import { EventCategoryBadge } from "./EventCategoryBadge"
 import { EVENT_CATEGORIES } from "@/features/events/categories"
 

@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw"
 import { server } from "@/tests/mocks/server"
 
 describe("useEventRegistration", () => {
-  const mockUser = { id: 123, username: "testuser" } as any
+  const mockUser = { id: 123, username: "testuser" } as unknown as { id: number; username: string }
   const eventId = "event-456"
 
   beforeEach(() => {

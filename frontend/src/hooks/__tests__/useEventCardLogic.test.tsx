@@ -76,8 +76,8 @@ describe("useEventCardLogic", () => {
   it("navigates to details when card is clicked", () => {
     const { result } = renderHook(() => useEventCardLogic(eventProps))
     const mockEvent = { 
-      target: { closest: () => null } as any 
-    } as any
+      target: { closest: () => null }
+    } as unknown as React.MouseEvent
     
     act(() => {
       result.current.onCardClick(mockEvent)

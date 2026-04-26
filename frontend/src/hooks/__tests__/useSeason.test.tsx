@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { renderHook, act } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { renderHook } from "@testing-library/react"
 import { useSeason } from "../useSeason"
 
 describe("useSeason", () => {

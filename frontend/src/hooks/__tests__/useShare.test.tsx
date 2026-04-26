@@ -66,7 +66,7 @@ describe("useShare", () => {
   })
 
   it("opens fallback dialog when native share is unavailable", async () => {
-    // @ts-ignore
+    // @ts-expect-error - navigator.share is read-only in some environments or types
     navigator.share = undefined
     
     const { result } = renderHook(() => 

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite-vite';
 import { ScheduleSettingsPanel } from './ScheduleSettingsPanel';
 
 const meta: Meta<typeof ScheduleSettingsPanel> = {
@@ -16,10 +16,10 @@ type Story = StoryObj<typeof ScheduleSettingsPanel>;
 export const Default: Story = {
   args: {
     open: true,
-    onClose: () => console.log('Close'),
+    onClose: () => console.warn('Close'),
     weekdayLabels: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     currentParity: 'odd',
-    setCurrentParity: (p) => console.log('Set parity:', p),
+    setCurrentParity: (p) => console.warn('Set parity:', p),
   },
 };
 

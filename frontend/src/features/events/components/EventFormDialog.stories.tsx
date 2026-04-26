@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite-vite';
 import { EventFormDialog } from './EventFormDialog';
 
 const meta: Meta<typeof EventFormDialog> = {
@@ -16,8 +16,8 @@ type Story = StoryObj<typeof EventFormDialog>;
 export const Default: Story = {
   args: {
     open: true,
-    onClose: () => console.log('Close'),
-    onSuccess: () => console.log('Success'),
+    onClose: () => console.warn('Close'),
+    onSuccess: () => console.warn('Success'),
     language: 'ru',
   },
 };
@@ -25,8 +25,8 @@ export const Default: Story = {
 export const English: Story = {
   args: {
     open: true,
-    onClose: () => console.log('Close'),
-    onSuccess: () => console.log('Success'),
+    onClose: () => console.warn('Close'),
+    onSuccess: () => console.warn('Success'),
     language: 'en',
   },
 };

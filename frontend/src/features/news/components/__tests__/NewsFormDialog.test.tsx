@@ -42,7 +42,7 @@ describe("NewsFormDialog", () => {
 
     server.use(
       http.post("*/news", async ({ request }) => {
-        const body = await request.json() as any
+        const body = (await request.json()) as { title: string; content: string }
         return HttpResponse.json({
           id: "123e4567-e89b-12d3-a456-426614174000",
           title: body.title,

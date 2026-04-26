@@ -5,7 +5,7 @@ import { useActivitySummaryQuery } from "@/api/hooks/activity"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: any) => {
+    t: (key: string, _options?: unknown) => {
       if (key === "activity:period.labels.90d") return `90 days`
       if (key === "activity:period.options.90d") return `90 days option`
       if (key === "activity:fallback.attendance.recent") return []
@@ -70,7 +70,7 @@ describe("useActivityData", () => {
       data: mockData,
       isFetching: false,
       isSuccess: true,
-    } as any)
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
   })
 
   it("processes summary data correctly", () => {
@@ -102,7 +102,7 @@ describe("useActivityData", () => {
       data: undefined,
       isFetching: true,
       isSuccess: false,
-    } as any)
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
 
     const { result } = renderHook(() => useActivityData())
     expect(result.current.loading).toBe(true)
@@ -123,7 +123,7 @@ describe("useActivityData", () => {
       data: null,
       isFetching: false,
       isSuccess: true,
-    } as any)
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
 
     const { result } = renderHook(() => useActivityData())
     

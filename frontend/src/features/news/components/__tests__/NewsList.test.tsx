@@ -5,7 +5,7 @@ import type { NewsItem } from "@/api/news"
 
 // Mock NewsCard to avoid deep rendering issues and MSW dependencies for this specific component test
 vi.mock("@/components/news/NewsCard", () => ({
-  default: ({ title }: any) => <div data-testid="news-card">{title}</div>
+  default: ({ title }: { title: string }) => <div data-testid="news-card">{title}</div>
 }))
 
 const mockNews: NewsItem[] = [

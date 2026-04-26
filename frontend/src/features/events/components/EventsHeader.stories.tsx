@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { EventsHeader } from "./EventsHeader"
 import { I18nextProvider } from "react-i18next"
 import i18n from "@/i18n/config"

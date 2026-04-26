@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite-vite';
 import { ScheduleShortcutsOverlay } from './ScheduleShortcutsOverlay';
 
 const meta: Meta<typeof ScheduleShortcutsOverlay> = {
@@ -16,6 +16,6 @@ type Story = StoryObj<typeof ScheduleShortcutsOverlay>;
 export const Default: Story = {
   args: {
     open: true,
-    onClose: () => console.log('Close'),
+    onClose: () => console.warn('Close'),
   },
 };

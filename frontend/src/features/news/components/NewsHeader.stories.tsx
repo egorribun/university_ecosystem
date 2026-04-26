@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite-vite';
 import { NewsHeader } from './NewsHeader';
 
 const meta: Meta<typeof NewsHeader> = {
@@ -21,15 +21,15 @@ export default meta;
 type Story = StoryObj<typeof NewsHeader>;
 
 const baseArgs = {
-  onAddClick: () => console.log('Add click'),
+  onAddClick: () => console.warn('Add click'),
   isAdmin: false,
   newsCount: 42,
   searchQuery: '',
-  onSearchChange: (q: string) => console.log('Search:', q),
+  onSearchChange: (q: string) => console.warn('Search:', q),
   activeCategory: 'all' as const,
-  onCategoryChange: (c: any) => console.log('Category:', c),
+  onCategoryChange: (c: string) => console.warn('Category:', c),
   sortMode: 'newest' as const,
-  onSortChange: (s: any) => console.log('Sort:', s),
+  onSortChange: (s: string) => console.warn('Sort:', s),
   bookmarkCount: 0,
 };
 

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite-vite';
 import { ScheduleHeader } from './ScheduleHeader';
 import type { Lesson } from './scheduleUtils';
 import type { User } from '@/types/User';
@@ -66,7 +66,7 @@ const baseArgs = {
   currentProgress: 0,
   todayLessons: mockLessons,
   nowTick: new Date(),
-  onOpenSettings: () => console.log('Open settings'),
+  onOpenSettings: () => console.warn('Open settings'),
 };
 
 export const Default: Story = {

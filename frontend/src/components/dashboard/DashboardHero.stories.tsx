@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite-vite';
 import { DashboardHero } from './DashboardHero';
 import type { User } from '@/types/User';
 

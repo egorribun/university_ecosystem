@@ -5,12 +5,13 @@ import { useScheduleTime } from "../useScheduleTime"
 // Mock useTranslation
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: any) => {
-      if (key === "schedule:time.hours") return `${options.count}h`
-      if (key === "schedule:time.minutes") return `${options.count}m`
-      if (key === "schedule:timeLeft.current") return `left ${options.duration}`
-      if (key === "schedule:timeLeft.next") return `in ${options.duration}`
-      return options?.defaultValue ?? key
+    t: (key: string, options?: unknown) => {
+      const opts = options as { count?: number; duration?: string; defaultValue?: string } | undefined
+      if (key === "schedule:time.hours") return `${opts?.count}h`
+      if (key === "schedule:time.minutes") return `${opts?.count}m`
+      if (key === "schedule:timeLeft.current") return `left ${opts?.duration}`
+      if (key === "schedule:timeLeft.next") return `in ${opts?.duration}`
+      return opts?.defaultValue ?? key
     },
   }),
 }))
@@ -32,7 +33,7 @@ const mockLessons = [
     room: "102",
     type: "practice",
   },
-] as any
+] as unknown as Lesson[]
 
 describe("useScheduleTime", () => {
   beforeEach(() => {
