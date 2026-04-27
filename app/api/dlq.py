@@ -16,7 +16,8 @@ from pydantic import BaseModel
 from app.api.deps import get_current_admin_user, get_locale
 from app.api.validation import raise_not_found, raise_validation_error
 from app.core.database import get_db, get_read_db
-from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
+from app.models import DeadLetterJob, JobStatus
+from app.workers.dead_letter_queue import DeadLetterQueue
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,8 +115,6 @@ async def list_dlq_jobs(
     """
     from sqlalchemy import func, select
 
-    from app.workers.dead_letter_queue import DeadLetterJob
-
     query = select(DeadLetterJob)
 
     if status:
@@ -184,8 +183,6 @@ async def retry_dlq_job(
     from datetime import datetime
 
     from sqlalchemy import select
-
-    from app.workers.dead_letter_queue import DeadLetterJob
 
     result = await db.execute(select(DeadLetterJob).where(DeadLetterJob.id == job_id))
     job = result.scalar_one_or_none()
