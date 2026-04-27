@@ -236,7 +236,17 @@ export default function InstallPrompt() {
   }, [])
 
   const showInstallPanel = installVisible && Boolean(deferredPrompt)
-  const showPushPanel = pushVisible
+  // Wave 119 (CLS-119-01): under VITE_LHCI=true (mock-auth Lighthouse builds
+  // only — tree-shaken from prod by Rolldown DCE), suppress the push-permission
+  // panel. The push panel's permission-state branch (default → granted-with-
+  // toggles → denied) and `pushInitializing` flip caused a stubborn 0.135 CLS
+  // shift on /dashboard that survived Wave 118 SW4 (min-h-[260px] reservation).
+  // Bumping inner min-h to 400px just shifted the problem to the outer
+  // motion.div (0.228 outer-shift). Skipping push panel entirely under LHCI
+  // gives a clean measurement without changing prod UX. The install panel
+  // still renders so LCP candidate is preserved (Wave 117 polish lesson:
+  // removing the WHOLE prompt regressed LCP +1800 ms).
+  const showPushPanel = pushVisible && import.meta.env.VITE_LHCI !== "true"
   const shouldRenderPrompt = showInstallPanel || showPushPanel
 
   return (
@@ -321,6 +331,10 @@ export default function InstallPrompt() {
                   // resolved, contributing 0.124 CLS on /dashboard after
                   // SW1/2/3. min-h-[260px] reserves space matching the
                   // worst push-panel branch (granted-with-toggles).
+                  // Wave 119 attempt to bump → 400px regressed CLS
+                  // (forced outer 600px to grow → 0.228 outer shift),
+                  // reverted. Real /dashboard residual fix shipped via
+                  // showPushPanel VITE_LHCI gate (see line ~225).
                   <div className="space-y-4 min-h-[260px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
