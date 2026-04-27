@@ -25,20 +25,19 @@ async def test_mfa_challenge_race_condition(
     )
 
     # 3. Simulate row-level locking for SQLite (which doesn't support SELECT FOR UPDATE)
-    # We wrap the real get_challenge with an asyncio lock if for_update=True
-    from app.auth.mfa.challenge import get_challenge as real_get_challenge
+    # We wrap consume_challenge with an asyncio lock to ensure fetch-verify-commit atomicity
+    from app.auth import mfa as mfa_module
 
+    real_consume_challenge = mfa_module.consume_challenge
     lock = asyncio.Lock()
 
-    async def mocked_get_challenge(*args, **kwargs):
-        if kwargs.get("for_update"):
-            async with lock:
-                # Add a tiny delay to ensure concurrent tasks actually contend for the lock
-                await asyncio.sleep(0.05)
-                return await real_get_challenge(*args, **kwargs)
-        return await real_get_challenge(*args, **kwargs)
+    async def mocked_consume_challenge(*args, **kwargs):
+        async with lock:
+            # Add a tiny delay to ensure concurrent tasks actually contend for the lock
+            await asyncio.sleep(0.05)
+            return await real_consume_challenge(*args, **kwargs)
 
-    monkeypatch.setattr("app.auth.mfa.challenge.get_challenge", mocked_get_challenge)
+    monkeypatch.setattr("app.auth.mfa.consume_challenge", mocked_consume_challenge)
 
     # 4. Execution: Send 10 concurrent requests
     async def send_request():
