@@ -84,7 +84,7 @@ jobs:
       # The action verifies SHA256 checksums from official GitHub releases, preventing
       # supply chain attacks via DNS hijacking or CDN compromise (OWASP CI/CD C-PPE-1).
       - name: Install wasm-pack
-        uses: taiki-e/install-action@055f5df8c3f65ea01cd41e9dc855becd88953486 # v2.75.18
+        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2.75.22
         with:
           tool: wasm-pack
 
