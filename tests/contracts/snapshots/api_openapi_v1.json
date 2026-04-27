@@ -12145,7 +12145,7 @@
     },
     "/ws/ticket": {
       "post": {
-        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
+        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> â€” the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
         "operationId": "issue_ws_upgrade_ticket_ws_ticket_post",
         "responses": {
           "201": {
