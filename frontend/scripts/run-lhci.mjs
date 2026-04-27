@@ -90,7 +90,13 @@ async function createConfig() {
   // Wave 116 SW3 switches LHCI to authenticated mode via VITE_LHCI=true bypass
   // in _auth.tsx + useProfileSync.ts. Optional LHCI_URLS env var narrows the
   // set for focused iteration (Windows EPERM mitigation — Wave 113 note).
+  // Wave 119 SW2 — added "/" and "/404" so all scorable URLs measure.
+  // /activity + /map remain Lighthouse LanternError-blocked (Wave 116 honest
+  // deferral); included in defaults so CI surface is the same as auth-bypass
+  // sweep but expect those audits to fail under Lighthouse — investigate or
+  // skip per Wave 120+ scope.
   const defaultPaths = [
+    "/",
     "/login",
     "/dashboard",
     "/news",
@@ -98,9 +104,14 @@ async function createConfig() {
     "/events",
     "/activity",
     "/map",
+    "/404",
   ]
+  // Wave 119 SW2 — empty string trims to "/" so callers can measure root via
+  // LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading slashes
+  // in /-paths are mangled to git-bash absolute paths). Without this map,
+  // .filter(Boolean) drops "" and root never gets measured.
   const overridePaths = process.env.LHCI_URLS?.split(",")
-    .map((p) => p.trim())
+    .map((p) => p.trim() || "/")
     .filter(Boolean)
   const targetPaths = overridePaths?.length ? overridePaths : defaultPaths
   const collect = {
