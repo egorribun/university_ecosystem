@@ -30,18 +30,22 @@ const meta: Meta<typeof LessonCard> = {
     isConflict: false,
     isCurrent: false,
     compact: false,
-    onDelete: () => console.log("Delete clicked"),
-    onOpen: () => console.log("Card clicked"),
+    onDelete: () => console.warn("Delete clicked"),
+    onOpen: () => console.warn("Card clicked"),
     getLessonTypeColor: (type) => {
       switch (type?.toLowerCase()) {
-        case "lecture": return "var(--lt-lecture-accent)"
-        case "practice": return "var(--lt-practice-accent)"
-        case "lab": return "var(--lt-lab-accent)"
-        default: return "var(--lesson-type-default)"
+        case "lecture":
+          return "var(--lt-lecture-accent)"
+        case "practice":
+          return "var(--lt-practice-accent)"
+        case "lab":
+          return "var(--lt-lab-accent)"
+        default:
+          return "var(--lesson-type-default)"
       }
     },
     getLessonTypeLabel: (type) => type || "Lesson",
-  }
+  },
 }
 
 export default meta

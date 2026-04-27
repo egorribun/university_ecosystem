@@ -76,10 +76,7 @@ describe("renderHighlight", () => {
 // ---------------------------------------------------------------------------
 describe("renderHighlightFragments", () => {
   it("joins multiple fragments with ellipsis separator", () => {
-    const fragments = [
-      `part ${MARK_OPEN}one${MARK_CLOSE}`,
-      `part ${MARK_OPEN}two${MARK_CLOSE}`,
-    ]
+    const fragments = [`part ${MARK_OPEN}one${MARK_CLOSE}`, `part ${MARK_OPEN}two${MARK_CLOSE}`]
     expect(renderHighlightFragments(fragments)).toBe(
       "part <mark>one</mark> … part <mark>two</mark>"
     )

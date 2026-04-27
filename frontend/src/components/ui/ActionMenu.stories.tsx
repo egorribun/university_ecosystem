@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { ActionMenu } from "./ActionMenu"
 import { Edit, Trash, Share, Copy } from "lucide-react"
 
@@ -18,13 +18,13 @@ export default meta
 type Story = StoryObj<typeof ActionMenu>
 
 const items = [
-  { label: "Edit", icon: <Edit size={16} />, onClick: () => console.log("Edit") },
-  { label: "Copy", icon: <Copy size={16} />, onClick: () => console.log("Copy") },
-  { label: "Share", icon: <Share size={16} />, onClick: () => console.log("Share") },
+  { label: "Edit", icon: <Edit size={16} />, onClick: () => console.warn("Edit") },
+  { label: "Copy", icon: <Copy size={16} />, onClick: () => console.warn("Copy") },
+  { label: "Share", icon: <Share size={16} />, onClick: () => console.warn("Share") },
   {
     label: "Delete",
     icon: <Trash size={16} />,
-    onClick: () => console.log("Delete"),
+    onClick: () => console.warn("Delete"),
     variant: "danger" as const,
   },
 ]

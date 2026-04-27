@@ -1,11 +1,11 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import { WeatherAmbient } from './WeatherAmbient';
+import type { Meta, StoryObj } from "@storybook/react-vite"
+import { WeatherAmbient } from "./WeatherAmbient"
 
 const meta: Meta<typeof WeatherAmbient> = {
-  title: 'Dashboard/WeatherAmbient',
+  title: "Dashboard/WeatherAmbient",
   component: WeatherAmbient,
   parameters: {
-    layout: 'fullscreen',
+    layout: "fullscreen",
   },
   decorators: [
     (Story) => (
@@ -17,33 +17,33 @@ const meta: Meta<typeof WeatherAmbient> = {
       </div>
     ),
   ],
-  tags: ['autodocs'],
-};
+  tags: ["autodocs"],
+}
 
-export default meta;
-type Story = StoryObj<typeof WeatherAmbient>;
+export default meta
+type Story = StoryObj<typeof WeatherAmbient>
 
 export const Drizzle: Story = {
   args: {
-    animation: 'drizzle',
+    animation: "drizzle",
   },
-};
+}
 
 export const Snow: Story = {
   args: {
-    animation: 'snow',
+    animation: "snow",
   },
-};
+}
 
 export const Storm: Story = {
   args: {
-    animation: 'storm',
+    animation: "storm",
   },
-};
+}
 
 export const Disabled: Story = {
   args: {
-    animation: 'storm',
+    animation: "storm",
     disabled: true,
   },
-};
+}

@@ -1,11 +1,11 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import { NewsHeader } from './NewsHeader';
+import type { Meta, StoryObj } from "@storybook/react-vite"
+import { NewsHeader } from "./NewsHeader"
 
 const meta: Meta<typeof NewsHeader> = {
-  title: 'Features/News/NewsHeader',
+  title: "Features/News/NewsHeader",
   component: NewsHeader,
   parameters: {
-    layout: 'fullscreen',
+    layout: "fullscreen",
   },
   decorators: [
     (Story) => (
@@ -14,54 +14,54 @@ const meta: Meta<typeof NewsHeader> = {
       </div>
     ),
   ],
-  tags: ['autodocs'],
-};
+  tags: ["autodocs"],
+}
 
-export default meta;
-type Story = StoryObj<typeof NewsHeader>;
+export default meta
+type Story = StoryObj<typeof NewsHeader>
 
 const baseArgs = {
-  onAddClick: () => console.log('Add click'),
+  onAddClick: () => console.warn("Add click"),
   isAdmin: false,
   newsCount: 42,
-  searchQuery: '',
-  onSearchChange: (q: string) => console.log('Search:', q),
-  activeCategory: 'all' as const,
-  onCategoryChange: (c: any) => console.log('Category:', c),
-  sortMode: 'newest' as const,
-  onSortChange: (s: any) => console.log('Sort:', s),
+  searchQuery: "",
+  onSearchChange: (q: string) => console.warn("Search:", q),
+  activeCategory: "all" as const,
+  onCategoryChange: (c: string) => console.warn("Category:", c),
+  sortMode: "newest" as const,
+  onSortChange: (s: string) => console.warn("Sort:", s),
   bookmarkCount: 0,
-};
+}
 
 export const Default: Story = {
   args: baseArgs,
-};
+}
 
 export const Admin: Story = {
   args: {
     ...baseArgs,
     isAdmin: true,
   },
-};
+}
 
 export const WithBookmarks: Story = {
   args: {
     ...baseArgs,
     bookmarkCount: 5,
-    activeCategory: 'saved',
+    activeCategory: "saved",
   },
-};
+}
 
 export const Searching: Story = {
   args: {
     ...baseArgs,
-    searchQuery: 'University',
+    searchQuery: "University",
   },
-};
+}
 
 export const CategoryActive: Story = {
   args: {
     ...baseArgs,
-    activeCategory: 'campus',
+    activeCategory: "campus",
   },
-};
+}

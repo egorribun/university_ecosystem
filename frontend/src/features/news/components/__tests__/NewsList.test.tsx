@@ -1,16 +1,28 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { NewsList } from "../NewsList"
-import type { NewsItem } from "@/api/news"
 
 // Mock NewsCard to avoid deep rendering issues and MSW dependencies for this specific component test
 vi.mock("@/components/news/NewsCard", () => ({
-  default: ({ title }: any) => <div data-testid="news-card">{title}</div>
+  default: ({ title }: { title: string }) => <div data-testid="news-card">{title}</div>,
 }))
 
-const mockNews: NewsItem[] = [
-  { id: "1", title: "Test News 1", content: "Content 1", author_id: "a1", created_at: "2023-01-01T00:00:00Z" } as NewsItem,
-  { id: "2", title: "Test News 2", content: "Content 2", author_id: "a2", created_at: "2023-01-02T00:00:00Z" } as NewsItem,
+const mockNews: any[] = [
+  {
+    id: "1",
+    title: "Test News 1",
+    content: "Content 1",
+    created_at: "2023-01-01T00:00:00Z",
+    image_url_optimized: null,
+  },
+  {
+    id: "2",
+    title: "Test News 2",
+    content: "Content 2",
+    created_at: "2023-01-02T00:00:00Z",
+    image_url_optimized: null,
+  },
 ]
 
 describe("NewsList", () => {
@@ -29,12 +41,12 @@ describe("NewsList", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    
+
     const mockIntersectionObserver = vi.fn()
     mockIntersectionObserver.mockReturnValue({
       observe: () => null,
       unobserve: () => null,
-      disconnect: () => null
+      disconnect: () => null,
     })
     window.IntersectionObserver = mockIntersectionObserver
   })
@@ -72,7 +84,9 @@ describe("NewsList", () => {
   it("renders next page skeletons when fetching next page", () => {
     // Wait for the components to mock the skeleton properly if we want to query by something
     // Let's just check if it renders without crashing for now
-    const { container } = render(<NewsList {...defaultProps} isFetchingNextPage={true} hasNextPage={true} />)
+    const { container } = render(
+      <NewsList {...defaultProps} isFetchingNextPage={true} hasNextPage={true} />
+    )
     // Should have 2 cards + 3 skeletons (but we didn't mock NewsCardSkeleton, so it's rendering the real one)
     expect(container).toBeInTheDocument()
   })

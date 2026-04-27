@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { useState } from "react"
 import { Dialog } from "./Dialog"
 import { Button } from "./Button"
@@ -34,8 +34,8 @@ export const Default: Story = {
         <Dialog {...args} open={open} onClose={() => setOpen(false)}>
           <div className="space-y-4">
             <p>
-              This is a standard dialog component. It uses a portal to render at the top level
-              of the DOM and includes a focus trap for accessibility.
+              This is a standard dialog component. It uses a portal to render at the top level of
+              the DOM and includes a focus trap for accessibility.
             </p>
             <Input placeholder="Focusable element inside" />
           </div>
@@ -51,7 +51,7 @@ export const Default: Story = {
     footer: (
       <>
         <Button variant="ghost">Cancel</Button>
-        <Button variant="primary">Confirm Action</Button>
+        <Button variant="solid">Confirm Action</Button>
       </>
     ),
   },

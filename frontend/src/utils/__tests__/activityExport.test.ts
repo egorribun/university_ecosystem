@@ -32,8 +32,10 @@ describe("activityExport", () => {
     beforeEach(() => {
       mockElement = document.createElement("div")
       vi.spyOn(document, "createElement")
-      const mockAnchor = { click: vi.fn(), href: "", download: "" } as any
-      ;(document.createElement as any).mockReturnValueOnce(mockAnchor)
+      const mockAnchor = { click: vi.fn(), href: "", download: "" } as unknown as HTMLAnchorElement
+      vi.mocked(document.createElement).mockReturnValueOnce(
+        mockAnchor as unknown as HTMLAnchorElement
+      )
     })
 
     it("successfully triggers a PNG download", async () => {
@@ -49,15 +51,15 @@ describe("activityExport", () => {
     beforeEach(() => {
       mockElement = document.createElement("div")
       global.Image = class {
-        onload: any = null
-        onerror: any = null
+        onload: (() => void) | null = null
+        onerror: (() => void) | null = null
         src: string = ""
         width: number = 800
         height: number = 600
         constructor() {
           setTimeout(() => this.onload?.(), 10)
         }
-      } as any
+      } as unknown as typeof Image
     })
 
     it("successfully triggers a PDF save", async () => {

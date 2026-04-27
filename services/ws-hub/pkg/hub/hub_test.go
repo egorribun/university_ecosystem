@@ -74,7 +74,7 @@ func TestHub_Rooms(t *testing.T) {
 		Rooms:  make(map[string]bool),
 		Send:   make(chan []byte, 1),
 		Hub:    h,
-		ctx:   ctx,
+		ctx:    ctx,
 	}
 
 	h.handleRegister(ctx, client)
@@ -148,7 +148,7 @@ func TestHub_CollectRecipients(t *testing.T) {
 
 func TestHub_LimiterCleanup(t *testing.T) {
 	h := setupTestHub()
-	
+
 	// Create a limiter for an orphaned client
 	limiter, _ := h.msgLimiters.LoadOrStore("client-orphaned", "dummy-limiter")
 	if limiter == nil {
@@ -179,12 +179,12 @@ func TestHub_LimiterCleanup(t *testing.T) {
 func TestHub_AuthorizeRoomJoin(t *testing.T) {
 	h := setupTestHub()
 	ctx := context.Background()
-	
+
 	// mockAuthClient always returns true
 	if !h.AuthorizeRoomJoin(ctx, "user1", "room1") {
 		t.Errorf("Expected AuthorizeRoomJoin to return true")
 	}
-	
+
 	// test with nil auth client
 	h.authClient = nil
 	if h.AuthorizeRoomJoin(ctx, "user1", "room1") {

@@ -1582,8 +1582,13 @@
             "type": "array"
           },
           "description": {
+            "default": "",
             "title": "Description",
             "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
           },
           "metadata": {
             "additionalProperties": true,
@@ -1595,22 +1600,19 @@
             "type": "string"
           },
           "percentage": {
+            "default": 100,
             "title": "Percentage",
             "type": "integer"
           },
           "status": {
+            "default": "active",
             "title": "Status",
             "type": "string"
           }
         },
         "required": [
           "name",
-          "status",
-          "description",
-          "percentage",
-          "allowed_users",
-          "allowed_groups",
-          "metadata"
+          "enabled"
         ],
         "title": "FeatureFlagOut",
         "type": "object"
@@ -1628,6 +1630,17 @@
               }
             ],
             "title": "Description"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
           },
           "percentage": {
             "anyOf": [
@@ -2169,6 +2182,7 @@
           "code": {
             "anyOf": [
               {
+                "maxLength": 19,
                 "type": "string"
               },
               {
@@ -5899,6 +5913,24 @@
           "response"
         ],
         "title": "WebAuthnRegistrationVerifyIn",
+        "type": "object"
+      },
+      "WsTicketResponse": {
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "ticket": {
+            "title": "Ticket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket",
+          "expires_in"
+        ],
+        "title": "WsTicketResponse",
         "type": "object"
       }
     },
@@ -10323,6 +10355,86 @@
         ]
       }
     },
+    "/api/v1/search": {
+      "get": {
+        "description": "Unified search across news and events.\n\nCombines Elasticsearch full-text search.\nResults are grouped by type for the frontend SearchDialog.",
+        "operationId": "unified_search_api_v1_search_get",
+        "parameters": [
+          {
+            "description": "Search query",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Search query",
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search type: news, events, or all",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "Search type: news, events, or all",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max results per type",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Max results per type",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Unified Search Api V1 Search Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Unified Search",
+        "tags": [
+          "search"
+        ]
+      }
+    },
     "/api/v1/spotify/auth-url": {
       "get": {
         "operationId": "spotify_auth_url_api_v1_spotify_auth_url_get",
@@ -11968,6 +12080,18 @@
     "/healthz": {
       "get": {
         "operationId": "healthz_healthz_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brief",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Brief",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11976,6 +12100,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Full Health Check",
@@ -12006,6 +12140,33 @@
         "summary": "Legacy Readiness Check",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/ws/ticket": {
+      "post": {
+        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
+        "operationId": "issue_ws_upgrade_ticket_ws_ticket_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WsTicketResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Issue a WebSocket upgrade ticket",
+        "tags": [
+          "websocket"
         ]
       }
     }

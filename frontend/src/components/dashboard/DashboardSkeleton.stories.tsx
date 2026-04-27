@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import DashboardSkeleton from './DashboardSkeleton';
+import type { Meta, StoryObj } from "@storybook/react-vite"
+import DashboardSkeleton from "./DashboardSkeleton"
 
 const meta: Meta<typeof DashboardSkeleton> = {
-  title: 'Dashboard/DashboardSkeleton',
+  title: "Dashboard/DashboardSkeleton",
   component: DashboardSkeleton,
   parameters: {
-    layout: 'fullscreen',
+    layout: "fullscreen",
   },
-  tags: ['autodocs'],
-};
+  tags: ["autodocs"],
+}
 
-export default meta;
-type Story = StoryObj<typeof DashboardSkeleton>;
+export default meta
+type Story = StoryObj<typeof DashboardSkeleton>
 
-export const Default: Story = {};
+export const Default: Story = {}

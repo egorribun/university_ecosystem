@@ -18,7 +18,7 @@ describe("sanitizeArticleHtml", () => {
 
   it("preserves allowed HTML structure (p, h2, ul, li, a, img)", () => {
     const html =
-      '<h2>Title</h2><p>Some <strong>bold</strong> text.</p><ul><li>Item</li></ul>' +
+      "<h2>Title</h2><p>Some <strong>bold</strong> text.</p><ul><li>Item</li></ul>" +
       '<a href="https://example.com">Link</a>' +
       '<img src="https://img.example.com/photo.jpg" alt="Photo">'
     expect(sanitizeArticleHtml(html)).toBe(html)
@@ -59,16 +59,12 @@ describe("sanitizeArticleHtml", () => {
   })
 
   it("removes <iframe> tags", () => {
-    const result = sanitizeArticleHtml(
-      '<iframe src="https://evil.com" />'
-    )
+    const result = sanitizeArticleHtml('<iframe src="https://evil.com" />')
     expect(result).not.toContain("<iframe")
   })
 
   it("removes <form> and <input> tags", () => {
-    const result = sanitizeArticleHtml(
-      '<form action="/steal"><input type="text" /></form>'
-    )
+    const result = sanitizeArticleHtml('<form action="/steal"><input type="text" /></form>')
     expect(result).not.toContain("<form")
     expect(result).not.toContain("<input")
   })
@@ -113,9 +109,7 @@ describe("sanitizeArticleHtml", () => {
   // data: URL blocking (non-image)
   // ---------------------------------------------------------------------------
   it("removes data: URLs in src for non-image types", () => {
-    const result = sanitizeArticleHtml(
-      '<iframe src="data:text/html,<h1>hi</h1>">'
-    )
+    const result = sanitizeArticleHtml('<iframe src="data:text/html,<h1>hi</h1>">')
     expect(result).not.toMatch(/src\s*=\s*["']data:text/i)
   })
 

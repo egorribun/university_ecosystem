@@ -1,31 +1,31 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import { ScheduleSettingsPanel } from './ScheduleSettingsPanel';
+import type { Meta, StoryObj } from "@storybook/react-vite"
+import { ScheduleSettingsPanel } from "./ScheduleSettingsPanel"
 
 const meta: Meta<typeof ScheduleSettingsPanel> = {
-  title: 'Schedule/ScheduleSettingsPanel',
+  title: "Schedule/ScheduleSettingsPanel",
   component: ScheduleSettingsPanel,
   parameters: {
-    layout: 'centered',
+    layout: "centered",
   },
-  tags: ['autodocs'],
-};
+  tags: ["autodocs"],
+}
 
-export default meta;
-type Story = StoryObj<typeof ScheduleSettingsPanel>;
+export default meta
+type Story = StoryObj<typeof ScheduleSettingsPanel>
 
 export const Default: Story = {
   args: {
     open: true,
-    onClose: () => console.log('Close'),
-    weekdayLabels: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-    currentParity: 'odd',
-    setCurrentParity: (p) => console.log('Set parity:', p),
+    onClose: () => console.warn("Close"),
+    weekdayLabels: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    currentParity: "odd",
+    setCurrentParity: (p) => console.warn("Set parity:", p),
   },
-};
+}
 
 export const EvenParity: Story = {
   args: {
     ...Default.args,
-    currentParity: 'even',
+    currentParity: "even",
   },
-};
+}

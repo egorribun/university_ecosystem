@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import { ScheduleSkeleton } from './ScheduleSkeleton';
+import type { Meta, StoryObj } from "@storybook/react-vite"
+import { ScheduleSkeleton } from "./ScheduleSkeleton"
 
 const meta: Meta<typeof ScheduleSkeleton> = {
-  title: 'Schedule/ScheduleSkeleton',
+  title: "Schedule/ScheduleSkeleton",
   component: ScheduleSkeleton,
   parameters: {
-    layout: 'fullscreen',
+    layout: "fullscreen",
   },
-  tags: ['autodocs'],
-};
+  tags: ["autodocs"],
+}
 
-export default meta;
-type Story = StoryObj<typeof ScheduleSkeleton>;
+export default meta
+type Story = StoryObj<typeof ScheduleSkeleton>
 
-export const Default: Story = {};
+export const Default: Story = {}

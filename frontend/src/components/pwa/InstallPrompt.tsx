@@ -245,14 +245,15 @@ export default function InstallPrompt() {
         {shouldRenderPrompt && (
           <motion.div
             key="install-prompt-root"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={ANIMATION_VARIANTS}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             // Wave 118 SW3 (CLS-118-03): Enforced `flex-col justify-start` to anchor
             // inner GlassCard to the TOP of the reserved 600px area. This ensures
             // that as internal components mount (i18n, push state), they grow
             // DOWN into the reserved space, keeping the visual top edge rock-solid.
-            // Increased to 600px (was 540) to accommodate potential Russian text 
+            // Increased to 600px (was 540) to accommodate potential Russian text
             // expansion in low-res viewports without breaching the reservation.
             className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] min-h-[600px] flex flex-col justify-start"
           >

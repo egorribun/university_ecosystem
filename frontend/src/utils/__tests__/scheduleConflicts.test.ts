@@ -5,12 +5,7 @@ import type { Lesson } from "@/components/schedule/scheduleUtils"
 // ---------------------------------------------------------------------------
 // Factory helper — builds a minimal Lesson object
 // ---------------------------------------------------------------------------
-const makeLesson = (
-  id: string,
-  weekday: string,
-  startTime: string,
-  endTime: string
-): Lesson => ({
+const makeLesson = (id: string, weekday: string, startTime: string, endTime: string): Lesson => ({
   id,
   weekday,
   parity: "both",
@@ -114,7 +109,13 @@ describe("detectConflicts", () => {
   // ---------------------------------------------------------------------------
   it("skips lessons with null start_time without throwing", () => {
     const lessons = [
-      { id: "null-start", weekday: "Monday", parity: "both" as const, start_time: null, end_time: "10:00" },
+      {
+        id: "null-start",
+        weekday: "Monday",
+        parity: "both" as const,
+        start_time: null,
+        end_time: "10:00",
+      },
       makeLesson("ok", "Monday", "09:00", "10:00"),
     ]
     expect(() => detectConflicts(lessons)).not.toThrow()
@@ -122,7 +123,13 @@ describe("detectConflicts", () => {
 
   it("skips lessons with null end_time without throwing", () => {
     const lessons = [
-      { id: "null-end", weekday: "Monday", parity: "both" as const, start_time: "09:00", end_time: null },
+      {
+        id: "null-end",
+        weekday: "Monday",
+        parity: "both" as const,
+        start_time: "09:00",
+        end_time: null,
+      },
       makeLesson("ok", "Monday", "11:00", "12:00"),
     ]
     expect(() => detectConflicts(lessons)).not.toThrow()

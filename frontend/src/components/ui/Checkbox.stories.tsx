@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { useState } from "react"
 import { Checkbox } from "./Checkbox"
 
@@ -25,11 +25,7 @@ export const Default: Story = {
     const [checked, setChecked] = useState(args.checked ?? false)
     return (
       <div className="flex items-center gap-3">
-        <Checkbox
-          {...args}
-          checked={checked}
-          onCheckedChange={(val) => setChecked(val)}
-        />
+        <Checkbox {...args} checked={checked} onCheckedChange={(val) => setChecked(val)} />
         <span className="text-sm font-medium">Accept terms and conditions</span>
       </div>
     )

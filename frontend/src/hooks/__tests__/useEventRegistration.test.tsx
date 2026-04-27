@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { useEventRegistration } from "../useEventRegistration"
@@ -5,7 +6,14 @@ import { http, HttpResponse } from "msw"
 import { server } from "@/tests/mocks/server"
 
 describe("useEventRegistration", () => {
-  const mockUser = { id: 123, username: "testuser" } as any
+  const mockUser = {
+    id: 123,
+    username: "testuser",
+    email: "test@example.com",
+    is_active: true,
+    avatar_url_optimized: null,
+    cover_url_optimized: null,
+  } as any
   const eventId = "event-456"
 
   beforeEach(() => {
@@ -108,7 +116,7 @@ describe("useEventRegistration", () => {
 
   it("restores state from localStorage on mount", () => {
     localStorage.setItem(`event:reg:${eventId}:123`, "1")
-    
+
     const { result } = renderHook(() =>
       useEventRegistration({
         eventId,

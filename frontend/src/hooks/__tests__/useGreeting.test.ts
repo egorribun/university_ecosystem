@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import { getContextualEmoji, getGreetingKey, getSpecialGreeting } from "../useGreeting"
 
 // These pure-helper functions are exported and tested directly —

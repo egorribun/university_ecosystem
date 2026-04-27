@@ -142,7 +142,10 @@ class _LegacyFeatureFlagsBridge:
 
     async def update(
         self, name: str, *, enabled: bool | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
+        if name not in _KNOWN_FLAGS:
+            return None
+
         logger.warning(
             "feature_flags.update() called — flagd flags are managed via ConfigMap, "
             "not runtime updates.  Flag: %s",

@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 
-from app.workers.dead_letter_queue import DeadLetterJob, JobStatus
+from app.models import DeadLetterJob, JobStatus
 
 
 @pytest_asyncio.fixture
@@ -44,7 +44,7 @@ async def job_factory(db_session):
     return _factory
 
 
-async def _login_admin(async_client, user_factory, password="StrongAdminPass123!_"):
+async def _login_admin(async_client, user_factory, password="StrongAdminPass123!_"):  # noqa: S107
     from app.auth.security import get_password_hash
 
     hashed = await get_password_hash(password)

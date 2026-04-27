@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { renderHook } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { useScheduleURLSync } from "../useScheduleURLSync"
@@ -14,7 +15,7 @@ describe("useScheduleURLSync", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    
+
     // Default mocks
     vi.mocked(useURLState).mockReturnValue({
       params: { w: "" },
@@ -22,11 +23,11 @@ describe("useScheduleURLSync", () => {
       setParams: vi.fn(),
     })
 
-    vi.mocked(useScheduleUIStore).mockImplementation((selector: any) => {
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) => {
       const state = {
         weekOffset: 0,
         setWeekOffset: mockSetWeekOffset,
-      }
+      } as any
       return selector(state)
     })
   })
@@ -44,11 +45,11 @@ describe("useScheduleURLSync", () => {
   })
 
   it("syncs store to URL when weekOffset changes", () => {
-    vi.mocked(useScheduleUIStore).mockImplementation((selector: any) => {
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) => {
       const state = {
         weekOffset: 3,
         setWeekOffset: mockSetWeekOffset,
-      }
+      } as any
       return selector(state)
     })
 
@@ -63,12 +64,12 @@ describe("useScheduleURLSync", () => {
       setParam: mockSetParam,
       setParams: vi.fn(),
     })
-    
-    vi.mocked(useScheduleUIStore).mockImplementation((selector: any) => {
+
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) => {
       const state = {
         weekOffset: 0,
         setWeekOffset: mockSetWeekOffset,
-      }
+      } as any
       return selector(state)
     })
 

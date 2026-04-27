@@ -52,5 +52,5 @@ export const Loading: Story = {
   parameters: {
     // We can't easily force isLoading state here without mocking useDashboardSchedule
     // but in Storybook we usually mock at the MSW level if setup.
-  }
+  },
 }

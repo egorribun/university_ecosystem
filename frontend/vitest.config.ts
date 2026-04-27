@@ -21,5 +21,15 @@ export default defineConfig({
     css: true,
     reporters: ["default"],
     exclude: ["node_modules", "dist", ".idea", ".git", ".cache", "tests/e2e/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "html"],
+      thresholds: {
+        statements: 60,
+        branches: 55,
+        functions: 60,
+        lines: 60,
+      },
+    },
   },
 })

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { useState } from "react"
 import { ConfirmDialog } from "./ConfirmDialog"
 import { Button } from "./Button"
@@ -35,7 +35,7 @@ export const Default: Story = {
           open={open}
           onCancel={() => setOpen(false)}
           onConfirm={() => {
-            console.log("Confirmed")
+            console.warn("Confirmed")
             setOpen(false)
           }}
         />

@@ -168,9 +168,8 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
             values_callable=lambda x: [m.value for m in x],
         ),
         nullable=False,
-        server_default="pending",  # MED-W19: was ChallengeState.PENDING (enum object invalid as server_default)
+        server_default="pending",
         default=ChallengeState.PENDING,
-        index=True,
     )
 
     user = relationship("User", back_populates="mfa_challenges", lazy="noload")

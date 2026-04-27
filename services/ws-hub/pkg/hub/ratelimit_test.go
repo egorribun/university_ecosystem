@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"testing"
@@ -40,8 +41,8 @@ func TestWSUpgradeRateLimiter(t *testing.T) {
 	if !limiter.Allow(ip1) {
 		t.Errorf("Expected request for %s to be allowed after replenish", ip1)
 	}
-    
-    // IP1: Another request should be blocked (only ~1.2 tokens were replenished)
+
+	// IP1: Another request should be blocked (only ~1.2 tokens were replenished)
 	if limiter.Allow(ip1) {
 		t.Errorf("Expected request for %s to be blocked after using replenished token", ip1)
 	}
@@ -51,8 +52,11 @@ func TestRealIP(t *testing.T) {
 	trustedExact := map[string]struct{}{
 		"10.0.0.2": {},
 	}
-	
-	_, cidr1, _ := net.ParseCIDR("192.168.1.0/24")
+
+	_, cidr1, err := net.ParseCIDR("192.168.1.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
 	trustedCIDRs := []*net.IPNet{cidr1}
 
 	tests := []struct {
@@ -113,12 +117,15 @@ func TestRealIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "/", nil)
+			req, err := http.NewRequestWithContext(context.Background(), "GET", "/", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
 			req.RemoteAddr = tt.remoteAddr
 			if tt.xff != "" {
 				req.Header.Set("X-Forwarded-For", tt.xff)
 			}
-			
+
 			actual := RealIP(req, trustedExact, trustedCIDRs)
 			if actual != tt.expected {
 				t.Errorf("RealIP() = %q, expected %q", actual, tt.expected)

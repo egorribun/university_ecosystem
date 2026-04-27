@@ -106,7 +106,9 @@ async def confirm_totp_enrollment(
     audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
 ) -> MfaTotpEnrollmentOut:
-    enrollment = await db.get(MfaTotpEnrollment, payload.enrollment_id)
+    enrollment = await db.get(
+        MfaTotpEnrollment, payload.enrollment_id, with_for_update=True
+    )
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
 
@@ -180,7 +182,7 @@ async def delete_pending_totp_enrollment(
     audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
 ) -> None:
-    enrollment = await db.get(MfaTotpEnrollment, enrollment_id)
+    enrollment = await db.get(MfaTotpEnrollment, enrollment_id, with_for_update=True)
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
     if enrollment.confirmed_at is not None or enrollment.revoked_at is not None:
@@ -373,7 +375,7 @@ async def delete_webauthn_credential(
 ) -> MfaFactorStatusOut:
     from app.models import WebAuthnCredential
 
-    cred = await db.get(WebAuthnCredential, credential_id)
+    cred = await db.get(WebAuthnCredential, credential_id, with_for_update=True)
     if not cred or cred.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Credential not found")
 

@@ -41,6 +41,12 @@ from app.models.chat import (
 from app.models.chat import (
     Message as Message,
 )
+from app.models.dead_letter import (
+    DeadLetterJob as DeadLetterJob,
+)
+from app.models.dead_letter import (
+    JobStatus as JobStatus,
+)
 from app.models.domain_events import StoredEvent as StoredEvent
 from app.models.enums import UserRole as UserRole
 from app.models.events import (
@@ -99,4 +105,4 @@ from app.models.users import (
 )
 
 
-# Removed DeadLetterJob re-export (layer violation fixed)
+# Re-added DeadLetterJob (fixed Alembic schema drift; model moved to app/models/dead_letter.py)

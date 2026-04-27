@@ -7,12 +7,13 @@ This document describes all environment variables used by the University Ecosyst
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | - |
-| `SECRET_KEY` | JWT signing secret (min 32 chars) | - |
+| `SECRET_KEY` | Primary JWT signing secret (min 32 chars) | - |
 | `AUDIT_LOG_SECRET` | Audit log signing secret (min 32 chars) | - |
+| `INTERNAL_HMAC_SECRET` | Internal gateway signature key (Required in production) | - |
 
 ---
 
-## Database
+## 💾 Database
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -20,21 +21,26 @@ This document describes all environment variables used by the University Ecosyst
 | `DATABASE_POOL_SIZE` | Connection pool size | `5` |
 | `DATABASE_MAX_OVERFLOW` | Max overflow connections | `10` |
 | `DATABASE_POOL_TIMEOUT` | Connection timeout (seconds) | `30.0` |
-| `DATABASE_POOL_RECYCLE` | Recycle connections after (seconds) | `1800` |
+| `DATABASE_POOL_RECYCLE` | Recycle connections after (seconds) | `540` |
+| `DATABASE_STATEMENT_CACHE_SIZE` | asyncpg statement cache (0=PgBouncer) | `0` |
 | `AUTO_CREATE_SCHEMA` | Auto-create DB tables (dev only) | Auto |
+| `SLOW_QUERY_LOGGING_ENABLED` | Enable slow query logging | `true` |
+| `SLOW_QUERY_THRESHOLD_MS` | Threshold for slow query alerts | `500.0` |
 
 ---
 
-## Authentication & Security
+## 🔒 Authentication & Security
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SECRET_KEY` | JWT signing secret | Required |
-| `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars; comma-separated for rotation) | Required |
+| `SECRET_KEY` | Primary JWT signing secret | Required |
 | `ALGORITHM` | JWT algorithm | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL | `60` |
 | `MAX_SESSIONS_PER_USER` | Concurrent sessions (0=unlimited) | `5` |
 | `AUTH_LOCKOUT_THRESHOLDS` | Lockout rules `attempts:seconds` | `5:30,8:300,10:3600` |
+| `CSRF_HMAC_SECRET` | Key for signing CSRF tokens | (derived) |
+| `INTERNAL_HMAC_SECRET` | Verifies gateway `X-User-ID` headers | Required in Prod |
+| `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Required |
 
 ### MFA Settings
 
@@ -48,128 +54,105 @@ This document describes all environment variables used by the University Ecosyst
 
 ---
 
-## Cache & Redis
+## ⚡ Cache & Rate Limiting
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CACHE_BACKEND` | `redis`, `memory`, `none` | `redis` |
 | `CACHE_ENABLED` | Enable caching | `true` |
 | `CACHE_REDIS_URL` | Redis URL | `redis://127.0.0.1:6379/0` |
-| `CACHE_DEFAULT_TTL_SECONDS` | Default cache TTL | `300` |
-| `STATS_CACHE_TTL_SECONDS` | Stats cache TTL | `180` |
-
----
-
-## Rate Limiting
-
-| Variable | Description | Default |
-|----------|-------------|---------|
 | `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` |
 | `RATE_LIMIT_DEFAULT` | Default rate | `100/minute` |
-| `RATE_LIMIT_SENSITIVE` | Sensitive endpoints rate | `5/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
-| `TRUSTED_PROXIES` | Comma-separated proxy IPs allowed to supply `X-Forwarded-For` | Empty |
-
-When `TRUSTED_PROXIES` is empty (default), rate limiting uses the direct client IP.
-If the request originates from a trusted proxy, rate limiting uses the first IP from
-`X-Forwarded-For` (or the `Forwarded` header as a fallback).
+| `TRUSTED_PROXIES` | Allowed `X-Forwarded-For` source IPs | Empty |
 
 ---
 
-## Security Headers
+## 🛡️ Security Headers & Image Proxy
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SECURITY_CSP` | Custom CSP policy | Built-in |
-| `SECURITY_CSP_REPORT_URI` | CSP violation report URL | Empty |
+| `SECURITY_CSP` | Custom Content Security Policy | Built-in |
 | `SECURITY_HSTS_ENABLED` | Enable HSTS | `true` |
-| `SECURITY_HSTS_MAX_AGE` | HSTS max-age | `31536000` |
-| `SECURITY_X_FRAME_OPTIONS` | X-Frame-Options | `DENY` |
-| `ENABLE_COOP` | Cross-Origin-Opener-Policy | `false` |
-| `ENABLE_COEP` | Cross-Origin-Embedder-Policy | `false` |
+| `SECURITY_X_FRAME_OPTIONS` | X-Frame-Options (`DENY`, `SAMEORIGIN`) | `DENY` |
+| `IMGPROXY_KEY` | Hex key for imgproxy signing | Empty |
+| `IMGPROXY_SALT` | Hex salt for imgproxy signing | Empty |
+| `IMGPROXY_BASE_URL` | imgproxy service endpoint | `http://localhost:8081` |
 
 ---
 
-## Storage
+## 📁 Storage & File Processing
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `STORAGE_BACKEND` | `static`, `s3`, `minio` | `static` |
-| `STORAGE_STATIC_BASE_URL` | Static files URL | `/static` |
+| `STORAGE_BACKEND` | `static`, `local`, `s3`, `minio` | `static` |
+| `STORAGE_STATIC_BASE_URL` | Public URL for static files | `/static` |
 | `STORAGE_S3_BUCKET` | S3 bucket name | Empty |
-| `STORAGE_S3_REGION` | S3 region | Empty |
-| `STORAGE_S3_ACCESS_KEY_ID` | S3 access key | Empty |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | S3 secret | Empty |
+| `STORAGE_S3_REGION` | AWS Region | Empty |
+| `STORAGE_S3_ENDPOINT_URL` | Custom S3 endpoint (for MinIO) | Empty |
+| `EVENT_FILE_SCANNER_ENABLED` | Enable ClamAV virus scanning | `false` |
+| `EVENT_FILE_MAX_SIZE_BYTES` | Max upload size (default 10MB) | `10485760` |
+| `CHAT_MAX_MESSAGE_LENGTH` | Max characters per message | `10000` |
 
 ---
 
-## Observability
+## 🏗️ Integrations
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ENABLE_OTEL` | Enable OpenTelemetry | `true` |
-| `OTEL_SERVICE_NAME` | Service name | `university-ecosystem` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint | `http://localhost:4317` |
-| `SENTRY_DSN` | Sentry DSN | Empty |
-| `LOG_LEVEL` | Log level | `INFO` |
+| `SPOTIFY_CLIENT_ID` | Spotify Client ID | Empty |
+| `SPOTIFY_CLIENT_SECRET` | Spotify Secret (`_FILE` supported) | Empty |
+| `SPOTIFY_OAUTH_STATE_SECRET`| Secret for OAuth2 state JWTs | Empty |
+| `SPICEDB_ENDPOINT` | SpiceDB gRPC endpoint | `spicedb:50051` |
+| `SPICEDB_PRESHARED_KEY` | SpiceDB auth key (`_FILE` supported) | `dev-key` |
+| `ELASTICSEARCH_URL` | Search engine endpoint | `http://localhost:9200` |
+| `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Required |
+| `WS_HUB_INTERNAL_URL` | ws-hub control API | `http://ws-hub:8081` |
+| `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation | Required |
+| `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
+| `RUST_OPTIMIZER_URL` | Schedule optimization sidecar | `(8080)` |
 
 ---
 
-## Email (SMTP)
+## ⚙️ Background Workers & Retention
+
+### Transactional Outbox
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SMTP_HOST` | SMTP server hostname | Empty |
-| `SMTP_PORT` | SMTP server port | `0` |
-| `SMTP_USER` | SMTP username | Empty |
-| `SMTP_PASSWORD` | SMTP password | Empty |
-| `SMTP_SECURITY` | `none`, `ssl`, or `starttls` | `none` |
-| `SMTP_STARTTLS` | Legacy flag to enable STARTTLS | `false` |
-| `MAIL_FROM` | From address for outgoing email | `no-reply@example.com` |
+| `OUTBOX_BATCH_SIZE` | Events processed per poll cycle | `50` |
+| `OUTBOX_POLL_INTERVAL` | Polling interval (seconds) | `0.1` |
+| `OUTBOX_MAX_RETRIES` | Dispatch attempts before DLQ | `5` |
 
-> **Security**: When `SMTP_USER` is set in non-development environments, you must use
-> `SMTP_SECURITY=starttls` or `SMTP_SECURITY=ssl`. Using `SMTP_SECURITY=none` is
-> only allowed for development and testing.
-
----
-
-## Push Notifications
+### Data Retention
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VAPID_PUBLIC_KEY` | VAPID public key | Empty |
-| `VAPID_PRIVATE_KEY` | VAPID private key | Empty |
-| `VAPID_SUBJECT` | VAPID subject (`mailto:` or URL) | Empty |
-| `NOTIFICATIONS_RETENTION_DAYS` | Keep notifications | `90` |
+| `RETENTION_LOGS_DAYS` | Days to keep audit logs | `90` |
+| `RETENTION_CHATS_DAYS` | Days to keep archived chats | `365` |
 
 ---
 
-## File Scanning
+## 📧 Notifications (Email/Push)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EVENT_FILE_SCANNER_ENABLED` | Enable malware scanning | `false` |
-| `EVENT_FILE_SCANNER_BACKEND` | `clamd` | `clamd` |
-| `EVENT_FILE_SCANNER_HOST` | ClamAV host | `127.0.0.1` |
-| `EVENT_FILE_SCANNER_PORT` | ClamAV port | `3310` |
+| `NOTIFY_PROVIDER` | `smtp`, `mailgun`, `ses`, `console` | `smtp` |
+| `SMTP_HOST` | SMTP server hostname | `localhost` |
+| `SMTP_PORT` | SMTP server port | `1025` |
+| `VAPID_PUBLIC_KEY` | VAPID public key for WebPush | Empty |
+| `VAPID_PRIVATE_KEY` | VAPID private key for WebPush | Empty |
+| `NOTIFICATIONS_RETENTION_DAYS` | Days to keep notification history | `90` |
 
 ---
 
-## Frontend & CORS
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `FRONTEND_ORIGIN` | Primary frontend URL | `http://localhost:5173` |
-| `FRONTEND_ORIGINS` | Additional origins (comma-separated) | Empty |
-| `CORS_ALLOW_CREDENTIALS` | Allow cookies | `true` |
-| `CORS_ALLOW_METHODS` | Allowed HTTP methods | GET,POST,PUT,PATCH,DELETE,OPTIONS |
-
----
-
-## Environment
+## 🌐 Environment
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ENVIRONMENT` | `development`, `production`, `testing` | `development` |
+| `FRONTEND_ORIGIN` | Primary frontend URL for CORS | `http://localhost:5173` |
+| `ENABLE_OTEL` | Enable OpenTelemetry tracing | `true` |
+| `LOG_LEVEL` | Logging verbosity | `INFO` |
 
-> **Tip**: In development mode (`ENVIRONMENT=development`), missing required variables will use fallback values.
+> **Tip**: Secrets can be provided via files using the `_FILE` suffix (e.g., `DATABASE_URL_FILE=/run/secrets/db_url`) to support Docker/Kubernetes secrets securely.

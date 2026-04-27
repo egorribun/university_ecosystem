@@ -50,7 +50,13 @@ export function DashboardSkeleton() {
         {!isStoriesInHero && (
           <div className="mb-6 flex gap-4 overflow-hidden">
             {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} width="5rem" height="5rem" rounded="50%" ariaLabel="Loading story" />
+              <Skeleton
+                key={i}
+                width="5rem"
+                height="5rem"
+                rounded="50%"
+                ariaLabel="Loading story"
+              />
             ))}
           </div>
         )}
@@ -85,7 +91,12 @@ export function DashboardSkeleton() {
                   key={i}
                   className="flex items-start gap-4 rounded-xl bg-(--bg-matte-list) px-4 py-3"
                 >
-                  <Skeleton width="2.75rem" height="2.75rem" rounded="9999rem" className="shrink-0" />
+                  <Skeleton
+                    width="2.75rem"
+                    height="2.75rem"
+                    rounded="9999rem"
+                    className="shrink-0"
+                  />
                   <div className="flex-1 space-y-2">
                     <Skeleton width="90%" height="1rem" />
                     <Skeleton width="70%" height="0.875rem" />
@@ -124,4 +135,3 @@ export function DashboardSkeleton() {
 }
 
 export default DashboardSkeleton
-
