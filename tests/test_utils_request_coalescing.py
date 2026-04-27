@@ -51,7 +51,7 @@ class TestBuildRequestKey:
 # ---------------------------------------------------------------------------
 # coalesce_requests decorator
 # ---------------------------------------------------------------------------
-@pytest.mark.anyio
+@pytest.mark.asyncio
 class TestCoalesceRequests:
     async def test_basic_call_executes_function(self) -> None:
         @coalesce_requests(prefix="test")
@@ -154,7 +154,7 @@ class TestCoalesceRequests:
 # ---------------------------------------------------------------------------
 # RequestCoalescer (class-based)
 # ---------------------------------------------------------------------------
-@pytest.mark.anyio
+@pytest.mark.asyncio
 class TestRequestCoalescer:
     async def test_execute_returns_result(self) -> None:
         coalescer = RequestCoalescer()

@@ -334,7 +334,10 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
             if (
                 "event loop is closed" in error_message
                 or "handler is closed" in error_message
+                or "different loop" in error_message
             ):
-                logging.debug("Skipping database cleanup: event loop already closed")
+                logging.debug(
+                    "Skipping database cleanup: event loop mismatch or closed"
+                )
                 break
             raise
