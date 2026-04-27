@@ -90,19 +90,24 @@ export default tseslint.config({
         "message": "Arbitrary values (magic numbers) in Tailwind classes are discouraged. Please use design tokens from the theme."
       }
     ],
-    "boundaries/element-types": [
+    // Wave 119 SW4 — eslint-plugin-boundaries v6 migration:
+    //   - rule renamed: boundaries/element-types → boundaries/dependencies
+    //   - selector form: ["shared"] → { type: "shared" }
+    //   - disallow shape: ["feature"] → { to: { type: ["feature"] } }
+    // See https://www.jsboundaries.dev/docs/releases/migration-guides/v5-to-v6/
+    "boundaries/dependencies": [
       "error",
       {
         "default": "allow",
         "rules": [
           {
-            "from": ["shared"],
-            "disallow": ["feature", "page", "app"],
+            "from": { "type": "shared" },
+            "disallow": { "to": { "type": ["feature", "page", "app"] } },
             "message": "Shared components cannot import from features, pages, or app layer."
           },
           {
-            "from": ["feature"],
-            "disallow": ["page", "app"],
+            "from": { "type": "feature" },
+            "disallow": { "to": { "type": ["page", "app"] } },
             "message": "Features cannot import from pages or app layer."
           }
         ]
