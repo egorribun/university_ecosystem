@@ -308,7 +308,11 @@
     "fullscreen": "Toggle fullscreen",
     "search": "Focus search",
     "close": "Close panel",
-    "help": "Show shortcuts"
+    "help": "Show shortcuts",
+    "pan": "Pan map",
+    "zoom": "Zoom in / out",
+    "rotate": "Rotate map",
+    "pitch": "Tilt map"
   },
   "tooltip": {
     "clickToExplore": "Click to explore",

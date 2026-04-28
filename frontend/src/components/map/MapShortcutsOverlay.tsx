@@ -19,8 +19,15 @@ interface MapShortcutsOverlayProps {
   onClose: () => void
 }
 
+// Wave 120 SW4 \u2014 added arrow / zoom / rotate / pitch shortcuts (verified
+// working via chrome-devtools-mcp keyboard synthesis on /map). MapLibre's
+// built-in KeyboardHandler handles these natively when canvas is focused.
 const SHORTCUTS = [
   { keys: ["1", "\u2013", "9"], labelKey: "shortcuts.buildings" },
+  { keys: ["\u2191", "\u2193", "\u2190", "\u2192"], labelKey: "shortcuts.pan" },
+  { keys: ["+", "\u2212"], labelKey: "shortcuts.zoom" },
+  { keys: ["\u21e7+\u2190", "\u21e7+\u2192"], labelKey: "shortcuts.rotate" },
+  { keys: ["\u21e7+\u2191", "\u21e7+\u2193"], labelKey: "shortcuts.pitch" },
   { keys: ["F"], labelKey: "shortcuts.fullscreen" },
   { keys: ["/"], labelKey: "shortcuts.search" },
   { keys: ["Esc"], labelKey: "shortcuts.close" },
