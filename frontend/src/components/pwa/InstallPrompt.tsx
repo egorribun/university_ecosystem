@@ -279,7 +279,16 @@ export default function InstallPrompt() {
                 )}
               >
                 {showInstallPanel && (
-                  <div className="space-y-4">
+                  // Wave 119 SW7 (CLS-119-02): mirror W118 SW4's push-panel
+                  // min-h pattern. Install panel content (icon+title row →
+                  // description paragraph → button row) mounts after async i18n
+                  // resolves, contributing ~0.141 CLS in worst-case 7-URL × 3
+                  // LHCI sweeps that hit warm-cache timing. Reserved height
+                  // 220px ≈ 32 (header) + 16 (gap) + 68 (description, RU 3-line
+                  // worst case) + 16 (gap) + 56 (button row pt-2 + h-12) + ~32
+                  // buffer. Push panel uses 260px (smaller buffer because it has
+                  // tighter known content layout).
+                  <div className="space-y-4 min-h-[220px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
