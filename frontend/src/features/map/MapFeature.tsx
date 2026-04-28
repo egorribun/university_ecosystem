@@ -11,6 +11,7 @@ import {
 import { useTranslation } from "react-i18next"
 import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { useURLState } from "@/hooks/useURLState"
 import { logError } from "@/app/logger"
 import { breakpoints } from "@/theme/tokens"
 import { MapBackdrop } from "@/components/map/MapBackdrop"
@@ -33,6 +34,12 @@ import {
   type MapCategory,
   type CampusBuilding,
 } from "@/data/campusBuildings"
+import {
+  parseMapViewport,
+  serializeMapViewport,
+  type MapSearch,
+  type MapViewport,
+} from "@/features/map/schema"
 import { WidgetErrorBoundary } from "@/components/error"
 import FadeSection from "@/components/motion/FadeSection"
 import type { MapRef } from "react-map-gl/maplibre"
@@ -95,6 +102,42 @@ export function MapFeature() {
 
   /* ── MapLibre GL map ref ── */
   const mapLibreRef = useRef<MapRef | null>(null)
+
+  /* ── URL-state sync (Wave 120 SW5 — Item #2) ──
+     Reads ?z/lat/lng/p/b on mount → if all five present + valid, MapLibreMap
+     uses URL viewport instead of cinematic intro. On every map.moveend,
+     debounced ~500ms, URL is updated. Pattern matches Events / Activity /
+     News URL-state from Wave 112 SW3 (FIX-77-03 viewTransition: false +
+     replace: true via useURLState).
+  */
+  const { params: urlParams, setParams: setUrlParams } = useURLState<MapSearch>()
+  // useState with init function latches the FIRST URL viewport on mount —
+  // subsequent URL writes from our own onMoveEnd don't trigger MapLibreMap
+  // re-init. React Compiler forbids ref access during render (RC-78-01
+  // pattern), so useState is the right tool here, not useRef.
+  const [latchedInitialViewport] = useState<MapViewport | null>(() => parseMapViewport(urlParams))
+
+  const moveEndDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleMapMoveEnd = useCallback(
+    (state: {
+      zoom: number
+      latitude: number
+      longitude: number
+      pitch: number
+      bearing: number
+    }) => {
+      if (moveEndDebounceRef.current) clearTimeout(moveEndDebounceRef.current)
+      moveEndDebounceRef.current = setTimeout(() => {
+        setUrlParams(serializeMapViewport(state))
+      }, 500)
+    },
+    [setUrlParams]
+  )
+  useEffect(() => {
+    return () => {
+      if (moveEndDebounceRef.current) clearTimeout(moveEndDebounceRef.current)
+    }
+  }, [])
 
   /* ── Building selection ── */
   const handleBuildingClick = useCallback((letter: BuildingId) => {
@@ -223,6 +266,8 @@ export function MapFeature() {
                     timePeriod={timePeriod}
                     weatherCondition={weatherData?.condition}
                     mapEvents={mapEvents}
+                    urlInitialViewport={latchedInitialViewport}
+                    onMapMoveEnd={handleMapMoveEnd}
                   />
                 </Suspense>
               </WidgetErrorBoundary>

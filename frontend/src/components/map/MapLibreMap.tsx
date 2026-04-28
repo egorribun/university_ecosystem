@@ -8,13 +8,14 @@
  * Wave 107 — reduced-motion, sky dedup, extrusion fix, timeout cleanup, POI perf.
  */
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Map, Layer } from "react-map-gl/maplibre"
 import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import { getCampusBuildings, type BuildingId, type MapCategory } from "@/data/campusBuildings"
 import { CAMPUS_POIS } from "@/data/campusPOI"
+import type { MapViewport } from "@/features/map/schema"
 import { BuildingMarker } from "./BuildingMarker"
 import { POIMarker } from "./POIMarker"
 import { MapControls } from "./MapControls"
@@ -112,6 +113,19 @@ interface MapLibreMapProps {
   timePeriod?: TimePeriod
   weatherCondition?: WeatherCondition
   mapEvents?: MapEvent[]
+  /** Wave 120 SW5 — restored viewport from URL `?z/lat/lng/p/b` (parsed
+   *  upstream by MapFeature). When non-null, skips the cinematic intro
+   *  and jumps straight to this viewport. */
+  urlInitialViewport?: MapViewport | null
+  /** Wave 120 SW5 — fires after pan/zoom/rotate/pitch settle. MapFeature
+   *  debounces the URL write (~500ms) so rapid panning doesn't spam history. */
+  onMapMoveEnd?: (state: {
+    zoom: number
+    latitude: number
+    longitude: number
+    pitch: number
+    bearing: number
+  }) => void
 }
 
 export function MapLibreMapComponent({
@@ -125,12 +139,21 @@ export function MapLibreMapComponent({
   timePeriod,
   weatherCondition,
   mapEvents,
+  urlInitialViewport,
+  onMapMoveEnd,
 }: MapLibreMapProps) {
   const { t, i18n } = useTranslation("map")
   const hasAnimatedIntro = useRef(false)
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Single active popup — only one marker popup open at a time (FIX-109-07). */
   const [activePopupId, setActivePopupId] = useState<string | null>(null)
+  /** Wave 120 SW5: latches when URL sync should fire. Programmatic moves
+   *  during cinematic intro (or building easeTo before any user input) must
+   *  NOT write to URL — only user-initiated panning/zooming should. After
+   *  the first user-initiated move, all subsequent moves (including
+   *  programmatic easeTo for building selection) sync to URL since they
+   *  represent user intent. */
+  const enableUrlSyncRef = useRef(!!urlInitialViewport)
 
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
@@ -203,12 +226,23 @@ export function MapLibreMapComponent({
       // Sky/fog atmosphere
       map.setSky(getSkyConfig(!!isDark, timePeriod))
 
-      // Cinematic intro — only once per component lifetime
+      // Cinematic intro — only once per component lifetime.
+      // Wave 120 SW5: if URL provided a saved viewport, jumpTo it instead
+      // of running the cinematic intro (the URL viewport already matches
+      // what we set in initialViewState; jumpTo guarantees parity even if
+      // tiles loaded slowly). Otherwise, run the intro as before.
       if (!hasAnimatedIntro.current) {
         hasAnimatedIntro.current = true
         const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
-        if (prefersReduced) {
+        if (urlInitialViewport) {
+          map.jumpTo({
+            center: [urlInitialViewport.longitude, urlInitialViewport.latitude],
+            zoom: urlInitialViewport.zoom,
+            pitch: urlInitialViewport.pitch,
+            bearing: urlInitialViewport.bearing,
+          })
+        } else if (prefersReduced) {
           map.jumpTo({
             center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
             zoom: 16,
@@ -241,7 +275,35 @@ export function MapLibreMapComponent({
         introTimeoutRef.current = null
       }
     }
-  }, [mapRef, isDark, timePeriod])
+  }, [mapRef, isDark, timePeriod, urlInitialViewport])
+
+  /* ── URL-sync onMoveEnd handler (Wave 120 SW5) ── */
+  const handleMoveEnd = useCallback(
+    (evt: { originalEvent?: unknown }) => {
+      // Skip programmatic moves until first user interaction (intro / sky setup).
+      // After first user-initiated move, originalEvent is set on subsequent
+      // user events; we latch enableUrlSyncRef so even programmatic easeTo
+      // (e.g. building click) fires URL sync afterward.
+      if (!enableUrlSyncRef.current) {
+        if (evt.originalEvent) {
+          enableUrlSyncRef.current = true
+        } else {
+          return
+        }
+      }
+      const map = mapRef?.current?.getMap()
+      if (!map) return
+      const center = map.getCenter()
+      onMapMoveEnd?.({
+        zoom: map.getZoom(),
+        latitude: center.lat,
+        longitude: center.lng,
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
+      })
+    },
+    [mapRef, onMapMoveEnd]
+  )
 
   /* ── Update sky on theme/time-of-day change ── */
   useEffect(() => {
@@ -266,13 +328,23 @@ export function MapLibreMapComponent({
       <p className="sr-only">{t("a11y.mapKeyboardHint")}</p>
       <Map
         ref={mapRef}
-        initialViewState={{
-          longitude: CAMPUS_COORDINATES.lon,
-          latitude: CAMPUS_COORDINATES.lat,
-          zoom: 13,
-          pitch: 0,
-          bearing: -20,
-        }}
+        initialViewState={
+          urlInitialViewport
+            ? {
+                longitude: urlInitialViewport.longitude,
+                latitude: urlInitialViewport.latitude,
+                zoom: urlInitialViewport.zoom,
+                pitch: urlInitialViewport.pitch,
+                bearing: urlInitialViewport.bearing,
+              }
+            : {
+                longitude: CAMPUS_COORDINATES.lon,
+                latitude: CAMPUS_COORDINATES.lat,
+                zoom: 13,
+                pitch: 0,
+                bearing: -20,
+              }
+        }
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
         reuseMaps
@@ -281,6 +353,7 @@ export function MapLibreMapComponent({
           onDeselectBuilding()
           setActivePopupId(null)
         }}
+        onMoveEnd={handleMoveEnd}
         maxPitch={70}
       >
         {/* Generic 3D buildings (gray, surrounding area) */}
