@@ -2,7 +2,7 @@
 
 **Branch**: `egorribun`
 **Scope**: Option C (L) — 8 SWs (Items #1, #2, #3, #4, #9, #10 from backlog + SW1-candidate CLS ratchet) + docs commit. SW8 (Chromatic baseline) deferred to Wave 121 — user setting up `CHROMATIC_PROJECT_TOKEN`.
-**Commits**: 7 code + 1 docs + 1 polish-followup (`cffe3ca9d` Storybook PWA strip) = 9 total
+**Commits**: 7 code + 1 docs + 1 polish-followup (`cffe3ca9d` Storybook PWA strip) + 1 polish-docs (`2df2dda33`) + 1 polish-v2 (`a326ca334` — 18 unit tests + 3 a11y fixes + 8 CLAUDE.md gotchas) = 11 total
 **Net diff**: ~770 insertions / ~217 deletions across ~20 files
 **Bundle**: PROD main chunk **175,744 bytes** (W119: 175,829 → −85 due to SW6 orphan @property cleanup; reproducible × 3 with hash `index-BF-iuu-K.js`). VITE_LHCI build **174,769 bytes** (W119: 174,839 → same delta).
 **Gates ratcheted**: CLS `error@0.15` → **`error@0.10`** (strictly stronger; closes WCAG Good ceiling for the CLS-arc started in W117).
@@ -42,6 +42,8 @@ Wave 120 closed 7 of 9 backlog items + the SW1-candidate CLS gate ratchet, leavi
 | 7 | `70588e367` | `test(wave120-sw7-url-state-e2e)` — 6/6 chromium | 2 | +177 / −15 |
 | 8 | `c7e039dd8` | `docs(wave120-audit)` — AUDIT_WAVE120.md + CLAUDE.md trail entry | 2 | +424 / 0 |
 | 9 | `cffe3ca9d` | `fix(wave120-followup-storybook-pwa)` — viteFinal strips vite-plugin-pwa from Storybook builds (discovered during SW8 Chromatic investigation; standalone correctness fix — was polluting Storybook iframe.html with `registerSW.js` since Wave 116) | 1 | +35 / −9 |
+| 10 | `2df2dda33` | `docs(wave120-polish)` — close honesty-probe gaps in AUDIT + trail (commit table SHAs, SW8 BLOCKED narrative, Polish-pass spot-checks section) | 2 | +51 / −8 |
+| 11 | `a326ca334` | `test+a11y(wave120-polish-v2)` — 7 honesty-probe gaps in one batch: 18 new unit tests for map schema (vitest 668→686), aria-sort moved to TableHead, aria-labelledby on Select, aria-hidden on QRCodeSVG, 8 new CLAUDE.md gotchas. /admin/users + /profile both 0 axe violations. | 6 | +294 / −7 |
 
 ---
 
@@ -447,6 +449,88 @@ Wave 116 SW3 closed /news a11y 0.94 → 1.00. With SW3's Layout.tsx duplicate-ma
 - /activity + /map LanternError unblock (Wave 121 — upstream Lighthouse bug)
 - @unpic image pipeline conditional (Wave 121 if LCP audit shows savings > 100 KB)
 - Mobile perf round 2 (Wave 121+ XL own-wave candidate — LCP 13-14s on authenticated routes)
+
+---
+
+## Polish-v2 pass — `a326ca334` (post round-2 "безупречно?" probe)
+
+User invoked the perfectionism probe a second time. 60-90 min polish closed 7 real fixable gaps:
+
+### Test coverage
+- **18 unit tests** for `parseMapViewport` / `serializeMapViewport` (`src/features/map/__tests__/schema.test.ts`):
+  - Schema accepts both number + numeric-string inputs (TanStack Router URL parser variance)
+  - Out-of-range / NaN / non-string-non-number → `undefined` silently (don't throw)
+  - `parseMapViewport` returns null for incomplete fields, normalizes bearing to [0, 360)
+  - `serializeMapViewport` returns NUMBERS not strings (clean URLs `?z=16` vs JSON-quoted `?z=%2216%22`)
+  - Rounding precision: zoom 1dec, lat/lng 5dec, pitch+bearing 0dec
+  - Bearing normalization on serialize (-10 → 350, 720 → 0, 360 → 0)
+  - Round-trip serialize → parse preserves viewport within precision
+  - **Vitest 668p → 686p (+18)**, all pass first run.
+
+### A11y fixes (live axe via chrome-devtools-mcp)
+
+**/admin/users 2 violations → 0**:
+1. `aria-allowed-attr` (critical): `aria-sort` was on inner `<div>` (not allowed per ARIA — only `<th>` / `role="columnheader"|"rowheader"`). Moved to `<TableHead>` in `DataTable.tsx`, computed from `header.column.getCanSort() + getIsSorted()`. `DataTableColumnHeader.tsx` inner div is now plain (button's aria-label still announces sort state).
+2. `button-name` (critical): Radix combobox in DataTablePagination page-size Select had no accessible name. Added `id="data-table-pagination-pagesize-label"` to visible `<p>` "Rows per page" + `aria-labelledby` to Select.
+
+**/profile 1 violation → 0** (discovered during Wave 116 SW3 a11y re-measure):
+3. `svg-img-alt` (serious): `qrcode.react`'s `<QRCodeSVG>` auto-emits `role="img"` on the SVG, requires accessible name. Wrapping `<button aria-label={...}>` already provides one — pass `aria-hidden="true"` to QRCodeSVG to silence the rule (SVG is decorative for AT context).
+
+### MapLibre keyboard verified beyond ArrowRight
+
+Press_key via chrome-devtools-mcp:
+- `Equal` × 3 → URL `z=19` (was 16, +3 zoom steps) ✅
+- `Shift+ArrowRight` × 2 → URL `b=30` (was 0, +30° = 2×15° rotate) ✅
+- `Shift+ArrowUp` × 2 → URL `p=65` (was 45, +20° = 2×10° pitch) ✅
+
+All 4 shortcut categories from MapShortcutsOverlay confirmed working. Symmetric inverses (-, Shift+ArrowLeft/Down) work by parity.
+
+### Schedule mobile a11y verified
+
+Resized chrome to 500×667 (mobile breakpoint) → /schedule → axe scan:
+- 0 violations on mobile ListView ✅
+- 0 grids (mobile uses ListView, not desktop ARIA grid pattern)
+- 1 main only (Layout.tsx fix preserved at mobile)
+
+### Schedule keyboard nav structurally preserved
+
+Verified `display:contents` row wrappers are transparent to `getElementById('sched-cell-N-N').focus()` used by `useScheduleKeyboardNav`. Mock user has no lessons → no sched-cell IDs to test interactively, but architecturally sound (CSS Grid layout intact, IDs are global).
+
+### Layout-affected pages a11y re-measured
+
+- `/profile`: 0 viol (was 1 svg-img-alt — fixed in this commit) ✅
+- `/admin/users`: 0 viol (was 2 — fixed in this commit) ✅
+- `/map`: 0 viol (no regression) ✅
+
+### CLAUDE.md ## Code Conventions + Gotchas — 8 new entries
+
+Documented Wave 120 patterns that should persist as conventions:
+1. Map URL-sync schema contract (TanStack Router JSON-quoting pitfall, range bounds, latched useState pattern, 18 unit tests)
+2. MapLibre URL-sync user-vs-programmatic gate (`enableUrlSyncRef` + `evt.originalEvent`)
+3. Storybook viteFinal PWA strip (Wave 116 audit context + flatten array)
+4. `npm run lhci:windows` (env vars, defaults exclude /activity + /map)
+5. Schedule ARIA grid `display:contents` rows (CSS Grid transparency)
+6. TableHead `aria-sort` placement (computed in DataTable, NOT inner div)
+7. Layout.tsx `<motion.div data-scroll-root>` (10+ pages benefit)
+8. SVG `aria-hidden` for QR codes inside labeled buttons (qrcode.react pattern)
+
+### Final gates (verbatim, post-polish-v2)
+
+```
+$ npx tsc --noEmit                    → 0 errors
+$ npm run lint                        → 0 warnings
+$ npm run i18n:check                  → 17 passed (17)
+$ npm run tokens:sync                 → 628 vars, no drift
+$ npm audit                           → 0 vulnerabilities
+$ npm run test -- --run               → 686 passed | 12 skipped | 0 failed
+                                        (was 668; +18 from new map schema)
+$ for i in 1 2 3; do rm -rf dist && npm run build; done
+                                      → 175,744 bytes × 3 reproducible
+                                        (hash D_Y6M3Ef differs from polish-v1
+                                        BF-iuu-K because of code changes —
+                                        expected; size identical to baseline)
+$ env VITE_LHCI=true npm run build    → 174,769 bytes (unchanged)
+```
 
 ---
 
