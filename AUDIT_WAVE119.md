@@ -44,7 +44,7 @@ Wave 119 delivered five surgical commits on top of Wave 118's content-CLS pass:
 | 5 | `9e5f8381d` | `chore(wave119-sw5-transitive-overrides)` — bump serialize-javascript + uuid | 2 | +14 / −9 |
 | 6 | `71faf25e6` | `docs(wave119-audit)` — AUDIT_WAVE119.md + CLAUDE.md trail entry | 2 | +326 / −1 |
 | 7 | `7184da5dd` | `docs(wave119-polish)` — close 7 honesty-probe gaps + variance discovery | 1 | +168 / −22 |
-| 8 | `(this)` | `perf(wave119-sw7-install-panel-cls)` — close residual CLS arc + housekeeping | TBD | TBD |
+| 8 | `9803d9198` | `perf(wave119-sw7-install-panel-cls)` — close residual CLS arc + housekeeping | 3 | +112 / −18 |
 
 ---
 
