@@ -3,8 +3,8 @@ module github.com/university-ecosystem/gateway
 go 1.26.2
 
 require (
-	github.com/getsentry/sentry-go v0.45.1
-	github.com/getsentry/sentry-go/gin v0.45.1
+	github.com/getsentry/sentry-go v0.46.0
+	github.com/getsentry/sentry-go/gin v0.46.0
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
