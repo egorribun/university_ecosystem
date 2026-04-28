@@ -2,7 +2,7 @@
 
 **Branch**: `egorribun`
 **Scope**: Option C (L) — 8 SWs (Items #1, #2, #3, #4, #9, #10 from backlog + SW1-candidate CLS ratchet) + docs commit. SW8 (Chromatic baseline) deferred to Wave 121 — user setting up `CHROMATIC_PROJECT_TOKEN`.
-**Commits**: 7 code + 1 docs = 8 total
+**Commits**: 7 code + 1 docs + 1 polish-followup (`cffe3ca9d` Storybook PWA strip) = 9 total
 **Net diff**: ~770 insertions / ~217 deletions across ~20 files
 **Bundle**: PROD main chunk **175,744 bytes** (W119: 175,829 → −85 due to SW6 orphan @property cleanup; reproducible × 3 with hash `index-BF-iuu-K.js`). VITE_LHCI build **174,769 bytes** (W119: 174,839 → same delta).
 **Gates ratcheted**: CLS `error@0.15` → **`error@0.10`** (strictly stronger; closes WCAG Good ceiling for the CLS-arc started in W117).
@@ -40,7 +40,8 @@ Wave 120 closed 7 of 9 backlog items + the SW1-candidate CLS gate ratchet, leavi
 | 5 | `323c215ab` | `feat(wave120-sw5-map-url-sync)` | 4 | +257 / −11 |
 | 6 | `e956fa769` | `refactor(wave120-sw6-token-drift-audit)` | 5 | +19 / −33 |
 | 7 | `70588e367` | `test(wave120-sw7-url-state-e2e)` — 6/6 chromium | 2 | +177 / −15 |
-| 8 | (this) | `docs(wave120-audit)` — AUDIT_WAVE120.md + trail | TBD | TBD |
+| 8 | `c7e039dd8` | `docs(wave120-audit)` — AUDIT_WAVE120.md + CLAUDE.md trail entry | 2 | +424 / 0 |
+| 9 | `cffe3ca9d` | `fix(wave120-followup-storybook-pwa)` — viteFinal strips vite-plugin-pwa from Storybook builds (discovered during SW8 Chromatic investigation; standalone correctness fix — was polluting Storybook iframe.html with `registerSW.js` since Wave 116) | 1 | +35 / −9 |
 
 ---
 
@@ -272,11 +273,37 @@ SKIP_WEBSERVER=true URL_STATE_E2E=true \
 
 ---
 
-## SW8 — Chromatic baseline: DEFERRED to Wave 121
+## SW8 — Chromatic baseline: BLOCKED on Storybook 10 + Vite 8/Rolldown (deferred to Wave 121)
 
-User asked "как это сделать?" when prompted about `CHROMATIC_PROJECT_TOKEN` repo secret. Instructions provided in chat (sign in to chromatic.com → connect repo → copy token → add to Settings → Secrets). User confirmed deferring to Wave 121.
+**Initial state**: User asked "как это сделать?" when prompted about `CHROMATIC_PROJECT_TOKEN` repo secret. Setup steps provided (chromatic.com → connect repo → copy token).
 
-Wave 121 hand-off: Once token is in repo secrets + `vars.CHROMATIC_ENABLED='true'`, trigger via `gh workflow run chromatic` → accept first baseline. ~30 min execution.
+**Polish-pass attempt** (after initial deferral): User created Chromatic project + got token. Attempted `npx chromatic@13/16 --project-token=...` 3 times. All failed at "Verifying your Storybook" with:
+```
+Failed to extract stories from your Storybook
+Error: __STORYBOOK_MODULE_CORE_EVENTS_PREVIEW_ERRORS__ is not defined
+```
+
+**Root cause** (verified via local serve + chrome-devtools-mcp console + bundle inspection): Storybook iframe.html bundle does:
+```js
+const {ElementA11yParameterError:aY} = __STORYBOOK_MODULE_CORE_EVENTS_PREVIEW_ERRORS__
+```
+These globals are EXPECTED to be provided as bundle externals — typically by Storybook's Webpack/Rollup framework integration. With Vite 8 / Rolldown, the framework's external-injection mechanism doesn't fire. iframe.html only includes 2 scripts (`vite-inject-mocker-entry.js` + `assets/iframe-*.js`) — NO globals-init script anywhere.
+
+**Workarounds attempted (all failed)**:
+1. CLI v13 → v16 upgrade — same error
+2. Disable `@storybook/addon-vitest` — vite-inject-mocker-entry.js still emitted (it's from Storybook's vite-plugin-storybook-inject-mocker-runtime, NOT the addon)
+3. Strip vite-plugin-pwa via `viteFinal` hook — DID fix a separate PWA-pollution issue (see followup commit `cffe3ca9d`), but didn't solve globals-not-defined
+
+**Followup commit landed** (`cffe3ca9d` — `fix(wave120-followup-storybook-pwa)`):
+Standalone correctness fix discovered during investigation. `vite.config.mts` includes `VitePWA()` which Storybook's vite builder wires through unfiltered. Storybook iframe.html was getting `<script src="./registerSW.js">` injected + a `sw.js` generated. Wave 116 SW-Stretch unblocked the BUILD via workbox cap raise but never disabled PWA. Fix: `viteFinal` hook in `.storybook/main.ts` recursively flattens viteConfig.plugins (PWA returns multiple sub-plugins as nested array) + filters anything with `name.startsWith("vite-plugin-pwa")`. Verified: rebuilt storybook-static iframe.html — registerSW gone, no sw.js generated. Tests + lint green.
+
+**Wave 121 paths** (any of these):
+1. Wait for upstream fix — file Storybook issue OR check existing https://github.com/storybookjs/storybook/issues for Vite 8 / Rolldown compatibility
+2. Switch builder to `@storybook/builder-webpack5` — loses HMR speed, independent of Vite (~30-60 min experiment, RISK of major reconfig)
+3. Manual globals injection via `previewHead` in `.storybook/main.ts` — gross workaround, would set globals to empty objects (breaks any feature usage of those modules)
+4. Defer Chromatic indefinitely until Storybook + Vite 8/Rolldown integration matures
+
+**Status**: BLOCKED at runtime. Build artifacts upload OK to Chromatic CDN (12.72 MB → 4 files in 4s); only verification (story extraction) phase fails. Token saved by user; `CHROMATIC_ENABLED=true` repo variable still TBD. Full repro + workaround analysis in `memory/wave121_backlog.md` Item #1.
 
 ---
 
@@ -366,9 +393,25 @@ Lighthouse cycle-detection error on these URLs. Wave 116 honest deferral remains
 
 Only addressed clearly-safe drift (12 hardcoded → token + 3 orphan @property). Documented 4 deferred categories (cat-* duplication, font-size hardcodes, focus-ring tokens missing, scoped overrides intentional vs drift) for Wave 121 deeper pass.
 
-### ⚠ SW8 Chromatic deferred to Wave 121
+### ⚠ SW8 Chromatic BLOCKED by Storybook 10 + Vite 8/Rolldown bug (deferred to Wave 121)
 
-User-side env setup blocker. Provided setup instructions in chat. User confirmed deferring.
+Polish-pass attempt: User created project, got token, ran `npx chromatic@13/16` 3 times. All failed at story extraction with `__STORYBOOK_MODULE_CORE_EVENTS_PREVIEW_ERRORS__ is not defined`. Root cause: Storybook framework expects globals injected as bundle externals; Vite 8/Rolldown framework integration doesn't fire the injection. iframe.html ships only 2 scripts, no globals-init. Bonus discovery: vite-plugin-pwa was polluting Storybook builds (separate fix shipped as `cffe3ca9d`). 4 workaround paths documented in `memory/wave121_backlog.md` Item #1; full repro details in §SW8 above.
+
+### ⚠ Polish pass spot-checks done but not exhaustive
+
+After "безупречно?" probe, verified:
+- ✅ Layout.tsx-affected pages render OK: /profile (1 main, 0 landmark viol), /admin/users (1 main, 0 landmark viol), /map (1 main, MapLibre canvas alive)
+- ✅ Bundle reproducibility re-confirmed × 3 (175,744 bytes, hash `index-BF-iuu-K.js`)
+- ✅ Vitest re-confirmed (668p/12s/0f, baseline preserved)
+
+Found but NOT addressed:
+- 2 pre-existing axe violations on /admin/users (`aria-allowed-attr` on div with aria-sort=none, `button-name` on Radix combobox trigger). Not from Wave 120 — pre-existing. Filed implicit Wave 121 candidate.
+- ScheduleDesktopTable + MiniCalendar visual unchanged AT 1440×900 viewport only (verified during SW3). Other viewports NOT verified.
+- MapLibre `+`/`-` zoom + `Shift+arrow` rotate/pitch documented in MapShortcutsOverlay (SW4) but NOT verified to work — only ArrowRight verified via screenshot diff. Trusted MapLibre docs.
+
+### ⚠ Bundle delta: -85 bytes prod, -70 bytes LHCI from SW6 cleanup
+
+Smaller than expected. The 3 removed @property registrations + 4 removed assignments saved minimal bytes after Rolldown DCE — likely most was already eliminated. Net positive though (smaller bundle).
 
 ### ⚠ Bundle delta: -85 bytes prod, -70 bytes LHCI from SW6 cleanup
 
