@@ -1,0 +1,360 @@
+/**
+ * lhci-windows-fallback.mjs — permanent Windows-friendly LHCI wrapper.
+ *
+ * ## Why this exists
+ *
+ * `@lhci/cli` (invoked by `scripts/run-lhci.mjs` via `npx -y @lhci/cli@^0.15.1
+ * collect`) reliably hits `EPERM: operation not permitted, rmSync
+ * '\\?\C:\Temp\lighthouse.NNNNN'` on Windows. The error fires inside
+ * `chrome-launcher.destroyTmp` BEFORE the LHR is written to `.lighthouseci/`,
+ * so the entire `collect` phase aborts at the first URL — sub-batches via
+ * `LHCI_URLS=p1,p2` don't help (failure is per-URL, not per-batch).
+ *
+ * ## Origin
+ *
+ * Wave 119 SW2 (commit `da3f99199`) created `wave119-lhci-single.mjs` as
+ * scratch. Wave 119 polish + SW7 used it for full sweep verification.
+ * Per Wave 118 + Wave 119 plan pattern, the scratch script was deleted at
+ * end-of-wave. Wave 120 SW1 (Item #10) permanentizes it as this file —
+ * because every future wave on Windows hits the same EPERM, the wrapper
+ * needs to live in version control instead of being recreated each time.
+ *
+ * ## How it differs from `lhci collect`
+ *
+ * - **Embedded vite preview API** (NOT spawned subprocess): on Windows,
+ *   detached node child processes don't stay alive without TTY stdin.
+ *   `import { preview } from "vite"` keeps the server in this process.
+ * - **Direct `npx lighthouse` invocation per URL × per run**: lighthouse
+ *   writes the LHR JSON to `--output-path` BEFORE chrome-launcher's
+ *   destroyTmp runs, so the LHR survives EPERM. `lhci collect` instead
+ *   chains lighthouse + assertion-buffering, which loses the LHR if EPERM
+ *   fires before the buffer flushes.
+ * - **Median computed locally**: parses LHR JSONs from `.lighthouseci/`
+ *   and prints a 3-run median table per URL × per metric.
+ * - **No assertion phase**: this script measures + reports only. CI on Linux
+ *   still uses `npm run lhci` (which runs `collect` + `assert` together
+ *   with no EPERM there).
+ *
+ * ## Usage
+ *
+ *   # Full default sweep (7 URLs × 3 runs):
+ *   npm run lhci:windows
+ *
+ *   # Subset:
+ *   LHCI_URLS=,dashboard,events npm run lhci:windows  # /, /dashboard, /events
+ *   LHCI_URLS=login npm run lhci:windows              # /login only
+ *
+ *   # Skip rebuild (use existing dist/):
+ *   SKIP_BUILD=1 npm run lhci:windows
+ *
+ *   # Single run instead of 3:
+ *   LHCI_RUNS=1 npm run lhci:windows
+ *
+ *   # Custom port (default 4174 to match lhci-preview.mjs):
+ *   LHCI_PREVIEW_PORT=4175 npm run lhci:windows
+ *
+ * ## Environment honored
+ *
+ * - `LHCI_URLS`        — comma-separated URL paths; empty string maps to "/"
+ * - `LHCI_RUNS`        — runs per URL (default 3 for median; 1 for quick)
+ * - `LHCI_PREVIEW_PORT`— vite preview port (default 4174)
+ * - `LHCI_PREVIEW_HOST`— vite preview host (default 127.0.0.1)
+ * - `SKIP_BUILD`       — if set, skip `npm run build` (assumes dist/ exists)
+ * - `LHCI_THROTTLING`  — `devtools` (default) or `provided`
+ * - `LHCI_FORM_FACTOR` — `mobile` (default) or `desktop`
+ * - `VITE_LHCI`        — auto-set to "true" (auth bypass per `_auth.tsx`)
+ *
+ * ## Notes
+ *
+ * - /activity + /map remain Lighthouse LanternError-blocked per Wave 116
+ *   honest deferral; they are EXCLUDED from defaults here so the wrapper
+ *   doesn't fail on them. To measure anyway, pass `LHCI_URLS=activity,map`.
+ * - Bundle invariant: `npm run build` defaults to non-VITE_LHCI mode. This
+ *   wrapper sets `VITE_LHCI=true` BEFORE building, so dist/ is the LHCI
+ *   build (174,839 bytes; auth bypass tree-shaken out of prod).
+ */
+
+import { mkdir, readdir, readFile, rm } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import path from "node:path"
+import process from "node:process"
+import { spawn } from "node:child_process"
+import { fileURLToPath } from "node:url"
+import { preview } from "vite"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const frontendRoot = path.resolve(__dirname, "..")
+const distDir = path.join(frontendRoot, "dist")
+const lhrDir = path.join(frontendRoot, ".lighthouseci")
+
+// CRITICAL: set VITE_LHCI BEFORE any build invocation so Rolldown DCE
+// substitutes %VITE_LHCI% → "true" in dist/index.html (per run-build.mjs:74).
+// This enables auth bypass in _auth.tsx + InstallPrompt push-panel skip
+// (CLS-119-01) + InstallPrompt install-panel min-h reservation (CLS-119-02).
+process.env.VITE_LHCI = "true"
+
+const HOST = process.env.LHCI_PREVIEW_HOST ?? "127.0.0.1"
+const PORT = Number.parseInt(process.env.LHCI_PREVIEW_PORT ?? "4174", 10)
+const RUNS = Number.parseInt(process.env.LHCI_RUNS ?? "3", 10)
+const THROTTLING = process.env.LHCI_THROTTLING ?? "devtools"
+const FORM_FACTOR = process.env.LHCI_FORM_FACTOR ?? "mobile"
+
+// Wave 120 SW1 — defaults exclude /activity + /map (LanternError-blocked).
+// Use LHCI_URLS=activity,map to measure them anyway (will fail with cycle
+// detection error per upstream Lighthouse bug — Wave 121 Item #7).
+const DEFAULT_PATHS = ["/", "/login", "/dashboard", "/news", "/schedule", "/events", "/404"]
+
+// Wave 119 SW2 trim-empty-to-root pattern: empty string → "/" so callers
+// can sub-batch `LHCI_URLS=,dashboard,events` for root + 2 subroutes.
+// Wave 120 SW1: also normalize leading slash. `LHCI_URLS=404` without
+// slash works for run-lhci.mjs (staticDistDir mode normalizes internally),
+// but this wrapper hits a real `vite preview` URL — needs real `/path`.
+const normalizePath = (p) => {
+  const trimmed = p.trim()
+  if (!trimmed) return "/"
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+}
+const overridePaths = process.env.LHCI_URLS?.split(",")
+  .map(normalizePath)
+  .filter((p, i, arr) => arr.indexOf(p) === i) // dedupe
+const URL_PATHS = overridePaths?.length ? overridePaths : DEFAULT_PATHS
+
+function urlToFilename(urlPath) {
+  return urlPath === "/" ? "root" : urlPath.replace(/^\//, "").replace(/\//g, "_")
+}
+
+function median(values) {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+}
+
+async function runCommand(command, args, description, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: frontendRoot,
+      stdio: options.silent ? "pipe" : "inherit",
+      shell: true,
+      env: { ...process.env, ...(options.env ?? {}) },
+    })
+
+    let stdout = ""
+    let stderr = ""
+    if (options.silent) {
+      child.stdout?.on("data", (d) => (stdout += d.toString()))
+      child.stderr?.on("data", (d) => (stderr += d.toString()))
+    }
+
+    child.on("exit", (code) => {
+      if (code === 0) resolve({ stdout, stderr })
+      else reject(new Error(`${description} exited with code ${code}\n${stderr}`))
+    })
+    child.on("error", reject)
+  })
+}
+
+async function ensureBuild() {
+  if (process.env.SKIP_BUILD) {
+    if (!existsSync(distDir)) {
+      throw new Error("SKIP_BUILD set but dist/ missing — run `npm run build` first")
+    }
+    console.log(`[skip-build] using existing dist/ (set VITE_LHCI=true to ensure auth bypass)`)
+    return
+  }
+  console.log("[build] VITE_LHCI=true npm run build…")
+  await runCommand("npm", ["run", "build"], "vite build")
+  console.log("[build] preparing LHCI SPA route fallbacks…")
+  await runCommand("node", ["scripts/prepare-lhci-routes.mjs"], "prepare-lhci-routes")
+}
+
+async function startPreview() {
+  console.log(`[preview] starting vite preview on http://${HOST}:${PORT}/ …`)
+  const server = await preview({
+    root: frontendRoot,
+    preview: { host: HOST, port: PORT, strictPort: true },
+  })
+  return server
+}
+
+async function clearLhrDir() {
+  if (existsSync(lhrDir)) {
+    const files = await readdir(lhrDir)
+    await Promise.all(
+      files
+        .filter((f) => f.startsWith("lhr_"))
+        .map((f) => rm(path.join(lhrDir, f), { force: true }))
+    )
+  } else {
+    await mkdir(lhrDir, { recursive: true })
+  }
+}
+
+async function runLighthouse(url, runIndex) {
+  const urlName = urlToFilename(new URL(url).pathname)
+  const outputPath = path.join(lhrDir, `lhr_${urlName}_run${runIndex}.json`)
+
+  // Direct `npx lighthouse` invocation. The CLI writes the LHR to
+  // `--output-path` synchronously BEFORE chrome-launcher's destroyTmp
+  // attempts the rmSync that triggers EPERM on Windows. Even when EPERM
+  // fires, the LHR file already exists on disk, so the run is recoverable.
+  const args = [
+    "-y",
+    "lighthouse@12",
+    url,
+    `--output=json`,
+    `--output-path=${outputPath}`,
+    `--throttling-method=${THROTTLING}`,
+    `--form-factor=${FORM_FACTOR}`,
+    "--quiet",
+    "--only-categories=performance,accessibility,best-practices,seo",
+    // Quote chrome-flags value: shell: true on Windows mangles unquoted spaces.
+    `--chrome-flags="--no-sandbox --disable-dev-shm-usage --headless=new --disable-gpu"`,
+  ]
+
+  // Match run-lhci.mjs behavior: emulated mobile preset implies viewport.
+  if (FORM_FACTOR === "mobile") {
+    args.push(
+      "--screenEmulation.mobile=true",
+      "--screenEmulation.width=412",
+      "--screenEmulation.height=823",
+      "--screenEmulation.deviceScaleFactor=1.75"
+    )
+  }
+
+  try {
+    await runCommand("npx", args, `lighthouse ${url} run ${runIndex}`, { silent: true })
+  } catch (err) {
+    // Windows EPERM workaround — the LHR is on disk before destroyTmp fires.
+    // If the file exists despite the error, treat as recoverable.
+    if (existsSync(outputPath)) {
+      const stat = (await import("node:fs/promises")).then((m) => m.stat(outputPath))
+      const size = (await stat).size
+      if (size > 1000) {
+        console.log(`  [run ${runIndex}] EPERM but LHR survived (${size} bytes)`)
+        return outputPath
+      }
+    }
+    throw err
+  }
+  return outputPath
+}
+
+async function parseLhr(lhrPath) {
+  const raw = await readFile(lhrPath, "utf8")
+  const lhr = JSON.parse(raw)
+  return {
+    perf: lhr.categories?.performance?.score ?? null,
+    a11y: lhr.categories?.accessibility?.score ?? null,
+    bp: lhr.categories?.["best-practices"]?.score ?? null,
+    seo: lhr.categories?.seo?.score ?? null,
+    cls: lhr.audits?.["cumulative-layout-shift"]?.numericValue ?? null,
+    lcp: lhr.audits?.["largest-contentful-paint"]?.numericValue ?? null,
+    tbt: lhr.audits?.["total-blocking-time"]?.numericValue ?? null,
+  }
+}
+
+function formatRow(label, perf, cls, lcp, tbt, a11y) {
+  const isHeader = typeof perf === "string"
+  const fmtScore = (v) =>
+    isHeader || typeof v === "string"
+      ? String(v).padStart(5)
+      : v == null
+        ? "  -  "
+        : v.toFixed(2).padStart(5)
+  const fmtMs = (v) =>
+    isHeader || typeof v === "string"
+      ? String(v).padStart(6)
+      : v == null
+        ? "    - "
+        : `${Math.round(v)}ms`.padStart(6)
+  const fmtCls = (v) =>
+    isHeader || typeof v === "string"
+      ? String(v).padStart(5)
+      : v == null
+        ? "  -  "
+        : v.toFixed(3).padStart(5)
+  return `${label.padEnd(14)} | ${fmtScore(perf)} | ${fmtCls(cls)} | ${fmtMs(lcp)} | ${fmtMs(tbt)} | ${fmtScore(a11y)}`
+}
+
+async function main() {
+  const startTime = Date.now()
+
+  console.log(`[wave-120-sw1] lhci-windows-fallback.mjs`)
+  console.log(`  URLs:        ${URL_PATHS.join(", ")}`)
+  console.log(`  Runs:        ${RUNS}`)
+  console.log(`  Throttling:  ${THROTTLING}`)
+  console.log(`  Form-factor: ${FORM_FACTOR}`)
+  console.log(`  Preview:     http://${HOST}:${PORT}/`)
+  console.log()
+
+  await ensureBuild()
+  await clearLhrDir()
+  const server = await startPreview()
+
+  const baseUrl = `http://${HOST}:${PORT}`
+  const results = new Map() // url → array of metrics per run
+
+  try {
+    for (const urlPath of URL_PATHS) {
+      const url = `${baseUrl}${urlPath === "/" ? "" : urlPath}`
+      const runs = []
+      console.log(`\n[measure] ${urlPath}`)
+      for (let i = 1; i <= RUNS; i++) {
+        try {
+          const lhrPath = await runLighthouse(url, i)
+          const metrics = await parseLhr(lhrPath)
+          runs.push(metrics)
+          console.log(
+            `  run ${i}: perf=${metrics.perf?.toFixed(2)} cls=${metrics.cls?.toFixed(3)} lcp=${Math.round(metrics.lcp ?? 0)}ms tbt=${Math.round(metrics.tbt ?? 0)}ms a11y=${metrics.a11y?.toFixed(2)}`
+          )
+        } catch (err) {
+          // Full error message including stderr — shortened first-line
+          // version was hiding root cause (e.g. shell-quoting bugs in
+          // Wave 120 SW1 dev).
+          console.warn(`  run ${i}: FAILED`)
+          console.warn(`    ${err.message.replace(/\n/g, "\n    ")}`)
+          runs.push(null)
+        }
+      }
+      results.set(urlPath, runs)
+    }
+  } finally {
+    console.log(`\n[preview] stopping vite preview…`)
+    await server.close()
+  }
+
+  // Print median summary table.
+  console.log("\n" + "=".repeat(80))
+  console.log(
+    `MEDIAN (${RUNS}-run) ${FORM_FACTOR} preset, ${THROTTLING} throttling, VITE_LHCI=true build`
+  )
+  console.log("=".repeat(80))
+  console.log(formatRow("URL", "Perf", "CLS", "LCP", "TBT", "A11y"))
+  console.log("-".repeat(80))
+
+  for (const [urlPath, runs] of results) {
+    const valid = runs.filter((r) => r != null)
+    if (valid.length === 0) {
+      console.log(`${urlPath.padEnd(14)} | (all runs failed)`)
+      continue
+    }
+    const perfMed = median(valid.map((r) => r.perf).filter((v) => v != null))
+    const clsMed = median(valid.map((r) => r.cls).filter((v) => v != null))
+    const lcpMed = median(valid.map((r) => r.lcp).filter((v) => v != null))
+    const tbtMed = median(valid.map((r) => r.tbt).filter((v) => v != null))
+    const a11yMed = median(valid.map((r) => r.a11y).filter((v) => v != null))
+    console.log(formatRow(urlPath, perfMed, clsMed, lcpMed, tbtMed, a11yMed))
+  }
+
+  const elapsedMin = ((Date.now() - startTime) / 60000).toFixed(1)
+  console.log("=".repeat(80))
+  console.log(`Total elapsed: ${elapsedMin} min`)
+  console.log(`LHRs saved to: ${path.relative(frontendRoot, lhrDir)}/`)
+}
+
+main().catch((err) => {
+  console.error("\n[lhci-windows-fallback] fatal:", err)
+  process.exitCode = 1
+})

@@ -25,6 +25,7 @@
     "i18n:check": "vitest run src/tests/translationParity.test.ts",
     "test:e2e": "playwright test",
     "lhci": "node ./scripts/run-lhci.mjs",
+    "lhci:windows": "node ./scripts/lhci-windows-fallback.mjs",
     "analyze": "ANALYZE=1 vite build",
     "lint-staged": "lint-staged",
     "prepare": "husky ../.husky",
