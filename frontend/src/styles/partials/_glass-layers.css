@@ -37,11 +37,9 @@
   inherits: true;
 }
 
-@property --aurora-hue {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
+/* --aurora-hue removed (Wave 120 SW6) — registered as @property but never
+   assigned or read anywhere. Aurora animations use direct color-mix() in
+   keyframes instead of via the registered angle property. */
 
 /* ── Decorative Orb Keyframes ─────────────────────────────
  * Wave 43→45: CSS-only decorative loops. Slowed ~25% for subtlety.

@@ -844,7 +844,7 @@
 
 .sched-empty-cell {
   border: 1px solid var(--sched-empty-border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-sm);
   min-height: 4.5rem;
   background: var(--sched-empty-bg)
     radial-gradient(
@@ -1407,7 +1407,7 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.75rem 0.5rem;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-sm);
   border: 1px dashed var(--sched-empty-border);
   background: var(--sched-empty-bg);
   color: var(--text-secondary);
