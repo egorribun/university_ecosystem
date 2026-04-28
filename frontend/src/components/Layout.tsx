@@ -15,9 +15,16 @@ const Layout = ({ children, className }: LayoutProps) => {
   const isOnline = useOnlineStatus()
   const { t } = useTranslation("system")
 
+  // Wave 120 SW3 (a11y/ARIA): switched `<motion.main id="main">` to
+  // `<motion.div>` to fix duplicate main landmark — MainLayout already
+  // provides `<main id="main-content">` at the page level. The inner
+  // `id="main"` was orphan in production (only `tests/accessibility/skipLink.test.tsx`
+  // referenced it via fixture HTML; production skip link points at
+  // `#main-content`). Closes axe `landmark-no-duplicate-main` +
+  // `landmark-main-is-top-level` + `landmark-unique` violations on /schedule
+  // (and same global issue on every page using PageLayout — 10+ callsites).
   return (
-    <motion.main
-      id="main"
+    <motion.div
       data-scroll-root
       tabIndex={-1}
       initial="hidden"
@@ -40,7 +47,7 @@ const Layout = ({ children, className }: LayoutProps) => {
         )}
       </AnimatePresence>
       {children}
-    </motion.main>
+    </motion.div>
   )
 }
 

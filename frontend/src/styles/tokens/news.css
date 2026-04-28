@@ -255,7 +255,7 @@
   .news-article-body pre {
     margin-block: var(--news-paragraph-spacing);
     padding: 1rem 1.25rem;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-sm);
     background: var(--bg-matte-list, oklch(0.95 0 0));
     border: 1px solid var(--glass-border);
     overflow-x: auto;
@@ -317,7 +317,7 @@
   .news-article-body img {
     max-width: 100%;
     height: auto;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-sm);
     margin-block: var(--news-paragraph-spacing);
   }
 

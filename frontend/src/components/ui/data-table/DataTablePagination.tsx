@@ -19,7 +19,9 @@ export function DataTablePagination<TData>({ table }: DataTablePaginationProps<T
       </div>
       <div className="flex items-center space-x-6 lg:space-x-8">
         <div className="flex items-center space-x-2">
-          <p className="text-sm font-medium">{t("common:pagination.rowsPerPage")}</p>
+          <p className="text-sm font-medium" id="data-table-pagination-pagesize-label">
+            {t("common:pagination.rowsPerPage")}
+          </p>
           <Select
             value={`${table.getState().pagination.pageSize}`}
             onValueChange={(value) => {
@@ -30,6 +32,10 @@ export function DataTablePagination<TData>({ table }: DataTablePaginationProps<T
               value: `${pageSize}`,
             }))}
             className="h-8 w-20"
+            // Wave 120 polish-v2 — connect the visible label via aria-labelledby
+            // so the combobox button has an accessible name (axe `button-name`
+            // failed on /admin/users without this).
+            aria-labelledby="data-table-pagination-pagesize-label"
           />
         </div>
         <div className="flex w-24 items-center justify-center text-sm font-medium">

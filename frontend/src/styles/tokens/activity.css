@@ -17,12 +17,6 @@
   inherits: true;
   initial-value: transparent;
 }
-@property --activity-card-glow {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: transparent;
-}
-
 @layer base {
   /* ═══════════════════════════════════════════════════════
      ACTIVITY PAGE TOKENS
@@ -67,7 +61,6 @@
       0 2px 4px color-mix(in srgb, black 6%, transparent),
       0 8px 24px color-mix(in srgb, black 5%, transparent),
       inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
-    --activity-card-glow: color-mix(in srgb, var(--color-emerald-400) 8%, transparent);
 
     /* ── Status accent colors ─────────────────────── */
     --activity-present-accent: var(--color-emerald-500);
@@ -147,7 +140,6 @@
       var(--color-emerald-500) 50%,
       transparent 90%
     );
-    --activity-card-glow: color-mix(in srgb, var(--color-emerald-400) 12%, transparent);
     --activity-timeline-line: color-mix(in srgb, var(--color-slate-600) 50%, transparent);
     --activity-selector-bg: color-mix(in srgb, var(--bg-surface) 85%, var(--color-slate-700) 15%);
     --activity-skeleton-bg: color-mix(

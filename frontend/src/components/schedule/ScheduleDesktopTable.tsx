@@ -1,7 +1,6 @@
 import { useMemo, useRef, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Plus as AddIcon, Calendar as TodayIcon } from "lucide-react"
-import { Fragment } from "react"
 import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { cn } from "@/utils/cn"
@@ -105,83 +104,101 @@ export function ScheduleDesktopTable({
             minWidth: `calc(var(--sched-grid-header-w) + ${visibleDays.length} * var(--sched-grid-col-min))`,
           }}
         >
-          {/* ── Header row ──────────────────────────────── */}
-          <div
-            role="columnheader"
-            aria-colindex={1}
-            className="sched-sticky-col sched-sticky-header flex items-center justify-center border-b border-r px-2 py-3 text-xs font-bold text-text-muted-subtle"
-            style={{ borderColor: "var(--sched-grid-border)" }}
-          >
-            {t("schedule:table.rowNumber", { defaultValue: "№" })}
-          </div>
-          {visibleDays.map(({ day, idx, label }, colI) => {
-            const isTodayCol = hasToday && idx === todayIdx
-            return (
-              <div
-                key={day}
-                role="columnheader"
-                aria-colindex={colI + 2}
-                aria-current={isTodayCol ? "date" : undefined}
-                className={cn(
-                  "sched-column-item sched-sticky-header sched-day-snap flex items-center justify-center gap-2 border-b px-3 py-3 text-sm font-semibold",
-                  isTodayCol && "sched-today-header"
-                )}
-                style={
-                  {
-                    "--sched-col-i": colI,
-                    borderColor: "var(--sched-grid-border)",
-                  } as React.CSSProperties
-                }
-              >
-                <span className={cn("tracking-tight", isTodayCol && "text-brand font-bold")}>
-                  {label}
-                </span>
-                {isTodayCol && (
-                  <span className="sched-today-badge inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] shadow-glow-primary">
-                    <TodayIcon size={9} aria-hidden="true" />
-                    {t("schedule:toolbar.today", { defaultValue: "" })}
+          {/* ── Header row ────────────────────────────────────────────────
+              Wave 120 SW3 (a11y/ARIA): wrapped header cells + each data
+              row in `role="row"` containers with `display: contents` so
+              CSS Grid layout is preserved (row is "transparent" to grid)
+              while satisfying ARIA grid spec — `role="grid"` requires
+              `role="row"` children, `role="columnheader"`/`rowheader`/
+              `gridcell` require `role="row"` parent. Closes axe
+              `aria-required-children` + `aria-required-parent`.
+          */}
+          <div role="row" aria-rowindex={1} style={{ display: "contents" }}>
+            <div
+              role="columnheader"
+              aria-colindex={1}
+              className="sched-sticky-col sched-sticky-header flex items-center justify-center border-b border-r px-2 py-3 text-xs font-bold text-text-muted-subtle"
+              style={{ borderColor: "var(--sched-grid-border)" }}
+            >
+              {t("schedule:table.rowNumber", { defaultValue: "№" })}
+            </div>
+            {visibleDays.map(({ day, idx, label }, colI) => {
+              const isTodayCol = hasToday && idx === todayIdx
+              return (
+                <div
+                  key={day}
+                  role="columnheader"
+                  aria-colindex={colI + 2}
+                  aria-current={isTodayCol ? "date" : undefined}
+                  className={cn(
+                    "sched-column-item sched-sticky-header sched-day-snap flex items-center justify-center gap-2 border-b px-3 py-3 text-sm font-semibold",
+                    isTodayCol && "sched-today-header"
+                  )}
+                  style={
+                    {
+                      "--sched-col-i": colI,
+                      borderColor: "var(--sched-grid-border)",
+                    } as React.CSSProperties
+                  }
+                >
+                  <span className={cn("tracking-tight", isTodayCol && "text-brand font-bold")}>
+                    {label}
                   </span>
-                )}
-                {canEdit && (
-                  <button
-                    type="button"
-                    aria-label={t("schedule:actions.addLesson", { day: label })}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setAddDay(day)
-                      openDialog("add")
-                    }}
-                  >
-                    <AddIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
+                  {isTodayCol && (
+                    <span className="sched-today-badge inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] shadow-glow-primary">
+                      <TodayIcon size={9} aria-hidden="true" />
+                      {t("schedule:toolbar.today", { defaultValue: "" })}
+                    </span>
+                  )}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      aria-label={t("schedule:actions.addLesson", { day: label })}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setAddDay(day)
+                        openDialog("add")
+                      }}
+                    >
+                      <AddIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* ── Empty state ─────────────────────────────────────────────
+              Wrapped in `role="row"` + `role="gridcell"` (spanning all cols)
+              so the grid still satisfies aria-required-children when no
+              data rows exist (Wave 120 SW3).
+          */}
+          {isEmpty && (
+            <div role="row" aria-rowindex={2} style={{ display: "contents" }}>
+              <div
+                role="gridcell"
+                aria-colindex={1}
+                style={{ gridColumn: `1 / -1` }}
+                className="flex items-center justify-center px-6 py-16"
+              >
+                {!isOnline && rawSchedule.length === 0 ? (
+                  <OfflineFallback onRetry={refresh} />
+                ) : (
+                  <EmptyState
+                    icon={
+                      <div className="sched-empty-icon relative">
+                        <TodayIcon size={28} />
+                        <div className="sched-empty-ring" />
+                      </div>
+                    }
+                    title={t("schedule:table.noLessons")}
+                    description={t("schedule:empty.selectGroup", {
+                      defaultValue: "Select a group to view the schedule",
+                    })}
+                  />
                 )}
               </div>
-            )
-          })}
-
-          {/* ── Empty state ───────────────────────────────── */}
-          {isEmpty && (
-            <div
-              style={{ gridColumn: `1 / -1` }}
-              className="flex items-center justify-center px-6 py-16"
-            >
-              {!isOnline && rawSchedule.length === 0 ? (
-                <OfflineFallback onRetry={refresh} />
-              ) : (
-                <EmptyState
-                  icon={
-                    <div className="sched-empty-icon relative">
-                      <TodayIcon size={28} />
-                      <div className="sched-empty-ring" />
-                    </div>
-                  }
-                  title={t("schedule:table.noLessons")}
-                  description={t("schedule:empty.selectGroup", {
-                    defaultValue: "Select a group to view the schedule",
-                  })}
-                />
-              )}
             </div>
           )}
 
@@ -193,11 +210,15 @@ export function ScheduleDesktopTable({
             }))
 
             return (
-              <Fragment key={`row-${rowIdx}`}>
+              <div
+                key={`row-${rowIdx}`}
+                role="row"
+                aria-rowindex={rowIdx + 2}
+                style={{ display: "contents" }}
+              >
                 {/* Row number — sticky left */}
                 <div
                   role="rowheader"
-                  aria-rowindex={rowIdx + 2}
                   aria-colindex={1}
                   className="sched-sticky-col flex items-center justify-center border-b border-r px-2 py-2 text-xs font-bold text-text-secondary"
                   style={{ borderColor: "var(--sched-grid-border)" }}
@@ -217,7 +238,6 @@ export function ScheduleDesktopTable({
                         id={`sched-cell-${rowIdx}-${colI}`}
                         role="gridcell"
                         tabIndex={-1}
-                        aria-rowindex={rowIdx + 2}
                         aria-colindex={colI + 2}
                         aria-label={t("schedule:table.emptyCell", {
                           day: visibleDays[colI]?.label ?? "",
@@ -254,7 +274,6 @@ export function ScheduleDesktopTable({
                       id={`sched-cell-${rowIdx}-${colI}`}
                       role="gridcell"
                       tabIndex={-1}
-                      aria-rowindex={rowIdx + 2}
                       aria-colindex={colI + 2}
                       className={cn(
                         "sched-grid-cell sched-day-snap relative border-b outline-none",
@@ -287,7 +306,7 @@ export function ScheduleDesktopTable({
                     </div>
                   )
                 })}
-              </Fragment>
+              </div>
             )
           })}
         </div>
