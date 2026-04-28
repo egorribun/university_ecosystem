@@ -229,10 +229,10 @@ async function runLighthouse(url, runIndex) {
     // Windows EPERM workaround — the LHR is on disk before destroyTmp fires.
     // If the file exists despite the error, treat as recoverable.
     if (existsSync(outputPath)) {
-      const stat = (await import("node:fs/promises")).then((m) => m.stat(outputPath))
-      const size = (await stat).size
-      if (size > 1000) {
-        console.log(`  [run ${runIndex}] EPERM but LHR survived (${size} bytes)`)
+      const fsPromises = await import("node:fs/promises")
+      const stat = await fsPromises.stat(outputPath)
+      if (stat.size > 1000) {
+        console.log(`  [run ${runIndex}] EPERM but LHR survived (${stat.size} bytes)`)
         return outputPath
       }
     }
