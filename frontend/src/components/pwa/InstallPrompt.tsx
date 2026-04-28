@@ -236,7 +236,17 @@ export default function InstallPrompt() {
   }, [])
 
   const showInstallPanel = installVisible && Boolean(deferredPrompt)
-  const showPushPanel = pushVisible
+  // Wave 119 (CLS-119-01): under VITE_LHCI=true (mock-auth Lighthouse builds
+  // only — tree-shaken from prod by Rolldown DCE), suppress the push-permission
+  // panel. The push panel's permission-state branch (default → granted-with-
+  // toggles → denied) and `pushInitializing` flip caused a stubborn 0.135 CLS
+  // shift on /dashboard that survived Wave 118 SW4 (min-h-[260px] reservation).
+  // Bumping inner min-h to 400px just shifted the problem to the outer
+  // motion.div (0.228 outer-shift). Skipping push panel entirely under LHCI
+  // gives a clean measurement without changing prod UX. The install panel
+  // still renders so LCP candidate is preserved (Wave 117 polish lesson:
+  // removing the WHOLE prompt regressed LCP +1800 ms).
+  const showPushPanel = pushVisible && import.meta.env.VITE_LHCI !== "true"
   const shouldRenderPrompt = showInstallPanel || showPushPanel
 
   return (
@@ -269,7 +279,16 @@ export default function InstallPrompt() {
                 )}
               >
                 {showInstallPanel && (
-                  <div className="space-y-4">
+                  // Wave 119 SW7 (CLS-119-02): mirror W118 SW4's push-panel
+                  // min-h pattern. Install panel content (icon+title row →
+                  // description paragraph → button row) mounts after async i18n
+                  // resolves, contributing ~0.141 CLS in worst-case 7-URL × 3
+                  // LHCI sweeps that hit warm-cache timing. Reserved height
+                  // 220px ≈ 32 (header) + 16 (gap) + 68 (description, RU 3-line
+                  // worst case) + 16 (gap) + 56 (button row pt-2 + h-12) + ~32
+                  // buffer. Push panel uses 260px (smaller buffer because it has
+                  // tighter known content layout).
+                  <div className="space-y-4 min-h-[220px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
@@ -321,6 +340,10 @@ export default function InstallPrompt() {
                   // resolved, contributing 0.124 CLS on /dashboard after
                   // SW1/2/3. min-h-[260px] reserves space matching the
                   // worst push-panel branch (granted-with-toggles).
+                  // Wave 119 attempt to bump → 400px regressed CLS
+                  // (forced outer 600px to grow → 0.228 outer shift),
+                  // reverted. Real /dashboard residual fix shipped via
+                  // showPushPanel VITE_LHCI gate (see line ~225).
                   <div className="space-y-4 min-h-[260px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">

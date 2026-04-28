@@ -90,7 +90,13 @@ async function createConfig() {
   // Wave 116 SW3 switches LHCI to authenticated mode via VITE_LHCI=true bypass
   // in _auth.tsx + useProfileSync.ts. Optional LHCI_URLS env var narrows the
   // set for focused iteration (Windows EPERM mitigation — Wave 113 note).
+  // Wave 119 SW2 — added "/" and "/404" so all scorable URLs measure.
+  // /activity + /map remain Lighthouse LanternError-blocked (Wave 116 honest
+  // deferral); included in defaults so CI surface is the same as auth-bypass
+  // sweep but expect those audits to fail under Lighthouse — investigate or
+  // skip per Wave 120+ scope.
   const defaultPaths = [
+    "/",
     "/login",
     "/dashboard",
     "/news",
@@ -98,9 +104,14 @@ async function createConfig() {
     "/events",
     "/activity",
     "/map",
+    "/404",
   ]
+  // Wave 119 SW2 — empty string trims to "/" so callers can measure root via
+  // LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading slashes
+  // in /-paths are mangled to git-bash absolute paths). Without this map,
+  // .filter(Boolean) drops "" and root never gets measured.
   const overridePaths = process.env.LHCI_URLS?.split(",")
-    .map((p) => p.trim())
+    .map((p) => p.trim() || "/")
     .filter(Boolean)
   const targetPaths = overridePaths?.length ? overridePaths : defaultPaths
   const collect = {
@@ -137,15 +148,23 @@ async function createConfig() {
       // SW1-SW4 dropped CLS 86%+ on authenticated routes by addressing
       // four content-shift culprits (footer anchor, InstallPrompt
       // bottom-anchored variable height, EventsBackdrop %-based sizing,
-      // Dashboard hero + dash-tilt-card growing-content). Wave 118
-      // measured medians: /dashboard 0.44, /events 0.52, /news 0.58 —
-      // floor = min(0.44) - 0.05 safety - 0.09 variance margin = 0.30.
-      // Still NOT the target; the bar should keep ratcheting as content-
-      // CLS culprits get addressed. A11y/BP/SEO already production-grade
-      // (error@0.95).
+      // Dashboard hero + dash-tilt-card growing-content). Wave 119 SW3 —
+      // ratcheted Perf 0.30 → 0.40 + flipped CLS warn@0.1 → error@0.15.
+      // Wave 119 SW2 3-run medians (mobile, devtools throttling):
+      //   / 0.45/CLS 0.061 | /login 0.57/0.022 | /dashboard 0.46/0.061 |
+      //   /news 0.53/0.006 | /schedule 0.52/0.003 | /events 0.48/0.062 |
+      //   /404 0.54/0.000.
+      // Perf floor = min(0.45) − 0.05 safety = 0.40 (matches plan
+      // decision tree "Any Perf < 0.50 → floor = min − 0.05").
+      // CLS floor = 0.15 because worst 3-run CLS = 0.062 (/events) +
+      // typical 0.04 variance lands at 0.10 = right at boundary —
+      // error@0.15 has 8pt margin while still being strictly stronger
+      // than warn@0.1 (warn never blocked CI). Wave 120+ should aim
+      // for error@0.1 once /events + /dashboard residual shifts close.
+      // A11y/BP/SEO already production-grade (error@0.95).
       assert: {
         assertions: {
-          "categories:performance": ["error", { minScore: 0.3 }],
+          "categories:performance": ["error", { minScore: 0.4 }],
           "categories:accessibility": ["error", { minScore: 0.95 }],
           "categories:best-practices": ["error", { minScore: 0.95 }],
           "categories:seo": ["error", { minScore: 0.9 }],
@@ -155,8 +174,8 @@ async function createConfig() {
           ],
           "total-blocking-time": ["warn", { maxNumericValue: 200, aggregationMethod: "median" }],
           "cumulative-layout-shift": [
-            "warn",
-            { maxNumericValue: 0.1, aggregationMethod: "median" },
+            "error",
+            { maxNumericValue: 0.15, aggregationMethod: "median" },
           ],
         },
       },
