@@ -23,11 +23,14 @@ export function DataTableColumnHeader<TData, TValue>({
   }
 
   const sortDirection = column.getIsSorted()
-  const ariaSortValue =
-    sortDirection === "asc" ? "ascending" : sortDirection === "desc" ? "descending" : "none"
 
+  // Wave 120 polish-v2 — `aria-sort` moved to the parent `<TableHead>`
+  // (`<th>`) in DataTable.tsx where it's valid per ARIA spec. Setting it on
+  // an inner `<div>` triggered axe `aria-allowed-attr` (only allowed on
+  // `<th>` or elements with role="columnheader"/"rowheader"). Button's
+  // aria-label below still announces sort state to screen readers.
   return (
-    <div className={cn("flex items-center space-x-2", className)} aria-sort={ariaSortValue}>
+    <div className={cn("flex items-center space-x-2", className)}>
       <Button
         variant="ghost"
         size="sm"

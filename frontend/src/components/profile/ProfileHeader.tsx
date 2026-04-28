@@ -194,7 +194,11 @@ export const ProfileHeader = ({
             onClick={onQrClick}
             aria-label={t("profile:labels.viewQR")}
           >
-            <QRCodeSVG value={vCardData} size={64} />
+            {/* Wave 120 polish-v2 — aria-hidden because the wrapping
+                <button> already provides the accessible name via aria-label.
+                Without this, qrcode.react's auto-emitted role="img" on the
+                SVG triggers axe `svg-img-alt` (no <title> or aria-label). */}
+            <QRCodeSVG value={vCardData} size={64} aria-hidden="true" />
           </button>
           <div className="flex flex-col gap-2">
             <p className="text-xs text-(--text-secondary) leading-relaxed">

@@ -67,8 +67,20 @@ export function DataTable<TData, TValue>({ columns, data }: DataTableProps<TData
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
+                  // Wave 120 polish-v2 — `aria-sort` belongs on the
+                  // `<th>` (TableHead) per ARIA spec, NOT the inner div.
+                  // axe-core `aria-allowed-attr` flagged the prior placement
+                  // on /admin/users. Compute here from column sort state.
+                  const sortDir = header.column.getCanSort() ? header.column.getIsSorted() : false
+                  const ariaSort = !header.column.getCanSort()
+                    ? undefined
+                    : sortDir === "asc"
+                      ? "ascending"
+                      : sortDir === "desc"
+                        ? "descending"
+                        : "none"
                   return (
-                    <TableHead key={header.id} colSpan={header.colSpan}>
+                    <TableHead key={header.id} colSpan={header.colSpan} aria-sort={ariaSort}>
                       {header.isPlaceholder
                         ? null
                         : flexRender(header.column.columnDef.header, header.getContext())}
