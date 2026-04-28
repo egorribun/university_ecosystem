@@ -134,47 +134,87 @@ export function ScheduleMiniCalendar({
         ))}
       </div>
 
-      {/* ── Day grid ──────────────────────────────────── */}
-      <div className="grid grid-cols-7 gap-0.5" role="grid" aria-label={monthLabel}>
-        {/* Loading skeleton (FIX-67-07) */}
-        {isLoading ? (
-          Array.from({ length: 35 }).map((_, i) => (
-            <div
-              key={`skel-${i}`}
-              className="flex h-8 items-center justify-center"
-              role="presentation"
-            >
-              {/* THEME-71-03: use sched-skeleton-shimmer instead of Tailwind animate-pulse */}
-              <div className="h-6 w-6 sched-skeleton-shimmer rounded-full" />
-            </div>
-          ))
-        ) : (
-          <>
-            {/* Empty cells for offset */}
-            {Array.from({ length: firstDayOffset }).map((_, i) => (
-              <div key={`empty-${i}`} className="h-8" role="presentation" />
-            ))}
-            {/* Day cells */}
-            {days.map((day) => {
-              const isToday = isCurrentMonth && day === todayDate
-              const fullDate = new Date(year, monthIdx, day)
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  className="sched-cal-day text-text-primary"
-                  data-today={isToday ? "true" : undefined}
-                  data-has-lessons={lessonDays.has(day) ? "true" : undefined}
-                  aria-label={dayFormatter.format(fullDate)}
-                  aria-current={isToday ? "date" : undefined}
-                  onClick={() => handleDayClick(day)}
+      {/* ── Day grid ──────────────────────────────────────────────────
+          Wave 120 SW3 (a11y/ARIA): added `role="row"` week wrappers (with
+          `display: contents` so CSS Grid layout is preserved) + `role="gridcell"`
+          on all cells. ARIA grid pattern requires row containers; date-picker
+          variant per WAI-ARIA APG. `aria-busy="true"` during loading
+          suppresses aria-required-children check while skeleton renders.
+          Closes axe `aria-required-children` on monthLabel grid.
+      */}
+      <div
+        className="grid grid-cols-7 gap-0.5"
+        role="grid"
+        aria-label={monthLabel}
+        aria-busy={isLoading ? "true" : undefined}
+      >
+        {isLoading
+          ? Array.from({ length: 35 }).map((_, i) => (
+              <div
+                key={`skel-${i}`}
+                className="flex h-8 items-center justify-center"
+                role="presentation"
+              >
+                {/* THEME-71-03: use sched-skeleton-shimmer instead of Tailwind animate-pulse */}
+                <div className="h-6 w-6 sched-skeleton-shimmer rounded-full" />
+              </div>
+            ))
+          : (() => {
+              // Build flat cell array (offset + days), then chunk into weeks
+              type Cell = { kind: "empty"; key: string } | { kind: "day"; day: number }
+              const cells: Cell[] = []
+              for (let i = 0; i < firstDayOffset; i++) {
+                cells.push({ kind: "empty", key: `offset-${i}` })
+              }
+              for (const day of days) {
+                cells.push({ kind: "day", day })
+              }
+              // Chunk into weeks of 7 (last week may be partial; that's OK
+              // per ARIA grid spec — rows can have variable cell counts).
+              const weeks: Cell[][] = []
+              for (let i = 0; i < cells.length; i += 7) {
+                weeks.push(cells.slice(i, i + 7))
+              }
+              return weeks.map((week, weekI) => (
+                <div
+                  key={`week-${weekI}`}
+                  role="row"
+                  aria-rowindex={weekI + 1}
+                  style={{ display: "contents" }}
                 >
-                  {day}
-                </button>
-              )
-            })}
-          </>
-        )}
+                  {week.map((cell, colI) => {
+                    if (cell.kind === "empty") {
+                      return (
+                        <div
+                          key={cell.key}
+                          role="gridcell"
+                          aria-colindex={colI + 1}
+                          className="h-8"
+                        />
+                      )
+                    }
+                    const day = cell.day
+                    const isToday = isCurrentMonth && day === todayDate
+                    const fullDate = new Date(year, monthIdx, day)
+                    return (
+                      <div key={day} role="gridcell" aria-colindex={colI + 1}>
+                        <button
+                          type="button"
+                          className="sched-cal-day text-text-primary"
+                          data-today={isToday ? "true" : undefined}
+                          data-has-lessons={lessonDays.has(day) ? "true" : undefined}
+                          aria-label={dayFormatter.format(fullDate)}
+                          aria-current={isToday ? "date" : undefined}
+                          onClick={() => handleDayClick(day)}
+                        >
+                          {day}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))
+            })()}
       </div>
     </div>
   )
