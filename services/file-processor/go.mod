@@ -3,13 +3,13 @@ module github.com/university-ecosystem/file-processor
 go 1.26.2
 
 require (
-	github.com/getsentry/sentry-go v0.45.1
+	github.com/getsentry/sentry-go v0.46.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/graph-gophers/graphql-go v1.9.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/minio/minio-go/v7 v7.0.100
+	github.com/minio/minio-go/v7 v7.1.0
 	github.com/nats-io/nats.go v1.51.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/viper v1.21.0
@@ -20,11 +20,13 @@ require (
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
-	go.temporal.io/api v1.62.9
+	go.temporal.io/api v1.62.11
 	go.temporal.io/sdk v1.42.0
 	golang.org/x/image v0.39.0
 	google.golang.org/grpc v1.80.0
 )
+
+require github.com/zeebo/xxh3 v1.1.0 // indirect
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
