@@ -60,19 +60,32 @@ export default defineConfig({
       retries: 2,
     },
   ],
-  webServer: {
-    command: `npm run build && npm run preview -- --host ${HOST} --port ${PORT}`,
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
-    cwd: __dirname,
-    env: {
-      VITE_BACKEND_ORIGIN: "",
-      // Wave 115 SW1 — signal Playwright e2e context so ParticleAuthBackground
-      // skips its 1000-particle canvas loop. See src/components/ui/
-      // ParticleAuthBackground.tsx + tests/e2e/a11y-public.spec.ts for the
-      // WebKit renderer OOM that motivated this gate (A11Y-113-04 closure).
-      VITE_E2E_MODE: "1",
-    },
-  },
+  // Wave 120 SW7 — `SKIP_WEBSERVER=true` lets specs that need a custom
+  // dist (e.g. `url-state-persistence.spec.ts` with VITE_LHCI=true auth
+  // bypass) point at a separately-managed `vite preview` instance without
+  // Playwright clobbering it via the default `npm run build` rebuild.
+  // See `tests/e2e/url-state-persistence.spec.ts` header for the manual
+  // 3-step invocation flow. Auto-managed VITE_LHCI mode was attempted via
+  // `webServer.env: { VITE_LHCI: "true" }` but Playwright's env propagation
+  // through the npm → vite subprocess chain was unreliable on Windows
+  // (cross-env not installed; bash-style prefix doesn't work in shell:true
+  // spawn). SKIP_WEBSERVER opt-out is the lowest-friction reliable path.
+  webServer:
+    process.env.SKIP_WEBSERVER === "true"
+      ? undefined
+      : {
+          command: `npm run build && npm run preview -- --host ${HOST} --port ${PORT}`,
+          url: BASE_URL,
+          reuseExistingServer: !process.env.CI,
+          timeout: 180_000,
+          cwd: __dirname,
+          env: {
+            VITE_BACKEND_ORIGIN: "",
+            // Wave 115 SW1 — signal Playwright e2e context so ParticleAuthBackground
+            // skips its 1000-particle canvas loop. See src/components/ui/
+            // ParticleAuthBackground.tsx + tests/e2e/a11y-public.spec.ts for the
+            // WebKit renderer OOM that motivated this gate (A11Y-113-04 closure).
+            VITE_E2E_MODE: "1",
+          },
+        },
 })
