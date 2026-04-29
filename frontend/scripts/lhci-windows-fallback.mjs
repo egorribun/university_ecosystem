@@ -116,11 +116,25 @@ const PORT = Number.parseInt(process.env.LHCI_PREVIEW_PORT ?? "4174", 10)
 const RUNS = Number.parseInt(process.env.LHCI_RUNS ?? "3", 10)
 const THROTTLING = process.env.LHCI_THROTTLING ?? "devtools"
 const FORM_FACTOR = process.env.LHCI_FORM_FACTOR ?? "mobile"
+// Wave 121 SW8 — Lighthouse 13.x fixes the LanternError cycle-detection bug
+// that blocked /activity + /map on 12.x. Default to 13.1.0 (latest stable);
+// override via LIGHTHOUSE_VERSION=12.8.2 to compare with W120 baselines.
+const LIGHTHOUSE_VERSION = process.env.LIGHTHOUSE_VERSION ?? "13.1.0"
 
-// Wave 120 SW1 — defaults exclude /activity + /map (LanternError-blocked).
-// Use LHCI_URLS=activity,map to measure them anyway (will fail with cycle
-// detection error per upstream Lighthouse bug — Wave 121 Item #7).
-const DEFAULT_PATHS = ["/", "/login", "/dashboard", "/news", "/schedule", "/events", "/404"]
+// Wave 121 SW8 — /activity + /map are now measurable on Lighthouse 13.1.0+
+// (LanternError cycle-detection bug fixed upstream). Wave 120 SW1's exclusion
+// removed; both routes are now in the default sweep.
+const DEFAULT_PATHS = [
+  "/",
+  "/login",
+  "/dashboard",
+  "/news",
+  "/schedule",
+  "/events",
+  "/activity",
+  "/map",
+  "/404",
+]
 
 // Wave 119 SW2 trim-empty-to-root pattern: empty string → "/" so callers
 // can sub-batch `LHCI_URLS=,dashboard,events` for root + 2 subroutes.
@@ -218,7 +232,7 @@ async function runLighthouse(url, runIndex) {
   // fires, the LHR file already exists on disk, so the run is recoverable.
   const args = [
     "-y",
-    "lighthouse@12",
+    `lighthouse@${LIGHTHOUSE_VERSION}`,
     url,
     `--output=json`,
     `--output-path=${outputPath}`,
