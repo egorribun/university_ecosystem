@@ -1,4 +1,5 @@
 {
+  "pageTitle": "My Profile",
   "nowPlaying": {
     "openSpotifyWithTrack": "Open in Spotify: {{track}}",
     "openSpotify": "Open Spotify",
@@ -19,7 +20,33 @@
     "openTelegram": "Open Telegram"
   },
   "buttons": {
-    "showQr": "Show QR"
+    "viewQR": "Show QR",
+    "edit": "Edit"
+  },
+  "labels": {
+    "course": "Course",
+    "recordBook": "Record book",
+    "vcard": "Contact card",
+    "viewQR": "View QR code",
+    "institute": "Institute",
+    "educationLevel": "Education level",
+    "department": "Department",
+    "track": "Specialization",
+    "position": "Position",
+    "program": "Education program",
+    "about": "About"
+  },
+  "placeholders": {
+    "status": "Status not set",
+    "email": "Email not specified",
+    "telegram": "Telegram not specified",
+    "about": "Tell us about yourself"
+  },
+  "tooltips": {
+    "scanToSave": "Scan with your camera to save the contact"
+  },
+  "fields": {
+    "organizer": "Organizer"
   },
   "snackbar": {
     "spotifyConnected": "Spotify connected",

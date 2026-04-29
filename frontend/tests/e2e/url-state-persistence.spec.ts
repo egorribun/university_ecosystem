@@ -9,16 +9,33 @@ import { expect, test } from "@playwright/test"
  * end-to-end coverage — this spec exercises the round-trip:
  *   click control → URL updates → reload → control state restored from URL.
  *
- * ## Why this spec is gated to manual / opt-in invocation
+ * ## Why this spec is gated to opt-in invocation
  *
  * The default `playwright.config.ts` webServer builds without VITE_LHCI=true,
  * so authenticated routes (/events, /news, /activity, /schedule, /map)
  * redirect to /login. Wave 116 SW3 wired `VITE_LHCI=true` into `_auth.tsx`
  * `beforeLoad` and `useProfileSync.ts` to bypass auth + inject a mock user
- * for LHCI sweeps. This spec reuses that mechanism but requires the
- * 3-step manual flow (Playwright auto-managed VITE_LHCI mode was attempted
- * but env propagation through `webServer.env` → npm → vite is unreliable
- * on Windows without `cross-env`):
+ * for LHCI sweeps. This spec reuses that mechanism.
+ *
+ * ## Recommended: auto-managed mode (Wave 121 SW3)
+ *
+ * Wave 121 SW3 added a `URL_STATE_E2E=true` branch to `playwright.config.ts`
+ * that uses `cross-env` to propagate `VITE_LHCI=true` to `npm run build`
+ * cross-platform (bash/zsh/cmd/PowerShell), then serves on port 4175
+ * (matching `URL_STATE_E2E_BASE` default below). Single command runs the
+ * whole flow:
+ *
+ *   `URL_STATE_E2E=true npx playwright test --project=chromium url-state-persistence.spec.ts`
+ *
+ * Without `URL_STATE_E2E=true`, every test in this file `test.skip()`s.
+ * On POSIX shells, prefix `URL_STATE_E2E=true` works. On Windows cmd use
+ * `set URL_STATE_E2E=true && ...` or invoke via the cross-env-equipped
+ * `npm run` script if added.
+ *
+ * ## Fallback: manual SKIP_WEBSERVER mode (Wave 120 SW7)
+ *
+ * If the auto-managed `webServer.command` fails (port collision on 4175,
+ * cross-env not installed, etc.), the original 3-step flow still works:
  *
  *   1. Build LHCI dist:
  *      `env VITE_LHCI=true npm run build`
@@ -26,19 +43,16 @@ import { expect, test } from "@playwright/test"
  *       `set VITE_LHCI=true && npm run build`)
  *   2. Start a vite preview on a known port (default 4175):
  *      `npx vite preview --port 4175 --strictPort`
- *   3. Run the spec with SKIP_WEBSERVER + URL_STATE_E2E flags:
+ *   3. Run with SKIP_WEBSERVER (in addition to URL_STATE_E2E):
  *      `SKIP_WEBSERVER=true URL_STATE_E2E=true \
  *       URL_STATE_E2E_BASE=http://127.0.0.1:4175 \
  *       npx playwright test --project=chromium url-state-persistence.spec.ts`
  *
- * Without `URL_STATE_E2E=true`, every test in this file `test.skip()`s with
- * a pointer to this header. The `SKIP_WEBSERVER=true` flag (added Wave 120
- * SW7 to `playwright.config.ts`) prevents the default Playwright-managed
- * `npm run build` from clobbering the LHCI dist with a regular build.
+ * The `SKIP_WEBSERVER=true` flag (Wave 120 SW7) prevents the default
+ * Playwright-managed `npm run build` from clobbering the LHCI dist.
  *
- * Wave 121 candidate: integrate a separate VITE_LHCI build into a dedicated
- * Playwright project so this runs in CI without SKIP_WEBSERVER (likely via
- * `cross-env` dep + a webServer.command that actually propagates env).
+ * Wave 122 candidate: integrate a `URL_STATE_E2E=true` Playwright project
+ * into CI workflow alongside a11y-public + a11y-cdn-axe.
  *
  * ## Coverage (6 routes)
  *

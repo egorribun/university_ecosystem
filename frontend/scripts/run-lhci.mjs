@@ -212,6 +212,13 @@ async function run() {
   // first run npx caches the package locally. Previously the script assumed
   // a global install and failed fast on fresh environments.
   //
+  // Wave 121 polish — switched from `npx -y @lhci/cli@^0.15.1` to plain `npx
+  // lhci` so the local node_modules install (with the package.json
+  // `lighthouse: ^13.1.0` override) is used. The `-y` form bypasses local
+  // node_modules and downloads a fresh @lhci/cli + bundled lighthouse@12.6.1
+  // to the npx cache, defeating the override and re-introducing the
+  // LanternError on /activity + /map in CI on Linux.
+  //
   // MSYS_NO_PATHCONV=1 prevents Git Bash on Windows from mangling URL-style
   // paths like `/news` into `c:/Program Files/Git/news` when LHCI forwards
   // them to the Lighthouse CLI subprocess (shell: true is required for
@@ -220,7 +227,7 @@ async function run() {
   try {
     await runCommand(
       "npx",
-      ["-y", "@lhci/cli@^0.15.1", "collect", `--config=${tempConfigPath}`],
+      ["lhci", "collect", `--config=${tempConfigPath}`],
       "lhci collect",
       lhciEnv
     )
@@ -235,7 +242,7 @@ async function run() {
   }
   await runCommand(
     "npx",
-    ["-y", "@lhci/cli@^0.15.1", "assert", `--config=${tempConfigPath}`],
+    ["lhci", "assert", `--config=${tempConfigPath}`],
     "lhci assert",
     lhciEnv
   )

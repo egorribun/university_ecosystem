@@ -91,7 +91,11 @@ export const zIndexTokens = {
   tooltip: "var(--z-tooltip)",
 } as const
 
-export const focusRing = {} as const
+export const focusRing = {
+  default: "var(--focus-ring-default)",
+  isolated: "var(--focus-ring-isolated)",
+  thick: "var(--focus-ring-thick)",
+} as const
 
 export const shadows = {
   glass: "var(--shadow-glass)",

@@ -82,6 +82,23 @@ import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { preview } from "vite"
 
+// Wave 121 SW2 — friendly OS guard. The Windows EPERM bug this wrapper works
+// around (chrome-launcher destroyTmp rmSync firing before LHR write) is
+// platform-specific. On Linux/macOS, `npm run lhci` is the canonical command:
+// it's faster (no embedded vite preview API), runs `collect` + `assert`
+// together (CI parity), and doesn't lose the assertion phase. The wrapper
+// still works on non-Windows (the LHR-survives-cleanup-via---output-path
+// approach is platform-agnostic), so we warn but keep going — useful for
+// developers running on WSL/macOS who explicitly want consistent behavior
+// with their Windows-using teammates.
+if (process.platform !== "win32") {
+  console.warn(
+    `[wave-121-sw2] Non-Windows platform detected (${process.platform}). ` +
+      "`npm run lhci` is faster on Linux/macOS and includes the assertion phase " +
+      "(CI parity). Continuing with the wrapper anyway."
+  )
+}
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
@@ -99,11 +116,25 @@ const PORT = Number.parseInt(process.env.LHCI_PREVIEW_PORT ?? "4174", 10)
 const RUNS = Number.parseInt(process.env.LHCI_RUNS ?? "3", 10)
 const THROTTLING = process.env.LHCI_THROTTLING ?? "devtools"
 const FORM_FACTOR = process.env.LHCI_FORM_FACTOR ?? "mobile"
+// Wave 121 SW8 — Lighthouse 13.x fixes the LanternError cycle-detection bug
+// that blocked /activity + /map on 12.x. Default to 13.1.0 (latest stable);
+// override via LIGHTHOUSE_VERSION=12.8.2 to compare with W120 baselines.
+const LIGHTHOUSE_VERSION = process.env.LIGHTHOUSE_VERSION ?? "13.1.0"
 
-// Wave 120 SW1 — defaults exclude /activity + /map (LanternError-blocked).
-// Use LHCI_URLS=activity,map to measure them anyway (will fail with cycle
-// detection error per upstream Lighthouse bug — Wave 121 Item #7).
-const DEFAULT_PATHS = ["/", "/login", "/dashboard", "/news", "/schedule", "/events", "/404"]
+// Wave 121 SW8 — /activity + /map are now measurable on Lighthouse 13.1.0+
+// (LanternError cycle-detection bug fixed upstream). Wave 120 SW1's exclusion
+// removed; both routes are now in the default sweep.
+const DEFAULT_PATHS = [
+  "/",
+  "/login",
+  "/dashboard",
+  "/news",
+  "/schedule",
+  "/events",
+  "/activity",
+  "/map",
+  "/404",
+]
 
 // Wave 119 SW2 trim-empty-to-root pattern: empty string → "/" so callers
 // can sub-batch `LHCI_URLS=,dashboard,events` for root + 2 subroutes.
@@ -201,7 +232,7 @@ async function runLighthouse(url, runIndex) {
   // fires, the LHR file already exists on disk, so the run is recoverable.
   const args = [
     "-y",
-    "lighthouse@12",
+    `lighthouse@${LIGHTHOUSE_VERSION}`,
     url,
     `--output=json`,
     `--output-path=${outputPath}`,
