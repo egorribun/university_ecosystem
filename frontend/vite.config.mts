@@ -214,7 +214,22 @@ export default defineConfig(({ mode }) => {
       ...(manifest ? { manifest } : {}),
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-        globIgnores: ["**/bundle-stats.*", "**/offline.html"],
+        // Wave 122 SW2: exclude PDF export libs from PWA precache. The chunks
+        // (jspdf, html2canvas, purify) are used ONLY by Activity export +
+        // Schedule export via dynamic `await import()`. Including them in
+        // __WB_MANIFEST forced the SW to fetch them on install on every page
+        // load — Lighthouse `unused-javascript` counted those bytes as wasted
+        // on /news, /events, and 5+ other routes. The dynamic imports still
+        // resolve on demand at click; first-export-attempt-while-offline is
+        // the only loss (acceptable — users rarely trigger PDF export offline
+        // and online round-trip restores capability after first cache).
+        globIgnores: [
+          "**/bundle-stats.*",
+          "**/offline.html",
+          "**/jspdf*.js",
+          "**/html2canvas*.js",
+          "**/purify*.js",
+        ],
         // Wave 116 SW-Stretch — Storybook builds route through this same
         // plugin and ship `sb-manager/globals-runtime.js` (3.25 MB) which
         // exceeds Workbox's default 2 MB cache limit, failing
@@ -280,7 +295,6 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       exclude: ["qrcode"],
     },
-    modulepreload: { polyfill: false },
     oxc: {
       define:
         mode === "production" ? { "console.log": "(() => {})", "console.debug": "(() => {})" } : {},
@@ -292,6 +306,28 @@ export default defineConfig(({ mode }) => {
       // so browsers and attackers cannot download the full TypeScript source.
       sourcemap: mode === "production" ? "hidden" : true,
       chunkSizeWarningLimit: 768,
+      // Wave 122 SW2: Vite auto-injects `<link rel="modulepreload">` for every
+      // chunk reachable from the entry import graph — including chunks loaded
+      // only via dynamic `await import()` at user click. PDF-export libs
+      // (jspdf, html2canvas, dompurify) are used ONLY by Activity export +
+      // Schedule export but were preloaded on every page (LHCI
+      // `unused-javascript`: 162 KB / 90.6% wasted on /news, /events, and 5+
+      // other routes). resolveDependencies filters them out of the HTML
+      // preload list. The chunks still exist in dist/assets/ — `await
+      // import()` resolves them on demand. Defense-in-depth alongside the
+      // PWA `globIgnores` (see below) which keeps them out of SW precache.
+      modulePreload: {
+        polyfill: false,
+        resolveDependencies(_filename, deps, { hostType }) {
+          if (hostType !== "html") return deps
+          return deps.filter(
+            (dep) =>
+              !dep.includes("jspdf") &&
+              !dep.includes("html2canvas") &&
+              !dep.includes("purify")
+          )
+        },
+      },
       rolldownOptions: {
         onwarn(warning, warn) {
           if (warning.code === "EVAL" && warning.id?.includes("@protobufjs/inquire")) return
@@ -332,12 +368,17 @@ export default defineConfig(({ mode }) => {
             if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
             // Address large chunks identified in LHCI build warnings
             if (id.includes("node_modules/maplibre-gl")) return "vendor-map"
-            if (
-              id.includes("node_modules/jspdf") ||
-              id.includes("node_modules/html2canvas") ||
-              id.includes("node_modules/dompurify")
-            )
-              return "vendor-pdf"
+            // Wave 122 SW2: vendor-pdf manualChunks rule REMOVED. The original
+            // grouping (jspdf + html2canvas + dompurify) caused rolldown to
+            // emit `vendor-pdf` as a chunk reachable from the entry import
+            // graph — even though scheduleExport.ts + activityExport.ts use
+            // `await import()`. Some shared util chain pulled the chunk into
+            // News + EventCardView + 8 other route bundles statically (LHCI
+            // `unused-javascript` 162 KB / 91% wasted on /news + /events).
+            // Without the manual rule, rolldown auto-creates per-call dynamic
+            // chunks. Activity + Schedule will each get their own jspdf shard
+            // (acceptable — duplicated jspdf is ~180 KB but lazy-loaded only
+            // when user clicks Export).
             if (id.includes("node_modules/protobufjs")) return "vendor-protobuf"
           },
         },
