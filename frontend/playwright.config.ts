@@ -4,7 +4,15 @@ import { dirname } from "node:path"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const PORT = Number(process.env.PLAYWRIGHT_PORT || 5173)
+// Wave 121 SW3 — URL_STATE_E2E auto-managed mode uses port 4175 (matches the
+// `URL_STATE_E2E_BASE` default in `tests/e2e/url-state-persistence.spec.ts`)
+// and a VITE_LHCI=true build, so authenticated routes resolve via the mock
+// user instead of redirecting to /login. Default 5173 covers the normal
+// dev preview used by a11y-public + a11y-cdn-axe.
+const URL_STATE_E2E_MODE = process.env.URL_STATE_E2E === "true"
+const PORT = Number(
+  process.env.PLAYWRIGHT_PORT || (URL_STATE_E2E_MODE ? 4175 : 5173)
+)
 const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1"
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`
 
@@ -61,31 +69,43 @@ export default defineConfig({
     },
   ],
   // Wave 120 SW7 — `SKIP_WEBSERVER=true` lets specs that need a custom
-  // dist (e.g. `url-state-persistence.spec.ts` with VITE_LHCI=true auth
-  // bypass) point at a separately-managed `vite preview` instance without
-  // Playwright clobbering it via the default `npm run build` rebuild.
-  // See `tests/e2e/url-state-persistence.spec.ts` header for the manual
-  // 3-step invocation flow. Auto-managed VITE_LHCI mode was attempted via
-  // `webServer.env: { VITE_LHCI: "true" }` but Playwright's env propagation
-  // through the npm → vite subprocess chain was unreliable on Windows
-  // (cross-env not installed; bash-style prefix doesn't work in shell:true
-  // spawn). SKIP_WEBSERVER opt-out is the lowest-friction reliable path.
+  // dist (e.g. `url-state-persistence.spec.ts`) point at a separately-managed
+  // `vite preview` instance. Wave 121 SW3 added a third mode:
+  // `URL_STATE_E2E=true` auto-builds a VITE_LHCI=true dist via cross-env (the
+  // missing dep that blocked Wave 120's auto-managed attempt) so the spec
+  // runs without the 3-step manual flow. SKIP_WEBSERVER stays as fallback.
   webServer:
     process.env.SKIP_WEBSERVER === "true"
       ? undefined
-      : {
-          command: `npm run build && npm run preview -- --host ${HOST} --port ${PORT}`,
-          url: BASE_URL,
-          reuseExistingServer: !process.env.CI,
-          timeout: 180_000,
-          cwd: __dirname,
-          env: {
-            VITE_BACKEND_ORIGIN: "",
-            // Wave 115 SW1 — signal Playwright e2e context so ParticleAuthBackground
-            // skips its 1000-particle canvas loop. See src/components/ui/
-            // ParticleAuthBackground.tsx + tests/e2e/a11y-public.spec.ts for the
-            // WebKit renderer OOM that motivated this gate (A11Y-113-04 closure).
-            VITE_E2E_MODE: "1",
+      : URL_STATE_E2E_MODE
+        ? {
+            // cross-env propagates VITE_LHCI=true to npm run build on every
+            // platform (bash, zsh, cmd.exe, PowerShell). The rebuild is gated
+            // by the env var — once dist/ is the LHCI build, vite preview is
+            // env-independent. --strictPort fails fast on collision.
+            command: `npx cross-env VITE_LHCI=true npm run build && npm run preview -- --host ${HOST} --port ${PORT} --strictPort`,
+            url: BASE_URL,
+            reuseExistingServer: !process.env.CI,
+            timeout: 240_000,
+            cwd: __dirname,
+            env: {
+              VITE_BACKEND_ORIGIN: "",
+              VITE_E2E_MODE: "1",
+            },
+          }
+        : {
+            command: `npm run build && npm run preview -- --host ${HOST} --port ${PORT}`,
+            url: BASE_URL,
+            reuseExistingServer: !process.env.CI,
+            timeout: 180_000,
+            cwd: __dirname,
+            env: {
+              VITE_BACKEND_ORIGIN: "",
+              // Wave 115 SW1 — signal Playwright e2e context so ParticleAuthBackground
+              // skips its 1000-particle canvas loop. See src/components/ui/
+              // ParticleAuthBackground.tsx + tests/e2e/a11y-public.spec.ts for the
+              // WebKit renderer OOM that motivated this gate (A11Y-113-04 closure).
+              VITE_E2E_MODE: "1",
+            },
           },
-        },
 })
