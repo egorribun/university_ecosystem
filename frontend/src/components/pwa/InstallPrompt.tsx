@@ -294,9 +294,9 @@ export default function InstallPrompt() {
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
                           <Download className="h-5 w-5" />
                         </div>
-                        <h3 className="text-lg font-black tracking-tight text-text-primary sf-pro">
+                        <h2 className="text-lg font-black tracking-tight text-text-primary sf-pro">
                           {t("system:installPrompt.installTitle", { appName })}
-                        </h3>
+                        </h2>
                       </div>
                       <button
                         onClick={handleInstallDismiss}
@@ -350,9 +350,9 @@ export default function InstallPrompt() {
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
                           <Bell className="h-5 w-5" />
                         </div>
-                        <h3 className="text-lg font-black tracking-tight text-text-primary sf-pro">
+                        <h2 className="text-lg font-black tracking-tight text-text-primary sf-pro">
                           {t("system:installPrompt.notificationsTitle")}
-                        </h3>
+                        </h2>
                       </div>
                       <button
                         onClick={handlePushDismiss}

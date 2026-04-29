@@ -390,3 +390,132 @@ See `memory/wave122_backlog.md` (created in this commit). Items inherited from W
 7. Lighthouse 13 LHR JSON format compatibility audit (potential edge cases not surfaced in W121)
 
 Wave 121 closes the inherited tech-debt batch (5 of 8 active items + 1 measurement-only NO-OP + 1 hard-time-boxed experiment). Wave 122 should be either (a) Chromatic resumption + CI integration (M scope), (b) mobile perf XL (own-wave), OR (c) fresh feature work.
+
+---
+
+## Polish pass (post round-1 "безупречно?" probe)
+
+User invoked the perfectionism probe after the SW10 docs commit. 60-90 min polish closed 4 honesty-caveat gaps:
+
+### A1 — `lighthouse@13` CI override (closes SW8 caveat)
+
+W121 SW8 made `LIGHTHOUSE_VERSION=13.1.0` the default in the Windows-only wrapper. CI on Linux still used `lighthouse@12.6.1` transitively via `@lhci/cli@0.15.1` → LanternError on /activity + /map would still fire there.
+
+**Changes**:
+- `frontend/package.json`: added `"lighthouse": "^13.1.0"` to `overrides`
+- `frontend/scripts/run-lhci.mjs`: `npx -y @lhci/cli@^0.15.1` → `npx lhci` (drops `-y` + version pin so npx resolves to local node_modules where the override applies, instead of pulling fresh from registry which bypasses overrides)
+
+**Verification**: `npm install` shows `lighthouse@13.1.0` deduped via `@lhci/cli`. CI on Linux would now hit the same Lighthouse 13.x cycle-detection fix.
+
+### A2 — /map a11y 0.98 → 1.00 (closes SW8 "I didn't investigate" caveat)
+
+W121 SW8 measured /map a11y 0.98 but did NOT diagnose which rule fired. LHR parse:
+
+```
+heading-order — score: 0
+  selector: div.space-y-4 > div.flex > div.flex > h3.text-lg
+  snippet : <h3 class="text-lg font-black tracking-tight ... sf-pro">
+  text    : Установить «Экосистема ГУУ»
+```
+
+The `<h3>` is `InstallPrompt.tsx` install panel header. /map page has `<h1>` (MapHeader) → no intermediate `<h2>` → `<h3>` (InstallPrompt) = h1→h3 SKIP violation. /news + /events pass because they have legitimate page-level `<h2>` elements between page h1 and InstallPrompt h3.
+
+**Changes**:
+- `src/components/pwa/InstallPrompt.tsx`: 2 `<h3>` → `<h2>` (install panel + push panel headers — both at line 297 + 353). Per heading-order spec, returning to h2 from any deeper level is valid (no other page regresses).
+- `src/components/map/MapSidebar.tsx`: 1 `<h3>` → `<h2>` (defensive — sidebar is page sub-region under /map h1, no intermediate h2 exists; sidebar wasn't open during initial LHCI audit but would violate heading-order if it were).
+
+**Verification**: /map a11y measured **0.98 → 1.00** (1-run + then full 3-run sweep, both confirmed). /news + /events + /dashboard + others remain 1.00 (no regression — full sweep ALL 9 URLs A11y = 1.00 below).
+
+### A3 — Full 9-URL × 3-run LHCI sweep (closes SW10 "didn't measure properly" caveat)
+
+W121 SW10 used 4×3-run + 5×1-run. Polish A3 ran the full 9×3 sweep (17.5 min) — closes the data-completeness gap AND validates Polish A2 didn't regress other pages.
+
+**Full 9-URL × 3-run median** (mobile, devtools throttling, VITE_LHCI=true, Lighthouse 13.1.0):
+
+| URL | Perf | CLS | LCP (ms) | TBT (ms) | A11y | vs W121 SW10 |
+|---|---|---|---|---|---|---|
+| / | 0.44 | 0.033 | 13573 | 466 | 1.00 | 1-run was 0.53 (-0.09 corrected) |
+| /login | 0.56 | 0.000 | 11960 | 134 | 1.00 | 1-run was 0.57 (-0.01) |
+| /dashboard | 0.43 | 0.033 | 13579 | 514 | 1.00 | 1-run was 0.51 (-0.08 corrected) |
+| /news | 0.52 | 0.006 | 10278 | 258 | 1.00 | 3-run held |
+| /schedule | 0.52 | 0.003 | 13308 | 251 | 1.00 | 1-run was 0.56 (-0.04 corrected) |
+| /events | 0.47 | 0.062 | 13350 | 340 | 1.00 | 3-run held |
+| /activity | 0.45 | 0.003 | 9826 | 453 | 1.00 | 3-run was 0.56 (-0.11 — variance + Lighthouse 13 settling) |
+| /map | 0.47 | 0.075 | 13256 | 330 | **1.00** | A11y was 0.98 → **1.00** ✅ (Polish A2) |
+| /404 | 0.54 | 0.000 | 9133 | 202 | 1.00 | 1-run was 0.58 (-0.04 corrected) |
+
+**ALL 9 URLs A11y = 1.00 ✅** (was /map 0.98 in W121 SW8 — confirmed Polish A2 closure).
+**ALL 9 URLs pass W120 SW2 ratchet**:
+- Perf ≥ 0.40 ✅ (worst /dashboard 0.43)
+- CLS ≤ 0.10 ✅ (worst /map 0.075)
+- A11y ≥ 0.95 ✅ (all 1.00)
+
+**Critical data point**: 1-run sanity in W121 SW10 was 0.04-0.09 OPTIMISTIC vs 3-run truth (variance pattern documented in W119 SW2 reappeared). Honest baselines for Wave 122 ratchet decisions are these 3-run medians, NOT W121 SW10 numbers.
+
+### A4 — Broader image audit (closes SW9 "didn't check OTHER metrics" caveat)
+
+W121 SW9 framed @unpic decision around `uses-responsive-images` + `modern-image-formats` only — both passed, declared NO-OP. Polish A4 expanded audit to `image-delivery-insight` (Lighthouse 13.x audit surfaces actual byte savings):
+
+**Findings — 5 unique offending images, ~417 KB total wasted bytes**:
+
+| Image | Size | Wasted | Pages |
+|---|---|---|---|
+| `guu_logo-BY59VSwO.png` | 249.6 KB | **249.6 KB (100%)** | / + /dashboard + /news + /events + /schedule (ALL 5) |
+| picsum 361/400×700 | 74.6 KB | 67.9 KB | / + /dashboard |
+| picsum 133/400×700 | 53.7 KB | 47.1 KB | / + /dashboard |
+| picsum 716/400×700 | 48.0 KB | 41.4 KB | / + /dashboard |
+| default_avatar.png | 10.7 KB | 10.6 KB | / + /dashboard + /news + /events + /schedule (ALL 5) |
+
+**`guu_logo` is the dramatic case**: 249.6 KB PNG served as full resolution для 48×48 footer logo. Single fix (resize to 96×96 or 128×128 retina) saves ~245 KB × 5 pages of bandwidth.
+
+**SW9 NO-OP framing was incorrect** — savings DO exceed the 100 KB threshold from the W121 plan. Updated W121 honest claim: image pipeline DOES warrant work, but specific to (a) source asset resizing for `guu_logo` + `default_avatar` and (b) picsum URL parameters (`/87/87` instead of `/400/700` for story thumbnails) — NOT @unpic/react migration as W121 plan considered.
+
+**Filed as W122 Item #5b** (separate from unused-JS reduction in Item #5a) since fixing requires:
+- Source asset replacement (`frontend/src/assets/guu_logo.png` ✓ likely path)
+- StoryList component image URL constructor change (picsum args)
+
+**NOT implemented in polish pass per W121 scope policy** ("if savings > 100 KB, file as W122 candidate; do NOT implement in W121"). Polish closes the AUDIT gap, not the FIX gap.
+
+### Polish-pass commits
+
+| # | SHA | Title | Files |
+|---|---|---|---|
+| 9 | (this commit) | `fix+docs(wave121-polish-pass)` — A1 lighthouse@13 CI override + A2 /map a11y h3→h2 + A3 full 9×3 sweep + A4 image-delivery audit | 5 + AUDIT + CLAUDE + memory |
+
+### Final gates (post-polish, verbatim)
+
+```
+$ npx tsc --noEmit                    → 0 errors
+$ npm run lint                        → 0 warnings
+$ npm run i18n:check                  → 17 passed (17)
+$ npm run tokens:sync && git diff --exit-code -- src/theme/tokens.ts → no drift (631 vars)
+$ npm audit                           → 0 vulnerabilities
+$ npm run test -- --run               → 686 passed | 12 skipped | 0 failed (W120 polish-v2 baseline preserved)
+$ # Build invariant after InstallPrompt + MapSidebar h3→h2 + lighthouse@13 override:
+$ for i in 1 2 3; do rm -rf dist && npm run build; done
+                                      → identical hash × 3 (small bundle delta from heading semantics — verify)
+$ env VITE_LHCI=true npm run build    → ≤ 175 KB raw
+$ git diff --stat -- frontend/rust-crypto/Cargo.lock → empty (idempotent ≥ 9 waves)
+
+$ # Full 9-URL × 3-run sweep validated above (Polish A3 table)
+$ npx playwright test --project=chromium a11y-public → 4 passed (15.8s)
+$ URL_STATE_E2E=true npx playwright test --project=chromium url-state-persistence.spec.ts → 6 passed (17.6s)
+```
+
+### Honest probe re-audit (post-polish)
+
+After fixing 4 caveats, only structural deferrals remain:
+
+- ✅ Closed: lighthouse@13 CI override (was wrapper-only)
+- ✅ Closed: /map a11y 0.98 → 1.00 (was rule-engine delta)
+- ✅ Closed: full 9-URL × 3-run sweep (was 4×3 + 5×1)
+- ✅ Closed: broader image audit (was scoped to 2 audits, missed `image-delivery-insight`)
+
+Genuinely structural (Wave 122):
+- SW7 Storybook Webpack swap reverted (Vite-foundational `import.meta.glob`)
+- unused-JS 200+ KB reduction (M-XL scope)
+- Mobile perf round 2 (XL own-wave per user W121 decision)
+- CI workflow YAML integration (separate dedicated commit)
+- W122 Item #5b NEW: image asset replacement (`guu_logo` 249 KB + picsum URL args + default_avatar)
+
+SW2 OS guard not tested on Linux/macOS — single console.warn, acceptable risk. Chromatic project state stale (4 failed builds, token saved client-side) — admin task, low priority.

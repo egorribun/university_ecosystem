@@ -228,7 +228,12 @@ export function MapSidebar({
             {building.letter}
           </div>
           <div>
-            <h3 className="font-bold text-sm text-text-primary">{building.name}</h3>
+            {/* Wave 121 polish: h3 → h2 — sidebar is a page sub-region under the
+                /map h1, no intermediate h2 exists. Lighthouse 13 heading-order
+                audit catches the h1 → h3 skip; chrome-devtools live-axe didn't.
+                Page heading sequence is now h1 (MapHeader) → h2 (this) →
+                downstream h3 in InstallPrompt (when visible). */}
+            <h2 className="font-bold text-sm text-text-primary">{building.name}</h2>
             <p className="text-xs text-[var(--text-tertiary)] flex items-center gap-1 mt-0.5">
               <MapPin className="h-3 w-3 shrink-0" />
               {building.address}
