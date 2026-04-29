@@ -82,6 +82,23 @@ import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { preview } from "vite"
 
+// Wave 121 SW2 — friendly OS guard. The Windows EPERM bug this wrapper works
+// around (chrome-launcher destroyTmp rmSync firing before LHR write) is
+// platform-specific. On Linux/macOS, `npm run lhci` is the canonical command:
+// it's faster (no embedded vite preview API), runs `collect` + `assert`
+// together (CI parity), and doesn't lose the assertion phase. The wrapper
+// still works on non-Windows (the LHR-survives-cleanup-via---output-path
+// approach is platform-agnostic), so we warn but keep going — useful for
+// developers running on WSL/macOS who explicitly want consistent behavior
+// with their Windows-using teammates.
+if (process.platform !== "win32") {
+  console.warn(
+    `[wave-121-sw2] Non-Windows platform detected (${process.platform}). ` +
+      "`npm run lhci` is faster on Linux/macOS and includes the assertion phase " +
+      "(CI parity). Continuing with the wrapper anyway."
+  )
+}
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
