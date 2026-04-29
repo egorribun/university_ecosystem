@@ -200,5 +200,31 @@
     --opacity-strong: 0.7;
     --opacity-hover: 0.8;
     --opacity-heavy: 0.9;
+
+    /*
+     * Focus-ring primitives — Wave 121 SW5
+     *
+     * Audit (38 box-shadow `0 0 0 [123]px ...` occurrences total) identified
+     * only 3 true `:focus-visible` indicators using box-shadow:
+     *   - .matte-input:focus-visible (light + dark variants — intentionally
+     *     theme-varied 50%/40% transparency, kept as-is)
+     *   - [id^="sched-cell-"]:focus-visible (tokenized in this SW)
+     * The remaining 35 occurrences are decorative borders (1px slate),
+     * animation pulse keyframes, hover/active states, avatar rings, and
+     * drag indicators — none are :focus indicators.
+     *
+     * Map page uses `outline: 2px solid` (separate WCAG-compliant pattern).
+     * .input-focus-glow uses 4px primary-main subtle (different design
+     * intent, also separate). These tokens are the canonical box-shadow
+     * focus-ring primitive for future contributors.
+     *
+     * --focus-ring-isolated composes with the existing semantics.css
+     * --raw-shadow-focus token (WCAG-AA double-ring 2px bg-page +
+     * 4px primary-main, suitable for colored backgrounds where the
+     * solid brand color alone would have insufficient contrast).
+     */
+    --focus-ring-default: 0 0 0 2px var(--color-brand);
+    --focus-ring-thick: 0 0 0 3px var(--color-brand);
+    --focus-ring-isolated: var(--raw-shadow-focus);
   }
 }

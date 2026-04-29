@@ -120,9 +120,11 @@ const GROUPS = [
     valueTransform: (k) => `var(--${k})`,
   },
   {
+    // Wave 121 SW5: legacy --shadow-focus naming was never populated; new
+    // --focus-ring-* primitives (default/thick/isolated) live in primitives.css.
     name: "focusRing",
-    pattern: /^shadow-focus/,
-    transformKey: () => "default",
+    pattern: /^focus-ring-/,
+    transformKey: (k) => k.replace("focus-ring-", ""),
     valueTransform: (k) => `var(--${k})`,
   },
   {
