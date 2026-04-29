@@ -22,7 +22,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
         className="mt-(--space-4) space-y-1 relative items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/(--opacity-dim) transition-colors"
       >
         <h2 className="text-lg font-bold tracking-tight text-text-primary">
-          {t("profile:titles.details")}
+          {t("profile:sections.details")}
         </h2>
         <ExpandMoreIcon
           className={cn(

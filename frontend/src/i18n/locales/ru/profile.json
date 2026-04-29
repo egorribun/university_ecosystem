@@ -1,4 +1,5 @@
 {
+  "pageTitle": "Мой профиль",
   "nowPlaying": {
     "openSpotifyWithTrack": "Открыть в Spotify: {{track}}",
     "openSpotify": "Открыть Spotify",
@@ -19,7 +20,33 @@
     "openTelegram": "Открыть Telegram"
   },
   "buttons": {
-    "showQr": "Показать QR"
+    "viewQR": "Показать QR",
+    "edit": "Редактировать"
+  },
+  "labels": {
+    "course": "Курс",
+    "recordBook": "Зачётная книжка",
+    "vcard": "Визитка",
+    "viewQR": "Посмотреть QR-код",
+    "institute": "Институт",
+    "educationLevel": "Уровень образования",
+    "department": "Кафедра",
+    "track": "Направление",
+    "position": "Должность",
+    "program": "Образовательная программа",
+    "about": "О себе"
+  },
+  "placeholders": {
+    "status": "Статус не указан",
+    "email": "Email не указан",
+    "telegram": "Telegram не указан",
+    "about": "Расскажи о себе"
+  },
+  "tooltips": {
+    "scanToSave": "Наведи камеру, чтобы сохранить контакт"
+  },
+  "fields": {
+    "organizer": "Организатор"
   },
   "snackbar": {
     "spotifyConnected": "Spotify подключён",

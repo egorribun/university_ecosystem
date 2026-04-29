@@ -20,7 +20,7 @@ export const AchievementsSection = ({
   return (
     <SectionCard className="p-6">
       <h2 className="text-lg font-bold tracking-tight text-text-primary mb-6">
-        {t("profile:titles.achievements")}
+        {t("profile:sections.achievements")}
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {achievements.map((ach) => (
