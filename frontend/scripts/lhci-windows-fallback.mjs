@@ -272,6 +272,26 @@ async function runLighthouse(url, runIndex) {
   return outputPath
 }
 
+/**
+ * LHR (Lighthouse Result) JSON property dependencies.
+ *
+ * Verified compatible with Lighthouse 13.1.0 schema (Wave 122 SW4 audit
+ * against `.lighthouseci/lhr_news_run1.json` produced by `npm run lhci:windows`):
+ *
+ *   lhr.categories.{performance,accessibility,best-practices,seo}.score
+ *   lhr.audits.{cumulative-layout-shift,largest-contentful-paint,total-blocking-time}.numericValue
+ *
+ * The 7 paths above are the only LHR fields this wrapper reads. They have
+ * been stable across Lighthouse 12.x → 13.x; if you bump Lighthouse to a
+ * future major (14.x+), re-verify these paths still exist in a sample LHR
+ * before merging the bump. Optional chaining + null-coalescing make the
+ * wrapper resilient to a missing audit (returns null in summary table).
+ *
+ * For OTHER LHR fields (network-requests, audits["unused-javascript"],
+ * audits["image-delivery-insight"], etc.) the wrapper does NOT read them
+ * directly — those are inspected via ad-hoc `node -e` scripts during audit
+ * waves (see Wave 121 polish A4 + Wave 122 SW1/SW2 commits for examples).
+ */
 async function parseLhr(lhrPath) {
   const raw = await readFile(lhrPath, "utf8")
   const lhr = JSON.parse(raw)
