@@ -133,6 +133,24 @@ jobs:
             --project=$BROWSER \
             --reporter=html
 
+      # Wave 122 SW3: cross-env URL_STATE_E2E auto-managed mode.
+      # Playwright's webServer.command (per playwright.config.ts:73-110)
+      # spins up its own VITE_LHCI=true preview on port 4175 via cross-env,
+      # so this step is independent of the default preview started above.
+      # Chromium-only by design (W120 SW7 + W121 SW3 establishes the test
+      # set). The auth bypass active under VITE_LHCI lets the URL-state
+      # spec exercise authenticated routes without real auth.
+      - name: Run URL-state e2e (cross-env auto-managed)
+        if: inputs.browser == 'chromium'
+        working-directory: frontend
+        env:
+          URL_STATE_E2E: "true"
+          VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
+        run: |
+          npx playwright test url-state-persistence.spec.ts \
+            --project=chromium \
+            --reporter=html
+
       - name: Terminate backend
         if: always()
         run: |
