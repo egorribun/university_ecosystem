@@ -7,7 +7,7 @@ import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 import type { User } from "@/types/User"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-import profileBg from "@/assets/background.png"
+import profileBg from "@/assets/background.jpg"
 
 const COVER_IMAGE_FILTER = "saturate(1) contrast(1.02) brightness(0.98)"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL

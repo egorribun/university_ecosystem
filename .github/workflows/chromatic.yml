@@ -9,6 +9,29 @@
 #
 # Baselines accepted in SW3 (after consistency tokens settle) — until then
 # Chromatic runs in collect-only mode.
+#
+# ⚠ Wave 122 SW5 — STILL BLOCKED by upstream Storybook + Vite 8 / Rolldown
+# integration gaps. `vars.CHROMATIC_ENABLED` should remain unset until at
+# least one of these upstream issues closes:
+#
+#   - https://github.com/storybookjs/storybook/issues/33789
+#       (Storybook umbrella tracker for Vite 8/Rolldown support)
+#   - https://github.com/vitejs/rolldown-vite/issues/562
+#       (`__STORYBOOK_MODULE_*` globals not injected — primary failure)
+#   - https://github.com/storybookjs/storybook/issues/31711
+#       (exact match: SB+Rolldown __STORYBOOK_MODULE_PREVIEW_API__ undefined)
+#   - https://github.com/rolldown/rolldown/issues/3982
+#       (`import.meta.glob` Rolldown bug — blocks W121 SW7 Webpack swap fallback)
+#
+# History: W120 SW8 first hit the `__STORYBOOK_MODULE_*` runtime failure.
+# W121 SW7 attempted the Webpack-builder swap (60-min hard time-box,
+# reverted at T+10 min) and ran into `import.meta.glob` instead — confirming
+# both upstream issues affect us. See `memory/wave122_chromatic_upstream.md`
+# for full upstream issue tracking and quarterly monitoring action.
+#
+# When upstream lands a fix: re-attempt by running `npm run build-storybook`
+# end-to-end + `npm run chromatic` locally with token. If clean, flip
+# `vars.CHROMATIC_ENABLED=true` to enable this workflow on PRs.
 
 name: Chromatic
 

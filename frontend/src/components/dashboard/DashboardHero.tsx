@@ -97,7 +97,7 @@ export function DashboardHero({
             <div className="relative flex flex-col gap-4 min-[1220px]:flex-row min-[1220px]:items-center min-[1220px]:gap-6">
               <div className="shrink-0 space-y-4">
                 <h1
-                  className="font-display font-extrabold leading-[1.15] tracking-tight"
+                  className="font-display font-extrabold leading-[1.15] tracking-tight min-h-[2lh]"
                   style={{ fontSize: "clamp(1.75rem, 3vw, 2.75rem)" }}
                 >
                   {specialKey && (
@@ -125,7 +125,7 @@ export function DashboardHero({
                   )}
                 </h1>
                 <div
-                  className="flex flex-wrap items-center gap-x-4 gap-y-2"
+                  className="flex min-h-[40px] flex-wrap items-center gap-x-4 gap-y-2"
                   role="status"
                   aria-live="polite"
                 >

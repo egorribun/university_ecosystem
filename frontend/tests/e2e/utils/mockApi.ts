@@ -114,7 +114,7 @@ const mockNews = [
     content: "Кампус переходит на новую систему расписаний.",
     content_en: "The campus is switching to a new scheduling system.",
     created_at: MOCK_NEWS_START_DATE,
-    image_url: "/fallbacks/news_placeholder.png",
+    image_url: "/fallbacks/placeholder.png",
     image_url_optimized: null,
   },
   {
@@ -124,7 +124,7 @@ const mockNews = [
     content: "Расширены часы работы библиотечного центра.",
     content_en: "The library has extended its opening hours.",
     created_at: MOCK_NEWS_2_DATE,
-    image_url: "/fallbacks/news_placeholder.png",
+    image_url: "/fallbacks/placeholder.png",
     image_url_optimized: null,
   },
 ]
@@ -668,8 +668,8 @@ export async function useMockApi(page: Page) {
               id: "uuid-1",
               user_id: "uuid-1",
               type: "image",
-              url: "/fallbacks/news_placeholder.png",
-              thumbnail_url: "/fallbacks/news_placeholder.png",
+              url: "/fallbacks/placeholder.png",
+              thumbnail_url: "/fallbacks/placeholder.png",
               duration: 5,
               created_at: new Date().toISOString(),
               expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),

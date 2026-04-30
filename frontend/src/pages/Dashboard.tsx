@@ -66,7 +66,7 @@ function buildMockStories(t: (key: string) => string): StoryItem[] {
     id: def.id,
     title: t(`dashboard:mockStories.${def.key}.title`),
     short_text: t(`dashboard:mockStories.${def.key}.text`),
-    cover_url: `https://picsum.photos/seed/${def.seed}/400/700`,
+    cover_url: `https://picsum.photos/seed/${def.seed}/183/183`,
     cta_url: def.cta,
     published_at: now,
     expires_at: new Date(Date.now() + def.days * 86400000).toISOString(),
