@@ -1,6 +1,6 @@
 # Audit Trail Index
 
-Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `<TBD>`).
+Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `8eba94352`).
 
 ## Active audits
 
