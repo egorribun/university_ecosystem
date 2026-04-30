@@ -1,5 +1,10 @@
 import type { StorybookConfig } from "@storybook/react-vite"
-import type { Plugin } from "vite"
+import type { Plugin, UserConfig } from "vite"
+
+type RolldownOutput = { strictExecutionOrder?: boolean } & Record<string, unknown>
+type RolldownOptions = { output?: RolldownOutput } & Record<string, unknown>
+type RolldownBuild = { rolldownOptions?: RolldownOptions } & Record<string, unknown>
+type ViteUserConfigWithRolldown = UserConfig & { build?: RolldownBuild }
 
 const config: StorybookConfig = {
   // Wave 115 polish — restrict to `src/components/` so the glob doesn't
@@ -38,10 +43,35 @@ const config: StorybookConfig = {
       return typeof name === "string" && name.startsWith("vite-plugin-pwa")
     }
     const allPlugins = flatten(viteConfig.plugins ?? []) as Plugin[]
+    // Wave 123 SW1 — Storybook 10 + Vite 8/Rolldown ships with `__STORYBOOK_MODULE_*`
+    // globals that are READ by chunks but never assigned in the bundle. Rolldown's
+    // module execution order optimization re-orders chunks, so Storybook's custom
+    // module loader runs BEFORE the globals are wired up → `Uncaught ReferenceError:
+    // __STORYBOOK_MODULE_CORE_EVENTS_PREVIEW_ERRORS__ is not defined` at runtime.
+    // Per vitejs/rolldown-vite#562 (closed as duplicate of vitejs/vite#21948,
+    // closed 2026-04-07 by Vite 8.0.6), the canonical workaround is
+    // `strictExecutionOrder: true` in rolldown output. Vite 8.0.6+ supposedly
+    // resolves Lexical/Prism cases without it, but Storybook's custom module
+    // loader still requires the explicit flag (chrome-devtools-mcp verified
+    // 2026-04-30). This hook keeps the flag scoped to Storybook builds only,
+    // so the main app bundle isn't affected.
+    const buildConfig = (viteConfig as ViteUserConfigWithRolldown).build ?? {}
+    const rolldownOpts = buildConfig.rolldownOptions ?? {}
+    const rolldownOutput = rolldownOpts.output ?? {}
     return {
       ...viteConfig,
       plugins: allPlugins.filter((p) => !isPwaPlugin(p)),
-    }
+      build: {
+        ...buildConfig,
+        rolldownOptions: {
+          ...rolldownOpts,
+          output: {
+            ...rolldownOutput,
+            strictExecutionOrder: true,
+          },
+        },
+      },
+    } as UserConfig
   },
 }
 export default config

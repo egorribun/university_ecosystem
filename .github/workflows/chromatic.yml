@@ -10,28 +10,35 @@
 # Baselines accepted in SW3 (after consistency tokens settle) — until then
 # Chromatic runs in collect-only mode.
 #
-# ⚠ Wave 122 SW5 — STILL BLOCKED by upstream Storybook + Vite 8 / Rolldown
-# integration gaps. `vars.CHROMATIC_ENABLED` should remain unset until at
-# least one of these upstream issues closes:
+# ✅ Wave 123 SW1 (2026-04-30) — UNBLOCKED. Storybook + Vite 8/Rolldown
+# runtime failure (`__STORYBOOK_MODULE_CORE_EVENTS_PREVIEW_ERRORS__ is
+# not defined`) resolved via `build.rolldownOptions.output.strictExecutionOrder:
+# true` in `.storybook/main.ts` viteFinal hook. Per the canonical workaround
+# documented in vitejs/vite#21948 (closed 2026-04-07 by Vite 8.0.6), Rolldown's
+# module execution order optimization must be disabled for Storybook's
+# custom module loader to wire up its globals before chunks try to read
+# them. Build verified: storybook-static loads cleanly, EventCard story
+# renders with 0 console errors (chrome-devtools-mcp 2026-04-30).
 #
-#   - https://github.com/storybookjs/storybook/issues/33789
-#       (Storybook umbrella tracker for Vite 8/Rolldown support)
-#   - https://github.com/vitejs/rolldown-vite/issues/562
-#       (`__STORYBOOK_MODULE_*` globals not injected — primary failure)
-#   - https://github.com/storybookjs/storybook/issues/31711
-#       (exact match: SB+Rolldown __STORYBOOK_MODULE_PREVIEW_API__ undefined)
-#   - https://github.com/rolldown/rolldown/issues/3982
-#       (`import.meta.glob` Rolldown bug — blocks W121 SW7 Webpack swap fallback)
+# Upstream issue resolution chain (all closed as of 2026-04-30):
 #
-# History: W120 SW8 first hit the `__STORYBOOK_MODULE_*` runtime failure.
-# W121 SW7 attempted the Webpack-builder swap (60-min hard time-box,
-# reverted at T+10 min) and ran into `import.meta.glob` instead — confirming
-# both upstream issues affect us. See `memory/wave122_chromatic_upstream.md`
-# for full upstream issue tracking and quarterly monitoring action.
+#   - https://github.com/storybookjs/storybook/issues/33789 (Vite 8 umbrella; closed 2026-03-10)
+#   - https://github.com/vitejs/rolldown-vite/issues/562 (`__STORYBOOK_MODULE_*`; closed 2026-03-19 as DUPLICATE of vite#21948)
+#   - https://github.com/storybookjs/storybook/issues/31711 (PREVIEW_API; closed 2025-10-13)
+#   - https://github.com/rolldown/rolldown/issues/3982 (`import.meta.glob`; closed 2025-09-11)
+#   - https://github.com/vitejs/vite/issues/21948 (root cause; closed 2026-04-07 by Vite 8.0.6)
 #
-# When upstream lands a fix: re-attempt by running `npm run build-storybook`
-# end-to-end + `npm run chromatic` locally with token. If clean, flip
-# `vars.CHROMATIC_ENABLED=true` to enable this workflow on PRs.
+# To enable Chromatic baseline (USER actions in repo settings):
+#
+#   1. Add `CHROMATIC_PROJECT_TOKEN` Secret with value `chpt_48d051b3688a3e4`.
+#   2. Set `CHROMATIC_ENABLED=true` repo variable.
+#   3. Open a PR touching `frontend/**` → this workflow triggers + uploads
+#      built stories + captures initial baseline.
+#   4. Accept baselines in Chromatic dashboard.
+#
+# See `memory/wave122_chromatic_upstream.md` for full diagnosis history,
+# Storybook/Vite version requirements, and durability notes for the
+# `strictExecutionOrder` workaround.
 
 name: Chromatic
 
