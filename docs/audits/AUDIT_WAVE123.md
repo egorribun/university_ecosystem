@@ -488,7 +488,7 @@ The post-polish 3-run on / + /dashboard incidentally provided variance evidence:
 
 | # | SHA | Title | Files | +/− |
 |---|---|---|---|---|
-| 6 | `<TBD>` | `feat+docs(wave123-polish)` — close 6 honesty caveats: LanguageProvider Storybook decorator + DashboardStories slot min-h + ScheduleCard CLS investigation + audit polish narrative | 5 | (to be measured) |
+| 6 | `47698d6b8` | `feat+docs(wave123-polish)` — close 4 honesty caveats: LanguageProvider Storybook decorator + DashboardStories slot min-h + ScheduleCard CLS investigation + audit polish narrative | 4 | +148 / −30 |
 
 ### Final gates (post-polish, verbatim)
 
