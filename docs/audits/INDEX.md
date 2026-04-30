@@ -1,6 +1,6 @@
 # Audit Trail Index
 
-Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `8eba94352`).
+Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `8eba94352`); Wave 123 SW5 executed first N+3 rotation (W120 → archive).
 
 ## Active audits
 
@@ -8,18 +8,19 @@ Recent audits (last 3 waves) — referenced from `CLAUDE.md ## Audit Trail` and 
 
 | Wave | Date | Audit file | Headline |
 |------|------|-----------|----------|
+| 123 | 2026-04-30 | [AUDIT_WAVE123.md](AUDIT_WAVE123.md) | Frontend tech-debt + Chromatic UNBLOCKED — `strictExecutionOrder` workaround in `.storybook/main.ts` viteFinal closes W120 SW8 / W121 SW7 / W122 SW5 blocker; ScheduleCard CLS monitor stable at 0.0335; vendor-ui audit NO-OP for bundle |
 | 122 | 2026-04-30 | [AUDIT_WAVE122.md](AUDIT_WAVE122.md) | Frontend tech-debt + bundle/image bandwidth — ~875 KB image savings + vendor-pdf truly lazy + DashboardHero CLS root-cause fix |
 | 121 | 2026-04-29 | [AUDIT_WAVE121.md](AUDIT_WAVE121.md) | Inherited tech-debt close — /activity + /map LHCI MEASURABLE for first time post-W116 (Lighthouse 13.1.0); 22-key i18n gap closed |
-| 120 | 2026-04-28 | [AUDIT_WAVE120.md](AUDIT_WAVE120.md) | Inherited tech-debt close — CLS arc closed at WCAG Good ceiling (warn@0.15 → error@0.10); Schedule a11y 5→0 axe violations + Layout.tsx duplicate `<main>` global fix |
 
 ## Archived audits
 
-Older waves (W112-W119 + W21-W32 in `TOTAL_AUDIT_*` legacy format) — moved to `archive/` for repo-root cleanliness. Still tracked in git, still searchable via `grep -r "X" docs/audits/archive/`.
+Older waves (W112-W120 + W21-W32 in `TOTAL_AUDIT_*` legacy format) — moved to `archive/` for repo-root cleanliness. Still tracked in git, still searchable via `grep -r "X" docs/audits/archive/`.
 
-### Frontend audit era (W112-W119)
+### Frontend audit era (W112-W120)
 
 | Wave | Date | Audit file | Theme |
 |------|------|-----------|-------|
+| 120 | 2026-04-28 | [archive/AUDIT_WAVE120.md](archive/AUDIT_WAVE120.md) | Inherited tech-debt close — CLS arc closed at WCAG Good ceiling (warn@0.15 → error@0.10); Schedule a11y 5→0 axe violations + Layout.tsx duplicate `<main>` global fix |
 | 119 | 2026-04-28 | [archive/AUDIT_WAVE119.md](archive/AUDIT_WAVE119.md) | CLS push-gate close + LHCI sweep + Renovate semver-major (npm audit 9 → 0) |
 | 118 | 2026-04-22 | [archive/AUDIT_WAVE118.md](archive/AUDIT_WAVE118.md) | CLS content-layout fix (XL own-wave) — footer + InstallPrompt + EventsBackdrop + Dashboard residuals |
 | 117 | 2026-04-20–21 | [archive/AUDIT_WAVE117.md](archive/AUDIT_WAVE117.md) | Mobile performance pass (XL own-wave) — main chunk 291 KB → 174 KB (-40%) via OTEL chunk split + observability defer |
