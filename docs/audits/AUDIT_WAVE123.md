@@ -27,7 +27,7 @@
 | 1 | `f0f352fb3` | `feat(wave123-sw1-chromatic-unblock)` — strictExecutionOrder workaround | 2 | +58 / −21 |
 | 2 | `5861b6e13` | `chore(wave123-sw2-vendor-audit)` — delete MotionPresence dead code + document NO-OP findings | 2 | +0 / −16 |
 | 3 | `86d598d46` | `docs(wave123-sw3-schedule-cls-monitor)` — document /dashboard CLS = 0.0335 stable + W123 gotchas | 1 | +3 / 0 |
-| 4 | `<TBD>` | `docs(wave123-sw5-audit)` — this commit | 6 | (to be measured) |
+| 4 | `cd5ba7890` | `docs(wave123-sw5-audit)` — AUDIT_WAVE123 + N+3 rotation (W120 → archive) + CLAUDE trail | 4 | +440 / −5 |
 
 (SW4 freshness pass folded into SW5 — pure measurement with no code change, baselines documented in §End-of-wave gates below.)
 
