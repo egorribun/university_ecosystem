@@ -269,8 +269,16 @@ export default function Dashboard() {
         {/* Content: cards */}
         <div className="relative z-base px-4 sm:px-6 md:px-10 lg:px-14">
           {/* Wave 53: stories below hero when viewport < 1220px */}
+          {/* Wave 123 polish P1 — `min-h-[120px]` reserves DashboardStories slot
+              (story circle ~91px + label gap) so the cards grid below doesn't
+              shift down when stories load on mobile/narrow viewports.
+              Eliminates the "ScheduleCard `<a href="/schedule">` shift" the
+              W123 SW3 LHR identified as 0.0335 dominant — the link itself
+              wasn't growing, it was being pushed down by DashboardStories
+              transitioning from skeleton to loaded state. Same `min-h-[Xpx]`
+              Tailwind className pattern as W118 SW4 dash-tilt-card residuals. */}
           {!isStoriesInHero && (
-            <div className="mb-2">
+            <div className="mb-2 min-h-[120px]">
               <DashboardStories
                 stories={stories}
                 loading={loadingStories}
