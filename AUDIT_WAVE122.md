@@ -352,3 +352,110 @@ See `memory/wave123_backlog.md` (created in this commit). Items inherited from W
 9. **Investigate jspdf chunk dedup** (Activity + Schedule both reference same file currently — verify in subsequent waves).
 
 W122 closes 4 of 6 W121-inherited active items + 1 partial close + 1 unblocking documentation. The CLS arc + a11y arcs + image-bandwidth arcs are all closed. Remaining work: mobile perf round 2 (XL own-wave) + the small W123 polish items above.
+
+---
+
+## Polish pass (post round-1 "безупречно?" probe)
+
+User invoked the perfectionism probe after the SW6 docs commit. ~100 min polish closed 5 honesty caveats:
+
+### A1 — `e2e-tests` job wired up in `ci.yml` (closes SW3 caveat)
+
+W122 SW3 modified `reusable-e2e-tests.yml` but left it never invoked from `ci.yml`. A1 adds an `e2e-tests` job (lines 386-401) calling `reusable-e2e-tests.yml` with chromium browser + python-version 3.13. Includes the W122 SW3 URL_STATE_E2E step automatically (gated `if: inputs.browser == 'chromium'`). Added to `ci-success` aggregation `needs` list + results check (now 18 deps, was 17). Cost: ~5-10 min wall-clock per CI run (backend + browser install + ~47 spec cases). YAML validated via PyYAML; local re-verification: 6/6 url-state passing.
+
+### A2 — DashboardHero CLS root-cause fix (closes "natural variance" caveat)
+
+LHR `layout-shifts` audit on / + /dashboard revealed the SAME shifting element (score 0.062, only item): `<div role="status" aria-live="polite">` — DashboardHero status bar containing time/week/parity/weather/date.
+
+**Two fixes** in `src/components/dashboard/DashboardHero.tsx`:
+- Status bar div (line 128): added `min-h-[40px]` to reserve flex container height regardless of WeatherWidget loading state
+- `<h1>` greeting (line 100): added `min-h-[2lh]` (CSS lh unit = 2 line-heights of current font-size, dynamic) to reserve space for async i18n greeting that initially renders empty/short
+
+**3-run median LHCI on / + /dashboard**:
+| Metric | Before A2 | After A2 | Δ |
+|---|---|---|---|
+| / Perf | 0.46 | 0.54 | **+0.08** |
+| / CLS | 0.061 | 0.040 | **−34%** |
+| /dashboard Perf | 0.47 | 0.54 | **+0.07** |
+| /dashboard CLS | 0.061 | 0.040 | **−34%** |
+
+Remaining 0.040 from ScheduleCard header link (pre-existing, smaller, monitor in W123). Well under 0.10 gate (60% margin).
+
+### A3 — jspdf chunk dedup exhaustively verified (closes spot-check caveat)
+
+Grep across all `dist/assets/*.js` for distinct chunk filenames:
+
+| Library | Distinct chunks |
+|---|---|
+| jspdf | 1 (`jspdf.es.min-DBfT9EB6.js`) |
+| html2canvas | 1 (`html2canvas-Cr_jfP-U.js`) |
+| purify (dompurify) | 1 (`purify.es-BuhLKeN0.js`) |
+| es (html-to-image) | 1 (`es-CSBSpoQ0.js`) |
+
+Activity-*.js + scheduleExport-*.js BOTH dynamic-import the SAME `jspdf.es.min-DBfT9EB6.js` file. Rolldown auto-dedup confirmed across all 4 lazy-only chunks. **Zero duplication.**
+
+### A4 — `placeholder.png` rename + mockApi sync (closes pre-existing 404 bugs)
+
+Pre-existing bugs surfaced during SW1 grep:
+- `IMAGE_PLACEHOLDER_URL = "/fallbacks/placeholder.png"` — file was actually `default_placeholder.png` (mismatch). SmartImage fallback chain silently 404'd.
+- `tests/e2e/utils/mockApi.ts` × 4 references to `/fallbacks/news_placeholder.png` (file never existed). E2e fixtures rendered broken images.
+
+**Fix**: `mv default_placeholder.png placeholder.png` (matches the constant which had been pointing here all along) + 4 mockApi.ts refs updated to `/fallbacks/placeholder.png`. SW precache verified (178 entries unchanged, includes `fallbacks/placeholder.png`). No stale grep hits in src + tests + public.
+
+Closes W122 backlog Item #4 + family.
+
+### A5 — Visual verification at REAL display sizes (closes "I didn't verify" caveat)
+
+SW1 only verified PNGs via direct asset URL navigation (browser-default size, not real layout). A5 navigated to `/dashboard` on VITE_LHCI=true `npm run preview` (port 4188, auth bypass active, mock user `LHCI Test User` logged in) via chrome-devtools-mcp browser session.
+
+**Verified at REAL display sizes**:
+- guu_logo navbar (32×32 display, top-left): inlined base64 (4842-char src, 3613 bytes PNG decoded), CRISP — Russian Eagle / open-book design with navy + red colors, no pixelation
+- guu_logo footer (42×48 display): SAME inline base64 reused (single-source asset shared between both nav + footer sites)
+- default_avatar (36×36 display): clean silhouette scaling at 2x retina from 96×96 source
+- StoryList circles (~91 px display from /183/183 picsum source): all 6 thumbnails sharp at 2x retina
+- DashboardHero status bar (A2 fix preserved): time + week + weather + date populated correctly with NO visible shift
+
+### A6 — Process leak cleanup
+
+A5 spawned `npm run preview --port 4188` in background; killed PID 18172 + verified ports 4174/4175/4188 free post-cleanup. chrome-devtools-mcp page closed.
+
+### Polish-pass commit
+
+| # | SHA | Title | Files | +/− |
+|---|---|---|---|---|
+| 7 | `a40b485bd` | `fix+ci+docs(wave122-polish)` — close 5 honesty caveats in one batch | 5 | +26 / −9 |
+
+### Final gates (post-polish, verbatim)
+
+```
+$ npx tsc --noEmit                    → 0 errors
+$ npm run lint                        → 0 warnings
+$ npm run i18n:check                  → 17/17
+$ npm run tokens:sync && git diff     → no drift (631 vars)
+$ npm audit                           → 0 vulnerabilities
+$ npm run test -- --run               → 686 passed | 12 skipped | 0 failed
+$ for i in 1 2 3; do build; done      → 179,867 bytes / hash DdAbG7rt × 3 reproducible
+$ env VITE_LHCI=true npm run build    → 178,892 bytes / hash CiW0SGBC
+$ git diff Cargo.lock                 → no drift (idempotent ≥ 11 waves)
+$ npx playwright a11y-public          → 4/4 chromium 15.7s
+$ URL_STATE_E2E=true npx playwright url-state-persistence.spec.ts → 6/6 chromium 17.5s
+```
+
+Bundle SIZE unchanged from W122 SW6 (179,867 prod / 178,892 LHCI) — only hashes differ due to A2 source edits + A4 file rename.
+
+### Honest re-probe (post-polish)
+
+After fixing 5 caveats, only structural deferrals remain:
+
+- ✅ Closed: SW3 partial close (was workflow-only, now fully wired into ci.yml)
+- ✅ Closed: / + /dashboard CLS regression (was uninvestigated, root cause fixed via h1+status-bar min-h)
+- ✅ Closed: jspdf chunk dedup (was spot-check, now exhaustive grep verification)
+- ✅ Closed: IMAGE_PLACEHOLDER_URL 404 + family (was pre-existing correctness, fixed via rename)
+- ✅ Closed: visual verification at REAL display sizes (was direct-asset-URL only)
+
+Genuinely structural (Wave 123+):
+
+- Mobile perf round 2 (XL own-wave per user W121 + W122 decisions)
+- StoryViewer pixelation on mock stories (acceptable mock-data fallback)
+- ScheduleCard header sub-element shift (~0.040 CLS pre-existing, monitor in W123)
+- Chromatic upstream issues (#33789, #562, #31711, #3982 — quarterly monitoring)
