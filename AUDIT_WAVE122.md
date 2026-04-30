@@ -33,7 +33,7 @@ Wave 122 closes 4 of 6 W121-inherited backlog items + 1 partial close + 1 unbloc
 | 3 | `b7949965b` | `ci(wave122-sw3-url-state-e2e-step)` — add cross-env URL_STATE_E2E step | 1 | +18 / 0 |
 | 4 | `f15316e13` | `docs(wave122-sw4-lhr-format)` — Lighthouse 13.1.0 LHR property paths | 2 | +26 / 0 |
 | 5 | `ddfef1c75` | `docs(wave122-sw5-chromatic-upstream)` — upstream Storybook+Vite8 trackers | 1 | +23 / 0 |
-| 6 | (this commit) | `docs(wave122-sw6-audit)` — AUDIT + CLAUDE trail + W123 prep | TBD | TBD |
+| 6 | `f128489aa` | `docs(wave122-sw6-audit)` — AUDIT + CLAUDE trail + W123 prep | 2 | +362 / 0 |
 
 ---
 
