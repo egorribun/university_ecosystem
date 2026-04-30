@@ -463,3 +463,63 @@ Genuinely structural (Wave 123+):
 - StoryViewer pixelation on mock stories (acceptable mock-data fallback)
 - ScheduleCard header sub-element shift (~0.040 CLS pre-existing, monitor in W123)
 - Chromatic upstream issues (#33789, #562, #31711, #3982 — quarterly monitoring)
+
+---
+
+## Repo hygiene reorganization (post-polish, pre-W123 Variant B)
+
+After polish-docs-v2 closure (`f16e3d96b`), user proposed reorganizing audit files for repo cleanliness. Variant B chosen (full reorg, not just remove-from-remote) — addresses 27-files-at-root visual chaos without losing institutional memory.
+
+### Scope
+
+| Before | After |
+|---|---|
+| 27 audit files at repo root | 0 audit files at repo root |
+| 11 `AUDIT_WAVE112-122.md` | `docs/audits/AUDIT_WAVE120-122.md` (3 active) |
+| 11 `TOTAL_AUDIT_WAVE21-32.md` | `docs/audits/archive/TOTAL_AUDIT_WAVE21-32.md` (legacy backend era) |
+| 5 ancient `AUDIT_2026_*.md` + `WAVE19_FULL` + `TOTAL_AUDIT_2026.md` | `docs/audits/archive/` (W3-W19 mixed naming) |
+
+Plus: new `docs/audits/INDEX.md` with reverse-chronological listing.
+
+### Promotion rule established
+
+When wave **N+3** opens, oldest of 3 active audits moves to `archive/`. Maintains "last 3 waves active" invariant. So W124 → W120 archives; W125 → W121 archives. Bounded clutter at active level forever.
+
+### Git history preserved
+
+All 27 file moves recorded as **renames** (not delete+add):
+- 22 via `git mv` (originally tracked at root)
+- 5 via `git add -u` after plain `mv` (auto-detected as renames)
+- 2 (W3 + W7) stayed gitignored — moved locally for visual cleanliness, not pushed
+
+`git log --follow docs/audits/AUDIT_WAVE122.md` shows pre-move history (SW6 audit creation, SW6 followup, etc.) — verified working.
+
+### Cross-reference updates
+
+- 3 markdown LINKS in `memory/MEMORY.md` updated to `../../../../docs/audits/archive/AUDIT_WAVE116/117/118.md`
+- 6 file refs in `memory/wave123_opening_prompt.md` "Файлы для чтения" section updated to `docs/audits/`
+- 1 header note added to `CLAUDE.md ## Audit Trail` describing the new structure
+- Plain text mentions of `AUDIT_WAVE<N>.md` in CLAUDE.md ## Audit Trail rows + archived audits' internal cross-refs LEFT AS-IS (descriptive references, not clickable; ~50 instances would be churn for marginal gain)
+
+### Pre-commit detect-secrets fix
+
+5 example/placeholder secrets in `archive/AUDIT_2026_03_15_WAVE8.md` got re-flagged by detect-secrets after the move (file path changed → baseline didn't match). Added inline `# pragma: allowlist secret` comments per CLAUDE.md gotcha — example value names (with placeholder values redacted as `<example>` here to avoid recursive detect-secrets flags on this audit file itself):
+- `ELASTICSEARCH_PASSWORD=<example>` — test code example
+- `SPICEDB_PRESHARED_KEY=<example>` — test code example
+- `DATABASE_URL: postgresql+asyncpg://<example>@localhost/<example>` — test DB credentials
+- `GARAGE_RPC_SECRET=<example>` — placeholder text in compose file
+- `GARAGE_ADMIN_TOKEN=<example>` — placeholder text in compose file
+
+### Reorg commits
+
+| # | SHA | Title | Files |
+|---|---|---|---|
+| 10 | `8eba94352` | `docs(wave122-polish-docs-v3)` — reorganize audit files → docs/audits/{,archive/} | 29 (27 renames + 1 modified + 1 new INDEX) |
+| 11 | `216d40fb3` | `docs(wave122-polish-docs-v3-followup)` — replace `<TBD>` SHA placeholder with 8eba94352 | 2 |
+
+### Why this matters
+
+- Fresh `git clone` no longer drowns contributor in 27 root-level audit files
+- "Latest audit" obvious (3 in active dir + INDEX.md top)
+- Bounded clutter via N+3 promotion rule
+- Future AI sessions reading W123 opening prompt see correct paths from start
