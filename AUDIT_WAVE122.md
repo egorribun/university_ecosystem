@@ -339,19 +339,23 @@ Per W120 SW2 ratchet (CLS error@0.10, Perf error@0.40): all 9 URLs continue to p
 
 ## Wave 123 hand-off
 
-See `memory/wave123_backlog.md` (created in this commit). Items inherited from W122:
+See `memory/wave123_backlog.md`. Items inherited from W122 (post-polish, see §Polish pass below for closures):
 
-1. **Wire up `reusable-e2e-tests.yml` from `ci.yml`** (Item #2 partial close) — adds 47 e2e tests + backend setup; ~5-10 min/run CI cost.
+1. ~~**Wire up `reusable-e2e-tests.yml` from `ci.yml`**~~ ✅ **CLOSED in W122 polish A1** (`a40b485bd` — `e2e-tests` job + ci-success aggregation update; ~5-10 min/run CI cost).
 2. **Mobile perf round 2** (XL own-wave, deferred from W121 + W122) — LCP < 2.5s on authenticated routes.
 3. **Chromatic resumption monitoring** (quarterly check on 4 upstream issues per `memory/wave122_chromatic_upstream.md`).
-4. **`IMAGE_PLACEHOLDER_URL` 404 bug fix** (correctness, S scope) — pre-existing, surfaced by SW1 audit.
-5. **`mockApi.ts` `news_placeholder.png` 404** — same family as #4.
-6. **`default_placeholder.png` (75 KB)** — likely orphan after #4 fix; can delete.
+4. ~~**`IMAGE_PLACEHOLDER_URL` 404 bug fix**~~ ✅ **CLOSED in W122 polish A4** (`a40b485bd` — `mv default_placeholder.png placeholder.png` + 4 mockApi refs synced).
+5. ~~**`mockApi.ts` `news_placeholder.png` 404**~~ ✅ **CLOSED in W122 polish A4** (same commit, same family).
+6. ~~**`default_placeholder.png` (75 KB) orphan**~~ ✅ **CLOSED in W122 polish A4** (renamed to placeholder.png, no longer orphan).
 7. **vendor-sentry / vendor-ui unused-JS reduction** (Item #5a partial — SW2 closed only the vendor-pdf portion). Sentry is unavoidable infra; vendor-ui is Framer Motion partial usage. Lower ROI than vendor-pdf was.
-8. **CLS variance investigation** if / + /dashboard +0.028 persists in W123 measurements.
-9. **Investigate jspdf chunk dedup** (Activity + Schedule both reference same file currently — verify in subsequent waves).
+8. ~~**CLS variance investigation**~~ ✅ **CLOSED in W122 polish A2** (`a40b485bd` — root-caused to DashboardHero h1 + status-bar; min-h reservation closed 0.061 → 0.040, -34%, with bonus Perf +0.07-0.08).
+9. ~~**Investigate jspdf chunk dedup**~~ ✅ **CLOSED in W122 polish A3** (`a40b485bd` — exhaustive grep: 1 distinct chunk per pdf-lib).
 
-W122 closes 4 of 6 W121-inherited active items + 1 partial close + 1 unblocking documentation. The CLS arc + a11y arcs + image-bandwidth arcs are all closed. Remaining work: mobile perf round 2 (XL own-wave) + the small W123 polish items above.
+**NEW W123 items surfaced during polish**:
+
+10. **ScheduleCard sub-element CLS shift (~0.040 pre-existing)** — surfaced during polish A2 as the residual after h1+status-bar fix. Smaller scope, well under 0.10 gate (60% margin). Monitor in W123; investigate via `layout-shift-elements` if regresses above 0.06.
+
+W122 + polish closes 5 of 6 W121-inherited active items + 1 unblocking documentation + 6 of 9 hand-off items above. The CLS arc + a11y arcs + image-bandwidth arcs are all closed. Remaining work: mobile perf round 2 (XL own-wave) + 3 small W123 items (#3 Chromatic monitoring, #7 vendor-sentry/ui, #10 ScheduleCard CLS monitor).
 
 ---
 
