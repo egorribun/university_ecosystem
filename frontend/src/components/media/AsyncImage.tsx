@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { Image as InsertPhotoOutlinedIcon } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { Skeleton } from "@/components/settings"
 
@@ -116,7 +116,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
         )}
 
         {hasImage && isVisible && (
-          <motion.img
+          <m.img
             ref={ref}
             key={resolvedSrc}
             src={resolvedSrc}

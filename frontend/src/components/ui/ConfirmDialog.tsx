@@ -1,6 +1,6 @@
 import { useId } from "react"
 import { cn } from "@/utils/cn"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 
 export interface ConfirmDialogProps {
   open: boolean
@@ -31,14 +31,14 @@ export function ConfirmDialog({
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-modal flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
           role="presentation"
         >
-          <motion.div
+          <m.div
             role="alertdialog"
             aria-modal="true"
             aria-labelledby={titleId}
@@ -59,7 +59,7 @@ export function ConfirmDialog({
                 {message}
               </p>
               <div className="flex justify-end gap-3 pt-4">
-                <motion.button
+                <m.button
                   type="button"
                   whileHover={{ scale: 1.05, backgroundColor: "var(--bg-surface-hover)" }}
                   whileTap={{ scale: 0.95 }}
@@ -68,8 +68,8 @@ export function ConfirmDialog({
                   className="rounded-sm border border-subtle px-6 py-3 text-sm font-bold transition-colors focus-ring-premium disabled:opacity-50 disabled:pointer-events-none"
                 >
                   {cancelText}
-                </motion.button>
-                <motion.button
+                </m.button>
+                <m.button
                   type="button"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -92,11 +92,11 @@ export function ConfirmDialog({
                     />
                   )}
                   {confirmText}
-                </motion.button>
+                </m.button>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

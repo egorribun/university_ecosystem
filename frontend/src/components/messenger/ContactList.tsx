@@ -1,4 +1,4 @@
-import { motion, LayoutGroup } from "framer-motion"
+import { m } from "framer-motion"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
@@ -12,13 +12,17 @@ interface ContactListProps {
 
 // PERF-24-02: Removed React.memo() — React Compiler "infer" mode handles
 // memoization automatically. Manual memo() caused redundant double-wrapping.
+//
+// Wave 124 SW1 — Removed LayoutGroup + `layout` prop (require domMax). Items
+// snap-reorder when contacts list is re-sorted (e.g., new message moves
+// contact to top). Per plan: messenger contact reorder is rare and snap is
+// acceptable UX. whileHover + whileTap + the unread-badge initial/animate
+// remain — they're in domAnimation set.
 export function ContactList({ contacts, selectedId, onSelect }: ContactListProps) {
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)">
-      <LayoutGroup>
-        {contacts.map((contact) => (
-          <motion.div
-            layout
+      {contacts.map((contact) => (
+          <m.div
             key={contact.id}
             id={`messenger-contact-${contact.id}`}
             role="button"
@@ -83,19 +87,18 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
                   {contact.lastMessage}
                 </p>
                 {contact.unread > 0 && (
-                  <motion.span
+                  <m.span
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     className="msg-unread-badge min-w-5 h-5 px-1 bg-(--error-text) text-white rounded-full text-label-xs font-black flex items-center justify-center shadow-lg shadow-(--error-text)/(--opacity-dim)"
                   >
                     {contact.unread > 99 ? "99+" : contact.unread}
-                  </motion.span>
+                  </m.span>
                 )}
               </div>
             </div>
-          </motion.div>
+          </m.div>
         ))}
-      </LayoutGroup>
     </div>
   )
 }

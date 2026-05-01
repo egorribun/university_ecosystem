@@ -1,5 +1,4 @@
-import { useRef, type ReactNode, type MouseEvent } from "react"
-import { motion, useSpring, useMotionValue } from "framer-motion"
+import { useRef, useState, type ReactNode, type MouseEvent } from "react"
 
 interface MagneticProps {
   children: ReactNode
@@ -7,15 +6,17 @@ interface MagneticProps {
   className?: string
 }
 
-const SPRING_CONFIG = { damping: 15, stiffness: 150, mass: 0.1 }
+// Wave 124 SW1 — Refactored from framer-motion useMotionValue/useSpring
+// (require domMax) to plain CSS transform + CSS transition. The cubic-bezier
+// approximates the original underdamped spring (stiffness 150, damping 15,
+// mass 0.1) — smooth ease-out with subtle overshoot. UX is comparable;
+// magnetic pull-back on mouse-leave still feels organic. Plain <div> since
+// no framer features are needed here.
+const TRANSITION = "transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1)"
 
 export default function Magnetic({ children, strength = 0.5, className }: MagneticProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const x = useMotionValue(0)
-  const y = useMotionValue(0)
-
-  const springX = useSpring(x, SPRING_CONFIG)
-  const springY = useSpring(y, SPRING_CONFIG)
+  const [pos, setPos] = useState({ x: 0, y: 0 })
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!ref.current) return
@@ -25,27 +26,29 @@ export default function Magnetic({ children, strength = 0.5, className }: Magnet
     const centerX = left + width / 2
     const centerY = top + height / 2
 
-    const distanceX = clientX - centerX
-    const distanceY = clientY - centerY
-
-    x.set(distanceX * strength)
-    y.set(distanceY * strength)
+    setPos({
+      x: (clientX - centerX) * strength,
+      y: (clientY - centerY) * strength,
+    })
   }
 
   const handleMouseLeave = () => {
-    x.set(0)
-    y.set(0)
+    setPos({ x: 0, y: 0 })
   }
 
   return (
-    <motion.div
+    <div
       ref={ref}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      style={{ x: springX, y: springY }}
+      style={{
+        transform: `translate3d(${pos.x}px, ${pos.y}px, 0)`,
+        transition: TRANSITION,
+        willChange: "transform",
+      }}
       className={className}
     >
       {children}
-    </motion.div>
+    </div>
   )
 }

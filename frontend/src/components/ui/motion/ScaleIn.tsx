@@ -1,4 +1,4 @@
-import { motion, HTMLMotionProps, Variants } from "framer-motion"
+import { m, HTMLMotionProps, Variants } from "framer-motion"
 import { ReactNode } from "react"
 import { motion as motionTokens } from "@/theme/tokens"
 
@@ -37,7 +37,7 @@ export function ScaleIn({
   }
 
   return (
-    <motion.div
+    <m.div
       initial="hidden"
       animate="visible"
       exit="exit"
@@ -46,6 +46,6 @@ export function ScaleIn({
       {...props}
     >
       {children}
-    </motion.div>
+    </m.div>
   )
 }

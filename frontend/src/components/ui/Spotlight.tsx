@@ -1,4 +1,4 @@
-import { motion, useMotionValue, MotionValue } from "framer-motion"
+import { m, useMotionValue, MotionValue } from "framer-motion"
 import { MouseEvent, PropsWithChildren, useCallback } from "react"
 import { cn } from "@/utils/cn"
 
@@ -26,7 +26,7 @@ type SpotlightOverlayProps = {
 
 export function SpotlightOverlay({ mouseX, mouseY, className }: SpotlightOverlayProps) {
   return (
-    <motion.div
+    <m.div
       className={cn(
         "pointer-events-none absolute -inset-px opacity-0 transition duration-base group-hover:opacity-100",
         className

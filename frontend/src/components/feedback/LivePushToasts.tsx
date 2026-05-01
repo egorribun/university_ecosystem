@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
 import { CheckCircle2, Info, AlertTriangle, XCircle, X, ExternalLink } from "lucide-react"
@@ -242,7 +242,7 @@ export default function LivePushToasts() {
     <div className="fixed top-4 right-4 z-toast flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
         {open && current && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -20, filter: "blur(8px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
@@ -287,7 +287,7 @@ export default function LivePushToasts() {
               )}
             </div>
 
-            <motion.button
+            <m.button
               type="button"
               whileTap={{ scale: 0.94 }}
               onClick={() => handleClose()}
@@ -295,11 +295,11 @@ export default function LivePushToasts() {
               aria-label={t("common:buttons.close")}
             >
               <X className="h-3.5 w-3.5 opacity-hover transition-opacity group-hover/btn:opacity-100" />
-            </motion.button>
+            </m.button>
 
             {/* Progress Bar — gradient style */}
             <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden rounded-b-xl bg-white/(--opacity-faint)">
-              <motion.div
+              <m.div
                 className={cn("absolute bottom-0 left-0 h-0.5 opacity-heavy", severityIconColor)}
                 style={{ background: "linear-gradient(to right, currentColor, transparent)" }}
                 initial={{ width: "100%" }}
@@ -307,7 +307,7 @@ export default function LivePushToasts() {
                 transition={{ duration: 6, ease: "linear" }}
               />
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

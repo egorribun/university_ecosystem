@@ -3,7 +3,7 @@
  * Positioned above the card. Pointer-events-none so it doesn't block clicks.
  */
 
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { Calendar, MessageCircle, Heart } from "lucide-react"
 import { getMoscowDate } from "@/utils/date"
 import { useTranslation } from "react-i18next"
@@ -39,7 +39,7 @@ export function NewsQuickView({
   return (
     <AnimatePresence>
       {visible && (
-        <motion.div
+        <m.div
           role="tooltip"
           aria-hidden="true"
           initial={
@@ -91,7 +91,7 @@ export function NewsQuickView({
               </span>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

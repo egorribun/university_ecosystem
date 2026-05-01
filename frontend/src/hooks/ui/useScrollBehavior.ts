@@ -1,15 +1,27 @@
-import { useState } from "react"
-import { useScroll, useMotionValueEvent } from "framer-motion"
+import { useEffect, useState } from "react"
 import { NAVBAR_SCROLL_THRESHOLD } from "@/constants/scroll"
 
+// Wave 124 SW1 — Refactored from framer-motion useScroll/useMotionValueEvent
+// to native scroll listener so this hook (used in navbar morph + scroll
+// restoration) can run under LazyMotion+domAnimation strict mode. Window
+// scroll is the source of truth (matches framer's default useScroll() with
+// no args). Listener attaches once + uses passive: true for jank-free
+// scrolling. Equivalent behavior — no UX change.
 export const useScrollBehavior = () => {
-  const [isScrolled, setIsScrolled] = useState(false)
-
-  const { scrollY } = useScroll()
-  useMotionValueEvent(scrollY, "change", (latest) => {
-    const scrolled = latest > NAVBAR_SCROLL_THRESHOLD
-    if (scrolled !== isScrolled) setIsScrolled(scrolled)
+  const [isScrolled, setIsScrolled] = useState(() => {
+    if (typeof window === "undefined") return false
+    return window.scrollY > NAVBAR_SCROLL_THRESHOLD
   })
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrolled = window.scrollY > NAVBAR_SCROLL_THRESHOLD
+      setIsScrolled((prev) => (prev !== scrolled ? scrolled : prev))
+    }
+    handleScroll()
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
 
   return { isScrolled }
 }

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { Link } from "@tanstack/react-router"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { MoreHorizontal } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { springSoft } from "@/utils/animations"
@@ -50,7 +50,7 @@ export function NavbarOverflowMenu({
 
   return (
     <div ref={ref} className="relative">
-      <motion.button
+      <m.button
         type="button"
         whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
         transition={prefersReducedMotion ? { duration: 0 } : springSoft}
@@ -67,11 +67,11 @@ export function NavbarOverflowMenu({
         )}
       >
         <MoreHorizontal size={18} />
-      </motion.button>
+      </m.button>
 
       <AnimatePresence>
         {open && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, scale: 0.95, y: -4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
@@ -102,7 +102,7 @@ export function NavbarOverflowMenu({
                 </Link>
               )
             })}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

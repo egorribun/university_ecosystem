@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { animate, useMotionValue } from "framer-motion"
 import { ProgressBar } from "@/components/ui"
 import { SkeletonMorph } from "@/components/ui/SkeletonMorph"
 import AnimatedRing, { useAnimatedNumber } from "./AnimatedRing"
 import CardShell from "./CardShell"
 import TrendChip from "./TrendChip"
-import { EASE_OUT_EXPO, type AttendanceStats } from "../types"
+import { type AttendanceStats } from "../types"
 import { motion as motionTokens } from "@/theme/tokens"
+import { useAnimatedFloat } from "@/hooks/useAnimatedFloat"
 
 type AttendanceCardProps = {
   attendance?: AttendanceStats | null
@@ -30,37 +29,29 @@ function AttendanceCardSkeleton() {
   )
 }
 
+// Wave 124 SW1 — `reduceMotion` prop no longer destructured; useAnimatedFloat
+// reads `useReducedMotion` internally. Prop kept in interface for caller
+// compat (ActivityFeature still passes it; harmless to ignore here).
 export function AttendanceCard({
   attendance,
   hasInitiallyLoaded,
-  reduceMotion,
   ringSize,
 }: AttendanceCardProps) {
   const { t } = useTranslation(["activity"])
 
+  const attendancePct = Math.max(0, Math.min(100, attendance?.percent ?? 0))
   const attendancePctAnimated = useAnimatedNumber(
-    Math.max(0, Math.min(100, attendance?.percent ?? 0)),
+    attendancePct,
     motionTokens.durationLazy,
     0
   )
-
-  const progressAttendanceMv = useMotionValue(0)
-  const [progressAttendance, setProgressAttendance] = useState(0)
-
-  useEffect(() => {
-    const target = Math.max(0, Math.min(100, attendance?.percent ?? 0))
-    const controls = animate(progressAttendanceMv, target, {
-      duration: reduceMotion ? 0 : motionTokens.durationLazy,
-      ease: EASE_OUT_EXPO,
-    })
-    const unsubscribe = progressAttendanceMv.on("change", (value: number) =>
-      setProgressAttendance(value)
-    )
-    return () => {
-      controls.stop()
-      unsubscribe()
-    }
-  }, [attendance?.percent, reduceMotion, progressAttendanceMv])
+  // Wave 124 SW1 — refactored from framer-motion useMotionValue + animate
+  // (require domMax) to shared rAF helper. The reduceMotion prop is honored
+  // by useAnimatedFloat via useReducedMotion internally — but the original
+  // code passed prop reduceMotion + ignored useReducedMotion hook. Both
+  // sources should agree (reduceMotion prop is computed from same hook
+  // upstream in ActivityFeature).
+  const progressAttendance = useAnimatedFloat(attendancePct, motionTokens.durationLazy)
 
   return (
     <CardShell tone="success" aria-label={t("activity:a11y.attendanceCard")}>

@@ -3,7 +3,7 @@ import { ChatWindow, MessageInput } from "@/components/messenger"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import { motion as motionTokens } from "@/theme/tokens"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import {
   ChevronLeft,
   MessageCircleOff,
@@ -66,7 +66,7 @@ export function ChatArea({
   }, [showSearchInChat])
 
   return (
-    <motion.div
+    <m.div
       key="chat-area"
       initial={isMobile ? { x: 300, opacity: 0 } : undefined}
       animate={{ x: 0, opacity: 1 }}
@@ -78,7 +78,7 @@ export function ChatArea({
         <>
           <AnimatePresence mode="wait">
             {!showSearchInChat ? (
-              <motion.div
+              <m.div
                 key="header-normal"
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -87,15 +87,15 @@ export function ChatArea({
               >
                 <div className="flex items-center gap-3">
                   {isMobile && (
-                    <motion.button
+                    <m.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => navigate({ to: "/messenger" })}
                       className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
                       <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
-                    </motion.button>
+                    </m.button>
                   )}
-                  <motion.button
+                  <m.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="flex cursor-pointer items-center gap-3 border-none bg-transparent text-left outline-none"
@@ -120,7 +120,7 @@ export function ChatArea({
                       </h2>
                       <AnimatePresence mode="wait">
                         {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active ? (
-                          <motion.p
+                          <m.p
                             key="online"
                             initial={{ opacity: 0, y: 5 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -128,9 +128,9 @@ export function ChatArea({
                             className="text-xs font-semibold uppercase tracking-wider text-msg-online"
                           >
                             {t("messenger:online", "online")}
-                          </motion.p>
+                          </m.p>
                         ) : (
-                          <motion.p
+                          <m.p
                             key="offline"
                             initial={{ opacity: 0, y: 5 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -138,15 +138,15 @@ export function ChatArea({
                             className="text-xs font-medium text-text-secondary"
                           >
                             {t("messenger:offline", "offline")}
-                          </motion.p>
+                          </m.p>
                         )}
                       </AnimatePresence>
                     </div>
-                  </motion.button>
+                  </m.button>
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <motion.button
+                  <m.button
                     id="chat-search-toggle"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -154,9 +154,9 @@ export function ChatArea({
                     className="rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                   >
                     <Search className="h-5 w-5 text-text-secondary" strokeWidth={2} />
-                  </motion.button>
+                  </m.button>
                   <div className="relative">
-                    <motion.button
+                    <m.button
                       id="chat-menu-toggle"
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
@@ -164,10 +164,10 @@ export function ChatArea({
                       className={`rounded-full p-2.5 transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
                     >
                       <MoreVertical className="h-5 w-5 text-text-secondary" strokeWidth={2} />
-                    </motion.button>
+                    </m.button>
                     <AnimatePresence>
                       {showChatMenu && (
-                        <motion.div
+                        <m.div
                           initial={{ opacity: 0, scale: 0.9, y: 10, x: 5 }}
                           animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                           exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -203,21 +203,21 @@ export function ChatArea({
                               <span className="text-sm font-medium">{item.label}</span>
                             </button>
                           ))}
-                        </motion.div>
+                        </m.div>
                       )}
                     </AnimatePresence>
                   </div>
                 </div>
-              </motion.div>
+              </m.div>
             ) : (
-              <motion.div
+              <m.div
                 key="header-search"
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -20, opacity: 0 }}
                 className="header-glass z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-glass-border bg-surface/(--opacity-medium) px-(--spacing-4) backdrop-blur-xl"
               >
-                <motion.button
+                <m.button
                   whileTap={{ scale: 0.9 }}
                   onClick={() => {
                     setShowSearchInChat(false)
@@ -226,7 +226,7 @@ export function ChatArea({
                   className="mr-3 rounded-full p-1.5 transition-colors hover:bg-bg-surface-hover"
                 >
                   <X className="h-6 w-6" strokeWidth={2} />
-                </motion.button>
+                </m.button>
                 <input
                   id="chat-search-input"
                   type="text"
@@ -239,7 +239,7 @@ export function ChatArea({
                   placeholder={t("messenger:searchMessages", "Search messages...")}
                   className="text-md flex-1 rounded-md border-none bg-black/(--opacity-subtle) px-4 py-2.5 outline-none transition-all focus:ring-2 focus:ring-brand-main/(--opacity-medium) dark:bg-white/(--opacity-subtle)"
                 />
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
 
@@ -248,7 +248,7 @@ export function ChatArea({
         </>
       ) : (
         <div className="bg-(--bg-surface-hover)/(--opacity-soft) flex flex-1 flex-col items-center justify-center p-8 text-center">
-          <motion.div
+          <m.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             whileHover={{ rotate: 5, scale: 1.1 }}
@@ -263,7 +263,7 @@ export function ChatArea({
               style={{ opacity: "var(--opacity-strong)" }}
               strokeWidth={1}
             />
-          </motion.div>
+          </m.div>
           <h3 className="sf-pro text-xl font-bold text-(--text-primary)">
             {t("messenger:selectChat", "Choose a conversation")}
           </h3>
@@ -272,6 +272,6 @@ export function ChatArea({
           </p>
         </div>
       )}
-    </motion.div>
+    </m.div>
   )
 }

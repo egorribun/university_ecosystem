@@ -9,6 +9,7 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router"
+import { LazyMotion, domAnimation } from "framer-motion"
 
 import { AuthProvider } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
@@ -178,10 +179,16 @@ export async function renderWithRouter({
   await router.load()
 
   const routerNode = <RouterProvider router={router as never} />
+  // Wave 124 SW1 — mirror AppProviders' LazyMotion wrapper so tests render
+  // `<m.X>` components without runtime errors. NO `strict: true` here — tests
+  // sometimes mount partial React trees where LazyMotion strict's prod-mode
+  // motion.X check would false-flag jsdom-rendered output.
   const result = render(
     <QueryClientProvider client={client}>
       <LanguageProvider>
-        {authProvider ? <AuthProvider>{routerNode}</AuthProvider> : routerNode}
+        <LazyMotion features={domAnimation}>
+          {authProvider ? <AuthProvider>{routerNode}</AuthProvider> : routerNode}
+        </LazyMotion>
       </LanguageProvider>
     </QueryClientProvider>
   )

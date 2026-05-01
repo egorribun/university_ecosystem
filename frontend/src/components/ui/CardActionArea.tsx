@@ -1,5 +1,5 @@
 import { forwardRef, type ElementType, type ComponentPropsWithoutRef, type ReactNode } from "react"
-import { motion, type HTMLMotionProps } from "framer-motion"
+import { m, type HTMLMotionProps } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { EASING } from "@/utils/motion"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -18,7 +18,7 @@ export const CardActionArea = forwardRef<HTMLButtonElement, CardActionAreaProps>
     const typeProps = Component === "button" ? { type: "button" as const } : {}
 
     return (
-      <motion.button
+      <m.button
         ref={ref}
         {...typeProps}
         className={cn(
@@ -36,7 +36,7 @@ export const CardActionArea = forwardRef<HTMLButtonElement, CardActionAreaProps>
         {...props}
       >
         {children}
-      </motion.button>
+      </m.button>
     )
   }
 )

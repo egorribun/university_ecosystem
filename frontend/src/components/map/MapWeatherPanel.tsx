@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import {
   Thermometer,
@@ -83,7 +83,7 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           ref={panelRef}
           className="map-weather-panel"
           role="dialog"
@@ -129,7 +129,7 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
               </div>
             </div>
           )}
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

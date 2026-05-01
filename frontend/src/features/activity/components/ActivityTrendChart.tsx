@@ -1,5 +1,5 @@
 import { useId, useMemo, type CSSProperties } from "react"
-import { motion, useReducedMotion } from "framer-motion"
+import { m, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
 
@@ -124,7 +124,7 @@ export function ActivityTrendChart({
         <path d={areaPath} fill={`url(#${gradientId})`} />
 
         {/* Trend line */}
-        <motion.polyline
+        <m.polyline
           points={points}
           fill="none"
           stroke={colorVar}

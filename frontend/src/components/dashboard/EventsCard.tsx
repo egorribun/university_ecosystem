@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent 
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { Sparkles } from "lucide-react"
 
 import { Badge, Button, Card, Skeleton } from "@/components/ui"
@@ -181,7 +181,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             <AnimatePresence mode="popLayout" initial={false}>
               {scopedEvents.map((e, idx) => {
                 return (
-                  <motion.li
+                  <m.li
                     key={`${eventsScope}-${e.id}`}
                     initial={prefersReduced ? false : { opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -238,7 +238,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                         <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                       </span>
                     </button>
-                  </motion.li>
+                  </m.li>
                 )
               })}
             </AnimatePresence>

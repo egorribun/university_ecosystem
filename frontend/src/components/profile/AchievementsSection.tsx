@@ -1,4 +1,4 @@
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Shield } from "lucide-react"
 import { SectionCard } from "@/components/settings"
@@ -24,7 +24,7 @@ export const AchievementsSection = ({
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {achievements.map((ach) => (
-          <motion.div
+          <m.div
             key={ach.key}
             whileHover={{ y: -2 }}
             className="flex items-start gap-3 p-4 rounded-2xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-subtle) hover:border-brand/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-medium) transition-all cursor-pointer group"
@@ -41,7 +41,7 @@ export const AchievementsSection = ({
                 {ach.issuer || "Academic Board"}
               </p>
             </div>
-          </motion.div>
+          </m.div>
         ))}
       </div>
     </SectionCard>

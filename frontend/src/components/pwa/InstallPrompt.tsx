@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { X, Bell, BellOff, Download, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { usePushPreferences, type NotificationToast } from "@/hooks/usePushPreferences"
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "@/app/pwaEvents"
@@ -253,7 +253,7 @@ export default function InstallPrompt() {
     <>
       <AnimatePresence>
         {shouldRenderPrompt && (
-          <motion.div
+          <m.div
             key="install-prompt-root"
             variants={ANIMATION_VARIANTS}
             initial="initial"
@@ -472,13 +472,13 @@ export default function InstallPrompt() {
                 )}
               </div>
             </GlassCard>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {feedback && (
-          <motion.div
+          <m.div
             initial={FEEDBACK_VARIANTS.initial}
             animate={FEEDBACK_VARIANTS.animate}
             exit={FEEDBACK_VARIANTS.exit}
@@ -504,13 +504,13 @@ export default function InstallPrompt() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {updateToastOpen && (
-          <motion.div
+          <m.div
             initial={UPDATE_TOAST_VARIANTS.initial}
             animate={UPDATE_TOAST_VARIANTS.animate}
             exit={UPDATE_TOAST_VARIANTS.exit}
@@ -538,7 +538,7 @@ export default function InstallPrompt() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </>

@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { motion, useReducedMotion } from "framer-motion"
+import { m, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
 
@@ -104,7 +104,7 @@ export function ActivityBarChart({
             />
 
             {/* Value bar */}
-            <motion.rect
+            <m.rect
               x={bar.x}
               y={bar.y}
               height={BAR_HEIGHT}

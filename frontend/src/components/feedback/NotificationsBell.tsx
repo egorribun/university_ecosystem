@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion, Variants } from "framer-motion"
+import { AnimatePresence, m, Variants } from "framer-motion"
 import {
   Bell,
   CheckCheck,
@@ -143,7 +143,7 @@ export default function NotificationsBell() {
       {createPortal(
         <AnimatePresence>
           {isOpen && (
-            <motion.div
+            <m.div
               initial="hidden"
               animate="visible"
               exit="exit"
@@ -238,7 +238,7 @@ export default function NotificationsBell() {
                 ) : (
                   <div className="flex flex-col">
                     {data.map((n) => (
-                      <motion.div
+                      <m.div
                         key={n.id}
                         variants={itemVariants}
                         className={cn(
@@ -303,7 +303,7 @@ export default function NotificationsBell() {
                             <CheckCheck className="w-3.5 h-3.5" />
                           </button>
                         )}
-                      </motion.div>
+                      </m.div>
                     ))}
 
                     {hasMore && (
@@ -335,7 +335,7 @@ export default function NotificationsBell() {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>,
         document.body

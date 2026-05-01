@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { X, FileText, Image as ImageIcon, File, Paperclip, Send } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -90,7 +90,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     <div className="shrink-0 p-3 z-popover relative border-t border-glass-border bg-surface/(--opacity-soft) backdrop-blur-xl">
       <AnimatePresence>
         {svgRejected && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
@@ -98,7 +98,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
             role="alert"
           >
             {t("messenger:svgNotAllowed", "SVG files are not allowed")}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
       {selectedFiles.length > 0 && (
@@ -129,7 +129,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
       )}
       <div className="flex items-end gap-2 bg-(--bg-surface-hover)/(--opacity-subtle) rounded-2xl border border-(--glass-border)/(--opacity-dim) p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/(--opacity-faint) focus-within:border-(--brand-main)/(--opacity-dim) transition-all duration-base">
         <div className="relative">
-          <motion.button
+          <m.button
             id="chat-attach-btn"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
@@ -146,11 +146,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
               size={20}
               className={cn("transition-transform duration-base", showAttachMenu && "rotate-45")}
             />
-          </motion.button>
+          </m.button>
 
           <AnimatePresence>
             {showAttachMenu && (
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -195,7 +195,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     </span>
                   </button>
                 ))}
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
 
@@ -210,7 +210,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-text-primary placeholder:text-(--text-secondary) placeholder:opacity-medium"
           rows={1}
         />
-        <motion.button
+        <m.button
           id="chat-send-btn"
           whileHover={text.trim() || selectedFiles.length > 0 ? { scale: 1.1 } : {}}
           whileTap={text.trim() || selectedFiles.length > 0 ? { scale: 0.9 } : {}}
@@ -224,7 +224,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           )}
         >
           <Send size={20} fill="currentColor" />
-        </motion.button>
+        </m.button>
       </div>
     </div>
   )

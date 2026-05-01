@@ -4,7 +4,7 @@
  * Pattern source: components/news/NewsQuickView.tsx
  */
 
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { Calendar, MapPin, Users } from "lucide-react"
 import { formatDate } from "@/utils/date"
 import { useTranslation } from "react-i18next"
@@ -49,7 +49,7 @@ export function EventQuickView({
   return (
     <AnimatePresence>
       {visible && (
-        <motion.div
+        <m.div
           aria-hidden="true"
           initial={
             prefersReduced ? false : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }
@@ -106,7 +106,7 @@ export function EventQuickView({
               </span>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

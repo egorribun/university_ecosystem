@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { Search, X, FileText, Calendar, ArrowRight, Clock } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
@@ -162,7 +162,7 @@ export function SearchDialog() {
 
   return (
     <AnimatePresence>
-      <motion.div
+      <m.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -170,7 +170,7 @@ export function SearchDialog() {
         onClick={() => setOpen(false)}
         role="presentation"
       >
-        <motion.div
+        <m.div
           initial={{ opacity: 0, scale: 0.95, y: -20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -20 }}
@@ -323,8 +323,8 @@ export function SearchDialog() {
               </kbd>
             </span>
           </div>
-        </motion.div>
-      </motion.div>
+        </m.div>
+      </m.div>
     </AnimatePresence>
   )
 }

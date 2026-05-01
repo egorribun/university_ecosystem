@@ -1,6 +1,6 @@
 import { useCallback, useState, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import { PageLayout } from "@/components/layout/PageLayout"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -269,7 +269,7 @@ function ScheduleContent() {
                    PERF-70-02: removed filter:blur — GPU-expensive, imperceptible at 200ms. */}
                 {/* FEAT-71-02: animated view transition between desktop ↔ mobile */}
                 <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
+                  <m.div
                     key={isMobile ? "mobile" : "desktop"}
                     initial={prefersReduced ? false : { opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -293,7 +293,7 @@ function ScheduleContent() {
                         getLessonTypeLabel={getLessonTypeLabel}
                       />
                     )}
-                  </motion.div>
+                  </m.div>
                 </AnimatePresence>
               </FadeSection>
             </SkeletonMorph>

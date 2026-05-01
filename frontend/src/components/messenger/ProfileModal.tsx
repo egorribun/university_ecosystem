@@ -2,7 +2,7 @@ import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { User } from "@/types/User"
 
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -22,13 +22,13 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
   return (
     <AnimatePresence>
       {(user || loading || error) && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
         >
-          <motion.div
+          <m.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -38,14 +38,14 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
               <h3 className="sf-pro text-xl font-bold tracking-tight">
                 {user?.full_name || t("messenger:profile", "Profile")}
               </h3>
-              <motion.button
+              <m.button
                 whileHover={{ rotate: 90, scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={onClose}
                 className="rounded-full p-2 transition-colors hover:bg-surface-hover"
               >
                 <X className="h-5 w-5" />
-              </motion.button>
+              </m.button>
             </div>
 
             <div className="p-8">
@@ -120,8 +120,8 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                 </div>
               )}
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { ArrowUp } from "lucide-react"
 import Magnetic from "./Magnetic"
 
@@ -65,7 +65,7 @@ export default function BackToTop() {
           }}
         >
           <Magnetic strength={0.3}>
-            <motion.button
+            <m.button
               type="button"
               initial={{ opacity: 0, scale: 0.5, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -78,7 +78,7 @@ export default function BackToTop() {
               onClick={onClick}
             >
               <ArrowUp size={22} strokeWidth={2.5} />
-            </motion.button>
+            </m.button>
           </Magnetic>
         </div>
       )}

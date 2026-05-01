@@ -1,6 +1,6 @@
 import React, { useEffect } from "react"
 import ReactDOM from "react-dom"
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { cn } from "@/utils/cn"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
@@ -53,14 +53,14 @@ export function Dialog({
       role="presentation"
       className="fixed inset-0 z-overlay flex items-center justify-center p-4"
     >
-      <motion.div
+      <m.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 bg-background/(--opacity-strong) backdrop-blur-xl"
         onClick={onClose}
       />
-      <motion.div
+      <m.div
         ref={dialogRef}
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -73,7 +73,7 @@ export function Dialog({
         )}
       >
         {children}
-      </motion.div>
+      </m.div>
     </div>,
     document.body
   )

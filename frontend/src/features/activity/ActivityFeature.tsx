@@ -1,5 +1,5 @@
 import { useRef, type CSSProperties } from "react"
-import { motion, useReducedMotion } from "framer-motion"
+import { useReducedMotion } from "framer-motion"
 import { Activity as TimelineIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -7,6 +7,7 @@ import { breakpoints } from "@/theme/tokens"
 import FadeSection from "@/components/motion/FadeSection"
 import useActivityData from "@/hooks/useActivityData"
 import { useActivityComparative } from "@/hooks/useActivityComparative"
+import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
 
 import { ActivityBackdrop } from "./components/ActivityBackdrop"
 import { ActivityMotivation } from "./components/ActivityMotivation"
@@ -63,6 +64,13 @@ export function ActivityFeature() {
 
   const contentRef = useRef<HTMLDivElement>(null)
 
+  // Wave 124 SW1 — replaces framer-motion layoutId="activity-period-indicator"
+  // (requires domMax). Single absolutely-positioned indicator slides between
+  // active period buttons via CSS transform transition. ResizeObserver-driven
+  // re-measurement handles i18n length changes.
+  const periodSelectorRef = useRef<HTMLDivElement>(null)
+  const periodRect = useSlidingIndicator(periodSelectorRef, period)
+
   return (
     <div className="activity-theme aurora-mesh relative w-full overflow-x-clip py-6 sm:py-8 md:py-10 px-4 sm:px-6 md:px-10 lg:px-14">
       {/* Layer 0: Decorative backdrop */}
@@ -102,16 +110,35 @@ export function ActivityFeature() {
           hasInitiallyLoaded={hasInitiallyLoaded}
         />
 
-        {/* ── Period Selector ──────────────────────── */}
+        {/* ── Period Selector ────────────────────────
+            Wave 124 SW1 — refactored from framer-motion layoutId to CSS
+            sliding indicator. Same UX, no domMax features. */}
         <FadeSection delay="100ms">
           <div
-            className="activity-period-selector mb-6 inline-flex items-center gap-1"
+            ref={periodSelectorRef}
+            className="activity-period-selector mb-6 relative inline-flex items-center gap-1"
             role="radiogroup"
             aria-label={t("activity:a11y.periodSelector")}
           >
+            {periodRect && (
+              <span
+                aria-hidden="true"
+                className="absolute rounded-full bg-[var(--activity-present-accent)] z-negative"
+                style={{
+                  transform: `translate3d(${periodRect.left}px, ${periodRect.top}px, 0)`,
+                  width: periodRect.width,
+                  height: periodRect.height,
+                  boxShadow: "var(--activity-period-indicator-shadow)",
+                  transition: reduce
+                    ? "none"
+                    : "transform 280ms cubic-bezier(0.34, 1.3, 0.64, 1), width 280ms cubic-bezier(0.34, 1.3, 0.64, 1), height 280ms cubic-bezier(0.34, 1.3, 0.64, 1)",
+                }}
+              />
+            )}
             {periodOptions.map((option) => (
               <button
                 key={option.value}
+                data-tab-key={option.value}
                 type="button"
                 role="radio"
                 aria-checked={period === option.value}
@@ -124,18 +151,6 @@ export function ActivityFeature() {
                     : "bg-transparent text-text-primary hover:text-[var(--activity-present-accent)]"
                 )}
               >
-                {period === option.value && (
-                  <motion.span
-                    layoutId="activity-period-indicator"
-                    className="absolute inset-0 rounded-full bg-[var(--activity-present-accent)]"
-                    style={{ boxShadow: "var(--activity-period-indicator-shadow)" }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 400,
-                      damping: 30,
-                    }}
-                  />
-                )}
                 <span className="relative z-base">{option.label}</span>
               </button>
             ))}

@@ -70,13 +70,23 @@ vi.mock("framer-motion", () => {
     return Component as unknown as React.ComponentType<unknown>
   }
 
+  // Wave 124 SW1 — also expose `m` (LazyMotion minimal component) since
+  // production code now uses `<m.X>` JSX after the framer-motion → m bulk
+  // swap. Same proxy shape as `motion` so any tag works.
+  const motionProxy = {
+    div: motionComponent("div"),
+    button: motionComponent("button"),
+    span: motionComponent("span"),
+  }
   return {
     AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    motion: {
-      div: motionComponent("div"),
-      button: motionComponent("button"),
-      span: motionComponent("span"),
-    },
+    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    MotionConfig: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    domAnimation: {},
+    domMax: {},
+    motion: motionProxy,
+    m: motionProxy,
+    useReducedMotion: () => false,
   }
 })
 
