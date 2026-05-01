@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { MessageSquare } from "lucide-react"
 import { cn } from "@/utils/cn"
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { useMessenger } from "@/contexts/MessengerContext"
 
 export default function MessengerButton() {
@@ -26,7 +26,7 @@ export default function MessengerButton() {
         strokeWidth={2}
       />
       {unreadCount > 0 && (
-        <motion.span
+        <m.span
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           className="absolute -top-0.5 -right-0.5 flex items-center justify-center"
@@ -34,7 +34,7 @@ export default function MessengerButton() {
           <span className="relative inline-flex rounded-full h-4 min-w-4 bg-(--brand-main) border-2 border-(--bg-surface) dark:border-(--bg-page) text-label-xs font-bold text-white items-center justify-center px-0.5">
             {unreadCount}
           </span>
-        </motion.span>
+        </m.span>
       )}
     </button>
   )

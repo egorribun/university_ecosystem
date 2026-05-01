@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { MotionConfig } from "framer-motion"
+import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
@@ -40,15 +40,30 @@ function ProvidersInner({ children }: AppProvidersProps) {
 // `emulateMedia({ reducedMotion: "reduce" })` for WCAG 2.3.3 compliance.
 const LHCI_REDUCED_MOTION = import.meta.env.VITE_LHCI === "true" ? "always" : "user"
 
+// Wave 124 SW1 — `<LazyMotion strict features={domAnimation}>` ships only the
+// minimal animation feature set (~5-10 KB savings on vendor-ui chunk vs full
+// motion runtime). `strict: true` causes runtime errors if `<motion.X>` is
+// used anywhere — forces all 64 JSX consumers to use the bundled minimal
+// `<m.X>` component. Pre-Wave-124 components have been refactored to:
+//   - Use `<m.X>` JSX (Phase B bulk swap)
+//   - Avoid useScroll / useTransform / useMotionValue / useSpring /
+//     useAnimation / LayoutGroup / layoutId / `layout` prop (Phase A — these
+//     require domMax). Replacements: native scroll listeners + CSS variables,
+//     rAF + easeOutExpo (see @/hooks/useAnimatedFloat), CSS sliding indicator
+//     (see @/hooks/ui/useSlidingIndicator).
+// `useReducedMotion`, `AnimatePresence`, `MotionConfig`, `motion.X` (now `m.X`)
+// initial/animate/exit/whileHover/whileTap/variants are all in domAnimation.
 export function AppProviders({ children }: AppProvidersProps) {
   return (
     <LanguageProvider>
-      <MotionConfig reducedMotion={LHCI_REDUCED_MOTION}>
-        <ProvidersInner>
-          <GlobalHapticsListener />
-          {children}
-        </ProvidersInner>
-      </MotionConfig>
+      <LazyMotion strict features={domAnimation}>
+        <MotionConfig reducedMotion={LHCI_REDUCED_MOTION}>
+          <ProvidersInner>
+            <GlobalHapticsListener />
+            {children}
+          </ProvidersInner>
+        </MotionConfig>
+      </LazyMotion>
     </LanguageProvider>
   )
 }

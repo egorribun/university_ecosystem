@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { motion, useAnimation } from "framer-motion"
+import { m, useAnimation } from "framer-motion"
 import { cn } from "@/utils/cn"
 
 interface SwitchProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -59,7 +59,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         />
 
         {/* Track */}
-        <motion.span
+        <m.span
           className={cn(
             "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-base",
             "bg-(--bg-surface)-tint backdrop-blur-sm",
@@ -81,7 +81,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         />
 
         {/* Thumb */}
-        <motion.span
+        <m.span
           initial={{ x: checked ? 28 : 0, scale: 1 }}
           animate={{
             x: checked ? 28 : 0,

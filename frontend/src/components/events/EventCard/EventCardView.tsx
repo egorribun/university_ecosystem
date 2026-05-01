@@ -8,7 +8,7 @@
 import { Snackbar, ConfirmDialog } from "@/components/ui"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { cn } from "@/utils/cn"
-import { motion, type MotionValue } from "framer-motion"
+import { m, type MotionValue } from "framer-motion"
 import { Suspense, lazy, useState, useCallback, useRef } from "react"
 import type { FC, MouseEvent } from "react"
 import EventCardContent from "./EventCardContent"
@@ -143,7 +143,7 @@ export const EventCardView: FC<EventCardViewProps> = ({
   const handleTransitionReset = useCallback(() => setTransitioning(false), [])
 
   return (
-    <motion.article
+    <m.article
       ref={articleRef}
       onMouseMove={spotlight.onMouseMove}
       onMouseEnter={showQuickView}
@@ -259,6 +259,6 @@ export const EventCardView: FC<EventCardViewProps> = ({
       />
 
       <Snackbar open={!!error} message={error} onClose={onErrorClose} />
-    </motion.article>
+    </m.article>
   )
 }

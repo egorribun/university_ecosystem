@@ -1,5 +1,5 @@
-import { motion, useAnimation, useInView, Variants, TargetAndTransition } from "framer-motion"
-import { ReactNode, useEffect, useRef, useMemo } from "react"
+import { m, Variants, TargetAndTransition } from "framer-motion"
+import { ReactNode, useEffect, useRef, useMemo, useState } from "react"
 import { springHeavy } from "@/utils/animations"
 import { motion as motionTokens } from "@/theme/tokens"
 import { EASING } from "@/utils/motion"
@@ -14,7 +14,8 @@ type Props = {
   width?: "fit-content" | "100%"
   stagger?: number
   threshold?: number
-  viewportMargin?: NonNullable<Parameters<typeof useInView>[1]>["margin"]
+  /** IntersectionObserver rootMargin string — e.g. "0px 0px -50px 0px" */
+  viewportMargin?: string
 }
 
 const getVariants = (mode: string, direction: string): Variants => {
@@ -71,16 +72,30 @@ export const ScrollReveal = ({
   viewportMargin = "0px 0px -50px 0px",
 }: Props) => {
   const ref = useRef<HTMLDivElement>(null)
-  const isInView = useInView(ref, { once: true, margin: viewportMargin })
-  const controls = useAnimation()
+  // Wave 124 SW1 — Refactored from framer-motion useInView/useAnimation to
+  // plain IntersectionObserver + state-driven variant. useAnimation requires
+  // domMax features which we excluded from LazyMotion. Equivalent UX —
+  // observer fires once + state transitions hidden→visible. The motion.div
+  // variants/initial/animate pattern below is in domAnimation set.
+  const [isVisible, setIsVisible] = useState(false)
 
   const variants = useMemo(() => getVariants(mode, direction), [mode, direction])
 
   useEffect(() => {
-    if (isInView) {
-      void controls.start("visible")
-    }
-  }, [isInView, controls])
+    const el = ref.current
+    if (!el || isVisible) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: viewportMargin }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [isVisible, viewportMargin])
 
   // Determine transition based on mode
   const transition =
@@ -90,9 +105,14 @@ export const ScrollReveal = ({
 
   return (
     <div ref={ref} style={{ width }} className={className}>
-      <motion.div variants={variants} initial="hidden" animate={controls} transition={transition}>
+      <m.div
+        variants={variants}
+        initial="hidden"
+        animate={isVisible ? "visible" : "hidden"}
+        transition={transition}
+      >
         {children}
-      </motion.div>
+      </m.div>
     </div>
   )
 }

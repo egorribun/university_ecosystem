@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -41,7 +41,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -52,7 +52,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             onClick={onClose}
             aria-hidden="true"
           />
-          <motion.div
+          <m.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -105,7 +105,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
 
                 <div className="space-y-1">
                   {users.map((user) => (
-                    <motion.button
+                    <m.button
                       key={user.id}
                       whileHover={{ x: 4, backgroundColor: "var(--bg-surface-hover)" }}
                       whileTap={{ scale: 0.98 }}
@@ -128,13 +128,13 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                           {user.email}
                         </p>
                       </div>
-                    </motion.button>
+                    </m.button>
                   ))}
                 </div>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

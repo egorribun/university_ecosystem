@@ -1,4 +1,4 @@
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { Menu, X } from "lucide-react"
 import { type NavbarLogicResult } from "./useNavbarLogic"
 import { type NavbarMorphState } from "./useNavbarMorph"
@@ -46,7 +46,7 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
         <MessengerButton />
         <NotificationsBell />
         {isAuth && user && !loading ? (
-          <motion.div
+          <m.div
             whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
             transition={prefersReducedMotion ? { duration: 0 } : springSoft}
           >
@@ -58,7 +58,7 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               className="block cursor-pointer rounded-full border-2 border-brand/(--opacity-medium) shadow-sm object-cover shrink-0 w-8 h-8"
               onClick={() => go("/profile")}
             />
-          </motion.div>
+          </m.div>
         ) : (
           <div className="rounded-full shrink-0 bg-brand/(--opacity-soft) animate-pulse w-8 h-8" />
         )}
@@ -72,7 +72,7 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
           ref={burgerBtnRef}
         >
           <div className="relative flex items-center justify-center nav-action-icon">
-            <motion.div
+            <m.div
               initial={false}
               animate={{
                 opacity: mobileMenu ? 0 : 1,
@@ -83,8 +83,8 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               className="absolute inset-0 flex items-center justify-center"
             >
               <Menu className="nav-action-icon stroke-(--text-primary)" strokeWidth={2.5} />
-            </motion.div>
-            <motion.div
+            </m.div>
+            <m.div
               initial={false}
               animate={{
                 opacity: mobileMenu ? 1 : 0,
@@ -95,7 +95,7 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               className="absolute inset-0 flex items-center justify-center"
             >
               <X className="nav-action-icon stroke-(--text-primary)" strokeWidth={2.5} />
-            </motion.div>
+            </m.div>
           </div>
         </button>
       </div>

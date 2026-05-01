@@ -64,7 +64,12 @@ const PageTransition: FC<Props> = ({ children }) => {
     )
   }
 
-  const { LazyMotion, domAnimation, motion } = motionModule
+  // Wave 124 SW1 — destructure `m` (minimal Motion component) instead of
+  // `motion` so we share the same JSX surface as the rest of the app post
+  // bulk-swap. The local LazyMotion+domAnimation feature loader stays scoped
+  // to this component (defers framer-motion runtime until the first non-
+  // reduced-motion paint).
+  const { LazyMotion, domAnimation, m } = motionModule
   const initial = hasPainted
     ? { opacity: 0, scale: 0.98, y: "0.75rem", filter: "blur(0.25rem)" }
     : false
@@ -72,7 +77,7 @@ const PageTransition: FC<Props> = ({ children }) => {
   return (
     <LazyMotion features={domAnimation}>
       <div className="relative min-h-full bg-page">
-        <motion.div
+        <m.div
           initial={initial}
           animate={{
             opacity: 1,
@@ -100,7 +105,7 @@ const PageTransition: FC<Props> = ({ children }) => {
           className="relative z-base [backface-visibility:hidden] [transform:translateZ(0)] will-change-[transform,opacity,filter]"
         >
           {children}
-        </motion.div>
+        </m.div>
       </div>
     </LazyMotion>
   )

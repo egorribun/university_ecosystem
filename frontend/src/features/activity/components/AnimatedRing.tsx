@@ -1,20 +1,13 @@
-import { useEffect, useState, useMemo, type CSSProperties } from "react"
-import { motion, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion"
-import { EASE_OUT_EXPO } from "../types"
+import { useMemo, type CSSProperties } from "react"
 import { motion as motionTokens } from "@/theme/tokens"
+import { useAnimatedFloat } from "@/hooks/useAnimatedFloat"
 
+// Wave 124 SW1 — Refactored from framer-motion useMotionValue/useTransform/
+// animate (require domMax) to shared rAF helper in @/hooks/useAnimatedFloat.
+// Same easeOutExpo formula + same durationLazy (0.9s) as the prior framer
+// animate() call. UX-equivalent. useReducedMotion handled inside the helper.
 function useAnimatedNumber(target: number, duration = motionTokens.durationLazy, fraction = 0) {
-  const reduce = useReducedMotion()
-  const mv = useMotionValue(reduce ? target : 0)
-  const [val, setVal] = useState<number>(reduce ? target : 0)
-  useEffect(() => {
-    const controls = animate(mv, target, { duration: reduce ? 0 : duration, ease: EASE_OUT_EXPO })
-    const unsubscribe = mv.on("change", (value: number) => setVal(value))
-    return () => {
-      controls.stop()
-      unsubscribe()
-    }
-  }, [target, duration, reduce, mv])
+  const val = useAnimatedFloat(target, duration)
   return useMemo(() => Number(val).toFixed(fraction), [val, fraction])
 }
 
@@ -48,7 +41,6 @@ export default function AnimatedRing({
   fraction,
   ariaLabel,
 }: AnimatedRingProps) {
-  const reduce = useReducedMotion()
   const stroke = RING_STROKE_WIDTH
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
@@ -61,17 +53,8 @@ export default function AnimatedRing({
     return max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
   }, [mode, value, max])
 
-  const mv = useMotionValue(reduce ? fillPercent : 0)
-
-  useEffect(() => {
-    const controls = animate(mv, fillPercent, {
-      duration: reduce ? 0 : motionTokens.durationLazy,
-      ease: EASE_OUT_EXPO,
-    })
-    return () => controls.stop()
-  }, [fillPercent, reduce, mv])
-
-  const dash = useTransform(mv, (v) => c - (Math.max(0, Math.min(100, v)) / 100) * c)
+  const animatedFillPercent = useAnimatedFloat(fillPercent, motionTokens.durationLazy)
+  const dash = c - (Math.max(0, Math.min(100, animatedFillPercent)) / 100) * c
 
   // Determine fraction digits for inner text
   const displayFraction = fraction ?? (mode === "gauge" ? 1 : 0)
@@ -116,7 +99,7 @@ export default function AnimatedRing({
           fill="none"
           strokeWidth={stroke}
         />
-        <motion.circle
+        <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
@@ -125,7 +108,7 @@ export default function AnimatedRing({
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
-          style={{ strokeDashoffset: dash }}
+          strokeDashoffset={dash}
         />
       </svg>
       <div

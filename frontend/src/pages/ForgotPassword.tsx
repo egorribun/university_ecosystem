@@ -3,7 +3,7 @@ import axios from "@/api/client"
 import { Link } from "@tanstack/react-router"
 import { useTranslation, Trans } from "react-i18next"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
@@ -94,7 +94,7 @@ export default function ForgotPassword() {
         <div className="absolute bottom-[-10%] right-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
 
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-(--layout-max-dialog) z-modal"
@@ -112,7 +112,7 @@ export default function ForgotPassword() {
 
             <AnimatePresence mode="wait">
               {isSuccess ? (
-                <motion.div
+                <m.div
                   key="success"
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -160,9 +160,9 @@ export default function ForgotPassword() {
                       {cooldown > 0 ? ` (${cooldown}s)` : ""}
                     </Button>
                   </div>
-                </motion.div>
+                </m.div>
               ) : (
-                <motion.div
+                <m.div
                   key="form"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -186,7 +186,7 @@ export default function ForgotPassword() {
                       />
 
                       {emailSuggestion && (
-                        <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                        <m.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
                           <Chip
                             label={t("auth:messages.emailSuggestion", {
                               suggestion: emailSuggestion,
@@ -195,7 +195,7 @@ export default function ForgotPassword() {
                             color="primary"
                             className="cursor-pointer hover:bg-brand/(--opacity-subtle) transition-colors"
                           />
-                        </motion.div>
+                        </m.div>
                       )}
                     </div>
 
@@ -232,12 +232,12 @@ export default function ForgotPassword() {
                       </div>
                     </div>
                   </form>
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
           </div>
         </SectionCard>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

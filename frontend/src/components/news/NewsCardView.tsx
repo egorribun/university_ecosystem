@@ -1,7 +1,7 @@
 import { Snackbar, ConfirmDialog } from "@/components/ui"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { cn } from "@/utils/cn"
-import { motion, MotionValue } from "framer-motion"
+import { m, MotionValue } from "framer-motion"
 import { FC, Suspense, lazy, useState, useCallback, useRef } from "react"
 import NewsCardContent from "./NewsCardContent"
 import NewsCardHero from "./NewsCardHero"
@@ -123,7 +123,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   const handleTransitionReset = useCallback(() => setTransitioning(false), [])
 
   return (
-    <motion.article
+    <m.article
       ref={articleRef}
       onMouseMove={spotlight.onMouseMove}
       onMouseEnter={showQuickView}
@@ -228,6 +228,6 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
       />
 
       <Snackbar open={!!error} message={error} onClose={onErrorClose} />
-    </motion.article>
+    </m.article>
   )
 }

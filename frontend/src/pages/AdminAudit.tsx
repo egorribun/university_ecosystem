@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
 import {
@@ -117,7 +117,7 @@ function Row({ log }: { log: AuditLog }) {
         {open && (
           <tr>
             <td colSpan={6} className="p-0 border-none">
-              <motion.div
+              <m.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -182,7 +182,7 @@ function Row({ log }: { log: AuditLog }) {
                     </div>
                   )}
                 </div>
-              </motion.div>
+              </m.div>
             </td>
           </tr>
         )}
@@ -227,7 +227,7 @@ export default function AdminAudit() {
     <Layout>
       <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
@@ -236,7 +236,7 @@ export default function AdminAudit() {
               {t("audit.title")}
             </h1>
             <p className="mt-2 text-base text-(--text-secondary)">{t("audit.subtitle")}</p>
-          </motion.div>
+          </m.div>
 
           {/* Filters */}
           <SectionCard className="mb-6 flex flex-wrap items-end gap-4 p-6">

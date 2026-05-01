@@ -99,6 +99,59 @@ const withStrictCspNonce = (): PluginOption => ({
   },
 })
 
+// Wave 124 SW2 — critical font preload injector.
+//
+// Inter + Outfit ship via fontsource as side-effect CSS imports in
+// src/main.tsx. Their @font-face rules reference woff2 files which
+// the browser only discovers AFTER CSS parse + text-render rule match.
+// Audit of dist/index.html confirmed 0 font preload links → ~50-150 ms
+// FOIT on cold cache.
+//
+// This plugin scans the build bundle for the two LCP-relevant variants
+// and injects `<link rel="preload" as="font" type="font/woff2" crossorigin>`
+// into dist/index.html. Hashes change per build, so we match by stable
+// filename pattern and read the actual hashed name from the bundle.
+//
+// - inter-cyrillic-wght-normal-*.woff2 (~19 KB) — RU body text
+// - outfit-latin-wght-normal-*.woff2 (~32 KB) — display headings
+//
+// Extended variants (cyrillic-ext, latin-ext) intentionally stay lazy —
+// rare characters, not above-the-fold. EN-only inter-latin also stays
+// lazy: browser still discovers it via @font-face matching when needed.
+//
+// Honest deferral: per-route image preload via TanStack Router head: API
+// requires a route loader refactor that disrupts useQuery cache semantics
+// (~2-3 h, beyond SW2's 1 h budget). Naturally addressed by SSR (W125+).
+const FONT_PRELOAD_PATTERN =
+  /^assets\/(inter-cyrillic-wght-normal-|outfit-latin-wght-normal-)[^/]*\.woff2$/
+const FONT_PRELOAD_ANCHOR = /(\n\s*<!--\n\s*Wave 117 SW5)/
+const withFontPreload = (): PluginOption => ({
+  name: "critical-font-preload",
+  enforce: "post",
+  apply: "build",
+  transformIndexHtml: {
+    order: "post",
+    handler(html, ctx) {
+      if (!ctx.bundle) return html
+      const criticalFonts: string[] = []
+      for (const fileName of Object.keys(ctx.bundle)) {
+        if (FONT_PRELOAD_PATTERN.test(fileName)) {
+          criticalFonts.push(fileName)
+        }
+      }
+      if (criticalFonts.length === 0) return html
+      criticalFonts.sort()
+      const preloadLinks = criticalFonts
+        .map(
+          (font) =>
+            `  <link rel="preload" as="font" type="font/woff2" crossorigin href="/${font}" />`
+        )
+        .join("\n")
+      return html.replace(FONT_PRELOAD_ANCHOR, `\n${preloadLinks}\n$1`)
+    },
+  },
+})
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   // Use null coalescing to properly detect explicitly empty string
@@ -250,6 +303,11 @@ export default defineConfig(({ mode }) => {
     // in LHCI mode creates a precedent for bypassing security headers in any mode.
     // If LHCI tests fail: use --chrome-flags='--disable-web-security' in lhci config.
     withStrictCspNonce(),
+    // Wave 124 SW2 — inject <link rel="preload" as="font"> for critical font
+    // subset (RU cyrillic body + Outfit latin display) into dist/index.html.
+    // Build-time only (apply: "build"), no-op in dev. See plugin definition
+    // above for design rationale + honest deferrals.
+    withFontPreload(),
   ]
 
   if (analyze) {

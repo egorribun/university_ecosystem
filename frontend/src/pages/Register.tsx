@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { useForm, Controller, type SubmitHandler } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 
@@ -152,7 +152,7 @@ const Register = () => {
       <ParticleAuthBackground />
       <div className="relative z-surface mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         {/* Left Column - Hero */}
-        <motion.div
+        <m.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
@@ -181,10 +181,10 @@ const Register = () => {
               </div>
             ))}
           </div>
-        </motion.div>
+        </m.div>
 
         {/* Right Column - Form */}
-        <motion.div
+        <m.div
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
@@ -461,7 +461,7 @@ const Register = () => {
               </Link>
             </div>
           </form>
-        </motion.div>
+        </m.div>
       </div>
     </div>
   )

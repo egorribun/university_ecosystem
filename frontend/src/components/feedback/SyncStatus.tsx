@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { Cloud, CloudUpload } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -84,7 +84,7 @@ export function SyncStatus() {
 
   return (
     <AnimatePresence>
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.8 }}
@@ -99,19 +99,19 @@ export function SyncStatus() {
         {isOnline ? (
           <Cloud className="h-4 w-4 text-white/(--opacity-medium)" />
         ) : (
-          <motion.div
+          <m.div
             animate={{ opacity: [1, 0.5, 1] }}
             transition={{ repeat: Infinity, duration: 2 }}
           >
             <CloudUpload className="h-4 w-4 text-(--warning-text)" />
-          </motion.div>
+          </m.div>
         )}
         {pendingCount > 0 && (
           <span className="z-deep text-xs font-black uppercase tracking-tight text-text-primary/(--opacity-strong) tabular-nums sf-pro">
             {pendingCount}
           </span>
         )}
-      </motion.div>
+      </m.div>
     </AnimatePresence>
   )
 }

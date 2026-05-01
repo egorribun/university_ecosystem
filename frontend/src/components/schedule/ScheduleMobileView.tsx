@@ -1,6 +1,6 @@
 import { useRef, useMemo, useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import { Badge } from "@/components/ui"
 import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
@@ -182,7 +182,7 @@ export function ScheduleMobileView({
                 onClick={() => scrollToDay(i)}
               >
                 {isActive && (
-                  <motion.span
+                  <m.span
                     layoutId="schedule-mobile-day"
                     className="absolute inset-0 rounded-full bg-brand shadow-glow-primary"
                     transition={
@@ -206,7 +206,7 @@ export function ScheduleMobileView({
            PERF-71-01: AnimatePresence with key-swap is acceptable here (unlike desktop PERF-70-01)
            because mobile shows only 1 DayColumn at a time — single remount is cheap. ──── */}
       <AnimatePresence mode="wait" initial={false} custom={swipeDir}>
-        <motion.div
+        <m.div
           key={`${weekOffset}-${weekdayBackend[activeDayIdx] ?? activeDayIdx}`}
           custom={swipeDir}
           variants={panelVariants}
@@ -251,7 +251,7 @@ export function ScheduleMobileView({
               />
             )
           })()}
-        </motion.div>
+        </m.div>
       </AnimatePresence>
     </div>
   )

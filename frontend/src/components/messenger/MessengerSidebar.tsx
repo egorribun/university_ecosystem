@@ -1,7 +1,7 @@
 import { ContactList } from "@/components/messenger"
 import { TextField } from "@/components/ui"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { Search, SquarePen } from "lucide-react"
 import { Dispatch, SetStateAction, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -27,7 +27,7 @@ export function MessengerSidebar({
   const [searchQuery, setSearchQuery] = useState("")
 
   return (
-    <motion.div
+    <m.div
       key="sidebar"
       initial={isMobile ? { x: -MOBILE_MENU_WIDTH, opacity: 0 } : undefined}
       animate={{ x: 0, opacity: 1 }}
@@ -39,7 +39,7 @@ export function MessengerSidebar({
         <h1 className="sf-pro text-2xl font-bold tracking-tight">
           {t("messenger:title", "Messages")}
         </h1>
-        <motion.button
+        <m.button
           id="messenger-new-chat-btn"
           whileHover={{ scale: 1.1, backgroundColor: "var(--msg-sidebar-hover)" }}
           whileTap={{ scale: 0.9 }}
@@ -48,7 +48,7 @@ export function MessengerSidebar({
           aria-label={t("messenger:newChat", "New Chat")}
         >
           <SquarePen className="h-5 w-5" strokeWidth={2.5} />
-        </motion.button>
+        </m.button>
       </div>
 
       <div className="bg-(--bg-surface-raised) p-4">
@@ -68,6 +68,6 @@ export function MessengerSidebar({
         selectedId={selectedChatId}
         onSelect={(id: string) => navigate({ to: "/messenger/$chatId", params: { chatId: id } })}
       />
-    </motion.div>
+    </m.div>
   )
 }

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import api from "@/api/client"
 import { useParams, useSearch, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import {
   Eye as Visibility,
   EyeOff as VisibilityOff,
@@ -173,7 +173,7 @@ export default function ResetPassword() {
         />
       </div>
 
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-(--layout-max-modal) z-modal"
@@ -182,7 +182,7 @@ export default function ResetPassword() {
           <div className="space-y-8">
             <AnimatePresence mode="wait">
               {isSuccess ? (
-                <motion.div
+                <m.div
                   key="success"
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -212,9 +212,9 @@ export default function ResetPassword() {
                       {t("auth:actions.goToLogin")}
                     </Button>
                   </div>
-                </motion.div>
+                </m.div>
               ) : (
-                <motion.div
+                <m.div
                   key="form"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -379,12 +379,12 @@ export default function ResetPassword() {
                       </div>
                     </div>
                   </form>
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
           </div>
         </SectionCard>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

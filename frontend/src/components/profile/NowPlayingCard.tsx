@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "framer-motion"
+import { m, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
@@ -162,7 +162,7 @@ export function NowPlayingCard({ data }: { data: NowPlaying }) {
       }
       className="block w-full no-underline"
     >
-      <motion.div
+      <m.div
         className={cn(
           "nowplaying--spotify card-glass card-glass-interactive w-full grid items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
         )}
@@ -262,7 +262,7 @@ export function NowPlayingCard({ data }: { data: NowPlaying }) {
             </span>
           </div>
         </div>
-      </motion.div>
+      </m.div>
     </a>
   )
 }

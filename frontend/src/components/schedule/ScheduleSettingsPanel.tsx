@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import {
   X as CloseIcon,
   Eye as VisibleIcon,
@@ -63,7 +63,7 @@ export function ScheduleSettingsPanel({
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           className="fixed inset-0 z-modal flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -78,7 +78,7 @@ export function ScheduleSettingsPanel({
           />
 
           {/* Dialog */}
-          <motion.div
+          <m.div
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
@@ -186,7 +186,7 @@ export function ScheduleSettingsPanel({
                       )}
                     >
                       {currentParity === p && (
-                        <motion.span
+                        <m.span
                           layoutId="settings-parity-pill"
                           className="absolute inset-0 rounded-xl bg-brand shadow-glow-primary"
                           transition={
@@ -286,8 +286,8 @@ export function ScheduleSettingsPanel({
                 </div>
               </section>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

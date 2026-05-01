@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState, useEffect } from "react"
+import { useCallback, useRef, useState, useEffect, type CSSProperties } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { useScroll, useTransform, motion } from "framer-motion"
+import { m } from "framer-motion"
 
 import { SEO } from "@/components/ui/SEO"
 
@@ -152,12 +152,13 @@ export default function Dashboard() {
   const { hh, mm, dateStr, time } = useClock(locale)
 
   // Wave 46: Parallax — backdrop scrolls slower than content
+  // Wave 124 SW1: Refactored from framer-motion useScroll/useTransform (require
+  // domMax) to native scroll listener + CSS custom properties. Same offset
+  // semantics ["start start", "end start"]: progress = clamp(-rect.top /
+  // rect.height, 0, 1). Native scroll + rAF throttle keeps 60fps; CSS var
+  // updates trigger inexpensive composite-only repaints.
   const parallaxRef = useRef<HTMLDivElement>(null)
-  const { scrollYProgress } = useScroll({
-    target: parallaxRef,
-    offset: ["start start", "end start"],
-  })
-  const backdropY = useTransform(scrollYProgress, [0, 1], ["0%", "15%"])
+  const backdropRef = useRef<HTMLDivElement>(null)
 
   // Wave 47: Weather-aware ambient particles
   const weatherResult = useWeather()
@@ -179,12 +180,65 @@ export default function Dashboard() {
 
   // Wave 48: Scroll depth — cards recede as they scroll above viewport
   const cardGridRef = useRef<HTMLDivElement>(null)
-  const { scrollYProgress: gridScrollProgress } = useScroll({
-    target: cardGridRef,
-    offset: ["start start", "end start"],
-  })
-  const depthScale = useTransform(gridScrollProgress, [0, 0.3, 1], [1, 1, 0.96])
-  const depthOpacity = useTransform(gridScrollProgress, [0, 0.3, 1], [1, 1, 0.7])
+
+  // Wave 124 SW1 — Aurora backdrop parallax via native scroll
+  useEffect(() => {
+    if (prefersReducedMotion) return
+    const target = parallaxRef.current
+    const inner = backdropRef.current
+    if (!target || !inner) return
+    let raf = 0
+    const update = () => {
+      raf = 0
+      const rect = target.getBoundingClientRect()
+      const progress = Math.max(0, Math.min(1, -rect.top / Math.max(1, rect.height)))
+      inner.style.setProperty("--dashboard-backdrop-y", `${progress * 15}%`)
+    }
+    const onScroll = () => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(update)
+    }
+    update()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
+      window.removeEventListener("scroll", onScroll)
+    }
+  }, [prefersReducedMotion])
+
+  // Wave 124 SW1 — Card grid depth via native scroll
+  useEffect(() => {
+    if (prefersReducedMotion) return
+    const target = cardGridRef.current
+    if (!target) return
+    let raf = 0
+    const update = () => {
+      raf = 0
+      const rect = target.getBoundingClientRect()
+      const progress = Math.max(0, Math.min(1, -rect.top / Math.max(1, rect.height)))
+      // Same interpolation as prior useTransform([0, 0.3, 1], [1, 1, 0.96]):
+      // first 30% holds, then linearly decays.
+      let scale = 1
+      let opacity = 1
+      if (progress > 0.3) {
+        const t = (progress - 0.3) / 0.7
+        scale = 1 + t * (0.96 - 1)
+        opacity = 1 + t * (0.7 - 1)
+      }
+      target.style.setProperty("--dashboard-grid-scale", String(scale))
+      target.style.setProperty("--dashboard-grid-opacity", String(opacity))
+    }
+    const onScroll = () => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(update)
+    }
+    update()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
+      window.removeEventListener("scroll", onScroll)
+    }
+  }, [prefersReducedMotion])
 
   // Wave 46: 3D tilt on dashboard cards
   const tiltSchedule = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow })
@@ -232,17 +286,22 @@ export default function Dashboard() {
     <PageLayout variant="full" className="dashboard-theme py-0 md:py-0">
       <SEO title={t("dashboard:pageTitle", "Dashboard")} />
 
-      {/* Aurora wrapper — parallax via Framer Motion useScroll (Wave 46) */}
+      {/* Aurora wrapper — parallax via native scroll listener (Wave 124 SW1) */}
       <div ref={parallaxRef} className="aurora-mesh relative w-full">
-        <motion.div
-          style={prefersReducedMotion ? undefined : { y: backdropY }}
+        <div
+          ref={backdropRef}
+          style={
+            prefersReducedMotion
+              ? undefined
+              : ({ transform: "translateY(var(--dashboard-backdrop-y, 0%))" } as CSSProperties)
+          }
           className="absolute inset-0 pointer-events-none"
           aria-hidden="true"
         >
           <DashboardBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
           {/* Wave 47: Weather-aware ambient particles */}
           <WeatherAmbient animation={weatherAnimation} disabled={prefersReducedMotion} />
-        </motion.div>
+        </div>
 
         {/* Hero — greeting card + stories inside hero at ≥1220px */}
         <DashboardHero
@@ -288,14 +347,23 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Wave 48: scroll depth wrapper — cards recede on scroll */}
-          <motion.div
+          {/* Wave 48: scroll depth wrapper — cards recede on scroll
+              Wave 124 SW1: refactored from motion-value scale/opacity to CSS
+              custom properties updated via native scroll listener (above). */}
+          <div
             ref={cardGridRef}
             className="mt-4 grid w-full grid-cols-12 gap-4 md:mt-5 md:gap-3.5 lg:gap-4 pb-24 md:pb-10"
-            style={prefersReducedMotion ? undefined : { scale: depthScale, opacity: depthOpacity }}
+            style={
+              prefersReducedMotion
+                ? undefined
+                : ({
+                    transform: "scale(var(--dashboard-grid-scale, 1))",
+                    opacity: "var(--dashboard-grid-opacity, 1)",
+                  } as CSSProperties)
+            }
           >
             {/* Schedule card */}
-            <motion.div
+            <m.div
               className="col-span-12 lg:col-span-4"
               {...cascadeProps(0.1, showCascade, prefersReducedMotion)}
             >
@@ -312,10 +380,10 @@ export default function Dashboard() {
                   </SkeletonMorph>
                 </WidgetErrorBoundary>
               </div>
-            </motion.div>
+            </m.div>
 
             {/* News card */}
-            <motion.div
+            <m.div
               className="col-span-12 lg:col-span-4"
               {...cascadeProps(0.2, showCascade, prefersReducedMotion)}
             >
@@ -332,10 +400,10 @@ export default function Dashboard() {
                   </SkeletonMorph>
                 </WidgetErrorBoundary>
               </div>
-            </motion.div>
+            </m.div>
 
             {/* Events card */}
-            <motion.div
+            <m.div
               className="col-span-12 lg:col-span-4"
               {...cascadeProps(0.3, showCascade, prefersReducedMotion)}
             >
@@ -352,8 +420,8 @@ export default function Dashboard() {
                   </SkeletonMorph>
                 </WidgetErrorBoundary>
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </div>
         </div>
       </div>
     </PageLayout>

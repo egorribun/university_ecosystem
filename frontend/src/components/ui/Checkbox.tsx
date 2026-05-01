@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { Check, Minus } from "lucide-react"
 import { cn } from "@/utils/cn"
 
@@ -44,7 +44,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
         >
           <AnimatePresence mode="wait">
             {isChecked && (
-              <motion.div
+              <m.div
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.5, opacity: 0 }}
@@ -56,7 +56,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
                 ) : (
                   <Check className="h-4 w-4" style={{ strokeWidth: 4 }} />
                 )}
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>

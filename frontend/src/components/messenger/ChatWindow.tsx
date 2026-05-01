@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react"
-import { motion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
+import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import { File, Check, CheckCheck } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/utils/cn"
@@ -69,7 +69,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
@@ -163,7 +163,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </m.div>
             </div>
           )
         })}

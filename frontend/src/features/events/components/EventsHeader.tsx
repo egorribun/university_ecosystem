@@ -5,10 +5,10 @@ import FadeSection from "@/components/motion/FadeSection"
 import { Button } from "@/components/ui"
 import { ALL_EVENT_CATEGORIES, type EventCategory } from "@/features/events/categories"
 import { cn } from "@/utils/cn"
-import { springSoft } from "@/utils/animations"
-import { motion, useReducedMotion } from "framer-motion"
+import { useReducedMotion } from "framer-motion"
 import type { EventDateRange, EventSortMode, EventTabKey } from "../types"
 import { useEventFilterPopover } from "@/components/events/EventFilterPopover"
+import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
 
 const SORT_CYCLE: EventSortMode[] = ["newest", "popular", "upcoming"]
 
@@ -53,6 +53,10 @@ export const EventsHeader = ({
   /* ── Sticky detection via IntersectionObserver ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
   const [isStuck, setIsStuck] = useState(false)
+
+  /* ── Tab indicator (Wave 124 SW1 — replaces framer-motion layoutId) ── */
+  const tabsRef = useRef<HTMLDivElement>(null)
+  const tabRect = useSlidingIndicator(tabsRef, tab)
 
   useEffect(() => {
     const sentinel = sentinelRef.current
@@ -173,13 +177,34 @@ export const EventsHeader = ({
         )}
       </FadeSection>
 
-      {/* Row 2: Tabs (Active / Archive / My) */}
+      {/* Row 2: Tabs (Active / Archive / My)
+          Wave 124 SW1 — Refactored from framer-motion layoutId to a single
+          absolutely-positioned indicator + CSS transition (layoutId requires
+          domMax). Same sliding UX, no framer-motion involvement. */}
       <FadeSection delay="100ms" role="tablist" aria-label={t("events:pageTitle")}>
-        <div className="inline-flex items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 backdrop-blur-md shadow-glass sm:w-auto">
+        <div
+          ref={tabsRef}
+          className="relative inline-flex items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 backdrop-blur-md shadow-glass sm:w-auto"
+        >
+          {tabRect && (
+            <div
+              aria-hidden="true"
+              className="absolute bg-(--bg-surface) shadow-sm rounded-lg z-negative"
+              style={{
+                transform: `translate3d(${tabRect.left}px, ${tabRect.top}px, 0)`,
+                width: tabRect.width,
+                height: tabRect.height,
+                transition: prefersReducedMotion
+                  ? "none"
+                  : "transform 250ms cubic-bezier(0.4, 0, 0.2, 1), width 250ms cubic-bezier(0.4, 0, 0.2, 1), height 250ms cubic-bezier(0.4, 0, 0.2, 1)",
+              }}
+            />
+          )}
           {tabs.map((tabItem) => (
             <button
               key={tabItem.key}
               id={`events-tab-${tabItem.key}`}
+              data-tab-key={tabItem.key}
               type="button"
               role="tab"
               aria-selected={tab === tabItem.key}
@@ -201,13 +226,6 @@ export const EventsHeader = ({
                   : "text-(--text-secondary) hover:text-text-primary"
               )}
             >
-              {tab === tabItem.key && (
-                <motion.div
-                  layoutId="events-tab-indicator"
-                  className="absolute inset-0 bg-(--bg-surface) shadow-sm rounded-[inherit] z-negative"
-                  transition={prefersReducedMotion ? { duration: 0 } : springSoft}
-                />
-              )}
               <span className="relative z-base">{t(tabItem.labelKey)}</span>
             </button>
           ))}

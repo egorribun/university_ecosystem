@@ -11,7 +11,7 @@
 import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, Keyboard as KeyboardIcon } from "lucide-react"
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface MapShortcutsOverlayProps {
@@ -54,7 +54,7 @@ export function MapShortcutsOverlay({ open, onClose }: MapShortcutsOverlayProps)
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           className="fixed inset-0 z-modal flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -69,7 +69,7 @@ export function MapShortcutsOverlay({ open, onClose }: MapShortcutsOverlayProps)
           />
 
           {/* Dialog */}
-          <motion.div
+          <m.div
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
@@ -116,8 +116,8 @@ export function MapShortcutsOverlay({ open, onClose }: MapShortcutsOverlayProps)
                 </div>
               ))}
             </dl>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

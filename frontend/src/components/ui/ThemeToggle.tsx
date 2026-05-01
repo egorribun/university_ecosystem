@@ -9,7 +9,7 @@
  */
 
 import { useCallback } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { Sun, Moon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -76,7 +76,7 @@ export function ThemeToggle({ isDark, onToggle, className, size = "md" }: ThemeT
 
       <AnimatePresence mode="wait" initial={false}>
         {isDark ? (
-          <motion.span
+          <m.span
             key="moon"
             variants={iconVariants}
             initial="initial"
@@ -85,9 +85,9 @@ export function ThemeToggle({ isDark, onToggle, className, size = "md" }: ThemeT
             className="inline-flex text-indigo-300"
           >
             <Moon className={iconSize} />
-          </motion.span>
+          </m.span>
         ) : (
-          <motion.span
+          <m.span
             key="sun"
             variants={iconVariants}
             initial="initial"
@@ -96,7 +96,7 @@ export function ThemeToggle({ isDark, onToggle, className, size = "md" }: ThemeT
             className="inline-flex text-amber-500"
           >
             <Sun className={iconSize} />
-          </motion.span>
+          </m.span>
         )}
       </AnimatePresence>
     </button>

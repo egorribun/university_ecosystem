@@ -1,5 +1,5 @@
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { ChevronDown } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -251,7 +251,7 @@ const Select = ({
 
       <AnimatePresence>
         {isOpen && (
-          <motion.div
+          <m.div
             ref={listboxRef}
             role="listbox"
             id={listboxId}
@@ -298,7 +298,7 @@ const Select = ({
                 )
               })}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

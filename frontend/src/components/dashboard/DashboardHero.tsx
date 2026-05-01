@@ -1,7 +1,7 @@
 import type { User } from "@/types/User"
 import { useTranslation } from "react-i18next"
 import { useMemo } from "react"
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { Badge } from "@/components/ui"
 import WeatherWidget from "@/components/ui/WeatherWidget"
 import { ScrollReveal } from "@/components/motion/ScrollReveal"
@@ -101,19 +101,19 @@ export function DashboardHero({
                   style={{ fontSize: "clamp(1.75rem, 3vw, 2.75rem)" }}
                 >
                   {specialKey && (
-                    <motion.span
+                    <m.span
                       initial={{ opacity: 0, scale: 0 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ type: "spring", stiffness: 400, damping: 15, delay: 0.3 }}
                       className="mr-2 inline-flex text-amber-400"
                     >
                       <Sparkles className="h-8 w-8" aria-hidden="true" />
-                    </motion.span>
+                    </m.span>
                   )}
                   {greeting}
                   {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
                   {emoji && (
-                    <motion.span
+                    <m.span
                       initial={{ opacity: 0, scale: 0.5 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ type: "spring", stiffness: 400, damping: 15, delay: 0.5 }}
@@ -121,7 +121,7 @@ export function DashboardHero({
                       aria-hidden="true"
                     >
                       {emoji}
-                    </motion.span>
+                    </m.span>
                   )}
                 </h1>
                 <div

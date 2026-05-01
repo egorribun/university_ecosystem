@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Info, Percent } from "lucide-react"
 import api from "@/api/client"
@@ -64,7 +64,7 @@ export default function AdminFeatureFlags() {
     <Layout>
       <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -74,7 +74,7 @@ export default function AdminFeatureFlags() {
               {t("featureFlags.title", "Dynamic Feature Flags")}
             </h1>
             <p className="mt-2 text-base text-(--text-secondary)">{t("featureFlags.subtitle")}</p>
-          </motion.div>
+          </m.div>
 
           <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
             <div className="overflow-x-auto">
@@ -98,7 +98,7 @@ export default function AdminFeatureFlags() {
                 <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
                   <AnimatePresence mode="popLayout">
                     {flags.map((flag, index) => (
-                      <motion.tr
+                      <m.tr
                         key={flag.name}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -170,7 +170,7 @@ export default function AdminFeatureFlags() {
                             <Info className="h-4 w-4" />
                           </button>
                         </td>
-                      </motion.tr>
+                      </m.tr>
                     ))}
                   </AnimatePresence>
                 </tbody>

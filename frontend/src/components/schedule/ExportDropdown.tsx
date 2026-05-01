@@ -4,7 +4,7 @@
  */
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { Download, ChevronDown, FileText, Image, FileDown } from "lucide-react"
 import { logError } from "@/app/logger"
 import { cn } from "@/utils/cn"
@@ -151,7 +151,7 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
 
       <AnimatePresence>
         {open && (
-          <motion.div
+          <m.div
             role="menu"
             initial={{ opacity: 0, y: -4, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -176,7 +176,7 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
                 {label}
               </button>
             ))}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

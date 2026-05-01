@@ -100,17 +100,30 @@ vi.mock("framer-motion", () => {
     Component.displayName = `Motion(${Tag})`
     return Component as unknown as React.ComponentType<unknown>
   }
+  // Wave 124 SW1 — also expose `m` (LazyMotion minimal component) since
+  // production code now uses `<m.X>` JSX. Plus LazyMotion/MotionConfig/
+  // domAnimation stubs so AppProviders' wrapper renders cleanly. useScroll +
+  // useMotionValueEvent stubs preserved for any pre-Wave-124 callers still
+  // depending on them (Navbar's own usage moved to native scroll listener
+  // via useScrollBehavior refactor — Phase A).
+  const motionProxy = {
+    nav: motionComponent("nav"),
+    div: motionComponent("div"),
+    button: motionComponent("button"),
+    li: motionComponent("li"),
+    ul: motionComponent("ul"),
+    span: motionComponent("span"),
+    line: motionComponent("line"),
+  }
   return {
     AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    motion: {
-      nav: motionComponent("nav"),
-      div: motionComponent("div"),
-      button: motionComponent("button"),
-      li: motionComponent("li"),
-      ul: motionComponent("ul"),
-      span: motionComponent("span"),
-      line: motionComponent("line"),
-    },
+    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    MotionConfig: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    domAnimation: {},
+    domMax: {},
+    motion: motionProxy,
+    m: motionProxy,
+    useReducedMotion: () => false,
     useScroll: () => ({ scrollY: { onChange: () => {} } }),
     useMotionValueEvent: () => {},
   }

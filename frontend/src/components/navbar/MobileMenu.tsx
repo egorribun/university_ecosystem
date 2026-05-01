@@ -3,7 +3,7 @@ import { useEffect, useCallback } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { useAppShell } from "@/contexts/AppShellContext"
 import { useSwipeGesture } from "@/hooks/useSwipeGesture"
@@ -97,7 +97,7 @@ export function MobileMenu({
       {isOpen && (
         <>
           {/* Backdrop */}
-          <motion.button
+          <m.button
             type="button"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -111,7 +111,7 @@ export function MobileMenu({
           />
 
           {/* Drawer — slides from RIGHT */}
-          <motion.div
+          <m.div
             id="mobile-drawer"
             role="dialog"
             aria-modal="true"
@@ -139,7 +139,7 @@ export function MobileMenu({
 
             {/* Close button */}
             <div className="flex items-center justify-end px-4 pt-3 pb-1">
-              <motion.button
+              <m.button
                 type="button"
                 whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                 transition={prefersReducedMotion ? { duration: 0 } : springSoft}
@@ -148,7 +148,7 @@ export function MobileMenu({
                 aria-label={t("navigation:aria.closeMenu")}
               >
                 <X size={20} />
-              </motion.button>
+              </m.button>
             </div>
 
             {/* Profile card */}
@@ -199,7 +199,7 @@ export function MobileMenu({
                   const Icon = item.icon
                   const active = isActive(item.to)
                   return (
-                    <motion.li
+                    <m.li
                       key={item.to}
                       initial={prefersReducedMotion ? false : { opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -219,7 +219,7 @@ export function MobileMenu({
                         {Icon && <Icon className="mobile-nav-link-icon shrink-0" size={18} />}
                         {item.label}
                       </Link>
-                    </motion.li>
+                    </m.li>
                   )
                 })}
               </ul>
@@ -231,7 +231,7 @@ export function MobileMenu({
                 © {new Date().getFullYear()} {t("navigation:brandName")}
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </>
       )}
     </AnimatePresence>,

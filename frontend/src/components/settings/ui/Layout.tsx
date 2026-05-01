@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { cn } from "@/utils/cn"
 
 // Section Components
@@ -148,7 +148,7 @@ export function AccordionSection({
             <h3 className="text-sm font-bold text-text-primary">{title}</h3>
             {subtitle && <p className="text-xs text-(--text-secondary)">{subtitle}</p>}
           </div>
-          <motion.svg
+          <m.svg
             animate={{ rotate: expanded ? 180 : 0 }}
             className="h-5 w-5 shrink-0 text-brand transition-transform duration-base"
             fill="none"
@@ -156,7 +156,7 @@ export function AccordionSection({
             stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </motion.svg>
+          </m.svg>
         </div>
       </button>
       <div
@@ -261,7 +261,7 @@ export function Tab({
       )}
     >
       {selected && (
-        <motion.div
+        <m.div
           layoutId={layoutId}
           className="absolute inset-0 z-hide rounded-xl bg-brand/(--opacity-subtle) ring-1 ring-brand/(--opacity-dim)"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}

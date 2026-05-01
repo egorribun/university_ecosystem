@@ -1,25 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useMotionValue, useSpring } from "framer-motion"
 
 interface UseCountUpOptions {
-  /** Spring stiffness — lower = slower count (default: 80) */
-  stiffness?: number
-  /** Spring damping — higher = less bounce (default: 25) */
-  damping?: number
+  /** Animation duration in ms (default: 1400 — matches prior spring overdamp) */
+  durationMs?: number
   /** Whether to disable animation (e.g. reduced motion) */
   disabled?: boolean
 }
 
 /**
- * useCountUp — Animated number counter (Wave 48)
+ * useCountUp — Animated number counter (Wave 48, refactored Wave 124 SW1)
  *
  * Counts from 0 to `target` when the element enters the viewport.
- * Uses Framer Motion spring physics for natural deceleration.
+ * Uses requestAnimationFrame with easeOutCubic for natural deceleration —
+ * matches the prior overdamped spring (stiffness 80 / damping 25) UX.
  * Fires once per mount. Respects reduced motion via `disabled`.
  * React Compiler safe — no ref access during render.
+ *
+ * Wave 124 SW1: removed framer-motion useMotionValue/useSpring deps so
+ * this hook works under LazyMotion+domAnimation strict mode (those hooks
+ * require domMax). Pure rAF + cubic-bezier easing.
  */
 export function useCountUp(target: number, options: UseCountUpOptions = {}) {
-  const { stiffness = 80, damping = 25, disabled = false } = options
+  const { durationMs = 1400, disabled = false } = options
 
   const elRef = useRef<HTMLElement | null>(null)
   const [hasBeenSeen, setHasBeenSeen] = useState(false)
@@ -48,24 +50,33 @@ export function useCountUp(target: number, options: UseCountUpOptions = {}) {
     return () => observer.disconnect()
   }, [hasBeenSeen])
 
-  const motionValue = useMotionValue(0)
-  const springValue = useSpring(motionValue, { stiffness, damping })
-
   const [value, setValue] = useState(disabled ? target : 0)
-  useEffect(() => {
-    const unsubscribe = springValue.on("change", (v) => setValue(Math.round(v)))
-    return unsubscribe
-  }, [springValue])
 
   useEffect(() => {
     if (disabled) {
-      motionValue.set(target)
+      setValue(target)
       return
     }
-    if (hasBeenSeen) {
-      motionValue.set(target)
+    if (!hasBeenSeen) return
+
+    let raf = 0
+    let start = 0
+    const from = 0
+    const delta = target - from
+
+    const tick = (now: number) => {
+      if (start === 0) start = now
+      const elapsed = now - start
+      const progress = Math.min(elapsed / durationMs, 1)
+      // easeOutCubic — matches prior overdamped spring perception
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setValue(Math.round(from + delta * eased))
+      if (progress < 1) raf = requestAnimationFrame(tick)
     }
-  }, [hasBeenSeen, target, disabled, motionValue])
+
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [hasBeenSeen, target, disabled, durationMs])
 
   return { ref, value }
 }

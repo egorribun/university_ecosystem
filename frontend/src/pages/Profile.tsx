@@ -16,7 +16,7 @@ import {
   DialogTitle,
   Snackbar,
 } from "@/components/settings"
-import { motion } from "framer-motion"
+import { m } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
 
 import { useNowPlaying } from "@/hooks/useNowPlaying"
@@ -213,7 +213,7 @@ export default function Profile() {
       </div>
 
       <PageFadeIn>
-        <motion.div
+        <m.div
           initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
@@ -224,7 +224,7 @@ export default function Profile() {
             aria-label={t("profile:aria.page")}
           >
             <div className="container-fluid-responsive">
-              <motion.div
+              <m.div
                 className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
                 initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -315,10 +315,10 @@ export default function Profile() {
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </m.div>
             </div>
           </section>
-        </motion.div>
+        </m.div>
       </PageFadeIn>
 
       {/* QR Code Dialog */}
