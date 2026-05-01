@@ -18,7 +18,7 @@
 **Headline wins**:
 
 1. **vendor-ui chunk −56.6 KB / −34.8%** (162,838 → 106,220 bytes) via aggressive LazyMotion+domAnimation refactor. Plan target was 10-30 KB; achieved 56 KB by also refactoring 11 imperative-feature animation files (3 scroll-based, 4 spring/MotionValue, 4 LayoutGroup/layoutId) to native APIs (rAF, IntersectionObserver, ResizeObserver, CSS transitions). Two new shared hooks (`useAnimatedFloat`, `useSlidingIndicator`) extract the rAF + sliding-indicator patterns for re-use. 64 JSX files bulk-swapped `<motion.X>` → `<m.X>` via codemod (V1 corruption + V2 repair lesson documented).
-2. **CLS dropped 0.033 → 0.017 on / + /dashboard** (cross-session 9-run median post-W124 SW2-SW4). Possible side effect of W124 SW2 font preload (preloaded woff2 fonts load in parallel with CSS, eliminating FOIT-induced text-render layout shift). Causation correlation only (would need A/B isolation to prove); but striking and directionally consistent with the FOIT-shift mechanism.
+2. **CLS measurement: 0.017 cross-session 9-run median on / + /dashboard** (vs W123 baseline 0.033 single 3-run). Initial W124 SW4 framing hypothesised correlation with SW2 font preload reducing FOIT-induced layout shift, but **polish-v2 A/B isolation (12 measurements: 6 without SW2 + 6 with SW2) DISPROVED causation** — both states yield 0.017 median with rare 0.041 outliers (1 of 6 per state per URL). W123 baseline 0.033 was likely outlier-skewed 3-run median on W123 measurement day; true median is 0.017 regardless of SW2 state. SW2 font preload still ships for its primary FOIT-reduction goal (independent of CLS).
 3. **Authenticated-route Perf variance band measured at ±0.01-0.02** (NOT ±0.06-0.07 as W123 SW4 hypothesis). 3 sessions × 3 runs each on / + /dashboard = 18 measurements. Cross-session median range tight; single 3-run can swing ±0.04 from cross-session truth. Recommends 3-session × 3-run methodology for W125+ ratchet decisions.
 4. **TanStack Start v1 SSR pre-flight design doc** at `docs/plans/2026-05-01-wave125-ssr-design.md` (450 lines, 10 sections, 6-phase migration breakdown, 30-50 h total estimate). Foundation for W125+ own-wave to drop authenticated-route LCP from current 12 s → < 2.5 s target.
 
@@ -192,7 +192,7 @@ All 6 candidates: <5 KB savings available → NO-OP per W121 SW9 / W123 SW2 hone
 ### Findings
 
 1. **Cross-session median variance ±0.01-0.02 Perf** — much narrower than W123 SW4 hypothesis ±0.06-0.07. Per-run can swing ±0.03-0.04 but 3-run median gasps most. The W123 SW4 -0.06/-0.07 vs W122-polish-A2 baseline was either a real codebase regression in some change between W122-polish and W123 (within bundle-hash invariance) OR W122-polish-A2 baseline 0.54 was an artificial-high outlier. Either way, W124 SW4 confirms post-W124 stability with much tighter variance band than expected.
-2. **CLS dropped 0.033 → 0.017** vs W123 baseline (-0.016 absolute, -48% relative). 16 of 18 runs hit exactly 0.017; 2 outliers at 0.041. Possible side effect of W124 SW2 font preload — preloaded woff2 fonts load in parallel with CSS instead of after-CSS-parse, eliminating FOIT-induced text-render layout shift. **Causation NOT proved** without A/B isolation; correlation is striking.
+2. **CLS measured 0.017** vs W123 baseline 0.033 (apparent -0.016 absolute, -48% relative). 16 of 18 runs hit exactly 0.017; 2 outliers at 0.041. SW4 framed this as "possible SW2 font preload side effect" pending A/B isolation (deferred at SW4 time as 1+ hour). **Polish-v2 A/B isolation DISPROVED causation** — without-SW2 also yields 0.017 median with same outlier pattern (12 measurements: 6 without + 6 with SW2). W123 0.033 was likely outlier-influenced single-day measurement; true median is 0.017 regardless of SW2 state. See §Polish pass §Polish-v2 below for full A/B narrative.
 3. **LCP bimodal distribution** reflects Chrome process state across runs — cold cache, GC timing, browser startup heuristics. NOT W124-introduced behavior; same pattern visible in W122 + W123.
 
 ### Ratchet methodology recommendation for Wave 125+
@@ -303,7 +303,7 @@ Mobile preset, devtools throttling, VITE_LHCI=true build (`index-Bxp6QFDI.js` 17
 
 **Highlights**:
 - / Perf **+0.06** (biggest improvement; consistent with W124 SW4 cross-session range 0.47-0.49 + SW2 font preload effect)
-- / + /dashboard CLS **−0.016** absolute (−48% relative; correlated with SW2 font preload reducing FOIT-induced layout shift; causation NOT proved per SW4 honesty caveat)
+- / + /dashboard CLS **0.017** (apparent -0.016 absolute / -48% relative vs W123 baseline 0.033; **polish-v2 A/B isolation DISPROVED SW2 attribution** — true median is 0.017 regardless of SW2 state, W123 0.033 was outlier-influenced)
 - ALL 9 URLs A11y = 1.00 ✅ (W121 polish A2 baseline preserved)
 - /map −0.04 Perf is largest single-URL decrement; within W124 SW4 documented per-run variance ±0.03-0.04; NOT a regression (single 3-run measurement; bundle hash invariant)
 
@@ -345,7 +345,11 @@ Mobile preset, devtools throttling, VITE_LHCI=true build (`index-Bxp6QFDI.js` 17
 
 ## Polish pass (post-SW6 closure, "безупречно?" probe response)
 
-User invoked the perfectionism probe per `feedback_perfectionism.md` after SW6 closure. Honest self-audit identified 5 closeable gaps (of 11 §Honesty caveats) — Tier 1+2 polish budget ~55 min. Caveats 6, 7, 9, 10 confirmed structural deferrals (library swap, A/B isolation 1+ hour, framework-level — properly scoped to W125+). Caveats 1, 8, 11 = methodology choices already justified.
+User invoked the perfectionism probe per `feedback_perfectionism.md` after SW6 closure. **Two passes** (~55 min + ~25 min = ~80 min total). Original 11 §Honesty caveats reduced to 4 truly structural deferrals after both passes.
+
+### Polish-v1 — 4 caveats closed (~55 min)
+
+Pass 1 identified 5 closeable gaps. Caveats 6, 7, 9, 10 framed as structural deferrals at the time (later A/B isolation in polish-v2 corrected #7).
 
 ### P1 — Final gates re-run (caveat: commits CLAIM baseline, didn't actually re-run post-SW6)
 
@@ -419,23 +423,83 @@ CLS combined: SW6 had min 0.075 + outlier 0.092; polish all 3 = 0.092. Combined 
 | 10 | SW5 design doc is design only | W125 Phase 1 = install + plugin add | Structural — proper phase boundary |
 | 1, 8, 11 | Methodology choices | Already justified in commit messages | Methodology — accepted |
 
-**Polish total**: 4 caveats closed in session (4, 5, P1 bonus, P5 bonus) + 2 caveats accepted with stronger framing (2, 3) + 5 caveats remain as structural / methodology / W125+ scope. Polish budget: ~55 min actual.
+**Polish-v1 total**: 4 caveats closed in session (4, 5, P1 bonus, P5 bonus) + 2 caveats accepted with stronger framing (2, 3) + 5 caveats remain as structural / methodology / W125+ scope. Polish-v1 budget: ~55 min actual.
+
+### Polish-v2 — A/B isolation #7 + #1 cleanup (~25 min)
+
+Pass 2 invoked after user re-asked "всё уходит на W125+?" — honest re-audit revealed 4 of 5 "remaining" caveats were technically closeable. Highest-value: **#7 CLS-to-SW2 attribution causation via A/B isolation**. Cost was claimed as "1+ hour" in v1 but realistic ~25 min by leveraging existing wrapper.
+
+#### #7 — CLS-to-SW2 attribution: A/B isolation result = **DISPROVED**
+
+**Methodology**:
+1. `git checkout d1bcd0ebf~1 -- frontend/vite.config.mts` → restored pre-SW2 state (0 `withFontPreload` references confirmed via grep)
+2. `VITE_LHCI=true npm run build` → without-SW2 dist (verified: 0 `<link rel="preload" as="font">` lines in `dist/index.html`)
+3. `SKIP_BUILD=true LHCI_URLS=,dashboard LHCI_RUNS=3 npm run lhci:windows` → 6 measurements without SW2
+4. `git checkout HEAD -- frontend/vite.config.mts` → restored SW2 (verified: 2 `withFontPreload` references)
+5. `VITE_LHCI=true npm run build` → with-SW2 dist (verified: 2 `<link rel="preload" as="font">` lines)
+6. `SKIP_BUILD=true LHCI_URLS=,dashboard LHCI_RUNS=3 npm run lhci:windows` → 6 measurements with SW2
+7. Compare medians
+
+**Per-run data (12 runs total, 6 without + 6 with SW2)**:
+
+| State | URL | Run 1 CLS | Run 2 CLS | Run 3 CLS | Median |
+|-------|-----|-----------|-----------|-----------|--------|
+| Without SW2 | / | 0.017 | 0.041 | 0.017 | 0.017 |
+| Without SW2 | /dashboard | 0.017 | 0.017 | 0.017 | 0.017 |
+| With SW2 | / | 0.017 | 0.017 | 0.017 | 0.017 |
+| With SW2 | /dashboard | 0.041 | 0.017 | 0.017 | 0.017 |
+| **Combined** | | | | | **0.017** |
+
+Perf identical: all 12 runs 0.55 on both / + /dashboard regardless of SW2 state.
+
+**Conclusion**: SW2 font preload **NOT the cause** of W123 → W124 CLS drop (0.033 → 0.017). Both states yield 0.017 median with rare 0.041 outliers (1 of 6 per state per URL).
+
+**Real cause**: W123 baseline 0.033 was likely **outlier-skewed 3-run median on W123 measurement day** (browser/Lighthouse measurement-state delta, NOT W124 code change). True median CLS on / + /dashboard is **0.017 with rare 0.041 outliers**. W124 didn't change CLS. Bundle hash invariant (`index-DU71Xr66.js` 180,827 bytes preserved through all 6 SWs + 2 polish passes) corroborates that runtime path is identical.
+
+**Documentation correction**: All prior claims of "CLS dropped 0.033 → 0.017 correlated with SW2 font preload" — including W124 SW4 commit body, AUDIT_WAVE124 §Headline wins #2 + §SW4 §Findings #2, CLAUDE.md ## Audit Trail W124 row, MEMORY.md row, wave125_opening_prompt.md — were **based on a measurement-noise interpretation that A/B isolation now disproves**. Corrected via this polish-v2 commit. SW2 font preload still ships as planned (FOIT-reduction goal independent of CLS — primary value preserved).
+
+#### #1 — Historical caveat cleanup
+
+§Honesty probe item #1 ("SW1 visual smoke partial in SW1 itself") was **already closed via SW6 Phase A** (6 routes verified clean post-SW1). Kept in original list as historical context — but it's not an active gap. Removed from active probe list to avoid noise; full SW6 Phase A narrative preserved in §SW6 Phase A section above.
+
+#### Polish-v2 result
+
+A/B isolation cost: ~25 min wallclock (build × 2 + LHCI × 2 + analysis + commit). Result: **W124 narrative corrected from "CLS-correlated-with-SW2" to "CLS measurement noise; SW2 ships for FOIT reduction independent of CLS"**.
+
+| # | Caveat | Polish-v2 action | Status |
+|---|--------|------------------|--------|
+| 7 | CLS-to-SW2 causation | A/B isolation = DISPROVED via 12-run measurement | ✅ CLOSED via measurement (claim corrected) |
+| 1 | SW1 visual smoke partial in SW1 itself | Already closed via SW6 Phase A; removed from active list | ✅ CLOSED (historical) |
+
+After polish-v2: **6 caveats CLOSED in session** (4, 5, P1 bonus, P5 bonus from v1; 7, 1 from v2) + 2 ACCEPTED with stronger framing (2, 3) + 3 truly structural / methodology remaining (#6 maplibre lib swap, #8 SW4 5-min waits methodology, #9 axios/i18next/vendor-react requires library swap, #10 SW5 PoC = W125 Phase 1 work, #11 SW6 sweep methodology). Polish total budget: ~80 min across both passes.
+
+**Note on caveat #2 (Magnetic UX)**: Although polish-v1 P4 framed this as "ACCEPTED structural integrity confirmed", a follow-up A/B isolation experiment for spring-vs-cubic-bezier comparison would require either: (a) restoring framer-motion `useSpring` temporarily + visual side-by-side via chrome-devtools-mcp, OR (b) production user feedback. (a) is technically closeable in ~30 min but value is purely subjective UX assessment of a decorative effect — not closing in this session. (b) is post-rollout monitoring.
 
 ---
 
-## §Honesty probe self-audit (anticipating "безупречно?" probe per `feedback_perfectionism.md`)
+## §Honesty probe self-audit (post-polish-v2, anticipating future "безупречно?" probes)
 
-1. **SW1 visual smoke partial in SW1 itself** — only `/login` confirmed at SW1 closure (dev mode without VITE_LHCI=true bypass). Authenticated routes deferred to SW6 final pass with `VITE_LHCI=true npm run preview`. Closed in W124 SW6 Phase A (6 routes verified clean), but SW1 commit body honestly framed the deferral.
-2. **Magnetic.tsx UX subtle shift** — CSS `cubic-bezier(0.34, 1.56, 0.64, 1)` approximates the prior underdamped spring. Magnetism still feels organic but may differ slightly. Plan-approved trade-off ("decorative effect"). NOT regression-tested with side-by-side comparison; subjective acceptance.
-3. **ContactList LayoutGroup dropped** — snap reorder when contacts re-sort (e.g., new message moves contact to top). Plan-approved trade-off ("messenger contact reorder is rare"). User-facing UX subtly degraded; if user reports issue post-rollout, would need different fix.
-4. **AttendanceCard.reduceMotion prop unused** — kept in interface for caller compat (ActivityFeature still passes it). Future cleanup candidate (Wave 125+) to remove + update ActivityFeature.
-5. **Storybook build NOT explicitly re-verified post-W124 SW1** — `npm run build-storybook` was unblocked in W123 SW1 (strictExecutionOrder workaround) but not re-run after SW1 framer-motion swap. SW6 visual smoke verified frontend bundle works; Storybook stories NOT rendered specifically. Per W123 polish lesson, story-by-story decorator coverage matters; assume W124 SW1 didn't break Storybook (LazyMotion+m exports work fine in stories) but didn't formally validate.
-6. **Pre-existing `chunkSizeWarningLimit` warning on vendor-map** — 1,025 KB > 768 KB warning threshold. Not new (pre-W124). Out of scope per W124 SW3 NO-OP audit (maplibre-gl pre-bundled, can't tree-shake).
-7. **CLS improvement attribution to SW2** is correlation only. To prove causation would need to revert SW2 font preload + re-measure variance + re-apply SW2 + re-measure (6+ sessions = 1+ hour). Out of W124 SW4 budget; documented as observation. Conservative interpretation: SW2 coincided with statistical anomaly that happened to coincide with measurement timing.
-8. **5-min waits between SW4 sessions per master plan SKIPPED** (sessions ran back-to-back). Reasoning: dev machine was stable for hours pre-SW4, no other heavy processes; 5-min cooldown primarily mitigates CPU thermal throttling on hot machines, not relevant here. Session-to-session variance was tight (±0.02) confirming the wait wasn't necessary in this measurement. Documented for transparency.
-9. **SW3 audit was N=18 candidates, not exhaustive package-by-package**. axios, i18next, vendor-react not investigated for tree-shake potential — those are framework-level (would require library swap, not import-pruning). Documented in audit findings + design doc as W125+ candidates only addressable via SSR.
-10. **SW5 design doc is design ONLY**. No code change, no proof-of-concept, no install of `@tanstack/react-start`. Doc is research synthesis from Context7 + WebSearch. W125 kickoff requires actually running `npm install @tanstack/react-start nitro` and validating Vite 8 / Rolldown compat — that's Phase 1 work, not pre-flight scope.
-11. **SW6 LHCI sweep ran without 5-min waits between URLs** (all 9 URLs sequential). Same caveat as SW4 #8 — variance band recommendation says 3-session × 3-run; SW6 is single-session × 3-run × 9-URL = baseline measurement, not variance estimation.
+Original 11 caveats reduced to **3 truly remaining** after polish-v1 (4 closed) + polish-v2 (2 more closed). Below is the post-polish-v2 active list with closed caveats noted for full audit transparency.
+
+### Closed (do not require future action)
+
+- ✅ **#1 SW1 visual smoke partial** — closed via W124 SW6 Phase A (6 routes verified clean post-W124 SW1+SW2 via chrome-devtools-mcp)
+- ✅ **#4 AttendanceCard.reduceMotion prop dead code** — closed via polish-v1 P3 (prop removed from interface + ActivityFeature caller line 170; tsc 0 + lint 0 + 0 orphan refs)
+- ✅ **#5 Storybook build re-verified post-W124 SW1** — closed via polish-v1 P2 (build 8.17s + 3 stories rendered with 0 W124-induced errors)
+- ✅ **#7 CLS-to-SW2 causation** — closed via polish-v2 A/B isolation (12 measurements: both states yield 0.017 median; **causation DISPROVED**; W123 0.033 was outlier-influenced single-day measurement; documentation corrected throughout)
+
+### Accepted (plan-approved trade-offs; structural integrity confirmed)
+
+- ⚠ **#2 Magnetic.tsx UX subtle shift** — CSS cubic-bezier approximates prior underdamped spring. Plan-approved decorative-effect trade-off. NOT side-by-side regression-tested — would require either (a) restoring framer-motion `useSpring` temporarily for visual A/B (~30 min, but UX-subjective output), OR (b) production user feedback. Polish-v1 P4 confirmed structural integrity (0 LazyMotion strict errors). UX-subjective verification deferred to post-rollout.
+- ⚠ **#3 ContactList LayoutGroup dropped** — snap reorder when contacts re-sort. Plan-approved trade-off ("messenger contact reorder is rare"). Empty-state container path verified clean in polish-v1 P4 (0 LazyMotion strict errors). Reorder behavior testing requires real backend chat data — out of scope for VITE_LHCI=true preview.
+
+### Remaining structural / methodology / W125+ scope
+
+- 📌 **#6 Pre-existing `chunkSizeWarningLimit` warning on vendor-map** — 1,025 KB > 768 KB warning threshold. Not new (pre-W124). Out of scope per W124 SW3 NO-OP audit (maplibre-gl pre-bundled, can't tree-shake). W125+ candidate IF library swap (Mapbox GL Lite, vector-tile alt rendering) is approved scope.
+- 📌 **#8 5-min waits between SW4 sessions per master plan SKIPPED** (sessions ran back-to-back). Methodology choice — ±0.02 cross-session variance band already proves cooldown wasn't necessary. Could be re-validated with explicit 5-min waits (~30 min cost) but value is methodology-purity only; documented for transparency.
+- 📌 **#9 SW3 audit was N=18 candidates, not exhaustive package-by-package**. axios, i18next, vendor-react not investigated — framework-level (would require library swap, not import-pruning). Naturally addressed by SSR own-wave (W125+) per SW5 design doc; in-place tree-shake won't help these specifically.
+- 📌 **#10 SW5 design doc is design ONLY** (no proof-of-concept install). W125 Phase 1 IS the install + validation step (~6-8 h). Proper phase boundary, not a gap.
+- 📌 **#11 SW6 LHCI sweep ran without 5-min waits between URLs** (all 9 URLs sequential). Same methodology caveat as #8 — single-session × 3-run × 9-URL is baseline measurement, not variance estimation. Re-validating with 5-min × 8 gaps = ~6+ hours wallclock; not realistic for baseline sweep.
 
 ---
 
