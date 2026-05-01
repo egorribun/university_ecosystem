@@ -167,7 +167,6 @@ export function ActivityFeature() {
               <AttendanceCard
                 attendance={attendance}
                 hasInitiallyLoaded={hasInitiallyLoaded}
-                reduceMotion={reduce}
                 ringSize={ringSize}
               />
             </div>

@@ -11,7 +11,6 @@ import { useAnimatedFloat } from "@/hooks/useAnimatedFloat"
 type AttendanceCardProps = {
   attendance?: AttendanceStats | null
   hasInitiallyLoaded: boolean
-  reduceMotion: boolean
   ringSize: number
 }
 
@@ -29,9 +28,6 @@ function AttendanceCardSkeleton() {
   )
 }
 
-// Wave 124 SW1 — `reduceMotion` prop no longer destructured; useAnimatedFloat
-// reads `useReducedMotion` internally. Prop kept in interface for caller
-// compat (ActivityFeature still passes it; harmless to ignore here).
 export function AttendanceCard({
   attendance,
   hasInitiallyLoaded,
@@ -45,12 +41,7 @@ export function AttendanceCard({
     motionTokens.durationLazy,
     0
   )
-  // Wave 124 SW1 — refactored from framer-motion useMotionValue + animate
-  // (require domMax) to shared rAF helper. The reduceMotion prop is honored
-  // by useAnimatedFloat via useReducedMotion internally — but the original
-  // code passed prop reduceMotion + ignored useReducedMotion hook. Both
-  // sources should agree (reduceMotion prop is computed from same hook
-  // upstream in ActivityFeature).
+  // useAnimatedFloat reads useReducedMotion internally — no prop needed.
   const progressAttendance = useAnimatedFloat(attendancePct, motionTokens.durationLazy)
 
   return (
