@@ -61,15 +61,15 @@ function useFormStub(overrides: Partial<FormStub> = {}): FormStub {
 }
 
 /**
- * Helper that mounts LoginCredentialForm with a stub form, exposing
- * the underlying form object so the test can assert on its callbacks.
+ * Helper that mounts LoginCredentialForm with a stub form. Tests
+ * assert against callbacks they pass in through `buildOverrides`
+ * (e.g. `applySuggestion: vi.fn()`), so the stub does not need to
+ * be exposed back to the caller — keeping the side-effect-free
+ * Harness keeps the React Compiler lint clean too.
  */
-async function mountWithStub(buildOverrides: () => Partial<FormStub>): Promise<{ stub: FormStub }> {
-  let captured: FormStub | null = null
-
+async function mountWithStub(buildOverrides: () => Partial<FormStub>): Promise<void> {
   function Harness(): ReactNode {
     const stub = useFormStub(buildOverrides())
-    captured = stub
     return <LoginCredentialForm form={stub} />
   }
 
@@ -80,10 +80,6 @@ async function mountWithStub(buildOverrides: () => Partial<FormStub>): Promise<{
       { path: "/register", Component: () => <div>register</div> },
     ],
   })
-
-  // captured is non-null after Harness mounts — TS narrowing helper.
-  if (!captured) throw new Error("Harness did not capture the stub")
-  return { stub: captured }
 }
 
 // ── 1. Default render ───────────────────────────────────────────────────────
