@@ -15,6 +15,19 @@
  * NEWS_PAGE_SIZE, NaN/negative values clamped). This means
  * ``useNewsListQuery({ language, limit: undefined })`` and
  * ``useNewsListQuery({ language, limit: 12 })`` share the same cache.
+ *
+ * Cache layers (outermost first):
+ *  1. ``placeholderData`` from ``StorageItem("news:list:<lang>")``
+ *     — populated by the news detail/list pages on a successful load,
+ *     served on cold mount in offline mode so the user sees something
+ *     before the network resolves.
+ *  2. TanStack Query's in-memory cache (``staleTime: 30_000``) — keeps
+ *     subsequent mounts within 30 s from refetching, matches the news
+ *     interaction query so likes/bookmarks don't trigger a list reload.
+ *  3. Server-side ETag cache key ``"news:list:<language>:<limit>"``
+ *     — only the first page (``pageParam == null``) participates;
+ *     subsequent cursor pages bypass the ETag layer because their
+ *     payloads are unique by cursor.
  */
 import {
   useInfiniteQuery,
@@ -186,6 +199,37 @@ export type UseNewsListQueryResult = UseInfiniteQueryResult<
   queryKey: NewsListQueryKey
 }
 
+/**
+ * Infinite-query hook for the paginated news feed.
+ *
+ * Wraps ``@tanstack/react-query``'s ``useInfiniteQuery`` with the
+ * project's cursor pagination + ETag + offline placeholder logic so
+ * callers don't need to remember any of the wiring. Also flattens
+ * ``query.data.pages`` into a deduplicated ``news`` array (last write
+ * wins per ``id``) and exposes the latest page payload as ``pagination``
+ * for cursor + total + has_more without indexing into ``pages``.
+ *
+ * @param filters - ``language`` is the i18n locale used for both the
+ *   ETag cache key and the offline placeholder localStorage key.
+ *   ``limit`` is optional; defaults to ``NEWS_PAGE_SIZE`` (12).
+ * @param options - Standard ``useInfiniteQuery`` options EXCEPT
+ *   ``queryKey``, ``queryFn``, ``initialPageParam`` and
+ *   ``getNextPageParam`` — those are owned by this hook. ``enabled``
+ *   defaults to ``true``.
+ * @returns The full ``useInfiniteQuery`` result extended with:
+ *   - ``news``: flattened, deduplicated array of ``NewsItem`` across
+ *     all loaded pages (memoised on ``query.data``).
+ *   - ``pagination``: the last loaded page's ``PaginatedResponse``,
+ *     or ``null`` while still loading.
+ *   - ``queryKey``: the canonical key for use with
+ *     ``queryClient.invalidateQueries()`` etc.
+ *
+ * @example
+ * const { news, fetchNextPage, hasNextPage, queryKey } =
+ *   useNewsListQuery({ language: i18n.language })
+ * // …
+ * await queryClient.invalidateQueries({ queryKey })
+ */
 export const useNewsListQuery = (
   filters: NewsListFilters,
   options?: UseNewsListQueryOptions

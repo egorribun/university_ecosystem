@@ -14,25 +14,39 @@ import type {
 } from "@/features/activity/types"
 
 /**
- * Activity Stats Query — Wave 112 SW2 migration.
+ * @fileoverview Activity-summary query hook + reusable query options.
  *
- * Replaces the previous bare-axios+useState+useEffect implementation in
- * useActivityData. The fetch contract is preserved exactly:
- *   1. Try /stats/summary (single round-trip envelope endpoint)
- *   2. On any failure, fall back to three individual /stats/{kind} requests
- *      via Promise.allSettled — covers older backends + per-service outages
+ * Replaces the previous bare-axios + useState + useEffect implementation
+ * in ``useActivityData``. The fetch contract is preserved exactly:
  *
- * The transformation/parsing layer (toNumber, parseAttendanceRecent, etc.)
- * stays in useActivityData where the hook composes the raw envelope into
- * UI-friendly stats — that's a derivation concern, not a fetch concern.
+ *   1. Try ``GET /stats/summary`` — a single round-trip envelope
+ *      endpoint that returns ``{ attendance, grades, participation }``
+ *      in one payload.
+ *   2. On any failure of (1), fall back to three individual
+ *      ``GET /stats/{attendance,grades,participation}`` requests via
+ *      ``Promise.allSettled`` — covers older backends that haven't
+ *      shipped the envelope endpoint and per-service outages where
+ *      one of the three feeds is down but the others are healthy.
  *
- * Contract for callers:
- *   - `data` is always defined when `isSuccess` (envelope or partial fallback)
- *   - On individual endpoint failure, that field of the envelope is `null`
- *   - `signal` propagates AbortController through axios for in-flight cancellation
+ * The transformation/parsing layer (``toNumber``,
+ * ``parseAttendanceRecent``, etc.) lives in ``useActivityData`` —
+ * that's a derivation concern, not a fetch concern.
  *
- * staleTime: 60s — stats are summary aggregations; sub-minute freshness
- * isn't useful and refetching too aggressively wastes the API budget.
+ * Cache behaviour:
+ *   - ``staleTime: 60_000`` (1 minute) — stats are summary
+ *     aggregations; sub-minute freshness isn't useful and refetching
+ *     too aggressively wastes the API budget.
+ *   - ``gcTime: 5 * 60_000`` (5 minutes) — keeps the entry around long
+ *     enough that period-toggle round-trips (``week → month → week``)
+ *     don't refetch unnecessarily.
+ *
+ * Caller contract:
+ *   - ``data`` is always defined when ``isSuccess`` (envelope or
+ *     partial fallback, never undefined).
+ *   - On individual endpoint failure inside the fallback path, that
+ *     field of the envelope is ``null``; consumer must guard.
+ *   - ``signal`` propagates the AbortController through axios so an
+ *     unmount cancels the in-flight request.
  */
 
 export type ActivitySummaryEnvelope = {
@@ -58,6 +72,20 @@ export type ActivityQueryKey = readonly ["activity", "summary", PeriodKey, strin
 export const activityQueryKey = (params: ActivityQueryParams): ActivityQueryKey =>
   ["activity", "summary", params.period, params.language] as const
 
+/**
+ * Internal queryFn for the activity-summary cache. Tries the bundled
+ * ``/stats/summary`` endpoint first and silently falls back to three
+ * per-feed requests if it fails (network error, 4xx, 5xx — anything
+ * axios throws). The fallback uses ``Promise.allSettled`` so a single
+ * feed outage doesn't take down the other two.
+ *
+ * @param period - Aggregation window (week / month / semester).
+ * @param signal - Forwarded to axios so an unmount cancels both the
+ *   primary call and any of the three fallback calls in flight.
+ * @returns Envelope where each of ``attendance`` / ``grades`` /
+ *   ``participation`` is either the response payload or ``null`` if
+ *   that specific feed failed in the fallback path.
+ */
 const fetchActivitySummary = async (
   period: PeriodKey,
   signal: AbortSignal | undefined
@@ -114,6 +142,21 @@ type UseActivitySummaryOptions = Omit<
   "queryKey" | "queryFn"
 >
 
+/**
+ * React-component-side hook for the activity summary. Thin wrapper
+ * around ``useQuery(activitySummaryOptions(params))`` — the indirection
+ * exists so consumers can pass component-local ``options`` (e.g.
+ * ``enabled``, ``select``) without re-deriving the cache key.
+ *
+ * For non-component contexts (route ``loader``, prefetch, headless
+ * read), prefer ``activitySummaryOptions(params)`` directly.
+ *
+ * @param params - ``period`` + ``language``; both are part of the
+ *   cache key (backend localises labels via ``Accept-Language``).
+ * @param options - Standard ``useQuery`` options EXCEPT ``queryKey``
+ *   and ``queryFn`` (those are owned by the hook).
+ * @returns Standard ``UseQueryResult`` over ``ActivitySummaryEnvelope``.
+ */
 export const useActivitySummaryQuery = (
   params: ActivityQueryParams,
   options?: UseActivitySummaryOptions
