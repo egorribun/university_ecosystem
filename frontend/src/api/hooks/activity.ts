@@ -49,6 +49,12 @@ export type ActivityQueryParams = {
 
 export type ActivityQueryKey = readonly ["activity", "summary", PeriodKey, string]
 
+/**
+ * Canonical query-key factory for the activity-summary cache. Always
+ * use this rather than hand-rolling the tuple — both the period and the
+ * language are part of the key (backend localises labels per
+ * Accept-Language).
+ */
 export const activityQueryKey = (params: ActivityQueryParams): ActivityQueryKey =>
   ["activity", "summary", params.period, params.language] as const
 
