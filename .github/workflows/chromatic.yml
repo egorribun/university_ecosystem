@@ -100,7 +100,7 @@ jobs:
 
       - name: Publish to Chromatic
         # SHA-pinned per RZ-22-03 convention (no mutable @v tags).
-        uses: chromaui/action@2bd0e8db83b13ba0d6e74feb5e6a3bd61d4fe4c2 # v13.4.0
+        uses: chromaui/action@07791f8243f4cb2698bf4d00426baf4b2d1cb7e0 # v13.3.5
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
