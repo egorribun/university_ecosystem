@@ -7,8 +7,8 @@ Two delivery channels run in parallel for every new message:
    message payload in real time.
 2. Push notification via ``create_notifications_for_users`` — every
    non-sender participant gets an in-app + push entry. UUIDs in
-   ``payload_data`` are stringified (HIGH-W19) since UUID is not
-   natively JSON-serialisable.
+   ``payload_data`` are stringified because UUID is not natively
+   JSON-serialisable.
 
 The body preview is truncated at 100 chars + "..." to keep push payloads
 under platform-imposed size limits.

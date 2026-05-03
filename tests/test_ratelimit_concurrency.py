@@ -5,7 +5,7 @@ middleware integration) by stressing:
 
 * the memory sliding-window strategy under simultaneous burst,
 * the Redis circuit breaker's state-machine atomicity,
-* the half-open single-probe gate (RZ-33-11),
+* the half-open single-probe gate (only one probe runs at a time),
 * fail-closed fallback to ``MemorySlidingWindowStrategy`` at 50 % capacity,
 * invariant validation in ``check_rate_limit``.
 
@@ -332,7 +332,7 @@ def test_circuit_breaker_open_blocks_requests() -> None:
 
 
 def test_circuit_breaker_half_open_single_probe() -> None:
-    """RZ-33-11: in HALF_OPEN, only one probe runs at a time.
+    """In HALF_OPEN state, only one probe runs at a time.
 
     100 simultaneous ``allow_request()`` callers see exactly one True.
 

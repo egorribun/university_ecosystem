@@ -62,13 +62,13 @@ def test_repository_init():
     assert ROR is ReadOnlyRepository
 
 
-# ── _cast_id property-based tests (TD-W9-04 boundary) ────────────────────────
+# ── _cast_id property-based tests ───────────────────────────────────────────
 #
 # ``ReadOnlyRepository._cast_id`` is on every read path and is a security
 # boundary — invalid UUIDs are rejected explicitly before they reach the
-# database driver. The previous "len >= 32" check silently passed
-# arbitrary 33-char strings, which then crashed deep inside asyncpg.
-# These tests pin the new regex-based validation contract.
+# database driver. A previous "len >= 32" check silently passed arbitrary
+# 33-char strings, which then crashed deep inside asyncpg with a cryptic
+# DataError. These tests pin the regex-based validation contract.
 
 
 class _StubRepo(ReadOnlyRepository[Any, Any]):
@@ -207,7 +207,13 @@ def test_cast_id_rejects_random_garbage(garbage: str) -> None:
 
 
 class TestEscapeLike:
-    """``_escape_like`` neutralises SQL LIKE wildcards (CRIT-01/05)."""
+    """``_escape_like`` neutralises SQL LIKE wildcards.
+
+    Unescaped user input in LIKE patterns enables two attacks: ``%`` /
+    ``_`` turns a selective query into a full-table scan (DoS), and
+    crafted patterns can enumerate rows by exploiting ``_`` (single-char
+    wildcard) to brute-force column values.
+    """
 
     def test_escapes_percent(self) -> None:
         assert _StubRepo._escape_like("100%") == "100\\%"

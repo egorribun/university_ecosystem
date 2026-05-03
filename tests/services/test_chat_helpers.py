@@ -215,7 +215,7 @@ async def test_notify_new_message_creates_push_for_other_participants() -> None:
     assert kwargs["url"] == f"/messenger/{chat_id}"
     assert kwargs["tag"] == f"chat:{chat_id}"
     assert set(kwargs["user_ids"]) == {other_a.id, other_b.id}
-    # All UUIDs in payload_data are stringified (HIGH-W19 — JSON safety).
+    # All UUIDs in payload_data are stringified for JSON safety.
     payload = kwargs["payload_data"]
     assert payload["chatId"] == str(chat_id)
     assert payload["senderId"] == str(sender.id)

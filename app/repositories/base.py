@@ -55,8 +55,8 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
 
         ``id`` is cast through ``_cast_id`` so callers may pass canonical UUIDs,
         32-char hex UUIDs, or raw integer PKs. Set ``with_for_update=True`` to
-        acquire a row-level lock (use sparingly — TD-02 removed the implicit
-        SELECT FOR UPDATE on every read because of lock-escalation).
+        acquire a row-level lock — use sparingly; the implicit SELECT FOR UPDATE
+        on every read was removed for performance (avoids lock escalation).
         """
         target_id = self._cast_id(id)
         stmt = select(self.model).where(

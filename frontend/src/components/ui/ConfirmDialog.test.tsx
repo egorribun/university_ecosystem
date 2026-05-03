@@ -6,7 +6,7 @@ import { axe } from "jest-axe"
 import { ConfirmDialog } from "./ConfirmDialog"
 
 /**
- * ConfirmDialog ARIA + interaction tests (A11Y-35-01).
+ * ConfirmDialog ARIA + interaction tests.
  *
  * The dialog must:
  *  - render with role="alertdialog" + aria-modal="true";

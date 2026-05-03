@@ -6,7 +6,7 @@ import { axe } from "jest-axe"
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu"
 
 /**
- * ActionMenu ARIA + keyboard-nav + interaction tests (A11Y-35-03).
+ * ActionMenu ARIA + keyboard-nav + interaction tests.
  *
  * Coverage:
  *  - trigger has aria-label / aria-haspopup="menu" / aria-expanded;

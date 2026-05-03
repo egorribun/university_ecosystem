@@ -22,8 +22,8 @@ Coverage focus:
 * ``@invalidates_cache`` decorator — invalidates after success, does
   NOT invalidate on exception (mutation didn't commit), supports
   multiple tags;
-* ``invalidate_all_schedules`` — raises NotImplementedError (LOW-W19
-  guard).
+* ``invalidate_all_schedules`` — raises NotImplementedError as a
+  documented guard.
 """
 
 from __future__ import annotations

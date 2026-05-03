@@ -50,7 +50,7 @@ class TestComputeEtag:
         assert compute_etag("hello") == compute_etag(b"hello")
 
     def test_returns_exactly_32_hex_chars(self) -> None:
-        """Truncated SHA-256 — 32 lowercase hex chars (LOW-W19)."""
+        """Truncated SHA-256 — 32 lowercase hex chars."""
         digest = compute_etag(b"any-content")
         assert len(digest) == 32
         assert re.fullmatch(r"[0-9a-f]{32}", digest)
@@ -122,7 +122,7 @@ class TestParseIfNoneMatch:
         assert parse_if_none_match('w/"abc"') == ["abc"]
 
     def test_weak_with_internal_whitespace(self) -> None:
-        """RFC 7230 list rules — ``W/ "abc"`` is permitted (LOW-W19)."""
+        """RFC 7230 list rules — ``W/ "abc"`` is permitted."""
         assert parse_if_none_match('W/ "abc"') == ["abc"]
 
     def test_wildcard(self) -> None:

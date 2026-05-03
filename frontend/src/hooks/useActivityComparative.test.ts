@@ -12,7 +12,7 @@ import type {
 } from "@/features/activity/types"
 
 /**
- * Tests for the period-split client-side comparative hook (DESIGN-85-03).
+ * Tests for the period-split client-side comparative hook.
  *
  * The hook splits the configured period in half and compares the current
  * half to the previous half. Time-of-day boundaries matter (the cutoff

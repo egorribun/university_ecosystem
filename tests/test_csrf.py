@@ -8,7 +8,8 @@ side-effect of broader middleware checks. This module covers
   ``_verify_signed_token``) — deterministic + session binding,
 * signed-token verification edge cases (malformed, empty parts,
   wrong session, wrong secret),
-* anonymous-nonce regex behaviour (``_ANON_NONCE_RE`` — RZ-28-02),
+* anonymous-nonce regex behaviour (``_ANON_NONCE_RE`` — uniform-time
+  validation),
 * constructor invariants (short secret, missing secret in prod vs dev),
 * middleware behaviour through a real ASGI transport — Bearer/cookie
   branches, mutating-method gating, cookie rotation on success,
@@ -144,7 +145,7 @@ class TestVerifySignedToken:
         assert _verify_signed_token(f"{nonce}.{mac}.junk", "s", _TEST_SECRET) is False
 
 
-# ── 2. Anonymous-nonce regex (RZ-28-02 — uniform-time validation) ────────────
+# ── 2. Anonymous-nonce regex — uniform-time validation ──────────────────────
 
 
 class TestAnonNonceRegex:

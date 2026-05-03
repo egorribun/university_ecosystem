@@ -11,7 +11,7 @@
  *    can render immediately on cold load. ``PROFILE_CACHE_SCHEMA_VERSION``
  *    is bumped whenever the shape changes — older keys
  *    (``LEGACY_PROFILE_CACHE_KEYS``) are evicted on upgrade so stale PII
- *    cannot linger (TD-14-07: v7 → v8 forced eviction).
+ *    cannot linger.
  * 3. **VITE_LHCI bypass** — when ``import.meta.env.VITE_LHCI === "true"``
  *    the hook synthesises a mock user (``id: "lhci-mock-user"``) so
  *    Lighthouse can score authenticated routes without a real backend.

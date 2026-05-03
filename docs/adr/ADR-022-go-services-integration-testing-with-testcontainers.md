@@ -13,9 +13,9 @@ Three Go services (`services/ws-hub`, `services/file-processor`, `services/gatew
 
 This setup leaves three uncovered classes of behaviour:
 
-1. **NATS JetStream semantics** — message acks, redelivery on `Nak(...)` with delay, durable consumer rebalancing, and the `keys.rotated` / `cache.invalidate` subjects (RZ-21-03 / RZ-21-05). Mocks do not implement the at-least-once delivery guarantee or the `WaitGroup`-tracked goroutine lifecycle (RZ-23-07) that production depends on.
-2. **MinIO object lifecycle** — file-processor's GraphQL mutation-driven uploads/deletes interact with object versioning, multipart upload chunking, and presigned-URL TTLs in ways the local fake doesn't model (RZ-23-04 / RZ-26-04 path-traversal validation).
-3. **Cross-service Redis behaviour under load** — the gateway's L1 cache uses XFetch probabilistic refresh (PERF-31-02); the rate-limit subsystem uses Lua scripts via EVALSHA (PERF-14-01). Neither is faithful in `fakeredis` (Python) or any of the Go fakes; both have caused subtle staging-only bugs in past audits.
+1. **NATS JetStream semantics** — message acks, redelivery on `Nak(...)` with delay, durable consumer rebalancing, and the `keys.rotated` / `cache.invalidate` subjects. Mocks do not implement the at-least-once delivery guarantee or the `WaitGroup`-tracked goroutine lifecycle that production depends on.
+2. **MinIO object lifecycle** — file-processor's GraphQL mutation-driven uploads/deletes interact with object versioning, multipart upload chunking, presigned-URL TTLs, and gRPC path-traversal validation in ways the local fake doesn't model.
+3. **Cross-service Redis behaviour under load** — the gateway's L1 cache uses XFetch probabilistic refresh; the rate-limit subsystem uses Lua scripts via EVALSHA. Neither is faithful in `fakeredis` (Python) or any of the Go fakes; both have caused subtle staging-only bugs in past audits.
 
 ADR-016 (FakeRedis vs Testcontainers) explicitly draws the line: FakeRedis is the Python default; Testcontainers is reserved for "a small subset of critical E2E and concurrency tests". This ADR proposes the equivalent strategy for Go services.
 
@@ -23,9 +23,9 @@ ADR-016 (FakeRedis vs Testcontainers) explicitly draws the line: FakeRedis is th
 
 Adopt **`testcontainers-go`** for a focused integration-test layer in each Go service, alongside the existing unit/contract tests. The integration tier targets exactly the behaviours unit tests cannot cover:
 
-- ws-hub: NATS JetStream ack/Nak/redeliver, broadcast oversized message rejection (RZ-23-05), `maxClients` pre-check (TD-31-05), JWKS hot-reload (MOD-W17-03).
-- file-processor: MinIO + ClamAV integration, GraphQL depth + timeout middleware (RZ-24-05), gRPC path-traversal rejection (RZ-27-04).
-- gateway: Redis-backed circuit breaker (PERF-30-01), L1 cache XFetch refresh (PERF-31-02), gRPC default timeout (RZ-31-05), composite OTEL propagator (MOD-31-02).
+- ws-hub: NATS JetStream ack/Nak/redeliver, broadcast oversized message rejection, `maxClients` pre-check, JWKS hot-reload.
+- file-processor: MinIO + ClamAV integration, GraphQL depth + timeout middleware, gRPC path-traversal rejection.
+- gateway: Redis-backed circuit breaker, L1 cache XFetch refresh, gRPC default timeout, composite OTEL propagator.
 
 Tests run under a separate Make target (`make test-integration`) and a separate CI job (`reusable-go-integration-tests.yml`) so the unit-test feedback loop stays under 30 seconds.
 
@@ -40,7 +40,7 @@ Tests run under a separate Make target (`make test-integration`) and a separate 
 
 - **In-process embedded NATS** (`natsserver` package). Rejected: covers ~80 % of behaviour but not durable consumer state across restarts.
 - **Hand-rolled `docker-compose.test.yml`**. Rejected: adds a manual setup step, makes parallel test execution hard, doesn't clean up containers on test crashes.
-- **Skip integration tests entirely** and rely on staging. Rejected: staging incidents have surfaced bugs (the gateway L1 cache stampede in PERF-31-02) that a 5-minute CI run would have caught.
+- **Skip integration tests entirely** and rely on staging. Rejected: staging incidents (e.g. the gateway L1 cache stampede) have surfaced bugs that a 5-minute CI run would have caught.
 
 ## Consequences
 

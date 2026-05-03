@@ -43,13 +43,12 @@ async def check_rate_limit(
       On ``RedisError`` / ``OSError`` the breaker records a failure and the
       request falls through to the in-memory fallback below.
     * Fallback or no-redis path — uses ``MemorySlidingWindowStrategy`` at
-      ``max(limit // 2, 1)`` (PERF-30-01). The 50 % cap prevents a stale
-      memory window from acting as a permissive backdoor when Redis is
-      down across multiple workers.
+      ``max(limit // 2, 1)``. The 50 % cap prevents a stale memory window
+      from acting as a permissive backdoor when Redis is down across
+      multiple workers.
 
     Raises ``ValueError`` on ``limit <= 0`` or ``window_seconds <= 0`` —
-    both are silent-misconfiguration vectors and must surface immediately
-    (RZ-W19-05).
+    both are silent-misconfiguration vectors and must surface immediately.
 
     Args:
         identifier: Per-key value (user id, IP, anonymous nonce, etc.).
