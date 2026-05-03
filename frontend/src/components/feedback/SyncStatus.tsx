@@ -99,10 +99,7 @@ export function SyncStatus() {
         {isOnline ? (
           <Cloud className="h-4 w-4 text-white/(--opacity-medium)" />
         ) : (
-          <m.div
-            animate={{ opacity: [1, 0.5, 1] }}
-            transition={{ repeat: Infinity, duration: 2 }}
-          >
+          <m.div animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 2 }}>
             <CloudUpload className="h-4 w-4 text-(--warning-text)" />
           </m.div>
         )}

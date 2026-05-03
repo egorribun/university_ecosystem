@@ -118,12 +118,11 @@ const AuthEventsIndexRoute = AuthEventsIndexRouteImport.update({
   path: "/events/",
   getParentRoute: () => AuthRoute,
 } as any)
-const PublicResetPasswordTokenRoute =
-  PublicResetPasswordTokenRouteImport.update({
-    id: "/$token",
-    path: "/$token",
-    getParentRoute: () => PublicResetPasswordRoute,
-  } as any)
+const PublicResetPasswordTokenRoute = PublicResetPasswordTokenRouteImport.update({
+  id: "/$token",
+  path: "/$token",
+  getParentRoute: () => PublicResetPasswordRoute,
+} as any)
 const AuthNewsIdRoute = AuthNewsIdRouteImport.update({
   id: "/news/$id",
   path: "/news/$id",
@@ -546,7 +545,7 @@ const AuthMessengerRouteChildren: AuthMessengerRouteChildren = {
 }
 
 const AuthMessengerRouteWithChildren = AuthMessengerRoute._addFileChildren(
-  AuthMessengerRouteChildren,
+  AuthMessengerRouteChildren
 )
 
 interface AuthRouteChildren {
@@ -587,8 +586,9 @@ const PublicResetPasswordRouteChildren: PublicResetPasswordRouteChildren = {
   PublicResetPasswordTokenRoute: PublicResetPasswordTokenRoute,
 }
 
-const PublicResetPasswordRouteWithChildren =
-  PublicResetPasswordRoute._addFileChildren(PublicResetPasswordRouteChildren)
+const PublicResetPasswordRouteWithChildren = PublicResetPasswordRoute._addFileChildren(
+  PublicResetPasswordRouteChildren
+)
 
 interface PublicRouteChildren {
   PublicForgotPasswordRoute: typeof PublicForgotPasswordRoute
@@ -604,8 +604,7 @@ const PublicRouteChildren: PublicRouteChildren = {
   PublicResetPasswordRoute: PublicResetPasswordRouteWithChildren,
 }
 
-const PublicRouteWithChildren =
-  PublicRoute._addFileChildren(PublicRouteChildren)
+const PublicRouteWithChildren = PublicRoute._addFileChildren(PublicRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,

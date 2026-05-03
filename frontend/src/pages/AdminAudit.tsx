@@ -227,11 +227,7 @@ export default function AdminAudit() {
     <Layout>
       <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <m.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
-          >
+          <m.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
             <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
               {t("audit.title")}
             </h1>

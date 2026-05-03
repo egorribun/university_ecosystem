@@ -380,9 +380,7 @@ export default defineConfig(({ mode }) => {
           if (hostType !== "html") return deps
           return deps.filter(
             (dep) =>
-              !dep.includes("jspdf") &&
-              !dep.includes("html2canvas") &&
-              !dep.includes("purify")
+              !dep.includes("jspdf") && !dep.includes("html2canvas") && !dep.includes("purify")
           )
         },
       },

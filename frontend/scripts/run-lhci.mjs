@@ -246,12 +246,7 @@ async function run() {
       throw error
     }
   }
-  await runCommand(
-    "npx",
-    ["lhci", "assert", `--config=${tempConfigPath}`],
-    "lhci assert",
-    lhciEnv
-  )
+  await runCommand("npx", ["lhci", "assert", `--config=${tempConfigPath}`], "lhci assert", lhciEnv)
 
   await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 })
 }

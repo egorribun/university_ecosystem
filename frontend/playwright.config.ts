@@ -10,9 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 // user instead of redirecting to /login. Default 5173 covers the normal
 // dev preview used by a11y-public + a11y-cdn-axe.
 const URL_STATE_E2E_MODE = process.env.URL_STATE_E2E === "true"
-const PORT = Number(
-  process.env.PLAYWRIGHT_PORT || (URL_STATE_E2E_MODE ? 4175 : 5173)
-)
+const PORT = Number(process.env.PLAYWRIGHT_PORT || (URL_STATE_E2E_MODE ? 4175 : 5173))
 const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1"
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`
 
