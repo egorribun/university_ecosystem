@@ -46,8 +46,20 @@ type SessionSigningKeyResponse = SessionSigningKeyOut
 
 import { cryptoWorker } from "@/utils/cryptoWorker"
 
+/**
+ * Derive a deterministic, opaque cache-key namespace from a session
+ * identifier. Used to scope ServiceWorker cache entries per-session
+ * without ever shipping the raw session value into ``localStorage``
+ * or any DOM-readable surface. PBKDF2-SHA256, 100 000 iterations,
+ * 256-bit derived key, fixed namespace salt
+ * (``ecosystem.session.id.salt.v1``).
+ *
+ * @param value - Session identifier (raw signing key for current
+ *   sessions; legacy session-storage value during one-time migration).
+ * @returns Hex-encoded 256-bit hash. Stable for a given input across
+ *   reloads and devices — the salt is namespace-fixed by design.
+ */
 export const hashSessionIdentifier = async (value: string): Promise<string> => {
-  // Use a static salt for session ID hashing
   return cryptoWorker.pbkdf2({
     value,
     salt: "ecosystem.session.id.salt.v1",
@@ -97,16 +109,32 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
   return result
 }
 
-// Sign snapshot, ensuring sensitive fields are scrypt-hashed with per-user salt
+/**
+ * Sign a profile/snapshot payload with the current session signing key.
+ *
+ * Steps (all run inside the dedicated crypto Web Worker so the key
+ * material never enters the React render path):
+ *   1. Deep-clone ``payload`` and replace each value of a known
+ *      sensitive field name (MFA flags) with its scrypt hash, salted
+ *      by the per-user ``userSalt`` plus a fixed namespace prefix
+ *      ``ecosystem.sensitive.field.salt.v2``.
+ *   2. JSON-stringify the sanitised clone.
+ *   3. Compute ``HMAC-SHA256(json, key)``.
+ *
+ * @param payload - Object to sign — typically a user profile snapshot
+ *   that gets posted to the backend.
+ * @param key - Session signing key (read from ``useSessionCrypto``).
+ * @param userSalt - Per-user salt fragment, namespaced with the v2
+ *   constant before being fed into scrypt.
+ * @returns Hex-encoded HMAC-SHA256 of the sanitised payload.
+ */
 export const signSnapshot = async (
   payload: unknown,
   key: string,
   userSalt: string
 ): Promise<string> => {
-  // Deep-clone and hash sensitive fields before stringification (await/async)
   const safePayload = await hashSensitiveFields(payload, userSalt)
   const json = JSON.stringify(safePayload)
-  // Offload HMAC to worker
   return cryptoWorker.hmacSha256({ json, key })
 }
 
@@ -134,6 +162,39 @@ const MAX_SIGNING_KEY_RETRIES = 3
  */
 const SIGNING_KEY_BACKOFF_BASE_MS = 5_000
 
+/**
+ * Memory-only session-signing-key manager + ServiceWorker cache-key
+ * synchronisation.
+ *
+ * The signing key is fetched lazily from
+ * ``/auth/session/signing-key`` the first time a caller invokes
+ * ``ensureSessionSigningKey()``; after that it stays in React state +
+ * a ref so concurrent callers all share a single in-flight promise.
+ *
+ * Failure handling:
+ *  - Up to ``MAX_SIGNING_KEY_RETRIES`` (3) consecutive failures retry
+ *    immediately on subsequent ``ensure()`` calls.
+ *  - On the 3rd failure, the hook enters exponential backoff
+ *    (``SIGNING_KEY_BACKOFF_BASE_MS = 5_000`` doubling, capped at
+ *    60 s) and dispatches a ``"auth:session-crypto-failed"`` window
+ *    event so ``SessionCryptoErrorBoundary`` can prompt
+ *    re-authentication. ``signingKeyBackoffTimerRef`` is cleared on
+ *    unmount so React 18 StrictMode double-mount doesn't leak a
+ *    stale timer.
+ *
+ * Side effects:
+ *  - Posts ``SET_API_SESSION_CACHE_KEY`` to the active ServiceWorker
+ *    (and ``CLEAR_API_CACHE`` when ``purge: true``) so the
+ *    request-cache scope rotates with the signing key.
+ *
+ * @returns ``sessionSigningKey`` (state) + ``sessionSigningKeyRef`` /
+ *   ``sessionSigningKeyPromiseRef`` / ``signingKeyRetryCountRef`` for
+ *   internal callers that need to read the key without re-rendering,
+ *   plus three commands: ``updateSessionSigningKey`` (set or clear),
+ *   ``ensureSessionSigningKey`` (fetch-on-demand, deduplicated),
+ *   ``sendSessionCacheUpdate`` (force-sync the SW cache key without
+ *   changing local state).
+ */
 export const useSessionCrypto = () => {
   // Always initialise to null — key lives in memory only, never in Web Storage.
   // ensureSessionSigningKey() will fetch from /auth/session/signing-key on first use.
