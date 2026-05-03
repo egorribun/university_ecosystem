@@ -168,3 +168,55 @@ describe("i18n locales parity against base en", () => {
     }
   }
 })
+
+/**
+ * Total key-count assertion across all locale files, modulo the documented
+ * `_few`/`_many`/`_zero`/`_two` CLDR plural suffix exemption.
+ *
+ * The per-file `parity against base en` block above catches every per-file
+ * missing-or-orphan key already. This separate aggregate test acts as an
+ * early-warning signal: a single failure message that surfaces drift in
+ * total key count between base and a target locale, regardless of which
+ * file the drift came from. Failures here imply either a file-shape
+ * regression (a renamed/orphan key the existing helper missed) or a
+ * mis-categorised CLDR plural suffix.
+ *
+ * Maths:
+ *   target_total - legitimate_plural_count == base_total
+ * where `legitimate_plural_count` = number of `_few`/`_many`/`_zero`/`_two`
+ * keys in target that have a corresponding `_one`/`_other`/root in base.
+ */
+describe("i18n locales total key count parity", () => {
+  const baseFiles = collectLocaleFiles(BASE_LOCALE)
+  const targets = supportedLngs.filter((lng) => lng !== "en")
+
+  for (const lng of targets) {
+    it(`${lng} has the same total key count as en (modulo CLDR plural suffixes)`, () => {
+      const localePath = path.join(LOCALES_ROOT, lng)
+      const localeFiles = collectLocaleFiles(localePath)
+
+      let baseTotal = 0
+      let targetTotal = 0
+      let legitimatePluralCount = 0
+
+      for (const baseFilePath of baseFiles.values()) {
+        baseTotal += flattenKeys(readJson(baseFilePath)).size
+      }
+
+      for (const [relativePath, targetFilePath] of localeFiles) {
+        const targetKeys = flattenKeys(readJson(targetFilePath))
+        targetTotal += targetKeys.size
+
+        const baseFilePath = baseFiles.get(relativePath)
+        if (!baseFilePath) continue
+
+        const baseKeys = flattenKeys(readJson(baseFilePath))
+        const targetOnly = Array.from(targetKeys).filter((k) => !baseKeys.has(k))
+        const realOrphans = filterTargetOnlyPlurals(targetOnly, baseKeys).length
+        legitimatePluralCount += targetOnly.length - realOrphans
+      }
+
+      expect(targetTotal - legitimatePluralCount).toBe(baseTotal)
+    })
+  }
+})
