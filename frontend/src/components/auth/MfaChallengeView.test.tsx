@@ -54,6 +54,7 @@ describe("MfaChallengeView — render shapes", () => {
     const otpChallenge = {
       method: "totp" as const,
       challenge_token: "abc",
+      challenge_expires_at: "2099-01-01T00:00:00Z",
     }
     const { container } = render(
       <MfaChallengeView
@@ -78,6 +79,7 @@ describe("MfaChallengeView — accessibility", () => {
     const webauthnChallenge = {
       method: "webauthn" as const,
       challenge_token: "abc",
+      challenge_expires_at: "2099-01-01T00:00:00Z",
       options: {},
     }
     const { container } = render(
@@ -95,6 +97,7 @@ describe("MfaChallengeView — accessibility", () => {
     const webauthnChallenge = {
       method: "webauthn" as const,
       challenge_token: "abc",
+      challenge_expires_at: "2099-01-01T00:00:00Z",
       options: {},
     }
     const { container } = render(

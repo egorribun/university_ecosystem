@@ -6,6 +6,7 @@ import {
   currentUserQueryKey,
   encryptData,
   signPayload,
+  type CachedUserSnapshot,
 } from "./useProfileSync"
 
 /**
@@ -46,10 +47,22 @@ describe("useProfileSync — public constants", () => {
 })
 
 describe("useProfileSync — signPayload (HMAC-SHA256 base64)", () => {
+  // CachedUserSnapshot is a Pick<User, ...> + optional MFA + preferences.
+  // We only need the required fields populated to type-check.
+  const SAMPLE_USER: CachedUserSnapshot = {
+    id: "user-1",
+    full_name: "Alice",
+    group_id: 1,
+    avatar_url: null,
+    cover_url: null,
+    is_active: true,
+    spotify_connected: false,
+  } as unknown as CachedUserSnapshot
+
   const VALID_SNAPSHOT = {
     version: 8,
     expiresAt: 1_700_000_000_000,
-    data: { id: "user-1" },
+    data: SAMPLE_USER,
   } as const
 
   it("returns a deterministic base64 signature", async () => {
@@ -86,10 +99,15 @@ describe("useProfileSync — signPayload (HMAC-SHA256 base64)", () => {
 })
 
 describe("useProfileSync — encryptData (AES-GCM)", () => {
-  const SNAPSHOT = {
-    user: { id: "user-1", full_name: "Alice" },
-    timestamp: 1_700_000_000_000,
-  } as unknown as Parameters<typeof encryptData>[0]
+  const SNAPSHOT: CachedUserSnapshot = {
+    id: "user-1",
+    full_name: "Alice",
+    group_id: 1,
+    avatar_url: null,
+    cover_url: null,
+    is_active: true,
+    spotify_connected: false,
+  } as unknown as CachedUserSnapshot
 
   it("returns a string formatted as 'saltHex:ivHex:base64'", async () => {
     const out = await encryptData(SNAPSHOT, "the-key")

@@ -165,7 +165,6 @@ describe("useClassReminders — requestPermission", () => {
     // The hook checks `"Notification" in window` — set to undefined alone
     // keeps the key present in window, so we delete the property entirely.
     const original = (globalThis as { Notification?: typeof Notification }).Notification
-    // @ts-expect-error — intentional deletion of the global for this test.
     delete (globalThis as { Notification?: typeof Notification }).Notification
     try {
       const { result } = renderHook(() => useClassReminders([]))
