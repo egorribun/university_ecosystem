@@ -1,3 +1,21 @@
+/**
+ * @fileoverview News list infinite-query hook + query-key factory.
+ *
+ * The news feed uses cursor-based pagination (server returns
+ * `next_cursor` in the page payload) and per-language ETag caching.
+ * On a 304 Not Modified response the queryFn falls back to the cached
+ * first page from TanStack Query's cache, so a soft refetch never
+ * re-renders empty pages.
+ *
+ * Query key shape: ``["news", "list", { language, limit }]`` —
+ * ``newsListQueryKey()`` is the canonical factory; never hand-write
+ * keys, otherwise cache invalidation across components misses.
+ *
+ * Filters are NORMALISED before keying (limit defaulted to
+ * NEWS_PAGE_SIZE, NaN/negative values clamped). This means
+ * ``useNewsListQuery({ language, limit: undefined })`` and
+ * ``useNewsListQuery({ language, limit: 12 })`` share the same cache.
+ */
 import {
   useInfiniteQuery,
   useQueryClient,
@@ -13,6 +31,7 @@ import type { NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
 
+/** Server-side default page size; mirror this in tests + msw handlers. */
 export const NEWS_PAGE_SIZE = 12
 
 export type NewsListFilters = {
@@ -47,6 +66,18 @@ const createNewsListEtagKey = (filters: NormalizedNewsListFilters) => {
   return ["news", "list", filters.language, filters.limit].join(":")
 }
 
+/**
+ * Canonical TanStack Query key factory for the news list.
+ *
+ * Always use this factory rather than hand-rolling the tuple — it
+ * normalises ``filters.limit`` so callers passing ``undefined`` and
+ * callers passing the explicit page size land on the same cache entry.
+ *
+ * @param filters - Per-call filters: ``language`` is required, ``limit``
+ *   defaults to ``NEWS_PAGE_SIZE``.
+ * @returns Tuple ``["news", "list", normalized]`` suitable for
+ *   ``queryClient.invalidateQueries({ queryKey })`` etc.
+ */
 export const newsListQueryKey = (filters: NewsListFilters) => {
   const normalized = normalizeNewsListFilters(filters)
   return ["news", "list", normalized] as NewsListQueryKey
