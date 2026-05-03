@@ -11,6 +11,20 @@ All notable changes to the API will be documented in this file.
 - Unit tests for Trusted Types utilities in frontend.
 - Property-based tests for UUIDv7 (monotonicity), HTML sanitization (idempotency), and pagination bounds.
 
+### Changed
+<!-- Behavioural / configuration changes that don't fit Added go here. -->
+
+### Fixed
+<!-- Bug fixes go here. Reference the audit / wave / issue identifier. -->
+
+### Tests
+<!-- Test-only additions (no production code change). Backend / frontend /
+     E2E grouped here; mention the module and the type of test
+     (property-based, concurrency, axe, interaction). -->
+
+### Docs
+<!-- Docstring / JSDoc / ADR / README changes. -->
+
 ## [1.1.0] - 2026-04-26
 
 ### Added
