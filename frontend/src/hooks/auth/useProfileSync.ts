@@ -1,3 +1,26 @@
+/**
+ * @fileoverview Background user-profile fetch + cache-versioned localStorage.
+ *
+ * Owns three concerns that AuthContext delegates here:
+ *
+ * 1. **Background sync** — on mount + on auth-state change, fetches
+ *    ``/me/profile`` via TanStack Query and pushes the result into the
+ *    Zustand auth store (``useAuthStore.setState``).
+ * 2. **Versioned local cache** — profile snapshot is persisted to
+ *    ``localStorage`` under ``ecosystem.profile.cache.v{N}`` so the UI
+ *    can render immediately on cold load. ``PROFILE_CACHE_SCHEMA_VERSION``
+ *    is bumped whenever the shape changes — older keys
+ *    (``LEGACY_PROFILE_CACHE_KEYS``) are evicted on upgrade so stale PII
+ *    cannot linger (TD-14-07: v7 → v8 forced eviction).
+ * 3. **VITE_LHCI bypass** — when ``import.meta.env.VITE_LHCI === "true"``
+ *    the hook synthesises a mock user (``id: "lhci-mock-user"``) so
+ *    Lighthouse can score authenticated routes without a real backend.
+ *    This branch is tree-shaken from prod builds (``VITE_LHCI`` is
+ *    rewritten to ``"false"`` at build time).
+ *
+ * Cache TTL: 5 minutes — refetch happens in the background; the cached
+ * snapshot serves the first paint.
+ */
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"

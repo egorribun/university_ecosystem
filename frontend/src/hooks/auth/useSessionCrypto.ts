@@ -1,3 +1,24 @@
+/**
+ * @fileoverview Session-bound HMAC signing helpers + key fetch hook.
+ *
+ * The backend issues a per-session signing key on login; client-side
+ * mutations sign request payloads with HMAC-SHA256(payload, sessionKey)
+ * via a dedicated Web Worker (``@/utils/cryptoWorker``) so the key
+ * never enters the React render path.
+ *
+ * Hooks exported here:
+ *   - ``hashSessionIdentifier(value)`` — PBKDF2 wrapper used to derive
+ *     the cache-key namespace from a session ID without leaking the
+ *     raw value into ``localStorage``.
+ *   - ``useSessionSigningKey()`` — fetches and caches the signing key
+ *     from ``/auth/session-signing-key``; consumers receive a stable
+ *     reference + a ``ready`` boolean.
+ *
+ * Cache hygiene: a legacy ``sessionStorage`` location is unconditionally
+ * cleared on import (one-time migration). Future sessions never touch
+ * sessionStorage — keys live only in memory + a ServiceWorker-managed
+ * IndexedDB scope.
+ */
 import { useCallback, useEffect, useRef, useState } from "react"
 import api from "@/api/client"
 import {

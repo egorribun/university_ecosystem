@@ -1,3 +1,30 @@
+/**
+ * @fileoverview Login + MFA challenge state machines.
+ *
+ * Two top-level hooks live here:
+ *
+ *   1. ``useLoginForm()`` — react-hook-form-driven email/password
+ *      login + WebAuthn passkey path. Owns:
+ *        * caps-lock + show/hide-password UI state;
+ *        * email-suggestion debounce (Levenshtein-fuzzy via
+ *          ``suggestEmailDomain``) + apply;
+ *        * "remember device" persistence via ``useLocalStorage``
+ *          (key: ``auth:trustDevice``);
+ *        * ``onSubmit`` that delegates to ``AuthContext.login`` and
+ *          either redirects to ``redirectPath`` or hands off to
+ *          ``useMfaFlow`` when a challenge is returned;
+ *        * ``handlePasskeyLogin`` for WebAuthn navigator.credentials.
+ *
+ *   2. ``useMfaFlow()`` — drives the MFA challenge views (TOTP code +
+ *      WebAuthn). Splits errors into ``totp`` (per-input) vs
+ *      ``general`` (banner) sources so the MfaChallengeView can render
+ *      them in distinct slots. Locks recover via the
+ *      ``ChallengeLockedError`` instance check.
+ *
+ * The flow as a whole is best verified end-to-end (Track D / Playwright
+ * specs) — the unit-level kernel is the deterministic email-suggestion
+ * utility (covered by ``utils/authUtils.test.ts``).
+ */
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
