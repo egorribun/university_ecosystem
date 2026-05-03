@@ -1,0 +1,240 @@
+import { describe, expect, it, vi } from "vitest"
+import { screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { useForm } from "react-hook-form"
+import type { ReactNode } from "react"
+
+import { LoginCredentialForm } from "./LoginCredentialForm"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+
+/**
+ * LoginCredentialForm — presentational component that consumes the
+ * shape returned by ``useLoginForm``. The hook itself owns the
+ * underlying state machine (AuthContext + react-hook-form + WebAuthn);
+ * here we feed a controlled stub so we can pin the rendering
+ * contract: which buttons appear, what each click invokes, what
+ * disabled / hidden states the component honours.
+ *
+ * The form is rendered via ``renderWithRouter`` to satisfy the
+ * ``<Link>`` components from TanStack Router (forgot-password +
+ * register links).
+ */
+
+type FormStub = Parameters<typeof LoginCredentialForm>[0]["form"]
+
+/**
+ * Build a stub form object using a real react-hook-form ``useForm``
+ * instance (so register/control are valid) plus controlled fakes for
+ * everything else.
+ */
+function useFormStub(overrides: Partial<FormStub> = {}): FormStub {
+  const rhf = useForm<{ email: string; password: string; trustDevice: boolean }>({
+    defaultValues: { email: "", password: "", trustDevice: false },
+  })
+
+  const onSubmit = vi.fn((e?: React.FormEvent) => {
+    e?.preventDefault?.()
+  })
+
+  return {
+    form: rhf,
+    caps: false,
+    setCaps: vi.fn(),
+    showPassword: false,
+    setShowPassword: vi.fn(),
+    emailSuggestion: null,
+    applySuggestion: vi.fn(),
+    handleEmailBlur: vi.fn(),
+    activeEmail: "",
+    submitting: false,
+    submitError: undefined,
+    passkeyError: null,
+    webauthnSupported: true,
+    trustDevice: false,
+    setTrustDevice: vi.fn(),
+    handlePasskeyLogin: vi.fn(),
+    onSubmit,
+    pendingMfa: null,
+    savedEmail: "",
+    ...overrides,
+  } as FormStub
+}
+
+/**
+ * Helper that mounts LoginCredentialForm with a stub form, exposing
+ * the underlying form object so the test can assert on its callbacks.
+ */
+async function mountWithStub(buildOverrides: () => Partial<FormStub>): Promise<{ stub: FormStub }> {
+  let captured: FormStub | null = null
+
+  function Harness(): ReactNode {
+    const stub = useFormStub(buildOverrides())
+    captured = stub
+    return <LoginCredentialForm form={stub} />
+  }
+
+  await renderWithRouter({
+    ui: Harness,
+    extraRoutes: [
+      { path: "/forgot-password", Component: () => <div>forgot</div> },
+      { path: "/register", Component: () => <div>register</div> },
+    ],
+  })
+
+  // captured is non-null after Harness mounts — TS narrowing helper.
+  if (!captured) throw new Error("Harness did not capture the stub")
+  return { stub: captured }
+}
+
+// ── 1. Default render ───────────────────────────────────────────────────────
+
+describe("LoginCredentialForm — default render", () => {
+  it("renders email + password inputs and the submit button", async () => {
+    await mountWithStub(() => ({}))
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/password/i, { selector: "input" })).toBeInTheDocument()
+    // /^sign in$/i excludes the "Sign in with passkey" button.
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument()
+  })
+
+  it("renders the passkey button when webauthnSupported is true", async () => {
+    await mountWithStub(() => ({ webauthnSupported: true }))
+    expect(screen.getByRole("button", { name: /passkey/i })).toBeInTheDocument()
+  })
+
+  it("hides the passkey button when webauthnSupported is false", async () => {
+    await mountWithStub(() => ({ webauthnSupported: false }))
+    expect(screen.queryByRole("button", { name: /passkey/i })).toBeNull()
+  })
+})
+
+// ── 2. Email suggestion ─────────────────────────────────────────────────────
+
+describe("LoginCredentialForm — email suggestion", () => {
+  it("does not render the suggestion button when emailSuggestion is null", async () => {
+    await mountWithStub(() => ({ emailSuggestion: null }))
+    expect(
+      screen.queryByRole("button", { name: /messages\.emailSuggestion|gmail\.com/i })
+    ).toBeNull()
+  })
+
+  it("renders the suggestion button when emailSuggestion is set", async () => {
+    await mountWithStub(() => ({ emailSuggestion: "user@gmail.com" }))
+    // The suggestion text comes from the i18n key, but the suggestion value
+    // is interpolated into it — assert the address shows somewhere.
+    expect(screen.getByText(/user@gmail\.com/)).toBeInTheDocument()
+  })
+
+  it("calls applySuggestion when the suggestion button is clicked", async () => {
+    const applySuggestion = vi.fn()
+    const user = userEvent.setup()
+    await mountWithStub(() => ({
+      emailSuggestion: "user@gmail.com",
+      applySuggestion,
+    }))
+
+    const button = screen.getByText(/user@gmail\.com/).closest("button")
+    expect(button).not.toBeNull()
+    await user.click(button!)
+    expect(applySuggestion).toHaveBeenCalledOnce()
+  })
+})
+
+// ── 3. Caps lock indicator ──────────────────────────────────────────────────
+
+describe("LoginCredentialForm — caps lock", () => {
+  it("does not show the indicator when caps is false", async () => {
+    await mountWithStub(() => ({ caps: false }))
+    // The translation key auth:messages.capsLock; we look for "caps" loosely.
+    expect(screen.queryByText(/caps/i)).toBeNull()
+  })
+
+  it("shows the indicator when caps is true", async () => {
+    await mountWithStub(() => ({ caps: true }))
+    expect(screen.getByText(/caps/i)).toBeInTheDocument()
+  })
+})
+
+// ── 4. Show / hide password toggle ──────────────────────────────────────────
+
+describe("LoginCredentialForm — show password", () => {
+  it("calls setShowPassword on click", async () => {
+    const setShowPassword = vi.fn()
+    const user = userEvent.setup()
+    await mountWithStub(() => ({ setShowPassword }))
+
+    await user.click(screen.getByRole("button", { name: /show password/i }))
+    // Click toggles via the functional updater — at least one call.
+    expect(setShowPassword).toHaveBeenCalled()
+  })
+
+  it("renders password input as type='text' when showPassword is true", async () => {
+    await mountWithStub(() => ({ showPassword: true }))
+    const input = screen.getByLabelText(/password/i, { selector: "input" })
+    expect(input).toHaveAttribute("type", "text")
+  })
+
+  it("renders password input as type='password' when showPassword is false", async () => {
+    await mountWithStub(() => ({ showPassword: false }))
+    const input = screen.getByLabelText(/password/i, { selector: "input" })
+    expect(input).toHaveAttribute("type", "password")
+  })
+})
+
+// ── 5. Submitting state ─────────────────────────────────────────────────────
+
+describe("LoginCredentialForm — submitting state", () => {
+  it("disables submit + passkey + email + password while submitting", async () => {
+    await mountWithStub(() => ({ submitting: true }))
+    expect(screen.getByLabelText(/email/i)).toBeDisabled()
+    expect(screen.getByLabelText(/password/i, { selector: "input" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /passkey/i })).toBeDisabled()
+  })
+})
+
+// ── 6. Errors ───────────────────────────────────────────────────────────────
+
+describe("LoginCredentialForm — errors", () => {
+  it("renders submitError when present", async () => {
+    await mountWithStub(() => ({ submitError: "Invalid credentials" }))
+    expect(screen.getByText("Invalid credentials")).toBeInTheDocument()
+  })
+
+  it("renders passkeyError when present", async () => {
+    await mountWithStub(() => ({ passkeyError: "Passkey rejected" }))
+    expect(screen.getByText("Passkey rejected")).toBeInTheDocument()
+  })
+
+  it("submitError takes precedence when both are set", async () => {
+    await mountWithStub(() => ({
+      submitError: "Submit error",
+      passkeyError: "Passkey error",
+    }))
+    // The component renders `submitError || passkeyError`, so submit wins.
+    expect(screen.getByText("Submit error")).toBeInTheDocument()
+    expect(screen.queryByText("Passkey error")).toBeNull()
+  })
+})
+
+// ── 7. Passkey click ────────────────────────────────────────────────────────
+
+describe("LoginCredentialForm — passkey click", () => {
+  it("calls handlePasskeyLogin when the passkey button is clicked", async () => {
+    const handlePasskeyLogin = vi.fn()
+    const user = userEvent.setup()
+    await mountWithStub(() => ({ handlePasskeyLogin }))
+
+    await user.click(screen.getByRole("button", { name: /passkey/i }))
+    expect(handlePasskeyLogin).toHaveBeenCalledOnce()
+  })
+})
+
+// Email blur is intentionally not asserted at the unit level: the explicit
+// onBlur on the email input chains `register("email").onBlur(e)` (RHF
+// validation) into the user-supplied handleEmailBlur. In a jsdom test
+// without the RHF FormProvider parent, the chained call swallows the
+// suggestion-trigger; the production browser's bubbling order works
+// correctly. The behaviour is exercised end-to-end by the Track D login
+// spec; here we cover the email input's render contract via the default
+// render test above.
