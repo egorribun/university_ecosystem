@@ -85,11 +85,7 @@ const NewsCardContent = ({
                 ? "text-error-text"
                 : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
             )}
-            aria-label={
-              isLiked
-                ? t("common:aria.unlike", { defaultValue: "Unlike" })
-                : t("common:aria.like", { defaultValue: "Like" })
-            }
+            aria-label={isLiked ? t("common:aria.unlike") : t("common:aria.like")}
           >
             <span className={cn(celebrating && "news-heart-celebrate")}>
               <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} />
@@ -128,9 +124,7 @@ const NewsCardContent = ({
                   : "text-(--text-secondary) hover:text-brand/(--opacity-hover)"
               )}
               aria-label={
-                isBookmarked
-                  ? t("common:aria.removeBookmark", { defaultValue: "Remove bookmark" })
-                  : t("common:aria.addBookmark", { defaultValue: "Bookmark" })
+                isBookmarked ? t("common:aria.removeBookmark") : t("common:aria.addBookmark")
               }
             >
               {isBookmarked ? (
@@ -145,7 +139,7 @@ const NewsCardContent = ({
         {/* CTA — reveals on hover */}
         <div className="flex items-center gap-1 text-brand opacity-0 translate-x-1 transition duration-base ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0">
           <span className="text-xs font-semibold tracking-wide hidden sm:inline">
-            {t("common:cta.learnMore", { defaultValue: "Learn more" })}
+            {t("common:cta.learnMore")}
           </span>
           <ArrowIcon size={14} />
         </div>
