@@ -42,11 +42,22 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
     def dto_class(self) -> type[DTOT]: ...
 
     def _to_dto(self, obj: T) -> DTOT:
-        """Convert ORM object to DTO."""
+        """Convert an ORM row to its concrete DTO via Pydantic ``model_validate``.
+
+        Subclasses do not need to override this — the DTO class is supplied
+        through the ``dto_class`` abstract property and ``from_attributes=True``
+        is expected on every DTO that backs a repository.
+        """
         return self.dto_class.model_validate(obj)
 
     async def _get_orm(self, id: Any, *, with_for_update: bool = False) -> T | None:
-        """Internal helper to get the ORM object."""
+        """Fetch a single ORM row by ``id`` (or None when missing).
+
+        ``id`` is cast through ``_cast_id`` so callers may pass canonical UUIDs,
+        32-char hex UUIDs, or raw integer PKs. Set ``with_for_update=True`` to
+        acquire a row-level lock (use sparingly — TD-02 removed the implicit
+        SELECT FOR UPDATE on every read because of lock-escalation).
+        """
         target_id = self._cast_id(id)
         stmt = select(self.model).where(
             cast("type[Identifiable]", self.model).id == target_id
