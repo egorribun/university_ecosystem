@@ -35,7 +35,42 @@ async def ensure_partitions_exist() -> None:
             logger.debug("Partition management skipped: not a PostgreSQL database")
             return
 
-        # 1. Ensure future partitions exist
+        # 1a. Ensure DEFAULT partition exists for notification tables.
+        # Migration 148642dd1207 creates these tables with postgresql_partition_by
+        # but no DEFAULT partition; without one, rows whose date falls outside
+        # `partition_warmup_months` (e.g. older test data) fail with
+        # "no partition of relation X found for row". Self-heal here so the fix
+        # also covers production DBs that already ran the buggy migration.
+        # Note: data_access_logs intentionally has no DEFAULT partition
+        # (migration 202603280001 explicitly drops it as an "autogenerate artefact").
+        _DEFAULT_PARTITION_TABLES = ("notifications", "notification_deliveries")
+        for table in _DEFAULT_PARTITION_TABLES:
+            if not _SAFE_IDENTIFIER_RE.match(table):
+                logger.error(
+                    "Table name %r failed identifier validation — skipping default partition",
+                    table,
+                )
+                continue
+            preparer = conn.dialect.identifier_preparer
+            safe_table = preparer.quote(table)
+            safe_default = preparer.quote(f"{table}_default")
+            try:
+                await conn.execute(
+                    text(
+                        f"CREATE TABLE IF NOT EXISTS {safe_default} "
+                        f"PARTITION OF {safe_table} DEFAULT"
+                    )
+                )
+                await conn.commit()
+            except (
+                OSError,
+                ConnectionError,
+                SAOperationalError,
+                SAProgrammingError,
+            ) as e:
+                logger.error("Failed to ensure default partition for %s: %s", table, e)
+
+        # 1b. Ensure future partitions exist
         import rust_ext
 
         for table, _ in PARTITIONED_TABLES:

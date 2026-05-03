@@ -42,18 +42,21 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         mock_drop_result = MagicMock()
 
         # Build side_effect list to match the actual call pattern:
-        # For each table (3 tables) with warmup_months=0:
+        # Phase 1a: CREATE DEFAULT PARTITION for notifications + notification_deliveries = 2
+        # Phase 1b: For each table (3 tables) with warmup_months=0:
         #   1 x execute(CREATE TABLE) per table = 3 creates
-        # Then pruning with retention_days=30:
+        # Phase 2: pruning with retention_days=30:
         #   1 x execute(SELECT partitions) per table = 3 selects
-        #   1 x execute(DROP TABLE) per found partition per table
-        #   (each returns 1 partition) = 3 drops
-        # Total: 3 + 3 + 3 = 9 execute calls
+        #   1 x execute(DROP TABLE) per found partition per table = 3 drops
+        # Total: 2 + 3 + 3 + 3 = 11 execute calls
         from app.services.partition_manager import PARTITIONED_TABLES
 
         num_tables = len(PARTITIONED_TABLES)
         side_effects = []
-        # Phase 1: CREATE TABLE calls (1 per table)
+        # Phase 1a: CREATE default partition (2 tables: notifications, notification_deliveries)
+        for _ in range(2):
+            side_effects.append(mock_create_result)
+        # Phase 1b: CREATE TABLE calls (1 per table)
         for _ in range(num_tables):
             side_effects.append(mock_create_result)
         # Phase 2: SELECT partition + DROP TABLE per table
