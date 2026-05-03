@@ -35,9 +35,7 @@ export function useSlidingIndicator(
     }
 
     const update = () => {
-      const target = container.querySelector<HTMLElement>(
-        `[${attributeName}="${activeKey}"]`
-      )
+      const target = container.querySelector<HTMLElement>(`[${attributeName}="${activeKey}"]`)
       if (!target) {
         setRect(null)
         return

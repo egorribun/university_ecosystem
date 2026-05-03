@@ -67,6 +67,7 @@ def upgrade() -> None:
                 id, institute, course, education_level, track, program,
                 record_book_number
             FROM users
+            WHERE true
             ON CONFLICT (user_id) DO NOTHING
             """
         )
@@ -79,6 +80,7 @@ def upgrade() -> None:
             SELECT
                 id, about, telegram, status, achievements, position, department
             FROM users
+            WHERE true
             ON CONFLICT (user_id) DO NOTHING
             """
         )

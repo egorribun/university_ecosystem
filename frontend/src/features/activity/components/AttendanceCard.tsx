@@ -28,19 +28,11 @@ function AttendanceCardSkeleton() {
   )
 }
 
-export function AttendanceCard({
-  attendance,
-  hasInitiallyLoaded,
-  ringSize,
-}: AttendanceCardProps) {
+export function AttendanceCard({ attendance, hasInitiallyLoaded, ringSize }: AttendanceCardProps) {
   const { t } = useTranslation(["activity"])
 
   const attendancePct = Math.max(0, Math.min(100, attendance?.percent ?? 0))
-  const attendancePctAnimated = useAnimatedNumber(
-    attendancePct,
-    motionTokens.durationLazy,
-    0
-  )
+  const attendancePctAnimated = useAnimatedNumber(attendancePct, motionTokens.durationLazy, 0)
   // useAnimatedFloat reads useReducedMotion internally — no prop needed.
   const progressAttendance = useAnimatedFloat(attendancePct, motionTokens.durationLazy)
 

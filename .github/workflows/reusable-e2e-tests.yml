@@ -39,9 +39,25 @@ jobs:
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
       ENVIRONMENT: testing
-      DATABASE_URL: "sqlite+aiosqlite:///./e2e-test.db"
+      # Use Postgres (pgvector image) for migrations: pgvector, JSONB, partial
+      # indexes, CONCURRENTLY, and ALTER COLUMN TYPE don't exist in SQLite, so
+      # SQLite-passing migrations can silently fail in production.
+      DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_e2e"
       OTEL_SDK_DISABLED: "true"
     services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       redis:
         image: redis:7-alpine
         ports:

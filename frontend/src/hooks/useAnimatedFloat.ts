@@ -13,8 +13,7 @@ import { useReducedMotion } from "framer-motion"
 //
 // useReducedMotion remains in domAnimation set, so framer-motion still
 // supplies the reactive boolean.
-export const easeOutExpo = (t: number): number =>
-  t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)
+export const easeOutExpo = (t: number): number => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t))
 
 export function useAnimatedFloat(target: number, durationSeconds: number): number {
   const reduce = useReducedMotion()

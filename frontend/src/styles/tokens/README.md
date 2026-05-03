@@ -43,7 +43,7 @@ canonical example:
 /* dashboard.css → bigger typography on .dashboard-theme */
 .dashboard-theme {
   --fs-card-title: 1.125rem; /* INTENTIONAL */
-  --fs-hero: 3rem;           /* INTENTIONAL */
+  --fs-hero: 3rem; /* INTENTIONAL */
 }
 ```
 
@@ -64,9 +64,9 @@ The canonical box-shadow focus-ring primitive is:
 
 ```css
 /* primitives.css */
---focus-ring-default:  0 0 0 2px var(--color-brand);
---focus-ring-thick:    0 0 0 3px var(--color-brand);
---focus-ring-isolated: var(--raw-shadow-focus);  /* WCAG-AA double-ring */
+--focus-ring-default: 0 0 0 2px var(--color-brand);
+--focus-ring-thick: 0 0 0 3px var(--color-brand);
+--focus-ring-isolated: var(--raw-shadow-focus); /* WCAG-AA double-ring */
 ```
 
 Use `--focus-ring-default` for most cases. Use `--focus-ring-thick` when
@@ -86,11 +86,14 @@ including the `inset` variant:
 
 .my-cell:focus-visible {
   outline: none;
-  box-shadow: inset var(--focus-ring-default), inset 0 0 8px var(--brand-glow);
+  box-shadow:
+    inset var(--focus-ring-default),
+    inset 0 0 8px var(--brand-glow);
 }
 ```
 
 **Don't use these tokens for:**
+
 - decorative borders (use `border:` or composed `box-shadow: 0 0 0 1px ...`)
 - animation pulse keyframes (variable-radius growing rings)
 - avatar rings, drag indicators, hover/active state rings (separate semantics)
@@ -104,14 +107,14 @@ can interact with `transform` and stacking contexts. Both are WCAG-compliant.
 
 Tokens follow `--{category}-{prop}-{variant}`:
 
-| Token                          | Category | Prop  | Variant   |
-|--------------------------------|----------|-------|-----------|
-| `--color-blue-500`             | color    | blue  | 500       |
-| `--bg-page`                    | bg       | page  | (none)    |
-| `--text-primary`               | text     | primary | (none)  |
-| `--cat-emerald-bg`             | cat      | emerald | bg      |
-| `--focus-ring-default`         | focus    | ring  | default   |
-| `--motion-duration-medium`     | motion   | duration | medium |
+| Token                      | Category | Prop     | Variant |
+| -------------------------- | -------- | -------- | ------- |
+| `--color-blue-500`         | color    | blue     | 500     |
+| `--bg-page`                | bg       | page     | (none)  |
+| `--text-primary`           | text     | primary  | (none)  |
+| `--cat-emerald-bg`         | cat      | emerald  | bg      |
+| `--focus-ring-default`     | focus    | ring     | default |
+| `--motion-duration-medium` | motion   | duration | medium  |
 
 Some legacy categories exist (e.g. `--fs-*` for font-size, `--space-*`
 for spacing, `--radius-*` for radii, `--ease-*` for easing curves).
@@ -125,12 +128,14 @@ Don't edit `src/theme/tokens.ts` directly — your changes will be wiped
 on the next `npm run build`.
 
 The sync script:
+
 1. Reads ALL CSS variables in `partials/` + `tokens/` (regex-based)
 2. Categorizes them into TS export groups (colors, motion, fontSize,
    focusRing, shadows, glass, etc.) by name pattern
 3. Writes typed `as const` exports to `src/theme/tokens.ts`
 
 To add a new token:
+
 1. Add `--my-new-token: value;` to the appropriate CSS file
 2. Run `npm run tokens:sync`
 3. If the new token should be JS-accessible, verify it appears in `tokens.ts`
