@@ -1,3 +1,16 @@
+"""Chat attachment service — file uploads, malware scanning, and cleanups.
+
+This module owns the file-side of the chat lifecycle. It is intentionally
+narrow: callers hand it a single ``UploadFile`` plus the chat ID, and
+``process_upload`` returns the persisted metadata (URL, size, file type)
+that the message-creation path consumes. Malware scanning runs *before*
+storage to keep tainted bytes off disk.
+
+The two helper methods (``cleanup_files`` / ``collect_urls``) support the
+``ChatCommandService`` chat-deletion path: collecting URLs across all
+messages, then issuing a best-effort batch delete.
+"""
+
 from __future__ import annotations
 
 import asyncio
