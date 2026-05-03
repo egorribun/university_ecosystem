@@ -309,8 +309,8 @@ export const useMessengerController = () => {
       title: t("messenger:clearChatTitle", "Clear Chat"),
       message: t("messenger:confirmClear", "Clear chat history for everyone?"),
       variant: "warning",
-      confirmText: t("common:clear", "Clear"),
-      cancelText: t("common:cancel", "Cancel"),
+      confirmText: t("common:buttons.clear"),
+      cancelText: t("common:buttons.cancel"),
       onConfirm: () => {
         clearChatMutation.mutate(selectedChatId)
         setConfirmDialog(null)
@@ -325,8 +325,8 @@ export const useMessengerController = () => {
       title: t("messenger:deleteChatTitle", "Delete Chat"),
       message: t("messenger:confirmDelete", "Delete this chat for all participants?"),
       variant: "danger",
-      confirmText: t("common:delete", "Delete"),
-      cancelText: t("common:cancel", "Cancel"),
+      confirmText: t("common:buttons.delete"),
+      cancelText: t("common:buttons.cancel"),
       onConfirm: () => {
         deleteChatMutation.mutate(selectedChatId)
         setConfirmDialog(null)
