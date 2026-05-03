@@ -348,7 +348,7 @@ def test_circuit_breaker_half_open_single_probe() -> None:
     assert cb.state == CircuitState.OPEN
 
     # Rewind the failure clock so the next state read transitions to HALF_OPEN.
-    cb._last_failure_time = 0.0  # type: ignore[attr-defined]
+    cb._last_failure_time = -1_000_000.0  # type: ignore[attr-defined]  # rewind far enough that elapsed > any timeout regardless of process start
     assert cb.state == CircuitState.HALF_OPEN
 
     # Drive 100 concurrent allow_request() calls.
@@ -376,7 +376,7 @@ def test_circuit_breaker_half_open_success_closes() -> None:
     cb.record_failure()
     assert cb.state == CircuitState.OPEN
     # Force the OPEN→HALF_OPEN transition deterministically.
-    cb._last_failure_time = 0.0  # type: ignore[attr-defined]
+    cb._last_failure_time = -1_000_000.0  # type: ignore[attr-defined]  # rewind far enough that elapsed > any timeout regardless of process start
     assert cb.state == CircuitState.HALF_OPEN
     cb.allow_request()  # consumes the single-probe slot
     cb.record_success()
@@ -397,7 +397,7 @@ def test_circuit_breaker_half_open_failure_reopens_with_doubled_timeout() -> Non
 
     # Force into HALF_OPEN by zeroing out _last_failure_time so the elapsed
     # check passes — see _maybe_transition_to_half_open.
-    cb._last_failure_time = 0.0  # type: ignore[attr-defined]
+    cb._last_failure_time = -1_000_000.0  # type: ignore[attr-defined]  # rewind far enough that elapsed > any timeout regardless of process start
     assert cb.state == CircuitState.HALF_OPEN
 
     cb.allow_request()  # take the probe slot
@@ -421,8 +421,16 @@ def test_circuit_breaker_max_recovery_timeout_caps_growth() -> None:
 
     # Six failed probe cycles — each would normally double 100→200→400→…
     # but should saturate at 300.
+    #
+    # We rewind ``_last_failure_time`` to a very negative value (rather
+    # than 0.0) so ``elapsed = time.monotonic() - _last_failure_time``
+    # always far exceeds the current recovery_timeout. ``time.monotonic()``
+    # is process-relative — in a fresh CI container it can return tens of
+    # seconds, which is below the 300s saturation cap and would prevent
+    # the OPEN→HALF_OPEN transition on later iterations.
+    rewind = -1_000_000.0
     for _ in range(6):
-        cb._last_failure_time = 0.0  # type: ignore[attr-defined]
+        cb._last_failure_time = rewind  # type: ignore[attr-defined]
         assert cb.state == CircuitState.HALF_OPEN
         cb.allow_request()
         cb.record_failure()
