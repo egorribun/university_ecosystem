@@ -6,6 +6,12 @@
   "ariaDatePublished": "Published on {{date}}",
   "ariaCurrentTime": "Current time",
   "ariaCurrentLessonProgress": "Progress of the current lesson",
+  "active": "Active",
+  "inactive": "Inactive",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "clear": "Clear",
+  "delete": "Delete",
   "buttons": {
     "save": "Save",
     "cancel": "Cancel",
@@ -58,7 +64,10 @@
     "like": "Like",
     "unlike": "Unlike",
     "addBookmark": "Bookmark",
-    "removeBookmark": "Remove bookmark"
+    "removeBookmark": "Remove bookmark",
+    "loadingProfile": "Loading profile",
+    "loadingSchedule": "Loading schedule",
+    "loadingUserMenu": "Loading user menu"
   },
   "cta": {
     "learnMore": "Learn more"

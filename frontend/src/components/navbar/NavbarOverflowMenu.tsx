@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { Link } from "@tanstack/react-router"
 import { m, AnimatePresence } from "framer-motion"
 import { MoreHorizontal } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { springSoft } from "@/utils/animations"
 import type { NavigationItem } from "@/config/navigation"
@@ -21,6 +22,7 @@ export function NavbarOverflowMenu({
   prefersReducedMotion,
   isCompact,
 }: NavbarOverflowMenuProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -79,7 +81,7 @@ export function NavbarOverflowMenu({
               prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: [0.16, 1, 0.3, 1] }
             }
             role="menu"
-            aria-label="More navigation"
+            aria-label={t("navigation:aria.overflowMenu")}
             className="absolute right-0 top-full mt-2 min-w-48 rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-glass backdrop-blur-xl z-dropdown"
             style={{ boxShadow: "var(--pill-shadow), var(--pill-inner-glow)" }}
           >

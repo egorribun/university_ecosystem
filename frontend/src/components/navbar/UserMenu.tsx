@@ -52,7 +52,7 @@ export const UserMenu = ({
       <div
         className="ml-auto flex items-center gap-3"
         aria-busy="true"
-        aria-label="Loading user menu"
+        aria-label={t("common:aria.loadingUserMenu")}
       >
         <Skeleton className="rounded-full w-9 h-9 bg-brand/(--opacity-dim)" />
         {!isCompact && <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />}

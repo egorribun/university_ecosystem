@@ -6,6 +6,12 @@
   "ariaDatePublished": "Опубликовано: {{date}}",
   "ariaCurrentTime": "Текущее время",
   "ariaCurrentLessonProgress": "Прогресс текущего занятия",
+  "active": "Активен",
+  "inactive": "Неактивен",
+  "cancel": "Отмена",
+  "confirm": "Подтвердить",
+  "clear": "Очистить",
+  "delete": "Удалить",
   "errorBoundary": {
     "title": "Что-то пошло не так",
     "description": "Произошла непредвиденная ошибка. Мы уже работаем над её исправлением.",
@@ -51,7 +57,10 @@
     "like": "Нравится",
     "unlike": "Убрать лайк",
     "addBookmark": "Сохранить",
-    "removeBookmark": "Убрать из сохранённых"
+    "removeBookmark": "Убрать из сохранённых",
+    "loadingProfile": "Загрузка профиля",
+    "loadingSchedule": "Загрузка расписания",
+    "loadingUserMenu": "Загрузка меню пользователя"
   },
   "cta": {
     "learnMore": "Подробнее"

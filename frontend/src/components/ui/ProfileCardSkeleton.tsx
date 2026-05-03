@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ProfileCardSkeletonProps {
@@ -15,11 +16,12 @@ export function ProfileCardSkeleton({
   showCover = true,
   className = "",
 }: ProfileCardSkeletonProps) {
+  const { t } = useTranslation()
   return (
     <div
       className={`rounded-2xl border border-white/(--opacity-subtle) bg-input-mix overflow-hidden ${className}`}
       aria-busy="true"
-      aria-label="Loading profile"
+      aria-label={t("common:aria.loadingProfile")}
     >
       {/* Cover image */}
       {showCover && (

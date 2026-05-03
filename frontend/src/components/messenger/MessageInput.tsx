@@ -119,7 +119,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
               <button
                 onClick={() => removeFile(index)}
                 className="absolute -top-1.5 -right-1.5 bg-(--error-text) text-white rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors"
-                aria-label="Remove"
+                aria-label={t("messenger:aria.removeAttachment")}
               >
                 <X size={12} strokeWidth={3} />
               </button>
@@ -140,7 +140,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 ? "text-(--brand-main) bg-(--brand-main)/(--opacity-subtle)"
                 : "text-(--text-secondary)"
             )}
-            aria-label="Attachments"
+            aria-label={t("messenger:aria.attachments")}
           >
             <Paperclip
               size={20}
