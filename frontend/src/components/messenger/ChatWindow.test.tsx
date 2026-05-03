@@ -46,10 +46,7 @@ describe("ChatWindow — ARIA shape", () => {
 
   it("supplies a stable aria-label so screen readers identify the region", () => {
     render(<ChatWindow messages={[]} />)
-    expect(screen.getByRole("log")).toHaveAttribute(
-      "aria-label",
-      expect.any(String),
-    )
+    expect(screen.getByRole("log")).toHaveAttribute("aria-label", expect.any(String))
     // The label must be non-empty.
     expect(screen.getByRole("log").getAttribute("aria-label")?.length).toBeGreaterThan(0)
   })

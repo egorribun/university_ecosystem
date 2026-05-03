@@ -53,8 +53,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const tPlus = (mins: number) =>
-  new Date(NOW.getTime() + mins * 60_000).toISOString()
+const tPlus = (mins: number) => new Date(NOW.getTime() + mins * 60_000).toISOString()
 
 describe("useClassReminders — scheduling", () => {
   it("does nothing when items is undefined", () => {
@@ -69,9 +68,7 @@ describe("useClassReminders — scheduling", () => {
 
   it("schedules a timer at (when - minutesBefore)", async () => {
     // Lecture in 30 minutes, remind 10 minutes before — timer fires in 20.
-    const items: RemindItem[] = [
-      { id: 1, title: "Algebra", when: tPlus(30), minutesBefore: 10 },
-    ]
+    const items: RemindItem[] = [{ id: 1, title: "Algebra", when: tPlus(30), minutesBefore: 10 }]
     renderHook(() => useClassReminders(items))
     expect(vi.getTimerCount()).toBe(1)
 
@@ -87,15 +84,13 @@ describe("useClassReminders — scheduling", () => {
       "Algebra",
       expect.objectContaining({
         body: expect.any(String),
-      }),
+      })
     )
   })
 
   it("falls back to defaultMinutesBefore when minutesBefore is omitted", () => {
     const items: RemindItem[] = [{ id: 1, title: "X", when: tPlus(15) }]
-    renderHook(() =>
-      useClassReminders(items, { defaultMinutesBefore: 5 }),
-    )
+    renderHook(() => useClassReminders(items, { defaultMinutesBefore: 5 }))
     // Timer fires 5 min before the lesson — at T+10.
     expect(vi.getTimerCount()).toBe(1)
   })
@@ -109,20 +104,16 @@ describe("useClassReminders — scheduling", () => {
   })
 
   it("skips events with non-finite parsed timestamps", () => {
-    const items: RemindItem[] = [
-      { id: 1, title: "Bad date", when: "not-a-date" },
-    ]
+    const items: RemindItem[] = [{ id: 1, title: "Bad date", when: "not-a-date" }]
     renderHook(() => useClassReminders(items))
     expect(vi.getTimerCount()).toBe(0)
   })
 
   it("clears existing timers and re-schedules when items change", () => {
-    const initial: RemindItem[] = [
-      { id: 1, title: "A", when: tPlus(60), minutesBefore: 10 },
-    ]
+    const initial: RemindItem[] = [{ id: 1, title: "A", when: tPlus(60), minutesBefore: 10 }]
     const { rerender } = renderHook(
       ({ items }: { items: RemindItem[] }) => useClassReminders(items),
-      { initialProps: { items: initial } },
+      { initialProps: { items: initial } }
     )
     expect(vi.getTimerCount()).toBe(1)
 
@@ -150,9 +141,7 @@ describe("useClassReminders — scheduling", () => {
 describe("useClassReminders — permission gating", () => {
   it("does not show a notification when permission is not 'granted'", async () => {
     permission = "denied"
-    const items: RemindItem[] = [
-      { id: 1, title: "X", when: tPlus(15), minutesBefore: 5 },
-    ]
+    const items: RemindItem[] = [{ id: 1, title: "X", when: tPlus(15), minutesBefore: 5 }]
     renderHook(() => useClassReminders(items))
     // Drain timer.
     await vi.runAllTimersAsync()
@@ -168,12 +157,9 @@ describe("useClassReminders — requestPermission", () => {
     delete (globalThis as { Notification?: typeof Notification }).Notification
     try {
       const { result } = renderHook(() => useClassReminders([]))
-      await expect(result.current.requestPermission()).resolves.toBe(
-        "unsupported",
-      )
+      await expect(result.current.requestPermission()).resolves.toBe("unsupported")
     } finally {
-      ;(globalThis as { Notification?: typeof Notification }).Notification =
-        original
+      ;(globalThis as { Notification?: typeof Notification }).Notification = original
     }
   })
 
@@ -192,9 +178,7 @@ describe("useClassReminders — requestPermission", () => {
 
 describe("useClassReminders — clear()", () => {
   it("immediately clears all pending timers", () => {
-    const items: RemindItem[] = [
-      { id: 1, title: "X", when: tPlus(60), minutesBefore: 10 },
-    ]
+    const items: RemindItem[] = [{ id: 1, title: "X", when: tPlus(60), minutesBefore: 10 }]
     const { result } = renderHook(() => useClassReminders(items))
     expect(vi.getTimerCount()).toBe(1)
     act(() => result.current.clear())

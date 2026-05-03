@@ -42,9 +42,7 @@ describe("levenshtein", () => {
 
   it("is symmetric (a→b == b→a)", () => {
     expect(levenshtein("foo", "bar")).toBe(levenshtein("bar", "foo"))
-    expect(levenshtein("yandex.ru", "yandexru")).toBe(
-      levenshtein("yandexru", "yandex.ru"),
-    )
+    expect(levenshtein("yandex.ru", "yandexru")).toBe(levenshtein("yandexru", "yandex.ru"))
   })
 
   it("handles unicode without crashing", () => {
@@ -107,9 +105,7 @@ describe("suggestEmailDomain", () => {
   })
 
   it("preserves the local part as typed", () => {
-    expect(suggestEmailDomain("MixedCase.User@gmial.com")).toBe(
-      "MixedCase.User@gmail.com",
-    )
+    expect(suggestEmailDomain("MixedCase.User@gmial.com")).toBe("MixedCase.User@gmail.com")
   })
 
   it("trims whitespace around the address", () => {

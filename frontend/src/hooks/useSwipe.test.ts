@@ -35,9 +35,7 @@ describe("useSwipe — basic detection", () => {
   it("triggers onSwipeRight on a long fast horizontal +x swipe", () => {
     const onSwipeRight = vi.fn()
     const onSwipeLeft = vi.fn()
-    const { result } = renderHook(() =>
-      useSwipe({ onSwipeRight, onSwipeLeft }),
-    )
+    const { result } = renderHook(() => useSwipe({ onSwipeRight, onSwipeLeft }))
 
     result.current.onPointerDown(pointerEvent(0, 0))
     vi.advanceTimersByTime(50) // fast — well within timeout
@@ -50,9 +48,7 @@ describe("useSwipe — basic detection", () => {
   it("triggers onSwipeLeft on a long fast horizontal -x swipe", () => {
     const onSwipeLeft = vi.fn()
     const onSwipeRight = vi.fn()
-    const { result } = renderHook(() =>
-      useSwipe({ onSwipeRight, onSwipeLeft }),
-    )
+    const { result } = renderHook(() => useSwipe({ onSwipeRight, onSwipeLeft }))
 
     result.current.onPointerDown(pointerEvent(200, 0))
     vi.advanceTimersByTime(50)
@@ -87,9 +83,7 @@ describe("useSwipe — gating conditions", () => {
 
   it("rejects when total time exceeds the configured timeout", () => {
     const onSwipeRight = vi.fn()
-    const { result } = renderHook(() =>
-      useSwipe({ onSwipeRight, timeout: 200 }),
-    )
+    const { result } = renderHook(() => useSwipe({ onSwipeRight, timeout: 200 }))
 
     result.current.onPointerDown(pointerEvent(0, 0))
     vi.advanceTimersByTime(300) // > timeout
@@ -105,7 +99,7 @@ describe("useSwipe — gating conditions", () => {
         onSwipeRight,
         threshold: 100, // very high threshold
         minVelocity: 0.3, // 0.3 px/ms
-      }),
+      })
     )
 
     // 30px in 50ms → 0.6 px/ms → exceeds minVelocity even though
@@ -124,7 +118,7 @@ describe("useSwipe — gating conditions", () => {
         onSwipeRight,
         threshold: 100,
         minVelocity: 0.3,
-      }),
+      })
     )
 
     // 20px in 200ms → 0.1 px/ms → below both thresholds.

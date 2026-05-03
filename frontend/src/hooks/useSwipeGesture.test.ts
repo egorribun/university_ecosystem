@@ -28,7 +28,7 @@ describe("useSwipeGesture — disabled", () => {
         direction: "right",
         onSwipeClose,
         enabled: false,
-      }),
+      })
     )
 
     act(() => {
@@ -51,7 +51,7 @@ describe("useSwipeGesture — direction='right'", () => {
         direction: "right",
         onSwipeClose,
         enabled: true,
-      }),
+      })
     )
 
     act(() => {
@@ -72,7 +72,7 @@ describe("useSwipeGesture — direction='right'", () => {
         direction: "right",
         onSwipeClose,
         enabled: true,
-      }),
+      })
     )
 
     act(() => {
@@ -92,7 +92,7 @@ describe("useSwipeGesture — direction='right'", () => {
         threshold: 80,
         onSwipeClose,
         enabled: true,
-      }),
+      })
     )
 
     // Each handler must run in its own act() block so the previous
@@ -122,7 +122,7 @@ describe("useSwipeGesture — direction='right'", () => {
         threshold: 80,
         onSwipeClose,
         enabled: true,
-      }),
+      })
     )
 
     act(() => {
@@ -147,7 +147,7 @@ describe("useSwipeGesture — direction='left'", () => {
         direction: "left",
         onSwipeClose,
         enabled: true,
-      }),
+      })
     )
 
     act(() => {
@@ -167,7 +167,7 @@ describe("useSwipeGesture — direction='left'", () => {
         threshold: 80,
         onSwipeClose,
         enabled: true,
-      }),
+      })
     )
 
     act(() => {
@@ -191,7 +191,7 @@ describe("useSwipeGesture — empty touches list", () => {
         direction: "right",
         onSwipeClose,
         enabled: true,
-      }),
+      })
     )
 
     act(() => {

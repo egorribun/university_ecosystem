@@ -34,9 +34,7 @@ describe("ActionMenu — trigger", () => {
 
   it("uses a custom aria-label when supplied", () => {
     render(<ActionMenu items={items} ariaLabel="More actions" />)
-    expect(
-      screen.getByRole("button", { name: /more actions/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /more actions/i })).toBeInTheDocument()
   })
 })
 
@@ -50,7 +48,7 @@ describe("ActionMenu — open + close", () => {
     expect(screen.getAllByRole("menuitem")).toHaveLength(items.length)
     expect(screen.getByRole("button", { name: /open menu/i })).toHaveAttribute(
       "aria-expanded",
-      "true",
+      "true"
     )
   })
 
@@ -75,7 +73,7 @@ describe("ActionMenu — interactions", () => {
           { label: "Edit", onClick: onEdit },
           { label: "Cancel", onClick: vi.fn() },
         ]}
-      />,
+      />
     )
 
     await user.click(screen.getByRole("button", { name: /open menu/i }))
@@ -88,11 +86,7 @@ describe("ActionMenu — interactions", () => {
   it("does not invoke disabled items", async () => {
     const onClick = vi.fn()
     const user = userEvent.setup()
-    render(
-      <ActionMenu
-        items={[{ label: "Disabled", onClick, disabled: true }]}
-      />,
-    )
+    render(<ActionMenu items={[{ label: "Disabled", onClick, disabled: true }]} />)
 
     await user.click(screen.getByRole("button", { name: /open menu/i }))
     await user.click(screen.getByRole("menuitem", { name: "Disabled" }))

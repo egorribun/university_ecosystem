@@ -1,15 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { renderHook } from "@testing-library/react"
 
-import {
-  useActivityComparative,
-  type ComparativeStats,
-} from "./useActivityComparative"
-import type {
-  AttendanceStats,
-  GradeStats,
-  ParticipationStats,
-} from "@/features/activity/types"
+import { useActivityComparative, type ComparativeStats } from "./useActivityComparative"
+import type { AttendanceStats, GradeStats, ParticipationStats } from "@/features/activity/types"
 
 /**
  * Tests for the period-split client-side comparative hook.
@@ -33,7 +26,7 @@ afterEach(() => {
 })
 
 function makeAttendance(
-  records: Array<{ date: string; status: "present" | "absent" | "late" }>,
+  records: Array<{ date: string; status: "present" | "absent" | "late" }>
 ): AttendanceStats {
   return {
     percent: 0,
@@ -67,10 +60,10 @@ function run(
   attendance: AttendanceStats | null,
   grades: GradeStats | null,
   participation: ParticipationStats | null,
-  period: "30d" | "90d" | "180d" = "30d",
+  period: "30d" | "90d" | "180d" = "30d"
 ): ComparativeStats {
   const { result } = renderHook(() =>
-    useActivityComparative(attendance, grades, participation, period),
+    useActivityComparative(attendance, grades, participation, period)
   )
   return result.current
 }
@@ -92,11 +85,7 @@ describe("useActivityComparative — empty input", () => {
   })
 
   it("hasData=true when ANY recent array has entries", () => {
-    const stats = run(
-      makeAttendance([{ date: "2026-05-14", status: "present" }]),
-      null,
-      null,
-    )
+    const stats = run(makeAttendance([{ date: "2026-05-14", status: "present" }]), null, null)
     expect(stats.hasData).toBe(true)
   })
 })
@@ -114,7 +103,7 @@ describe("useActivityComparative — attendance", () => {
         { date: "2026-04-20", status: "present" }, // previous half
       ]),
       null,
-      null,
+      null
     )
     expect(stats.attendance.current).toBe(100)
     expect(stats.attendance.previous).toBe(100)
@@ -130,7 +119,7 @@ describe("useActivityComparative — attendance", () => {
         { date: "2026-04-15", status: "present" },
       ]),
       null,
-      null,
+      null
     )
     expect(stats.attendance.current).toBe(50)
     expect(stats.attendance.previous).toBe(100)
@@ -144,7 +133,7 @@ describe("useActivityComparative — attendance", () => {
         { date: "2026-05-12", status: "present" },
       ]),
       null,
-      null,
+      null
     )
     expect(stats.attendance.current).toBe(50)
   })
@@ -162,7 +151,7 @@ describe("useActivityComparative — grades", () => {
         { score: 70, date: "2026-04-15" }, // previous
         { score: 60, date: "2026-04-10" }, // previous
       ]),
-      null,
+      null
     )
     expect(stats.grades.current).toBe(85)
     expect(stats.grades.previous).toBe(65)
@@ -187,7 +176,7 @@ describe("useActivityComparative — participation", () => {
         { date: "2026-05-13" }, // current
         { date: "2026-05-08" }, // current
         { date: "2026-04-10" }, // previous
-      ]),
+      ])
     )
     expect(stats.participation.current).toBe(2)
     expect(stats.participation.previous).toBe(1)
@@ -203,7 +192,7 @@ describe("useActivityComparative — delta arithmetic", () => {
     const stats = run(
       null,
       null,
-      makeParticipation([{ date: "2026-05-14" }]), // 1 current, 0 previous
+      makeParticipation([{ date: "2026-05-14" }]) // 1 current, 0 previous
     )
     expect(stats.participation.delta).toBe(100)
   })
@@ -222,7 +211,7 @@ describe("useActivityComparative — delta arithmetic", () => {
         { date: "2026-04-09" }, // previous
         { date: "2026-04-08" }, // previous
         { date: "2026-04-07" }, // previous
-      ]),
+      ])
     )
     // 0 current vs 4 previous → delta = (0 - 4) / 4 * 100 = -100
     expect(stats.participation.delta).toBe(-100)
@@ -242,7 +231,7 @@ describe("useActivityComparative — period scaling", () => {
         { date: "2026-04-15" }, // current half
         { date: "2026-03-15" }, // previous half (before midpoint)
       ]),
-      "90d",
+      "90d"
     )
     expect(stats.participation.current).toBe(2)
     expect(stats.participation.previous).toBe(1)
@@ -258,7 +247,7 @@ describe("useActivityComparative — period scaling", () => {
         { date: "2026-03-01" }, // current half
         { date: "2026-01-15" }, // previous half
       ]),
-      "180d",
+      "180d"
     )
     expect(stats.participation.current).toBe(2)
     expect(stats.participation.previous).toBe(1)

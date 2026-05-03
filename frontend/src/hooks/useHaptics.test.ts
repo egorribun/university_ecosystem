@@ -28,9 +28,9 @@ afterEach(() => {
 
 describe("useHaptics — style → vibrate mapping", () => {
   it.each([
-    ["light",   10],
-    ["medium",  20],
-    ["heavy",   40],
+    ["light", 10],
+    ["medium", 20],
+    ["heavy", 40],
   ] as const)("triggers a single-tap '%s' as %d ms", (style, expected) => {
     const { result } = renderHook(() => useHaptics())
     result.current.trigger(style)
@@ -40,7 +40,7 @@ describe("useHaptics — style → vibrate mapping", () => {
   it.each([
     ["success", [10, 50, 10]],
     ["warning", [30, 100, 30]],
-    ["error",   [50, 50, 50, 50, 50]],
+    ["error", [50, 50, 50, 50, 50]],
   ] as const)("triggers a pattern for '%s'", (style, pattern) => {
     const { result } = renderHook(() => useHaptics())
     result.current.trigger(style)

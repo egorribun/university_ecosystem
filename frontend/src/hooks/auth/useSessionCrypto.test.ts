@@ -57,15 +57,9 @@ describe("signSnapshot", () => {
   })
 
   it("scalar payloads sign without crashing (no recursion into primitives)", async () => {
-    await expect(signSnapshot("plain string", "k", "u")).resolves.toMatch(
-      /^[A-Za-z0-9+/=]+$/,
-    )
-    await expect(signSnapshot(42, "k", "u")).resolves.toMatch(
-      /^[A-Za-z0-9+/=]+$/,
-    )
-    await expect(signSnapshot(null, "k", "u")).resolves.toMatch(
-      /^[A-Za-z0-9+/=]+$/,
-    )
+    await expect(signSnapshot("plain string", "k", "u")).resolves.toMatch(/^[A-Za-z0-9+/=]+$/)
+    await expect(signSnapshot(42, "k", "u")).resolves.toMatch(/^[A-Za-z0-9+/=]+$/)
+    await expect(signSnapshot(null, "k", "u")).resolves.toMatch(/^[A-Za-z0-9+/=]+$/)
   })
 
   it("hashes sensitive fields before signing (mfa_required → hex-encoded scrypt)", async () => {
@@ -73,16 +67,8 @@ describe("signSnapshot", () => {
     // signSnapshot HMACs the post-hash JSON, so two payloads that differ
     // ONLY in the sensitive field map to the SAME signature (the field
     // is normalised before signing).
-    const sigA = await signSnapshot(
-      { mfa_required: "true", other: 1 },
-      "k",
-      "u",
-    )
-    const sigB = await signSnapshot(
-      { mfa_required: "false", other: 1 },
-      "k",
-      "u",
-    )
+    const sigA = await signSnapshot({ mfa_required: "true", other: 1 }, "k", "u")
+    const sigB = await signSnapshot({ mfa_required: "false", other: 1 }, "k", "u")
     // Both mfa_required values become "010203" after the mock scrypt,
     // so the HMACs match — proving the field WAS replaced.
     expect(sigA).toBe(sigB)
@@ -97,16 +83,8 @@ describe("signSnapshot", () => {
   it("recurses into arrays", async () => {
     // Arrays are walked element-by-element; the change in element 1
     // (non-sensitive 'other' field) propagates to the signature.
-    const sigA = await signSnapshot(
-      [{ other: 1 }, { other: 2 }],
-      "k",
-      "u",
-    )
-    const sigB = await signSnapshot(
-      [{ other: 1 }, { other: 99 }],
-      "k",
-      "u",
-    )
+    const sigA = await signSnapshot([{ other: 1 }, { other: 2 }], "k", "u")
+    const sigB = await signSnapshot([{ other: 1 }, { other: 99 }], "k", "u")
     expect(sigA).not.toBe(sigB)
   })
 })

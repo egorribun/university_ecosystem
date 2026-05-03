@@ -37,7 +37,7 @@ describe("useProfileSync — public constants", () => {
 
   it("PROFILE_CACHE_STORAGE_KEY embeds the schema version", () => {
     expect(PROFILE_CACHE_STORAGE_KEY).toBe(
-      `ecosystem.profile.cache.v${PROFILE_CACHE_SCHEMA_VERSION}`,
+      `ecosystem.profile.cache.v${PROFILE_CACHE_SCHEMA_VERSION}`
     )
   })
 
@@ -90,10 +90,7 @@ describe("useProfileSync — signPayload (HMAC-SHA256 base64)", () => {
     // cannot be JSON-stringified (circular reference).
     const circular: Record<string, unknown> = {}
     circular.self = circular
-    const sig = await signPayload(
-      circular as unknown as Parameters<typeof signPayload>[0],
-      "k",
-    )
+    const sig = await signPayload(circular as unknown as Parameters<typeof signPayload>[0], "k")
     expect(sig).toBe("")
   })
 })

@@ -29,9 +29,7 @@ const baseProps = {
 
 describe("ConfirmDialog — render gating", () => {
   it("renders nothing when open is false", () => {
-    const { container } = render(
-      <ConfirmDialog {...baseProps} open={false} />,
-    )
+    const { container } = render(<ConfirmDialog {...baseProps} open={false} />)
     expect(container.querySelector('[role="alertdialog"]')).toBeNull()
   })
 
@@ -58,9 +56,7 @@ describe("ConfirmDialog — ARIA shape", () => {
 
     // Both IDs resolve to actual elements with the right text.
     expect(document.getElementById(labelId!)).toHaveTextContent("Delete item?")
-    expect(document.getElementById(descId!)).toHaveTextContent(
-      "This cannot be undone.",
-    )
+    expect(document.getElementById(descId!)).toHaveTextContent("This cannot be undone.")
   })
 })
 
@@ -99,14 +95,7 @@ describe("ConfirmDialog — loading state", () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()
     const onConfirm = vi.fn()
-    render(
-      <ConfirmDialog
-        {...baseProps}
-        isLoading
-        onCancel={onCancel}
-        onConfirm={onConfirm}
-      />,
-    )
+    render(<ConfirmDialog {...baseProps} isLoading onCancel={onCancel} onConfirm={onConfirm} />)
 
     // Disabled buttons silently swallow clicks in user-event.
     await user.click(screen.getByRole("button", { name: "Cancel" }))
@@ -136,9 +125,7 @@ describe("ConfirmDialog — accessibility", () => {
   })
 
   it("has no axe violations in danger variant", async () => {
-    const { container } = render(
-      <ConfirmDialog {...baseProps} variant="danger" />,
-    )
+    const { container } = render(<ConfirmDialog {...baseProps} variant="danger" />)
     const results = await axe(container)
     expect(results).toHaveNoViolations()
   })

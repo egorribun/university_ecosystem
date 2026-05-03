@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { renderHook, waitFor } from "@testing-library/react"
-import {
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { useMapWeather, type MapWeatherData } from "./useMapWeather"
@@ -31,11 +28,7 @@ const FIXTURE_API_RESPONSE = {
     uv_index: 3,
   },
   hourly: {
-    time: [
-      "2026-05-15T13:00",
-      "2026-05-15T14:00",
-      "2026-05-15T15:00",
-    ],
+    time: ["2026-05-15T13:00", "2026-05-15T14:00", "2026-05-15T15:00"],
     temperature_2m: [12, 13, 14],
     weather_code: [1, 2, 3],
   },
@@ -65,9 +58,7 @@ function newClient(): QueryClient {
 
 function wrapper(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    )
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
 }
 
@@ -90,7 +81,7 @@ describe("useMapWeather — cache hit", () => {
   it("returns cached data without a network call when cache is fresh", async () => {
     localStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ timestamp: Date.now(), data: FIXTURE_CACHED_DATA }),
+      JSON.stringify({ timestamp: Date.now(), data: FIXTURE_CACHED_DATA })
     )
 
     const client = newClient()
@@ -131,7 +122,7 @@ describe("useMapWeather — expired cache", () => {
     const oldTimestamp = Date.now() - (CACHE_TTL + 60_000)
     localStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ timestamp: oldTimestamp, data: FIXTURE_CACHED_DATA }),
+      JSON.stringify({ timestamp: oldTimestamp, data: FIXTURE_CACHED_DATA })
     )
 
     const client = newClient()

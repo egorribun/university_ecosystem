@@ -56,12 +56,7 @@ describe("MfaChallengeView — render shapes", () => {
       challenge_token: "abc",
       challenge_expires_at: "2099-01-01T00:00:00Z",
     }
-    const { container } = render(
-      <MfaChallengeView
-        {...props}
-        mfa={{ ...baseMfa, otpChallenge }}
-      />,
-    )
+    const { container } = render(<MfaChallengeView {...props} mfa={{ ...baseMfa, otpChallenge }} />)
     // OtpEntry renders a digit-input form. We just confirm the page
     // mounted with no crash. (Detailed OtpEntry behaviour is its own test.)
     expect(container).toBeInTheDocument()
@@ -87,7 +82,7 @@ describe("MfaChallengeView — accessibility", () => {
         {...props}
         webauthnSupported={false}
         mfa={{ ...baseMfa, webauthnChallenge }}
-      />,
+      />
     )
     const results = await axe(container)
     expect(results).toHaveNoViolations()
@@ -101,10 +96,7 @@ describe("MfaChallengeView — accessibility", () => {
       options: {},
     }
     const { container } = render(
-      <MfaChallengeView
-        {...props}
-        mfa={{ ...baseMfa, webauthnChallenge }}
-      />,
+      <MfaChallengeView {...props} mfa={{ ...baseMfa, webauthnChallenge }} />
     )
     const results = await axe(container)
     expect(results).toHaveNoViolations()

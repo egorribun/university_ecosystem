@@ -20,10 +20,12 @@ import { DataTableColumnHeader } from "./DataTableColumnHeader"
  * `<th>` element) — DataTableColumnHeader is the inner button only.
  */
 
-function makeColumn(overrides: Partial<{
-  canSort: boolean
-  isSorted: false | "asc" | "desc"
-}> = {}): Column<unknown, unknown> {
+function makeColumn(
+  overrides: Partial<{
+    canSort: boolean
+    isSorted: false | "asc" | "desc"
+  }> = {}
+): Column<unknown, unknown> {
   const { canSort = true, isSorted = false } = overrides
   const toggleSorting = vi.fn()
   return {
@@ -52,33 +54,17 @@ describe("DataTableColumnHeader — sortable column", () => {
 
   it("announces 'not sorted' when no sort direction is set", () => {
     render(<DataTableColumnHeader column={makeColumn()} title="Created" />)
-    expect(
-      screen.getByRole("button", { name: /not sorted/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /not sorted/i })).toBeInTheDocument()
   })
 
   it("announces 'sorted ascending' when isSorted is 'asc'", () => {
-    render(
-      <DataTableColumnHeader
-        column={makeColumn({ isSorted: "asc" })}
-        title="Created"
-      />,
-    )
-    expect(
-      screen.getByRole("button", { name: /sorted ascending/i }),
-    ).toBeInTheDocument()
+    render(<DataTableColumnHeader column={makeColumn({ isSorted: "asc" })} title="Created" />)
+    expect(screen.getByRole("button", { name: /sorted ascending/i })).toBeInTheDocument()
   })
 
   it("announces 'sorted descending' when isSorted is 'desc'", () => {
-    render(
-      <DataTableColumnHeader
-        column={makeColumn({ isSorted: "desc" })}
-        title="Created"
-      />,
-    )
-    expect(
-      screen.getByRole("button", { name: /sorted descending/i }),
-    ).toBeInTheDocument()
+    render(<DataTableColumnHeader column={makeColumn({ isSorted: "desc" })} title="Created" />)
+    expect(screen.getByRole("button", { name: /sorted descending/i })).toBeInTheDocument()
   })
 
   it("calls toggleSorting on click — false when not asc, true when asc", async () => {
@@ -86,9 +72,7 @@ describe("DataTableColumnHeader — sortable column", () => {
 
     // Click from no-sort → should call toggleSorting(false) (asc).
     const colA = makeColumn({ isSorted: false })
-    const { unmount } = render(
-      <DataTableColumnHeader column={colA} title="X" />,
-    )
+    const { unmount } = render(<DataTableColumnHeader column={colA} title="X" />)
     await user.click(screen.getByRole("button"))
     expect(colA.toggleSorting).toHaveBeenCalledWith(false)
     unmount()
@@ -105,12 +89,10 @@ describe("DataTableColumnHeader — accessibility", () => {
   it.each([
     ["non-sortable", makeColumn({ canSort: false })],
     ["unsorted", makeColumn({ isSorted: false })],
-    ["asc",       makeColumn({ isSorted: "asc" })],
-    ["desc",      makeColumn({ isSorted: "desc" })],
+    ["asc", makeColumn({ isSorted: "asc" })],
+    ["desc", makeColumn({ isSorted: "desc" })],
   ] as const)("has no axe violations (%s)", async (_label, column) => {
-    const { container } = render(
-      <DataTableColumnHeader column={column} title="Status" />,
-    )
+    const { container } = render(<DataTableColumnHeader column={column} title="Status" />)
     const results = await axe(container)
     expect(results).toHaveNoViolations()
   })
