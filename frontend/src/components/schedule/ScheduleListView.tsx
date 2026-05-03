@@ -105,9 +105,7 @@ export function ScheduleListView({
             </div>
           }
           title={t("schedule:list.noLessons", { defaultValue: t("schedule:table.noLessons") })}
-          description={t("schedule:empty.selectGroup", {
-            defaultValue: "Select a group to view the schedule",
-          })}
+          description={t("schedule:empty.selectGroup")}
         />
       </div>
     )

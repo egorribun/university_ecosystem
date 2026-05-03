@@ -98,9 +98,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
 
   const resolveCreateError = useCallback(
     (error: unknown) => {
-      const fallback =
-        t("news:notifications.savedError", { defaultValue: "Failed to save the news" }) ??
-        "Failed to save the news"
+      const fallback = t("news:notifications.savedError") ?? "Failed to save the news"
 
       if (isAxiosError(error)) {
         const data = error.response?.data
@@ -196,7 +194,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
 
           <div className="space-y-4">
             <Field
-              label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
+              label={t("news:form.title_en") ?? ""}
               htmlFor="news-title-en"
               error={errors.title_en?.message}
             >
@@ -211,7 +209,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
             </Field>
 
             <Field
-              label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
+              label={t("news:form.content_en") ?? ""}
               htmlFor="news-content-en"
               error={errors.content_en?.message}
             >

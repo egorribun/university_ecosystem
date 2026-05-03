@@ -73,9 +73,7 @@ export function MfaChallengeView({
                     leadingIcon={<Fingerprint className="h-6 w-6" />}
                     className="bg-brand/(--opacity-subtle) text-brand hover:bg-brand/(--opacity-dim)"
                   >
-                    {t("auth:mfa.webauthn.useSecurityKey", {
-                      defaultValue: "Use security key",
-                    })}
+                    {t("auth:mfa.webauthn.useSecurityKey")}
                   </Button>
                 ) : (
                   <div className="w-full rounded-md border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text text-center">

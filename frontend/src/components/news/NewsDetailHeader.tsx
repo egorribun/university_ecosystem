@@ -134,13 +134,11 @@ export function NewsDetailHeader({
           )}
           aria-label={
             bookmarked
-              ? t("news:actions.removeBookmark", { defaultValue: "Remove bookmark" })
+              ? t("news:actions.removeBookmark")
               : t("news:actions.bookmark", { defaultValue: "Bookmark" })
           }
         >
-          {bookmarked
-            ? t("news:actions.saved", { defaultValue: "Saved" })
-            : t("news:actions.bookmark", { defaultValue: "Save" })}
+          {bookmarked ? t("news:actions.saved") : t("news:actions.bookmark")}
         </Button>
 
         {/* Admin actions — separated by border */}

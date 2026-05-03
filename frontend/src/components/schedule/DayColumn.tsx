@@ -228,7 +228,7 @@ export function DayColumn({
             </div>
             {/* A11Y-71-03: screen reader announcement for day completion */}
             <div className="sr-only" role="status" aria-live="assertive">
-              {t("schedule:dayComplete", { defaultValue: "All lessons for today are complete!" })}
+              {t("schedule:dayComplete")}
             </div>
           </>
         )}
@@ -278,7 +278,7 @@ export function DayColumn({
                   <div className="sched-empty-ring" />
                 </div>
               }
-              title={t("schedule:mobile.noLessons", { defaultValue: "No lessons" })}
+              title={t("schedule:mobile.noLessons")}
               className="max-w-[16rem] border-none bg-transparent py-6 shadow-none backdrop-blur-none"
             />
           )}

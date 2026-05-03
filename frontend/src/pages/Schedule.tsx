@@ -237,17 +237,13 @@ function ScheduleContent() {
                 {/* ── All lessons filtered out — show reset action (FIX-65-05) ── */}
                 {allFilteredOut && (
                   <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/(--opacity-dim) bg-amber-500/(--opacity-subtle) px-4 py-3 text-sm text-text-secondary">
-                    <span>
-                      {t("schedule:empty.allFiltered", {
-                        defaultValue: "All lessons are hidden by current filters",
-                      })}
-                    </span>
+                    <span>{t("schedule:empty.allFiltered")}</span>
                     <button
                       type="button"
                       onClick={resetPreferences}
                       className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
                     >
-                      {t("schedule:empty.resetFilters", { defaultValue: "Reset filters" })}
+                      {t("schedule:empty.resetFilters")}
                     </button>
                   </div>
                 )}
@@ -333,7 +329,7 @@ function ScheduleContent() {
           title={t("schedule:confirm.deleteTitle")}
           message={t("schedule:confirm.deleteMessage")}
           confirmText={t("schedule:confirm.deleteConfirm")}
-          cancelText={t("common:buttons.cancel", { defaultValue: "Cancel" })}
+          cancelText={t("common:buttons.cancel")}
           variant="danger"
           onConfirm={confirmDeleteLesson}
           onCancel={() => setPendingDeleteId(null)}
