@@ -20,11 +20,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -288,6 +291,102 @@ func TestIntegration_BroadcastOversizedMessageDropped(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	require.Equal(t, afterOversized, testutil.ToFloat64(BroadcastDropsTotal),
 		"small message must not increment BroadcastDropsTotal")
+}
+
+// TestIntegration_HandleRegisterMaxClients verifies TD-31-05 layer 1 — the
+// AUTHORITATIVE enforcement at hub.go:217-234. handleRegister rejects clients
+// when len(h.Clients) >= maxClients by closing client.Send and client.Conn.
+// This is independent of the racy pre-check at handlers.go:131-139 (covered
+// by TestIntegration_HandleWebSocketPrecheckMaxClients).
+//
+// No NATS container required — handleRegister is purely local map+lock work.
+// The rejected client (c3) needs a real *websocket.Conn because hub.go:225
+// calls Conn.Close(); we obtain one via httptest+upgrader.
+func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	cfg := &config.Config{
+		MaxClients:          2,
+		BroadcastBufferSize: 4,
+		BroadcastWorkers:    1,
+		ClientMsgRateLimit:  10,
+		ClientMsgRateBurst:  10,
+	}
+	h := NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	// c1 and c2 are accepted — handleRegister doesn't touch their Conn.
+	mkAcceptedClient := func(id string) *Client {
+		return &Client{
+			ID:    id,
+			Rooms: make(map[string]bool),
+			Send:  make(chan []byte, 1),
+			Hub:   h,
+			ctx:   ctx,
+		}
+	}
+	c1 := mkAcceptedClient("user-1")
+	c2 := mkAcceptedClient("user-2")
+
+	h.handleRegister(ctx, c1)
+	h.handleRegister(ctx, c2)
+
+	h.mu.RLock()
+	require.Equal(t, 2, len(h.Clients), "first 2 clients must register successfully")
+	require.Contains(t, h.Clients, "user-1")
+	require.Contains(t, h.Clients, "user-2")
+	h.mu.RUnlock()
+
+	// c3 will be rejected — its Conn.Close() will fire at hub.go:225, so we
+	// need a real *websocket.Conn. Set up an httptest WebSocket endpoint that
+	// captures the server-side conn after upgrade.
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	var serverSideConn *websocket.Conn
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		serverSideConn = c
+		// Keep the conn open server-side; cleanup is via t.Cleanup.
+	}))
+	t.Cleanup(server.Close)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientConn.Close() })
+
+	// Wait for server-side handler to complete the upgrade and assign the conn.
+	// Dialer.Dial returns after the handshake, but the server-side assignment
+	// runs in the request goroutine and may lag by a few microseconds.
+	require.Eventually(t, func() bool { return serverSideConn != nil }, 1*time.Second, 10*time.Millisecond,
+		"server-side ws conn never captured after dialer succeeded")
+
+	c3 := &Client{
+		ID:    "user-3",
+		Rooms: make(map[string]bool),
+		Send:  make(chan []byte, 1),
+		Hub:   h,
+		ctx:   ctx,
+		Conn:  serverSideConn,
+	}
+	h.handleRegister(ctx, c3)
+
+	// Assert: c3 was rejected — Send channel is closed (closeOnce path).
+	select {
+	case _, ok := <-c3.Send:
+		require.False(t, ok, "c3.Send must be closed after maxClients rejection")
+	default:
+		t.Fatal("c3.Send not closed within immediate read after handleRegister returned")
+	}
+
+	// Assert: h.Clients was not modified — still 2 entries, c3 not added.
+	h.mu.RLock()
+	require.Equal(t, 2, len(h.Clients), "h.Clients must remain at maxClients=2 after 3rd client rejected")
+	require.NotContains(t, h.Clients, "user-3", "c3 must not be added to h.Clients")
+	h.mu.RUnlock()
 }
 
 // connStrFromEnv is a small helper kept for future tests that need to opt
