@@ -17,8 +17,10 @@ package hub
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -30,10 +32,12 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tclog "github.com/testcontainers/testcontainers-go/log"
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
+	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -95,6 +99,59 @@ func newIntegrationHub(t *testing.T, nc *nats.Conn, broadcastBuf int, maxClients
 		ClientMsgRateBurst:  100,
 	}
 	return NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil)
+}
+
+// startRedisContainer spins up a real Redis 7 container and returns a connected
+// *redis.Client + cleanup. Mirrors startNATSContainer pattern. Used by tests
+// that exercise HandleWebSocket (which validates upgrade tickets via Redis
+// GETDEL on ott:ws:{token}).
+func startRedisContainer(t *testing.T) (*redis.Client, func()) {
+	t.Helper()
+	ctx := context.Background()
+
+	rc, err := tcredis.Run(ctx, "redis:7-alpine",
+		testcontainers.WithLogger(tclog.TestLogger(t)),
+	)
+	if err != nil {
+		t.Fatalf("redis container start: %v", err)
+	}
+
+	connStr, err := rc.ConnectionString(ctx)
+	if err != nil {
+		_ = rc.Terminate(ctx)
+		t.Fatalf("redis connection string: %v", err)
+	}
+	opts, err := redis.ParseURL(connStr)
+	if err != nil {
+		_ = rc.Terminate(ctx)
+		t.Fatalf("redis parse URL: %v", err)
+	}
+	client := redis.NewClient(opts)
+
+	cleanup := func() {
+		_ = client.Close()
+		_ = rc.Terminate(context.Background())
+	}
+	return client, cleanup
+}
+
+// newIntegrationHubWithRedis builds a Hub wired to BOTH NATS and Redis. Used
+// by tests that exercise HandleWebSocket — the production path requires a
+// Redis-backed ticket validation step (handlers.go:179-216 GETDEL on
+// ott:ws:{token}). SendBufferSize is set explicitly because HandleWebSocket
+// allocates client.Send via make(chan []byte, cfg.SendBufferSize).
+func newIntegrationHubWithRedis(t *testing.T, nc *nats.Conn, rdb *redis.Client, broadcastBuf, maxClients int) *Hub {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	cfg := &config.Config{
+		MaxClients:          maxClients,
+		BroadcastBufferSize: broadcastBuf,
+		BroadcastWorkers:    2,
+		ClientMsgRateLimit:  100,
+		ClientMsgRateBurst:  100,
+		SendBufferSize:      16,
+	}
+	return NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, rdb)
 }
 
 // TestIntegration_NATSChatMessageDelivery verifies the full pipeline:
@@ -387,6 +444,108 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 	require.Equal(t, 2, len(h.Clients), "h.Clients must remain at maxClients=2 after 3rd client rejected")
 	require.NotContains(t, h.Clients, "user-3", "c3 must not be added to h.Clients")
 	h.mu.RUnlock()
+}
+
+// TestIntegration_HandleWebSocketPrecheckMaxClients verifies TD-31-05 layer 2
+// — the racy fast-path pre-check at handlers.go:131-139. The pre-check rejects
+// a 3rd connection with HTTP 503 BEFORE WebSocket upgrade and goroutine spawn
+// when h.Clients is already at capacity. The authoritative enforcement at
+// handleRegister is covered separately by TestIntegration_HandleRegisterMaxClients.
+//
+// Synchronization: dialer.DialContext returns AFTER the WebSocket handshake
+// but BEFORE HandleWebSocket sends the client to h.Register (unbuffered
+// channel — blocks until Run consumes). Use require.Eventually to wait for
+// the Run loop to populate h.Clients before attempting connection 3.
+func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
+	nc, ncCleanup := startNATSContainer(t)
+	t.Cleanup(ncCleanup)
+	rdb, rdbCleanup := startRedisContainer(t)
+	t.Cleanup(rdbCleanup)
+
+	h := newIntegrationHubWithRedis(t, nc, rdb, 16, 2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go h.Run(ctx)
+	h.SubscribeToNATS(ctx)
+	t.Cleanup(h.Stop)
+
+	// Pre-populate Redis with 3 valid tickets. validateUpgradeTicket at
+	// handlers.go:179-216 enforces:
+	//   - 64-character length
+	//   - lowercase hex charset (RZ-W16-06)
+	//   - GETDEL on ott:ws:{token} returning "userID:jti"
+	mkTicket := func(seed byte) (token, userID string) {
+		b := make([]byte, 32)
+		for i := range b {
+			b[i] = seed
+		}
+		token = hex.EncodeToString(b) // 64 lowercase hex chars
+		userID = fmt.Sprintf("user-%d", seed)
+		return token, userID
+	}
+	setTicket := func(t *testing.T, token, userID string) {
+		t.Helper()
+		require.NoError(t, rdb.Set(ctx, "ott:ws:"+token, userID+":jti-x", 30*time.Second).Err())
+	}
+	tok1, uid1 := mkTicket(0xa1)
+	tok2, uid2 := mkTicket(0xa2)
+	tok3, uid3 := mkTicket(0xa3)
+	setTicket(t, tok1, uid1)
+	setTicket(t, tok2, uid2)
+	setTicket(t, tok3, uid3)
+
+	// Configure allowed origins so upgrader.CheckOrigin (handlers.go:40-53)
+	// accepts httptest.Server's 127.0.0.1 origin. Reset on cleanup so other
+	// tests see the default empty list.
+	prevOrigins := allowedOrigins
+	t.Cleanup(func() { SetAllowedOrigins(prevOrigins) })
+
+	// httptest.Server hosting HandleWebSocket. Use the same cfg as the hub.
+	hubCfg := &config.Config{
+		SendBufferSize: 16,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.HandleWebSocket(w, r, hubCfg)
+	}))
+	t.Cleanup(server.Close)
+
+	// SetAllowedOrigins after server.URL is known. The Origin header on a
+	// browser-style WS connect is "http://host[:port]" — match the server URL
+	// exactly. websocket.DefaultDialer.Dial sends Origin = "http://" + Host.
+	SetAllowedOrigins([]string{server.URL})
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	dialer := websocket.DefaultDialer
+
+	// Connection 1.
+	c1, _, err := dialer.Dial(wsURL+"/?ticket="+tok1, nil)
+	require.NoError(t, err, "first WS connect must succeed")
+	t.Cleanup(func() { _ = c1.Close() })
+
+	// Connection 2.
+	c2, _, err := dialer.Dial(wsURL+"/?ticket="+tok2, nil)
+	require.NoError(t, err, "second WS connect must succeed")
+	t.Cleanup(func() { _ = c2.Close() })
+
+	// Wait for Run loop to populate h.Clients with both. Dialer returns BEFORE
+	// HandleWebSocket's `h.Register <- client` send completes — race-free
+	// assertion via Eventually polling h.Clients length.
+	require.Eventually(t, func() bool {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		return len(h.Clients) == 2
+	}, 2*time.Second, 10*time.Millisecond, "h.Clients did not reach 2 after 2 successful upgrades")
+
+	// Connection 3 — pre-check at handlers.go:131-139 must return HTTP 503
+	// BEFORE WebSocket upgrade. Use raw http.Get (NOT dialer) to surface the
+	// 503 cleanly; dialer would convert it to "websocket: bad handshake".
+	httpURL := server.URL + "/?ticket=" + tok3
+	resp, err := http.Get(httpURL)
+	require.NoError(t, err, "raw HTTP GET to 3rd connection must complete")
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode,
+		"3rd connection must hit pre-check 503 before WebSocket upgrade (TD-31-05)")
 }
 
 // connStrFromEnv is a small helper kept for future tests that need to opt
