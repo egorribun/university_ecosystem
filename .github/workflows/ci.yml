@@ -374,6 +374,38 @@ jobs:
           path: services/ws-hub/testdata/fuzz/
           retention-days: 30
 
+  # ADR-022: Go integration tests against real testcontainers-go containers.
+  # Initially non-blocking per §Migration step 5; promote to required after
+  # 30-day flake rate < 1 %. Each service runs independently — failures in
+  # one don't block others. Wired into ci-success aggregation below as
+  # advisory (any non-success result is reported in summary but not fatal).
+  go-integration-ws-hub:
+    name: Go Integration Tests (ws-hub)
+    needs: pre-commit-check
+    uses: ./.github/workflows/reusable-go-integration-tests.yml
+    with:
+      service-directory: services/ws-hub
+      go-version: "1.26.x"
+    secrets: inherit
+
+  go-integration-file-processor:
+    name: Go Integration Tests (file-processor)
+    needs: pre-commit-check
+    uses: ./.github/workflows/reusable-go-integration-tests.yml
+    with:
+      service-directory: services/file-processor
+      go-version: "1.26.x"
+    secrets: inherit
+
+  go-integration-gateway:
+    name: Go Integration Tests (gateway)
+    needs: pre-commit-check
+    uses: ./.github/workflows/reusable-go-integration-tests.yml
+    with:
+      service-directory: services/gateway
+      go-version: "1.26.x"
+    secrets: inherit
+
   frontend-tests:
     name: Frontend Tests
     needs: pre-commit-check
@@ -998,6 +1030,9 @@ jobs:
       - helm-validate
       - db-migration-gate
       - go-fuzz
+      - go-integration-ws-hub
+      - go-integration-file-processor
+      - go-integration-gateway
       - contract-tests
       - provenance-check
       - e2e-tests
@@ -1005,6 +1040,10 @@ jobs:
       - name: Check all jobs passed
         shell: bash
         run: |
+          # ADR-022 §Migration step 5: go-integration-* jobs are advisory
+          # (non-blocking) initially. Promote to blocking once 30-day flake
+          # rate < 1 %. They are intentionally NOT in the blocking results
+          # array but ARE reported separately below.
           results=(
             "${{ needs.compose-validate.result }}"
             "${{ needs.backend-tests.result }}"
@@ -1038,3 +1077,25 @@ jobs:
             exit 1
           fi
           echo "✅ All CI checks passed!"
+
+      - name: Report Go integration test results (advisory, ADR-022 §Migration)
+        shell: bash
+        run: |
+          # Advisory-only — these results inform the team but do not block
+          # the workflow. Promote to blocking by moving entries into the
+          # `results` array above once flake rate < 1 % over 30 days.
+          ws=${{ needs.go-integration-ws-hub.result }}
+          fp=${{ needs.go-integration-file-processor.result }}
+          gw=${{ needs.go-integration-gateway.result }}
+          {
+            echo "## Go integration tests (advisory)";
+            echo "";
+            echo "| Service | Result |";
+            echo "|---------|--------|";
+            echo "| ws-hub | $ws |";
+            echo "| file-processor | $fp |";
+            echo "| gateway | $gw |";
+            echo "";
+            echo "_Initially non-blocking per ADR-022 §Migration step 5._";
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw"

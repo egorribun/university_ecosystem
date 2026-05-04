@@ -1,7 +1,7 @@
 # ADR-022: Go Services Integration Testing with Testcontainers
 
 ## Status
-Proposed
+Accepted (2026-05-04, primary device routine)
 
 ## Context
 
@@ -67,6 +67,79 @@ This ADR proposes the strategy. Adoption work is tracked separately:
 5. Promote to required status only once flake rate over 30 days falls below 1 %.
 
 The actual implementation work is owned by the primary device's wave queue.
+
+## Implementation Notes (2026-05-04)
+
+Implemented across routine commits `b65ba02a1` (2 of 11 ws-hub tests) and the
+follow-up routine-e5 commit set (8 more tests across all 3 services), totaling
+**10 of 11 §Decision tests landed**. Versions used:
+
+- testcontainers-go: v0.42.0 (modules/nats, modules/redis, modules/minio)
+- nats:2.12-alpine
+- redis:7-alpine
+- minio/minio:RELEASE.2025-09-07T16-13-09Z (matches prod docker-compose)
+
+Each service's `make test-integration` target runs its tier in 2-15 seconds on
+warm Docker. Cold first-run pulls ~150 MB of images (NATS ~20, Redis ~15,
+MinIO ~80, Ryuk reaper ~10).
+
+### Tests landed
+
+**ws-hub (5 tests)** — `services/ws-hub/pkg/hub/hub_integration_test.go`:
+- TestIntegration_NATSChatMessageDelivery (foundational NATS↔Hub.Broadcast pipeline)
+- TestIntegration_NATSMalformedMessageDropped (parse-boundary defense)
+- TestIntegration_BroadcastOversizedMessageDropped (RZ-23-05, 60 KB cap)
+- TestIntegration_HandleRegisterMaxClients (TD-31-05 authoritative enforcement)
+- TestIntegration_HandleWebSocketPrecheckMaxClients (TD-31-05 HTTP 503 pre-check)
+
+**file-processor (3 tests)** — `services/file-processor/internal/{workflow,middleware,service}/*_integration_test.go`:
+- TestIntegration_MinIOResizeImageHappyPath (rescoped from MinIO+ClamAV — see §Deferred)
+- TestIntegration_GraphQLDepthAndTimeout (RZ-24-05, depth=10 + timeout=30s)
+- TestIntegration_GRPCPathTraversalRejection (RZ-27-04 + RZ-26-04)
+
+**gateway (4 tests)** — `services/gateway/{middleware,cmd/gateway}/*_integration_test.go`:
+- TestIntegration_RateLimiterRedisInMemoryFallback (replaces RedisCircuitBreaker — see §Deferred)
+- TestIntegration_L1CacheXFetchProbabilisticRefresh (PERF-31-02; companion unit test in auth_test.go)
+- TestIntegration_GRPCDefaultTimeout (RZ-31-05, methodConfig timeout)
+- TestIntegration_OTELCompositePropagator (MOD-31-02, W3C TraceContext + Baggage)
+
+### Deferred from §Decision
+
+The following §Decision items are deferred — three are blocked on production code
+that does not yet exist; one is a structural test that will land alongside its
+production component:
+
+1. **ws-hub: NATS JetStream ack/Nak/redeliver** — current ws-hub uses core NATS
+   pub/sub for `chat.*` / `notifications.*` / `cache.invalidate`. NakWithDelay
+   paths fire only when the message has a non-empty Reply subject (JetStream ack
+   protocol). Adding JetStream-mode tests requires `tcnats.WithArgument("jetstream", "")`
+   and a different message-flow assertion. Future-wave work.
+
+2. **ws-hub: JWKS hot-reload** — exercised by the `keys.rotated` NATS subject
+   path. Requires a JWKS server fixture (httptest serving a JSON Web Key Set)
+   plus a token-signing harness. Reasonably scoped as its own future-wave item.
+
+3. **file-processor: ClamAV scan** — ClamAV is not yet integrated in production
+   code (workflow.go:57 has `// v2: reserved — add e.g. a ClamAV scan activity here`).
+   §Decision test #1 was rescoped to a MinIO-only happy path covering the
+   existing production code path (`PutObject → ResizeImageActivity → GetObject`).
+   ClamAV integration test will be added when ClamAV scanning lands.
+
+4. **gateway: Redis-backed circuit breaker** — `RedisCircuitBreaker` exists in
+   the Python backend (`app/core/ratelimit/circuit_breaker.py`, PERF-30-01) but
+   not in the Go gateway. The gateway uses a 2-tier rate-limit fallback
+   (P0-W5-04 / RZ-22-06) which is now covered by
+   TestIntegration_RateLimiterRedisInMemoryFallback. Porting the circuit
+   breaker to Go (with `sony/gobreaker`) is a separate scope decision.
+
+### Migration status
+
+Per §Migration step 5, the new CI jobs (`go-integration-{ws-hub,file-processor,gateway}`)
+are wired as **non-blocking initially**. Promotion to required is conditional on
+a 30-day flake rate < 1 % — track via the workflow run history. The reusable
+workflow at `.github/workflows/reusable-go-integration-tests.yml` was added in
+commit `31e12af5f` (routine-e5 scaffolding); each service's `Makefile` already
+has the `test-integration` target.
 
 ## References
 
