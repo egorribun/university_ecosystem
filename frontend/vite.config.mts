@@ -6,7 +6,19 @@ import react from "@vitejs/plugin-react"
 import babel from "@rolldown/plugin-babel"
 import wasm from "vite-plugin-wasm"
 import { VitePWA } from "vite-plugin-pwa"
-import { TanStackRouterVite } from "@tanstack/router-vite-plugin"
+// Wave 125 Phase 1 — replaced @tanstack/router-vite-plugin with
+// @tanstack/react-start/plugin/vite. tanstackStart() includes the file-based
+// router codegen functionality (via `router.routesDirectory`) that
+// TanStackRouterVite() previously provided, plus SPA-mode shell + future
+// SSR/RSC infrastructure. SPA mode (`spa: { enabled: true }`) preserves
+// current SPA runtime behavior; Phase 2 (W126+) splits main.tsx into
+// server.ts + client.ts and starts using nitro server runtime.
+//
+// Plugin order constraint per Context7 docs (build-from-scratch.md):
+// "react's vite plugin must come after start's vite plugin" — see plugins
+// array below where tanstackStart() stays at index 0 and react() is at
+// index 3.
+import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
@@ -191,11 +203,81 @@ export default defineConfig(({ mode }) => {
       }
 
   const plugins: PluginOption[] = [
-    TanStackRouterVite({
-      routesDirectory: resolve(srcDir, "routes"),
-      generatedRouteTree: resolve(srcDir, "routeTree.gen.ts"),
-      quoteStyle: "double",
-    }),
+    // Wave 125 Phase 1 — TanStack Start v1 plugin (no spa.enabled, no
+    // prerender). Replaces the prior TanStackRouterVite() plugin call
+    // (file-based router codegen is now bundled into tanstackStart).
+    // Routes still live in src/routes/ and routeTree.gen.ts is regenerated
+    // at the same path (defaults: src is srcDirectory, routes is
+    // router.routesDirectory).
+    //
+    // *** Phase 1 scope deviation from design doc §3 ***
+    //
+    // Design doc said `spa: { enabled: true }`. Empirically this triggers
+    // a build-time SPA shell prerender (rendering `__root.tsx` via React
+    // SSR to produce `_shell.html`). The schema's spa.prerender transform
+    // hardcodes `enabled: true` after user options spread — there is no
+    // config-level way to disable shell prerender while SPA mode is on.
+    //
+    // Our `__root.tsx` calls into MainLayout / InstallPrompt /
+    // OfflineIndicator etc. which depend on AppShellProvider +
+    // AuthProvider + ThemeProvider mounted in main.tsx's runtime tree.
+    // Those providers do NOT exist during build-time shell SSR (the
+    // shell render bypasses main.tsx and goes straight through __root).
+    // Result: `useAppShell must be used within an AppShellProvider`
+    // throws and shell prerender fails. Hoisting providers into __root
+    // (or splitting main.tsx → server.ts + client.ts with providers
+    // wrapping <StartClient />) is design doc Phase 2 work — out of
+    // Phase 1 scope per the explicit "honest deferral threshold".
+    //
+    // Workaround for Phase 1: omit the `spa:` config entirely. Without
+    // spa mode, top-level `prerender.enabled` defaults to undefined
+    // (prerender off), so no shell SSR is attempted. The plugin still
+    // builds client + server bundles into dist/, the runtime SPA still
+    // works (main.tsx drives RouterProvider as before, route changes
+    // are client-side). Phase 2 will turn SPA mode back on once
+    // providers are hoisted.
+    //
+    // `router.quoteStyle: "double"` preserves the project formatting
+    // convention for the auto-generated `routeTree.gen.ts` (W124 used
+    // the same option on the legacy TanStackRouterVite plugin). Without
+    // it, the regenerator switches to single quotes, drifting from the
+    // rest of the codebase.
+    //
+    // Filter out tanstackStart's `dev-server` and `preview-server`
+    // sub-plugins. They unconditionally hijack `vite dev` and `vite
+    // preview` to load `dist/server/server.js` and run React SSR for
+    // every request — same provider-tree dependency as the SPA shell
+    // prerender (uses __root.tsx without main.tsx's AppShellProvider /
+    // ThemeProvider / etc., throws `useAppShell must be used within an
+    // AppShellProvider`). There is no config-level opt-out (verified
+    // against the Vite plugin source in node_modules/@tanstack/
+    // start-plugin-core/dist/esm/vite/{dev-server,preview-server}-
+    // plugin/plugin.js — both are added unconditionally to the plugin
+    // array). The router-plugin, import-protection, and start-compiler
+    // plugins (which the build needs) survive the filter.
+    //
+    // Phase 2 (W126) will remove this filter once main.tsx is split
+    // into server.ts + client.ts and the provider tree wraps
+    // `<StartClient />`. Until then, `npm run dev` and `npm run
+    // preview` need this filter to behave like pre-W125 SPA Vite.
+    ...(() => {
+      const startPluginsRaw = tanstackStart({
+        router: { quoteStyle: "double" },
+      })
+      const flat = (Array.isArray(startPluginsRaw) ? startPluginsRaw : [startPluginsRaw]).flat(
+        Infinity
+      ) as PluginOption[]
+      const ssrHijackNames = new Set([
+        "tanstack-start-core:dev-server",
+        "tanstack-start-core:dev-server:injected-head-scripts",
+        "tanstack-start-core:preview-server",
+      ])
+      return flat.filter((p) => {
+        if (!p || typeof p !== "object") return true
+        const name = (p as { name?: string }).name
+        return !name || !ssrHijackNames.has(name)
+      })
+    })(),
     wasm(),
     withGeneratedManifests(),
     react(),
@@ -333,6 +415,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: "/",
+    // Wave 125 Phase 1 — explicit `appType: "spa"` overrides tanstackStart's
+    // `tanstack-start-core:config` plugin default of `"custom"` (which
+    // disables Vite's built-in SPA middleware that falls back to
+    // `index.html` for unknown routes). Combined with the dev-server /
+    // preview-server plugin filter above, this restores `vite dev` and
+    // `vite preview` to pre-W125 SPA semantics. Phase 2 (W126) will
+    // remove this override once tanstackStart's SSR runtime works
+    // correctly with our provider tree.
+    appType: "spa",
     plugins,
     resolve: {
       alias: {

@@ -20,17 +20,38 @@ export interface RouterContext {
 // real-user navigation UX — prod tree-shakes the branch to `true`.
 const LHCI_VIEW_TRANSITION = import.meta.env.VITE_LHCI !== "true"
 
-export const router = createRouter({
-  routeTree,
-  context: {
-    auth: undefined!,
-    queryClient: undefined!,
-  },
-  defaultPreload: "intent",
-  defaultPreloadStaleTime: 0,
-  scrollRestoration: true,
-  defaultViewTransition: LHCI_VIEW_TRANSITION,
-})
+// Wave 125 Phase 1 — TanStack Start v1's start-client-core/hydrateStart
+// imports `getRouter` from `#tanstack-router-entry` (mapped to this file
+// by the tanstackStart() Vite plugin). Even in SPA mode the hydration
+// entry is bundled (for forward-compat with Phase 2+ SSR), so we MUST
+// expose a `getRouter` factory. Returning a fresh router each call
+// matches the SSR-friendly contract documented in Context7
+// /websites/tanstack_start_framework_react migrate-from-next-js.md;
+// SPA-mode runtime only invokes it once at hydration so behavior is
+// equivalent to returning a singleton.
+//
+// `export const router` is preserved for App.tsx (the existing runtime
+// consumer); both expressions resolve to the same `createRouter()` call
+// shape, so the TypeScript Register module-augmentation below stays
+// accurate.
+const createAppRouter = () =>
+  createRouter({
+    routeTree,
+    context: {
+      auth: undefined!,
+      queryClient: undefined!,
+    },
+    defaultPreload: "intent",
+    defaultPreloadStaleTime: 0,
+    scrollRestoration: true,
+    defaultViewTransition: LHCI_VIEW_TRANSITION,
+  })
+
+export function getRouter() {
+  return createAppRouter()
+}
+
+export const router = createAppRouter()
 
 declare module "@tanstack/react-router" {
   interface Register {
