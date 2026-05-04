@@ -50,7 +50,7 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 	ctx := context.Background()
 
 	natsContainer, err := tcnats.Run(ctx,
-		"nats:2.12-alpine",
+		"nats:2.12.6-alpine",
 		// JetStream not required for the cache.invalidate / chat.* / notifications.*
 		// subjects this test suite covers — they run on core NATS pub/sub.
 		// JetStream-specific tests (PERF-22-01 NakWithDelay redelivery) would
@@ -109,7 +109,7 @@ func startRedisContainer(t *testing.T) (*redis.Client, func()) {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7-alpine",
+	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {
@@ -541,7 +541,7 @@ func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
 	// BEFORE WebSocket upgrade. Use raw http.Get (NOT dialer) to surface the
 	// 503 cleanly; dialer would convert it to "websocket: bad handshake".
 	httpURL := server.URL + "/?ticket=" + tok3
-	resp, err := http.Get(httpURL)
+	resp, err := http.Get(httpURL) //nolint:gosec // G107 — variable URL is httptest.Server local URL
 	require.NoError(t, err, "raw HTTP GET to 3rd connection must complete")
 	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode,

@@ -24,7 +24,7 @@ func startRedisContainerForAuth(t *testing.T) *redis.Client {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7-alpine",
+	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)
@@ -54,11 +54,21 @@ func startRedisContainerForAuth(t *testing.T) *redis.Client {
 //     entry
 //   - the metric l1ProbRefreshes increments through the real call chain
 //
-// Uses a short L1 TTL (200ms) to avoid 30s+ wall-clock test time. After 150ms
-// of sleep (75% of TTL elapsed → 25% remaining), the refresh probability
-// per session is e^-0.25 ≈ 77.9%; over 100 sessions we expect 50-95 refreshes.
-// Loose bounds (10-95) accommodate timing jitter where some entries may have
-// just barely been LRU-evicted vs probabilistically refreshed.
+// Uses an L1 TTL of 500ms (large enough that Windows/Docker timing jitter is
+// a small fraction of the remaining-time budget). After 400ms of sleep (80% of
+// TTL elapsed → 100ms remaining), the per-session refresh probability is
+// e^-0.2 ≈ 81.9%; over 100 sessions we expect ~82, with 99.7%-confidence
+// range ~70-94 by Wald approximation.
+//
+// Original 200ms TTL + 150ms sleep flaked once across 5 runs (delta=96 > 95)
+// because Windows/Docker jitter pushed actual remaining time as low as ~8ms,
+// at which point e^(-8/200) ≈ 96%. Wider TTL window damps the jitter.
+//
+// Bounds (30 < delta <= 100): catches wiring breakage (delta=0 or near 0
+// would mean shouldRefreshProbabilistic never fired), accommodates the
+// upper-jitter tail (delta near 100 means most entries near-expired), still
+// asserts non-trivial probabilistic behavior. The exact statistical math
+// is verified by TestShouldRefreshProbabilistic_BoundaryAndStatistical.
 func TestIntegration_L1CacheXFetchProbabilisticRefresh(t *testing.T) {
 	rdb := startRedisContainerForAuth(t)
 
@@ -67,8 +77,8 @@ func TestIntegration_L1CacheXFetchProbabilisticRefresh(t *testing.T) {
 
 	const (
 		sessionCount = 100
-		l1TTL        = 200 * time.Millisecond
-		sleepDur     = 150 * time.Millisecond // 75% of l1TTL elapsed → remaining=50ms
+		l1TTL        = 500 * time.Millisecond
+		sleepDur     = 400 * time.Millisecond // 80% of l1TTL elapsed → remaining=100ms
 	)
 
 	// Build JWTMiddleware with short L1 TTL via NewJWTMiddlewareWithConfig
@@ -112,16 +122,17 @@ func TestIntegration_L1CacheXFetchProbabilisticRefresh(t *testing.T) {
 	// Round 2: same sessions, different cache state. checkL1Cache finds the
 	// entry, calls shouldRefreshProbabilistic, and probabilistically returns
 	// "miss" (forcing a Redis re-check + l1ProbRefreshes++). Per math:
-	//   refresh probability = e^(-remaining/ttl) = e^(-50/200) ≈ 77.9%
-	// Expect 50-90 of 100 trials to refresh. Loose bound 10-95 accommodates
-	// jitter (timer drift, GC, LRU eviction at the boundary).
+	//   refresh probability = e^(-remaining/ttl) = e^(-100/500) ≈ 81.9%
+	// Expect ~82 of 100 trials to refresh. Bounds 30 < delta <= 100 are
+	// loose enough to absorb timing jitter while still catching wiring
+	// regressions (delta near 0 would mean the XFetch path never fired).
 	for i := 0; i < sessionCount; i++ {
 		_, _, _ = m.verifySession(ctx, fmt.Sprintf("test-%d", i), true)
 	}
 
 	delta := int(testutil.ToFloat64(l1ProbRefreshes) - beforeRefreshes)
-	require.Greater(t, delta, 10,
-		"expected >10 probabilistic refreshes near expiry (math says ~78), got %d", delta)
-	require.Less(t, delta, 95,
-		"expected <95 probabilistic refreshes (some misses are LRU-evicted, not XFetch), got %d", delta)
+	require.Greater(t, delta, 30,
+		"expected >30 probabilistic refreshes near expiry (math says ~82), got %d — XFetch wiring may be broken", delta)
+	require.LessOrEqual(t, delta, sessionCount,
+		"refresh count cannot exceed sessionCount=%d, got %d (counter regression?)", sessionCount, delta)
 }

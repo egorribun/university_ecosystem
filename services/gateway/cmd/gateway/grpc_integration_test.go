@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/stretchr/testify/require"
+	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -38,10 +38,11 @@ func (s *slowFileProcessor) ProcessFile(ctx context.Context, _ *pb.ProcessFileRe
 // We use 200ms here for a fast test of the SAME mechanism.
 //
 // Path:
-//   client.ProcessFile(ctx, req)
-//     → grpc-go applies methodConfig timeout (200ms here, 30s in prod)
-//     → server sleep > timeout
-//     → client returns codes.DeadlineExceeded
+//
+//	client.ProcessFile(ctx, req)
+//	  → grpc-go applies methodConfig timeout (200ms here, 30s in prod)
+//	  → server sleep > timeout
+//	  → client returns codes.DeadlineExceeded
 func TestIntegration_GRPCDefaultTimeout(t *testing.T) {
 	// Spin up a real in-process gRPC server on a random port.
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

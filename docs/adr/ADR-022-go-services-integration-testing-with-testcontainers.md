@@ -70,18 +70,26 @@ The actual implementation work is owned by the primary device's wave queue.
 
 ## Implementation Notes (2026-05-04)
 
-Implemented across routine commits `b65ba02a1` (2 of 11 ws-hub tests) and the
-follow-up routine-e5 commit set (8 more tests across all 3 services), totaling
-**10 of 11 §Decision tests landed**. Versions used:
+Implemented across routine commits `b65ba02a1` (2 foundational ws-hub NATS
+tests, beyond §Decision scope — sanity checks for the testcontainers-go ↔
+Hub.Broadcast pipeline + parse-boundary defense) and the follow-up routine-e5
+commit set (10 more integration tests + 1 companion unit test across all 3
+services). Of the 11 §Decision items, **7 are shipped** (one with the ClamAV
+portion of fp.1 deferred — see §Deferred); the remaining **4 are deferred**
+fully. Total: **12 integration tests + 1 companion unit test landed**.
 
-- testcontainers-go: v0.42.0 (modules/nats, modules/redis, modules/minio)
-- nats:2.12-alpine
-- redis:7-alpine
-- minio/minio:RELEASE.2025-09-07T16-13-09Z (matches prod docker-compose)
+Versions used (test-side pins match prod docker-compose exactly):
 
-Each service's `make test-integration` target runs its tier in 2-15 seconds on
-warm Docker. Cold first-run pulls ~150 MB of images (NATS ~20, Redis ~15,
-MinIO ~80, Ryuk reaper ~10).
+- testcontainers-go: v0.42.0 (modules/nats, modules/redis, modules/minio) — latest as of 2026-04-09
+- nats:2.12.6-alpine (exact pin matching `docker-compose.yml`)
+- redis:7.4.2-alpine (exact pin matching `docker-compose.yml`)
+- minio/minio:RELEASE.2025-09-07T16-13-09Z (exact pin matching `docker-compose.full.yml`)
+
+Each service's `make test-integration` target runs its tier in 1.5-7 seconds
+on warm Docker (1.5s file-processor, 2.9s gateway, 6.3s ws-hub at -count=1).
+Cold first-run pulls ~360 MB of images (NATS ~40 MB, Redis ~61 MB, MinIO
+~241 MB, Ryuk reaper ~14 MB) — measured on dev machine 2026-05-04 via
+`docker image ls`.
 
 ### Tests landed
 
@@ -97,9 +105,10 @@ MinIO ~80, Ryuk reaper ~10).
 - TestIntegration_GraphQLDepthAndTimeout (RZ-24-05, depth=10 + timeout=30s)
 - TestIntegration_GRPCPathTraversalRejection (RZ-27-04 + RZ-26-04)
 
-**gateway (4 tests)** — `services/gateway/{middleware,cmd/gateway}/*_integration_test.go`:
+**gateway (4 integration + 1 unit)** — `services/gateway/{middleware,cmd/gateway}/*_integration_test.go` + `auth_test.go`:
 - TestIntegration_RateLimiterRedisInMemoryFallback (replaces RedisCircuitBreaker — see §Deferred)
-- TestIntegration_L1CacheXFetchProbabilisticRefresh (PERF-31-02; companion unit test in auth_test.go)
+- TestIntegration_L1CacheXFetchProbabilisticRefresh (PERF-31-02 — wiring; bounds 30 < delta ≤ 100 over 100 sessions, TTL 500 ms + sleep 400 ms = 100 ms remaining → e^-0.2 ≈ 81.9% expected refresh rate; verified flake-free across 10 consecutive runs)
+- TestShouldRefreshProbabilistic_BoundaryAndStatistical (companion unit test — derives e^(-remaining/ttl) refresh rate via 1000-trial Wald sampling on synthetic timestamps; verified flake-free across 10 consecutive runs)
 - TestIntegration_GRPCDefaultTimeout (RZ-31-05, methodConfig timeout)
 - TestIntegration_OTELCompositePropagator (MOD-31-02, W3C TraceContext + Baggage)
 
@@ -140,6 +149,30 @@ a 30-day flake rate < 1 % — track via the workflow run history. The reusable
 workflow at `.github/workflows/reusable-go-integration-tests.yml` was added in
 commit `31e12af5f` (routine-e5 scaffolding); each service's `Makefile` already
 has the `test-integration` target.
+
+### Quality gates
+
+All 12 integration tests + the companion unit test pass each of the following
+gates as of close-out:
+
+- `go test -tags integration -count=1 -timeout 5m ./...` per service: 0 failures
+- `go vet -tags integration ./...` per service: 0 issues
+- `gofmt -l` on all 9 new/modified Go files: clean
+- `golangci-lint run --build-tags=integration` per service (config:
+  `.golangci.yml` with `exhaustive` linter per MOD-31-01): 0 issues
+- Probabilistic tests (`TestShouldRefreshProbabilistic_BoundaryAndStatistical`
+  + `TestIntegration_L1CacheXFetchProbabilisticRefresh`): 10 consecutive runs
+  each, 0 flakes (after relaxing the latter's bounds from 10–95 to 30–100
+  with TTL widened from 200 ms to 500 ms in the polish pass — Windows Docker
+  jitter pushed remaining time to ~8 ms in one run, e^-0.04 ≈ 96% > original
+  95% upper bound)
+
+Local `-race` flag is blocked on this Windows machine (no `gcc` in PATH;
+chocolatey `mingw` not installed); the production `Makefile` invocation
+`go test -tags integration -race -timeout 5m ./...` runs `-race` on CI Linux
+(GitHub-hosted Ubuntu runner has `gcc` pre-installed). The CI workflow
+`reusable-go-integration-tests.yml` calls `make test-integration`, so race
+detection is exercised on every PR + push to `main` / `develop` / `release/**`.
 
 ## References
 

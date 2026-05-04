@@ -31,10 +31,10 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
-// startRedisContainerForRateLimit spins up a real redis:7-alpine container
-// and returns the connection URL plus a Terminate function. Mirrors the
-// ws-hub helper pattern. The Terminate function is idempotent — safe to call
-// from t.Cleanup AND mid-test.
+// startRedisContainerForRateLimit spins up a real redis:7.4.2-alpine container
+// (exact prod docker-compose pin) and returns the connection URL plus a
+// Terminate function. Mirrors the ws-hub helper pattern. The Terminate
+// function is idempotent — safe to call from t.Cleanup AND mid-test.
 //
 // Per ADR-022 §"ownership stays with service code", this helper lives in the
 // gateway test code and is NOT shared with other services. Each service owns
@@ -43,7 +43,7 @@ func startRedisContainerForRateLimit(t *testing.T) (connStr string, terminate fu
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7-alpine",
+	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)
@@ -74,10 +74,11 @@ func startRedisContainerForRateLimit(t *testing.T) (connStr string, terminate fu
 // 2026-05-04 user-confirmed scope adjustment).
 //
 // Two-phase test:
-//   Phase A: with Redis up, 5 requests succeed (rps=100, well under limit).
-//   Phase B: terminate Redis, 4 requests — first 3 succeed via in-memory
-//            fallback (fallbackLimit=3 hardcoded at ratelimit.go:64), 4th
-//            gets 429 with Retry-After header set to fallbackWindow=60.
+//
+//	Phase A: with Redis up, 5 requests succeed (rps=100, well under limit).
+//	Phase B: terminate Redis, 4 requests — first 3 succeed via in-memory
+//	         fallback (fallbackLimit=3 hardcoded at ratelimit.go:64), 4th
+//	         gets 429 with Retry-After header set to fallbackWindow=60.
 func TestIntegration_RateLimiterRedisInMemoryFallback(t *testing.T) {
 	connStr, terminate := startRedisContainerForRateLimit(t)
 
@@ -104,9 +105,9 @@ func TestIntegration_RateLimiterRedisInMemoryFallback(t *testing.T) {
 		t.Helper()
 		// Use unique IP-equivalent header to ensure consistent client key.
 		// Gin's ClientIP() will return the test server's loopback by default.
-		resp, err := http.Get(server.URL + "/echo")
+		resp, err := http.Get(server.URL + "/echo") //nolint:gosec // G107 — variable URL is httptest.Server local URL
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ = io.ReadAll(resp.Body)
 		return resp.StatusCode, resp.Header.Get("Retry-After"), body
 	}

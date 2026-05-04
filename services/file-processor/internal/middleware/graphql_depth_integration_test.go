@@ -74,7 +74,7 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 
 		resp, err := http.Post(server.URL, "application/json", bytes.NewReader(body))
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		respBytes, _ := io.ReadAll(resp.Body)
 
 		// graphql_depth.go:47 explicitly writes StatusBadRequest on rejection.
@@ -92,7 +92,7 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 		body := []byte(`{"query":"{ a { b { c { d { e } } } } }"}`)
 		resp, err := http.Post(server.URL, "application/json", bytes.NewReader(body))
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		respBytes, _ := io.ReadAll(resp.Body)
 
 		require.Equal(t, http.StatusOK, resp.StatusCode,
@@ -113,7 +113,7 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 		resp, err := http.DefaultClient.Do(req)
 		elapsed := time.Since(start)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// Timeout middleware sets ctx deadline = 200ms. Inner handler returns
 		// 504 when ctx.Done fires before its 2s sleep completes.

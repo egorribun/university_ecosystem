@@ -150,7 +150,7 @@ func TestIntegration_MinIOResizeImageHappyPath(t *testing.T) {
 	// claim ("returned dest key") to the actual storage state.
 	obj, err := mc.GetObject(ctx, bucket, result.DestKey, minio.GetObjectOptions{})
 	require.NoError(t, err)
-	defer obj.Close()
+	defer func() { _ = obj.Close() }()
 	decoded, _, err := image.Decode(obj)
 	require.NoError(t, err)
 	require.Equal(t, 50, decoded.Bounds().Dx(), "dest image width must be 50px")

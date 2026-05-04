@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/stretchr/testify/require"
+	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

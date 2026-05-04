@@ -51,9 +51,11 @@ All notable changes to the API will be documented in this file.
   i18n parity 18/18; e2e Playwright chromium full sweep + URL-state
   6/6 + cross-browser a11y 14p + 2 flaky-passed (effective 16/0).
 - Backend (routine-e5): full ADR-022 testcontainers integration test
-  set landed across all three Go services — **10 of 11 §Decision tests
+  set landed across all three Go services — **7 of 11 §Decision items
   shipped** in this routine session (combined with prior session's
-  `b65ba02a1`). Run via `make -C services/{ws-hub,file-processor,gateway}
+  `b65ba02a1`); the remaining **4 are deferred** per ADR-022
+  §Implementation Notes. **12 integration tests + 1 companion unit
+  test landed**. Run via `make -C services/{ws-hub,file-processor,gateway}
   test-integration` (Docker required) or via the new CI jobs (advisory
   initially per ADR §Migration step 5).
   - **ws-hub (5 tests)**: `TestIntegration_NATSChatMessageDelivery`,
@@ -66,18 +68,23 @@ All notable changes to the API will be documented in this file.
     production code per workflow.go:57), `GraphQLDepthAndTimeout`
     (RZ-24-05 depth=10 + timeout=30s), `GRPCPathTraversalRejection`
     (RZ-27-04 + RZ-26-04 max key length 1024).
-  - **gateway (4 tests + 1 unit)**: `RateLimiterRedisInMemoryFallback`
-    (replaces planned RedisCircuitBreaker — gateway uses 2-tier
-    fallback per P0-W5-04 / RZ-22-06, not a circuit breaker),
+  - **gateway (4 integration + 1 unit)**:
+    `RateLimiterRedisInMemoryFallback` (replaces planned
+    RedisCircuitBreaker — gateway uses 2-tier fallback per P0-W5-04 /
+    RZ-22-06, not a circuit breaker),
     `L1CacheXFetchProbabilisticRefresh` (PERF-31-02 — paired with
     `TestShouldRefreshProbabilistic_BoundaryAndStatistical` unit test
-    deriving the e^(-remaining/ttl) refresh-rate formula),
-    `GRPCDefaultTimeout` (RZ-31-05), `OTELCompositePropagator`
-    (MOD-31-02, W3C TraceContext + Baggage).
-  - Versions: testcontainers-go v0.42.0; nats:2.12-alpine;
-    redis:7-alpine; minio/minio:RELEASE.2025-09-07T16-13-09Z (matches
-    prod docker-compose). All 12 integration tests pass on warm Docker
-    in ~10s combined wall-clock.
+    deriving the e^(-remaining/ttl) refresh-rate formula; both verified
+    flake-free across 10 consecutive runs after polish-pass bound
+    relaxation), `GRPCDefaultTimeout` (RZ-31-05),
+    `OTELCompositePropagator` (MOD-31-02, W3C TraceContext + Baggage).
+  - Versions (test-side pins match prod docker-compose exactly):
+    testcontainers-go v0.42.0 (latest as of 2026-04-09);
+    `nats:2.12.6-alpine`; `redis:7.4.2-alpine`;
+    `minio/minio:RELEASE.2025-09-07T16-13-09Z`. All 12 integration
+    tests pass on warm Docker in 1.5–6.3 s per service (~11 s combined).
+    Cold first-run pulls ~360 MB of images (NATS ~40, Redis ~61,
+    MinIO ~241, Ryuk ~14).
 
 ### Docs
 - ADR-022 (routine-e5): **finalized — Status `Proposed → Accepted
