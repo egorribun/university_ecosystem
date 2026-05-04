@@ -175,7 +175,7 @@ export function LessonCard({
           )}
           {/* Note indicator */}
           {hasNote && (
-            <span title={t("schedule:notes.hasNote", { defaultValue: "Has note" })}>
+            <span title={t("schedule:notes.hasNote")}>
               <NoteIcon
                 size={10}
                 className="shrink-0 text-[var(--lt-lab-accent)] opacity-60"

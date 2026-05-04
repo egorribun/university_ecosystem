@@ -154,10 +154,7 @@ export function NewsDetailEditDialog({
             </Field>
           </div>
           <div className="space-y-4">
-            <Field
-              label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
-              htmlFor="edit-title-en"
-            >
+            <Field label={t("news:form.title_en") ?? ""} htmlFor="edit-title-en">
               <Input
                 id="edit-title-en"
                 type="text"
@@ -168,10 +165,7 @@ export function NewsDetailEditDialog({
                 maxLength={100}
               />
             </Field>
-            <Field
-              label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
-              htmlFor="edit-content-en"
-            >
+            <Field label={t("news:form.content_en") ?? ""} htmlFor="edit-content-en">
               <Textarea
                 id="edit-content-en"
                 value={editData.content_en}

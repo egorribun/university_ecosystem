@@ -120,7 +120,7 @@ export function ScheduleDesktopTable({
               className="sched-sticky-col sched-sticky-header flex items-center justify-center border-b border-r px-2 py-3 text-xs font-bold text-text-muted-subtle"
               style={{ borderColor: "var(--sched-grid-border)" }}
             >
-              {t("schedule:table.rowNumber", { defaultValue: "№" })}
+              {t("schedule:table.rowNumber")}
             </div>
             {visibleDays.map(({ day, idx, label }, colI) => {
               const isTodayCol = hasToday && idx === todayIdx
@@ -193,9 +193,7 @@ export function ScheduleDesktopTable({
                       </div>
                     }
                     title={t("schedule:table.noLessons")}
-                    description={t("schedule:empty.selectGroup", {
-                      defaultValue: "Select a group to view the schedule",
-                    })}
+                    description={t("schedule:empty.selectGroup")}
                   />
                 )}
               </div>

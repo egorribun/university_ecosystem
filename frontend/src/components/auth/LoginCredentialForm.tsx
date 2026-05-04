@@ -25,7 +25,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
       control,
       formState: { errors },
     },
-    // savedEmail, // removed unused
     caps,
     setCaps,
     showPassword,

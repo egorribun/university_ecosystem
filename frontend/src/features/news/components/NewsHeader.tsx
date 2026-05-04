@@ -83,9 +83,9 @@ export const NewsHeader = ({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={t("news:search.placeholder", { defaultValue: "Search news..." })}
+            placeholder={t("news:search.placeholder")}
             className="w-full rounded-xl matte-input pl-9 pr-9 py-2 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none transition-shadow"
-            aria-label={t("news:search.placeholder", { defaultValue: "Search news..." })}
+            aria-label={t("news:search.placeholder")}
           />
           {searchQuery && (
             <button
@@ -134,7 +134,7 @@ export const NewsHeader = ({
                 : "matte-chip text-(--text-secondary)"
             )}
           >
-            {t("news:categories.all", { defaultValue: "All" })}
+            {t("news:categories.all")}
           </button>
 
           {/* Category pills */}
@@ -175,7 +175,7 @@ export const NewsHeader = ({
               )}
             >
               <BookmarkIcon size={12} />
-              <span>{t("news:categories.saved", { defaultValue: "Saved" })}</span>
+              <span>{t("news:categories.saved")}</span>
               <span className="tabular-nums">({bookmarkCount})</span>
             </button>
           )}
@@ -185,10 +185,8 @@ export const NewsHeader = ({
               does not fire (visible "Newest" must appear in accessible name). */}
           {(() => {
             const currentSortLabel =
-              sortMode === "newest"
-                ? t("news:sort.newest", { defaultValue: "Newest" })
-                : t("news:sort.popular", { defaultValue: "Popular" })
-            const sortPrefix = t("news:sort.label", { defaultValue: "Sort" })
+              sortMode === "newest" ? t("news:sort.newest") : t("news:sort.popular")
+            const sortPrefix = t("news:sort.label")
             return (
               <button
                 type="button"

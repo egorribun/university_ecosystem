@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from "react"
 import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import { File, Check, CheckCheck } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
@@ -14,6 +15,7 @@ interface ChatWindowProps {
 
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
 export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
@@ -45,7 +47,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
       ref={containerRef}
       role="log"
       aria-live="polite"
-      aria-label="Chat messages"
+      aria-label={t("messenger:aria.messageList")}
       className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
     >
       <div

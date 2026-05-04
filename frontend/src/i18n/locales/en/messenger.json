@@ -4,9 +4,11 @@
   "search": "Search",
   "searchMessages": "Search messages...",
   "selectChat": "Select a chat to start messaging",
+  "selectChatDesc": "Connect with anyone across the university ecosystem.",
   "newChat": "New Chat",
   "typeMessage": "Message",
   "searchUsers": "Search users",
+  "noUsersFound": "No users found matching your search",
   "online": "online",
   "offline": "offline",
   "attachPhoto": "Photo",
@@ -14,5 +16,20 @@
   "attachFile": "File",
   "viewProfile": "View Profile",
   "clearChat": "Clear Chat",
-  "deleteChat": "Delete Chat"
+  "deleteChat": "Delete Chat",
+  "profile": "Profile",
+  "loadingProfile": "Loading profile...",
+  "status": "Status",
+  "avatar": "Avatar",
+  "viewAvatar": "Open full size",
+  "clearChatTitle": "Clear Chat",
+  "confirmClear": "Clear chat history for everyone?",
+  "deleteChatTitle": "Delete Chat",
+  "confirmDelete": "Delete this chat for all participants?",
+  "profileLoadError": "Unable to load participant profile",
+  "aria": {
+    "messageList": "Chat messages",
+    "removeAttachment": "Remove attachment",
+    "attachments": "Attachments"
+  }
 }

@@ -7,6 +7,12 @@
     "goHome": "Go Home",
     "details": "Error details"
   },
+  "pageError": {
+    "title": "Page Error",
+    "description": "Something went wrong loading this page.",
+    "retry": "Try Again",
+    "home": "Go Home"
+  },
   "notificationsBell": {
     "open": "Open notifications",
     "title": "Notifications",

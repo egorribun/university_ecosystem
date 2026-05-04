@@ -275,3 +275,66 @@ func TestRequireRole_AcceptsMatchingRole(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	require.True(t, handlerCalled)
 }
+
+// TestShouldRefreshProbabilistic_BoundaryAndStatistical exercises the XFetch
+// refresh-probability function (PERF-31-02) directly with synthetic timestamps
+// — much faster + more deterministic than the integration test variant. Runs
+// in microseconds because no real wall-clock waits are involved.
+//
+// XFetch math (auth.go:450-461) for beta=1.0:
+//
+//	refresh = remaining < -ttl * ln(rand)
+//	       ↔ rand < e^(-remaining/ttl)
+//
+// So the refresh probability is e^(-remaining/ttl), monotonically increasing
+// from ~36.8% (full TTL remaining) toward 100% (entry near expiry).
+//
+// Three sub-tests:
+//   - expired_always_refreshes: remaining ≤ 0 short-circuit at line 452-454,
+//     no rand involvement, must always return true.
+//   - fresh_one_third_rate: just-stored entries with full TTL remaining
+//     refresh at ~36.8% rate (e^-1). Bounds 280-470 over 1000 trials.
+//   - near_expiry_high_rate: entries 80% through TTL (remaining=20% of TTL)
+//     refresh at ~81.9% rate (e^-0.2). Bounds 700-950 over 1000 trials.
+//
+// Companion to TestIntegration_L1CacheXFetchProbabilisticRefresh which wires
+// the same function through verifySession + real Redis.
+func TestShouldRefreshProbabilistic_BoundaryAndStatistical(t *testing.T) {
+	t.Run("expired_always_refreshes", func(t *testing.T) {
+		// storedAt 2s ago, TTL 1s → remaining = -1s; line 452 short-circuit.
+		require.True(t, shouldRefreshProbabilistic(time.Now().Add(-2*time.Second), time.Second, 1.0),
+			"expired entries (remaining ≤ 0) must always trigger refresh")
+	})
+
+	t.Run("fresh_one_third_rate", func(t *testing.T) {
+		// Just-stored entries with full 10s TTL remaining. Per the XFetch
+		// formula `rand < e^(-remaining/ttl)` for beta=1, fresh entries
+		// (remaining ≈ ttl) refresh at ~e^-1 ≈ 36.8%.
+		var fired int
+		for i := 0; i < 1000; i++ {
+			if shouldRefreshProbabilistic(time.Now(), 10*time.Second, 1.0) {
+				fired++
+			}
+		}
+		require.Greater(t, fired, 280,
+			"fresh entries must refresh at ~36.8%% (>28%%), got %d/1000", fired)
+		require.Less(t, fired, 470,
+			"fresh entries must refresh at ~36.8%% (<47%%), got %d/1000", fired)
+	})
+
+	t.Run("near_expiry_high_rate", func(t *testing.T) {
+		// 8s of 10s TTL elapsed → 2s remaining. Per `rand < e^(-remaining/ttl)`,
+		// refresh probability is e^-0.2 ≈ 81.9%.
+		storedAt := time.Now().Add(-8 * time.Second)
+		var fired int
+		for i := 0; i < 1000; i++ {
+			if shouldRefreshProbabilistic(storedAt, 10*time.Second, 1.0) {
+				fired++
+			}
+		}
+		require.Greater(t, fired, 700,
+			"near-expiry entries must refresh at ~81.9%% (>70%%), got %d/1000", fired)
+		require.Less(t, fired, 950,
+			"near-expiry entries must refresh at ~81.9%% (<95%%), got %d/1000", fired)
+	})
+}

@@ -208,7 +208,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
         </Field>
 
         <Field
-          label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
+          label={t("news:form.title_en") ?? ""}
           htmlFor={`news-edit-title-en-${id}`}
           error={errors.title_en?.message}
         >
@@ -221,7 +221,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
         </Field>
 
         <Field
-          label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
+          label={t("news:form.content_en") ?? ""}
           htmlFor={`news-edit-content-en-${id}`}
           error={errors.content_en?.message}
         >

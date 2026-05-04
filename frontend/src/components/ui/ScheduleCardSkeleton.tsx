@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ScheduleCardSkeletonProps {
@@ -12,11 +13,12 @@ interface ScheduleCardSkeletonProps {
  * Displays placeholder lesson items matching the real component structure.
  */
 export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCardSkeletonProps) {
+  const { t } = useTranslation()
   return (
     <div
       className={`rounded-2xl border border-glass-border-subtle bg-glass-elevated p-4 sm:p-5 ${className}`}
       aria-busy="true"
-      aria-label="Loading schedule"
+      aria-label={t("common:aria.loadingSchedule")}
     >
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">

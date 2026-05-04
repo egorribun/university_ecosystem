@@ -100,21 +100,21 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
     {
       id: "pdf",
       icon: FileText,
-      label: t("schedule:export.pdf", { defaultValue: "PDF" }),
+      label: t("schedule:export.pdf"),
       onClick: handleExportPdf,
       disabled: !gridRef?.current,
     },
     {
       id: "png",
       icon: Image,
-      label: t("schedule:export.png", { defaultValue: "PNG" }),
+      label: t("schedule:export.png"),
       onClick: handleExportPng,
       disabled: !gridRef?.current,
     },
     {
       id: "gcal",
       icon: FileDown,
-      label: t("schedule:export.googleCalendar", { defaultValue: "Google Calendar" }),
+      label: t("schedule:export.googleCalendar"),
       onClick: () => {
         // Opens Google Calendar with first lesson — user can adjust
         window.open("https://calendar.google.com/calendar/r/week", "_blank", "noopener")

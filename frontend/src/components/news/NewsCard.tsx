@@ -109,7 +109,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       await api.delete(`/news/${id}`)
       onChange?.()
     } catch (_e) {
-      setError(t("common:errors.generic", { defaultValue: "An error occurred" }))
+      setError(t("common:errors.generic"))
     } finally {
       setLoading(false)
       setConfirmDeleteOpen(false)

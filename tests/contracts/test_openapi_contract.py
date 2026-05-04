@@ -45,5 +45,5 @@ def test_core_routes_present(openapi_schema: dict, required_path_prefix: str):
 def test_openapi_contract_snapshot(openapi_schema: dict):
     assert SNAPSHOT_FILE.exists(), f"Snapshot file {SNAPSHOT_FILE} is missing"
 
-    expected_schema = json.loads(Path(SNAPSHOT_FILE).read_text())
+    expected_schema = json.loads(Path(SNAPSHOT_FILE).read_text(encoding="utf-8"))
     assert_openapi_superset(expected_schema, openapi_schema)

@@ -114,8 +114,8 @@ export default function Messenger() {
         open={confirmDialog?.open ?? false}
         title={confirmDialog?.title ?? ""}
         message={confirmDialog?.message ?? ""}
-        confirmText={confirmDialog?.confirmText || t("common:confirm", "Confirm")}
-        cancelText={confirmDialog?.cancelText || t("common:cancel", "Cancel")}
+        confirmText={confirmDialog?.confirmText || t("common:buttons.confirm")}
+        cancelText={confirmDialog?.cancelText || t("common:buttons.cancel")}
         variant={confirmDialog?.variant}
         onConfirm={confirmDialog?.onConfirm ?? (() => {})}
         onCancel={() => setConfirmDialog(null)}

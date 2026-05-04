@@ -1,3 +1,30 @@
+/**
+ * @fileoverview Login + MFA challenge state machines.
+ *
+ * Two top-level hooks live here:
+ *
+ *   1. ``useLoginForm()`` — react-hook-form-driven email/password
+ *      login + WebAuthn passkey path. Owns:
+ *        * caps-lock + show/hide-password UI state;
+ *        * email-suggestion debounce (Levenshtein-fuzzy via
+ *          ``suggestEmailDomain``) + apply;
+ *        * "remember device" persistence via ``useLocalStorage``
+ *          (key: ``auth:trustDevice``);
+ *        * ``onSubmit`` that delegates to ``AuthContext.login`` and
+ *          either redirects to ``redirectPath`` or hands off to
+ *          ``useMfaFlow`` when a challenge is returned;
+ *        * ``handlePasskeyLogin`` for WebAuthn navigator.credentials.
+ *
+ *   2. ``useMfaFlow()`` — drives the MFA challenge views (TOTP code +
+ *      WebAuthn). Splits errors into ``totp`` (per-input) vs
+ *      ``general`` (banner) sources so the MfaChallengeView can render
+ *      them in distinct slots. Locks recover via the
+ *      ``ChallengeLockedError`` instance check.
+ *
+ * The flow as a whole is best verified end-to-end (Track D / Playwright
+ * specs) — the unit-level kernel is the deterministic email-suggestion
+ * utility (covered by ``utils/authUtils.test.ts``).
+ */
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -16,6 +43,28 @@ type ChallengeMethod = PendingMfaState["methods"][number]
 export type ChallengeWithAttempts = ChallengeMethod &
   Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
 
+/**
+ * State machine for the email/password login screen including the
+ * passkey side path. Composes ``react-hook-form`` (validated via
+ * Valibot ``loginSchema``) with the project's ``AuthContext.login``,
+ * the local ``auth:lastEmail`` / ``auth:trustDevice`` keys, and a
+ * fuzzy email-domain suggestion (``suggestEmailDomain``).
+ *
+ * State transitions of interest:
+ *  - submit → ``AuthContext.login`` → either redirect to
+ *    ``redirectPath`` or surface a ``pendingMfa`` (which
+ *    ``useMfaFlow`` then drives).
+ *  - email blur → ``trigger("email")`` then debounced suggestion
+ *    population; ``applySuggestion()`` writes the suggested address
+ *    back into the form and clears the suggestion banner.
+ *  - passkey button → ``loginWithPasskey`` over WebAuthn
+ *    ``navigator.credentials`` then redirect.
+ *
+ * @returns Surface consumed by ``LoginCredentialForm`` —
+ *   form instance + caps/showPassword UI flags + suggestion handles
+ *   + activeEmail/submitting/error fields + passkey + trustDevice
+ *   wires + ``onSubmit`` already wrapped by ``handleSubmit``.
+ */
 export function useLoginForm() {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
@@ -163,6 +212,25 @@ export function useLoginForm() {
   }
 }
 
+/**
+ * State machine for the post-login MFA challenge screen. Drives both
+ * the TOTP code-input and the WebAuthn security-key paths, sharing a
+ * single ``mfaBusy`` flag and a split error model:
+ *  - ``mfaError`` + ``mfaErrorSource: "totp"`` — render under the
+ *    OTP digit row (per-input feedback);
+ *  - ``mfaError`` + ``mfaErrorSource: "general"`` — render in the
+ *    page-level banner (e.g. challenge expired, account locked).
+ *
+ * ``ChallengeLockedError`` is the only error class that always
+ * routes to the general banner regardless of which method triggered
+ * it — anything else from the TOTP path stays in the per-input
+ * source so the user can correct + retry without losing context.
+ *
+ * @returns Handles consumed by ``MfaChallengeView``: split challenge
+ *   pointers (``otpChallenge`` / ``webauthnChallenge``), busy +
+ *   error state, the two verify callbacks, and error setters for
+ *   the optimistic-clear path on subsequent input.
+ */
 export function useMfaFlow() {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()

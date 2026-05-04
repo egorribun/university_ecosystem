@@ -1,6 +1,7 @@
 {
   "defaultTitle": "University Ecosystem",
   "defaultBody": "You have a new notification.",
+  "new": "New",
   "toast": {
     "open": "Open"
   },

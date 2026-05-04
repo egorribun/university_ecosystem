@@ -23,9 +23,9 @@ export function RelatedNews({ items }: RelatedNewsProps) {
   if (items.length === 0) return null
 
   return (
-    <section aria-label={t("news:related.title", { defaultValue: "Related articles" })}>
+    <section aria-label={t("news:related.title")}>
       <h2 className="text-lg font-bold tracking-tight text-text-primary mb-4">
-        {t("news:related.title", { defaultValue: "Related articles" })}
+        {t("news:related.title")}
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

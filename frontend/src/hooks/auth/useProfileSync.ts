@@ -1,3 +1,26 @@
+/**
+ * @fileoverview Background user-profile fetch + cache-versioned localStorage.
+ *
+ * Owns three concerns that AuthContext delegates here:
+ *
+ * 1. **Background sync** — on mount + on auth-state change, fetches
+ *    ``/me/profile`` via TanStack Query and pushes the result into the
+ *    Zustand auth store (``useAuthStore.setState``).
+ * 2. **Versioned local cache** — profile snapshot is persisted to
+ *    ``localStorage`` under ``ecosystem.profile.cache.v{N}`` so the UI
+ *    can render immediately on cold load. ``PROFILE_CACHE_SCHEMA_VERSION``
+ *    is bumped whenever the shape changes — older keys
+ *    (``LEGACY_PROFILE_CACHE_KEYS``) are evicted on upgrade so stale PII
+ *    cannot linger.
+ * 3. **VITE_LHCI bypass** — when ``import.meta.env.VITE_LHCI === "true"``
+ *    the hook synthesises a mock user (``id: "lhci-mock-user"``) so
+ *    Lighthouse can score authenticated routes without a real backend.
+ *    This branch is tree-shaken from prod builds (``VITE_LHCI`` is
+ *    rewritten to ``"false"`` at build time).
+ *
+ * Cache TTL: 5 minutes — refetch happens in the background; the cached
+ * snapshot serves the first paint.
+ */
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
@@ -490,6 +513,57 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
   }
 }
 
+/**
+ * AuthContext-side profile state machine. Owns the cached user
+ * snapshot, the ``loading`` / ``pendingMfa`` flags, and the
+ * authoritative ``handleUnauthorized`` + ``setUser`` actions.
+ *
+ * Lifecycle on mount:
+ *  1. Synchronous bootstrap from ``localStorage`` —
+ *     ``verifySignatureSync`` (HMAC-SHA256 via @noble/hashes,
+ *     constant-time compare) on the ``CachedProfileEnvelope``. If
+ *     the v3 plaintext shape is present, it short-circuits to a
+ *     fully populated ``User``; v4+ encrypted shapes return a
+ *     placeholder with ``id: "-1"`` until the async init completes.
+ *  2. Async init effect — ``readCachedUserAsync`` runs
+ *     ``crypto.subtle.verify`` (constant-time) + AES-GCM decrypt of
+ *     the encrypted snapshot. Replaces the placeholder with the
+ *     real cached user.
+ *  3. ``fetchCurrentUser({ signal })`` — calls ``/users/me`` with
+ *     the previous envelope as ``X-Profile-Cache-Envelope`` header
+ *     for backend-side cache validation. On 401 invokes
+ *     ``handleUnauthorized``; any other error logs and leaves the
+ *     cached state intact.
+ *  4. ``VITE_LHCI=true`` short-circuit synthesises a mock user
+ *     (``id: "lhci-mock-user"``) so Lighthouse can score
+ *     authenticated routes. Tree-shaken from prod builds.
+ *
+ * Cross-tab sync: ``window.addEventListener("storage", …)`` mirrors
+ * cache mutations + ``BroadcastChannel("ecosystem.profile.sync")``
+ * propagates ``unauthorized`` / ``mfa-pending`` / ``mfa-cleared``
+ * events between tabs.
+ *
+ * Auth-store mirror: every change pushes ``user`` / ``loading`` /
+ * ``pendingMfa`` / ``authOperation`` into ``useAuthStore`` via
+ * ``setState``. Components that just need to read auth state
+ * subscribe to the store directly rather than threading the hook
+ * return through context.
+ *
+ * @param updateSessionSigningKey - Provided by ``useSessionCrypto``;
+ *   called from ``handleUnauthorized`` to clear the session key.
+ * @param sessionSigningKeyRef - Live ref to the current key, read by
+ *   the encrypted-cache verify/decrypt path without re-rendering.
+ * @param sessionSigningKeyPromiseRef - Live ref to the in-flight
+ *   key fetch promise, cleared on logout so the next call retries.
+ * @param ensureSessionSigningKey - Lazy fetcher; called after
+ *   ``/users/me`` succeeds to make sure subsequent signed mutations
+ *   have a key to use.
+ * @returns ``user`` snapshot + ``setUser`` setter, the combined
+ *   ``loading`` flag (initialising OR mid-auth-op), the pending
+ *   MFA challenge object, and the actions
+ *   (``updatePendingMfa``, ``handleUnauthorized``,
+ *   ``setAuthOperation``).
+ */
 export const useProfileSync = (
   updateSessionSigningKey: (key: string | null) => void,
   sessionSigningKeyRef: React.MutableRefObject<string | null>,

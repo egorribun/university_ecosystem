@@ -1,3 +1,19 @@
+"""Chat notification service — fan-out for new-message events.
+
+Two delivery channels run in parallel for every new message:
+
+1. WebSocket broadcast via ``ws_manager.broadcast_to_chat`` — every
+   connected participant *except the sender* receives a serialised
+   message payload in real time.
+2. Push notification via ``create_notifications_for_users`` — every
+   non-sender participant gets an in-app + push entry. UUIDs in
+   ``payload_data`` are stringified because UUID is not natively
+   JSON-serialisable.
+
+The body preview is truncated at 100 chars + "..." to keep push payloads
+under platform-imposed size limits.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING  # TD-23-04 (audit 2026-03-25 Wave 23)

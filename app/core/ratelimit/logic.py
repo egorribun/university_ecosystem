@@ -31,7 +31,41 @@ async def check_rate_limit(
     window_seconds: int,
     redis_url: str | None = None,
 ) -> RateLimitInfo:
-    """Check a rate limit for an arbitrary identifier."""
+    """Check a rate limit for an arbitrary identifier.
+
+    The function picks one of three execution paths depending on inputs:
+
+    * ``settings.rate_limit_enabled is False`` — short-circuits with
+      ``RateLimitInfo(allowed=True, remaining=limit, retry_after=0)`` so
+      tests / dev environments are unaffected.
+    * ``redis_url`` looks like a Redis URL AND the circuit breaker is
+      not OPEN — runs ``RedisSlidingWindowStrategy`` with a Lua script.
+      On ``RedisError`` / ``OSError`` the breaker records a failure and the
+      request falls through to the in-memory fallback below.
+    * Fallback or no-redis path — uses ``MemorySlidingWindowStrategy`` at
+      ``max(limit // 2, 1)``. The 50 % cap prevents a stale memory window
+      from acting as a permissive backdoor when Redis is down across
+      multiple workers.
+
+    Raises ``ValueError`` on ``limit <= 0`` or ``window_seconds <= 0`` —
+    both are silent-misconfiguration vectors and must surface immediately.
+
+    Args:
+        identifier: Per-key value (user id, IP, anonymous nonce, etc.).
+        namespace: Logical bucket prefix; combined with ``identifier`` via
+            ``compose_identifier``.
+        limit: Maximum allowed requests inside ``window_seconds``. Must be
+            positive.
+        window_seconds: Sliding-window length in seconds. Must be positive.
+        redis_url: Optional Redis connection URL. When None / non-Redis,
+            the in-memory strategy is used directly (without the breaker
+            or the 50 % fallback cap).
+
+    Returns:
+        ``RateLimitInfo`` describing whether the call is allowed, how many
+        requests remain inside the current window, and the seconds until
+        the oldest request slides out.
+    """
     # RZ-W19-05 (audit 2026-03-24 Wave 19): validate invariants to prevent
     # silent misconfiguration (e.g., limit=0 disables protection entirely,
     # negative window causes Lua script errors in Redis).

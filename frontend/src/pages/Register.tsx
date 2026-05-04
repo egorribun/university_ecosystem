@@ -144,7 +144,7 @@ const Register = () => {
   ]
 
   const inviteHint = needsInvite
-    ? t("auth:register.inviteRequired", { defaultValue: "Invitation code is required" })
+    ? t("auth:register.inviteRequired")
     : t("auth:register.inviteOptional", { defaultValue: "Invitation is optional" })
 
   return (

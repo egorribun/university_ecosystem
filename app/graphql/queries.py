@@ -29,7 +29,22 @@ logger = get_logger(__name__)
 
 
 def _user_to_type(user: User, show_email: bool = False) -> UserType:
-    """Convert SQLAlchemy User model to GraphQL UserType with PII protection."""
+    """Convert ``User`` ORM row to ``UserType`` with PII protection.
+
+    The caller MUST pass ``show_email=True`` only when the requesting actor
+    is the user themselves or an admin; otherwise email is masked to
+    ``None``. ``profile.full_name`` is read defensively (``getattr`` with a
+    default) because ``user.profile`` may be unloaded — every relationship
+    on User has ``lazy="noload"`` per project convention.
+
+    Args:
+        user: ORM User row. Must have ``profile`` eagerly loaded (via
+            ``selectinload(User.profile)``) if a name is desired.
+        show_email: When False, ``email`` is dropped from the response.
+
+    Returns:
+        ``UserType`` ready for the GraphQL serializer.
+    """
     return UserType(
         id=strawberry.ID(str(user.id)),
         email=user.email if show_email else None,
@@ -40,7 +55,21 @@ def _user_to_type(user: User, show_email: bool = False) -> UserType:
 
 
 def _news_to_type(news: News, author: User | None = None) -> NewsType:
-    """Convert SQLAlchemy News model to GraphQL NewsType."""
+    """Convert ``News`` ORM row to ``NewsType`` with optional author embed.
+
+    ``author`` is a separate parameter (rather than ``news.author``) because
+    every News.* relationship has ``lazy="noload"`` per the project
+    convention; resolvers must eager-load and pass it explicitly to avoid
+    accidental N+1.
+
+    Args:
+        news: ORM News row.
+        author: Optional pre-loaded ``User`` to embed via ``_user_to_type``.
+
+    Returns:
+        ``NewsType`` ready for the GraphQL serializer. The author is always
+        rendered with ``show_email=False`` (PII protection by default).
+    """
     return NewsType(
         id=strawberry.ID(str(news.id)),
         title=news.title,
@@ -56,7 +85,21 @@ def _news_to_type(news: News, author: User | None = None) -> NewsType:
 
 
 def _event_to_type(event: Event, organizer: User | None = None) -> EventType:
-    """Convert SQLAlchemy Event model to GraphQL EventType."""
+    """Convert ``Event`` ORM row to ``EventType`` with optional organizer embed.
+
+    Same eager-loading contract as ``_news_to_type``: every Event.*
+    relationship is ``lazy="noload"``, so resolvers must pre-load
+    ``organizer`` explicitly. ``ends_at``/``description``/``location``/
+    ``image_url``/``max_attendees`` are read defensively because some Event
+    rows are imported with sparse metadata.
+
+    Args:
+        event: ORM Event row.
+        organizer: Optional pre-loaded ``User`` to embed.
+
+    Returns:
+        ``EventType`` ready for the GraphQL serializer.
+    """
     return EventType(
         id=strawberry.ID(str(event.id)),
         title=event.title,

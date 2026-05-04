@@ -122,7 +122,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
         )
 
         // Show notification
-        const title = t("schedule:reminder.title", { defaultValue: "Lesson starting soon" })
+        const title = t("schedule:reminder.title")
         const body = t("schedule:reminder.body", {
           subject: lesson.subject ?? "",
           minutes: lessonMinutesBefore,

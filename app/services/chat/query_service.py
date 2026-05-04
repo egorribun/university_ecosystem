@@ -1,3 +1,15 @@
+"""Chat query service — read-only operations on chats and messages.
+
+This service owns every cursor-paginated read for the chat domain
+(chat list, message list, single chat, attachment list) plus the
+participant + presence enrichment that turns repository rows into
+``ChatResponse`` / ``MessagesListOut`` DTOs.
+
+It does NOT mutate state; that belongs to ``ChatCommandService``
+(message dispatch, mark-read, clear-history) and ``ChatCreationService``
+(DM creation, Redis lock).
+"""
+
 from __future__ import annotations
 
 import uuid

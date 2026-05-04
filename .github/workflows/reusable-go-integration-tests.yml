@@ -1,0 +1,85 @@
+# Reusable Go Integration Tests Workflow
+#
+# Runs //go:build integration tagged tests via `make test-integration` —
+# requires Docker (pre-installed on GitHub-hosted ubuntu-latest runners).
+# Per ADR-022, these tests spin up real NATS / MinIO / Redis / ClamAV
+# containers via testcontainers-go to cover behaviour the in-process fakes
+# do not (Nak storms, MinIO multipart, Redis EVALSHA, JWKS hot-reload, etc).
+#
+# Initially non-blocking — promotes to required only when flake rate over
+# 30 days falls below 1 % per ADR-022 §Migration step 5.
+name: Go Integration Tests
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to use"
+        required: false
+        type: string
+        default: "1.26.x"
+      service-directory:
+        description: "Service directory to test (e.g., services/gateway)"
+        required: true
+        type: string
+
+jobs:
+  integration:
+    name: Integration Tests (${{ inputs.service-directory }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+          cache-dependency-path: |
+            services/gateway/go.sum
+            services/file-processor/go.sum
+            services/ws-hub/go.sum
+            go.sum
+
+      - name: Verify Docker is available (testcontainers-go requirement)
+        run: |
+          docker info >/dev/null 2>&1 || { echo "::error::Docker daemon not reachable"; exit 1; }
+          docker version --format '{{.Server.Version}}'
+
+      - name: Install dependencies
+        run: |
+          cd "${{ inputs.service-directory }}"
+          go mod download
+
+      - name: Run integration tests
+        run: |
+          echo "Running integration tests for ${{ inputs.service-directory }}…"
+          cd "${{ inputs.service-directory }}"
+          make test-integration
+        env:
+          # testcontainers-go reuses containers across test runs in CI to
+          # mitigate cold-start latency; safe because each container has
+          # a unique session-scoped name per process.
+          TESTCONTAINERS_REUSE_ENABLE: "true"
+          # The Ryuk reaper container cleans orphan containers on test exit.
+          # Disable in CI — GitHub-hosted runners are ephemeral and the job
+          # already cleans up.
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+
+      - name: Generate artifact name
+        if: always()
+        id: artifact-name
+        shell: bash
+        run: |
+          SANITIZED=$(echo "${{ inputs.service-directory }}" | tr '/\\' '-')
+          echo "name=go-integration-$SANITIZED" >> "$GITHUB_OUTPUT"
+
+      - name: Upload diagnostics on failure
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: ${{ steps.artifact-name.outputs.name }}-logs
+          path: |
+            ${{ inputs.service-directory }}/coverage.out
+          if-no-files-found: ignore

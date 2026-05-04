@@ -40,9 +40,7 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
     defaultValue: data.conditionLabel,
   })
 
-  const labelText = t("dashboard:weather.label", {
-    defaultValue: "Weather",
-  })
+  const labelText = t("dashboard:weather.label")
 
   const roundedTemperature = Math.round(data.temperatureC)
   const signedTemperature = formatNumber(roundedTemperature, {

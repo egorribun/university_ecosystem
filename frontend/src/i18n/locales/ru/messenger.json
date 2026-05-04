@@ -4,9 +4,11 @@
   "search": "Поиск",
   "searchMessages": "Поиск сообщений...",
   "selectChat": "Выберите чат, чтобы начать общение",
+  "selectChatDesc": "Свяжитесь с кем угодно в университетской экосистеме.",
   "newChat": "Новый чат",
   "typeMessage": "Сообщение",
   "searchUsers": "Поиск пользователей",
+  "noUsersFound": "Пользователи не найдены",
   "online": "в сети",
   "offline": "не в сети",
   "attachPhoto": "Фото",
@@ -14,5 +16,20 @@
   "attachFile": "Файл",
   "viewProfile": "Просмотр профиля",
   "clearChat": "Очистить чат",
-  "deleteChat": "Удалить чат"
+  "deleteChat": "Удалить чат",
+  "profile": "Профиль",
+  "loadingProfile": "Загрузка профиля...",
+  "status": "Статус",
+  "avatar": "Аватар",
+  "viewAvatar": "Открыть в полном размере",
+  "clearChatTitle": "Очистить чат",
+  "confirmClear": "Очистить историю чата для всех участников?",
+  "deleteChatTitle": "Удалить чат",
+  "confirmDelete": "Удалить этот чат для всех участников?",
+  "profileLoadError": "Не удалось загрузить профиль участника",
+  "aria": {
+    "messageList": "Сообщения чата",
+    "removeAttachment": "Удалить вложение",
+    "attachments": "Вложения"
+  }
 }
