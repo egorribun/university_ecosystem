@@ -397,15 +397,30 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 
 	// c3 will be rejected — its Conn.Close() will fire at hub.go:225, so we
 	// need a real *websocket.Conn. Set up an httptest WebSocket endpoint that
-	// captures the server-side conn after upgrade.
+	// hands the server-side conn to the test goroutine via a buffered channel.
+	//
+	// Race-safe by Go's memory model: channel send happens-before the matching
+	// channel receive, so the test goroutine reads a fully-published *Conn. A
+	// plain `var serverSideConn *websocket.Conn` shared between handler +
+	// Eventually polling is a data race (writer in net/http server goroutine,
+	// reader in test goroutine, no synchronization) — caught by `go test
+	// -race` in CI Linux runner. Discovered via CI failure on commit
+	// 4679b6e11; ws-hub Makefile target uses -race per ADR-022.
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-	var serverSideConn *websocket.Conn
+	serverConnCh := make(chan *websocket.Conn, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
 		}
-		serverSideConn = c
+		// Non-blocking send: only the first connection's conn is captured.
+		// Additional connections (none expected in this test) drop without
+		// blocking the handler goroutine.
+		select {
+		case serverConnCh <- c:
+		default:
+			_ = c.Close() //nolint:errcheck // unexpected extra connection — close + drop
+		}
 		// Keep the conn open server-side; cleanup is via t.Cleanup.
 	}))
 	t.Cleanup(server.Close)
@@ -420,11 +435,14 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 		_ = clientConn.Close() //nolint:errcheck // best-effort cleanup
 	})
 
-	// Wait for server-side handler to complete the upgrade and assign the conn.
-	// Dialer.Dial returns after the handshake, but the server-side assignment
-	// runs in the request goroutine and may lag by a few microseconds.
-	require.Eventually(t, func() bool { return serverSideConn != nil }, 1*time.Second, 10*time.Millisecond,
-		"server-side ws conn never captured after dialer succeeded")
+	// Receive the server-side conn from the handler goroutine. Channel ops
+	// provide happens-before synchronization — race-safe.
+	var serverSideConn *websocket.Conn
+	select {
+	case serverSideConn = <-serverConnCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("server-side ws conn never captured after dialer succeeded")
+	}
 
 	c3 := &Client{
 		ID:    "user-3",
