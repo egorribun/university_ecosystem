@@ -56,7 +56,7 @@ func startRedisContainerForRateLimit(t *testing.T) (connStr string, terminate fu
 		if terminated.Swap(true) {
 			return // idempotent
 		}
-		_ = rc.Terminate(context.Background())
+		_ = rc.Terminate(context.Background()) //nolint:errcheck // best-effort cleanup
 	}
 	t.Cleanup(terminate)
 	return connStr, terminate
@@ -105,10 +105,12 @@ func TestIntegration_RateLimiterRedisInMemoryFallback(t *testing.T) {
 		t.Helper()
 		// Use unique IP-equivalent header to ensure consistent client key.
 		// Gin's ClientIP() will return the test server's loopback by default.
-		resp, err := http.Get(server.URL + "/echo") //nolint:gosec // G107 — variable URL is httptest.Server local URL
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/echo", nil) //nolint:gosec // G107 — variable URL is httptest.Server local URL
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		body, _ = io.ReadAll(resp.Body)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }() //nolint:errcheck // best-effort body close
+		body, _ = io.ReadAll(resp.Body)          //nolint:errcheck // body fully drained on next line
 		return resp.StatusCode, resp.Header.Get("Retry-After"), body
 	}
 

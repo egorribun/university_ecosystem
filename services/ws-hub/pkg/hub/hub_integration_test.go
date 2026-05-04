@@ -63,7 +63,7 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 
 	connStr, err := natsContainer.ConnectionString(ctx)
 	if err != nil {
-		_ = natsContainer.Terminate(ctx)
+		_ = natsContainer.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("nats connection string: %v", err)
 	}
 
@@ -73,13 +73,13 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 		nats.ReconnectWait(500*time.Millisecond),
 	)
 	if err != nil {
-		_ = natsContainer.Terminate(ctx)
+		_ = natsContainer.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("nats connect: %v", err)
 	}
 
 	cleanup := func() {
 		nc.Close()
-		_ = natsContainer.Terminate(context.Background())
+		_ = natsContainer.Terminate(context.Background()) //nolint:errcheck // best-effort cleanup
 	}
 	return nc, cleanup
 }
@@ -118,19 +118,19 @@ func startRedisContainer(t *testing.T) (*redis.Client, func()) {
 
 	connStr, err := rc.ConnectionString(ctx)
 	if err != nil {
-		_ = rc.Terminate(ctx)
+		_ = rc.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("redis connection string: %v", err)
 	}
 	opts, err := redis.ParseURL(connStr)
 	if err != nil {
-		_ = rc.Terminate(ctx)
+		_ = rc.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("redis parse URL: %v", err)
 	}
 	client := redis.NewClient(opts)
 
 	cleanup := func() {
-		_ = client.Close()
-		_ = rc.Terminate(context.Background())
+		_ = client.Close()                     //nolint:errcheck // best-effort cleanup
+		_ = rc.Terminate(context.Background()) //nolint:errcheck // best-effort cleanup
 	}
 	return client, cleanup
 }
@@ -252,7 +252,7 @@ func TestIntegration_NATSMalformedMessageDropped(t *testing.T) {
 	select {
 	case got := <-h.Broadcast:
 		// Surface the actual content so future regressions debug easily.
-		buf, _ := json.Marshal(got)
+		buf, _ := json.Marshal(got) //nolint:errcheck // diagnostic-only Marshal in failure path
 		t.Fatalf("malformed NATS msg incorrectly reached Broadcast: %s", string(buf))
 	case <-time.After(200 * time.Millisecond):
 		// Expected path — handler dropped the message at parse boundary.
@@ -263,11 +263,11 @@ func TestIntegration_NATSMalformedMessageDropped(t *testing.T) {
 	// subscription (the production handler uses recover() to absorb panics
 	// — see hub.go:418-423).
 	good := Message{Type: "chat.message", Room: "ok", Payload: json.RawMessage(`{}`)}
-	body, _ := json.Marshal(good)
+	body, _ := json.Marshal(good) //nolint:errcheck // Marshal of constant struct cannot fail
 	if err := nc.Publish("chat.ok", body); err != nil {
 		t.Fatalf("nats publish (recovery): %v", err)
 	}
-	_ = nc.Flush()
+	_ = nc.Flush() //nolint:errcheck // best-effort flush in recovery sanity check
 
 	select {
 	case got := <-h.Broadcast:
@@ -411,9 +411,14 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	clientConn, hsResp, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = clientConn.Close() })
+	if hsResp != nil {
+		_ = hsResp.Body.Close() //nolint:errcheck // websocket handshake response body
+	}
+	t.Cleanup(func() {
+		_ = clientConn.Close() //nolint:errcheck // best-effort cleanup
+	})
 
 	// Wait for server-side handler to complete the upgrade and assign the conn.
 	// Dialer.Dial returns after the handshake, but the server-side assignment
@@ -519,14 +524,24 @@ func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
 	dialer := websocket.DefaultDialer
 
 	// Connection 1.
-	c1, _, err := dialer.Dial(wsURL+"/?ticket="+tok1, nil)
+	c1, hs1, err := dialer.Dial(wsURL+"/?ticket="+tok1, nil)
 	require.NoError(t, err, "first WS connect must succeed")
-	t.Cleanup(func() { _ = c1.Close() })
+	if hs1 != nil {
+		_ = hs1.Body.Close() //nolint:errcheck // websocket handshake response body
+	}
+	t.Cleanup(func() {
+		_ = c1.Close() //nolint:errcheck // best-effort cleanup
+	})
 
 	// Connection 2.
-	c2, _, err := dialer.Dial(wsURL+"/?ticket="+tok2, nil)
+	c2, hs2, err := dialer.Dial(wsURL+"/?ticket="+tok2, nil)
 	require.NoError(t, err, "second WS connect must succeed")
-	t.Cleanup(func() { _ = c2.Close() })
+	if hs2 != nil {
+		_ = hs2.Body.Close() //nolint:errcheck // websocket handshake response body
+	}
+	t.Cleanup(func() {
+		_ = c2.Close() //nolint:errcheck // best-effort cleanup
+	})
 
 	// Wait for Run loop to populate h.Clients with both. Dialer returns BEFORE
 	// HandleWebSocket's `h.Register <- client` send completes — race-free
@@ -541,9 +556,14 @@ func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
 	// BEFORE WebSocket upgrade. Use raw http.Get (NOT dialer) to surface the
 	// 503 cleanly; dialer would convert it to "websocket: bad handshake".
 	httpURL := server.URL + "/?ticket=" + tok3
-	resp, err := http.Get(httpURL) //nolint:gosec // G107 — variable URL is httptest.Server local URL
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, httpURL, nil) //nolint:gosec // G107 — variable URL is httptest.Server local URL
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(httpReq)
 	require.NoError(t, err, "raw HTTP GET to 3rd connection must complete")
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body) //nolint:errcheck // best-effort drain
+		_ = resp.Body.Close()                 //nolint:errcheck // best-effort close
+	}()
 	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode,
 		"3rd connection must hit pre-check 503 before WebSocket upgrade (TD-31-05)")
 }

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -63,7 +64,7 @@ func TestIntegration_OTELCompositePropagator(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	// Send request with both W3C headers populated.
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/echo", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/echo", nil)
 	require.NoError(t, err)
 	// W3C TraceContext spec example values — NOT secrets, just IDs that flow
 	// through the propagator chain. pragma: allowlist secret
@@ -72,7 +73,7 @@ func TestIntegration_OTELCompositePropagator(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // best-effort body close
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Assert TraceContext extraction: span context is valid, traceId matches.

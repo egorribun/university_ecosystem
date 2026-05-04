@@ -45,13 +45,18 @@ func (s *slowFileProcessor) ProcessFile(ctx context.Context, _ *pb.ProcessFileRe
 //	  → client returns codes.DeadlineExceeded
 func TestIntegration_GRPCDefaultTimeout(t *testing.T) {
 	// Spin up a real in-process gRPC server on a random port.
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	lis, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = lis.Close() })
+	t.Cleanup(func() {
+		_ = lis.Close() //nolint:errcheck // best-effort cleanup
+	})
 
 	srv := grpc.NewServer()
 	pb.RegisterFileProcessingServiceServer(srv, &slowFileProcessor{})
-	go func() { _ = srv.Serve(lis) }()
+	go func() {
+		_ = srv.Serve(lis) //nolint:errcheck // ignored on test teardown via srv.Stop
+	}()
 	t.Cleanup(srv.Stop)
 
 	// Production wiring (matches cmd/gateway/main.go:140) but with 200ms
@@ -63,7 +68,9 @@ func TestIntegration_GRPCDefaultTimeout(t *testing.T) {
 		grpc.WithDefaultServiceConfig(`{"methodConfig":[{"name":[{}],"timeout":"0.2s"}]}`),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
+	t.Cleanup(func() {
+		_ = conn.Close() //nolint:errcheck // best-effort cleanup
+	})
 
 	client := pb.NewFileProcessingServiceClient(conn)
 

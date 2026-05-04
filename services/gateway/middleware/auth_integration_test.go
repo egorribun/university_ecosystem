@@ -28,14 +28,18 @@ func startRedisContainerForAuth(t *testing.T) *redis.Client {
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = rc.Terminate(context.Background()) })
+	t.Cleanup(func() {
+		_ = rc.Terminate(context.Background()) //nolint:errcheck // best-effort cleanup
+	})
 
 	connStr, err := rc.ConnectionString(ctx)
 	require.NoError(t, err)
 	opts, err := redis.ParseURL(connStr)
 	require.NoError(t, err)
 	client := redis.NewClient(opts)
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() {
+		_ = client.Close() //nolint:errcheck // best-effort cleanup
+	})
 	return client
 }
 
@@ -127,7 +131,7 @@ func TestIntegration_L1CacheXFetchProbabilisticRefresh(t *testing.T) {
 	// loose enough to absorb timing jitter while still catching wiring
 	// regressions (delta near 0 would mean the XFetch path never fired).
 	for i := 0; i < sessionCount; i++ {
-		_, _, _ = m.verifySession(ctx, fmt.Sprintf("test-%d", i), true)
+		_, _, _ = m.verifySession(ctx, fmt.Sprintf("test-%d", i), true) //nolint:errcheck // probabilistic counter is the assertion
 	}
 
 	delta := int(testutil.ToFloat64(l1ProbRefreshes) - beforeRefreshes)

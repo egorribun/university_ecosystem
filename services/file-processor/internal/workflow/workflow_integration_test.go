@@ -51,7 +51,7 @@ func startMinIOContainer(t *testing.T) (*minio.Client, string, func()) {
 
 	endpoint, err := mc.ConnectionString(ctx)
 	if err != nil {
-		_ = mc.Terminate(ctx)
+		_ = mc.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("minio connection string: %v", err)
 	}
 
@@ -62,18 +62,18 @@ func startMinIOContainer(t *testing.T) (*minio.Client, string, func()) {
 		Secure: false,
 	})
 	if err != nil {
-		_ = mc.Terminate(ctx)
+		_ = mc.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("minio client init: %v", err)
 	}
 
 	bucket := "test-bucket"
 	if err := client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-		_ = mc.Terminate(ctx)
+		_ = mc.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("create test bucket: %v", err)
 	}
 
 	cleanup := func() {
-		_ = mc.Terminate(context.Background())
+		_ = mc.Terminate(context.Background()) //nolint:errcheck // best-effort cleanup
 	}
 	return client, bucket, cleanup
 }
@@ -150,7 +150,7 @@ func TestIntegration_MinIOResizeImageHappyPath(t *testing.T) {
 	// claim ("returned dest key") to the actual storage state.
 	obj, err := mc.GetObject(ctx, bucket, result.DestKey, minio.GetObjectOptions{})
 	require.NoError(t, err)
-	defer func() { _ = obj.Close() }()
+	defer func() { _ = obj.Close() }() //nolint:errcheck // best-effort body close
 	decoded, _, err := image.Decode(obj)
 	require.NoError(t, err)
 	require.Equal(t, 50, decoded.Bounds().Dx(), "dest image width must be 50px")

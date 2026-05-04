@@ -13,6 +13,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -45,7 +46,7 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 			select {
 			case <-time.After(2 * time.Second):
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"data":"slow"}`))
+				_, _ = w.Write([]byte(`{"data":"slow"}`)) //nolint:errcheck // test-only response writer
 			case <-r.Context().Done():
 				// Production middleware uses context.WithTimeout; downstream
 				// handlers honor the deadline by listening on ctx.Done().
@@ -54,7 +55,7 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data":"ok"}`))
+		_, _ = w.Write([]byte(`{"data":"ok"}`)) //nolint:errcheck // test-only response writer
 	})
 
 	// Production wiring (matches cmd/file-processor/main.go:308). Use 200ms
@@ -72,10 +73,13 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 		nested := strings.Repeat("a {", 11) + "x" + strings.Repeat(" }", 11)
 		body := []byte(`{"query":"` + strings.ReplaceAll(nested, `"`, `\"`) + `"}`)
 
-		resp, err := http.Post(server.URL, "application/json", bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL, bytes.NewReader(body))
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		respBytes, _ := io.ReadAll(resp.Body)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }() //nolint:errcheck // best-effort body close
+		respBytes, _ := io.ReadAll(resp.Body)    //nolint:errcheck // body already drained for assertion
 
 		// graphql_depth.go:47 explicitly writes StatusBadRequest on rejection.
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode,
@@ -90,10 +94,13 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 	t.Run("depth_5_passes", func(t *testing.T) {
 		// 5 nested selection sets — well under maxDepth=10.
 		body := []byte(`{"query":"{ a { b { c { d { e } } } } }"}`)
-		resp, err := http.Post(server.URL, "application/json", bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL, bytes.NewReader(body))
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		respBytes, _ := io.ReadAll(resp.Body)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }() //nolint:errcheck // best-effort body close
+		respBytes, _ := io.ReadAll(resp.Body)    //nolint:errcheck // body already drained for assertion
 
 		require.Equal(t, http.StatusOK, resp.StatusCode,
 			"depth-5 query must pass through to inner handler")
@@ -104,7 +111,7 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 	// Sub-test 3: timeout fires on slow handler.
 	t.Run("timeout_fires", func(t *testing.T) {
 		body := []byte(`{"query":"{ a }"}`)
-		req, err := http.NewRequest(http.MethodPost, server.URL, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL, bytes.NewReader(body))
 		require.NoError(t, err)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Test-Sleep", "1") // triggers 2s sleep in inner handler
@@ -113,7 +120,7 @@ func TestIntegration_GraphQLDepthAndTimeout(t *testing.T) {
 		resp, err := http.DefaultClient.Do(req)
 		elapsed := time.Since(start)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { _ = resp.Body.Close() }() //nolint:errcheck // best-effort body close
 
 		// Timeout middleware sets ctx deadline = 200ms. Inner handler returns
 		// 504 when ctx.Done fires before its 2s sleep completes.
