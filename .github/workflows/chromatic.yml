@@ -89,7 +89,7 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2.75.22
+        uses: taiki-e/install-action@db5fb34fa772531a3ece57ca434f579eb334e0fb # v2.75.30
         with:
           tool: wasm-pack
 
@@ -100,7 +100,7 @@ jobs:
 
       - name: Publish to Chromatic
         # SHA-pinned per RZ-22-03 convention (no mutable @v tags).
-        uses: chromaui/action@07791f8243f4cb2698bf4d00426baf4b2d1cb7e0 # v13.3.5
+        uses: chromaui/action@42839e8c28caf61a16433fa96a03b312bbc47ab5 # v16.6.3
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
