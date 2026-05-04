@@ -18,6 +18,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -25,6 +26,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tclog "github.com/testcontainers/testcontainers-go/log"
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
@@ -214,6 +217,77 @@ func TestIntegration_NATSMalformedMessageDropped(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("subscription did not recover after malformed message — handleChat panic guard may be broken")
 	}
+}
+
+// TestIntegration_BroadcastOversizedMessageDropped verifies RZ-23-05: broadcast
+// messages exceeding 60 KB are dropped at hub.go:340 before fan-out, preventing
+// CloseMessageTooBig on recipient connections (which use ReadLimit=64 KB).
+//
+// BroadcastDropsTotal is a package-level promauto counter shared with three
+// other increment sites (hub.go:205 worker pool full, hub.go:452 chat queue
+// full, hub.go:505 notif queue full). To bind the assertion to the oversized
+// branch we use broadcastBuf=16 (worker pool can't fill on a single publish)
+// and assert exactly delta == 1 on the oversized publish + delta == 0 on the
+// follow-up small message.
+func TestIntegration_BroadcastOversizedMessageDropped(t *testing.T) {
+	nc, cleanup := startNATSContainer(t)
+	t.Cleanup(cleanup)
+
+	// broadcastBuf=16 ensures inner broadcastCh has headroom; without it
+	// hub.go:205 (worker pool full) could fire instead of hub.go:340 (oversized).
+	h := newIntegrationHub(t, nc, 16, 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go h.Run(ctx)
+	h.SubscribeToNATS(ctx)
+	t.Cleanup(h.Stop)
+
+	before := testutil.ToFloat64(BroadcastDropsTotal)
+
+	// Build payload that exceeds 60 KB after json.Marshal. The inner text is
+	// 70 KB of 'a'; total marshaled JSON is ~70.1 KB — well past the threshold.
+	bigText := strings.Repeat("a", 70*1024)
+	payload := Message{
+		Type:    "chat.message",
+		Room:    "big-room",
+		Payload: json.RawMessage(fmt.Sprintf(`{"text":%q}`, bigText)),
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.Greater(t, len(body), 60*1024,
+		"test setup: marshaled payload must exceed 60 KB to trigger drop branch")
+
+	require.NoError(t, nc.Publish("chat.big-room", body))
+	require.NoError(t, nc.Flush())
+
+	// Path: NATS deliver → handleChat → h.Broadcast → Run select → broadcastCh
+	// → worker → broadcastMessage → json.Marshal → size check → drop. Four
+	// channel hops in-process; sub-millisecond on hot containers but tolerant
+	// of cold-start jitter on Windows Docker via Eventually.
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(BroadcastDropsTotal) >= before+1
+	}, 3*time.Second, 25*time.Millisecond,
+		"BroadcastDropsTotal did not increment within 3s after oversized publish")
+
+	afterOversized := testutil.ToFloat64(BroadcastDropsTotal)
+
+	// Sanity: a small message must NOT trigger the drop branch.
+	smallPayload := Message{
+		Type:    "chat.message",
+		Room:    "small",
+		Payload: json.RawMessage(`{"text":"ok"}`),
+	}
+	sBody, err := json.Marshal(smallPayload)
+	require.NoError(t, err)
+	require.NoError(t, nc.Publish("chat.small", sBody))
+	require.NoError(t, nc.Flush())
+
+	// Wait for the small message to flow through. There are no recipients, so
+	// no Broadcast assertion — only that the drop counter does NOT increment.
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, afterOversized, testutil.ToFloat64(BroadcastDropsTotal),
+		"small message must not increment BroadcastDropsTotal")
 }
 
 // connStrFromEnv is a small helper kept for future tests that need to opt
