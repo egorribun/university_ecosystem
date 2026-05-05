@@ -6,7 +6,17 @@ import react from "@vitejs/plugin-react"
 import babel from "@rolldown/plugin-babel"
 import wasm from "vite-plugin-wasm"
 import { VitePWA } from "vite-plugin-pwa"
-import { TanStackRouterVite } from "@tanstack/router-vite-plugin"
+// Wave 125 Phase 1+2 — replaced @tanstack/router-vite-plugin with
+// @tanstack/react-start/plugin/vite. tanstackStart() includes the file-based
+// router codegen functionality (via `router.routesDirectory`) that
+// TanStackRouterVite() previously provided, plus SPA-mode shell prerender,
+// custom client/server entry binding, and future SSR/RSC infrastructure.
+//
+// Plugin order constraint per Context7 docs (build-from-scratch.md):
+// "react's vite plugin must come after start's vite plugin" — see plugins
+// array below where tanstackStart() stays at index 0 and react() is at
+// index 3 (after wasm + withGeneratedManifests, both order-neutral).
+import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
@@ -85,6 +95,24 @@ const loadManifest = () => {
 }
 
 const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
+// Wave 125 Phase 2 — `transformIndexHtml` does NOT fire on TanStack Start's
+// React-SSR-rendered `_shell.html` (the shell goes through React's renderer,
+// not Vite's index.html pipeline). The CSP nonce + font preload injectors
+// below are therefore EFFECTIVELY DEAD CODE in Phase 2 builds — they would
+// only fire if Vite emitted a `dist/index.html`, which it no longer does
+// once `tanstackStart()` is in the plugin chain.
+//
+// The equivalent functionality has migrated to
+// `frontend/scripts/post-build-shell.mjs`, which runs after `vite build`
+// (spawned by `run-build.mjs`) and operates on `dist/client/_shell.html`.
+// Both plugins are kept here as harmless no-ops for two reasons:
+//   1. Defensive — if a future tanstackStart version emits a Vite-compatible
+//      `index.html` again, these plugins would resume working without
+//      requiring a re-write of run-build.mjs.
+//   2. Clear migration audit trail — the plugins are a touchstone showing
+//      where the W124 SW2 (font preload) + DEBT-05 (CSP nonce) original
+//      implementations lived; new contributors finding them via grep can
+//      see the comment block + post-build-shell.mjs handover note.
 const withStrictCspNonce = (): PluginOption => ({
   name: "strict-csp-nonce",
   enforce: "post",
@@ -191,10 +219,51 @@ export default defineConfig(({ mode }) => {
       }
 
   const plugins: PluginOption[] = [
-    TanStackRouterVite({
-      routesDirectory: resolve(srcDir, "routes"),
-      generatedRouteTree: resolve(srcDir, "routeTree.gen.ts"),
-      quoteStyle: "double",
+    // Wave 125 Phase 1+2 — TanStack Start v1 plugin in SPA mode.
+    // Replaces the prior TanStackRouterVite() plugin call (file-based
+    // router codegen is now bundled into tanstackStart). Routes still
+    // live in src/routes/ and routeTree.gen.ts is regenerated at the
+    // same path (defaults: src is srcDirectory, routes is
+    // router.routesDirectory).
+    //
+    // Wave 125 Phase 2 — SPA mode (`spa: { enabled: true }`) generates
+    // a static `_shell.html` at build time via React SSR through the
+    // root route's `shellComponent`. The shell HTML is then served as
+    // the SPA fallback for all client-side routes.
+    //
+    // The combination that makes this work:
+    //   1. `__root.tsx` defines `shellComponent: RootShell` — a
+    //      minimal HTML scaffold that renders `<html>…<body><div
+    //      id="root">{children}</div><Scripts /></body></html>` with
+    //      no provider dependencies (only `<HeadContent />` from the
+    //      route's `head:()` registration).
+    //   2. `defaultSsr: false` on the router (see `src/router.ts`) —
+    //      route `component`s do NOT render server-side; only the
+    //      shell does. `beforeLoad` guards still run, but they see a
+    //      stub auth context that lets them redirect cleanly without
+    //      crashing on `undefined.loading`.
+    //   3. Stub router context — see `SSR_STUB_AUTH` /
+    //      `SSR_STUB_QUERY_CLIENT` in `src/router.ts`. App.tsx's
+    //      `<RouterProvider context={...}>` overrides these with the
+    //      live `useAuth()` values once the client mounts.
+    //
+    // Server + client entries both point at our existing files:
+    //   - `server.ts` (NEW) — minimal `createServerEntry` wrapper,
+    //     used by tanstackStart's prerender + preview-server +
+    //     dev-server middleware.
+    //   - `main.tsx` (preserved from pre-W125 SPA setup) — uses
+    //     `createRoot().render(<App />)`, the App tree drives the
+    //     router via `<RouterProvider context={...} />` with real
+    //     auth state. Phase 3 (W126+) may switch to `<StartClient />`
+    //     + `hydrateRoot` + auth-at-edge.
+    //
+    // `router.quoteStyle: "double"` preserves the project formatting
+    // convention for the auto-generated `routeTree.gen.ts`.
+    tanstackStart({
+      spa: { enabled: true },
+      router: { quoteStyle: "double" },
+      client: { entry: "main.tsx" },
+      server: { entry: "server.ts" },
     }),
     wasm(),
     withGeneratedManifests(),

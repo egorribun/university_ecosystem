@@ -84,7 +84,14 @@ export default defineConfig({
             command: `npx cross-env VITE_LHCI=true npm run build && npm run preview -- --host ${HOST} --port ${PORT} --strictPort`,
             url: BASE_URL,
             reuseExistingServer: !process.env.CI,
-            timeout: 240_000,
+            // Wave 125 polish — bumped from 240s. Phase 2 build is slower
+            // than pre-W125 (~30-45s vs ~7s) due to TanStack Start runtime
+            // additions + SSR pipeline (server build for prerender + post-
+            // build shell post-processing). 240s was fine pre-W125 but
+            // tight for Phase 2 cold-cache builds; 360s gives headroom for
+            // CI runners under load (W125 close-out routine-e5 documented
+            // CI Linux ~0.10-0.12 slower per request).
+            timeout: 360_000,
             cwd: __dirname,
             env: {
               VITE_BACKEND_ORIGIN: "",
@@ -95,7 +102,13 @@ export default defineConfig({
             command: `npm run build && npm run preview -- --host ${HOST} --port ${PORT}`,
             url: BASE_URL,
             reuseExistingServer: !process.env.CI,
-            timeout: 180_000,
+            // Wave 125 polish — bumped from 180s. Phase 2 build is slower
+            // than pre-W125 (~30-45s vs ~7s) due to TanStack Start runtime
+            // additions + SSR pipeline; the previous 180s value caused
+            // `Error: Timed out waiting 180000ms from config.webServer`
+            // when first run on the W125 Phase 2 build. 360s gives ample
+            // headroom even on cold-cache CI Linux runners.
+            timeout: 360_000,
             cwd: __dirname,
             env: {
               VITE_BACKEND_ORIGIN: "",
