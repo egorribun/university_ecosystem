@@ -12,6 +12,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 const VALID_THEMES: ReadonlySet<Theme> = new Set(["light", "dark", "system"])
 
+const THEME_COOKIE_NAME = "ue-mode"
+const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60 // 1 year
+
 const readStoredTheme = (): Theme => {
   try {
     const raw = localStorage.getItem("ue-mode")
@@ -19,6 +22,40 @@ const readStoredTheme = (): Theme => {
   } catch {
     return "system"
   }
+}
+
+// Wave 127 SW2 — cookie-mirror for SSR theme parity. Server (src/server.ts)
+// reads this cookie + exposes via globalThis.__ssrThemeGetter__ (W127 SW4);
+// RootShell renders <html class="dark"> server-side from the cookie value
+// (W127 SW5), eliminating FOUC on returning users.
+//
+// Cookie attrs:
+//   - Path=/ → sent on all routes (SSR may serve any page)
+//   - SameSite=Lax → cookie sent on cross-site GET (user clicks external
+//     link to /dashboard), critical for SSR perf wins on cold-load
+//   - Secure conditional on HTTPS so dev on http://localhost still works
+//   - 1-year Max-Age — theme is a long-lived UI preference
+const setThemeCookie = (value: Theme) => {
+  if (typeof document === "undefined") return
+  const isSecure = typeof location !== "undefined" && location.protocol === "https:"
+  const secureAttr = isSecure ? "; Secure" : ""
+  document.cookie = `${THEME_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secureAttr}`
+}
+
+const readCookieValue = (name: string): string | null => {
+  if (typeof document === "undefined") return null
+  const parts = document.cookie.split(/;\s*/)
+  const prefix = `${name}=`
+  for (const part of parts) {
+    if (part.startsWith(prefix)) {
+      try {
+        return decodeURIComponent(part.slice(prefix.length))
+      } catch {
+        return null
+      }
+    }
+  }
+  return null
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -61,8 +98,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (t: Theme) => {
     setThemeState(t)
-    localStorage.setItem("ue-mode", t)
+    try {
+      localStorage.setItem("ue-mode", t)
+    } catch {
+      // ignore quota / private-browsing failures
+    }
+    // Wave 127 SW2 — cookie-mirror alongside localStorage write
+    setThemeCookie(t)
   }
+
+  // Wave 127 SW2 — backfill cookie for returning users who have localStorage
+  // but no cookie (post-W127 deploy migration path). Only writes when cookie
+  // is missing AND the in-memory theme value is non-default.
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    if (readCookieValue(THEME_COOKIE_NAME) === null) {
+      setThemeCookie(theme)
+    }
+  }, [theme])
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, resolvedTheme }}>
