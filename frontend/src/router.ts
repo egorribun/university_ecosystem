@@ -11,27 +11,6 @@ export interface RouterContext {
   queryClient: QueryClient
 }
 
-// Wave 125 Phase 2 — stub context for build-time SSR + initial mount.
-//
-// Pre-W125 the router was instantiated with `context: { auth: undefined!,
-// queryClient: undefined! }` and `App.tsx`'s `<RouterProvider context={...}>`
-// populated real values at runtime. With Phase 2's spa-mode prerender,
-// route guards (_auth.tsx, _public.tsx, _admin.tsx) run during the
-// build-time SSR pass with whatever context the router was created
-// with — so undefined context throws TypeError on `context.auth.loading`.
-// Stub values let guards execute non-destructively (they all just call
-// `redirect()` which is followed by the prerender pipeline up to
-// `maxRedirects`). When `<RouterProvider context={...}>` mounts on the
-// client, the real values override these stubs reactively for the
-// regular runtime.
-//
-// `loading: false` paired with `isAuth: false` makes _auth.tsx redirect
-// to /login (which _public.tsx accepts), giving the prerender a stable
-// terminal route. Phase 3 (W126+) replaces this with cookie-based
-// auth-at-edge so SSR sees real auth state from the first request.
-const SSR_STUB_AUTH: RouterContext["auth"] = { isAuth: false, user: null, loading: false }
-const SSR_STUB_QUERY_CLIENT = new QueryClient()
-
 // Wave 117 SW1 — View Transitions fire on every navigation (including the
 // initial route resolve). Phase 0 chrome-devtools-mcp traces on mobile
 // emulation (375×667, 4x CPU, Slow 4G) surfaced CLS 0.90 on /dashboard,
@@ -41,26 +20,43 @@ const SSR_STUB_QUERY_CLIENT = new QueryClient()
 // real-user navigation UX — prod tree-shakes the branch to `true`.
 const LHCI_VIEW_TRANSITION = import.meta.env.VITE_LHCI !== "true"
 
-// Wave 125 Phase 1 — TanStack Start v1's start-client-core/hydrateStart
-// imports `getRouter` from `#tanstack-router-entry` (mapped to this file
-// by the tanstackStart() Vite plugin). Even in SPA mode the hydration
-// entry is bundled (for forward-compat with Phase 2+ SSR), so we MUST
-// expose a `getRouter` factory. Returning a fresh router each call
-// matches the SSR-friendly contract documented in Context7
-// /websites/tanstack_start_framework_react migrate-from-next-js.md;
-// SPA-mode runtime only invokes it once at hydration so behavior is
-// equivalent to returning a singleton.
+// Wave 126 Phase 3 SW4 — auth-at-edge replaces the W125 Phase 2 stub.
 //
-// `export const router` is preserved for App.tsx (the existing runtime
-// consumer); both expressions resolve to the same `createRouter()` call
-// shape, so the TypeScript Register module-augmentation below stays
-// accurate.
-const createAppRouter = () =>
-  createRouter({
+// `src/server.ts` (W126 SW3) extracts the access_token_v2 cookie + validates
+// the JWT, then runs `handler.fetch(request)` inside an AsyncLocalStorage
+// scope. The store is exposed via `globalThis.__ssrAuthGetter__` so the
+// `getRouter()` factory below can read it synchronously while constructing
+// the router for THIS request. On the client side `globalThis.__ssrAuthGetter__`
+// is undefined (set only by server.ts which is server-only) — App.tsx's
+// <RouterProvider context={...}> populates real auth from useAuth() at
+// client mount, fully overriding any default we set here.
+//
+// The default (`loading: false`, `isAuth: false`) makes route guards behave
+// correctly when context is uninitialized: `_auth.tsx` → redirect to /login,
+// `_public.tsx` → render. The previous W125 stub used the same shape; we
+// just stop calling it "STUB" because in W126+ the value is real per-request
+// when running under server.ts.
+const DEFAULT_AUTH: RouterContext["auth"] = {
+  isAuth: false,
+  user: null,
+  loading: false,
+}
+
+const createAppRouter = () => {
+  // Read SSR-injected auth state if running under server.ts; falls through to
+  // DEFAULT_AUTH on the client (where App.tsx's RouterProvider context prop
+  // overrides the value at mount anyway).
+  const ssrAuth =
+    typeof globalThis !== "undefined" ? globalThis.__ssrAuthGetter__?.() : undefined
+
+  return createRouter({
     routeTree,
     context: {
-      auth: SSR_STUB_AUTH,
-      queryClient: SSR_STUB_QUERY_CLIENT,
+      auth: ssrAuth ?? DEFAULT_AUTH,
+      // Per-call QueryClient instance — SSR + client never share cache state
+      // (would cause hydration mismatches). Phase 4+ may add proper
+      // dehydrate/hydrate transfer via TanStack Query's persister.
+      queryClient: new QueryClient(),
     },
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,
@@ -75,7 +71,22 @@ const createAppRouter = () =>
     // achieves the same outcome: only the shellComponent renders
     // server-side, route `component`s skip SSR.
   })
+}
 
+// Wave 125 Phase 1 — TanStack Start v1's start-client-core/hydrateStart
+// imports `getRouter` from `#tanstack-router-entry` (mapped to this file
+// by the tanstackStart() Vite plugin). Even in SPA mode the hydration
+// entry is bundled (for forward-compat with Phase 2+ SSR), so we MUST
+// expose a `getRouter` factory.
+//
+// Wave 126 Phase 3 SW4 — TanStack Start invokes `getRouter()` per-request
+// inside `runWithStartContext`; our `globalThis.__ssrAuthGetter__` returns
+// the per-request auth state populated by `src/server.ts` via
+// AsyncLocalStorage. Each request gets a fresh router with real auth
+// context, replacing the W125 SSR_STUB_AUTH placeholder.
+//
+// `export const router` is preserved for App.tsx (the existing client-runtime
+// consumer); both expressions resolve to the same `createRouter()` call shape.
 export function getRouter() {
   return createAppRouter()
 }
