@@ -1,17 +1,17 @@
 import { Suspense } from "react"
 import { RouterProvider } from "@tanstack/react-router"
-import { AppProviders } from "./AppProviders"
 import { router } from "./router"
-import { useAuth } from "./contexts/AuthContext"
-import { queryClient } from "./app/queryClient"
 
-/**
- * Inner app — injects auth context into router
- */
-function InnerApp() {
-  const auth = useAuth()
-
-  // Check for forced bootstrap error (used in E2E tests)
+// Wave 127 SW1 — App.tsx is now a thin RouterProvider mount. AppProviders +
+// ThemeProvider were hoisted to __root.tsx RootComponent so they're available
+// during SSR. Auth context is populated by router.ts createAppRouter() which
+// reads globalThis.__ssrAuthGetter__ on server (W126 SW4 pattern); on client
+// it falls back to DEFAULT_AUTH and AuthProvider in __root.tsx (which mounts
+// inside the router tree) reads useAuthStore directly for real-time updates.
+//
+// Bootstrap-error gate preserved for E2E tests (`__APP_BOOTSTRAP_FORCE_ERROR__`
+// is set by tests/e2e/* fixtures to verify ErrorBoundary mounting).
+export default function App() {
   if (
     typeof window !== "undefined" &&
     (window as typeof window & { __APP_BOOTSTRAP_FORCE_ERROR__?: boolean })
@@ -22,25 +22,7 @@ function InnerApp() {
 
   return (
     <Suspense>
-      <RouterProvider
-        router={router}
-        context={{
-          auth: {
-            isAuth: auth.isAuth,
-            user: auth.user ? { role: auth.user.role ?? "student" } : null,
-            loading: auth.loading,
-          },
-          queryClient,
-        }}
-      />
+      <RouterProvider router={router} />
     </Suspense>
-  )
-}
-
-export default function App() {
-  return (
-    <AppProviders>
-      <InnerApp />
-    </AppProviders>
   )
 }

@@ -12,7 +12,8 @@ import "@fontsource-variable/inter"
 import "@fontsource-variable/outfit"
 import "./styles/tailwind.css"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
-import { ThemeProvider } from "./contexts/ThemeContext"
+// Wave 127 SW1 — ThemeProvider hoisted to __root.tsx RootComponent (server +
+// client). Removed from main.tsx render tree.
 
 // Wave 117 SW3 — keep sync on bootstrap: global error handlers (must catch
 // any early throw) + Trusted Types policies (CSP requirement, must be set
@@ -100,11 +101,9 @@ const root = createRoot(rootElement)
 root.render(
   <StrictMode>
     <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: idbPersister }}>
-      <ThemeProvider>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
-      </ThemeProvider>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </PersistQueryClientProvider>
   </StrictMode>
 )

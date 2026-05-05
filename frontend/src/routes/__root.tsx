@@ -11,6 +11,10 @@ import LivePushToasts from "@/components/feedback/LivePushToasts"
 import OfflineIndicator from "@/components/feedback/OfflineIndicator"
 import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
 import { SearchDialog } from "@/components/search/SearchDialog"
+import { AppProviders } from "@/AppProviders"
+import { ThemeProvider } from "@/contexts/ThemeContext"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { queryClient } from "@/app/queryClient"
 
 // Wave 125 Phase 2 — pre-paint inline scripts. These run in the document
 // scaffold BEFORE any React code or bundle JS evaluates, so they avoid
@@ -247,40 +251,68 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  // Wave 126 polish — SSR branch returns minimal `<Outlet />` so child
-  // routes that opt into SSR (e.g. `/login` under `_public.tsx`) have
-  // a place to mount their server-rendered content. MainLayout (which
-  // uses `useAppShell` from `AppShellProvider`) is client-only because
-  // its provider chain is mounted via `main.tsx` → `<App>` →
-  // `<AppProviders>` (not yet hoisted above `<StartClient />`).
-  // Hydration: server emits `<div id="root"><Outlet content/></div>`,
-  // client mounts `<div id="root"><MainLayout>...<Outlet content/>...</MainLayout></div>`.
-  // React 19 falls back to client render at the wrapper-mismatch
-  // boundary; SSR'd content paints first (LCP win for /login), then
-  // client takes over with full chrome. Phase 5 will hoist providers
-  // above `<StartClient />` so MainLayout becomes SSR-safe and the
-  // hydration mismatch goes away.
+  // Wave 127 SW1 — provider hoisting. Both SSR and client paths now mount
+  // the full provider chain via __root.tsx instead of via main.tsx → App.tsx
+  // → AppProviders. AppShellProvider, AuthProvider, LanguageProvider,
+  // LazyMotion, MotionConfig, LiveRegionProvider, WebSocketProvider,
+  // MessengerProvider, ErrorBoundary, GlobalHapticsListener, ThemeProvider
+  // are all available at server render time.
   //
-  // `_auth.tsx` + `_admin.tsx` set `ssr: false` to preserve client-only
-  // behavior on authenticated routes (more restrictive override of
-  // root's `ssr: true` — TanStack Start v1 SSR inheritance contract).
+  // Browser-API access in providers verified SSR-safe (W127 SW1 audit):
+  //   - AppShellContext: `isBrowser` constant + `if (!isBrowser) return`
+  //     guards on every fn (lines 30, 33, 95, 104, 124, 158, 166, 174, 184)
+  //   - LanguageContext: `typeof window === "undefined"` guard at
+  //     resolveInitialLanguage (line 10)
+  //   - ThemeContext: localStorage in try/catch, returns "system" on server
+  //   - MessengerContext: gated by `isAuth` from useAuth() (false on SSR
+  //     with empty Zustand store) — no WS connect attempt server-side
+  //   - WebSocketProvider: WebSocket creation in async useEffect, gated
+  //     by `enabled` flag
+  //
+  // SSR branch keeps the W126 polish minimal-shell pattern for routes that
+  // already opt into SSR (`/login` under `_public.tsx`, inherits root's
+  // `ssr: true`). Routes under `_auth.tsx ssr: false` / `_admin.tsx ssr: false`
+  // still skip component render server-side — Phase 5 lays the foundation;
+  // W128+ flips per-route SSR for the LCP wins. AuthProvider continues
+  // consuming useAuthStore directly; for routes that DO render server-side
+  // (currently /login + /404 only), no auth-dependent UI surfaces in the
+  // SSR HTML so no Navbar-style hydration mismatch concern.
+  // Wave 127 SW1 — SSR branch wraps with vanilla QueryClientProvider because
+  // PersistQueryClientProvider lives in main.tsx (client entry, never executed
+  // server-side). AuthProvider's useProfileSync calls useQueryClient() at
+  // render time, which throws "No QueryClient set" on SSR without this wrap.
+  // The shared `queryClient` singleton from `@/app/queryClient` is SSR-safe:
+  // QueryClient class instantiation is pure JS, idbPersister export is a
+  // descriptor object that only touches IDB on actual persist/restore calls.
+  // On client, RootComponent renders INSIDE main.tsx's PersistQueryClientProvider
+  // tree, so the SSR wrap is skipped to avoid double-providing.
   if (import.meta.env.SSR) {
     return (
-      <PageErrorBoundary>
-        <Outlet />
-      </PageErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AppProviders>
+            <PageErrorBoundary>
+              <Outlet />
+            </PageErrorBoundary>
+          </AppProviders>
+        </ThemeProvider>
+      </QueryClientProvider>
     )
   }
   return (
-    <MainLayout>
-      <PageErrorBoundary>
-        <Outlet />
-      </PageErrorBoundary>
+    <ThemeProvider>
+      <AppProviders>
+        <MainLayout>
+          <PageErrorBoundary>
+            <Outlet />
+          </PageErrorBoundary>
 
-      <SearchDialog />
-      <LivePushToasts />
-      <OfflineIndicator />
-      <InstallPrompt />
-    </MainLayout>
+          <SearchDialog />
+          <LivePushToasts />
+          <OfflineIndicator />
+          <InstallPrompt />
+        </MainLayout>
+      </AppProviders>
+    </ThemeProvider>
   )
 }

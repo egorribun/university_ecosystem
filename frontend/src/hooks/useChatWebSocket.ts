@@ -138,7 +138,16 @@ export function useChatWebSocket({
   const reconnectAttemptRef = useRef(0)
 
   // MOD-11: Subscribe to external store for connection state
-  const isConnected = useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot)
+  // W127 SW1: 3rd arg getServerSnapshot returns `false` — no WS connection
+  // exists server-side, so SSR-rendered consumers (MessengerProvider via
+  // AppProviders chain in __root.tsx RootComponent) see disconnected state.
+  // Without this arg, React 19 throws "Missing getServerSnapshot, which is
+  // required for server-rendered content" at module evaluation time.
+  const isConnected = useSyncExternalStore(
+    wsStore.subscribe,
+    wsStore.getSnapshot,
+    () => false,
+  )
 
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()
