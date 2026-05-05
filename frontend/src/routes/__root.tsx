@@ -200,22 +200,36 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   // Wave 125 Phase 2 — minimal SSR-rendered HTML scaffold.
+  // Wave 127 SW5 — read per-request theme + language cookies via globalThis
+  // getters populated by server.ts (W127 SW4). Renders `<html lang={lang}
+  // class={isDark ? "dark" : undefined}>` server-side so cookie-bearing
+  // returning users see SSR-rendered HTML matching their pre-paint state —
+  // no more hardcoded `<html lang="ru">` mismatch on dark-mode + English.
   //
-  // With `defaultSsr: false` on the router (see src/router.ts), route
-  // `component`s do NOT execute during SSR — only this `shellComponent`
-  // does. The `children` prop is the empty `<Outlet />` placeholder
-  // during SSR and the full client tree post-hydration. The result:
-  // shell HTML = `<html><head>(meta+title+scripts)</head><body><div
-  // id="root"></div><Scripts/></body></html>` with no provider
-  // dependencies executed server-side, so no AppShellProvider /
-  // AuthProvider / etc. errors during shell prerender.
+  // On the client, RootShell only runs during SSR — client hydration reuses
+  // the server-emitted `<html>` and never re-executes RootShell, so the
+  // getters being undefined client-side is irrelevant.
+  //
+  // `suppressHydrationWarning` on `<html>` is defense-in-depth for edge
+  // cases the server cannot detect:
+  //   - New users with no cookie but system-pref dark: THEME_INIT_SCRIPT
+  //     mutates `<html class="dark">` after parse, before React hydrates
+  //   - Browsers that block cookies but allow localStorage
+  // React 19 skips the hydration comparison on `<html>` only (not children).
   //
   // `<HeadContent />` injects all `head:()` registrations from this
   // route + any nested routes (via TanStack Router's head merging).
   // `<Scripts />` injects the bundle entry script tags + modulepreload
   // links produced by Vite + tanstackStart.
+  const ssrTheme =
+    typeof globalThis !== "undefined" ? globalThis.__ssrThemeGetter__?.() : undefined
+  const ssrLang =
+    typeof globalThis !== "undefined" ? globalThis.__ssrLangGetter__?.() : undefined
+  const isDark = ssrTheme === "dark"
+  const lang = ssrLang ?? "ru"
+
   return (
-    <html lang="ru">
+    <html lang={lang} className={isDark ? "dark" : undefined} suppressHydrationWarning>
       <head>
         <HeadContent />
         <style dangerouslySetInnerHTML={{ __html: INITIAL_PAINT_CSS }} />
