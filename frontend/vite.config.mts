@@ -95,6 +95,24 @@ const loadManifest = () => {
 }
 
 const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
+// Wave 125 Phase 2 — `transformIndexHtml` does NOT fire on TanStack Start's
+// React-SSR-rendered `_shell.html` (the shell goes through React's renderer,
+// not Vite's index.html pipeline). The CSP nonce + font preload injectors
+// below are therefore EFFECTIVELY DEAD CODE in Phase 2 builds — they would
+// only fire if Vite emitted a `dist/index.html`, which it no longer does
+// once `tanstackStart()` is in the plugin chain.
+//
+// The equivalent functionality has migrated to
+// `frontend/scripts/post-build-shell.mjs`, which runs after `vite build`
+// (spawned by `run-build.mjs`) and operates on `dist/client/_shell.html`.
+// Both plugins are kept here as harmless no-ops for two reasons:
+//   1. Defensive — if a future tanstackStart version emits a Vite-compatible
+//      `index.html` again, these plugins would resume working without
+//      requiring a re-write of run-build.mjs.
+//   2. Clear migration audit trail — the plugins are a touchstone showing
+//      where the W124 SW2 (font preload) + DEBT-05 (CSP nonce) original
+//      implementations lived; new contributors finding them via grep can
+//      see the comment block + post-build-shell.mjs handover note.
 const withStrictCspNonce = (): PluginOption => ({
   name: "strict-csp-nonce",
   enforce: "post",
