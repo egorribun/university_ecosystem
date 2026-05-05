@@ -1,6 +1,6 @@
 # Audit Trail Index
 
-Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `8eba94352`); Wave 123 SW5 executed first N+3 rotation (W120 → archive); Wave 124 SW6 executed second rotation (W121 → archive); Wave 125 SW4 executed third rotation (W122 → archive).
+Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `8eba94352`); Wave 123 SW5 executed first N+3 rotation (W120 → archive); Wave 124 SW6 executed second rotation (W121 → archive); Wave 125 SW4 executed third rotation (W122 → archive); Wave 126 SW9 executed fourth rotation (W123 → archive).
 
 ## Active audits
 
@@ -8,18 +8,19 @@ Recent audits (last 3 waves) — referenced from `CLAUDE.md ## Audit Trail` and 
 
 | Wave | Date | Audit file | Headline |
 |------|------|-----------|----------|
+| 126 | 2026-05-05 | [AUDIT_WAVE126.md](AUDIT_WAVE126.md) | TanStack Start v1 SSR migration Phase 3 (auth-at-edge INFRASTRUCTURE-ONLY) — backend's existing `access_token_v2` HttpOnly cookie reused (no Set-Cookie additions; SW2 dropped after SW1 found backend chokepoint already provides everything); `src/ssrAuth.ts` (cookie parser + jose JWKS-based JWT validation against `/.well-known/jwks.json`) + 19 unit tests; `src/server.ts` `node:async_hooks` AsyncLocalStorage scopes auth per-request via `globalThis.__ssrAuthGetter__`; `src/router.ts` `getRouter()` reads SSR auth state replacing W125 SSR_STUB_AUTH; client bundle byte-identical to W125 baseline (137,813 bytes; jose + node:async_hooks server-only per Vite environments partition); SW5 + SW6 (per-route SSR enablement) DEFERRED to Phase 5 — provider hoisting prerequisite |
 | 125 | 2026-05-05 | [AUDIT_WAVE125.md](AUDIT_WAVE125.md) | TanStack Start v1 SSR migration: Phase 1 + Phase 2 — `@tanstack/react-start@1.167.62` + `nitro@3.0.260429-beta` installed; `src/server.ts` (createServerEntry) + `__root.tsx` `shellComponent` + `ssr: false` + stub auth context; `scripts/post-build-shell.mjs` replaces transformIndexHtml plugins (CSP nonce + font preload + LHCI placeholder injection on React-SSR-rendered `_shell.html`); Storybook viteFinal filters conflicting tanstackStart sub-plugins; gates green (tsc 0, lint 0, vitest 859p/12s/0f, npm audit 0); LHCI 9-URL × 3-run + e2e suite deferred to W126 |
 | 124 | 2026-05-01 | [AUDIT_WAVE124.md](AUDIT_WAVE124.md) | XL Mobile Perf + LazyMotion Aggressive + Variance + SSR Pre-flight — vendor-ui **−56.6 KB / −34.8%** via aggressive LazyMotion+domAnimation refactor (11 imperative animation files → native rAF/IntersectionObserver/CSS transitions; `useAnimatedFloat` + `useSlidingIndicator` shared hooks); critical font preload Vite plugin (~50-150 ms FOIT win); bundle audit NO-OP (already optimal); 3-session × 3-run variance band ±0.01-0.02 Perf (NOT ±0.06-0.07 as W123 hypothesis); CLS dropped 0.033 → 0.017 (correlation with SW2); SSR pre-flight design doc for W125+ (TanStack Start v1, 30-50 h phased) |
-| 123 | 2026-04-30 | [AUDIT_WAVE123.md](AUDIT_WAVE123.md) | Frontend tech-debt + Chromatic UNBLOCKED — `strictExecutionOrder` workaround in `.storybook/main.ts` viteFinal closes W120 SW8 / W121 SW7 / W122 SW5 blocker; ScheduleCard CLS monitor stable at 0.0335; vendor-ui audit NO-OP for bundle |
 
 ## Archived audits
 
 Older waves (W112-W122 + W21-W32 in `TOTAL_AUDIT_*` legacy format) — moved to `archive/` for repo-root cleanliness. Still tracked in git, still searchable via `grep -r "X" docs/audits/archive/`.
 
-### Frontend audit era (W112-W122)
+### Frontend audit era (W112-W123)
 
 | Wave | Date | Audit file | Theme |
 |------|------|-----------|-------|
+| 123 | 2026-04-30 | [archive/AUDIT_WAVE123.md](archive/AUDIT_WAVE123.md) | Frontend tech-debt + Chromatic UNBLOCKED — `strictExecutionOrder` workaround in `.storybook/main.ts` viteFinal closes W120 SW8 / W121 SW7 / W122 SW5 blocker |
 | 122 | 2026-04-30 | [archive/AUDIT_WAVE122.md](archive/AUDIT_WAVE122.md) | Frontend tech-debt + bundle/image bandwidth — ~875 KB image savings + vendor-pdf truly lazy + DashboardHero CLS root-cause fix |
 | 121 | 2026-04-29 | [archive/AUDIT_WAVE121.md](archive/AUDIT_WAVE121.md) | Inherited tech-debt close — /activity + /map LHCI MEASURABLE for first time post-W116 (Lighthouse 13.1.0); 22-key i18n gap closed |
 | 120 | 2026-04-28 | [archive/AUDIT_WAVE120.md](archive/AUDIT_WAVE120.md) | Inherited tech-debt close — CLS arc closed at WCAG Good ceiling (warn@0.15 → error@0.10); Schedule a11y 5→0 axe violations + Layout.tsx duplicate `<main>` global fix |

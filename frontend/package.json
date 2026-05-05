@@ -84,6 +84,7 @@
     "i18next-browser-languagedetector": "^8.2.0",
     "i18next-http-backend": "^3.0.2",
     "idb-keyval": "^6.2.2",
+    "jose": "^5.10.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.553.0",
     "maplibre-gl": "^5.22.0",

@@ -114,15 +114,19 @@ body::after {
 }`
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  // Wave 125 Phase 2 — `ssr: false` on the root route means TanStack
-  // Router skips SSR rendering for this route (and by inheritance, all
-  // child routes). Combined with the `shellComponent` below, the
-  // server pass produces only the HTML scaffold; the full route tree
-  // (with provider-dependent components like MainLayout) renders
-  // exclusively on the client after hydration. Phase 3 (W126+) may
-  // flip per-route SSR back on once auth-at-edge + cookie-session
-  // make it viable to render the real provider tree server-side.
-  ssr: false,
+  // Wave 126 polish — root opts INTO SSR so per-route SSR enablement
+  // can override more restrictively (per TanStack Start v1 docs:
+  // "Child routes inherit the Selective SSR configuration from their
+  // parent routes. However, an inherited SSR value can only be made
+  // MORE restrictive."). With `ssr: true` here, child layouts under
+  // `_auth.tsx` + `_admin.tsx` set `ssr: false` to preserve their
+  // client-only behavior (provider chain not yet hoisted for SSR);
+  // routes under `_public.tsx` inherit `ssr: true` which means
+  // `/login` can render server-side via `RootComponent`'s
+  // `import.meta.env.SSR` branch (returns minimal `<Outlet />` on
+  // SSR — Phase 5 will hoist providers so MainLayout becomes
+  // SSR-safe and full route SSR delivers the LCP win).
+  ssr: true,
   // Wave 125 Phase 2 — head() registers metadata that TanStack Router's
   // `<HeadContent />` injects into `<head>` during SSR + client. Mirrors
   // the meta + link tags that lived in `frontend/index.html` pre-W125.
@@ -243,19 +247,30 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  // Wave 125 Phase 2 — full client-side layout, wrapped by all
-  // providers from `App.tsx`. Empirical finding: `defaultSsr: false`
-  // on the router is not sufficient on its own — TanStack Router's
-  // RouterProvider still walks the rendered tree during build-time
-  // shell prerender, hitting `useAppShell` inside MainLayout because
-  // the providers (mounted in `main.tsx` at runtime) are not present
-  // during SSR. The `import.meta.env.SSR` short-circuit returns null
-  // during the prerender SSR pass, which Vite's environments build
-  // tree-shakes from the client bundle (verified post-build via grep
-  // — branch resolves to `if (false) return null` and is eliminated).
-  // Phase 3 (W126+) replaces this guard with proper provider hoisting
-  // above `<StartClient />` so SSR sees the full provider chain.
-  if (import.meta.env.SSR) return null
+  // Wave 126 polish — SSR branch returns minimal `<Outlet />` so child
+  // routes that opt into SSR (e.g. `/login` under `_public.tsx`) have
+  // a place to mount their server-rendered content. MainLayout (which
+  // uses `useAppShell` from `AppShellProvider`) is client-only because
+  // its provider chain is mounted via `main.tsx` → `<App>` →
+  // `<AppProviders>` (not yet hoisted above `<StartClient />`).
+  // Hydration: server emits `<div id="root"><Outlet content/></div>`,
+  // client mounts `<div id="root"><MainLayout>...<Outlet content/>...</MainLayout></div>`.
+  // React 19 falls back to client render at the wrapper-mismatch
+  // boundary; SSR'd content paints first (LCP win for /login), then
+  // client takes over with full chrome. Phase 5 will hoist providers
+  // above `<StartClient />` so MainLayout becomes SSR-safe and the
+  // hydration mismatch goes away.
+  //
+  // `_auth.tsx` + `_admin.tsx` set `ssr: false` to preserve client-only
+  // behavior on authenticated routes (more restrictive override of
+  // root's `ssr: true` — TanStack Start v1 SSR inheritance contract).
+  if (import.meta.env.SSR) {
+    return (
+      <PageErrorBoundary>
+        <Outlet />
+      </PageErrorBoundary>
+    )
+  }
   return (
     <MainLayout>
       <PageErrorBoundary>
