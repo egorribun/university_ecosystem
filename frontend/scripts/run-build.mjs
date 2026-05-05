@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process"
-import { readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
 
@@ -59,27 +58,19 @@ async function main() {
     await run("node", [path.resolve(process.cwd(), "scripts/check-bundle-budget.mjs")])
   }
 
-  // Manual replacement for VITE_LHCI and visibility fixes in index.html
-  const isLHCI = process.env.VITE_LHCI === "true"
-  const distIndex = path.resolve(process.cwd(), "dist/index.html")
-  try {
-    let html = readFileSync(distIndex, "utf8")
-    if (isLHCI) {
-      // Force visibility CSS that works regardless of scripts
-      const lhciStyles =
-        "html, body, #root { background: #FFFFFF !important; color: #000000 !important; " +
-        "opacity: 1 !important; visibility: visible !important; } " +
-        "#lhci-marker { display: flex !important; }"
-      html = html.replace("/* LHCI_CSS_PLACEHOLDER */", lhciStyles)
-      html = html.replace(/%VITE_LHCI%/g, "true")
-    } else {
-      html = html.replace("/* LHCI_CSS_PLACEHOLDER */", "")
-      html = html.replace(/%VITE_LHCI%/g, "false")
-    }
-    writeFileSync(distIndex, html, "utf8")
-  } catch (error) {
-    console.warn("Could not perform manual VITE_LHCI replacement in index.html:", error.message)
-  }
+  // Wave 125 Phase 2 — post-build HTML processing (font preload, CSP
+  // nonce placeholder, VITE_LHCI placeholder replacement, mirror
+  // `_shell.html` → `index.html` for static-serve compat) is delegated
+  // to a sibling script spawned as a fresh node child process. Two
+  // alternative approaches turned out unreliable:
+  //   - npm pre/post lifecycle hooks (`postbuild`) are not auto-run by
+  //     `npm run build` since npm 7+ (only for install/version etc).
+  //   - In-process `await postBuildShellProcess()` from inside this
+  //     `main()` was sometimes skipped on Windows after vite's child
+  //     process exited under shell:true (parent event loop shutdown).
+  // Spawning a fresh `node` child as the last step gives us
+  // deterministic execution + clear log separation.
+  await run("node", [path.resolve(process.cwd(), "scripts/post-build-shell.mjs")])
 }
 
 main().catch((error) => {

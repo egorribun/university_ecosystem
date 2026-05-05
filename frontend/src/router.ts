@@ -11,6 +11,27 @@ export interface RouterContext {
   queryClient: QueryClient
 }
 
+// Wave 125 Phase 2 — stub context for build-time SSR + initial mount.
+//
+// Pre-W125 the router was instantiated with `context: { auth: undefined!,
+// queryClient: undefined! }` and `App.tsx`'s `<RouterProvider context={...}>`
+// populated real values at runtime. With Phase 2's spa-mode prerender,
+// route guards (_auth.tsx, _public.tsx, _admin.tsx) run during the
+// build-time SSR pass with whatever context the router was created
+// with — so undefined context throws TypeError on `context.auth.loading`.
+// Stub values let guards execute non-destructively (they all just call
+// `redirect()` which is followed by the prerender pipeline up to
+// `maxRedirects`). When `<RouterProvider context={...}>` mounts on the
+// client, the real values override these stubs reactively for the
+// regular runtime.
+//
+// `loading: false` paired with `isAuth: false` makes _auth.tsx redirect
+// to /login (which _public.tsx accepts), giving the prerender a stable
+// terminal route. Phase 3 (W126+) replaces this with cookie-based
+// auth-at-edge so SSR sees real auth state from the first request.
+const SSR_STUB_AUTH: RouterContext["auth"] = { isAuth: false, user: null, loading: false }
+const SSR_STUB_QUERY_CLIENT = new QueryClient()
+
 // Wave 117 SW1 — View Transitions fire on every navigation (including the
 // initial route resolve). Phase 0 chrome-devtools-mcp traces on mobile
 // emulation (375×667, 4x CPU, Slow 4G) surfaced CLS 0.90 on /dashboard,
@@ -38,13 +59,21 @@ const createAppRouter = () =>
   createRouter({
     routeTree,
     context: {
-      auth: undefined!,
-      queryClient: undefined!,
+      auth: SSR_STUB_AUTH,
+      queryClient: SSR_STUB_QUERY_CLIENT,
     },
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
     defaultViewTransition: LHCI_VIEW_TRANSITION,
+    // Wave 125 Phase 2 — `defaultSsr: false` is part of TanStack
+    // Router's separate `RouterConfig` (`createRouterConfig`), NOT of
+    // `RouterConstructorOptions` (omitted via Omit). For SPA mode the
+    // equivalent guard is `ssr: false` on the root route in
+    // `__root.tsx` (see the createRootRouteWithContext options there).
+    // The shellComponent + RootComponent SSR guard combination
+    // achieves the same outcome: only the shellComponent renders
+    // server-side, route `component`s skip SSR.
   })
 
 export function getRouter() {

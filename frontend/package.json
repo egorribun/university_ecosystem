@@ -10,6 +10,7 @@
     "preinstall": "node scripts/ensure-wasm.mjs",
     "dev": "vite",
     "build": "node ./scripts/run-build.mjs",
+    "build:shell": "node ./scripts/post-build-shell.mjs",
     "build:report": "npm run build -- --report",
     "preview": "vite preview",
     "lint": "eslint --max-warnings=0 --ext .ts,.tsx \"src\" \"tests\"",
