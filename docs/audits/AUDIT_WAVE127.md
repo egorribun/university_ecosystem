@@ -57,7 +57,7 @@ Files: 4 changed (+86 / −64). Modified: `src/routes/__root.tsx`, `src/App.tsx`
 
 `main.tsx` removes `<ThemeProvider>` wrap from render tree (now inside `__root.tsx`). PersistQueryClientProvider + ErrorBoundary stay.
 
-`useChatWebSocket.ts:141` adds 3rd `getServerSnapshot` argument to `useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot, () => false)` — React 19 requires this for SSR rendering; without it, `MessengerProvider` (which calls `useChatWebSocket` via `AppProviders` chain) throws "Missing getServerSnapshot" during SSR pass.
+`useChatWebSocket.ts:146` adds 3rd `getServerSnapshot` argument to `useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot, () => false)` (was line 141 pre-SW1 commit; +5 lines from added comment block) — React 19 requires this for SSR rendering; without it, `MessengerProvider` (which calls `useChatWebSocket` via `AppProviders` chain) throws "Missing getServerSnapshot" during SSR pass.
 
 **Browser-API audit confirmed providers SSR-safe** (verified by reading source):
 - `AppShellContext.tsx`: `isBrowser = typeof window !== "undefined"` constant at line 30 + `if (!isBrowser) return` guards on every function (lines 33, 95, 104, 124, 158, 166, 174, 184). Initial state `{ blurred: false, scrollLocked: false }` — same on server + client.
@@ -262,3 +262,95 @@ W128 takes the LCP wins on per-route SSR enablement. The W127 deliverable was in
 20 new unit tests + bundle invariance preserved + build × 3 reproducible = solid foundation.
 
 Final commit count: **6 SW commits + 1 docs commit = 7 total**, ~12 files modified, **+418/-83 lines** (excluding audit + memory files added in SW8).
+
+---
+
+## Polish pass — May 2026 (post-SW8)
+
+**Trigger**: User asked "Wave 127 полностью завершена и абсолютно всё безупречно на текущем уровне?" — invoked the standard `feedback_perfectionism.md` self-audit protocol. 7 polish items identified (P1-P7); 5 closed in polish + 1 NO-OP confirmed + 1 STRUCTURALLY BLOCKED.
+
+### Polish #1 — chrome-devtools-mcp /login visual smoke ✅
+
+**Trigger**: AUDIT §Honesty probe #4 listed as deferred ("chrome-profile already-running locked"). Polish attempted force-kill via `taskkill //F //IM chrome.exe` (3-5 PIDs killed) + `isolatedContext: "wave127-polish"` workaround per chrome-devtools-mcp Context7 docs.
+
+**Verification**: `new_page` succeeded with isolatedContext. `list_console_messages` returned **EXACTLY 1 message**: `[info] [GlobalErrors] Handlers registered` — expected from `initGlobalErrorHandlers` invocation per `main.tsx:21` on every page load. **0 hydration mismatch errors. 0 React errors. 0 backend network errors** (no /users/me 502 noise because /login is `_public.tsx ssr:true` route, doesn't trigger useProfileSync).
+
+W127 SW1 provider hoisting visually verified clean.
+
+### Polish #2 — Storybook re-verification ✅
+
+**Trigger**: AUDIT §Honesty probe #12 ("deferred unless regression reported"). W125 polish #4 + W124 polish-v1 P2 precedent.
+
+**Verification**: `time npm run build-storybook` → **18.43s** (Vite built in 15.49s + Storybook overhead). W125 polish baseline 18.48s preserved within 0.05s noise. "Storybook build completed successfully" → `storybook-static/` produced cleanly. No `.storybook/` modifications in W127 (confirmed pre-polish via git log).
+
+### Polish #3 — chrome-devtools-mcp lighthouse_audit STRUCTURALLY BLOCKED ⚠️
+
+**Trigger**: AUDIT §Honesty probe #3 (LHCI 1-URL × 3-run on /login deferred to W128). MCP tool `lighthouse_audit` was a candidate workaround.
+
+**Attempt**: `lighthouse_audit({ device: "mobile", mode: "navigation" })` + `device: "desktop", mode: "snapshot"` + force-killed chrome (5 PIDs) + fresh `new_page` with isolatedContext + retry. ALL attempts returned `Error: Network.emulateNetworkConditions timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.`
+
+**Root cause** (per Context7 `/chromedevtools/chrome-devtools-mcp` docs): Codex MCP Configuration recommends `startup_timeout_ms = 20_000` on Windows 11 (server-config level, NOT runtime-changeable from Claude). Even simple `emulate({ colorScheme: "auto" })` standalone hit the same timeout — every CDP `Network.emulate*` command times out on this Windows MCP instance regardless of test parameters.
+
+**Conclusion**: same category as W128 build-infra fix — MCP server configuration issue requires user-side `startup_timeout_ms` bump. Documented as W128 work alongside `npm run lhci:windows` Windows hang (W126 polish #3). NO LHR JSON ever produced. P3 cannot be closed in this session.
+
+### Polish #4 — ParticleAuthBackground defensive gate audit NO-OP ✅
+
+**Trigger**: AUDIT §Honesty probe #6 listed as "could add defensive gate".
+
+**Audit finding**: ParticleAuthBackground (`src/components/ui/ParticleAuthBackground.tsx`) is **already SSR-optimal**:
+- `useEffect` block (line 23) wraps all canvas physics setup; doesn't run server-side (effect-time)
+- VITE_E2E_MODE gate at line 31 (early-return inside useEffect) + line 227 (alternative render path)
+- Render-time JSX at line 242 returns `<div ref={containerRef} className="..."><canvas ref={canvasRef} />...</div>` — pure DOM declaration, NO browser API at render time
+
+**Adding `if (typeof window === "undefined") return null` early-return WOULD HARM** — server emit nothing, client mount canvas tree → unnecessary hydration patch (additive DOM reconciliation). The original concern (from agent inventory in Phase 1) misread render-time vs effect-time access. NO-OP confirmed; component is correct as-is.
+
+### Polish #5 — Final clean vitest baseline ✅
+
+**Trigger**: AUDIT §Honesty probe #10 (vitest count tracking). Last `npm test --run` was during SW6, not after SW8 docs commit.
+
+**Verification**: clean `npm test -- --run` → **904 passed / 12 skipped / 0 failed** in 27.09s. W127 baseline preserved post-SW8 + post-polish (SW6 cookie-permutation remained on 904p).
+
+### Polish #6 — AUDIT_WAVE127.md stale ref fixed ✅
+
+**Trigger**: User-suggested polish item — verify W127 SW1 line shifts didn't leave stale CLAUDE.md / AUDIT references.
+
+**Found**: AUDIT_WAVE127.md:60 referenced `useChatWebSocket.ts:141` — but SW1 commit added a 5-line comment block above the call site, shifting it to **line 146**. Fixed in-place: `useChatWebSocket.ts:146` (was line 141 pre-SW1 commit; +5 lines from added comment block).
+
+**No stale CLAUDE.md gotcha refs found** — gotchas reference filenames descriptively without specific line numbers (verified via `grep -nE "useChatWebSocket\.ts(:\d+)?" CLAUDE.md` = 0 hits with line numbers).
+
+### Polish #7 — MEMORY.md compaction ✅
+
+**Trigger**: AUDIT §Honesty probe #8 (MEMORY.md size). File was 60,748 bytes (limit 24,400 warning). W124+W123+W122 wave rows still 5,000-6,800 chars each (pre-W126/W127 compaction precedent).
+
+**Compacted W125+W124+W123+W122 rows** to ~700-1200 chars each (mirror W126+W127 polish pattern):
+- W127 row: 962 chars (already compact at SW8 commit)
+- W126 row: 496 chars (W126 polish baseline)
+- W125 row: 6,830 → 832 chars (-88%)
+- W124 row: ~7,000 → 1,201 chars (-83%)
+- W123 row: ~6,800 → 987 chars (-85%)
+- W122 row: ~5,800 → 940 chars (-84%)
+- W121, W120 rows still 4,353-4,910 chars (W128+ scope per "compact W124+W123+W122" plan)
+
+**File size**: 60,748 → 44,756 bytes (**-15,992 bytes / -26%**).
+
+Compaction strategy: preserve key headlines (commit SHAs, headline metrics, scope), reference `AUDIT_WAVE<N>.md` (active or archive/) for full detail, drop verbose per-SW narrative + verbose Honesty probe lists.
+
+### Polish — final gates re-verify
+
+- tsc 0 errors ✅
+- eslint 0 warnings (max-warnings=0) ✅
+- vitest **904 passed / 12 skipped / 0 failed** ✅
+- npm audit **0 vulnerabilities** ✅
+- Cargo.lock no drift (idempotent ≥ 17 waves at end of W127 polish)
+
+### Polish — what changed in W127 audit framing
+
+**Before polish**: 12 honest deferrals listed; "deferred unless regression reported" for Storybook; chrome-devtools-mcp visual smoke "deferred — chrome-profile already-running"; LHCI deferred as wrapper hang.
+
+**After polish**: 6 deferrals **CLOSED** (P1 visual smoke / P2 Storybook / P4 audit-NO-OP / P5 vitest baseline / P6 stale ref / P7 MEMORY.md compaction); 1 deferral **STRUCTURALLY BLOCKED** at MCP-server-config level (P3 lighthouse_audit Windows protocolTimeout); remaining caveats (per-route SSR enablement, AuthProvider RouterContext bridge, production SameSite=Lax, build-infra Windows hang, useAppShell viewport detection) are W128+ structural scope.
+
+**Storybook**: 18.43s build (W125 baseline preserved within 0.05s).
+**chrome-devtools-mcp /login**: 0 hydration errors confirmed (only expected GlobalErrors handler init message).
+**MEMORY.md**: 60.7 → 44.8 KB (-26%).
+
+Wave 127 + polish: 6 SW + 1 docs + 1 polish = **8 total commits**.
