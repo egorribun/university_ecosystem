@@ -27,27 +27,48 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry"
 import { extractAuthFromRequest, SSR_AUTH_UNAUTH, type SsrAuthState } from "./ssrAuth"
+import {
+  extractThemeFromRequest,
+  extractLangFromRequest,
+  type ResolvedTheme,
+  type ResolvedLang,
+} from "./ssrTheme"
 
-// Per-request auth storage — node:async_hooks AsyncLocalStorage scopes the
-// auth state to the async context spawned for THIS request. Nested awaits
-// inside `handler.fetch` (which calls `getRouter()` to construct the router)
-// see the same store via `requestAuthStorage.getStore()`.
+// Per-request storages — node:async_hooks AsyncLocalStorage scopes the per-
+// request state to the async context spawned for THIS request. Nested awaits
+// inside `handler.fetch` (which calls `getRouter()` to construct the router,
+// and may also nest into RootShell rendering) see the same stores via the
+// `getStore()` calls below.
 //
 // node:async_hooks is server-only — Vite's environments build keeps this
 // import in the server chunk only; client bundle never loads it.
+//
+// Three storages (W126 + W127):
+//   - requestAuthStorage: SSR auth state from access_token_v2 cookie (W126 SW3)
+//   - requestThemeStorage: resolved theme from ue-mode cookie (W127 SW4)
+//   - requestLangStorage: resolved lang from ue:language cookie (W127 SW4)
+//
+// Layered as nested .run() calls so all three are visible to the handler.
 const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
+const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
+const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
 
-// Globally-accessible getter so `src/router.ts` can read the per-request auth
-// state without a circular import (router.ts is also imported by client code,
-// so it cannot import server.ts directly). The getter is set ONCE at module
-// load; the value it returns is the per-request store from AsyncLocalStorage.
+// Globally-accessible getters so `src/router.ts` (W126 SW4) and
+// `src/routes/__root.tsx` RootShell (W127 SW5) can read per-request state
+// without a circular import (router.ts + __root.tsx are also imported by
+// client code, so they cannot import server.ts directly). Getters set ONCE
+// at module load; the values they return are the per-request stores.
 declare global {
   // `var` is required in `declare global` to type a globalThis property —
   // `let`/`const` cannot augment the global namespace. ESLint's `no-var` /
   // `vars-on-top` rules do not flag declarations inside `declare global`.
   var __ssrAuthGetter__: (() => SsrAuthState | undefined) | undefined
+  var __ssrThemeGetter__: (() => ResolvedTheme | undefined) | undefined
+  var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
+globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
+globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 
 export default createServerEntry({
   async fetch(request) {
@@ -60,6 +81,14 @@ export default createServerEntry({
       // failures (e.g. JWKS endpoint unreachable during cold start).
       auth = SSR_AUTH_UNAUTH
     }
-    return requestAuthStorage.run(auth, () => handler.fetch(request))
+    // Theme + lang extraction is sync + has try/catch internally; safe to call
+    // directly without await.
+    const theme = extractThemeFromRequest(request)
+    const lang = extractLangFromRequest(request)
+    return requestAuthStorage.run(auth, () =>
+      requestThemeStorage.run(theme, () =>
+        requestLangStorage.run(lang, () => handler.fetch(request)),
+      ),
+    )
   },
 })
