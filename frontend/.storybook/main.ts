@@ -42,6 +42,45 @@ const config: StorybookConfig = {
       const name = (plugin as { name?: string }).name
       return typeof name === "string" && name.startsWith("vite-plugin-pwa")
     }
+    // Wave 125 Phase 2 — strip ONLY the TanStack Start sub-plugins that
+    // conflict with Storybook's iframe build, NOT the whole chain.
+    // Removing `tanstack-start-core:config` + `tanstack-react-start:config`
+    // breaks dependent plugins (`Cannot get config before root is
+    // resolved`) so they must stay; the start compiler, import protection,
+    // and router-plugin are needed too because Storybook stories may
+    // import server functions transitively.
+    //
+    // Plugins removed for Storybook:
+    //   - tanstack-start-core:dev-server / preview-server — Storybook
+    //     runs its own iframe server, doesn't need SSR middleware.
+    //   - tanstack-start-core:start-manifest-capture-client-build —
+    //     throws `Error: multiple entries detected: assets/index-XXX.js`
+    //     because Storybook's iframe build emits multiple chunks (one
+    //     per story bundle group); the manifest plugin assumes exactly
+    //     one client entry.
+    //   - tanstack-start-core:post-build — runs after our main app build,
+    //     irrelevant to Storybook's static story output.
+    //   - tanstack-start-core:virtual-client-entry — exposes the SPA
+    //     client entry at `/_build/...`; Storybook ships its own iframe
+    //     entry.
+    const STORYBOOK_INCOMPATIBLE_TANSTACK_PLUGINS = new Set([
+      "tanstack-start-core:dev-server",
+      "tanstack-start-core:dev-server:injected-head-scripts",
+      "tanstack-start-core:preview-server",
+      "tanstack-start:start-manifest-capture-client-build",
+      "tanstack-start-core:start-manifest-capture-client-build",
+      "tanstack-start-core:post-build",
+      "tanstack-start-core:virtual-client-entry",
+      // Wave 125 — exact plugin name varies between
+      // `tanstack-start:` and `tanstack-start-core:` prefixes depending
+      // on which sub-package the plugin originates from. Both spellings
+      // are filtered defensively.
+    ])
+    const isStorybookIncompatibleTanstackPlugin = (plugin: unknown): boolean => {
+      if (!plugin || typeof plugin !== "object") return false
+      const name = (plugin as { name?: string }).name
+      return typeof name === "string" && STORYBOOK_INCOMPATIBLE_TANSTACK_PLUGINS.has(name)
+    }
     const allPlugins = flatten(viteConfig.plugins ?? []) as Plugin[]
     // Wave 123 SW1 — Storybook 10 + Vite 8/Rolldown ships with `__STORYBOOK_MODULE_*`
     // globals that are READ by chunks but never assigned in the bundle. Rolldown's
@@ -60,7 +99,9 @@ const config: StorybookConfig = {
     const rolldownOutput = rolldownOpts.output ?? {}
     return {
       ...viteConfig,
-      plugins: allPlugins.filter((p) => !isPwaPlugin(p)),
+      plugins: allPlugins.filter(
+        (p) => !isPwaPlugin(p) && !isStorybookIncompatibleTanstackPlugin(p)
+      ),
       build: {
         ...buildConfig,
         rolldownOptions: {
