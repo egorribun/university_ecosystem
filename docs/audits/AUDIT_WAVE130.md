@@ -222,3 +222,57 @@ Per `feedback_perfectionism.md` "безупречно?" probe anticipation. ~10 
 ---
 
 **Branch HEAD pre-SW5**: `1879cc474` (npm audit fix) ← `5faa0ef6a` SW3 ← `94804567a` SW2 ← `6efa841df` SW1 ← `862a7762e` (W129 polish-followup).
+
+---
+
+## Polish pass (post-SW5, ~50 min, "безупречно?" probe response)
+
+After claiming W130 done at SW5, ran the canonical `feedback_perfectionism.md` self-audit pass. Pre-emptively closed 4 of 12 §Honesty probe caveats per the standard's recommendation.
+
+### Polish #3 — Weather forceRefresh semantics drift fix (~15 min, 1 file)
+
+Closes §Honesty probe #6 in full. The W130 SW3 refactor lost the `forceRefresh: true` semantics from the old `useWeather.refresh()` implementation — within the 10-min sessionStorage cache TTL, refresh-button-click was returning cached data not fresh. **Fix**: `forceRefreshRef` pattern in `frontend/src/hooks/useWeather.ts`. The hook locally overrides queryFn to read + clear the ref + propagate `forceRefresh: true` to `fetchWeatherSnapshot`, which then bypasses the sessionStorage cache check at api/weather.ts:155-159 and forces a network round-trip. SSR loaders + factory consumers continue to use the unmodified factory queryFn (no forceRefresh) — only the dashboard hook exercises the refresh-button flow. Public API + test mocks unchanged. Net-zero bundle size delta (forceRefresh ref + queryFn override compress identically to dropped useState/useEffect logic).
+
+### Polish #2 — chrome-devtools-mcp visual smoke completion (~10 min)
+
+Closes §Honesty probe #1 partially. SW4 verified 4 of 6 SSR routes (/dashboard + /schedule + /events + /news). Polish extended verification to 4 more routes via `new_page` fresh-tab pattern with default 30s timeout: /events/$id + /news/$id + /map + /activity. **Result**: all 8 inspectable routes verified 0 React hydration errors, identical clean console pattern (1 expected `profile_cache.cleared` warn = W128 SW1 AuthProvider behavior + 1 info GlobalErrors init each).
+
+| Route | Console errors | Console warns |
+|---|---|---|
+| `/dashboard` | 0 | 1 (`profile_cache.cleared`) + 1 info |
+| `/schedule` | 0 | 1 + 1 info |
+| `/events` | 0 | 1 + 1 info |
+| `/news` | 0 | 1 + 1 info |
+| `/events/$id` | 0 | 1 + 1 info |
+| `/news/$id` | 0 | 1 + 1 info |
+| `/map` | 0 | 1 + 1 info |
+| `/activity` | 0 | 1 + 1 info |
+
+**8/8 verified clean.**
+
+### Polish #4 — Storybook re-verify (~3 min)
+
+Closes §Honesty probe #11. `npm run build-storybook` succeeded: **16.47s vite-internal**. W129 polish #4 baseline 17.95s vite-internal — **8% faster** (within 10% noise band). Storybook 10 + Vite 8/Rolldown integration preserved (no W123 SW1 `strictExecutionOrder` regression, no W116 SW-Stretch workbox cap regression).
+
+### Polish #1 — useScheduleData hook integration test (~20 min, 1 NEW file, 5 NEW tests)
+
+Closes §Honesty probe #4. SW1 refactored `useScheduleData` to spread the new factories but added no direct hook-level integration test. Polish adds `frontend/src/hooks/__tests__/useScheduleData.cache.test.tsx` with 5 tests:
+
+1. **Reads SSR-prefetched groups cache without re-fetching network** — simulates loader's `ensureQueryData(scheduleGroupsQueryOptions())` via `client.setQueryData(opts.queryKey, groups)`; asserts hook consumes cache + `apiGetMock` not called for `/groups`. **Critical SSR-loader integration assertion** (the cache identity preservation pattern in action).
+2. **Auto-selects user.group_id from prefetched groups cache** — student role + group_id present + group_id in groups list; asserts `selectedGroup` resolves to the user's group + `/schedule/{group_id}` query fires.
+3. **Falls back to first group when user.group_id is not in groups list** — defensive auto-select fallback path.
+4. **Schedule queryKey matches `pageScheduleQueryOptions(groupId)` shape** — cache identity preservation regression guard.
+5. **Groups queryKey shape preserved across factory refactor** — cache identity preservation regression guard.
+
+**Vitest delta**: 983p (W130 SW3 baseline) → **988p** (+5 polish). 12s skipped preserved. 0 failures across full suite.
+
+### Polish summary
+
+- **4 of 12 W130 §Honesty caveats closed** (#1 chrome-devtools-mcp visual smoke 4/6 → **8/8 routes verified clean**; #4 vitest count delta = 0 → +5 useScheduleData tests; #6 Weather forceRefresh semantics drift → **FIXED via forceRefreshRef pattern**; #11 Storybook NOT re-verified → **16.47s vite within 10% baseline**)
+- **8 of 12 caveats remain** as structural / W131-natural / methodology deferrals (#2 sequential SSR for /schedule cookie forwarding own scope; #3 LHCI baseline; #5 Weather public API consumer test; #7 cache identity sessionStorage format mismatch — functionally compatible; #8 VITE_LHCI bundle smaller — correct + expected; #9 npm audit upstream CVE not W130 code; #10 LHCI numerical sweep on /schedule; #12 5 sibling ssr:false routes preserved)
+- **Vitest baseline**: 983p (W130 SW3) → **988p** (+5 polish)
+- **All gates preserved**: tsc 0, lint 0, vitest **988p/12s/0f**, npm audit 0, Cargo.lock no drift
+- **Bundle PROD reproducibility**: `index-KalQn95O.js` 138,974 bytes + `_shell.html` 65,872 bytes (3 fresh runs identical) — **net-zero size delta** vs W130 SW5 baseline (`index-CWTPTT9L.js` 138,974 / 65,872; same byte count, hash differs because content shifted Weather ref pattern + new test file). Net-zero confirms forceRefresh polish + new test file have no PROD bundle impact.
+- **Polish budget**: ~50 min actual (within the 60-90 min estimate per `feedback_perfectionism.md`)
+
+**Branch HEAD post-polish**: `<TBD post-polish>` ← `acfa98e8a` (SW5 audit) ← `1879cc474` (SW4 npm audit fix) ← `5faa0ef6a` SW3 ← `94804567a` SW2 ← `6efa841df` SW1 ← `862a7762e` (W129 polish-followup). Branch ahead of `origin/egorribun` by **6 commits** (5 W130 base + 1 polish).

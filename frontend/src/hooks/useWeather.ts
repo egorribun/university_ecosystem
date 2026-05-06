@@ -1,9 +1,9 @@
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { weatherQueryOptions } from "@/api/hooks/weather"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
-import { WEATHER_CACHE_TTL_MS } from "@/api/weather"
+import { WEATHER_CACHE_TTL_MS, fetchWeatherSnapshot } from "@/api/weather"
 import type { WeatherCoordinates, WeatherSnapshot } from "@/api/weather"
 import { getWeatherIconMeta } from "@/utils/weatherIcons"
 import type { WeatherAnimationVariant } from "@/utils/weatherIcons"
@@ -50,8 +50,15 @@ export interface UseWeatherResult {
  * `WeatherFetchError` thrown by queryFn surfaces via `query.error`
  * preserving the prior fallback semantics.
  *
- * `refresh()` invokes `query.refetch()` — TanStack Query handles
- * AbortSignal cancellation internally on subsequent refetches.
+ * Wave 130 polish — `refresh()` honours forceRefresh semantics
+ * (closes W130 §Honesty probe #6). User-initiated refresh sets
+ * `forceRefreshRef.current = true`; the local queryFn override
+ * reads + clears the ref + propagates `forceRefresh: true` to
+ * `fetchWeatherSnapshot`, which then bypasses the sessionStorage
+ * cache check at api/weather.ts:155-159 and forces a network
+ * round-trip. SSR loaders + factory consumers use the unmodified
+ * factory queryFn (no forceRefresh) — only the dashboard hook
+ * exercises the refresh-button flow.
  */
 export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult => {
   const { coordinates: overrideCoordinates, cacheTtlMs = WEATHER_CACHE_TTL_MS } = options
@@ -63,8 +70,16 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
     [overrideCoordinates]
   )
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const forceRefreshRef = useRef(false)
 
-  const query = useQuery(weatherQueryOptions(coordinates, cacheTtlMs))
+  const query = useQuery({
+    ...weatherQueryOptions(coordinates, cacheTtlMs),
+    queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<WeatherSnapshot> => {
+      const force = forceRefreshRef.current
+      forceRefreshRef.current = false
+      return fetchWeatherSnapshot({ coordinates, cacheTtlMs, forceRefresh: force, signal })
+    },
+  })
 
   const data = useMemo<WeatherData | null>(() => {
     const snapshot = query.data
@@ -81,6 +96,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
   }, [query.data, prefersReducedMotion])
 
   const refresh = useCallback(async () => {
+    forceRefreshRef.current = true
     await query.refetch()
   }, [query])
 
