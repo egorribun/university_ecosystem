@@ -1,5 +1,5 @@
 /**
- * @fileoverview Wave 129 polish — direct unit tests for the 3 new SSR factories.
+ * @fileoverview Wave 129 polish + Wave 130 SW3 — direct unit tests for the SSR factories.
  *
  * Closes part of the W129 vitest-delta-zero honesty caveat. Although the
  * factories are pure pass-through wrappers (their queryFn behavior is
@@ -16,12 +16,24 @@
  *     identity preservation)
  *   - prefetchNewsListQuery(qc, filters): invokes prefetchInfiniteQuery on
  *     the provided QueryClient with the cursor pagination shape
+ *   - scheduleGroupsQueryOptions() (W130 SW1): queryKey shape + staleTime
+ *     + retry + retryDelay (FIX-68-05) preservation
+ *   - pageScheduleQueryOptions(groupId) (W130 SW1): queryKey shape with/
+ *     without groupId + enabled flag + staleTime
+ *   - weatherQueryOptions(coordinates) (W130 SW3): queryKey shape with
+ *     4-decimal coordinate precision + staleTime + placeholderData
+ *     fallback path (sessionStorage cold-mount)
  */
 import { QueryClient } from "@tanstack/react-query"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { eventDetailQueryOptions } from "../events"
 import { newsDetailQueryOptions, prefetchNewsListQuery } from "../news"
+import {
+  scheduleGroupsQueryOptions,
+  pageScheduleQueryOptions,
+} from "../schedule"
+import { weatherQueryOptions, weatherQueryKey } from "../weather"
 
 // TanStack Query's `FetchInfiniteQueryOptions` is a discriminated union over
 // `pages?: number` — when `pages` is undefined the type narrows to a branch
@@ -169,5 +181,175 @@ describe("prefetchNewsListQuery (Wave 129 SW3)", () => {
 
     const result = await prefetchNewsListQuery(qc, { language: "ru" })
     expect(result).toBe(sentinel)
+  })
+})
+
+describe("scheduleGroupsQueryOptions (Wave 130 SW1)", () => {
+  it("queryKey shape is ['schedule', 'groups']", () => {
+    const opts = scheduleGroupsQueryOptions()
+    expect(opts.queryKey).toEqual(["schedule", "groups"])
+  })
+
+  it("staleTime is 60_000 (matches useScheduleData baseline)", () => {
+    const opts = scheduleGroupsQueryOptions()
+    expect(opts.staleTime).toBe(60_000)
+  })
+
+  it("gcTime is 5 * 60_000", () => {
+    const opts = scheduleGroupsQueryOptions()
+    expect(opts.gcTime).toBe(5 * 60_000)
+  })
+
+  it("retry is 2 (FIX-68-05 mobile flake budget preserved)", () => {
+    const opts = scheduleGroupsQueryOptions()
+    expect(opts.retry).toBe(2)
+  })
+
+  it("retryDelay applies exponential backoff capped at 10s", () => {
+    const opts = scheduleGroupsQueryOptions()
+    // 1000 * 2^0 = 1000; 1000 * 2^4 = 16000 capped to 10000
+    expect(opts.retryDelay(0)).toBe(1000)
+    expect(opts.retryDelay(1)).toBe(2000)
+    expect(opts.retryDelay(4)).toBe(10_000)
+    expect(opts.retryDelay(10)).toBe(10_000)
+  })
+
+  it("queryFn is callable", () => {
+    const opts = scheduleGroupsQueryOptions()
+    expect(typeof opts.queryFn).toBe("function")
+  })
+})
+
+describe("pageScheduleQueryOptions (Wave 130 SW1)", () => {
+  it("queryKey for non-null groupId is ['schedule', 'group', groupId]", () => {
+    const opts = pageScheduleQueryOptions("group-abc")
+    expect(opts.queryKey).toEqual(["schedule", "group", "group-abc"])
+  })
+
+  it("queryKey for null groupId is ['schedule', 'group', 'none']", () => {
+    const opts = pageScheduleQueryOptions(null)
+    expect(opts.queryKey).toEqual(["schedule", "group", "none"])
+  })
+
+  it("enabled is true when groupId is non-null", () => {
+    expect(pageScheduleQueryOptions("g1").enabled).toBe(true)
+  })
+
+  it("enabled is false when groupId is null", () => {
+    expect(pageScheduleQueryOptions(null).enabled).toBe(false)
+  })
+
+  it("staleTime + gcTime + retry + retryDelay match useScheduleData baseline", () => {
+    const opts = pageScheduleQueryOptions("g1")
+    expect(opts.staleTime).toBe(60_000)
+    expect(opts.gcTime).toBe(5 * 60_000)
+    expect(opts.retry).toBe(2)
+    expect(opts.retryDelay(0)).toBe(1000)
+  })
+
+  it("queryFn returns [] when groupId is null (defensive)", async () => {
+    const opts = pageScheduleQueryOptions(null)
+    // queryFn signature requires QueryFunctionContext but the null-groupId
+    // path returns [] before reading any context — pass {} cast to bypass
+    // type narrowing for this defensive smoke test.
+    const result = await opts.queryFn({ signal: undefined } as never)
+    expect(result).toEqual([])
+  })
+})
+
+describe("weatherQueryOptions (Wave 130 SW3)", () => {
+  beforeEach(() => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      window.sessionStorage.clear()
+    }
+  })
+
+  it("queryKey shape is ['weather', 'snapshot', latStr, lonStr] with 4-decimal precision", () => {
+    const opts = weatherQueryOptions({ lat: 55.71467, lon: 37.81652 })
+    expect(opts.queryKey).toEqual(["weather", "snapshot", "55.7147", "37.8165"])
+  })
+
+  it("weatherQueryKey identical for coordinates rounded to same 4 decimals", () => {
+    const k1 = weatherQueryKey({ lat: 55.71467, lon: 37.81652 })
+    const k2 = weatherQueryKey({ lat: 55.71471, lon: 37.81649 })
+    expect(k1).toEqual(k2) // both round to ['weather', 'snapshot', '55.7147', '37.8165']
+  })
+
+  it("weatherQueryKey differs for coordinates with different 4-decimal rounding", () => {
+    const k1 = weatherQueryKey({ lat: 55.71467, lon: 37.81652 })
+    const k2 = weatherQueryKey({ lat: 55.7152, lon: 37.81652 })
+    expect(k1).not.toEqual(k2)
+  })
+
+  it("staleTime defaults to WEATHER_CACHE_TTL_MS (10 min)", () => {
+    const opts = weatherQueryOptions({ lat: 0, lon: 0 })
+    expect(opts.staleTime).toBe(10 * 60_000)
+  })
+
+  it("staleTime override propagates", () => {
+    const opts = weatherQueryOptions({ lat: 0, lon: 0 }, 5 * 60_000)
+    expect(opts.staleTime).toBe(5 * 60_000)
+  })
+
+  it("gcTime is 30 minutes (longer retention than staleTime)", () => {
+    const opts = weatherQueryOptions({ lat: 0, lon: 0 })
+    expect(opts.gcTime).toBe(30 * 60_000)
+  })
+
+  it("retry is 1 (limits external API hammering on transient failures)", () => {
+    const opts = weatherQueryOptions({ lat: 0, lon: 0 })
+    expect(opts.retry).toBe(1)
+  })
+
+  it("refetchOnWindowFocus + refetchOnMount disabled (avoid spam)", () => {
+    const opts = weatherQueryOptions({ lat: 0, lon: 0 })
+    expect(opts.refetchOnWindowFocus).toBe(false)
+    expect(opts.refetchOnMount).toBe(false)
+  })
+
+  it("placeholderData returns undefined when sessionStorage is empty", () => {
+    const opts = weatherQueryOptions({ lat: 55.71467, lon: 37.81652 })
+    expect(opts.placeholderData()).toBeUndefined()
+  })
+
+  it("placeholderData returns sessionStorage cached snapshot when present", () => {
+    const coords = { lat: 55.71467, lon: 37.81652 }
+    const fakeSnapshot = {
+      conditionCode: 0,
+      conditionLabel: "Clear",
+      temperatureC: 18.5,
+      observedAt: "2026-05-06T12:00:00.000Z",
+    }
+    // Same key shape readWeatherCache uses (`weather:snapshot:LAT,LON`)
+    window.sessionStorage.setItem(
+      "weather:snapshot:55.7147,37.8165",
+      JSON.stringify({ data: fakeSnapshot, expiresAt: Date.now() + 600_000 })
+    )
+
+    const opts = weatherQueryOptions(coords)
+    expect(opts.placeholderData()).toEqual(fakeSnapshot)
+  })
+
+  it("placeholderData allowExpired returns expired sessionStorage entry (fallback paint)", () => {
+    const coords = { lat: 55.71467, lon: 37.81652 }
+    const fakeSnapshot = {
+      conditionCode: 1,
+      conditionLabel: "Cloudy",
+      temperatureC: 12.0,
+      observedAt: "2026-05-06T11:00:00.000Z",
+    }
+    // expiresAt in the past — placeholderData passes allowExpired: true
+    window.sessionStorage.setItem(
+      "weather:snapshot:55.7147,37.8165",
+      JSON.stringify({ data: fakeSnapshot, expiresAt: Date.now() - 60_000 })
+    )
+
+    const opts = weatherQueryOptions(coords)
+    expect(opts.placeholderData()).toEqual(fakeSnapshot)
+  })
+
+  it("queryFn is callable", () => {
+    const opts = weatherQueryOptions({ lat: 0, lon: 0 })
+    expect(typeof opts.queryFn).toBe("function")
   })
 })
