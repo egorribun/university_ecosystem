@@ -184,17 +184,17 @@ All 4 verified W128+W130 SSR routes (dashboard via W128 + schedule via W130) + 2
 
 Per `feedback_perfectionism.md` "безупречно?" probe anticipation. ~10 caveats documented:
 
-1. **chrome-devtools-mcp visual smoke partial**: only /dashboard + /schedule + /events + /news verified clean (0 React hydration errors each). /events/$id + /news/$id detail routes NOT re-verified in W130 — they were W129 polish #3 partial close (curl confirms SSR HTML emits correctly + chrome-devtools-mcp navigation timed out at 30-60s in W129 polish due to backend-down). Not a W130 regression.
+1. **chrome-devtools-mcp visual smoke partial**: only /dashboard + /schedule + /events + /news verified clean (0 React hydration errors each). /events/$id + /news/$id detail routes NOT re-verified in W130 — they were W129 polish #3 partial close (curl confirms SSR HTML emits correctly + chrome-devtools-mcp navigation timed out at 30-60s in W129 polish due to backend-down). Not a W130 regression. **✅ CLOSED IN POLISH (`e7010a599`)** — 4 additional routes verified clean (/events/$id + /news/$id + /map + /activity); 8 of 8 inspectable routes total now verified.
 
 2. **/users/me + /schedule/{group_id} sequential SSR DEFERRED to W131+**: full lessons SSR for /schedule requires server-side cookie forwarding to backend axios. The `@/api/client` instance is browser-configured; calling `/users/me` from Node SSR would require forwarding the incoming `access_token_v2` cookie — currently no such mechanism exists. Adding it is real engineering work that should be its own focused wave per W125 design Strategy 3a vs 3b distinction. Per W130 plan §Recommendation, partial SSR was chosen over the cookie-forwarding work. **Tradeoff accepted**: schedule grid paints client-side after JS hydration (~200-500 ms after LCP).
 
 3. **Schedule lessons paint timing NOT measured**: no LHCI baseline captured for /schedule pre-W130 vs post-W130 to quantify the partial-SSR perf delta. Existing CI `frontend-tests.yml lighthouse:` job covers on every PR push; or `lhci-linux.yml` workflow_dispatch can be triggered post-merge. **W131 candidate**: numerical baseline + ratchet decision.
 
-4. **vitest count delta from useScheduleData refactor = 0**: the `useScheduleData` hook itself doesn't have direct vitest tests (only Schedule.cache.test.tsx asserts shape indirectly). The factory shapes are exercised via the new SSRFactories tests (24 added) but the hook-level integration with the factories is exercised only indirectly. Could add direct hook tests but would duplicate factory test coverage.
+4. **vitest count delta from useScheduleData refactor = 0**: the `useScheduleData` hook itself doesn't have direct vitest tests (only Schedule.cache.test.tsx asserts shape indirectly). The factory shapes are exercised via the new SSRFactories tests (24 added) but the hook-level integration with the factories is exercised only indirectly. Could add direct hook tests but would duplicate factory test coverage. **✅ CLOSED IN POLISH (`e7010a599`)** — NEW `frontend/src/hooks/__tests__/useScheduleData.cache.test.tsx` adds 5 hook-level integration tests (SSR cache consumption, auto-select effect, fallback path, queryKey shape preservation × 2). Vitest 983 → **988p**.
 
 5. **Weather refactor public API preservation NOT manually consumer-tested**: WeatherWidget.tsx + Dashboard.tsx consume `useWeather()` but rely on existing test coverage (vi.mock of useWeather in WeatherWidget.test.tsx + pageTranslations.test.tsx). Visual /dashboard chrome-devtools-mcp smoke confirmed 0 errors but didn't test the weather-card-loading / refresh-button-click interactions. Not a W130 regression — same coverage state as W129.
 
-6. **`forceRefresh: true` semantics from old useWeather not 1:1 mapped**: old `useWeather.refresh()` called internal `load(force = true)` which passed `forceRefresh: true` to `fetchWeatherSnapshot`, bypassing the sessionStorage cache check inside it. New `useWeather.refresh()` calls `query.refetch()` which doesn't propagate the forceRefresh flag — so on refetch, `fetchWeatherSnapshot`'s INTERNAL cache check at `weather.ts:155-159` still returns cached data if not expired. **Effect**: if user clicks "refresh" within the 10-min cache TTL, they get the cached data rather than a fresh network fetch. This is arguably a regression from the prior force-refresh behavior. **Mitigation**: most user-initiated refreshes are after the cache expires anyway; if explicit force-refresh is critical, a future polish can add `meta: { forceRefresh: true }` and a queryFn check. Not closed in W130.
+6. **`forceRefresh: true` semantics from old useWeather not 1:1 mapped**: old `useWeather.refresh()` called internal `load(force = true)` which passed `forceRefresh: true` to `fetchWeatherSnapshot`, bypassing the sessionStorage cache check inside it. New `useWeather.refresh()` calls `query.refetch()` which doesn't propagate the forceRefresh flag — so on refetch, `fetchWeatherSnapshot`'s INTERNAL cache check at `weather.ts:155-159` still returns cached data if not expired. **Effect**: if user clicks "refresh" within the 10-min cache TTL, they get the cached data rather than a fresh network fetch. This is arguably a regression from the prior force-refresh behavior. **Mitigation**: most user-initiated refreshes are after the cache expires anyway; if explicit force-refresh is critical, a future polish can add `meta: { forceRefresh: true }` and a queryFn check. Not closed in W130. **✅ CLOSED IN POLISH (`e7010a599`)** — `forceRefreshRef` pattern in `useWeather.ts`. Hook locally overrides queryFn to read + clear the ref + propagate `forceRefresh: true` to `fetchWeatherSnapshot` on user-initiated refresh. SSR loaders + factory consumers continue to use the unmodified factory queryFn. Net-zero PROD bundle delta.
 
 7. **Cache identity preservation verified at queryKey shape level only**: `["schedule", "groups"]` + `["schedule", "group", groupId]` + `["weather", "snapshot", lat, lon]` shapes match prior inline `useQuery` calls. But the `lat.toFixed(4)` precision + previous absence of `signature: "lat,lon"` style in the old useWeather means the queryKey shape is technically different from the old hook's internal cache key (sessionStorage uses `weather:snapshot:55.7147,37.8165` string format vs new TanStack Query uses 4-element tuple). For TanStack Query DevTools + memory cache identity this is correct; but the sessionStorage write side-effect inside `fetchWeatherSnapshot` continues to use the old format, so cross-session paint via placeholderData still works.
 
@@ -204,7 +204,7 @@ Per `feedback_perfectionism.md` "безупречно?" probe anticipation. ~10 
 
 10. **LHCI numerical sweep on /schedule NOT executed**: workflow exists (`lhci-linux.yml`, W129 SW6) but workflow_dispatch trigger needs `gh` CLI auth + workflow on default branch. Existing `frontend-tests.yml lighthouse:` job covers on every PR push, so this isn't a blind spot — just W130 didn't trigger an explicit baseline run.
 
-11. **Storybook NOT re-verified**: no `.storybook/` modifications in W130. W129 polish #4 baseline 17.95s vite / 21.32s wall should hold. **Honest deferral** — could have run `npm run build-storybook` as a sanity check; deferred to keep SW4 focused on the SSR-relevant routes.
+11. **Storybook NOT re-verified**: no `.storybook/` modifications in W130. W129 polish #4 baseline 17.95s vite / 21.32s wall should hold. **Honest deferral** — could have run `npm run build-storybook` as a sanity check; deferred to keep SW4 focused on the SSR-relevant routes. **✅ CLOSED IN POLISH (`e7010a599`)** — `npm run build-storybook` ran in 16.47s vite-internal (8% faster than W129 baseline 17.95s, within 10% noise band). Storybook 10 + Vite 8/Rolldown integration preserved.
 
 12. **5 sibling explicit ssr:false routes** preserved post-W130: messenger × 2, profile, settings (4 of 5 closed via /schedule SSR). messenger likely permanent (real-time WebSocket); profile + settings + 1 more candidate need design pass.
 
@@ -275,4 +275,27 @@ Closes §Honesty probe #4. SW1 refactored `useScheduleData` to spread the new fa
 - **Bundle PROD reproducibility**: `index-KalQn95O.js` 138,974 bytes + `_shell.html` 65,872 bytes (3 fresh runs identical) — **net-zero size delta** vs W130 SW5 baseline (`index-CWTPTT9L.js` 138,974 / 65,872; same byte count, hash differs because content shifted Weather ref pattern + new test file). Net-zero confirms forceRefresh polish + new test file have no PROD bundle impact.
 - **Polish budget**: ~50 min actual (within the 60-90 min estimate per `feedback_perfectionism.md`)
 
-**Branch HEAD post-polish**: `<TBD post-polish>` ← `acfa98e8a` (SW5 audit) ← `1879cc474` (SW4 npm audit fix) ← `5faa0ef6a` SW3 ← `94804567a` SW2 ← `6efa841df` SW1 ← `862a7762e` (W129 polish-followup). Branch ahead of `origin/egorribun` by **6 commits** (5 W130 base + 1 polish).
+**Branch HEAD post-polish**: `e7010a599` (polish) ← `acfa98e8a` (SW5 audit) ← `1879cc474` (SW4 npm audit fix) ← `5faa0ef6a` SW3 ← `94804567a` SW2 ← `6efa841df` SW1 ← `862a7762e` (W129 polish-followup). Branch ahead of `origin/egorribun` by **6 commits** (5 W130 base + 1 polish).
+
+---
+
+## Polish followup ("безупречно?" probe self-audit)
+
+User invoked the canonical `feedback_perfectionism.md` "безупречно?" probe after polish was committed. Self-audit found 4 process-integrity gaps closeable in-session (Category A) + 3 W131-scope items (Category B).
+
+**Category A closed in this followup commit**:
+
+1. **Cargo.lock no drift verified** — asserted in polish commit body but not run as a `git diff` check; verified via `git diff HEAD frontend/rust-crypto/Cargo.lock` returning empty (idempotent ≥ 20 waves at end of W130 polish). Confirmed.
+
+2. **`<TBD post-polish>` placeholder substituted** with actual polish commit SHA `e7010a599` (this entry).
+
+3. **Original §Honesty probe list** updated with **✅ CLOSED IN POLISH** markers on the 4 caveats closed in `e7010a599` (#1 chrome-devtools-mcp visual smoke; #4 vitest count delta; #6 Weather forceRefresh semantics; #11 Storybook re-verify). Original wave-close state of the list preserved via the markers — readers see both the deferral AS RAISED at SW5 and the closure post-polish without scrolling between sections.
+
+4. **CLAUDE.md W130 SW3 weather gotcha** updated to remove the now-stale "Honest deferral (W130 §Honesty probe #6)" line — replaced with note pointing to the forceRefreshRef pattern that closed it.
+
+**Category B remains as W131 candidates** (per `memory/wave131_opening_prompt.md`):
+- forceRefresh runtime behavior unit test (low-risk, ref-pattern simple — but `useWeather.refresh()` not directly exercised by any test post-W130 polish)
+- MEMORY.md size compaction (62 KB > 24.4 KB warning; row truncation noted in W129 system reminder)
+- Sequential /users/me + /schedule lessons SSR (W130 §Honesty probe #2, structural)
+
+Total polish-followup budget: ~10 min. No new code logic; documentation + verification only.
