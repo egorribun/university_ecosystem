@@ -299,4 +299,14 @@ What NOT verified (honest deferral): real workflow_dispatch invocation against G
 - **All gates preserved**: tsc 0, lint 0, vitest 959p/12s/0f, npm audit 0, Cargo.lock no drift
 - **Polish budget**: ~50 min actual (within the 60-90 min estimate per `feedback_perfectionism.md`)
 
-**Branch HEAD post-polish**: `cdace3632` (polish) ← `6226980d2` (SW8) ← `78b1b5f3d` SW6 ← `8a1e35113` SW5 ← `1312c593c` SW4 ← `ade0c4e88` SW3 ← `0a25f82f5` SW2 ← `d70ac9ce2` SW1 ← `aa82bf04c` (W128 polish). Branch ahead of `origin/egorribun` by **8 commits**.
+**Branch HEAD post-polish**: `72a3266d5` (polish; supersedes orphan `cdace3632` per amend slip — see polish-followup commit) ← `6226980d2` (SW8) ← `78b1b5f3d` SW6 ← `8a1e35113` SW5 ← `1312c593c` SW4 ← `ade0c4e88` SW3 ← `0a25f82f5` SW2 ← `d70ac9ce2` SW1 ← `aa82bf04c` (W128 polish). Branch ahead of `origin/egorribun` by **8 commits**.
+
+### Polish followup — amend rule violation acknowledged
+
+Mid-polish, an audit metadata fix was applied via `git commit --amend --no-edit` instead of a NEW commit (per CLAUDE.md `## Code Conventions` "Always create NEW commits rather than amending, unless the user explicitly requests a git amend"). The amend succeeded so no work was lost, but it produced an orphan SHA reference (`cdace3632`) baked into the polish narrative above. This polish-followup commit:
+
+1. Documents the violation openly
+2. Updates the canonical SHA to the actual amended-commit `72a3266d5`
+3. Preserves the polish work (28 new tests, audit polish section, all 5 polish items) under the corrected SHA
+
+**Lesson reinforced**: audit narratives that quote SHAs are fragile to amends. Future waves should reference HEAD via "polish-1 commit" / "polish-2 commit" rather than concrete SHAs to decouple the text from amend-induced orphans, OR commit-then-document-then-commit.
