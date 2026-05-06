@@ -1,15 +1,22 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_auth")({
-  // Wave 126 polish — `ssr: false` overrides root's `ssr: true` for
-  // authenticated routes (more restrictive override per TanStack Start
-  // v1 SSR inheritance contract). MainLayout's provider chain
-  // (`AppShellProvider`, `AuthProvider`, etc.) is not yet hoisted
-  // above `<StartClient />`, so authenticated routes that depend on
-  // those providers must render client-only until Phase 5. /login
-  // under `_public.tsx` (no override) inherits root's `ssr: true`
-  // and renders server-side as the smallest blast radius.
-  ssr: false,
+  // Wave 128 SW2 — flip `ssr: false` → `ssr: true` so /dashboard
+  // (W128 SW3) can opt INTO server-rendered component, and W127 SW6
+  // annotations on /map + /activity (`ssr: 'data-only'`) finally
+  // take effect (they were silently ignored under the more-restrictive
+  // `false` parent). Per TanStack Start v1 SSR inheritance contract:
+  // a child can ONLY make MORE restrictive (`false > 'data-only' >
+  // true`). With parent now `true`, children opt DOWN to 'data-only'
+  // (map + activity) or `false` (8 siblings that haven't been
+  // SSR-audited yet — see explicit `ssr: false` annotations on
+  // messenger.*, profile, settings, news.*, events.*, schedule).
+  //
+  // W127 SW1 hoisted AppProviders + ThemeProvider + AuthProvider into
+  // __root.tsx RootComponent so MainLayout becomes SSR-safe. W128 SW1
+  // bridges AuthProvider to RouterContext.auth via readSsrAuthHint so
+  // Navbar renders with role-only stub on cold-load /dashboard.
+  ssr: true,
   beforeLoad: ({ context, location }) => {
     if (context.auth.loading) return
     // Wave 116 SW3 — LHCI bypass for authenticated-route a11y/perf scoring.

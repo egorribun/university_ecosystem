@@ -3,6 +3,7 @@ import {
   HeadContent,
   Outlet,
   Scripts,
+  useRouteContext,
 } from "@tanstack/react-router"
 import type { RouterContext } from "@/router"
 import MainLayout from "@/components/layout/MainLayout"
@@ -14,7 +15,6 @@ import { SearchDialog } from "@/components/search/SearchDialog"
 import { AppProviders } from "@/AppProviders"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { queryClient } from "@/app/queryClient"
 
 // Wave 125 Phase 2 — pre-paint inline scripts. These run in the document
 // scaffold BEFORE any React code or bundle JS evaluates, so they avoid
@@ -115,7 +115,9 @@ html::after,
 body::before,
 body::after {
   display: none !important;
-}`
+}
+
+/* LHCI_CSS_PLACEHOLDER */`
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Wave 126 polish — root opts INTO SSR so per-route SSR enablement
@@ -272,46 +274,17 @@ function RootComponent() {
   // MessengerProvider, ErrorBoundary, GlobalHapticsListener, ThemeProvider
   // are all available at server render time.
   //
-  // Browser-API access in providers verified SSR-safe (W127 SW1 audit):
-  //   - AppShellContext: `isBrowser` constant + `if (!isBrowser) return`
-  //     guards on every fn (lines 30, 33, 95, 104, 124, 158, 166, 174, 184)
-  //   - LanguageContext: `typeof window === "undefined"` guard at
-  //     resolveInitialLanguage (line 10)
-  //   - ThemeContext: localStorage in try/catch, returns "system" on server
-  //   - MessengerContext: gated by `isAuth` from useAuth() (false on SSR
-  //     with empty Zustand store) — no WS connect attempt server-side
-  //   - WebSocketProvider: WebSocket creation in async useEffect, gated
-  //     by `enabled` flag
-  //
-  // SSR branch keeps the W126 polish minimal-shell pattern for routes that
-  // already opt into SSR (`/login` under `_public.tsx`, inherits root's
-  // `ssr: true`). Routes under `_auth.tsx ssr: false` / `_admin.tsx ssr: false`
-  // still skip component render server-side — Phase 5 lays the foundation;
-  // W128+ flips per-route SSR for the LCP wins. AuthProvider continues
-  // consuming useAuthStore directly; for routes that DO render server-side
-  // (currently /login + /404 only), no auth-dependent UI surfaces in the
-  // SSR HTML so no Navbar-style hydration mismatch concern.
-  // Wave 127 SW1 — SSR branch wraps with vanilla QueryClientProvider because
-  // PersistQueryClientProvider lives in main.tsx (client entry, never executed
-  // server-side). AuthProvider's useProfileSync calls useQueryClient() at
-  // render time, which throws "No QueryClient set" on SSR without this wrap.
-  // The shared `queryClient` singleton from `@/app/queryClient` is SSR-safe:
-  // QueryClient class instantiation is pure JS, idbPersister export is a
-  // descriptor object that only touches IDB on actual persist/restore calls.
-  // On client, RootComponent renders INSIDE main.tsx's PersistQueryClientProvider
-  // tree, so the SSR wrap is skipped to avoid double-providing.
+  // Wave 128 SW3 — both branches now mount MainLayout so /dashboard SSR
+  // renders the same tree as client hydration. Pre-W128, SSR branch was
+  // a minimal-shell pattern (no MainLayout) that worked because no
+  // authenticated route opted into ssr:true. With W128 SW2 flipping
+  // _auth.tsx to ssr:true and SW3 adding ssr:true on /dashboard, server
+  // emits HTML with Navbar + Footer + content; client hydrates the same.
+  // AuthProvider's W128 SW1 ssrAuthHint bridge populates a role-only
+  // stub User on SSR so Navbar renders without crashing on useAuth()
+  // returning null.
   if (import.meta.env.SSR) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <AppProviders>
-            <PageErrorBoundary>
-              <Outlet />
-            </PageErrorBoundary>
-          </AppProviders>
-        </ThemeProvider>
-      </QueryClientProvider>
-    )
+    return <SsrRoot />
   }
   return (
     <ThemeProvider>
@@ -328,5 +301,46 @@ function RootComponent() {
         </MainLayout>
       </AppProviders>
     </ThemeProvider>
+  )
+}
+
+function SsrRoot() {
+  // Wave 128 SW3 — SSR-only mount tree. Reads RouterContext for the
+  // per-request `queryClient` instance (created by router.ts:createAppRouter
+  // for THIS request) and wraps with QueryClientProvider so that:
+  //   1. AuthProvider's useProfileSync `useQueryClient()` resolves to the
+  //      same per-request instance the loader.ensureQueryData populates
+  //      (W128 SW3 + future W129+ loaders). Pre-W128 SW3, SSR wrapped the
+  //      `@/app/queryClient` singleton — separate cache from
+  //      routerContext.queryClient → loader-prefetched data invisible to
+  //      AuthProvider/components at render time.
+  //   2. Dashboard's queries (useDashboardEvents/Stories/Schedule) hit
+  //      the same cache the loader pre-populated — no refetch needed
+  //      server-side (suspense / placeholderData paths use cached data).
+  //
+  // Mirrors the W127 SW1 client branch tree (ThemeProvider → AppProviders →
+  // MainLayout → PageErrorBoundary → Outlet) plus the post-Outlet siblings
+  // (SearchDialog, LivePushToasts, OfflineIndicator, InstallPrompt) so
+  // hydration trees match exactly. Mid-tree mismatch (server emits Outlet
+  // without MainLayout, client wraps with MainLayout) would cause full
+  // subtree re-render per CLAUDE.md gotcha "React 19 hydration mismatch".
+  const { queryClient } = useRouteContext({ from: "__root__" })
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AppProviders>
+          <MainLayout>
+            <PageErrorBoundary>
+              <Outlet />
+            </PageErrorBoundary>
+
+            <SearchDialog />
+            <LivePushToasts />
+            <OfflineIndicator />
+            <InstallPrompt />
+          </MainLayout>
+        </AppProviders>
+      </ThemeProvider>
+    </QueryClientProvider>
   )
 }
