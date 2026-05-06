@@ -1,0 +1,199 @@
+# Wave 129 SW6 — On-demand Linux Lighthouse CI workflow.
+#
+# ## Why this exists separately from `reusable-frontend-tests.yml lighthouse:`
+#
+# The existing `frontend-tests.yml lighthouse:` job (called from `ci.yml` with
+# `run-lighthouse: true`) already runs `npm run lhci` on Linux on every PR
+# + push to main/develop/release/**. That job is part of the full CI matrix
+# (~20-min wall-clock) and is the canonical perf gate.
+#
+# THIS workflow is for on-demand LHCI runs without waiting for the full
+# CI matrix. Use cases:
+#   - Quick perf check on a feature branch before opening the PR
+#   - Investigating CI Lighthouse calibration vs local dev wrapper
+#     (`npm run lhci:windows` on dev machines hits Windows EPERM that
+#     CI Linux does not — see `lhci-windows-fallback.mjs` rationale)
+#   - Validating `LHCI_URLS` subsets without re-running full sweep
+#   - Smoke-testing perf impact of a SSR enablement (W129 SW1-SW5)
+#     without full CI gate
+#
+# ## Wave 128 deferral closure
+#
+# Wave 128 documented "LHCI numerical Perf/CLS/LCP measurement DEFERRED to
+# W129+" as one of 12 honest deferrals. Re-investigation in W129 SW6
+# revealed the deferral framing was partially misleading — Linux CI
+# Lighthouse measurement HAS worked since W117+ via the existing
+# frontend-tests.yml lighthouse: job. The actual blocker was LOCAL Windows
+# dev-machine measurement (chrome-devtools-mcp + headless Chrome +
+# Windows = NO_FCP across all routes — structural environment limitation,
+# closed by `lhci-windows-fallback.mjs` workaround).
+#
+# This workflow makes the existing-but-buried Linux CI capability
+# explicit + on-demand. Closes the deferral.
+#
+# ## Triggers
+#
+#   - `workflow_dispatch`: manual run via Actions UI or `gh workflow run`
+#
+# Triggering on PR/push is intentionally NOT done here — that's already
+# the responsibility of `ci.yml frontend-tests`. Keeping this workflow
+# manual avoids double-spending CI minutes on every PR.
+name: LHCI Linux On-Demand
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Comma-separated URL paths (empty = full default 9-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard."
+        required: false
+        type: string
+        default: ""
+
+permissions: read-all
+
+concurrency:
+  group: lhci-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lhci:
+    name: Lighthouse on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VITE_BACKEND_ORIGIN: http://localhost:8000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install wasm-pack
+        # P0-01 (audit 2026-03-06): SHA-pinned to prevent supply chain attack
+        # via mutable @v2 tag. Equivalent to taiki-e/install-action@v2.75.22.
+        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2.75.22
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM modules
+        run: |
+          wasm-pack build rust-crypto --target web
+          wasm-pack build wasm-sanitizer --target web
+
+      # Wave 129 SW6 — verify VITE_LHCI tree-shake invariant before LHCI run.
+      # CLAUDE.md gotcha: VITE_LHCI flag set ONLY by `scripts/run-lhci.mjs`
+      # + LHCI wrapper env. NEVER in prod-deploy shell — would ship auth
+      # bypass to production. This step builds dist/ with the regular
+      # (non-VITE_LHCI) entrypoint to assert the bypass tree-shakes out.
+      # `run-lhci.mjs` then sets VITE_LHCI=true and rebuilds with bypass
+      # for the actual measurement.
+      - name: Verify VITE_LHCI tree-shake invariant
+        run: |
+          rm -rf dist
+          npm run build
+          if find dist/client/assets -name "*.js" -exec grep -l "lhci-mock-user" {} + 2>/dev/null | grep -q .; then
+            echo "::error::VITE_LHCI tree-shake invariant violated — non-LHCI prod build contains mock-user reference"
+            exit 1
+          fi
+          echo "OK: prod build correctly tree-shakes VITE_LHCI bypass"
+          rm -rf dist
+
+      # Run npm run lhci which:
+      #   1. Sets VITE_LHCI=true (auth bypass for authenticated routes)
+      #   2. Rebuilds dist/ with bypass
+      #   3. Invokes `npx lhci collect` against staticDistDir (no preview
+      #      server needed)
+      #   4. Invokes `npx lhci assert` with the .lighthouserc.js gates
+      #      (Perf warn@0.40, CLS error@0.10, A11y/BP/SEO error@0.95)
+      #   5. Lighthouse 13.1.0 via package.json override (W121 SW8 — fixes
+      #      LanternError that blocked /activity + /map on 12.x)
+      #
+      # LHCI_URLS env support: empty string (default) uses the full 9-URL
+      # default sweep. User can override via workflow_dispatch input for
+      # minimal subset (e.g. `,login,dashboard` for / + /login + /dashboard).
+      - name: Run Lighthouse CI
+        env:
+          LHCI_URLS: ${{ inputs.urls }}
+        run: npm run lhci
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lighthouse-reports-on-demand
+          path: frontend/.lighthouseci
+          if-no-files-found: warn
+
+      # Print a markdown summary table to the job log + step summary so
+      # the LHR scores are visible without artifact download. Reads
+      # .lighthouseci/lhr-*.json directly — no @lhci/cli dependency.
+      - name: Print summary table
+        if: always()
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const dir = ".lighthouseci";
+            if (!fs.existsSync(dir)) {
+              console.log("No LHRs to summarize (LHCI may have failed before producing reports)");
+              process.exit(0);
+            }
+            const files = fs.readdirSync(dir).filter((f) => f.startsWith("lhr-") && f.endsWith(".json"));
+            if (files.length === 0) {
+              console.log("No LHR JSONs found in .lighthouseci/");
+              process.exit(0);
+            }
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            const lines = [];
+            lines.push("## LHCI Linux On-Demand Results");
+            lines.push("");
+            lines.push("| URL | Perf | A11y | BP | SEO | CLS | LCP | TBT |");
+            lines.push("|---|---|---|---|---|---|---|---|");
+            const grouped = new Map();
+            for (const f of files.sort()) {
+              try {
+                const lhr = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+                const url = new URL(lhr.requestedUrl ?? lhr.finalUrl ?? "http://localhost/").pathname || "/";
+                const entry = grouped.get(url) ?? [];
+                entry.push(lhr);
+                grouped.set(url, entry);
+              } catch {
+                // skip malformed
+              }
+            }
+            for (const [url, lhrs] of grouped) {
+              const median = (vals) => {
+                const filtered = vals.filter((v) => v != null && Number.isFinite(v));
+                if (filtered.length === 0) return null;
+                const sorted = filtered.slice().sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+              };
+              const perf = median(lhrs.map((r) => r.categories?.performance?.score));
+              const a11y = median(lhrs.map((r) => r.categories?.accessibility?.score));
+              const bp = median(lhrs.map((r) => r.categories?.["best-practices"]?.score));
+              const seo = median(lhrs.map((r) => r.categories?.seo?.score));
+              const cls = median(lhrs.map((r) => r.audits?.["cumulative-layout-shift"]?.numericValue));
+              const lcp = median(lhrs.map((r) => r.audits?.["largest-contentful-paint"]?.numericValue));
+              const tbt = median(lhrs.map((r) => r.audits?.["total-blocking-time"]?.numericValue));
+              const fmt = (v, decimals = 2) => (v == null ? "-" : v.toFixed(decimals));
+              const fmtMs = (v) => (v == null ? "-" : `${Math.round(v)}ms`);
+              lines.push(`| ${url} | ${fmt(perf)} | ${fmt(a11y)} | ${fmt(bp)} | ${fmt(seo)} | ${fmt(cls, 3)} | ${fmtMs(lcp)} | ${fmtMs(tbt)} |`);
+            }
+            const out = lines.join("\n");
+            console.log(out);
+            if (summary) {
+              fs.appendFileSync(summary, out + "\n");
+            }
+          '
