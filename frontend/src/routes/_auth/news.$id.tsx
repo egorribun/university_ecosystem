@@ -15,5 +15,7 @@ function NewsDetailRoute() {
 }
 
 export const Route = createFileRoute("/_auth/news/$id")({
+  // Wave 128 SW2 — explicit opt-down (W129+ candidate after audit).
+  ssr: false,
   component: NewsDetailRoute,
 })
