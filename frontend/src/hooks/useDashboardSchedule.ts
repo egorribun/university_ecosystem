@@ -35,7 +35,11 @@ const ensureLessons = (payload: unknown): DashboardLesson[] => {
   return payload.filter(Boolean) as DashboardLesson[]
 }
 
-const createScheduleQueryOptions = (
+// Wave 128 SW3 — exported for forward-compat with /dashboard SSR loader.
+// W128 SW3 doesn't yet prefetch schedule server-side (loader has only role
+// from JWT, not groupId — needs /users/me prefetch first to derive groupId).
+// W129+ may add /users/me to loader for full schedule SSR.
+export const createScheduleQueryOptions = (
   queryClient: QueryClient,
   role: User["role"] | null | undefined,
   groupId: string | number | null | undefined

@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router"
-import { useLayoutEffect, useMemo, useRef } from "react"
+import { useMemo, useRef } from "react"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import {
   LayoutDashboard as DashboardIcon,
   Newspaper as ArticleIcon,
@@ -25,7 +26,11 @@ export default function MobileBottomNav() {
   const { t } = useTranslation(["navigation"])
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
-  useLayoutEffect(() => {
+  // Wave 128 SW3 — useIsomorphicLayoutEffect picks useEffect on SSR
+  // (avoids React's "useLayoutEffect does nothing on the server" warning
+  // surfaced by W128 plan exploration code-explorer audit). Behavior
+  // identical on client.
+  useIsomorphicLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
       sessionStorage.removeItem("__scrollTopNext")
       requestAnimationFrame(() => smoothToTop(getScrollRoot()))
