@@ -8,6 +8,19 @@ metadata:
     app.kubernetes.io/component: web
 spec:
   replicas: 2
+  # Wave 132 SW4 — explicit RollingUpdate strategy for Phase 6 canary safety.
+  # `maxUnavailable: 0` ensures NO drop in capacity during canary stage Pod
+  # cycling — new Pods come up + pass /healthz before old Pods are removed.
+  # `maxSurge: 25%` allows one extra Pod (replicas:2 → 3 transient peak)
+  # so rollouts complete within reasonable time. `progressDeadlineSeconds`
+  # 600 (10 min) is the cap before the controller marks the rollout failed
+  # — generous because Node SSR cold start + PWA precache can take 30-60s.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  progressDeadlineSeconds: 600
   selector:
     matchLabels:
       app.kubernetes.io/name: frontend
