@@ -115,7 +115,9 @@ html::after,
 body::before,
 body::after {
   display: none !important;
-}`
+}
+
+/* LHCI_CSS_PLACEHOLDER */`
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Wave 126 polish — root opts INTO SSR so per-route SSR enablement
