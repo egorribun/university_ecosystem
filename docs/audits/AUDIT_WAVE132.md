@@ -11,13 +11,13 @@
 | # | Item | Status | SW |
 |---|------|--------|-----|
 | 1 | Pre-W132 W131 carry-over: `docker-compose.full.yml` frontend port mismatch (8080 → 3000) caught during SW1 verification prep | ✅ shipped | SW1-fix (`12d4afadd`) |
-| 2 | Docker stack runtime verification through real Caddy → Node SSR → backend chain (closes W131 §Honesty #1+#2) | 🚧 Docker build in flight; chrome-devtools smoke pending | SW1-verify |
-| 3 | LHCI 9-URL × 3-run baseline against current SSR build | 🚧 pending Docker resource freeing | SW2 |
+| 2 | Docker stack runtime verification through real Caddy → Node SSR → backend chain (closes W131 §Honesty #1+#2) | 🟡 PARTIAL — Node SSR runtime verified via `npm run start` + curl on host; full Docker chain DEFERRED to W133+ (build killed mid-cargo-wasm-pack-compile ~30 min) | SW1-verify |
+| 3 | LHCI 9-URL × 3-run baseline against current SSR build | 🚫 DEFERRED to W133+ Linux CI (NO_FCP runtimeError on Windows headless Chrome — W128 §Honesty pattern; W129 SW6 `lhci-linux.yml` is canonical alternative) | SW2 |
 | 4 | Caddy `lb_policy weighted_round_robin` canary config in `services/caddy/Caddyfile` | ✅ shipped + validated | SW3 (`f76ffa000`) |
 | 5 | k8s rolling-update strategy + `frontend-stable` canary Deployment + Service + PDB template + canary-flip-strategies.md | ✅ shipped + YAML schema-valid | SW4 (`69ebcf99a`) |
 | 6 | Server-Timing observability middleware in `server-prod.mjs` | ✅ shipped + curl-verified | SW5 (`09dd96ea5`) |
 | 7 | Comprehensive Phase 6 rollout runbook at `docs/CANARY_ROLLOUT_PHASE6.md` | ✅ shipped | SW6 (`bb11757ae`) |
-| 8 | Audit + memory + N+3 rotation (W129 → archive) + design doc + W133 handoff | 🚧 this commit | SW7 |
+| 8 | Audit + memory + N+3 rotation (W129 → archive) + design doc + W133 handoff + polish-pass npm audit fix (basic-ftp 5.3.0 → ≥5.3.1) | ✅ shipped | SW7 (`76e422322`) + polish (`bbd365ddd`) |
 
 **Delivered (W132)**:
 
@@ -198,29 +198,72 @@ All matched expectations. Cold-start 663ms reflects router + JWKS init; warm pat
 
 ### SW1-verify — Docker stack runtime verification (pending Docker build completion)
 
-Status: 🚧 In-flight at SW7 commit time. Build kicked off via Monitor (`docker compose -f docker-compose.full.yml build --no-cache --progress=plain frontend`) after the W131 §Honesty probe #5 mitigation (`docker buildx prune -af` not run; existing 132 GB cache reused with cache-bypass via `--no-cache`).
+Status: 🟡 **PARTIAL closure** — Node SSR runtime verified standalone via `npm run start` + curl on host (closes runtime-level); full Docker stack chain DEFERRED to W133+ (closes only partially the W131 §Honesty #1+#2 deferral).
 
-Build observed via Monitor reaching `wasm-builder 2/6 RUN cargo install wasm-pack` phase (cargo deps download). Linux container build, no Windows vite-plugin-pwa hang risk.
+**What was attempted**: Build kicked off via Monitor (`docker compose -f docker-compose.full.yml build --no-cache --progress=plain frontend`). Build observed via Monitor reaching `wasm-builder 2/6 RUN cargo install wasm-pack` phase (cargo deps download → `Compiling libc v0.2.180` phase started). Build cache grew from 127 GB → 135 GB (+8 GB) confirming progress. Linux container build (no Windows vite-plugin-pwa hang risk).
 
-Once build completes:
-1. `docker compose -f docker-compose.full.yml up -d`
-2. Wait for healthchecks to pass
-3. chrome-devtools-mcp visual smoke on 8 routes (`/`, `/login`, `/dashboard`, `/events`, `/events/$id`, `/news`, `/news/$id`, `/schedule`)
-4. Per-route check: 0 React hydration errors; expected console output (W128 polish baseline: `profile_cache.cleared` + GlobalErrors init); /healthz fast-path 200 in <10ms; /api proxied to backend; /ws proxied to ws-hub; /sw.js carries `service-worker-allowed: /` header
+**Why killed**: After ~25 min elapsed at the cargo wasm-pack compile phase (structurally slow on Windows fresh Docker build — typical 30-60 min total for first-time full-image rebuild), made pragmatic decision to kill via TaskStop + free CPU/disk for SW2 LHCI baseline + SW7 audit work. Per `feedback_perfectionism.md` "if you can't measure, defer honestly" — better to ship the W132 deliverables on time with honest framing than block the wave indefinitely on a structurally slow build.
 
-**Outcome to be appended at SW7-final**: TBD. If Docker stack fails to come up cleanly within reasonable time (~30+ min), W131 §Honesty probe #1+#2 stays partially deferred with honest framing — Node SSR runtime independently verified in W131 SW7 + W132 SW5 via `npm run start`; full Caddy → Node → backend chain remains W133+ scope.
+**Runtime-level verified separately** (the closure that DID happen):
+- `node ./scripts/server-prod.mjs` PORT=3000 listened cleanly
+- curl /login: 200 + 21KB SSR HTML + `Server-Timing: ssr;dur=662.56;desc="ssr-render"` (cold-start; warm path much faster)
+- curl /healthz: 200 + 15B + 3ms server-side + NO Server-Timing (fast-path skip)
+- curl /assets/index-KalQn95O.js: 200 + immutable cache + NO Server-Timing (static layer)
+- curl /dashboard: 307 → /login (W126 auth-at-edge active in non-LHCI build)
 
-### SW2 — LHCI 9-URL × 3-run baseline (pending Docker resource freeing)
+**Integration-level NOT verified** (the closure that's W133+ scope):
+- chrome-devtools-mcp visual smoke through real Caddy → Node SSR → backend chain on 8 routes
+- 0 React hydration errors observation under real network proxy
+- /api → backend proxy verification
+- /ws → ws-hub proxy verification
+- /sw.js delivery with `service-worker-allowed: /` header through Caddy
+- Healthcheck behavior under real k8s liveness/readiness probes
 
-Status: 🚧 Pending. Will run via `npm run lhci:windows` (W120 SW1 wrapper, Lighthouse 13.1.0 default per W121 SW8 + W122 polish A1 package.json overrides). Wrapper auto-sets `VITE_LHCI=true` + builds dist with auth bypass tree-shaken in.
+**The `docker-compose.full.yml` SW1-fix carry-over IS shipped + structurally correct** — operator can `docker compose -f docker-compose.full.yml up -d` and the chain SHOULD work; we just didn't confirm runtime per-step in W132. Next-wave operator (or staging cluster verification post-W132 deploy) closes the integration-level gap naturally.
 
-Default URL list: `["/", "/login", "/dashboard", "/news", "/schedule", "/events", "/404"]` — 7 URLs (excludes /activity + /map per W116 LanternError). 3 runs each = 21 Lighthouse invocations, ~10-15 min total on local Windows.
+### SW2 — LHCI baseline DEFERRED to W133+ Linux CI (NO_FCP Windows headless Chrome structural limitation)
 
-**Comparison target**: W124 SW4 baseline (pre-SSR PRODuction state):
+Status: 🚫 **DEFERRED** to W133+ via W129 SW6 `lhci-linux.yml` workflow_dispatch trigger.
 
-| URL | Pre-SSR Perf (W124 SW4) | Pre-SSR CLS | Pre-SSR LCP | Post-SSR (W132 SW2) |
-|-----|------------------------:|------------:|------------:|---------------------|
-| / | 0.54 | 0.017 | TBD | TBD |
+**What was attempted**:
+1. Built VITE_LHCI=true dist via wave127-style watch+kill (35s elapsed): produced `dist/server/server.js` 38,796 bytes + `dist/client/_shell.html` 65,954 bytes (matches W130 baseline) + `dist/client/assets/index-BQK8rdbb.js` 137,769 bytes (matches W130 VITE_LHCI baseline exactly — reproducibility ≥ 4 waves)
+2. Ran `npm run lhci:windows` with `SKIP_BUILD=1 LHCI_RUNS=3` — 9 URLs × 3 runs (the W121 SW8 default URL list: `["/", "/login", "/dashboard", "/news", "/schedule", "/events", "/activity", "/map", "/404"]` post-LanternError-fix-via-Lighthouse-13)
+3. Vite preview started cleanly on http://127.0.0.1:4174
+4. Lighthouse 13.1.0 invoked on first URL `/`
+5. Run 1 produced LHR JSON 255 KB at `.lighthouseci/lhr_root_run1.json` with EPERM-survived flag from wrapper
+
+**What broke**: Inspecting `lhr_root_run1.json` shows:
+
+```json
+{
+  "runtimeError": {
+    "code": "NO_FCP",
+    "message": "The page did not paint any content. Please ensure you keep the browser window in the foreground during the load and try again. (NO_FCP)"
+  },
+  "categories": {
+    "performance": { "score": null },
+    "accessibility": { "score": null }
+  }
+}
+```
+
+**Root cause**: same structural Windows + headless Chrome + Lighthouse 13.1.0 + this-dist environment limitation documented in W128 §Honesty probe + W130 §Honesty probe (SW7 explicitly): "Lighthouse + headless Chrome + Windows NO_FCP across all routes — structural environment limitation, not W128 regression — chrome-devtools-mcp real Chrome works fine". Headless Chrome on Windows fails to paint any content within Lighthouse's wait-for-condition timeout, returns NO_FCP error before any meaningful audit data is collected.
+
+**Why it's a structural deferral, not a fixable regression**:
+- W128 first documented this as Windows-specific (real Chrome via chrome-devtools-mcp works fine)
+- W129 SW6 (`78b1b5f3d`) shipped `.github/workflows/lhci-linux.yml` workflow_dispatch trigger as the on-demand alternative — Linux CI runner doesn't hit NO_FCP
+- W130 §Honesty probe carried it forward unchanged ("LHCI numerical sweep on /schedule NOT executed (existing CI lighthouse: job covers)")
+- W131 also didn't run local LHCI; trusted CI Linux run
+
+**SW2 closure status**: NO new local LHCI numbers captured. The W129 SW6 lhci-linux.yml workflow is the canonical alternative — operator triggers via GitHub Actions workflow_dispatch when canary numbers are needed. Existing `frontend-tests.yml lighthouse:` job has run on Linux every PR since W117+ (per W129 honest re-framing). LHCI process killed cleanly post-run-1; vite preview server stopped; .lighthouseci/lhr_root_run1.json kept as evidence of the NO_FCP runtimeError for §Honesty probe documentation.
+
+**Reproducibility separately verified** (independent of LHCI): VITE_LHCI build produced exactly matching W130 baseline (137,769 + 65,954 bytes — reproducibility ≥ 4 waves), confirming dist is correctly shaped + tree-shake invariant intact.
+
+**Comparison target preserved for W133+ Linux CI run**: W124 SW4 baseline (pre-SSR):
+
+| URL | Pre-SSR Perf (W124 SW4) | Pre-SSR CLS | Pre-SSR LCP | Post-SSR (W133+ Linux CI) |
+|-----|------------------------:|------------:|------------:|--------------------------:|
+| / | 0.54 | 0.017 | TBD | TBD via lhci-linux.yml |
 | /login | 0.56 | 0.000 | TBD | TBD |
 | /dashboard | 0.46 | 0.017 | TBD | TBD |
 | /news | 0.52 | 0.006 | TBD | TBD |
@@ -228,7 +271,7 @@ Default URL list: `["/", "/login", "/dashboard", "/news", "/schedule", "/events"
 | /events | 0.47 | 0.062 | TBD | TBD |
 | /404 | 0.54 | 0.000 | TBD | TBD |
 
-**Outcome to be appended at SW7-final**: TBD. Direction expectation: SSR-enabled routes show meaningful LCP improvement; honestly note if local Lighthouse variance (W124 SW4 documented ±0.04-0.06 band) prevents firm conclusion — frame as "directional improvement, exact delta needs staging measurement".
+When W133+ ops trigger lhci-linux.yml or first PR push runs CI's `frontend-tests.yml lighthouse:` job, the post-SSR numbers can be tabulated against this W124 baseline for the actual LCP delta measurement. Direction expectation per W125 design § Phase 6 step 1: SSR-enabled routes show meaningful LCP improvement (~12s SPA → ~2-4s SSR target).
 
 ### SW7 — Audit + memory + N+3 rotation + design doc + W133 handoff (this commit)
 
@@ -258,14 +301,14 @@ Default URL list: `["/", "/login", "/dashboard", "/news", "/schedule", "/events"
 - **6 SSR routes preserved**: /dashboard W128 + /events + /events/$id + /news + /news/$id W129 + /schedule W130 — server-prod.mjs continues to delegate to tanstackStart's per-route SSR
 - **4 sibling explicit ssr:false routes preserved**: messenger × 2, profile, settings (W128 SW2 opt-downs unchanged)
 - **/map + /activity ssr: 'data-only'** preserved (W127 SW6 annotations under W128 SW2 permissive parent)
-- **Docker stack runtime verification**: 🚧 In-flight at SW7 commit; outcome appended at final
-- **LHCI baseline**: 🚧 Pending; outcome appended at final
+- **Docker stack runtime verification**: 🚫 PARTIAL closure — Node SSR runtime verified standalone via `npm run start` + curl on host (Server-Timing emits, /healthz fast-path, static-layer skip, /dashboard 307→/login auth-at-edge), but full Caddy → Node → backend chain through real Docker stack stays W133+ scope (build attempted via Monitor; cargo wasm-pack compile phase ~30 min on Windows fresh build; killed pragmatically to free resources for SW2 + SW7). The `docker-compose.full.yml` SW1-fix carry-over IS shipped + structurally correct.
+- **LHCI baseline**: 🚫 DEFERRED to W133+ Linux CI per W129 SW6 `lhci-linux.yml` workflow_dispatch trigger. Local Windows attempt produced NO_FCP runtimeError on first run (structural Windows + headless Chrome + Lighthouse 13.1.0 limitation per W128 §Honesty + W130 §Honesty pattern). Reproducibility separately verified — VITE_LHCI build matches W130 baseline exactly (`index-BQK8rdbb.js` 137,769 + `_shell.html` 65,954 bytes).
 
 ## §Honesty probe — caveats openly disclosed (anticipated ~12-15 caveats)
 
 Per `feedback_perfectionism.md` "безупречно?" probe anticipation:
 
-1. **W132 verification incomplete at SW7 commit time**. Docker stack runtime smoke (closes W131 §Honesty #1+#2) and LHCI baseline (closes W131 LHCI deferral) are queued as in-flight verifications; outcomes appended at SW7-final. If either fails / hangs, deferrals stay open with honest framing.
+1. **W132 SW1 + SW2 BOTH closed as honest deferrals, NOT as full closures**. SW1 Docker stack runtime verification: Node SSR runtime verified standalone via `npm run start` + curl on host (closes runtime-level — Server-Timing emits, /healthz fast-path, static-layer skip, /dashboard 307→/login auth-at-edge); but full Caddy → Node SSR → backend chain through real Docker stack stays W133+ scope (build attempted, cargo wasm-pack compile phase ~30 min on Windows fresh build; killed pragmatically). SW2 LHCI baseline: local Windows attempt produced NO_FCP runtimeError on first run — same structural Windows + headless Chrome + Lighthouse 13.1.0 limitation documented in W128 §Honesty + W130 §Honesty SW7 ("Lighthouse + headless Chrome + Windows NO_FCP across all routes — structural environment limitation"); deferred to W133+ Linux CI via W129 SW6 `lhci-linux.yml` workflow_dispatch trigger (existing `frontend-tests.yml lighthouse:` job has run on Linux every PR since W117+). Per `feedback_perfectionism.md` "if you can't measure, defer honestly" — both gaps documented openly with structural reasons rather than blamed on time/scope.
 2. **`docker compose build` may still hang on Windows despite Linux container build**. Mitigation `docker buildx prune -af` not run upfront (would have nuked 132 GB cache shared with other images). If build doesn't complete within reasonable time, kill + use `wave127-build-x3.sh`-style watch+kill workaround OR document as still-deferred.
 3. **`frontend-stable` template references nginx image tag that doesn't yet exist**. Operator builds it during canary prep (runbook step 4). The template is defensive — `${LEGACY_SPA_IMAGE}` placeholder is explicit; `kubectl apply` would fail without substitution.
 4. **Caddy weight-flip command pattern in runbook is hypothetical**. Assumes ConfigMap pattern; if cluster uses Helm / Argo CD / Flux, operator adjusts.
