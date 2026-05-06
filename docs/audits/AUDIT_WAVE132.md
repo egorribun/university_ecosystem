@@ -341,3 +341,61 @@ Phase 6 W132 author work shipped. The natural next steps:
 **Branch HEAD pre-SW7**: `bb11757ae` (SW6 runbook) ← `09dd96ea5` SW5 ← `69ebcf99a` SW4 ← `f76ffa000` SW3 ← `12d4afadd` SW1-fix ← `ca5223ba9` (W131 polish).
 
 Branch ahead of `origin/egorribun` by **+22 commits pre-SW7** (5 W132 author + W131 SW1-fix carry-over + 7 W131 + 7 W130 + 2 polish/audit).
+
+---
+
+## Polish pass (post-SW7, executed, ~70 min budget)
+
+Per `feedback_perfectionism.md` "безупречно?" probe anticipation. 4 polish items closed:
+
+### A1 ✅ npm audit baseline restoration (commit `bbd365ddd`)
+
+Discovered during gate verification: `basic-ftp <=5.3.0` has GHSA-rpmf-866q-6p89 (high severity DoS via unbounded multiline FTP control response buffering). The W119 SW5 override was an EXACT pin `"basic-ftp": "5.3.0"` (not range) — locked transitive deps to the now-vulnerable version even though the CVE was disclosed AFTER W119 SW5 set the 0-vulnerabilities baseline. Same upstream-CVE pattern as W130 SW4 ip-address 10.1.0 → 10.2.0.
+
+Fix: change override to `>=5.3.1` so npm resolves to latest non-vulnerable release. After install: basic-ftp resolves to 6.0.1 (latest). The basic-ftp upgrade chain only runs through `@lhci/cli → proxy-agent → pac-proxy-agent → get-uri → basic-ftp`; FTP control logic is unused at app runtime (LHCI is dev-only tooling), so behavioral risk is nil.
+
+Verified: `npm audit --audit-level=low` → "found 0 vulnerabilities" (W119 SW5 + W130 SW4 baseline restored). vitest 988p/12s/0f preserved.
+
+### A2 ✅ SW1+SW2 honest framing across 4 files (commit `9cbb13198`)
+
+Per `feedback_perfectionism.md` "if you can't measure, defer honestly" pattern. SW7 audit had marked SW1 + SW2 as "in-flight at commit time" with TBD outcomes. Polish pass replaced TBD with explicit closure status:
+
+**SW1 PARTIAL closure**: runtime-level (Node SSR via `npm run start`) ✅; integration-level (full Caddy → Node SSR → backend chain) DEFERRED to W133+ (Docker build killed mid-cargo-wasm-pack-compile after ~25 min — structurally slow on Windows fresh build; cache 127→135 GB confirming progress).
+
+**SW2 DEFERRED to W133+ Linux CI**: NO_FCP runtimeError on first local LHCI run — same structural Windows + headless Chrome + Lighthouse 13.1.0 limitation per W128 §Honesty + W130 §Honesty SW7 pattern. Canonical alternative: W129 SW6 `lhci-linux.yml` workflow_dispatch trigger. Reproducibility separately verified — VITE_LHCI build matches W130 baseline exactly (`index-BQK8rdbb.js` 137,769 + `_shell.html` 65,954 bytes).
+
+Files modified: `CLAUDE.md`, `docs/audits/AUDIT_WAVE132.md`, `docs/audits/INDEX.md`, `memory/MEMORY.md`, `memory/wave132_backlog.md` (last two outside git per Claude memory layout). Executive summary table SW1/SW2 markers updated to 🟡 PARTIAL / 🚫 DEFERRED. §Verification metrics rows updated. §Honesty probe item #1 split into SW1 + SW2 explicit framing.
+
+### A3 ✅ PROD build × 3 reproducibility verified
+
+`bash frontend/scripts/wave127-build-x3.sh` (W127 SW7 watch+kill workaround). All 3 fresh builds produced exactly:
+
+```
+Build 1: index-KalQn95O.js (138974 bytes) | _shell.html (65872 bytes)
+Build 2: index-KalQn95O.js (138974 bytes) | _shell.html (65872 bytes)
+Build 3: index-KalQn95O.js (138974 bytes) | _shell.html (65872 bytes)
+```
+
+**BYTE-IDENTICAL to W131 SW8 baseline** confirmed × 3 fresh builds. The audit's "BYTE-IDENTICAL" claim now has empirical backing rather than just inference from "no client-tree changes". Reproducibility invariant carries through ≥ 5 waves now (W127 → W131 → W132).
+
+### A4 ✅ pytest backend slice baseline preserved
+
+`pytest tests/test_csrf.py tests/test_config_modules.py tests/test_auth_cookie_flow.py tests/test_wave131_cookie_migration.py tests/test_config_security.py -q` → **78 passed, 10 warnings in 3.70s, 0 failed** (W131 polish A1 baseline preserved exactly: csrf 44 + config_modules 15 + auth_cookie_flow 8 + config_security 3 + wave131_cookie_migration 8 = 78).
+
+The SW7 audit claim "75p+/0f" was conservative (75 from the 4-file slice originally, "+" indicating more if all 5 files included). Polish-verified actual = 78p across 5 files matching W131 polish A1 exact framing.
+
+### Polish summary
+
+- **Closed at polish**: 4 items (npm audit fix, SW1+SW2 honest framing, build × 3 reproducibility, pytest baseline)
+- **Remaining as W133+ scope** (structural):
+  - chrome-devtools-mcp visual smoke through real Docker Caddy chain (W131 §Honesty #1+#2 integration-level — needs cluster or fresh ~30-60 min Docker build)
+  - LHCI numerical baseline (W129 SW6 lhci-linux.yml is canonical alternative)
+  - SECURITY_COOKIE_SAMESITE_OVERRIDE prod runtime test (W131 §Honesty #10 — no cluster access)
+  - MEMORY.md compaction (W131+ deferred)
+  - frontend/nginx.conf deletion (W131 §Honesty #9 — kept as Phase 6 rollback safety)
+- **Polish budget**: ~70 min actual (within 60-90 min `feedback_perfectionism.md` envelope)
+- **Polish commits**: `bbd365ddd` (npm audit) + `9cbb13198` (SW1+SW2 honest framing) + this in-place audit update
+
+**Final branch HEAD post-polish**: `9cbb13198` (polish honest framing) ← `bbd365ddd` (polish npm audit) ← `76e422322` (SW7 audit) ← `bb11757ae` SW6 ← `09dd96ea5` SW5 ← `69ebcf99a` SW4 ← `f76ffa000` SW3 ← `12d4afadd` SW1-fix ← `ca5223ba9` (W131 polish).
+
+Branch ahead of `origin/egorribun` by **+25 commits post-polish** (8 W132 + 7 W131 + 7 W130 + 3 polish/audit).
