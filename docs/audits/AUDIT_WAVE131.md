@@ -55,7 +55,7 @@
 | 5 | `bce02d4ed` | `feat(wave131-sw5-k8s-node-ssr): k8s/frontend manifests for Node SSR runtime` | 2 | +33 / -22 |
 | 6 | `f0470340a` | `feat(wave131-sw6-cookie-samesite-lax): migrate prod cookie SameSite Strict→Lax` | 2 | +143 / -3 |
 | 7 | `81258aa7d` | `fix(wave131-sw1-static-files): server-prod.mjs serves dist/client/ assets before delegating to handler` | 1 | +92 / -0 |
-| 8 | `<TBD post-SW8>` | `docs(wave131-sw8-audit): full narrative + memory + N+3 rotation + W132 handoff` | TBD | TBD |
+| 8 | `aaf423a95` | `docs(wave131-sw8-audit): full narrative + design doc + N+3 rotation (W128 -> archive) + W132 handoff` | 5 | +446 / -4 |
 
 ## SW arc — what each commit does
 
