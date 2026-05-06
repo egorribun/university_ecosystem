@@ -50,7 +50,7 @@
 | 4 | `1312c593c` | `feat(wave129-sw4-news-index-ssr): /news ssr:true + prefetchInfiniteQuery first page` | 1 | +22 / -3 |
 | 5 | `8a1e35113` | `feat(wave129-sw5-news-detail-ssr): /news/$id ssr:true + ensureQueryData factory` | 3 | +59 / -16 |
 | 6 | `78b1b5f3d` | `feat(wave129-sw6-lhci-linux-ci): GH Actions LHCI workflow on Linux runner (on-demand)` | 1 | +199 / -0 |
-| 8 | `<TBD>` | `docs(wave129-sw8-audit): full narrative + memory + N+3 rotation + W130 handoff` | ~9 | TBD |
+| 8 | `6226980d2` | `docs(wave129-sw8-audit): full narrative + memory + N+3 rotation + W130 handoff` | 5 | +361 / -4 |
 
 ## SW arc — what each commit does
 
@@ -241,4 +241,62 @@ Per `feedback_perfectionism.md` "безупречно?" probe anticipation. ~12 
 
 ---
 
-**Branch HEAD**: `<TBD post-SW8>` ← `78b1b5f3d` SW6 ← `8a1e35113` SW5 ← `1312c593c` SW4 ← `ade0c4e88` SW3 ← `0a25f82f5` SW2 ← `d70ac9ce2` SW1 ← `aa82bf04c` (W128 polish).
+**Branch HEAD pre-polish**: `6226980d2` ← `78b1b5f3d` SW6 ← `8a1e35113` SW5 ← `1312c593c` SW4 ← `ade0c4e88` SW3 ← `0a25f82f5` SW2 ← `d70ac9ce2` SW1 ← `aa82bf04c` (W128 polish).
+
+---
+
+## Polish pass (post-SW8, ~50 min, "безупречно?" probe response)
+
+After claiming W129 done, the user invoked the canonical `feedback_perfectionism.md` "безупречно?" probe — a self-audit + polish call. 5 real gaps identified; 4 closed in polish, 1 partially-closed with honest deferral.
+
+### Polish #1 — `<TBD>` placeholder substitution (5 min, 3 files)
+
+`AUDIT_WAVE129.md` + `memory/wave129_backlog.md` + `memory/wave130_opening_prompt.md` had `<TBD post-SW8>` placeholders left over from pre-commit drafting. Replaced all 4 occurrences with the actual SW8 commit SHA `6226980d2`. Cosmetic but visible — would have shipped the wave with TBD strings in the canonical narrative + W130 handoff.
+
+### Polish #2 — direct factory unit tests + resolveLoaderLang tests (~30 min, 2 NEW files, 28 NEW tests)
+
+Closes part of §Honesty probe item #2 (vitest delta = 0). Added:
+
+- `frontend/src/utils/__tests__/loaderLang.test.ts` — 12 tests covering `resolveLoaderLang()` SSR getter path + client localStorage path + private-browsing fallback + getter-takes-precedence-over-localStorage priority.
+- `frontend/src/api/hooks/__tests__/ssrFactories.test.ts` — 16 tests covering all 3 W129 factories: `eventDetailQueryOptions(id)` queryKey shape + staleTime + retry; `newsDetailQueryOptions(id, language)` legacy queryKey shape preservation (W129 SW5 deferral #10 documented in test); `prefetchNewsListQuery(qc, filters)` cursor pagination shape + getNextPageParam closure verification.
+
+**Vitest delta**: 931p (W128 + W129 SW5 baseline) → **959p** (+28 polish). 12s skipped preserved. 0 failures across full suite.
+
+### Polish #3 — chrome-devtools-mcp visual smoke on remaining 3 detail routes (~10 min)
+
+Closes §Honesty probe item #1. SW7 had only `/events` verified (0 React hydration errors). The other 3 routes (`/events/$id`, `/news`, `/news/$id`) were flagged as backend-down navigation timeouts. Polish retry approach: shorter timeout (8s) for `/events/$id` succeeded; `/news` + `/news/$id` opened via `new_page` fresh-tab pattern with 30s timeout (matches the original `/events` working approach).
+
+Result: **all 4 W129 SSR routes verified 0 React hydration errors**, each with the same expected `profile_cache.cleared` warn (W128 SW1 AuthProvider behavior on cold-load auth state cleared after SSR placeholder user).
+
+| Route | Console errors | Console warns |
+|---|---|---|
+| `/events` | 0 | 1 (`profile_cache.cleared` — expected) |
+| `/events/$id` | 0 | 1 (same) |
+| `/news` | 0 | 1 (same) |
+| `/news/$id` | 0 | 1 (same) |
+
+### Polish #4 — Storybook build re-verification (~3 min)
+
+Closes §Honesty probe item #12 (Storybook NOT re-verified). `npm run build-storybook` ran successfully: **17.95s vite-internal / 21.32s total wall-clock**. W128 polish #2 baseline 19.53s vite-internal — within ~10% noise. Storybook 10 + Vite 8/Rolldown integration preserved (no W123 SW1 `strictExecutionOrder` regression, no W116 SW-Stretch workbox cap regression).
+
+### Polish #5 — `lhci-linux.yml` end-to-end smoke (PARTIAL close, honest deferral)
+
+Closes §Honesty probe item #3 partially. `gh` CLI is not authenticated in the dev shell (`gh auth status` → "not logged into any GitHub hosts"), so `gh workflow run lhci-linux.yml` cannot trigger the workflow from here. Additionally, the workflow file is on the `egorribun` feature branch and has not been pushed — workflow_dispatch requires the workflow to exist on the default branch.
+
+What WAS verified:
+- YAML structurally valid (`python -c "yaml.safe_load(...)"` passes; `jobs.lhci` defined)
+- Underlying invocation `npm run lhci` is **identical** to the existing `reusable-frontend-tests.yml lighthouse:` job that has run on every PR since W117+ — proven CI path
+- VITE_LHCI tree-shake invariant pre-flight + markdown summary table generation logic readable + sound
+- Trigger trigger via `gh workflow run` documented in the workflow comment header
+
+What NOT verified (honest deferral): real workflow_dispatch invocation against GH Actions, LHR JSON artifact production end-to-end, summary-table markdown rendering in `$GITHUB_STEP_SUMMARY`. Closes naturally on the first PR-merge push (workflow available on main) OR W130 polish if user authenticates `gh` and triggers manually.
+
+### Polish summary
+
+- **5 of 12 W129 §Honesty caveats closed** (#1 chrome-devtools-mcp visual smoke partial → FULL; #2 vitest delta = 0 → PARTIAL via factory shape tests; #3 LHCI sweep deferred → workflow YAML structurally validated, end-to-end deferred; #12 Storybook NOT re-verified → FULL; placeholder substitution as cosmetic close)
+- **7 of 12 caveats remain** as structural / W130-natural / methodology deferrals (#4-#11 + LHCI numerical sweep)
+- **Vitest baseline**: 931p → **959p**
+- **All gates preserved**: tsc 0, lint 0, vitest 959p/12s/0f, npm audit 0, Cargo.lock no drift
+- **Polish budget**: ~50 min actual (within the 60-90 min estimate per `feedback_perfectionism.md`)
+
+**Branch HEAD post-polish**: `cdace3632` (polish) ← `6226980d2` (SW8) ← `78b1b5f3d` SW6 ← `8a1e35113` SW5 ← `1312c593c` SW4 ← `ade0c4e88` SW3 ← `0a25f82f5` SW2 ← `d70ac9ce2` SW1 ← `aa82bf04c` (W128 polish). Branch ahead of `origin/egorribun` by **8 commits**.
