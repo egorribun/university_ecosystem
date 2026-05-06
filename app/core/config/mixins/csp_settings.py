@@ -54,6 +54,23 @@ class CspSettingsMixin:
     coep_value: str = "require-corp"
     enable_corp: bool = True
     corp_value: str = "same-site"
+    # Wave 131 SW6 — Phase 4 deploy infrastructure cookie SameSite migration.
+    # Production default flipped from "strict" to "lax" so that direct-link
+    # clicks from external referrers (search engines, email, social media)
+    # carry the access_token_v2 / csrf_token cookies — Strict blocks the
+    # cookie on the initial cross-site GET, defeating SSR auth-at-edge for
+    # the very flow that benefits most from it.
+    #
+    # SECURITY_COOKIE_SAMESITE_OVERRIDE provides an emergency rollback knob:
+    # set to "strict" to restore pre-W131 behavior without a code change.
+    # Empty string = use the dev/prod default below.
+    #
+    # CSRF compatibility: app/core/csrf.py CSRFMiddleware uses Signed
+    # Double-Submit Cookie + HMAC-SHA256 + X-CSRF-Token header check.
+    # Cross-site state-change attempts can't set custom X-CSRF-Token
+    # (CORS preflight blocks), so SameSite=Lax does not open new attack
+    # surface — the CSRF defenses remain intact.
+    security_cookie_samesite_override: str = ""
 
     @field_validator("coep_value")
     @classmethod
@@ -76,6 +93,20 @@ class CspSettingsMixin:
             )
         return normalized
 
+    @field_validator("security_cookie_samesite_override")
+    @classmethod
+    def _validate_cookie_samesite_override(cls, value: str) -> str:
+        # Wave 131 SW6 — RZ-131-01: validate the override at config-load
+        # time so a typo can never silently degrade to None / "" at runtime
+        # (which would inadvertently fall through to the prod default).
+        normalized = value.strip().lower()
+        if normalized and normalized not in {"strict", "lax", "none"}:
+            raise ValueError(
+                "SECURITY_COOKIE_SAMESITE_OVERRIDE must be empty or one of "
+                f"'strict', 'lax', 'none' (got: {value!r})"
+            )
+        return normalized
+
     @cached_property
     def strict_security_headers_enabled(self) -> bool:
         value = self.enable_strict_security_headers
@@ -89,9 +120,21 @@ class CspSettingsMixin:
 
     @property
     def cookie_samesite(self) -> str:
-        if getattr(self, "is_development", False):
-            return "lax"
-        return "strict"
+        # Wave 131 SW6 — Phase 4 deploy infrastructure cookie migration.
+        # Pre-W131: dev returned "lax", prod returned "strict". Strict
+        # blocked the access_token_v2 / csrf_token cookies on cross-site GET
+        # (e.g. direct link clicks from search engines, email, social media)
+        # — defeating SSR auth-at-edge for the very flow that benefits most
+        # from it. Post-W131: both dev and prod default to "lax".
+        # SECURITY_COOKIE_SAMESITE_OVERRIDE env var provides an emergency
+        # rollback knob ("strict" / "lax" / "none"; "" = use default).
+        # CSRF safety preserved via Signed Double-Submit + HMAC + X-CSRF-
+        # Token header check (CORS preflight blocks cross-site header
+        # forgery, so Lax does not open new attack surface).
+        override = getattr(self, "security_cookie_samesite_override", "")
+        if override:
+            return override
+        return "lax"
 
     @cached_property
     def security_csp_report_only_effective(self) -> bool:
