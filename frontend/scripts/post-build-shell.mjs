@@ -43,12 +43,20 @@ const FONT_PRELOAD_PATTERN =
 
 const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
-function findShellHtml(distRoot) {
+function findShellHtml(cwd) {
+  // Wave 131 Phase 4 — Nitro plugin restructured outputs from `dist/client/`
+  // to `.output/public/`. Both paths are checked so this script keeps
+  // working across pre-W131 (no Nitro) and W131+ (Nitro) builds without
+  // forcing a flag-day. .output/public/ is checked first because that's
+  // the canonical Nitro path; dist/client/ remains as a fallback for any
+  // build pipeline variant that doesn't go through Nitro.
   const candidates = [
-    path.join(distRoot, "client", "_shell.html"),
-    path.join(distRoot, "client", "index.html"),
-    path.join(distRoot, "_shell.html"),
-    path.join(distRoot, "index.html"),
+    path.join(cwd, ".output", "public", "_shell.html"),
+    path.join(cwd, ".output", "public", "index.html"),
+    path.join(cwd, "dist", "client", "_shell.html"),
+    path.join(cwd, "dist", "client", "index.html"),
+    path.join(cwd, "dist", "_shell.html"),
+    path.join(cwd, "dist", "index.html"),
   ]
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate
@@ -108,11 +116,12 @@ function applyLhciReplacements(html, isLHCI) {
 }
 
 function main() {
-  const distRoot = path.resolve(process.cwd(), "dist")
-  const shellPath = findShellHtml(distRoot)
+  const cwd = process.cwd()
+  const shellPath = findShellHtml(cwd)
   if (!shellPath) {
     console.warn(
-      "Post-build: no spa shell HTML found in dist/. Skipping font preload + CSP + LHCI replacements."
+      "Post-build: no spa shell HTML found in .output/public/ or dist/. " +
+        "Skipping font preload + CSP + LHCI replacements."
     )
     return
   }
