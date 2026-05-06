@@ -30,7 +30,14 @@ export const Route = createFileRoute("/_auth/dashboard")({
     // returns cached data if present (idempotent across SSR + client
     // hydration). Server-side: populates routerContext.queryClient cache
     // before render. Client-side (during SPA navigation): same.
-    await Promise.all([
+    //
+    // Best-effort prefetch — if backend is unreachable (LHCI dev with no
+    // backend, network failures, etc.) the queries throw → loader would
+    // throw → TanStack Router renders error component → blank paint.
+    // Catch + ignore so the route still renders with skeleton placeholders;
+    // client-side useQuery will refetch on mount with normal error handling
+    // (cached data or error UI per query options).
+    await Promise.allSettled([
       queryClient.ensureQueryData(createDashboardEventsQueryOptions(queryClient)),
       queryClient.ensureQueryData(createDashboardStoriesQueryOptions(queryClient)),
     ])
