@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo } from "react"
 import { resetEtagCache, registerSigningKeyAccessor } from "@/api/client"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import { useProfileSync, fetchCurrentUser, currentUserQueryKey } from "@/hooks/auth/useProfileSync"
+import { readSsrAuthHint } from "@/hooks/auth/ssrAuthHint"
 import { useAuthApi } from "@/hooks/auth/useAuthApi"
 import type { AuthContextType } from "@/types/Auth"
 import { ChallengeLockedError } from "@/types/Auth"
@@ -90,12 +91,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [sessionSigningKey])
 
+  // Wave 128 SW1 Strategy A — read SSR auth hint from globalThis getter
+  // (populated by src/server.ts via AsyncLocalStorage on server; undefined
+  // on client). useProfileSync's useState initFn uses this to populate a
+  // role-only stub User on SSR when JWT cookie was validated. On client,
+  // hint is undefined → existing localStorage/Zustand path takes over.
+  // readSsrAuthHint is a plain function (NOT a React hook) — name avoids
+  // the `use` prefix so the React Compiler doesn't apply hook rules.
+  const ssrAuthHint = readSsrAuthHint()
+
   const { user, setUser, updatePendingMfa, handleUnauthorized, authOperation, setAuthOperation } =
     useProfileSync(
       updateSessionSigningKey,
       sessionSigningKeyRef,
       sessionSigningKeyPromiseRef,
-      ensureSessionSigningKey
+      ensureSessionSigningKey,
+      ssrAuthHint
     )
 
   const { login, logout, submitMfaChallenge, requireMfa, loginWithPasskey, refresh } = useAuthApi(

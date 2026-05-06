@@ -30,6 +30,7 @@ import { sha256 } from "@noble/hashes/sha256"
 import api, { resetEtagCache, type ApiRequestConfig } from "@/api/client"
 import { clearCachesOnLogout } from "@/api/interceptors/etagCache"
 import type { User } from "@/types/User"
+import type { UserRole } from "@/api/generated"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
 import { logError, logWarning } from "@/app/logger"
@@ -564,15 +565,94 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
  *   (``updatePendingMfa``, ``handleUnauthorized``,
  *   ``setAuthOperation``).
  */
+export type SsrAuthHint = {
+  isAuth: boolean
+  user: { role: string } | null
+}
+
+// Wave 128 SW1 — runtime UserRole validation for ssrAuthHint.user.role
+// (typed as `string` per SsrAuthState shape). Invalid roles fall back to
+// "student" — same defensive pattern as ssrAuth.ts validateJwt.
+const KNOWN_USER_ROLES: ReadonlyArray<UserRole> = [
+  "student",
+  "teacher",
+  "admin",
+  "superuser",
+  "anonymous",
+]
+const coerceUserRole = (role: string): UserRole => {
+  return (KNOWN_USER_ROLES as ReadonlyArray<string>).includes(role)
+    ? (role as UserRole)
+    : "student"
+}
+
+export const buildSsrStubUser = (role: string): User => ({
+  // Wave 128 SW1 — role-only stub for server-side render. Full user
+  // (name/avatar/email) hydrates from /users/me query cache after
+  // SW3 loader.ensureQueryData populates it. Empty fields are safe
+  // defaults: Navbar renders with placeholder, Profile menu shows
+  // role-based options. No PII surfaces in SSR HTML.
+  id: "ssr-stub",
+  email: "",
+  full_name: "",
+  role: coerceUserRole(role),
+  group_id: null,
+  avatar_url: null,
+  cover_url: null,
+  spotify_connected: false,
+  profile_detail: undefined,
+  education_path: undefined,
+  preferences: undefined,
+  is_active: true,
+  mfa_required: false,
+  mfa_default_method: null,
+  mfa_last_verified_at: null,
+  totp_enrollments: [],
+  mfa_challenges: [],
+  recovery_codes_left: 0,
+  avatar_url_optimized: null,
+  cover_url_optimized: null,
+})
+
+/**
+ * Wave 128 SW1 — pure helper for SSR initial userState resolution.
+ * Returns the SSR stub User if the hint indicates an authenticated
+ * server-side render; otherwise null. Extracted from useProfileSync's
+ * useState initFn to enable direct unit testing without window-mocking
+ * (jsdom always defines window in test env).
+ */
+export const resolveSsrInitialUserState = (hint: SsrAuthHint | undefined): UserState => {
+  if (hint?.isAuth && hint.user) {
+    return buildSsrStubUser(hint.user.role)
+  }
+  return null
+}
+
+/**
+ * Wave 128 SW1 — pure helper for SSR initial `initializing` flag.
+ * Returns false when SSR hint resolved an authenticated user (init
+ * complete); true otherwise (client-side init useEffect will resolve).
+ */
+export const resolveSsrInitialInitializing = (hint: SsrAuthHint | undefined): boolean => {
+  return !hint?.isAuth
+}
+
 export const useProfileSync = (
   updateSessionSigningKey: (key: string | null) => void,
   sessionSigningKeyRef: React.MutableRefObject<string | null>,
   sessionSigningKeyPromiseRef: React.MutableRefObject<Promise<string | null> | null>,
-  ensureSessionSigningKey: () => Promise<string | null>
+  ensureSessionSigningKey: () => Promise<string | null>,
+  ssrAuthHint?: SsrAuthHint | undefined
 ) => {
   const queryClient = useQueryClient()
   const [userState, setUserState] = useState<UserState>(() => {
-    if (typeof window === "undefined") return null
+    if (typeof window === "undefined") {
+      // Wave 128 SW1 Strategy A — see resolveSsrInitialUserState helper.
+      // Returns role-only stub when ssrAuthHint indicates authenticated
+      // server-side render (JWT cookie validated by server.ts W126 SW3).
+      // Full user hydrates from /users/me cache or client-side useEffect.
+      return resolveSsrInitialUserState(ssrAuthHint)
+    }
     const signingKey = sessionSigningKeyRef.current
     if (!signingKey) return null
     const candidate = readCachedEnvelope()
@@ -625,7 +705,10 @@ export const useProfileSync = (
   const userStateRef = useRef<UserState>(userState)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
   const [initializing, setInitializing] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true
+    if (typeof window === "undefined") {
+      // Wave 128 SW1 — see resolveSsrInitialInitializing helper.
+      return resolveSsrInitialInitializing(ssrAuthHint)
+    }
     if (userState !== null) return false
     const hasKey = !!sessionSigningKeyRef.current
     const hasCache = !!readCachedEnvelope()
