@@ -417,32 +417,50 @@ export const useSuspenseMyEventsQuery = (
 }
 
 // ---------------------------------------------------------------------------
-// EVENT DETAIL QUERY (Wave 76)
+// EVENT DETAIL QUERY (Wave 76; Wave 129 SW2 factory extraction)
 // ---------------------------------------------------------------------------
 
 type EventDetailQueryKey = readonly ["events", "detail", string]
 
 export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
 
+/**
+ * Pure query options factory for a single event by id. Used by both:
+ *
+ *   - `useEventDetailQuery` (component context, with `enabled: !!id` guard)
+ *   - `/events/$id` route loader for SSR pre-fetch via
+ *     `queryClient.ensureQueryData(eventDetailQueryOptions(params.id))`
+ *
+ * Caller is responsible for passing a defined id. The route loader path
+ * always has a defined `params.id` (TanStack Router params validation);
+ * the hook path handles `undefined` separately via the `enabled` guard.
+ *
+ * `staleTime: 60_000` matches the prior in-hook config; retry 1 limits
+ * SSR loader latency on network blips. Dynamic-imported SDK keeps the
+ * detail-route bundle lean — hot path on /events/$id only.
+ */
+export const eventDetailQueryOptions = (id: string) => ({
+  queryKey: ["events", "detail", id] as EventDetailQueryKey,
+  queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<Event> => {
+    const { getEventApiV1EventsIdGet } = await import("@/api/generated/sdk.gen")
+    const response = await getEventApiV1EventsIdGet({
+      path: { id },
+      signal,
+    } as Parameters<typeof getEventApiV1EventsIdGet>[0])
+    return response.data as Event
+  },
+  staleTime: 60_000,
+  retry: 1,
+})
+
 export const useEventDetailQuery = (
   id: string | undefined,
   options?: Omit<UseQueryOptions<Event, Error, Event, EventDetailQueryKey>, "queryKey" | "queryFn">
 ): UseEventDetailQueryResult => {
-  const queryKey: EventDetailQueryKey = ["events", "detail", id ?? ""]
-
+  const baseOptions = eventDetailQueryOptions(id ?? "")
   return useQuery<Event, Error, Event, EventDetailQueryKey>({
-    queryKey,
+    ...baseOptions,
     enabled: !!id,
-    staleTime: 60_000,
-    retry: 1,
-    queryFn: async ({ signal }) => {
-      const { getEventApiV1EventsIdGet } = await import("@/api/generated/sdk.gen")
-      const response = await getEventApiV1EventsIdGet({
-        path: { id: id! },
-        signal,
-      } as Parameters<typeof getEventApiV1EventsIdGet>[0])
-      return response.data as Event
-    },
     ...options,
   })
 }
