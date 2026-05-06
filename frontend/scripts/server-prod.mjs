@@ -171,11 +171,20 @@ function buildWebRequest(req) {
   return new Request(url, init)
 }
 
-async function pipeWebResponse(webResponse, res) {
+async function pipeWebResponse(webResponse, res, extraHeaders) {
   res.statusCode = webResponse.status
   res.statusMessage = webResponse.statusText
   for (const [name, value] of webResponse.headers) {
     res.setHeader(name, value)
+  }
+  // Wave 132 SW5 — caller-provided headers (e.g. Server-Timing for SSR
+  // observability during Phase 6 canary). Append AFTER copying upstream
+  // headers so we don't accidentally clobber a set-cookie or content-type
+  // that the response already carries.
+  if (extraHeaders) {
+    for (const [name, value] of Object.entries(extraHeaders)) {
+      res.appendHeader(name, value)
+    }
   }
   if (!webResponse.body) {
     res.end()
@@ -207,8 +216,30 @@ const server = createServer(async (req, res) => {
       }
     }
     const request = buildWebRequest(req)
+    // Wave 132 SW5 — Server-Timing observability for Phase 6 canary stages.
+    // `performance.now()` gives sub-ms precision; the duration measured here
+    // is the SSR-layer round-trip (router construction + route render +
+    // any backend fetches reached during the loader chain).
+    //
+    // The header lets operators identify which upstream pool served a
+    // response during canary — Caddy's lb_policy weighted_round_robin
+    // returns the response transparently, so without Server-Timing the
+    // edge log only shows the upstream identity (which the legacy nginx
+    // pool also receives through `health_uri /healthz` per SW3 design).
+    //
+    // Skip for /healthz so the W131 SW2 fast-path response stays clean —
+    // probes shouldn't be tagged as SSR-pool traffic.
+    const ssrStart = performance.now()
     const response = await handler.fetch(request)
-    await pipeWebResponse(response, res)
+    const ssrDur = performance.now() - ssrStart
+    // `urlPath` is already declared at the top of this try-block (used for
+    // the static-first check). Reuse it for the /healthz Server-Timing
+    // skip so we don't re-parse the URL.
+    const extraHeaders =
+      urlPath === "/healthz"
+        ? undefined
+        : { "Server-Timing": `ssr;dur=${ssrDur.toFixed(2)};desc="ssr-render"` }
+    await pipeWebResponse(response, res, extraHeaders)
     const ms = Date.now() - start
     console.log(`${req.method} ${req.url} ${res.statusCode} ${ms}ms`)
   } catch (err) {
