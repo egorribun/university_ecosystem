@@ -42,18 +42,70 @@
         }
     }
 
-    # --- Reverse proxy to the backend service ------------------------------
-    reverse_proxy backend:8000 {
-        # Propagate real client IP for rate limiting, audit logs, geolocation.
-        header_up X-Real-IP           {http.request.remote}
-        header_up X-Forwarded-For     {http.request.remote}
-        header_up X-Forwarded-Proto   https
-        header_up X-Forwarded-Host    {host}
+    # --- Multi-service routing (Wave 131 SW4 Phase 4 deploy infrastructure) -
+    # Pre-W131: a single root-level reverse_proxy sent ALL traffic to backend
+    # — internal-only configuration that never had a frontend service. Phase
+    # 4 introduces a Node SSR frontend runtime, so prefixes now route
+    # explicitly: /api/*, /graphql*, /ws/* go to backend services; /sw.js
+    # plus the default handle go to frontend:3000.
 
-        # Health check: Caddy will stop sending traffic if the backend is down.
-        health_uri /healthz
-        health_interval 10s
-        health_timeout  5s
+    handle /api/* {
+        reverse_proxy backend:8000 {
+            header_up X-Real-IP {http.request.remote}
+            header_up X-Forwarded-For {http.request.remote}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            health_uri /healthz
+            health_interval 10s
+            health_timeout 5s
+        }
+    }
+
+    handle /graphql* {
+        reverse_proxy backend:8000 {
+            header_up X-Real-IP {http.request.remote}
+            header_up X-Forwarded-For {http.request.remote}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # /ws/* routes to ws-hub (port 8081) — `@ws_upgrade` rate_limit above
+    # already throttles WS upgrade attempts before they reach this block.
+    handle /ws/* {
+        reverse_proxy ws-hub:8081 {
+            header_up X-Real-IP {http.request.remote}
+            header_up X-Forwarded-For {http.request.remote}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # Backend-served static assets (uploads, generated thumbnails, etc.).
+    handle /static/* {
+        reverse_proxy backend:8000
+    }
+
+    # Service worker — must be on same origin, no cache, with broad scope.
+    handle /sw.js {
+        reverse_proxy frontend:3000
+        header Service-Worker-Allowed "/"
+        header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    }
+
+    # Wave 131 Phase 4 — default handle = Node SSR runtime (frontend:3000).
+    # health_uri probes the W131 SW2 fast path; Caddy stops sending traffic
+    # to a failing upstream automatically.
+    handle {
+        reverse_proxy frontend:3000 {
+            header_up X-Real-IP {http.request.remote}
+            header_up X-Forwarded-For {http.request.remote}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            health_uri /healthz
+            health_interval 10s
+            health_timeout 5s
+        }
     }
 
     # --- HTTP/3 advertisement header --------------------------------------
