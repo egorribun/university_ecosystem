@@ -40,31 +40,38 @@ spec:
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: frontend
-      # MOD-06 (audit 2026-03-15 Wave 7): Graceful shutdown for nginx.
-      # nginx stops accepting new connections on SIGTERM; preStop sleep
-      # allows in-flight connections to drain from the load balancer.
+      # Wave 131 SW5 — graceful shutdown for Node SSR. Node listens on PORT
+      # 3000; on SIGTERM, server-prod.mjs closes the http server with a 30s
+      # drain window so in-flight SSR requests complete before exit.
+      # preStop sleep:10 (was 5 for nginx) lets the load balancer route
+      # away before SIGTERM lands; matches the wrapper's drain timeout.
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
           image: registry.example.com/frontend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries
           ports:
-            - containerPort: 8080  # TD-26-01: match nginx-unprivileged default port
+            # Wave 131 SW5: containerPort 8080 (nginx) → 3000 (Node SSR).
+            # Matches frontend.Dockerfile EXPOSE + ENV PORT=3000.
+            - containerPort: 3000
               name: http
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "sleep 5"]
+                command: ["/bin/sh", "-c", "sleep 10"]
+          # Wave 131 SW5 — probe target = /healthz fast path (W131 SW2)
+          # instead of the prior `/` (which would have run full SSR on
+          # every probe and added unnecessary load + cold-start risk).
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15  # Node startup ~5-10s; was 10 for nginx
             periodSeconds: 15
             failureThreshold: 3
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -77,25 +84,25 @@ spec:
             capabilities:
               drop:
                 - ALL
-          volumeMounts:  # TD-25-01: nginx requires writable dirs with readOnlyRootFilesystem
-            - name: nginx-cache
-              mountPath: /var/cache/nginx
-            - name: nginx-run
-              mountPath: /var/run
+          volumeMounts:
+            # Wave 131 SW5: nginx-cache + nginx-run emptyDirs removed (no
+            # nginx in Node runtime). /tmp emptyDir kept because Node may
+            # write small temp files (V8 + libuv use /tmp under load) and
+            # readOnlyRootFilesystem: true requires an explicit writable mount.
             - name: tmp
               mountPath: /tmp
           resources:
+            # Wave 131 SW5 resource bump — Node + V8 heap + tanstackStart
+            # SSR per-request work peaks 250-400 MB under load (vs ~50 MB
+            # nginx static-serve). CPU also bumps because SSR component
+            # render is CPU-bound (vs nginx file IO).
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 100m       # was 50m (nginx)
+              memory: 128Mi   # was 64Mi
             limits:
-              cpu: 200m
-              memory: 256Mi  # TD-25-03: raised from 128Mi — nginx gzip needs headroom
+              cpu: 500m       # was 200m
+              memory: 512Mi   # was 256Mi (nginx gzip headroom)
       volumes:
-        - name: nginx-cache
-          emptyDir: {}
-        - name: nginx-run
-          emptyDir: {}
         - name: tmp
           emptyDir:
             sizeLimit: 10Mi
