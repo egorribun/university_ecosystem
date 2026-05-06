@@ -14,7 +14,8 @@ import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { useShare } from "@/hooks/useShare"
 import { toDate, getMoscowDate } from "@/utils/date"
 import { localizeField } from "@/utils/localize"
-import { deleteNews, fetchNewsItem, type NewsItem } from "@/api/news"
+import { deleteNews, type NewsItem } from "@/api/news"
+import { newsDetailQueryOptions } from "@/api/hooks/news"
 import { SEO } from "@/components/ui/SEO"
 import { Button, ConfirmDialog } from "@/components/ui"
 import { NewsComments } from "@/components/news/NewsComments"
@@ -39,14 +40,6 @@ import { estimateReadingTime } from "@/utils/readingTime"
 import { TIMEOUTS } from "@/config/timeouts"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { setNewsHeroId } from "@/utils/newsTransition"
-
-/* ── Data fetcher ── */
-async function fetchNews(id: string): Promise<NewsItem> {
-  const response = await fetchNewsItem(id)
-  if (response.status === 304) throw new Error("Not modified")
-  if (!response.data) throw new Error("Item not found")
-  return response.data
-}
 
 /* ══════════════════════════════════════════════════════════
    NEWS DETAIL PAGE — Orchestrator
@@ -93,12 +86,12 @@ export default function NewsDetail() {
   const [snackbar, setSnackbar] = useState("")
 
   /* ── Query ── */
+  // Wave 129 SW5 — uses the shared `newsDetailQueryOptions` factory so the
+  // SSR loader at `/news/$id` and this client component pull from the same
+  // queryKey identity (per-request QueryClient via SsrRoot W128 SW3).
   const query = useQuery<NewsItem, Error>({
-    queryKey: ["news", id, language],
-    queryFn: () => fetchNews(id),
+    ...newsDetailQueryOptions(id, language),
     enabled: !!id,
-    staleTime: 60000,
-    retry: 1,
   })
 
   const {

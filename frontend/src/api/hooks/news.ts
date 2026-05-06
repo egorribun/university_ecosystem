@@ -40,7 +40,7 @@ import {
 import { useMemo } from "react"
 
 import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
-import type { NewsItem } from "@/api/news"
+import { fetchNewsItem, type NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
 
@@ -327,3 +327,33 @@ export const prefetchNewsListQuery = (queryClient: QueryClient, filters: NewsLis
     getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => lastPage?.next_cursor ?? null,
   })
 }
+
+// ---------------------------------------------------------------------------
+// NEWS DETAIL QUERY (Wave 129 SW5 factory extraction)
+//
+// Pulled out of `pages/NewsDetail.tsx`'s inline `useQuery` + local `fetchNews`
+// helper so the same options shape is shared across:
+//   - The component (`useQuery({ ...newsDetailQueryOptions(id, language) })`)
+//   - The /news/$id route loader (`queryClient.ensureQueryData(...)`) for SSR
+//     pre-fetch into the per-request QueryClient (SsrRoot W128 SW3).
+//
+// Query key includes language because the article body has `title`/`content`
+// + locale fallbacks (`title_en`/`content_en`) — different language requests
+// could resolve to different displayed content even when the underlying
+// resource id is the same. Matches the prior in-component key shape so
+// existing cache entries continue to hit.
+// ---------------------------------------------------------------------------
+
+const fetchNewsDetail = async (id: string, signal?: AbortSignal): Promise<NewsItem> => {
+  const response = await fetchNewsItem(id, { signal })
+  if (response.status === 304) throw new Error("Not modified")
+  if (!response.data) throw new Error("Item not found")
+  return response.data
+}
+
+export const newsDetailQueryOptions = (id: string, language: string) => ({
+  queryKey: ["news", id, language] as const,
+  queryFn: ({ signal }: { signal?: AbortSignal }) => fetchNewsDetail(id, signal),
+  staleTime: 60_000,
+  retry: 1,
+})
