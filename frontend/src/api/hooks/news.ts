@@ -40,7 +40,7 @@ import {
 import { useMemo } from "react"
 
 import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
-import type { NewsItem } from "@/api/news"
+import { fetchNewsItem, type NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
 
@@ -297,3 +297,63 @@ export const useNewsListQuery = (
     queryKey,
   }
 }
+
+/**
+ * Pre-fetch the first page of the news feed into the given QueryClient
+ * for server-side rendering loaders. Mirrors `prefetchEventsListQuery`
+ * (events.ts:261-272) — same cursor-pagination shape (`initialPageParam:
+ * null`, `getNextPageParam: lastPage?.next_cursor ?? null`) so the SSR
+ * pre-fetched page is the same identity that `useNewsListQuery` reads
+ * on the client (per-request QueryClient via SsrRoot, W128 SW3).
+ *
+ * First page only — `prefetchInfiniteQuery` defaults to `pages: 1`.
+ * Multi-page prefetch is possible via `{ pages: 2 }` but adds
+ * 200-400ms per extra page to server-time, with diminishing LCP
+ * return; W129 sticks with first-page-only for the LCP-perf balance.
+ *
+ * Reuses `createNewsListQueryFn` (the same closure useNewsListQuery
+ * builds inside `useMemo`) so ETag cache key resolution + 304-fallback
+ * behaviour is shared across SSR + client paths.
+ */
+export const prefetchNewsListQuery = (queryClient: QueryClient, filters: NewsListFilters) => {
+  const normalized = normalizeNewsListFilters(filters)
+  const queryKey: NewsListQueryKey = ["news", "list", normalized]
+  const queryFn = createNewsListQueryFn(queryClient, normalized, queryKey)
+
+  return queryClient.prefetchInfiniteQuery({
+    queryKey,
+    queryFn,
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => lastPage?.next_cursor ?? null,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// NEWS DETAIL QUERY (Wave 129 SW5 factory extraction)
+//
+// Pulled out of `pages/NewsDetail.tsx`'s inline `useQuery` + local `fetchNews`
+// helper so the same options shape is shared across:
+//   - The component (`useQuery({ ...newsDetailQueryOptions(id, language) })`)
+//   - The /news/$id route loader (`queryClient.ensureQueryData(...)`) for SSR
+//     pre-fetch into the per-request QueryClient (SsrRoot W128 SW3).
+//
+// Query key includes language because the article body has `title`/`content`
+// + locale fallbacks (`title_en`/`content_en`) — different language requests
+// could resolve to different displayed content even when the underlying
+// resource id is the same. Matches the prior in-component key shape so
+// existing cache entries continue to hit.
+// ---------------------------------------------------------------------------
+
+const fetchNewsDetail = async (id: string, signal?: AbortSignal): Promise<NewsItem> => {
+  const response = await fetchNewsItem(id, { signal })
+  if (response.status === 304) throw new Error("Not modified")
+  if (!response.data) throw new Error("Item not found")
+  return response.data
+}
+
+export const newsDetailQueryOptions = (id: string, language: string) => ({
+  queryKey: ["news", id, language] as const,
+  queryFn: ({ signal }: { signal?: AbortSignal }) => fetchNewsDetail(id, signal),
+  staleTime: 60_000,
+  retry: 1,
+})
