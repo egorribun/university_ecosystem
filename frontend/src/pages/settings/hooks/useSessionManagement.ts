@@ -5,6 +5,7 @@ import { isAxiosError } from "axios"
 import { formatDate, toDate } from "@/utils/date"
 
 import api from "@/api/client"
+import { sessionsQueryKey, sessionsQueryOptions } from "@/api/hooks/sessions"
 import { useAuth } from "@/contexts/AuthContext"
 import type { ActiveSession } from "@/types/Session"
 import type { SetSnackbar } from "@/pages/settings/types"
@@ -47,23 +48,25 @@ export function useSessionManagement({
   const { user, logout } = useAuth()
   const queryClient = useQueryClient()
 
-  const sessionsKey = useMemo(() => ["auth", "sessions", user?.id ?? "me"], [user?.id])
-
-  const fetchSessions = useCallback(async () => {
-    const { data } = await api.get<ActiveSession[]>("/auth/sessions")
-    return data
-  }, [])
+  // Wave 134 SW2 — sessions queryKey + queryFn now provided by the
+  // sessionsQueryOptions factory at api/hooks/sessions.ts so the SSR
+  // loader for /settings (routes/_auth/settings.tsx) can prefetch on
+  // ?tab=2 (Security) using the SAME cache slot that this client-side
+  // useQuery reads from. Cache identity is preserved at the queryKey
+  // tuple shape ["auth", "sessions", userId] (matches pre-W134 behaviour
+  // exactly). The factory also supplies staleTime: 30_000, gcTime, retry
+  // semantics — preserved verbatim from the pre-W134 inline config.
+  const userId = user?.id ?? "me"
+  const sessionsKey = useMemo(() => sessionsQueryKey(userId), [userId])
 
   const {
     data: sessionsData,
     isFetching: sessionsFetching,
     isError: sessionsIsError,
     error: sessionsError,
-  } = useQuery<ActiveSession[], unknown>({
-    queryKey: sessionsKey,
-    queryFn: fetchSessions,
+  } = useQuery({
+    ...sessionsQueryOptions(userId),
     enabled: tabActive && Boolean(user),
-    staleTime: 30_000,
   })
 
   const sessions = useMemo(() => (Array.isArray(sessionsData) ? sessionsData : []), [sessionsData])

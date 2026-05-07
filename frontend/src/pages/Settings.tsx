@@ -14,9 +14,22 @@ import { SettingsIntegrations } from "./settings/SettingsIntegrations"
 
 export default function Settings() {
   const { t } = useTranslation(["settings", "common"])
-  const searchParams = useSearch({ strict: false }) as Record<string, string | undefined>
+  // Wave 134 SW2 — tab state lifted from useState into the URL query
+  // string (?tab=N). Validated via settingsSearchSchema in
+  // routes/_auth/settings.tsx; invalid values fall back to 0 (General).
+  // Allows deep-linking from external sources (notification emails,
+  // help docs) to a specific tab. Spotify-callback ?spotify= flag
+  // (line ~50 below) was already URL-driven, this brings tab in line.
+  //
+  // strict: false — preserves the pre-W134 pattern so component-level
+  // tests (Settings.media.test.tsx, Settings.radio.test.tsx, etc.) can
+  // mount Settings without a fully-resolved /_auth/settings route
+  // match. The schema-validated TanStack search is still surfaced as
+  // a Record<string, unknown> here; we narrow the only fields we read
+  // (tab + spotify) inline.
+  const search = useSearch({ strict: false }) as { tab?: number; spotify?: string }
   const navigate = useNavigate()
-  const [tab, setTab] = useState(0)
+  const tab = search.tab ?? 0
 
   // Shared Snackbar State
   const [snackbar, setSnackbar] = useState<{
@@ -48,7 +61,7 @@ export default function Settings() {
   }, [])
 
   useEffect(() => {
-    const spotifyStatus = searchParams.spotify
+    const spotifyStatus = search.spotify
     if (spotifyStatus) {
       if (spotifyStatus === "connected")
         setSnackbar({
@@ -70,9 +83,35 @@ export default function Settings() {
           return next
         },
         replace: true,
+        viewTransition: false,
       })
     }
-  }, [searchParams, navigate, t])
+  }, [search, navigate, t])
+
+  // Wave 134 SW2 — tab change navigates to /settings?tab=N. `replace: true`
+  // so back button skips intermediate tabs (matches pre-W134 useState
+  // behaviour where navigation history wasn't polluted). `viewTransition:
+  // false` per FIX-77-03 — prevents view transition flash on tab change.
+  const setTab = useCallback(
+    (next: number) => {
+      void navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => {
+          const out: Record<string, unknown> = { ...prev }
+          // tab=0 is the default; omit from URL for a clean /-friendly state.
+          if (next === 0) {
+            delete out.tab
+          } else {
+            out.tab = next
+          }
+          return out
+        },
+        replace: true,
+        viewTransition: false,
+      })
+    },
+    [navigate]
+  )
 
   return (
     <PageLayout variant="full">
