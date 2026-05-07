@@ -175,9 +175,9 @@ Mirrors W129 events.ts / W130 schedule.ts factory placement. Defensive: `if (!Ar
 | Server-Timing header (SW2) | Present on SSR routes, absent on /healthz + static assets | ✓ confirmed via curl on 12 routes |
 | Build × 3 duration | <60s/run preferred | 26s/run × 3 (vs wave127's ~95s/run) | 70% reduction in build wall time |
 
-## §Honesty probe (post-SW4)
+## §Honesty probe (post-SW4 + polish-pass)
 
-Per `feedback_perfectionism.md` — anticipating "безупречно?" probe. Self-audit before user invokes.
+Per `feedback_perfectionism.md` — "безупречно?" probe handled inline. Pre-polish audit listed 4 CLOSED + 12 REMAINING. **Post-polish state**: **6 CLOSED, 9 REMAIN** (2 closed via polish + 1 consolidation; original #11 was duplicate of #9; #12 cross-session vitest run; W134 §Honesty #6 path norm).
 
 ### CLOSED via SW1+SW2+SW3 implementation
 
@@ -186,7 +186,25 @@ Per `feedback_perfectionism.md` — anticipating "безупречно?" probe. 
 - ✅ **W134 §Honesty #8 / W131 §Honesty #2** (chrome-devtools-mcp through real Docker chain) — partial closure via SW2 curl + chrome-devtools-mcp `list_network_requests` (which DID work even when `take_snapshot` timed out). Caddy chain → frontend:3000 SSR proven; Server-Timing emission verified; auth-at-edge timing measured server-side. Honest sub-deferral: chrome-devtools snapshot/eval blocked by Windows wall (DOCUMENTED).
 - ✅ **W126 polish #3** (vite-plugin-pwa Windows hang) — closed at orchestration level by SW3 (wave127-build-x3.sh retired, integrated build-orchestrated.mjs reproducible). Honest sub-deferral: kill-after-artifacts is improvement NOT structural fix (DOCUMENTED).
 
-### REMAINING — structural / by-design / W136+ scope (6 caveats)
+### CLOSED via polish pass (W135 polish)
+
+- ✅ **W135 §Honesty #12** (cross-session vitest 5-run flake band NOT measured) — closed via 5/5 × **1052p / 12s / 0f** in polish pass. Flake band = 0 across 5 consecutive `npx vitest run` invocations.
+- ✅ **W134 §Honesty #6** (MEMORY.md `../../../../docs/audits/` paths documentation-style not navigation-style) — closed via polish pass `sed -i 's|\.\./\.\./\.\./\.\./docs/audits/|docs/audits/|g'`. 17 broken relative-path references → 21 clean `docs/audits/` text references. From the USER `.claude` MEMORY.md location, the prior `../../../../` resolved to `C:\Users\egorribun\` (FOUR levels up — wrong; needed SIX levels to reach repo root). Text-reference form `docs/audits/...` reads naturally as repo-relative path. MEMORY.md size 23,570 → 23,366 bytes (under 24,400 auto-load threshold preserved).
+
+### Polish-pass invariant verifications
+
+- ✅ Cross-session vitest 5-run: 5/5 × 1052p / 12s / 0f.
+- ✅ Commit-stat cross-check via `git show --stat`: SW1 4 files +230/-34 (claimed) ↔ ACTUAL +230/-34 ✓; SW3 4 files +363/-42 ↔ ACTUAL +363/-42 ✓; SW4 6 files +688/-3 ↔ ACTUAL +688/-3 ✓.
+- ✅ Memory-link resolution: 21/21 (post-USER-dir-copy of wave135_backlog.md + wave136_opening_prompt.md per W134 dual-location convention).
+- ✅ Archive directory presence: 16 files W117-W132 confirmed via `ls docs/audits/archive/AUDIT_WAVE{117..132}.md`.
+- ✅ Active waves: W133/W134/W135 confirmed via `ls docs/audits/AUDIT_WAVE*.md`.
+- ✅ npm audit: 0 vulnerabilities (verified post-polish).
+- ✅ Cargo.lock no drift: working tree clean confirmed via `git status frontend/rust-crypto/Cargo.lock frontend/wasm-sanitizer/Cargo.lock`.
+- ✅ Build × 3 reproducibility post-SW4: identical hash + sizes × 3 (verified inline at end of SW4 — `index-DqqHVXgy.js` 139,808 + `_shell.html` 65,864 + `sw.js` 53,181 + 26s/run).
+
+### REMAINING — structural / by-design / W136+ scope (9 caveats post-polish)
+
+> Original audit listed 12 numbered REMAINING items. Post-polish: #11 consolidated into #9 (both about Linux CI validation); #12 cross-session vitest closed; W134 §Honesty #6 closed via path norm. Remaining 9 distinct caveats below (renumbered).
 
 1. **chrome-devtools-mcp `take_snapshot` + `evaluate_script` Windows wall** — same family as W132 polish round 2 perf APIs. CDP `Accessibility.getFullAXTree` + `Runtime.evaluate` timeout on Windows + headless Chrome. `list_network_requests` + `list_console_messages` work fine. W136 candidate: investigate CDP backchannel timeout config; alternative tool path (e.g., real Chrome via Playwright with extended timeout). Affects ALL future chrome-devtools-mcp visual smokes on this dev workstation.
 
@@ -200,17 +218,11 @@ Per `feedback_perfectionism.md` — anticipating "безупречно?" probe. 
 
 6. **W134 §Honesty #2 (bundle delta +259 bytes NOT byte-identical)** — carry-forward. Honest framing recording, NOT a fix target. W135 SW3 produces BYTE-IDENTICAL to W134 baseline (139,808 / 65,864 × 3) — neutral net delta this wave.
 
-7. **W134 §Honesty #6 (MEMORY.md `../../../../docs/audits/` relative paths)** — carry-forward. Documentation-style not navigation-style. W135 SW4 SHOULD include path normalization as bonus housekeeping if time permits (~5-10 min).
+7. **W134 §Honesty #10 (/messenger Phase 5 punted indefinitely)** — carry-forward. No-deploy "production-as-is" decision unchanged.
 
-8. **W134 §Honesty #10 (/messenger Phase 5 punted indefinitely)** — carry-forward. No-deploy "production-as-is" decision unchanged.
+8. **`build-orchestrated.mjs` Linux CI not validated** — verified Windows-only on dev workstation. Linux CI behavior likely cleaner (no Windows post-prerender hang at all, kill-after-artifacts pattern still works because subprocess exits cleanly when no hang). **W136 candidate**: workflow_dispatch trigger to validate Linux CI build via GitHub Actions. (Original audit had this as items #9 + #11 — consolidated post-polish; both were about Linux CI validation.)
 
-9. **W135 SW3 build-orchestrated.mjs not exhaustively cross-platform tested** — verified only on Windows dev workstation. Linux CI behavior may differ (faster — no hang, kill-after-artifacts pattern still works because subprocess exits cleanly under shell-controlled poll). **W136 candidate**: validate Linux CI build via workflow_dispatch trigger.
-
-10. **SW2 verified 8 SSR routes via curl, not via authed browser session** — per the gateway is_active blocker, can't observe Bridge mechanism's "1 vs 2 /users/me" reduction in real Docker chain. SW1's 11 sessions tests + 4 bridge tests prove structural correctness; runtime observation is W136 once gateway issue closes.
-
-11. **`build-orchestrated.mjs` not yet validated by CI** — local Windows passes; pushing to CI would test Linux behavior. Done in W136 audit follow-up.
-
-12. **Cross-session vitest 5-run NOT executed** (W134 polish pattern). Skipped to keep SW4 within budget. **Recommendation**: run 5 × `npx vitest run` at end of W135 polish-pass (anticipated ~30-90 min "безупречно?" pass).
+9. **SW2 verified 8 SSR routes via curl, not via authed browser session** — per the gateway is_active blocker (W135 §Honesty #2), can't observe Bridge mechanism's "1 vs 2 /users/me" reduction in real Docker chain. SW1's 11 sessions tests + 4 W134 bridge tests prove structural correctness; runtime observation is W136 once gateway issue closes.
 
 ## W136 candidates (post-W135)
 

@@ -7,9 +7,9 @@ status: CLOSED
 ---
 # Wave 135 backlog — CLOSED
 
-**Status**: CLOSED L scope (B + Aggressive cleanup + Option E Path B per user-approved 3-question AskUserQuestion at session start: Q1=L, Q2=Aggressive, Q3=Path B full commitment).
+**Status**: CLOSED + POLISHED L scope (B + Aggressive cleanup + Option E Path B per user-approved 3-question AskUserQuestion at session start: Q1=L, Q2=Aggressive, Q3=Path B full commitment).
 
-Plan file: `C:\Users\egorribun\.claude\plans\c-users-egorribun-claude-projects-c-use-sprightly-quail.md`. Actual wall clock: ~3.5-4h (SW1 ~1h, SW2 ~1h, SW3 ~1.5h with two false-start iterations, SW4 ~30min).
+Plan file: `C:\Users\egorribun\.claude\plans\c-users-egorribun-claude-projects-c-use-sprightly-quail.md`. Actual wall clock: ~3.5-4h core (SW1 ~1h, SW2 ~1h, SW3 ~1.5h with two false-start iterations, SW4 ~30min) + ~15-20 min polish-pass post user "безупречно?" probe.
 
 ## Closed in Wave 135
 
@@ -80,7 +80,7 @@ Files:
 
 ## Honest §Honesty caveats
 
-12 items total. 4 CLOSED via SW1+SW2+SW3; 8 REMAIN (3 W135-discovered + 3 carry-forward + 2 by-design / no-deploy).
+**Original audit listed 12 numbered REMAINING items (pre-polish)**. **Post-polish state: 6 CLOSED (4 via SW1+SW2+SW3 + 2 via polish), 9 REMAIN** (1 duplicate consolidated: orig #9 + #11 both about Linux CI).
 
 ### CLOSED via implementation
 
@@ -89,7 +89,12 @@ Files:
 3. ✅ W134 §Honesty #1 / #8 + W131 §Honesty #2 (chrome-devtools-mcp through Docker chain) — SW2 partial closure: Caddy chain + Server-Timing + auth-at-edge proven via curl + chrome-devtools `list_network_requests` succeeded; chrome-devtools `take_snapshot` Windows wall documented as sub-deferral.
 4. ✅ W126 polish #3 (vite-plugin-pwa Windows hang) — SW3 orchestration-level closure: wave127-build-x3.sh retired, integrated build-orchestrated.mjs reproducible. Sub-deferral: kill-after-artifacts is improvement NOT structural fix.
 
-### REMAINING — W135-discovered + carry-forward + structural
+### CLOSED via polish pass
+
+5. ✅ **W135 §Honesty #12** (cross-session vitest 5-run flake band NOT measured) — closed via 5/5 × **1052p / 12s / 0f** in polish pass. Flake band = 0 across 5 consecutive `npx vitest run` invocations.
+6. ✅ **W134 §Honesty #6** (MEMORY.md `../../../../docs/audits/` paths documentation-style) — closed via polish-pass `sed`: 17 broken `../../../../docs/audits/` paths → 21 clean `docs/audits/` text references. From USER `.claude` MEMORY.md location, the prior `../../../../` resolved to `C:\Users\egorribun\` (FOUR levels up — wrong; needed SIX to reach repo root). Text-reference form reads naturally as repo-relative path for human readers; auto-load doesn't need clickable links.
+
+### REMAINING — W135-discovered + carry-forward + structural (9 caveats post-polish)
 
 1. **chrome-devtools-mcp `take_snapshot`/`evaluate_script` Windows wall** — same family as W132 polish round 2 perf APIs. CDP backchannel timeout. W136 candidate.
 2. **Gateway+backend JWT protocol mismatch** (W135 SW2 DISCOVERY) — `claims.IsActive` vs JWT payload mismatch. Fix priority: HIGH (ALL authed gateway requests fail). W136 candidate.
@@ -97,12 +102,9 @@ Files:
 4. **build-orchestrated.mjs kill-after-artifacts not structural fix** — second hang point in tanstackStart-core not investigated. W136 candidate.
 5. **Workbox config drift risk** — hardcoded mirror in build-orchestrated.mjs. W136 candidate (~30min export PWA_INJECT_CONFIG named constant).
 6. **W134 §Honesty #2 (bundle delta +259 bytes NOT byte-identical)** — carry-forward honest framing. W135 produces BYTE-IDENTICAL to W134 baseline (neutral net delta).
-7. **W134 §Honesty #6 (MEMORY.md `../../../../docs/audits/` paths)** — carry-forward documentation-style. W136 candidate.
-8. **W134 §Honesty #10 (/messenger Phase 5 punted)** — no-deploy "production-as-is" decision unchanged.
-9. **build-orchestrated.mjs not exhaustively cross-platform tested** — verified Windows only. Linux CI validation = W136 candidate.
-10. **SW2 verified 8 SSR routes via curl, not authed browser session** — gateway is_active blocker. Bridge mechanism's "1 vs 2 /users/me" reduction structurally proven via 15 unit tests; runtime observation = W136 once gateway issue closes.
-11. **build-orchestrated.mjs not yet validated by CI** — local Windows passes; pushing to CI tests Linux behavior. W136 audit follow-up.
-12. **Cross-session vitest 5-run NOT executed** (W134 polish pattern). Recommendation: run at end of W135 polish-pass (~30-90 min "безупречно?" pass).
+7. **W134 §Honesty #10 (/messenger Phase 5 punted)** — no-deploy "production-as-is" decision unchanged.
+8. **build-orchestrated.mjs Linux CI not validated** (consolidated original #9 + #11) — verified Windows only. Linux CI behavior likely cleaner (no Windows post-prerender hang there) but not empirically proven. W136 candidate via workflow_dispatch.
+9. **SW2 verified 8 SSR routes via curl, not authed browser session** — gateway is_active blocker (this list's #2). Bridge mechanism's "1 vs 2 /users/me" reduction structurally proven via 15 unit tests; runtime observation = W136 once gateway issue closes.
 
 ## W136 candidates
 
