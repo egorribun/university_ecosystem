@@ -19,7 +19,9 @@ Q2=Aggressive, Q3=Path B full commitment). Plus polish-pass post user
 
 5. **`5d41d5701`** `chore(wave135-polish)` — Polish-pass post "безупречно?" probe (~15-20 min). 4 files +38/-24. **Closed 2 caveats**: W135 §Honesty #12 cross-session vitest 5/5 × 1052p / 12s / 0f flake band = 0; W134 §Honesty #6 MEMORY.md path normalization (17 broken `../../../../docs/audits/` → 21 clean `docs/audits/` text refs; the prior `../../../../` resolved to `C:\Users\egorribun\` from USER `.claude` dir — needed SIX levels not FOUR). **7 invariant verifications**: commit-stat cross-check via `git show --stat` (all match exactly), memory-link resolution 21/21, archive 16 W117-W132 audit files, npm audit 0, Cargo.lock no drift, build × 1 BYTE-IDENTICAL (139,808/65,864/53,181), AUDIT REMAINING #11 consolidated into #9 (both Linux CI duplicates). Discovered W134 SW4 commit message described `memory/wave134_backlog.md` written to git-tracked REPO but actually written to USER `.claude` dir (not git-tracked). My W135 SW4 wrote to REPO; polish-pass copied to USER dir as well — both locations now have wave135_backlog.md + wave136_opening_prompt.md.
 
-Verify session-start: `git log --oneline a26ca7cbd..HEAD | wc -l` → **4**
+6. **`eacebb53b`** `docs(wave135-handoff-refresh)` — refreshes this wave136_opening_prompt.md post-polish (commit count, gates baseline, removed-from-backlog list). 1 file +19/-15. Self-referential commit; mentioned for completeness.
+
+Verify session-start: `git log --oneline a26ca7cbd..HEAD | wc -l` → **5-6** (5 W135 SW commits + 1-2 handoff-refresh; this self-referential commit family is acceptable W134/W135 pattern).
 
 ---
 
