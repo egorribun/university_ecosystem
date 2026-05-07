@@ -63,26 +63,13 @@ import { spawn } from "node:child_process"
 import { injectManifest } from "workbox-build"
 import * as esbuild from "esbuild"
 
+// W136 SW6: shared Workbox config — single source of truth with
+// vite.config.mts (eliminates W135 §Honesty #5 drift risk).
+import { PWA_INJECT_CONFIG } from "./workbox-config.mjs"
+
 const cwd = process.cwd()
 const wantsReport = process.argv.includes("--report")
 const sanitizedArgs = process.argv.slice(2).filter((a) => a !== "--report")
-
-// Workbox config — must mirror `vite.config.mts:357-382` exactly. If the
-// Vite-side config drifts, dev mode + CI Linux builds use vite-plugin-pwa's
-// real injectManifest invocation with vite-config values, while
-// `npm run build` (Windows local) uses this hard-coded copy. Re-export from
-// vite.config.mts is a future improvement (W136 candidate).
-const WORKBOX_INJECT_CONFIG = {
-  globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-  globIgnores: [
-    "**/bundle-stats.*",
-    "**/offline.html",
-    "**/jspdf*.js",
-    "**/html2canvas*.js",
-    "**/purify*.js",
-  ],
-  maximumFileSizeToCacheInBytes: 5_000_000,
-}
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -376,7 +363,7 @@ async function step5_workboxInject() {
     swSrc: swPath,
     swDest: swPath,
     globDirectory: path.join(cwd, "dist/client"),
-    ...WORKBOX_INJECT_CONFIG,
+    ...PWA_INJECT_CONFIG,
   })
 
   console.log(

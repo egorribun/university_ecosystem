@@ -40,6 +40,10 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
+// W136 SW6: shared Workbox config — eliminates drift between vite.config.mts
+// (full pipeline via vite-plugin-pwa) and scripts/build-orchestrated.mjs
+// (Windows local standalone workbox-build per W135 SW3 strategy).
+import { PWA_INJECT_CONFIG } from "./scripts/workbox-config.mjs"
 
 const srcDir = fileURLToPath(new URL("./src", import.meta.url))
 const publicDir = fileURLToPath(new URL("./public", import.meta.url))
@@ -368,32 +372,11 @@ export default defineConfig(({ mode }) => {
         ],
       },
       ...(manifest ? { manifest } : {}),
-      injectManifest: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-        // Wave 122 SW2: exclude PDF export libs from PWA precache. The chunks
-        // (jspdf, html2canvas, purify) are used ONLY by Activity export +
-        // Schedule export via dynamic `await import()`. Including them in
-        // __WB_MANIFEST forced the SW to fetch them on install on every page
-        // load — Lighthouse `unused-javascript` counted those bytes as wasted
-        // on /news, /events, and 5+ other routes. The dynamic imports still
-        // resolve on demand at click; first-export-attempt-while-offline is
-        // the only loss (acceptable — users rarely trigger PDF export offline
-        // and online round-trip restores capability after first cache).
-        globIgnores: [
-          "**/bundle-stats.*",
-          "**/offline.html",
-          "**/jspdf*.js",
-          "**/html2canvas*.js",
-          "**/purify*.js",
-        ],
-        // Wave 116 SW-Stretch — Storybook builds route through this same
-        // plugin and ship `sb-manager/globals-runtime.js` (3.25 MB) which
-        // exceeds Workbox's default 2 MB cache limit, failing
-        // `build-storybook`. The prod bundle's largest precache entry is
-        // `maplibre-gl-*.js` (~1.03 MB), well under 5 MB. Raising the cap
-        // unblocks Chromatic baseline setup without weakening prod caching.
-        maximumFileSizeToCacheInBytes: 5_000_000,
-      },
+      // W136 SW6: injectManifest config imported from
+      // ./scripts/workbox-config.mjs — single source of truth shared with
+      // build-orchestrated.mjs to prevent drift (closes W135 §Honesty #5).
+      // See workbox-config.mjs for rationale on glob ignores + size cap.
+      injectManifest: PWA_INJECT_CONFIG,
       devOptions: {
         enabled:
           process.env.VITE_PWA_DEV === "true" ||
