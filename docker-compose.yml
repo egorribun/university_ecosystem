@@ -124,6 +124,13 @@ services:
         max-file: "3"
 
   frontend:
+    # Wave 132 polish (W131 SW3 carry-over fix wider scope per W132 SW1-fix
+    # narrative): port + healthcheck aligned to W131 SW3 Node SSR runtime.
+    # Pre-W131 nginx EXPOSE was 8080; W131 SW3 frontend.Dockerfile sets
+    # ENV PORT=3000 + EXPOSE 3000 to match server-prod.mjs default. The
+    # docker-compose.full.yml service was fixed in W132 SW1-fix
+    # (`12d4afadd`); this dev compose file had the same stale carry-over
+    # not caught earlier — closes the wider polish-pass scope.
     build:
       context: .
       dockerfile: frontend.Dockerfile
@@ -131,14 +138,16 @@ services:
       args:
         VITE_BACKEND_ORIGIN: ""
     ports:
-      - "8081:8080"
+      - "8081:3000"
     networks:
       - public
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      # /healthz is the W131 SW2 fast-path early-return (<10ms response,
+      # bypasses SSR + JWT + theme/lang). Probes never run full SSR.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       start_period: 30s
