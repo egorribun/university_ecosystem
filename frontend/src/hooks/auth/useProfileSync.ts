@@ -29,6 +29,7 @@ import { sha256 } from "@noble/hashes/sha256"
 
 import api, { resetEtagCache, type ApiRequestConfig } from "@/api/client"
 import { clearCachesOnLogout } from "@/api/interceptors/etagCache"
+import { currentUserQueryOptions } from "@/api/hooks/users"
 import type { User } from "@/types/User"
 import type { UserRole } from "@/api/generated"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
@@ -987,6 +988,12 @@ export const useProfileSync = (
     const controller = new AbortController()
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
+    // Wave 134 SW1 — Bridge: also cancel any in-flight React Query request
+    // so the bridged auto-fetch effect's cancellation semantics match the
+    // pre-W134 AbortController behaviour. The factory's queryFn (in
+    // api/hooks/users.ts) receives queryClient's internal signal; calling
+    // cancelQueries here propagates the abort through queryFn → axios.
+    queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
     // RZ-31-03: Safari private browsing throws SecurityError on localStorage access.
     // Every other localStorage call in this file is wrapped — this was a missed spot.
     let hasCache = false
@@ -1009,7 +1016,25 @@ export const useProfileSync = (
     }
     ;(async () => {
       try {
-        const profile = await fetchCurrentUser({ signal: controller.signal })
+        // Wave 134 SW1 — Bridge: route through queryClient.fetchQuery so the
+        // SSR loader's ensureQueryData(currentUserQueryOptions()) and this
+        // auto-fetch effect share a single cache slot. Returns cached data
+        // if fresh (within factory's staleTime: 60_000), invokes the
+        // factory's queryFn → fetchCurrentUser({signal}) if stale, dedups
+        // concurrent calls. The factory's queryFn preserves
+        // fetchCurrentUser's bespoke retry-on-500-with-cleared-cache logic.
+        // Closes W133 §Honesty #3+#4 — duplicated network calls between SSR
+        // loader and useProfileSync's auto-fetch are eliminated.
+        //
+        // retry: false override — preserves pre-W134 single-attempt semantics
+        // for the auto-fetch path. useProfileSync's outer catch handles 401
+        // directly via handleUnauthorized; React Query's default retry would
+        // delay 401 propagation by retryDelay × 2 (~3 s) and break the
+        // expected loading-flag transition timing for AuthContext consumers.
+        const profile = await queryClient.fetchQuery({
+          ...currentUserQueryOptions(),
+          retry: false,
+        })
         try {
           await ensureSessionSigningKey()
         } catch (_error) {
@@ -1042,7 +1067,11 @@ export const useProfileSync = (
         }
       }
     })()
-  }, [ensureSessionSigningKey, handleUnauthorized, setUser])
+    // Wave 134 SW1 — `queryClient` added to deps because the bridged
+    // auto-fetch now calls queryClient.cancelQueries + queryClient.fetchQuery.
+    // The reference is stable via useQueryClient (Provider-level memoised),
+    // so adding it does not re-fire the effect on every render.
+  }, [ensureSessionSigningKey, handleUnauthorized, setUser, queryClient])
 
   useEffect(() => {
     initializingRef.current = initializing
