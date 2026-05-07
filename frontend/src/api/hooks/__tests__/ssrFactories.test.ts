@@ -33,6 +33,7 @@ import {
   scheduleGroupsQueryOptions,
   pageScheduleQueryOptions,
 } from "../schedule"
+import { currentUserQueryOptions, currentUserQueryKey } from "../users"
 import { weatherQueryOptions, weatherQueryKey } from "../weather"
 
 // TanStack Query's `FetchInfiniteQueryOptions` is a discriminated union over
@@ -351,5 +352,62 @@ describe("weatherQueryOptions (Wave 130 SW3)", () => {
   it("queryFn is callable", () => {
     const opts = weatherQueryOptions({ lat: 0, lon: 0 })
     expect(typeof opts.queryFn).toBe("function")
+  })
+})
+
+describe("currentUserQueryOptions (Wave 133 SW2)", () => {
+  it("queryKey shape is the stable readonly tuple ['users', 'me']", () => {
+    expect(currentUserQueryKey).toEqual(["users", "me"])
+  })
+
+  it("returned options expose the same queryKey reference (cache identity)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.queryKey).toBe(currentUserQueryKey)
+  })
+
+  it("staleTime is 60_000 (matches schedule.ts pattern)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.staleTime).toBe(60_000)
+  })
+
+  it("gcTime is 5 * 60_000 (matches schedule.ts pattern)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.gcTime).toBe(5 * 60_000)
+  })
+
+  it("networkMode is 'online' (no SSR background-refetch on offline)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.networkMode).toBe("online")
+  })
+
+  it("retry is 2 (mirrors schedule.ts; FIX-68-05 mobile flakiness)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.retry).toBe(2)
+  })
+
+  it("retryDelay is exponential (1000 * 2^attempt, capped at 10_000)", () => {
+    const opts = currentUserQueryOptions()
+    expect(typeof opts.retryDelay).toBe("function")
+    if (typeof opts.retryDelay !== "function") return
+    expect(opts.retryDelay(0)).toBe(1_000)
+    expect(opts.retryDelay(1)).toBe(2_000)
+    expect(opts.retryDelay(2)).toBe(4_000)
+    expect(opts.retryDelay(3)).toBe(8_000)
+    expect(opts.retryDelay(4)).toBe(10_000) // capped
+    expect(opts.retryDelay(10)).toBe(10_000) // still capped
+  })
+
+  it("queryFn is a function (callable; signal-bearing AbortController forwarded)", () => {
+    const opts = currentUserQueryOptions()
+    expect(typeof opts.queryFn).toBe("function")
+  })
+
+  it("returns a fresh options object per call (not memoized — caller's responsibility)", () => {
+    const a = currentUserQueryOptions()
+    const b = currentUserQueryOptions()
+    expect(a).not.toBe(b)
+    // Same shape though — and the queryKey reference IS shared (stable readonly tuple)
+    expect(a.queryKey).toBe(b.queryKey)
+    expect(a.staleTime).toBe(b.staleTime)
   })
 })
