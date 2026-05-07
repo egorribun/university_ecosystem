@@ -46,7 +46,7 @@
 | 2 | `33f6747a9` | `feat(wave133-sw2-current-user-factory): add currentUserQueryOptions() factory for SSR loaders` | 2 | +152 / -0 |
 | 3 | `485a212cc` | `feat(wave133-sw3-schedule-sequential-ssr): full /schedule SSR via sequential /users/me + lessons prefetch` | 2 | +92 / -10 |
 | 4 | `93f788891` | `feat(wave133-sw4-sw5-profile-settings-ssr): enable /profile + /settings SSR with /users/me prefetch` | 2 | +34 / -4 |
-| 5 | `<TBD-SW7>` | `docs(wave133-sw7-audit): full narrative + design doc + N+3 rotation (W130 → archive) + W134 handoff` | ~6 | TBD |
+| 5 | `e98b98dd7` | `docs(wave133-sw7-audit): full narrative + design doc + N+3 rotation (W130 → archive) + W134 handoff` | 5 | +381 / -3 |
 
 ## SW arc — what each commit does
 
