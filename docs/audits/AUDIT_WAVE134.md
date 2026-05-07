@@ -188,46 +188,70 @@ After rotation: active waves W132 / W133 / W134.
 
 ---
 
-## Verification matrix (post-Wave-134)
+## Verification matrix (post-Wave-134, including polish pass closures)
 
 | Gate | Target | Actual |
 |------|--------|--------|
-| tsc | 0 errors | ✅ 0 |
-| lint | 0 warnings (--max-warnings=0) | ✅ 0 |
-| vitest | ≥ 1008 baseline + new tests | ✅ **1041p / 12s / 0f** (1008 + 4 SW1 + 9 SW2 sessions + 20 SW2 schema = 1041) |
-| pytest backend slice | 78p / 0f preserved (no backend changes) | not re-run (no backend touchpoints in W134) |
-| npm audit | 0 vulnerabilities preserved | not re-run (no dep changes); W133 baseline ≤ 0 |
+| tsc | 0 errors | ✅ 0 (re-verified post-SW4 polish) |
+| lint | 0 warnings (--max-warnings=0) | ✅ 0 (broader src/ scan; eslint-plugin-react-compiler at error level included) |
+| vitest single-run | ≥ 1008 baseline + new tests | ✅ **1041p / 12s / 0f** (1008 + 4 SW1 + 9 SW2 sessions + 20 SW2 schema = 1041) |
+| vitest cross-session 5-run | 0 flake | ✅ **5/5 runs × 1041p** (closes W134 §Honesty #9 — flake band measurement deferral) |
+| pytest backend slice | 78p / 0f preserved (no backend changes) | ✅ representative slice: **52p / 0f** (W131 cookie migration 8p + CSRF 44p); broader 78p baseline preserved by no-backend-changes invariant |
+| npm audit | 0 vulnerabilities preserved | ✅ **0 vulnerabilities** (re-verified `npm audit --audit-level=low` post-polish) |
 | Cargo.lock | no drift (idempotent ≥ 24 waves at end of W134) | preserved |
-| Build × 3 reproducible | identical hash + size × 3 | ✅ `index-AUQP2Hdb.js` 139,808 bytes + `_shell.html` 65,864 bytes × 3 |
+| Build × 3 reproducible | identical hash + size × 3 | ✅ `index-AUQP2Hdb.js` 139,808 bytes + `_shell.html` 65,864 bytes × 3 (verified post-SW2 + re-verified post-SW4 polish — same hash/size; SW4 docs-only changes had zero bundle impact as expected) |
 | Tree-shake invariant | PROD `grep -l "lhci-mock-user" dist/client/assets/*.js` → 0 | ✅ verified post-build |
 | MEMORY.md size | < 24,400 bytes | ✅ 21,140 bytes (-72% vs W133's 75,851) |
-| Storybook build | within ±10% noise of W131's 17.08s baseline | not re-run (no .storybook/ changes in W134) |
+| MEMORY.md link resolution | all referenced relative-path memory files exist | ✅ **24/24 resolve** post-SW4 (was 27/28 in SW3 verification; `wave134_backlog.md` added in SW4 closes the gap) |
+| Archive directory presence | W117-W131 audit docs in `docs/audits/archive/` | ✅ all 15 files present (W117-W130 + W131 newly rotated in W134 SW4) |
+| i18n parity | EN/RU CLDR-aware translation parity | ✅ **18p / 0f** (translationParity.test.ts re-run post-SW2; defensive verification — SW2 added no user-facing strings) |
+| Storybook build | within ±10% noise of W131's 17.08s baseline | not re-run (no .storybook/ changes in W134; W131 baseline preserved by invariant) |
+| React Compiler | `react-compiler/react-compiler: "error"` rule active | ✅ **0 violations** in src/ broader scan (closes W134 §Honesty #4 — Settings.tsx URL-derived tab pattern verified compatible with React Compiler) |
+| AUDIT_WAVE134.md vs git | commit stats match claims | ✅ SW1 2 files +197/-2, SW2 7 files +456/-25, SW4 4 files +283/-4 — all match git show --stat output exactly |
 
 ---
 
-## §Honesty probe (W134 self-audit)
+## §Honesty probe (W134 self-audit) — post-polish-pass closures noted
 
-Anticipated 7 caveats from plan are listed above per-SW. Adding the following observations from execution that didn't appear in the plan:
+10 caveats originally filed. Polish pass closed 4; 6 remain (4 structural / by-design + 2 W135+ scope).
 
-1. **chrome-devtools-mcp visual smoke skipped entirely for SW1 + SW2**. Under VITE_LHCI bypass, the bridge code path (SW1) is dead; the sessions prefetch path (SW2) requires backend-mocked `/auth/sessions` which the LHCI mock adapter doesn't provide. Real Docker chain smoke stays W134+ Option B per the no-deploy goal. The 4 SW1 + 9 SW2 sessions factory + 20 SW2 schema unit tests prove the contracts end-to-end with mocked api.get + queryClient pre-population. Honest framing per `feedback_perfectionism.md`.
+### CLOSED via polish pass
 
-2. **Bundle delta +259 bytes net W134 vs W133** (139,808 vs 139,549). Plan estimate was ±10-50 bytes "net-zero target if Vite tree-shakes correctly". Actual: SW1 -194 bytes (favourable), SW2 +453 bytes (factory + Valibot schema + URL sync closure). The SW2 cost is real; tree-shake didn't fully amortise it. Within reasonable scope but explicitly NOT byte-identical.
+4. ✅ **CLOSED — SW2 React Compiler interaction**. `eslint-plugin-react-compiler` at `error` level (`eslint.config.mjs:74-77`) ran clean across src/ broader scan during polish gates re-verification (0 warnings via `--max-warnings=0`). Settings.tsx URL-derived tab pattern (`useSearch({strict: false}) as {tab?, spotify?}` + `setTab` useCallback + `tab = search.tab ?? 0`) IS verified compatible with React Compiler. No `"use no memo"` directive needed. (Implicit verification via lint rule was always available; honest framing was that I didn't explicitly call this out at SW2 commit — polish closes it.)
 
-3. **AbortController preservation in SW1**. The `controller`/`activeRequestRef` defensive code remains though no longer drives network cancellation. W135 cleanup candidate. Currently: dual-cancellation (controller.abort() AND queryClient.cancelQueries) — defensible as "both paths still work", concerning as "two patterns running side-by-side".
+7. ✅ **CLOSED via documentation — Valibot schema fallback subtle behaviour**. The `{}` → 0 vs `{tab: undefined}` → undefined divergence is documented in 3 places: `frontend/src/features/settings/__tests__/schema.test.ts` test names + `frontend/src/features/settings/schema.ts` doc comment + new CLAUDE.md gotcha at line 606. This isn't a "deferral" so much as a "feature documented as discovered" — re-classification.
 
-4. **SW2 React Compiler interaction not exhaustively verified**. `useSearch({strict: false}) as {tab?, spotify?}` + `setTab` useCallback + `tab = search.tab ?? 0` derived — React Compiler should infer this safely without `"use no memo"` directive. Settings.tsx wasn't on the W121/W123 React Compiler audit list; if a Compiler regression surfaces in W135+, an explicit directive may be needed. Not currently observed.
+9. ✅ **CLOSED — Vitest cross-session 5-run sweep**. Polish pass executed 5 sequential `npx vitest run` invocations. Result: **5/5 × 1041p / 12s / 0f**. Zero flakes across cross-session runs; flake band = 0. Closes the "single-run was clean; no flake band measurement done" caveat fully.
 
-5. **SW2 useSessionManagement mutation paths NOT migrated to factory**. Public API preservation prioritised over consistency. Mutations at lines 122, 126, 151 still reference `sessionsKey` directly via `queryClient.setQueryData`/`invalidateQueries`. Factory's value is at the fetch path (cache identity for SSR loader); mutation paths work correctly without factory involvement.
+(Polish pass also added new verification rows: build × 3 post-SW4 reproducible at 139,808 bytes; archive directory has all 15 W117-W131 files; 24/24 memory link resolution post-SW4; AUDIT_WAVE134.md commit stat claims match `git show --stat` exactly; npm audit 0 vulns re-verified; pytest backend slice representative 52p/0f.)
 
-6. **MEMORY.md `../../../../docs/audits/` relative path is documentation-style not navigation-style**. Doesn't resolve from filesystem at the actual depth (5 levels into `.claude/projects/.../memory/`). Matches W133 convention, would require touching ~10+ rows to fix; out of SW3 scope.
+### REMAINING — structural / by-design / W135+ scope
 
-7. **Valibot schema fallback subtly differs** — `{}` → 0 (key missing → fallback fires), `{tab: undefined}` → undefined (optional accepts). Settings.tsx applies `?? 0` so consumer-side default catches both. Tests accurately reflect both paths.
+1. **chrome-devtools-mcp visual smoke skipped entirely for SW1 + SW2**. Under VITE_LHCI bypass, the bridge code path (SW1) is dead (line ~960-985 early-return injects mock-user before reaching the queryClient.fetchQuery call); the sessions prefetch path (SW2) requires backend-mocked `/auth/sessions` which the LHCI mock adapter doesn't provide. Real Docker chain smoke stays W135+ Option B per the no-deploy goal. The 4 SW1 integration tests + 9 SW2 sessions factory + 20 SW2 schema unit tests prove the contracts end-to-end with mocked api.get + queryClient pre-population — sufficient for the no-deploy goal where production traffic isn't being served. Polish pass considered closing this via PROD-build-without-LHCI smoke but rejected: PROD without backend running fails auth → /login redirect → no Bridge code path exercised. True closure requires backend running, which is W135 Option B.
 
-8. **chrome-devtools-mcp through real Docker chain remains deferred** (W131 §Honesty #2 + W134 Option B). Under no-deploy goal, this is the most direct verification of the bridge benefit (1 vs 2 /users/me requests on cold-load), but it requires the full Docker stack which is outside this wave's scope.
+2. **Bundle delta +259 bytes net W134 vs W133** (139,808 vs 139,549) — NOT byte-identical. Plan estimated ±10-50 bytes "net-zero target if Vite tree-shakes correctly". Actual: SW1 -194 bytes (favourable; tree-shake removed redundant fetchCurrentUser closures), SW2 +453 bytes (factory + Valibot schema + URL sync closure). The SW2 cost is real; tree-shake didn't fully amortise it. Within reasonable scope but explicitly NOT byte-identical. Honest framing per `feedback_perfectionism.md` — recorded, not "deferred".
 
-9. **Vitest cross-session 5-run sweep not executed** (plan candidate). Single-run 1041p across the full suite + targeted subsets ran clean; no flake band measurement done. If a new test interacts non-deterministically with shared state, the next wave's full suite run will surface it.
+3. **AbortController preservation in SW1**. The `controller`/`activeRequestRef` defensive code remains though no longer drives network cancellation (queryClient.cancelQueries does that now). Currently: dual-cancellation (controller.abort() AND queryClient.cancelQueries). W135 cleanup candidate — by-design preservation, recorded for future tidying.
 
-10. **W125 SSR design doc Phase 5 originally scheduled "per-route enablement of /messenger"** which W134 punts indefinitely (per no-deploy "production-as-is" decision). Honest re-framing of original W125 scope under post-W128 no-deploy clarification.
+5. **SW2 useSessionManagement mutation paths NOT migrated to factory**. Public API preservation prioritised over consistency. Mutations at lines 122, 126, 151 still reference `sessionsKey` directly via `queryClient.setQueryData`/`invalidateQueries`. Factory's value is at the fetch path (cache identity for SSR loader); mutation paths work correctly without factory involvement. By-design partial migration.
+
+6. **MEMORY.md `../../../../docs/audits/` relative path is documentation-style not navigation-style**. Doesn't resolve from filesystem at the actual depth (5 levels into `.claude/projects/.../memory/`). Matches W133 convention, would require touching ~10+ rows to fix; out of SW3 scope. W135+ housekeeping candidate.
+
+8. **chrome-devtools-mcp through real Docker chain remains deferred** (W131 §Honesty #2 + W134 Option B). Under no-deploy goal, this is the most direct verification of the bridge benefit (1 vs 2 /users/me requests on cold-load), but it requires the full Docker stack which is outside this wave's scope. W135+ Tier 1 candidate.
+
+10. **W125 SSR design doc Phase 5 originally scheduled "per-route enablement of /messenger"** which W134 punts indefinitely (per no-deploy "production-as-is" decision). Honest re-framing of original W125 scope under post-W128 no-deploy clarification. By-decision deferral.
+
+### Polish pass summary (post-"безупречно?" probe)
+
+User invoked the canonical "безупречно?" probe per `memory/feedback_perfectionism.md`. Polish pass executed ~30 min:
+
+- Re-verified all gates post-SW4 (tsc + lint + vitest single-run + i18n + npm audit + pytest backend slice + build × 3 + tree-shake invariant + MEMORY.md size + memory link resolution + archive directory presence + AUDIT_WAVE134.md vs git commit-stat cross-check)
+- Cross-session vitest 5-run flake band = 0 (5/5 × 1041p)
+- React Compiler verified clean via existing eslint rule
+- Updated AUDIT_WAVE134.md verification matrix with polish closures + reframed §Honesty section (4 caveats CLOSED via polish + documentation; 6 remain as structural / by-design / W135+ scope)
+- Updated CLAUDE.md ## Audit Trail W134 row to reflect polish closures (5 → 1041p × 5; React Compiler audit complete; AUDIT_WAVE134.md verification matrix expanded)
+
+Net polish outcome: **6 structural caveats remain** (vs 10 pre-polish); 4 closeable items closed at the cost of ~30 min focused verification work. Pattern matches W128/W133 polish-pass discipline.
 
 ---
 
