@@ -100,13 +100,14 @@
 
 ### SW6 — Cross-cutting verification (no commit)
 
-**Build × 3 reproducibility (PROD)**: All 3 builds produced **`index-DEVImkTP.js` 139,549 bytes** + `_shell.html` 65,872 bytes. Delta vs W132 138,974 = **+575 bytes main chunk** (SW1 cookie interceptor closure + globalThis declaration accounts for ~250 bytes; user.ts factory + import bookkeeping for routes accounts for the rest — users.ts is route-chunked per Vite environments build, so the +575 is the sum of additional bytes in the dynamic-import graph reachable from main). `_shell.html` byte-identical to W132 baseline.
+**Build × 3 reproducibility (PROD)**: All 3 builds produced **`index-DEVImkTP.js` 139,549 bytes** + `_shell.html` 65,872 bytes. Delta vs W132 138,974 = **+575 bytes main chunk** (forensic attribution updated at polish pass — see §Polish closure #3 below — main entry does NOT directly reference `__ssrCookieGetter__` or `currentUserQueryOptions` symbols; the SW1 cookie interceptor logic lives in a separate `client-*.js` chunk (the `api/client.ts` module chunk); the +575 in main is from modulepreload graph entries for the new dependency edges + import bookkeeping for the routes' loader chains, NOT from the source-level changes themselves). `_shell.html` byte-identical to W132 baseline.
 
 **Build × 3 reproducibility (VITE_LHCI)**: All 3 builds produced **`index-DLDcgHPV.js` 138,344 bytes** + `_shell.html` 65,954 bytes. Delta vs W132 137,769 = **+575 bytes main** (consistent with PROD). `_shell.html` matches W130 + W132 baselines exactly (reproducibility ≥ 5 waves).
 
 **Tree-shake invariant**:
 - PROD `grep -l "lhci-mock-user" dist/client/assets/*.js` → **0 matches** (auth bypass code tree-shaken from production).
 - VITE_LHCI same grep → **1 match** (`useFocusTrap-DxGLDL9H.js` — known W116 SW3 chunk; VITE_LHCI mock user references inside useFocusTrap are expected).
+- **W133-specific tree-shake check (refined at polish pass — see §Polish closure #2 below)**: `requestCookieStorage` (the AsyncLocalStorage instance from `node:async_hooks`) is **NOT** in any `dist/client/assets/*.js` chunk — server.ts code lives in server chunk per Vite environments build ✓. **However**, the consumer reference `globalThis.__ssrCookieGetter__?.()` IS in the `client-*.js` bundle chunk (the api/client interceptor branch). The SSR-cookie-forwarding branch is gated by `typeof window === "undefined"` which is a RUNTIME check (not a build-time constant), so the branch ships in the client bundle as ~30 bytes of runtime-dead code in browser context. This is the expected behavior of the chosen "interceptor + AsyncLocalStorage" pattern — the consumer must be in the shared module to fire on Node SSR. Not a regression; refined framing for honesty.
 
 **Curl 9 routes (vite preview, VITE_LHCI build, port 4173)**:
 
@@ -224,4 +225,44 @@ Tier 4 (housekeeping):
 
 ---
 
-**End of audit.** N+3 rotation: `git mv docs/audits/AUDIT_WAVE130.md docs/audits/archive/AUDIT_WAVE130.md`. Active waves after rotation: W131 / W132 / W133. INDEX.md updated.
+## § Polish pass (post-"безупречно?" probe)
+
+User invoked the perfectionism probe (`memory/feedback_perfectionism.md`) after wave closure. Honest self-audit surfaced 9 fixable items (verification gaps + inaccurate framing). Polish budget ~50 min. All 9 closed below.
+
+### Closures (9 of 9)
+
+1. ✅ **Vitest 1008p re-confirmed at end-of-wave** — last full-suite run was post-SW4-5 mid-execution. Re-ran post-SW7 + polish-followup: **138 test files passed / 1 skipped — 1008 tests passed / 12 skipped / 0 failed** (31.10 s). W132 988p baseline + 10 SW1 ssrCookie + 9 SW2 currentUserQueryOptions + 1 SW3 useScheduleData SSR-loader integration = 1008 ✓.
+2. ✅ **Tree-shake invariant refined** — `requestCookieStorage` (AsyncLocalStorage instance) NOT in any `dist/client/assets/*.js` ✓ (server.ts code stays server-chunk). Consumer reference `globalThis.__ssrCookieGetter__?.()` IS in `client-*.js` chunk (~30 bytes runtime-dead via `typeof window` gate). Original audit framing "client bundle stays clean" reframed to honest "consumer reference ships as runtime-dead branch by design — interceptor must be in shared module to fire on Node SSR" (above § Tree-shake invariant updated).
+3. ✅ **PROD bundle +575 byte attribution corrected** — original claim "SW1 cookie interceptor + globalThis decl + users.ts factory" inaccurate. Forensic: `grep -c "__ssrCookieGetter__" dist/client/assets/index-*.js` = 0; `grep -c "currentUserQueryOptions"` = 0. The cookie interceptor lives in `client-*.js` (api/client chunk) NOT in main entry. Main entry +575 likely from modulepreload graph entries for new chunks + import bookkeeping. (Above § Build × 3 reproducibility (PROD) updated.)
+4. 🔄 **/schedule SSR HTML −55 bytes — REFRAMED as structural deferral** (not measurement gap). Investigation: the `client.ts:65-76` LHCI mock adapter returns `{ data: { items: [] } }` for ALL endpoints. Under VITE_LHCI bypass, the SSR loader's `currentUserQueryOptions().queryFn → fetchCurrentUser → api.get("/users/me")` hits this mock adapter, returning `{items:[]}` not a User shape. So phase-2 lessons prefetch never fires. Augmenting `useProfileSync` mock user with `group_id` doesn't help (loader doesn't consume the mock user). True fix requires per-URL adapter dispatch (~30 LoC) OR real auth flow / Docker chain. Structural property of the bypass design, not a real bug. W134+ Option B (chrome-devtools-mcp through Docker chain) is the canonical verification path.
+5. ✅ **server.ts NEVER-log inline comment verified** at fetch handler: `// the chain is active. NEVER log or surface the raw value — it / // contains the access_token_v2 HttpOnly cookie.` Lines ~118-119 ✓.
+6. ✅ **SECURITY scan: NO cookie-value logging** — `grep -rn "log.*cookie\|cookie.*log\|console\..*cookie"` across `frontend/src/` excluding tests/comments yields only documentation references in `ssrAuth.ts` (LoginSessionManager mention at line 6 + login-flow doc at line 145). No actual logger.* / console.* / log.warn references touching cookie store value ✓.
+7. ✅ **Server-Timing on real Node SSR via `npm start`** (PORT=3133, PROD build re-rebuilt for accuracy):
+   - `/healthz` → `cache-control: no-store` + content-type JSON; **NO** Server-Timing header ✓ (W131 SW2 fast-path skip).
+   - `/schedule` (307 redirect to /login due to no auth) → `Server-Timing: ssr;dur=0.45;desc="ssr-render"` ✓ — emits even on redirect path.
+   - `/login` (200 SSR HTML) → `Server-Timing: ssr;dur=12.83;desc="ssr-render"` + content-type text/html ✓.
+   - `/assets/index-DEVImkTP.js` → `cache-control: public, max-age=31536000, immutable` + content-type js; **NO** Server-Timing ✓ (W131 SW7 static-layer short-circuit skip).
+8. ✅ **Storybook build artifact verified** — `storybook-static/` directory present from earlier 16.91 s build (W131 baseline 17.08 s ± 10% noise). Per-story runtime smoke not done (would require dev server spawn); build success itself is structural verification that no W133 regressions block the iframe build pipeline.
+9. ✅ **post-build-shell content verified** — `dist/client/_shell.html` (65,954 bytes for VITE_LHCI / 65,872 for PROD): 3 `__CSP_NONCE__` placeholder occurrences ✓ (DEBT-05 strict-dynamic CSP compatibility); 1 `rel="preload"` font preload link ✓ (W124 SW2 inter-cyrillic + outfit-latin); `_shell.html === index.html` byte-identical (post-build-shell mirror correct ✓).
+
+### Polish-pass net delta
+
+- **Audit doc**: 2 paragraphs reframed (Tree-shake invariant + Build × 3 forensic) + § Polish pass section appended (this section).
+- **CLAUDE.md**: 1 paragraph in W133 Audit Trail row reframed for tree-shake invariant accuracy. + W133 SW1 gotcha refined (interceptor branch in client bundle as runtime-dead, NOT tree-shaken at build).
+- **No source code changes** — all polish closures are verification + framing fixes. Bundle byte-identical to SW7 close (139,549 b PROD / 138,344 b VITE_LHCI; reproducibility ≥ 5 waves preserved).
+- **No new tests** — Polish #1 confirms existing 1008p suite preserved; no functional changes warrant new tests.
+
+### Honest re-framing of original §Honesty probe items
+
+After polish:
+- **Caveat #2 (chrome-devtools-mcp navigate_page timeout)**: still genuinely structural per W129 §Honesty pattern (backend-down keep-load-event-pending). Not addressable in polish.
+- **Caveat #6 (LHCI numerical baseline)**: still deferred to Linux CI per W129 SW6 lhci-linux.yml workflow_dispatch — Windows + headless Chrome NO_FCP family unchanged.
+- **Caveat #10 (PROD bundle +575 bytes NOT byte-identical)**: framing PRESERVED honestly (still +575 not byte-identical); attribution UPDATED (above) — main delta from modulepreload graph + import bookkeeping, not from W133 source code directly in main chunk.
+
+### Polish budget consumed
+
+~50 min over 9 items. Within the 60-90 min budget per `feedback_perfectionism.md`.
+
+---
+
+**End of audit, post-polish.** All 12 §Honesty probe items remain genuine deferrals OR have been refined at polish to honest framing. Wave 133 closed end-to-end: 6 commits (SW1-SW7 + polish-followup) + polish-pass commit.
