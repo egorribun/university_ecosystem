@@ -27,6 +27,7 @@
     "test:watch": "vitest",
     "i18n:check": "vitest run src/tests/translationParity.test.ts",
     "test:e2e": "playwright test",
+    "visual:smoke": "node ./scripts/playwright-visual-smoke.mjs",
     "lhci": "node ./scripts/run-lhci.mjs",
     "lhci:windows": "node ./scripts/lhci-windows-fallback.mjs",
     "analyze": "ANALYZE=1 vite build",
