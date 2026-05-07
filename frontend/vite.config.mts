@@ -17,6 +17,26 @@ import { VitePWA } from "vite-plugin-pwa"
 // array below where tanstackStart() stays at index 0 and react() is at
 // index 3 (after wasm + withGeneratedManifests, both order-neutral).
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
+// Wave 131 Phase 4 — Nitro plugin (`nitro/vite`) was evaluated as the canonical
+// TanStack Start production deploy path. SW1 execution found that adopting
+// `nitro()` restructures Vite output from `dist/client/` → `.output/public/` and
+// `dist/server/server.js` → `.output/server/index.mjs`. That cascade breaks
+// vite-plugin-pwa's `injectManifest` glob (asset list goes empty because PWA
+// runs before Nitro restructures), plus orphans the LHCI `staticDistDir`,
+// wave127-build-x3.sh detection, and frontend.Dockerfile COPY paths.
+//
+// We chose the documented fallback: a thin Node wrapper at
+// `scripts/server-prod.mjs` (~50 lines) that imports the existing
+// `dist/server/server.js` handler emitted by tanstackStart's spa-mode build
+// and binds it to a Node `http.createServer` listening on `process.env.PORT`.
+// Custom wrapper bypasses Nitro entirely while still delivering per-request
+// Node SSR runtime to production. All pre-W131 build pipeline paths are
+// preserved (post-build-shell.mjs, wave127-build-x3.sh, PWA manifest,
+// LHCI staticDistDir, frontend.Dockerfile COPY).
+//
+// `nitro` package stays in package.json for forward-compat (when Nitro
+// integrates more cleanly with PWA + LHCI in a future TanStack Start version,
+// this comment can be revisited and the plugin re-introduced).
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 import { generateManifests } from "./scripts/generate-manifests.mjs"

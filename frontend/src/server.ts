@@ -70,8 +70,35 @@ globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
 globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 
+// Wave 131 SW2 — Phase 4 deploy infrastructure /healthz endpoint.
+// Caddy `health_uri /healthz` (Caddyfile, W131 SW4) + k8s livenessProbe /
+// readinessProbe (deployment.yaml, W131 SW5) need a fast non-SSR endpoint
+// that doesn't run JWT validation, theme/lang extraction, or full route
+// render. Probes typically have a 5s timeout; SSR cold-start can exceed
+// that on first request (router construction, JWKS fetch, etc.).
+// The early-return below short-circuits BEFORE `requestAuthStorage.run()`
+// so it returns a 200 in <10ms with no AsyncLocalStorage overhead.
+const HEALTHZ_RESPONSE_BODY = JSON.stringify({ status: "ok" })
+const HEALTHZ_RESPONSE_INIT: ResponseInit = {
+  status: 200,
+  headers: {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  },
+}
+
 export default createServerEntry({
   async fetch(request) {
+    // Wave 131 SW2 — Phase 4 healthz fast path. URL parsing is cheap; we
+    // explicitly do NOT hit `extractAuthFromRequest` (avoids JWKS network
+    // round-trip on cold start) or `extractThemeFromRequest` /
+    // `extractLangFromRequest` (cookie parse). Returns inside the worker
+    // even before the AsyncLocalStorage chain is set up.
+    const url = new URL(request.url)
+    if (url.pathname === "/healthz") {
+      return new Response(HEALTHZ_RESPONSE_BODY, HEALTHZ_RESPONSE_INIT)
+    }
+
     let auth: SsrAuthState
     try {
       auth = await extractAuthFromRequest(request)

@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useRef } from "react"
+import { useQuery } from "@tanstack/react-query"
 
+import { weatherQueryOptions } from "@/api/hooks/weather"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
-import {
-  WEATHER_CACHE_TTL_MS,
-  WeatherFetchError,
-  fetchWeatherSnapshot,
-  readWeatherCache,
-} from "@/api/weather"
+import { WEATHER_CACHE_TTL_MS, fetchWeatherSnapshot } from "@/api/weather"
 import type { WeatherCoordinates, WeatherSnapshot } from "@/api/weather"
 import { getWeatherIconMeta } from "@/utils/weatherIcons"
 import type { WeatherAnimationVariant } from "@/utils/weatherIcons"
@@ -33,18 +30,36 @@ export interface UseWeatherResult {
   refresh: () => Promise<void>
 }
 
-const toSignature = (coordinates: WeatherCoordinates): string => {
-  const lat = Number(coordinates.lat).toFixed(4)
-  const lon = Number(coordinates.lon).toFixed(4)
-  return `${lat},${lon}`
-}
-
-const normalizeError = (error: unknown, coordinates: WeatherCoordinates): WeatherFetchError => {
-  if (error instanceof WeatherFetchError) return error
-  const fallback = readWeatherCache(coordinates, { allowExpired: true })?.data ?? null
-  return new WeatherFetchError("Failed to fetch weather", { fallback, cause: error })
-}
-
+/**
+ * Wave 130 SW3 — migrated from bespoke fetch + sessionStorage +
+ * AbortController + 4 useState/useEffect calls to standard
+ * TanStack Query (matches project convention per useDashboardSchedule,
+ * useNewsListQuery, useEventsListQuery).
+ *
+ * Public API preserved: same `UseWeatherResult` shape so
+ * `Dashboard.tsx`, `WeatherWidget.tsx`, and existing mocks in
+ * `pageTranslations.test.tsx` + `WeatherWidget.test.tsx` keep working
+ * unchanged.
+ *
+ * Cache layer: TanStack Query in-memory + sessionStorage cold-mount
+ * placeholderData (handled by weatherQueryOptions factory). The
+ * underlying `fetchWeatherSnapshot` helper continues to write to
+ * sessionStorage on success so a fresh tab on subsequent visits gets
+ * an instant paint via placeholderData read.
+ *
+ * `WeatherFetchError` thrown by queryFn surfaces via `query.error`
+ * preserving the prior fallback semantics.
+ *
+ * Wave 130 polish — `refresh()` honours forceRefresh semantics
+ * (closes W130 §Honesty probe #6). User-initiated refresh sets
+ * `forceRefreshRef.current = true`; the local queryFn override
+ * reads + clears the ref + propagates `forceRefresh: true` to
+ * `fetchWeatherSnapshot`, which then bypasses the sessionStorage
+ * cache check at api/weather.ts:155-159 and forces a network
+ * round-trip. SSR loaders + factory consumers use the unmodified
+ * factory queryFn (no forceRefresh) — only the dashboard hook
+ * exercises the refresh-button flow.
+ */
 export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult => {
   const { coordinates: overrideCoordinates, cacheTtlMs = WEATHER_CACHE_TTL_MS } = options
   const coordinates = useMemo<WeatherCoordinates>(
@@ -54,111 +69,20 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
         : CAMPUS_COORDINATES,
     [overrideCoordinates]
   )
-  const signature = useMemo(() => toSignature(coordinates), [coordinates])
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const abortRef = useRef<AbortController | null>(null)
+  const forceRefreshRef = useRef(false)
 
-  const initialCached = useMemo(
-    () => readWeatherCache(coordinates, { allowExpired: true }),
-    [coordinates]
-  )
-  const hasFreshCache = Boolean(initialCached && initialCached.expiresAt > Date.now())
-
-  const [snapshot, setSnapshot] = useState<WeatherSnapshot | null>(initialCached?.data ?? null)
-  const [isLoading, setIsLoading] = useState(!hasFreshCache)
-  const [error, setError] = useState<Error | null>(null)
-
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-      abortRef.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    const cached = readWeatherCache(coordinates, { allowExpired: true })
-    setSnapshot(cached?.data ?? null)
-    const fresh = Boolean(cached && cached.expiresAt > Date.now())
-    if (fresh) {
-      setIsLoading(false)
-      setError(null)
-      return
-    }
-    setIsLoading(true)
-    setError(null)
-
-    const controller = new AbortController()
-    abortRef.current?.abort()
-    abortRef.current = controller
-
-    void fetchWeatherSnapshot({
-      coordinates,
-      cacheTtlMs,
-      signal: controller.signal,
-    })
-      .then((next) => {
-        if (controller.signal.aborted) return
-        setSnapshot(next)
-        setError(null)
-        setIsLoading(false)
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return
-        const normalized = normalizeError(err, coordinates)
-        if (!normalized.aborted && normalized.fallback) {
-          setSnapshot(normalized.fallback)
-        }
-        if (!normalized.aborted) {
-          setError(normalized)
-        }
-        setIsLoading(false)
-      })
-  }, [cacheTtlMs, coordinates, signature])
-
-  const load = useCallback(
-    async (force: boolean) => {
-      abortRef.current?.abort()
-      const controller = new AbortController()
-      abortRef.current = controller
-      try {
-        const next = await fetchWeatherSnapshot({
-          coordinates,
-          cacheTtlMs,
-          forceRefresh: force,
-          signal: controller.signal,
-        })
-        if (controller.signal.aborted) return
-        setSnapshot(next)
-        setError(null)
-        setIsLoading(false)
-      } catch (err) {
-        if (controller.signal.aborted) return
-        const normalized = normalizeError(err, coordinates)
-        if (normalized.aborted) {
-          setIsLoading(false)
-          return
-        }
-        if (normalized.fallback) {
-          setSnapshot(normalized.fallback)
-        }
-        setError(normalized)
-        setIsLoading(false)
-      } finally {
-        if (abortRef.current === controller) {
-          abortRef.current = null
-        }
-      }
+  const query = useQuery({
+    ...weatherQueryOptions(coordinates, cacheTtlMs),
+    queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<WeatherSnapshot> => {
+      const force = forceRefreshRef.current
+      forceRefreshRef.current = false
+      return fetchWeatherSnapshot({ coordinates, cacheTtlMs, forceRefresh: force, signal })
     },
-    [cacheTtlMs, coordinates]
-  )
-
-  const refresh = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    await load(true)
-  }, [load])
+  })
 
   const data = useMemo<WeatherData | null>(() => {
+    const snapshot = query.data
     if (!snapshot) return null
     const meta = getWeatherIconMeta(snapshot.conditionCode)
     const animation: WeatherAnimationVariant = prefersReducedMotion ? "none" : meta.animation
@@ -169,7 +93,17 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
       translationKey: `${WEATHER_TRANSLATION_BASE}.${meta.translationKeySuffix}`,
       animation,
     }
-  }, [snapshot, prefersReducedMotion])
+  }, [query.data, prefersReducedMotion])
 
-  return { data, isLoading, error, refresh }
+  const refresh = useCallback(async () => {
+    forceRefreshRef.current = true
+    await query.refetch()
+  }, [query])
+
+  return {
+    data,
+    isLoading: query.isPending,
+    error: (query.error as Error | null) ?? null,
+    refresh,
+  }
 }

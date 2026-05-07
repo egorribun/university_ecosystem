@@ -7,28 +7,20 @@
  */
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import api from "@/api/client"
+import {
+  pageScheduleQueryOptions,
+  scheduleGroupsQueryOptions,
+} from "@/api/hooks/schedule"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   type Lesson,
-  type ScheduleGroup,
-  scheduleGroupsQueryKey,
   scheduleQueryKey,
-  type ScheduleGroupsQueryKey,
-  type ActiveScheduleQueryKey,
-  type InactiveScheduleQueryKey,
   getTodayIdx,
   getTimeStr,
 } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
 import { useScheduleConfig } from "./useScheduleConfig"
 import { useScheduleTime } from "./useScheduleTime"
-
-const QUERY_STALE_TIME_MS = 60_000
-const QUERY_GC_TIME_MS = 5 * 60_000
-
-/** Exponential backoff for flaky mobile connections (FIX-68-05). */
-const retryDelay = (attempt: number) => Math.min(1_000 * 2 ** attempt, 10_000)
 
 export function useScheduleData() {
   const { user } = useAuth()
@@ -41,45 +33,17 @@ export function useScheduleData() {
   const { weekdayBackend, normalizeLessons } = config
 
   // ── TanStack Query: Groups ─────────────────────────
-  const groupsQuery = useQuery<ScheduleGroup[], Error, ScheduleGroup[], ScheduleGroupsQueryKey>({
-    queryKey: scheduleGroupsQueryKey,
-    queryFn: async () => {
-      const res = await api.get("/groups")
-      return Array.isArray(res.data) ? res.data : []
-    },
-    staleTime: QUERY_STALE_TIME_MS,
-    gcTime: QUERY_GC_TIME_MS,
-    networkMode: "online",
-    retry: 2,
-    retryDelay,
-  })
+  // Wave 130 SW1 — factory shared with the /schedule SSR loader
+  // (frontend/src/api/hooks/schedule.ts). queryKey shape preserved
+  // so cache entries hydrate cleanly across SSR → client.
+  const groupsQuery = useQuery(scheduleGroupsQueryOptions())
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
 
   // ── TanStack Query: Schedule ───────────────────────
   const activeGroupId = selectedGroup
   const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
 
-  const scheduleQuery = useQuery<
-    Lesson[],
-    Error,
-    Lesson[],
-    ActiveScheduleQueryKey | InactiveScheduleQueryKey
-  >({
-    queryKey: (scheduleKey ?? ["schedule", "group", "none"]) as
-      | ActiveScheduleQueryKey
-      | InactiveScheduleQueryKey,
-    queryFn: async () => {
-      if (activeGroupId == null) return []
-      const res = await api.get(`/schedule/${activeGroupId}`)
-      return Array.isArray(res.data) ? res.data : []
-    },
-    enabled: activeGroupId != null,
-    staleTime: QUERY_STALE_TIME_MS,
-    gcTime: QUERY_GC_TIME_MS,
-    networkMode: "online",
-    retry: 2,
-    retryDelay,
-  })
+  const scheduleQuery = useQuery(pageScheduleQueryOptions(activeGroupId))
 
   const groupScheduleRaw = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
   const groupSchedule = useMemo(

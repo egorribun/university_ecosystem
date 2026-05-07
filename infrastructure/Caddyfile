@@ -55,9 +55,26 @@
         reverse_proxy minio:9000
     }
 
-    # Frontend (default)
+    # Wave 131 SW4 — Service worker MUST come from same origin and MUST NOT
+    # be cached (browsers re-check on every navigation). The Node SSR runtime
+    # serves /sw.js from dist/client/sw.js; Caddy adds the Service-Worker-Allowed
+    # header so the SW can claim a wider scope than its file location.
+    handle /sw.js {
+        reverse_proxy frontend:3000
+        header Service-Worker-Allowed "/"
+        header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    }
+
+    # Wave 131 SW4 — Phase 4 deploy infrastructure: default handle now points
+    # at the Node SSR runtime (frontend:3000) instead of the prior nginx
+    # static-serve (frontend:8080). `health_uri /healthz` probes the W131 SW2
+    # fast path so Caddy stops proxying to a dead upstream automatically.
     handle {
-        reverse_proxy frontend:8080
+        reverse_proxy frontend:3000 {
+            health_uri /healthz
+            health_interval 10s
+            health_timeout 5s
+        }
     }
 }
 

@@ -21,8 +21,12 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: ingress-nginx
       ports:
+        # Wave 131 SW5: ingress port 8080 (nginx static-serve) → 3000 (Node
+        # SSR runtime). Matches deployment.yaml containerPort + Dockerfile
+        # EXPOSE + server-prod.mjs PORT default. Egress unchanged: gateway:8080
+        # for /api proxy is unaffected by frontend runtime change.
         - protocol: TCP
-          port: 8080  # TD-26-01: match nginx-unprivileged containerPort (was 80 — RZ-25-03)
+          port: 3000
   egress:
     # MOD-22-08: Allow egress to the gateway service (API proxy)
     - to:

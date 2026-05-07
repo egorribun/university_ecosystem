@@ -66,6 +66,11 @@ services:
     restart: unless-stopped
 
   frontend:
+    # Wave 132 SW1 — port + healthcheck aligned to W131 SW3 Node SSR runtime.
+    # Pre-W131 nginx EXPOSE was 8080; W131 SW3 frontend.Dockerfile sets ENV
+    # PORT=3000 + EXPOSE 3000 to match server-prod.mjs default. Compose port
+    # mapping + healthcheck were W131 carry-overs not caught because Docker
+    # stack runtime verification was deferred to W132 (W131 §Honesty #1+#2).
     build:
       context: .
       dockerfile: frontend.Dockerfile
@@ -73,14 +78,16 @@ services:
       args:
         VITE_BACKEND_ORIGIN: ""
     ports:
-      - "8081:8080"
+      - "8081:3000"
     networks:
       - public
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      # /healthz is the W131 SW2 fast-path early-return (<10ms response,
+      # bypasses SSR + JWT + theme/lang). Probes never run full SSR.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -156,6 +163,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-university}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # Wave 132 polish — multi-database init. Single postgres container
+      # backs TWO logical databases: `university` (POSTGRES_DB env, auto-
+      # created) + `spicedb` (created via init script). Init scripts run
+      # ONLY on first postgres startup (empty data dir); re-trigger via
+      # `docker compose down -v && up`.
+      - ./infrastructure/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 5s

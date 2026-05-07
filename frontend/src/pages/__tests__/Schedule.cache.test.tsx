@@ -179,8 +179,12 @@ describe("Schedule cache handling", () => {
 
     try {
       await waitFor(() => {
-        expect(apiGetMock).toHaveBeenCalledWith("/groups")
-        expect(apiGetMock).toHaveBeenCalledWith("/schedule/group-1")
+        // Wave 130 SW1 — factory queryFns pass `{ signal }` for AbortController
+        // cancellation (matches events.ts/news.ts W129 pattern). Use
+        // expect.anything() for the options arg since AbortSignal identity
+        // varies per render.
+        expect(apiGetMock).toHaveBeenCalledWith("/groups", expect.anything())
+        expect(apiGetMock).toHaveBeenCalledWith("/schedule/group-1", expect.anything())
       })
 
       expect((await screen.findAllByText("Fresh Subject"))[0]).toBeInTheDocument()
