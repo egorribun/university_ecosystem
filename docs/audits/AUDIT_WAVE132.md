@@ -51,7 +51,7 @@
 | 3 | `69ebcf99a` | `feat(wave132-sw4-k8s-canary): rolling-update strategy + frontend-stable canary template` | 3 | +327 / -0 |
 | 4 | `09dd96ea5` | `feat(wave132-sw5-server-timing): emit Server-Timing header on SSR responses` | 1 | +33 / -2 |
 | 5 | `bb11757ae` | `feat(wave132-sw6-runbook): comprehensive Phase 6 SSR canary rollout runbook` | 1 | +447 / -0 |
-| 6 | `<TBD-SW7>` | `docs(wave132-sw7-audit): full narrative + design doc + N+3 rotation (W129 → archive) + W133 handoff` | ~7 | +TBD / -TBD |
+| 6 | `76e422322` | `docs(wave132-sw7-audit): full narrative + design doc + N+3 rotation (W129 → archive) + W133 handoff` | 5 | +528 / -5 |
 
 ## SW arc — what each commit does
 
@@ -456,6 +456,129 @@ Visual smoke verified the W128/W130 polish baseline holds: 0 React hydration err
 
 Polish round 2 confirms the W128 §Honesty + W130 §Honesty pattern: local Windows + headless Chrome perf/render automation is structurally limited; CI Linux is the verification path. The W132 deliverables (Phase 6 canary infrastructure + runbook + Server-Timing observability) are content-shipped + verifiable through other means (curl, chrome-devtools-mcp visual smoke, YAML schema, Caddy validate, build × 3 reproducibility, vitest, pytest, npm audit). The Phase 6 ACTUAL rollout (W133+ ops) is where the SSR migration arc's value materialises in real-user LCP measurements; that path doesn't need local Windows e2e/LHCI to succeed.
 
-**Final branch HEAD post-polish-round-2**: `<TBD-this-commit>` (round-2 audit update) ← `271024ffc` (round-2 dev compose) ← `9cbb13198` (round-1 honest framing) ← `bbd365ddd` (round-1 npm audit) ← `76e422322` (SW7 audit) ← `bb11757ae` SW6 ← `09dd96ea5` SW5 ← `69ebcf99a` SW4 ← `f76ffa000` SW3 ← `12d4afadd` SW1-fix ← `ca5223ba9` (W131 polish).
+**Final branch HEAD post-polish-round-2**: `97dd05238` (round-2 audit update) ← `271024ffc` (round-2 dev compose) ← `9cbb13198` (round-1 honest framing) ← `bbd365ddd` (round-1 npm audit) ← `76e422322` (SW7 audit) ← `bb11757ae` SW6 ← `09dd96ea5` SW5 ← `69ebcf99a` SW4 ← `f76ffa000` SW3 ← `12d4afadd` SW1-fix ← `ca5223ba9` (W131 polish).
 
-Branch ahead of `origin/egorribun` by **+28 commits post-polish-round-2** (10 W132 + 7 W131 + 7 W130 + 4 polish/audit).
+Branch ahead of `origin/egorribun` by **+28 commits post-polish-round-2** (10 W132 + 7 W131 + 7 W130 + 4 polish/audit). After polish round 3 (Docker stack verification extension): **+31 commits** (3 additional fixes — `c7740362f` Go version bump, `d5ceeeb79` Dockerfile watch+kill, `8fbbc5a2f` postgres init); see §Polish round 3 below.
+
+## Polish round 3 — Docker stack verification extension (post-`start-docker.ps1 -Build`, executed, ~60 min budget)
+
+User invoked `start-docker.ps1 -Build` to bring up the full compose stack — the natural follow-on to "wave 132 полностью выполнена и абсолютно всё безупречно?". This extended session uncovered **5 latent infrastructure bugs**, all of which had been hiding behind the W131 §Honesty probe #1+#2 deferral text ("Docker stack runtime verification deferred to W132+ Phase 6 rollout"). Polish round 3 closes them all + verifies the full stack runtime end-to-end.
+
+### Round 3 — 5 latent bug fixes
+
+#### B1 ✅ docker-compose.full.yml port mismatch (`12d4afadd` — already shipped in SW1-fix, re-confirmed by extension)
+
+W131 SW3 changed `frontend.Dockerfile` to `EXPOSE 3000` + Node listening on PORT 3000 via `server-prod.mjs`, but the compose service kept the pre-W131 nginx port mapping `8081:8080` and healthcheck against `:8080`. SW1-fix (`12d4afadd`) had already committed the fix ahead of extension session. Healthcheck → `wget http://127.0.0.1:3000/healthz` (W131 SW2 fast-path, <10ms response). Caddy in same compose network reverse-proxies `frontend:3000` correctly via service-name DNS — only the host-mapped :8081 was broken pre-fix.
+
+#### B2 ✅ docker-compose.yml dev compose same fix (`271024ffc` — round 2 commit, scope clarified by extension)
+
+Initially scoped as round 2 polish item before extension session — round 3 confirms wider scope (W131 SW3 carry-over manifested in BOTH `docker-compose.full.yml` AND `docker-compose.yml`). Polish round 2 had committed dev compose port fix; extension session validated both compose files are now consistent: frontend service port mapping aligned to W131 Node SSR runtime in both.
+
+#### B3 ✅ Go version mismatch fix (`c7740362f`)
+
+**Symptom**: `start-docker.ps1 -Build` failed at first `RUN go mod download` in `services/ws-hub/Dockerfile` build stage with `go: go.mod requires go >= 1.26.2 (running go 1.26.1; GOTOOLCHAIN=local)`.
+
+**Root cause**: `services/ws-hub/go.mod` + `services/gateway/go.mod` + `services/file-processor/go.mod` all declared `go 1.26.2` in their respective module files (auto-bumped by `go.work` updates), but the Docker FROM lines in their respective Dockerfiles pinned `golang:1.26.1-alpine3.22@sha256:07e91d24...`. With `GOTOOLCHAIN=local` (set in Dockerfile to enforce reproducibility — Go won't auto-download a different toolchain), Go refused to compile against the older toolchain when go.mod required newer.
+
+**Fix**: bump 3× Dockerfile FROM lines to `golang:1.26.2-alpine3.22@sha256:7ef941168f213aa115df2e61364d67682129e99dc8188b734139dea862cc7d31`. Multi-arch index SHA discovered via `docker buildx imagetools inspect golang:1.26.2-alpine3.22` (top-level `Digest:` field — works on both linux/amd64 + linux/arm64; per-platform manifest digests would break ARM builds). Root `go.mod` already at `go 1.26.2`; only the Dockerfile FROM pins were stale.
+
+**Lesson** (added to CLAUDE.md): when bumping Docker FROM tags for Go-based services, also confirm `go.mod` toolchain alignment + use multi-arch index SHA from `docker buildx imagetools inspect`, not per-platform digest.
+
+#### B4 ✅ vite-plugin-pwa Windows hang in Docker (`d5ceeeb79`)
+
+**Symptom**: User reports "просто висит" — `start-docker.ps1 -Build` log shows frontend stage progressing through `[prerender] Prerendered 1 pages` at timestamp 20.31s, then stalls indefinitely with no further output. Same hang user encountered earlier on host build (W126 polish #3 / W127 SW7 pattern).
+
+**Phase 1 root cause** (per `superpowers:systematic-debugging` skill): vite-plugin-pwa's `injectManifest` triggers workbox-build's glob scan over 200+ chunks generated by tanstackStart prerender. Under WSL2 virtualized filesystem (Docker Desktop's Linux VM mounting Windows host paths), the per-file stat operations are catastrophically slow — effectively infinite. Same pattern as W127 SW7 host-side hang (which used `wave127-build-x3.sh` watch+kill workaround).
+
+**Phase 2 pattern**: `frontend/scripts/wave127-build-x3.sh` watch+kill works on Windows host — same pattern applies in Dockerfile builder stage RUN block. Approach: spawn `npm run build` in background → log to `/tmp/build.log` → poll for `dist/server/server.js` to appear (signals vite client + ssr build + tanstackStart prerender done) → 5s settle → `kill -9` the npm process chain (would otherwise hang on injectManifest workbox glob) → run `npm run build:shell` standalone (post-build-shell.mjs emits CSP nonce + font preload + index.html mirror).
+
+**Phase 3 + 4 implementation** (`d5ceeeb79`): Edit `frontend.Dockerfile` builder stage. POSIX/busybox-portable shell (alpine images use busybox sh, NOT bash):
+```dockerfile
+RUN set -e; \
+    echo "=== Build with watch+kill workaround (vite-plugin-pwa hang mitigation) ==="; \
+    npm run build > /tmp/build.log 2>&1 & \
+    BUILD_PID=$!; \
+    i=0; \
+    while [ $i -lt 240 ]; do \
+      if [ -f dist/server/server.js ]; then break; fi; \
+      sleep 1; \
+      i=$((i+1)); \
+    done; \
+    if [ ! -f dist/server/server.js ]; then \
+      echo "BUILD FAILED — dist/server/server.js missing after 240s"; \
+      tail -100 /tmp/build.log; \
+      kill -9 $BUILD_PID 2>/dev/null || true; \
+      exit 1; \
+    fi; \
+    sleep 5; \
+    kill -9 $BUILD_PID 2>/dev/null || true; \
+    ps -ef 2>/dev/null | awk '/node.*(vite|run-build|build:shell)/ && !/awk/ {print $2}' | xargs -r kill -9 2>/dev/null || true; \
+    sleep 1; \
+    npm run build:shell 2>&1 | tee /tmp/build-shell.log; \
+    ls -la dist/server/server.js dist/client/_shell.html dist/client/index.html 2>&1 || true
+```
+
+**Trade-off** (preserved from W127 watch+kill — same as host-side workaround): `dist/client/sw.js` may be missing or have unresolved `__WB_MANIFEST` placeholder → SW registration fails in browser → no PWA precache. Runtime caching strategies handled at app code level still work via Caddy. Acceptable for Docker dev runtime; production CI Linux build runs without this workaround + emits full sw.js.
+
+**Lesson** (added to CLAUDE.md): POSIX/busybox-compatible shell required in Dockerfile RUN blocks — `[` not `[[`, `$((i+1))` not `$((++i))` or `let i++`, `ps -ef | awk | xargs -r kill -9` not `pkill -f` (busybox lacks pkill); set `set -e` for fail-fast; use `|| true` to continue past expected failures.
+
+#### B5 ✅ postgres multi-database init (`8fbbc5a2f`)
+
+**Symptom**: Build succeeded post-B4 fix, but stack didn't come up: `dependency failed to start: container backend-1 is unhealthy`. Investigation chain via `docker compose logs <service>` per `superpowers:systematic-debugging` Phase 1 multi-component evidence gathering:
+1. `backend` `/healthz` returned 503 → `app.core.health.check_spicedb_health` reported permissions service down
+2. `spicedb` container logs showed restart loop: `FATAL: database "spicedb" does not exist (SQLSTATE 3D000)` exit 78
+3. `postgres` container had only `university` database (auto-created via `POSTGRES_DB` env var); `spicedb` database NOT auto-created
+
+**Root cause**: single postgres container backs TWO logical databases. `university` is auto-created via `POSTGRES_DB=university` env var. `spicedb` is NOT — it requires an explicit `CREATE DATABASE spicedb;` statement. Pre-W132 the operator had to manually run `docker exec ... psql -c "CREATE DATABASE spicedb;"` after first postgres startup, but no init script was in repo to automate it; new contributors hit this every time.
+
+**Fix** (`8fbbc5a2f`): NEW `infrastructure/postgres-init/01-create-spicedb.sql`:
+```sql
+CREATE DATABASE spicedb;
+```
+Mounted into both `docker-compose.full.yml` + `docker-compose.yml` postgres service via `volumes: - ./infrastructure/postgres-init:/docker-entrypoint-initdb.d:ro`. Init scripts in `/docker-entrypoint-initdb.d/` run ONLY on first postgres startup when `/var/lib/postgresql/data` is empty — they do NOT run on subsequent starts of the same volume. Operator re-trigger:
+1. `docker compose -f docker-compose.full.yml down -v` — drops volume
+2. `docker compose -f docker-compose.full.yml up -d` — recreates volume + reruns init
+3. Or apply manually to running postgres: `docker exec university_ecosystem-postgres-1 psql -U postgres -c "CREATE DATABASE spicedb;"`
+
+Comment block in init script documents the lifecycle + manual fallback for future contributors.
+
+**Lesson** (added to CLAUDE.md): postgres multi-database compose pattern requires init script in `/docker-entrypoint-initdb.d/`; scripts run only on first startup with empty data dir.
+
+### Round 3 — Docker stack runtime verification
+
+After all 5 fixes, full stack verified end-to-end:
+
+| Endpoint | Method | Status | Bytes | Path |
+|----------|--------|--------|-------|------|
+| Caddy `:80/` | GET | 307 → /login | redirect | Caddy → frontend:3000 SSR → unauth redirect via `_auth.tsx beforeLoad` |
+| Caddy `:80/login` | GET | 200 | 21 KB | Caddy → frontend:3000 → SSR HTML rendered |
+| Caddy `:80/healthz` | GET | 200 | 15 B | Caddy default → frontend:3000 fast-path |
+| Caddy `:80/api/v1/users/me` | GET | 401 | 56 B | Caddy → backend:8000 (no auth header → expected) |
+| Caddy `:80/api/v1/auth/login/json` | POST | 200 | 1.2 KB | Caddy → backend:8000 → JWT issued |
+| `frontend:3000/healthz` (internal) | GET | 200 | 15 B | Direct Node SSR fast-path |
+| `backend:8000/healthz` | GET | 200 | health JSON | Backend → spicedb (now exists) ✓ |
+
+17 containers running: postgres, valkey (Redis-compat), nats, minio, opensearch, kibana, spicedb, prometheus, grafana, tempo, loki, fluent-bit, caddy, backend, ws-hub, file-processor, frontend.
+
+This **closes W131 §Honesty probe #1** (full Docker stack runtime verification) — runtime-level chain Caddy → Node SSR → backend confirmed working end-to-end. **W131 §Honesty probe #2** (chrome-devtools-mcp visual smoke through real Caddy chain) remains W133+ scope — not blocked, just unmeasured this round (would require reopening Caddy on host port + new chrome-devtools-mcp session).
+
+### Round 3 polish summary
+
+- **5 latent bugs fixed** (B1 carried over from SW1-fix, B2 from round 2, B3+B4+B5 new in round 3)
+- **Closes W131 §Honesty probe #1** (Docker stack runtime verification) — primary deferral closed
+- **W131 §Honesty probe #2** (chrome-devtools-mcp visual smoke through Caddy) honestly remains W133+ scope
+- **Round 3 commits**: 3 (`c7740362f` Go bump, `d5ceeeb79` Dockerfile watch+kill, `8fbbc5a2f` postgres init)
+- **Round 3 budget**: ~60 min actual
+- **W133 opening prompt**: NEW `memory/wave133_opening_prompt.md` (Version 3, ~42 KB, 23 sections) — comprehensive handoff including 32 critical pitfalls catalog (W125-W132) + 10 W133 scope options across 4 tiers + mandatory pre-work + honest deferrals carried forward + 5 master lessons from extension session
+
+### Round 3 master lessons (carried into CLAUDE.md gotchas)
+
+1. **Latent bugs hide behind §Honesty deferrals**: W131 §Honesty probe #1+#2 was structurally honest framing, but accumulated 5 real bugs that surfaced only when user actually tried `start-docker.ps1 -Build`. When deferring honestly, schedule the verification soonest possible — don't let deferrals become parking lots for unsurfaced gaps.
+2. **Multi-component cascade root cause analysis**: Each layer (frontend hang → container unhealthy → spicedb restart loop → postgres missing DB) required separate diagnostic step (`docker compose logs <service>`). The `superpowers:systematic-debugging` skill's "Multi-Component Systems" instrumentation pattern paid off significantly.
+3. **POSIX/busybox-compatible shell in Dockerfile RUN blocks**: `node:24-alpine` (and most alpine images) use busybox sh, NOT bash. Test before committing.
+4. **postgres multi-database compose pattern**: requires init script in `/docker-entrypoint-initdb.d/`; runs only on first startup with empty `/var/lib/postgresql/data`.
+5. **Multi-arch image SHA pinning convention**: when bumping Docker FROM tags, use `docker buildx imagetools inspect <image:tag>` top-level `Digest:` field (multi-arch index — works on all platforms), NOT per-platform manifest digest.
+
+**Final branch HEAD post-polish-round-3**: `<this-commit>` (round-3 audit update) ← `8fbbc5a2f` (postgres init) ← `d5ceeeb79` (Dockerfile watch+kill) ← `c7740362f` (Go version bump) ← `97dd05238` (round-2 audit update) ← `271024ffc` (round-2 dev compose) ← `9cbb13198` (round-1 honest framing) ← `bbd365ddd` (round-1 npm audit) ← `76e422322` (SW7 audit) ← `bb11757ae` SW6 ← `09dd96ea5` SW5 ← `69ebcf99a` SW4 ← `f76ffa000` SW3 ← `12d4afadd` SW1-fix ← `ca5223ba9` (W131 polish).
+
+Branch ahead of `origin/egorribun` by **+31 commits post-polish-round-3** (10 W132 SW + 7 polish + 3 Docker fix + 7 W131 + 7 W130 + 4 polish/audit).
