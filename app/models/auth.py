@@ -185,6 +185,29 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
 class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "failed_login_attempts"
 
+    # W136 SW4: override UserFK's user_id to make it nullable + use SET NULL
+    # on user delete. Closes W135 §Honesty #3.
+    #
+    # Failed login attempts MUST INSERT successfully even when the email maps
+    # to no existing user (credential-stuffing attempts on harvested email
+    # lists, typo'd emails, account-deletion races). Pre-W136 the inherited
+    # UserFK declared user_id nullable=False with ondelete=CASCADE, so the
+    # /login flow's call to register_failed_attempt(email, user_id=None)
+    # raised NotNullViolation for unknown emails — surfaced in W135 SW2
+    # Docker chain verification.
+    #
+    # Original migration 2025070100011_add_failed_login_attempts_table.py
+    # created user_id as nullable=True with ondelete=SET NULL. The post-UUID
+    # reconcile migration 202603280001 inadvertently inherited the model-side
+    # NOT NULL through UserFK. Wave 136 SW4 restores nullability via override
+    # + new alembic migration alter_failed_login_attempts_user_id_nullable.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+
     email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)
     # TD-3 (audit 2026-02-26): Added ip_address and user_agent for distributed
     # brute-force analysis. Without ip_address it was impossible to detect an
