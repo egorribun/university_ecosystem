@@ -187,6 +187,26 @@ api.interceptors.request.use(async (config) => {
     applyEtagHeader(config, candidate.etagCacheKey)
   }
 
+  // Wave 133 SW1 — SSR cookie forwarding. On Node SSR runtime, the
+  // `access_token_v2` HttpOnly cookie isn't auto-forwarded by axios
+  // (`withCredentials: true` only applies in browsers). `frontend/src/server.ts`
+  // stashes the raw incoming `Cookie` header in `requestCookieStorage` per-
+  // request; we read it via the globalThis getter and set it on the outgoing
+  // config. Browser path is provably unaffected: `typeof window === "undefined"`
+  // is statically false in client bundles, so the branch dead-codes out of
+  // browser tree-shake (Vite environments build keeps cookie-forwarding logic
+  // in the server chunk only). NEVER log or surface the raw cookie value — it
+  // contains the access_token_v2 HttpOnly cookie.
+  if (typeof window === "undefined") {
+    const cookie =
+      typeof globalThis !== "undefined" ? globalThis.__ssrCookieGetter__?.() : undefined
+    if (cookie && cookie.length > 0) {
+      const headers = AxiosHeaders.from(config.headers ?? {})
+      headers.set("Cookie", cookie)
+      config.headers = headers
+    }
+  }
+
   if (config.data instanceof FormData) {
     const headers = AxiosHeaders.from(config.headers ?? {})
     headers.delete("Content-Type")

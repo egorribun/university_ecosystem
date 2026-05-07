@@ -43,13 +43,16 @@ import {
 // node:async_hooks is server-only — Vite's environments build keeps this
 // import in the server chunk only; client bundle never loads it.
 //
-// Three storages (W126 + W127):
+// Four storages (W126 + W127 + W133):
 //   - requestAuthStorage: SSR auth state from access_token_v2 cookie (W126 SW3)
+//   - requestCookieStorage: raw Cookie header for SSR-side authenticated
+//     backend calls via axios interceptor (W133 SW1 — see api/client.ts)
 //   - requestThemeStorage: resolved theme from ue-mode cookie (W127 SW4)
 //   - requestLangStorage: resolved lang from ue:language cookie (W127 SW4)
 //
-// Layered as nested .run() calls so all three are visible to the handler.
+// Layered as nested .run() calls so all four are visible to the handler.
 const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
+const requestCookieStorage = new AsyncLocalStorage<string>()
 const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
 const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
 
@@ -63,10 +66,12 @@ declare global {
   // `let`/`const` cannot augment the global namespace. ESLint's `no-var` /
   // `vars-on-top` rules do not flag declarations inside `declare global`.
   var __ssrAuthGetter__: (() => SsrAuthState | undefined) | undefined
+  var __ssrCookieGetter__: (() => string | undefined) | undefined
   var __ssrThemeGetter__: (() => ResolvedTheme | undefined) | undefined
   var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
+globalThis.__ssrCookieGetter__ = () => requestCookieStorage.getStore()
 globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 
@@ -112,9 +117,19 @@ export default createServerEntry({
     // directly without await.
     const theme = extractThemeFromRequest(request)
     const lang = extractLangFromRequest(request)
+    // Wave 133 SW1 — raw Cookie header for SSR-side authenticated backend
+    // calls. The axios client interceptor (frontend/src/api/client.ts)
+    // forwards this header on outgoing /api/v1 requests when running on
+    // Node SSR (typeof window === "undefined"). Stores empty string on
+    // unauthenticated requests so the getter never returns undefined when
+    // the chain is active. NEVER log or surface the raw value — it
+    // contains the access_token_v2 HttpOnly cookie.
+    const cookie = request.headers.get("cookie") ?? ""
     return requestAuthStorage.run(auth, () =>
-      requestThemeStorage.run(theme, () =>
-        requestLangStorage.run(lang, () => handler.fetch(request)),
+      requestCookieStorage.run(cookie, () =>
+        requestThemeStorage.run(theme, () =>
+          requestLangStorage.run(lang, () => handler.fetch(request)),
+        ),
       ),
     )
   },
