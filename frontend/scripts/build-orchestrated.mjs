@@ -55,7 +55,7 @@
 // underlying tanstackStart-core post-prerender hang. W136+ candidate:
 // trace which plugin holds the event loop open + file upstream issue.
 
-import { existsSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
 import { spawn } from "node:child_process"
@@ -149,18 +149,43 @@ async function step3_viteBuild() {
   const shellPath = path.join(cwd, "dist/client/_shell.html")
   const serverPath = path.join(cwd, "dist/server/server.js")
 
+  // W136 SW5: optionally inject hang-trace agent into the vite subprocess.
+  // Set WAVE136_HANG_TRACE=1 to enable. Agent dumps process._getActiveHandles
+  // via stderr + file (.wave136-trace/) + IPC reply when triggered. Helps
+  // identify which handle types (FSWatcher / Timer / etc.) hold the loop
+  // open after artifacts are emitted.
+  const traceEnabled = process.env.WAVE136_HANG_TRACE === "1"
+  const traceAgentPath = path.resolve(cwd, "scripts/wave136-hang-trace-agent.cjs")
+  const useIpc = traceEnabled
+
   await new Promise((resolve, reject) => {
     const env = {
       ...process.env,
       ...(wantsReport ? { BUILD_REPORT: "1", ANALYZE: process.env.ANALYZE ?? "1" } : {}),
       BUILD_SKIP_PWA: "true",
+      ...(traceEnabled
+        ? {
+            NODE_OPTIONS:
+              `${process.env.NODE_OPTIONS ?? ""} --require ${JSON.stringify(traceAgentPath)}`.trim(),
+          }
+        : {}),
     }
 
     const child = spawn("node", [viteBinPath, "build", ...sanitizedArgs], {
-      stdio: "inherit",
+      stdio: useIpc ? ["inherit", "inherit", "inherit", "ipc"] : "inherit",
       cwd: path.resolve(cwd),
       env,
     })
+
+    if (useIpc) {
+      child.on("message", (msg) => {
+        if (msg && typeof msg === "object" && msg.type === "wave136-trace-dump-reply") {
+          console.log(
+            `[orchestrator] received trace dump from vite subprocess: ${msg.handles.length} handle types, ${msg.requests.length} request types after ${msg.elapsedMs}ms`
+          )
+        }
+      })
+    }
 
     let killed = false
     let resolved = false
@@ -170,23 +195,71 @@ async function step3_viteBuild() {
     const MAX_WAIT_MS = 180_000 // 3 minutes hard cap before giving up
 
     const startTime = Date.now()
+    // W136 SW5: kill-after-artifacts must not fire on STALE leftover artifacts
+    // from a previous build. The poll only considers an artifact "fresh"
+    // if its mtime is >= startTime — vite must have written it during this
+    // build, not during a prior run. Without this guard the orchestrator
+    // SIGTERMs vite within 2s using leftover dist/ files (W136 SW5 trace
+    // surfaced this regression in W135 SW3's pattern).
+    const FRESH_MTIME_GRACE_MS = 1500 // tolerate filesystem mtime quantization
+
+    const isArtifactFresh = (file) => {
+      try {
+        const st = statSync(file)
+        return st.mtimeMs >= startTime - FRESH_MTIME_GRACE_MS
+      } catch {
+        return false
+      }
+    }
 
     const poll = setInterval(() => {
       if (resolved) return
       const elapsed = Date.now() - startTime
 
-      if (existsSync(shellPath) && existsSync(serverPath)) {
+      if (
+        existsSync(shellPath) &&
+        existsSync(serverPath) &&
+        isArtifactFresh(shellPath) &&
+        isArtifactFresh(serverPath)
+      ) {
         stableCount += 1
         if (stableCount >= STABLE_DEBOUNCE_TICKS) {
           // Artifacts present + stable. Send SIGTERM to break out of
           // post-prerender hang. The vite process has already written
           // _shell.html + server.js to disk; killing here is safe.
           if (!killed) {
-            console.log(
-              `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — sending SIGTERM to vite subprocess`
-            )
-            killed = true
-            child.kill("SIGTERM")
+            // W136 SW5: if trace enabled, request handle dump via IPC
+            // BEFORE killing, then exit gracefully. The agent's reply
+            // (handled above) provides diagnostic data.
+            if (useIpc && typeof child.send === "function") {
+              console.log(
+                `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — requesting hang trace via IPC, then graceful exit`
+              )
+              try {
+                child.send({
+                  type: "wave136-trace-dump",
+                  reason: "orchestrator-artifact-stable",
+                  thenExit: true,
+                })
+              } catch {
+                // IPC may have closed; fall through to SIGTERM
+              }
+              killed = true
+              // Give the agent ~3s to dump + exit, then SIGTERM as fallback
+              setTimeout(() => {
+                try {
+                  child.kill("SIGTERM")
+                } catch {
+                  // best-effort
+                }
+              }, 3000)
+            } else {
+              console.log(
+                `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — sending SIGTERM to vite subprocess`
+              )
+              killed = true
+              child.kill("SIGTERM")
+            }
           }
         }
       } else {
@@ -294,7 +367,9 @@ async function step5_workboxInject() {
 
   const swPath = path.join(cwd, "dist/client/sw.js")
   if (!existsSync(swPath)) {
-    throw new Error(`Compiled service worker not found at ${swPath} — step 4 should have produced it`)
+    throw new Error(
+      `Compiled service worker not found at ${swPath} — step 4 should have produced it`
+    )
   }
 
   const result = await injectManifest({

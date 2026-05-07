@@ -369,3 +369,4 @@ native/rust_ext/fuzz/artifacts/
 *.Spotlight-V100
 *.Trashes
 ._*
+.wave136-trace/
