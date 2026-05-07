@@ -163,6 +163,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-university}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # Wave 132 polish — multi-database init. Single postgres container
+      # backs TWO logical databases: `university` (POSTGRES_DB env, auto-
+      # created) + `spicedb` (created via init script). Init scripts run
+      # ONLY on first postgres startup (empty data dir); re-trigger via
+      # `docker compose down -v && up`.
+      - ./infrastructure/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 5s

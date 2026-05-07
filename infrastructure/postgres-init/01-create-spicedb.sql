@@ -1,0 +1,27 @@
+-- Wave 132 polish — PostgreSQL init script for the multi-database compose
+-- stack. Mounted into the official `pgvector/pgvector:pg17` image at
+-- `/docker-entrypoint-initdb.d/01-create-spicedb.sql`.
+--
+-- Why this exists: docker-compose.full.yml + docker-compose.yml run a
+-- SINGLE postgres container that backs TWO logical databases:
+--   - `university` (auto-created via the `POSTGRES_DB` env var) — used by
+--     backend, migrations, notifications-worker
+--   - `spicedb` (NOT auto-created — needs an explicit CREATE) — used by the
+--     spicedb authzed service (services/spicedb in compose)
+-- Without this script the spicedb container loops with `FATAL: database
+-- "spicedb" does not exist (SQLSTATE 3D000)` and the backend's `/healthz`
+-- (which probes spicedb via `app.core.health.check_spicedb_health`) returns
+-- 503 → docker compose marks backend as `unhealthy` and dependent services
+-- (frontend, etc.) refuse to start.
+--
+-- Lifecycle: scripts in `/docker-entrypoint-initdb.d/` run ONLY on the very
+-- first postgres startup when `/var/lib/postgresql/data` is empty. They do
+-- NOT run on subsequent restarts of the same container or on `docker
+-- compose up` against an existing volume. To re-trigger this script after
+-- adding it, the operator runs:
+--   docker compose -f docker-compose.full.yml down -v   # drops the volume
+--   docker compose -f docker-compose.full.yml up -d     # recreates + reruns init
+-- Or applies the fix manually to an already-running postgres:
+--   docker exec university_ecosystem-postgres-1 psql -U postgres -c "CREATE DATABASE spicedb;"
+
+CREATE DATABASE spicedb;

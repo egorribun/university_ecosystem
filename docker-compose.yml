@@ -273,6 +273,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-university}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # Wave 132 polish — multi-database init mirrors docker-compose.full.yml.
+      # Creates `spicedb` database needed by spicedb authzed service. Init
+      # scripts run ONLY on first postgres startup (empty data dir).
+      - ./infrastructure/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
