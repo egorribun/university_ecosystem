@@ -2,12 +2,12 @@
 
 ## State at session start
 
-**Wave 135 CLOSED** (2026-05-08) — L scope: B + Aggressive cleanup + Option E Path B per
-user-approved AskUserQuestion 3-question flow (Q1=L, Q2=Aggressive, Q3=Path B
-full commitment). Closes 4 of 10 W134+W126 §Honesty caveats; surfaces 2 new
-W135-discovered backend/gateway issues for W136.
+**Wave 135 CLOSED + POLISHED** (2026-05-08) — L scope: B + Aggressive cleanup +
+Option E Path B per user-approved AskUserQuestion 3-question flow (Q1=L,
+Q2=Aggressive, Q3=Path B full commitment). Plus polish-pass post user
+"безупречно?" probe closed 2 more caveats + ran 7 invariant verifications.
 
-### 3 git commits ahead of W134 close (`a26ca7cbd`)
+### 4 git commits ahead of W134 close (`a26ca7cbd`)
 
 1. **`6c5ada141`** `feat(wave135-sw1-cleanup-aggressive)` — Aggressive cleanup. 4 files +230/-34. Full AbortController removal in `useProfileSync.ts` (queryClient.cancelQueries is sole cancellation; `isCancel(error)` axios canonical replaces signal.aborted check); useSessionManagement migration to factory exports `updateSessionInCache` + `invalidateSessions` in sessions.ts; 11 new sessions tests. Vitest **1052p / 12s / 0f**.
 
@@ -15,9 +15,11 @@ W135-discovered backend/gateway issues for W136.
 
 3. **SW2** Docker chain verification — no commit. Curl-only fallback per plan risk-fallback (chrome-devtools-mcp `take_snapshot` Windows wall). Caddy chain → frontend:3000 SSR proven. Discovered 2 backend/gateway issues (W136 candidates).
 
-4. **(this audit commit)** `docs(wave135-sw4-audit-handoff)` — NEW `docs/audits/AUDIT_WAVE135.md` (~330 lines), NEW `memory/wave135_backlog.md` + `memory/wave136_opening_prompt.md`, CLAUDE.md ## Audit Trail W135 row + 3 new gotchas, N+3 rotation `git mv docs/audits/AUDIT_WAVE132.md docs/audits/archive/AUDIT_WAVE132.md`.
+4. **`abbf29687`** `docs(wave135-sw4-audit-handoff)` — NEW `docs/audits/AUDIT_WAVE135.md` (~330 lines), NEW `memory/wave135_backlog.md` + `memory/wave136_opening_prompt.md`, CLAUDE.md ## Audit Trail W135 row + 3 new gotchas, N+3 rotation `git mv docs/audits/AUDIT_WAVE132.md docs/audits/archive/AUDIT_WAVE132.md`. 6 files +688/-3.
 
-Verify session-start: `git log --oneline a26ca7cbd..HEAD | wc -l` → **3**
+5. **`5d41d5701`** `chore(wave135-polish)` — Polish-pass post "безупречно?" probe (~15-20 min). 4 files +38/-24. **Closed 2 caveats**: W135 §Honesty #12 cross-session vitest 5/5 × 1052p / 12s / 0f flake band = 0; W134 §Honesty #6 MEMORY.md path normalization (17 broken `../../../../docs/audits/` → 21 clean `docs/audits/` text refs; the prior `../../../../` resolved to `C:\Users\egorribun\` from USER `.claude` dir — needed SIX levels not FOUR). **7 invariant verifications**: commit-stat cross-check via `git show --stat` (all match exactly), memory-link resolution 21/21, archive 16 W117-W132 audit files, npm audit 0, Cargo.lock no drift, build × 1 BYTE-IDENTICAL (139,808/65,864/53,181), AUDIT REMAINING #11 consolidated into #9 (both Linux CI duplicates). Discovered W134 SW4 commit message described `memory/wave134_backlog.md` written to git-tracked REPO but actually written to USER `.claude` dir (not git-tracked). My W135 SW4 wrote to REPO; polish-pass copied to USER dir as well — both locations now have wave135_backlog.md + wave136_opening_prompt.md.
+
+Verify session-start: `git log --oneline a26ca7cbd..HEAD | wc -l` → **4**
 
 ---
 
@@ -46,21 +48,21 @@ under no-deploy goal — architecture ready, no production traffic to measure on
 - **`server.js` 39,373 bytes**
 - Reproducibility ≥ 7 waves (build × 3 verified post-SW3 via new orchestrator; SW4 docs-only had zero bundle impact expected)
 
-## Gates baseline (preserved through W135)
+## Gates baseline (preserved through W135 + polish)
 
 - tsc 0 errors, lint 0 warnings (`max-warnings=0`; broader src/ scan
   including `eslint-plugin-react-compiler` at error level)
-- vitest **single-run = 1052p / 12s / 0f**
-  (W134 1041 + 11 SW1 sessions tests = 1052; cross-session 5-run flake band NOT measured this wave — W135 polish-pass candidate)
+- vitest **single-run + cross-session 5-run = 5/5 × 1052p / 12s / 0f**
+  (W134 1041 + 11 SW1 sessions tests = 1052; cross-session flake band = 0 measured in polish-pass)
 - pytest backend slice NOT re-run (no backend changes in W135 — W134 baseline 52p preserved by invariant)
-- npm audit NOT re-run (no npm install in W135 — devDeps unchanged; esbuild + workbox-build already installed; W134 baseline 0 vulns preserved)
-- Cargo.lock no drift (idempotent ≥ 25 waves)
+- npm audit **0 vulnerabilities** (re-verified in polish-pass)
+- Cargo.lock no drift (idempotent ≥ 25 waves at end of W135 polish)
 - i18n parity 18p (translationParity.test.ts; CLDR-aware EN/RU)
-- MEMORY.md size **~22 KB** ✓ (< 24,400; **N/N referenced memory files resolve** post-SW4)
+- MEMORY.md size **24,090 bytes** ✓ (< 24,400; **21/21 referenced memory files resolve** post-polish)
 - Archive directory has all 16 W117-W132 audit files (W132 newly rotated in SW4)
 - Tree-shake invariant ✓ (PROD `grep -l "lhci-mock-user" dist/client/assets/*.js`
   → 0; VITE_LHCI builds → 1 W116 SW3 useFocusTrap chunk known-exception)
-- **Build × 3 reproducibility WITHOUT wave127-build-x3.sh** ✓ (NEW W135 SW3 invariant)
+- **Build × 4 reproducibility WITHOUT wave127-build-x3.sh** ✓ (NEW W135 SW3 invariant: build × 3 post-SW3 + 1 post-polish all IDENTICAL hash + sizes)
 
 **Active waves after N+3 rotation**: W133 / W134 / **W135**
 
@@ -93,12 +95,14 @@ under permissive parent `_auth.tsx ssr: true` W128 SW2).
 
 ## Wave 136 candidates (15+ candidates across 5 tiers)
 
-### REMOVED from backlog (closed by W135)
+### REMOVED from backlog (closed by W135 SW1+SW2+SW3+polish)
 
 - ✅ **AbortController cleanup in useProfileSync** (W134 §Honesty #3) — closed via SW1
 - ✅ **useSessionManagement mutation path migration to factory** (W134 §Honesty #5) — closed via SW1
 - ✅ **Option B chrome-devtools-mcp through Docker chain** (W134 §Honesty #1 + #8) — closed PARTIAL via SW2 (curl + Caddy chain proven; chrome-devtools snapshot wall documented as sub-deferral)
 - ✅ **Option E vite-plugin-pwa Windows hang** (W126 polish #3) — closed at orchestration level via SW3 (wave127-build-x3.sh retired, integrated build-orchestrated.mjs reproducible). Structural hang remains.
+- ✅ **Cross-session vitest 5-run flake band measurement** (W135 §Honesty #12) — closed via polish: 5/5 × 1052p clean.
+- ✅ **MEMORY.md `../../../../docs/audits/` path normalization** (W134 §Honesty #6) — closed via polish: 17 broken paths → 21 clean text refs.
 
 ### Tier 1 — HIGH priority (W135 discoveries; recommended W136 starts here)
 
