@@ -482,6 +482,15 @@ services:
     networks:
       - internal
       - public
+    # W136 SW7: imgproxy ships its own `imgproxy health` CLI subcommand
+    # (v3.18+). The container is distroless except for the imgproxy binary,
+    # so this is the only viable healthcheck path.
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -501,6 +510,14 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     networks:
       - internal
+    # W136 SW7: grafana base image (alpine) has wget. /api/health endpoint
+    # returns JSON with database/version status; HTTP 200 = healthy.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -516,6 +533,14 @@ services:
       - "127.0.0.1:9090:9090"
     networks:
       - internal
+    # W136 SW7: prom/prometheus base image is busybox-based with wget.
+    # /-/healthy returns 200 OK when ready to serve queries.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -530,6 +555,12 @@ services:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
     networks:
       - internal
+    # W136 SW7: grafana/tempo image is distroless (no wget/curl/nc/bash).
+    # Healthcheck via raw bash /dev/tcp probe is unreliable here — fall
+    # back to depends_on `service_started` semantics. Caddy reverse-proxy
+    # to OTEL collector handles upstream health concerns.
+    # Filed as W137+ candidate to package tempo with grpc_health_probe OR
+    # add tempo CLI subcommand for health if upstream supports.
     deploy:
       resources:
         limits:
@@ -544,6 +575,9 @@ services:
       - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
     networks:
       - internal
+    # W136 SW7: same as tempo — grafana/loki image is distroless.
+    # /ready endpoint exists on :3100 but no in-container HTTP client.
+    # Filed as W137+ candidate.
     deploy:
       resources:
         limits:
