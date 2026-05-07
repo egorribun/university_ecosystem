@@ -67,10 +67,16 @@ class LoginSessionManager:
             else:
                 user.mfa_last_verified_at = now_val
 
+        # W136 SW1: embed `is_active` claim in JWT so gateway's `claims.IsActive`
+        # check at services/gateway/middleware/auth.go:720 can enforce user
+        # status edge-side (defense-in-depth alongside session revocation set).
+        # Closes W135 §Honesty #2 — pre-W136 the gateway returned 403 for ALL
+        # authed requests because the claim was missing from the payload.
         token, session = await self.session_service.create_access_token(
             sub=user.id,
             metadata=metadata,
             bg_tasks=bg_tasks,
+            extra_claims={"is_active": bool(user.is_active)},
         )
 
         self._set_access_token_cookie(response, token)
