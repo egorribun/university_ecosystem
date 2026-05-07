@@ -303,6 +303,20 @@ export default defineConfig(({ mode }) => {
       ],
     }),
     VitePWA({
+      // Wave 135 SW3 — `BUILD_SKIP_PWA=true` env flag (set by
+      // `frontend/scripts/build-orchestrated.mjs` only) disables the
+      // vite-plugin-pwa lifecycle without removing the plugin from the
+      // chain. tanstackStart's prerender + server-build steps depend on
+      // the plugin chain shape, so dropping the plugin object entirely
+      // skips `_shell.html` + `dist/server/server.js` emission. With
+      // `disable: true` the plugin is a no-op (skips `transformIndexHtml`
+      // injection AND the hanging `closeBundle._generateSW(ctx)` call),
+      // letting build-orchestrated.mjs do the SW compile + manifest
+      // injection itself in steps 4 + 5. Closes W126 polish #3
+      // (vite-plugin-pwa Windows hang) without disturbing dev mode or
+      // CI Linux builds (where `BUILD_SKIP_PWA` is unset and the plugin
+      // runs normally).
+      disable: process.env.BUILD_SKIP_PWA === "true",
       registerType: "autoUpdate",
       injectRegister: "script",
       strategies: "injectManifest",

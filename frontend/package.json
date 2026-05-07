@@ -9,7 +9,8 @@
   "scripts": {
     "preinstall": "node scripts/ensure-wasm.mjs",
     "dev": "vite",
-    "build": "node ./scripts/run-build.mjs",
+    "build": "node ./scripts/build-orchestrated.mjs",
+    "build:legacy": "node ./scripts/run-build.mjs",
     "build:shell": "node ./scripts/post-build-shell.mjs",
     "build:report": "npm run build -- --report",
     "preview": "vite preview",
