@@ -31,6 +31,39 @@ class UserComplianceService:
         self.repo = uow.users
         self.audit = audit
 
+    async def _revoke_user_sessions(self, user_id: uuid.UUID) -> int:
+        """W136 SW2: revoke all active sessions for a user before DB delete.
+
+        Closes the immediate-effect part of W135 §Honesty #2. Without this,
+        delete_sensitive_data DELETEs ActiveSession rows but the gateway's L1
+        cache continues to report ``revoked:jti:{jti}`` as missing for up to
+        30s — deactivated user keeps access until cache TTL expires.
+
+        revoke_sessions_matching does three things per active session:
+        1. Marks session.revoked_at=now in DB (committed by parent transaction)
+        2. Calls RedisSessionBackend.revoke_session(jti) which:
+           - DELs the Redis session key
+           - SETs revoked:jti:{jti} with TTL (gateway L2 EXISTS hit)
+           - Publishes JTI to session:revocations channel (gateway L1 update
+             via existing ListenForRevocations subscriber at
+             services/gateway/middleware/auth.go:362-416)
+        3. Rotates signing_key (defence-in-depth against in-flight requests)
+
+        Returns count of sessions revoked. No-op if user has 0 active sessions.
+        """
+        from sqlalchemy import and_
+
+        from app.models import ActiveSession
+        from app.services.session_cleanup import revoke_sessions_matching
+
+        return await revoke_sessions_matching(
+            db=self.repo.db,
+            whereclause=and_(
+                ActiveSession.user_id == user_id,
+                ActiveSession.revoked_at.is_(None),
+            ),
+        )
+
     @auditable(SecurityEvent.ADMIN_USER_DELETE, user_id_param="user_id")
     async def admin_delete_user(
         self,
@@ -51,6 +84,9 @@ class UserComplianceService:
 
         # Perform anonymization
         await anonymize_user_data(db_user)
+        # W136 SW2: revoke active sessions through Redis pub/sub BEFORE
+        # delete_sensitive_data DROPs the rows so gateway picks up revocation.
+        await self._revoke_user_sessions(db_user.id)
         await self.repo.delete_sensitive_data(db_user.id)
 
         async with self.uow:
@@ -177,6 +213,9 @@ class UserComplianceService:
             raise EntityNotFound("User", user_identity)
 
         await anonymize_user_data(db_user)
+        # W136 SW2: revoke active sessions through Redis pub/sub BEFORE
+        # delete_sensitive_data DROPs the rows so gateway picks up revocation.
+        await self._revoke_user_sessions(db_user.id)
         await self.repo.delete_sensitive_data(db_user.id)
 
         await log_data_access(
