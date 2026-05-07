@@ -23,7 +23,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { isAxiosError } from "axios"
+import { isAxiosError, isCancel } from "axios"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 
@@ -717,7 +717,12 @@ export const useProfileSync = (
     return hasKey || hasCache
   })
   const [authOperation, setAuthOperation] = useState(false)
-  const activeRequestRef = useRef<AbortController | null>(null)
+  // Wave 135 SW1 — `activeRequestRef` (AbortController for the /users/me
+  // fetch) was removed alongside the controller pattern in the auto-fetch
+  // effect. Cancellation is now handled exclusively via
+  // `queryClient.cancelQueries({ queryKey: currentUserQueryKey })` —
+  // introduced in W134 SW1 alongside the controller, now the sole path.
+  // Closes W134 §Honesty #3.
   const autoFetchAttemptedRef = useRef(false)
   const initializingRef = useRef(initializing)
 
@@ -807,13 +812,18 @@ export const useProfileSync = (
 
   const clearProfile = useCallback(
     ({ persist = true }: { persist?: boolean } = {}) => {
-      const controller = activeRequestRef.current
-      controller?.abort()
-      activeRequestRef.current = null
+      // Wave 135 SW1 — replace AbortController.abort() with
+      // queryClient.cancelQueries. Was: `controller?.abort()` cancelling
+      // the activeRequestRef-tracked controller. Now: the bridged
+      // fetchQuery's internal signal receives the cancellation via
+      // queryClient + axios interceptor → request rejects with
+      // CanceledError, swallowed by the auto-fetch catch block (isCancel
+      // guard).
+      queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
       applyUserState(() => null, { persist })
       cachedUserRef.current = null
     },
-    [applyUserState]
+    [applyUserState, queryClient]
   )
 
   const handleUnauthorized = useCallback(
@@ -985,14 +995,15 @@ export const useProfileSync = (
       return
     }
 
-    const controller = new AbortController()
-    activeRequestRef.current?.abort()
-    activeRequestRef.current = controller
-    // Wave 134 SW1 — Bridge: also cancel any in-flight React Query request
-    // so the bridged auto-fetch effect's cancellation semantics match the
-    // pre-W134 AbortController behaviour. The factory's queryFn (in
-    // api/hooks/users.ts) receives queryClient's internal signal; calling
-    // cancelQueries here propagates the abort through queryFn → axios.
+    // Wave 135 SW1 — AbortController removed (was `const controller = new
+    // AbortController(); activeRequestRef.current?.abort();
+    // activeRequestRef.current = controller`). queryClient.cancelQueries
+    // is the sole cancellation mechanism: it fires the internal AbortSignal
+    // attached to the queryFn, which the factory's queryFn → fetchCurrentUser
+    // → axios respects via the standard `signal` config. Concurrent
+    // auto-fetch effect runs (e.g. handleUnauthorized → setUser → effect
+    // re-fires) call cancelQueries here, cancelling the prior in-flight
+    // fetch before initiating the new one. Closes W134 §Honesty #3.
     queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
     // RZ-31-03: Safari private browsing throws SecurityError on localStorage access.
     // Every other localStorage call in this file is wrapped — this was a missed spot.
@@ -1038,7 +1049,11 @@ export const useProfileSync = (
         try {
           await ensureSessionSigningKey()
         } catch (_error) {
-          if (!controller.signal.aborted && import.meta.env.DEV) {
+          // Wave 135 SW1 — drop `!controller.signal.aborted` guard (the
+          // controller was retired). ensureSessionSigningKey is its own
+          // request not bound to the bridged fetchQuery's signal, so a
+          // cancellation upstream doesn't propagate here anyway.
+          if (import.meta.env.DEV) {
             logWarning("Failed to obtain session signing key", { error: _error })
           }
         }
@@ -1046,7 +1061,13 @@ export const useProfileSync = (
           setUser(profile as User)
         }
       } catch (error) {
-        if (controller.signal.aborted) return null
+        // Wave 135 SW1 — replace `controller.signal.aborted` check with
+        // axios's `isCancel`. queryClient.cancelQueries triggers the
+        // internal signal → axios CanceledError (code "ERR_CANCELED") →
+        // isCancel returns true. Silent skip preserves the pre-W135
+        // behaviour where a cancelled fetch did not log "Failed to fetch
+        // current user" noise on logout / auto-fetch effect re-runs.
+        if (isCancel(error)) return null
         if (isAxiosError(error) && error.response?.status === 401) {
           handleUnauthorized()
           return
@@ -1059,12 +1080,12 @@ export const useProfileSync = (
           traceId: apiError.traceId,
         })
       } finally {
-        if (!controller.signal.aborted && activeRequestRef.current === controller) {
-          activeRequestRef.current = null
-        }
-        if (!controller.signal.aborted) {
-          setInitializing(false)
-        }
+        // Wave 135 SW1 — controller-tracked finally collapsed to
+        // unconditional setInitializing(false). React's batching makes
+        // back-to-back calls idempotent; if a cancellation fired upstream
+        // the loading flag was already going to be reset by the next
+        // auto-fetch effect run.
+        setInitializing(false)
       }
     })()
     // Wave 134 SW1 — `queryClient` added to deps because the bridged

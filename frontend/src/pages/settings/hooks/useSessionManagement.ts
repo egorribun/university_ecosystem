@@ -5,7 +5,11 @@ import { isAxiosError } from "axios"
 import { formatDate, toDate } from "@/utils/date"
 
 import api from "@/api/client"
-import { sessionsQueryKey, sessionsQueryOptions } from "@/api/hooks/sessions"
+import {
+  invalidateSessions,
+  sessionsQueryOptions,
+  updateSessionInCache,
+} from "@/api/hooks/sessions"
 import { useAuth } from "@/contexts/AuthContext"
 import type { ActiveSession } from "@/types/Session"
 import type { SetSnackbar } from "@/pages/settings/types"
@@ -56,8 +60,11 @@ export function useSessionManagement({
   // tuple shape ["auth", "sessions", userId] (matches pre-W134 behaviour
   // exactly). The factory also supplies staleTime: 30_000, gcTime, retry
   // semantics — preserved verbatim from the pre-W134 inline config.
+  //
+  // Wave 135 SW1 — mutation cache writes now route through the factory's
+  // updateSessionInCache + invalidateSessions exports so the cache key is
+  // never touched directly from this hook. Closes W134 §Honesty #5.
   const userId = user?.id ?? "me"
-  const sessionsKey = useMemo(() => sessionsQueryKey(userId), [userId])
 
   const {
     data: sessionsData,
@@ -121,12 +128,12 @@ export function useSessionManagement({
         const result = await revokeSessionMutation.mutateAsync(sessionId)
         setSnackbar({ text: t("settings:sessions.snackbar.revoked"), severity: "success" })
 
-        // Update cache immediately and then invalidate
-        queryClient.setQueryData<ActiveSession[] | undefined>(sessionsKey, (previous) => {
-          if (!Array.isArray(previous)) return previous
-          return previous.map((session) => (session.id === result.id ? result : session))
-        })
-        await queryClient.invalidateQueries({ queryKey: sessionsKey })
+        // Wave 135 SW1 — factory-routed cache mutation. The previous
+        // inline setQueryData + invalidateQueries pattern is now in
+        // updateSessionInCache + invalidateSessions at api/hooks/sessions.ts
+        // (closes W134 §Honesty #5).
+        updateSessionInCache(queryClient, userId, result)
+        await invalidateSessions(queryClient, userId)
 
         if (result?.is_current) {
           await logout()
@@ -144,14 +151,15 @@ export function useSessionManagement({
         })
       }
     },
-    [logout, openStepUpFor, queryClient, revokeSessionMutation, sessionsKey, setSnackbar, t]
+    [logout, openStepUpFor, queryClient, revokeSessionMutation, setSnackbar, t, userId]
   )
 
   const handleRevokeAllSessions = useCallback(
     async (options?: { skipStepUp?: boolean }) => {
       try {
         const result = await revokeAllSessionsMutation.mutateAsync()
-        await queryClient.invalidateQueries({ queryKey: sessionsKey })
+        // Wave 135 SW1 — factory-routed invalidation (closes W134 §Honesty #5).
+        await invalidateSessions(queryClient, userId)
         setSnackbar({
           text: t("settings:sessions.snackbar.revokedAll", {
             count: result?.revoked ?? 0,
@@ -171,7 +179,7 @@ export function useSessionManagement({
         })
       }
     },
-    [openStepUpFor, queryClient, revokeAllSessionsMutation, sessionsKey, setSnackbar, t]
+    [openStepUpFor, queryClient, revokeAllSessionsMutation, setSnackbar, t, userId]
   )
 
   useEffect(() => {

@@ -45,7 +45,7 @@
  * })
  * ```
  */
-import type { QueryFunctionContext } from "@tanstack/react-query"
+import type { QueryClient, QueryFunctionContext } from "@tanstack/react-query"
 
 import api from "@/api/client"
 import type { ActiveSession } from "@/types/Session"
@@ -99,3 +99,40 @@ export const sessionsQueryOptions = (userId: string) => ({
   retry: 2,
   retryDelay,
 })
+
+/**
+ * Wave 135 SW1 — replace one session in the cache by id (used by
+ * `revokeSessionMutation` after a successful `DELETE /auth/sessions/:id`).
+ *
+ * Centralizing the mutation cache surface here closes W134 §Honesty #5:
+ * mutations no longer write directly to `sessionsKey` from inline call
+ * sites — they go through the same factory that produced the queryKey.
+ *
+ * No-op when the cache slot is empty / not yet populated (`previous` is
+ * `undefined`) or has been hydrated to a non-array value (defensive).
+ */
+export const updateSessionInCache = (
+  queryClient: QueryClient,
+  userId: string,
+  updated: ActiveSession
+) => {
+  queryClient.setQueryData<ActiveSession[] | undefined>(
+    sessionsQueryKey(userId),
+    (previous) => {
+      if (!Array.isArray(previous)) return previous
+      return previous.map((session) => (session.id === updated.id ? updated : session))
+    }
+  )
+}
+
+/**
+ * Wave 135 SW1 — invalidate the active sessions query for a given user.
+ *
+ * Mirrors the pre-W135 inline `queryClient.invalidateQueries({ queryKey:
+ * sessionsKey })` pattern from `useSessionManagement` lines 129 + 154 so
+ * mutation paths route through the factory rather than reaching into the
+ * key shape directly.
+ */
+export const invalidateSessions = async (queryClient: QueryClient, userId: string) => {
+  await queryClient.invalidateQueries({ queryKey: sessionsQueryKey(userId) })
+}
