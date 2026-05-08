@@ -398,6 +398,16 @@ services:
         condition: service_healthy
     networks:
       - internal
+    # Wave 137 SW5: gRPC healthcheck via grpc_health_probe binary baked into
+    # distroless runtime (services/file-processor/Dockerfile health-probe stage).
+    # main.go:277-280 already registers grpc_health_v1.HealthCheckResponse_SERVING
+    # for the FileProcessingService at :50051. Same pattern as authzed/spicedb.
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -576,17 +586,37 @@ services:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
     networks:
       - internal
-    # W136 SW7: grafana/tempo image is distroless (no wget/curl/nc/bash).
-    # Healthcheck via raw bash /dev/tcp probe is unreliable here — fall
-    # back to depends_on `service_started` semantics. Caddy reverse-proxy
-    # to OTEL collector handles upstream health concerns.
-    # Filed as W137+ candidate to package tempo with grpc_health_probe OR
-    # add tempo CLI subcommand for health if upstream supports.
+    # W136 SW7 → W137 SW6: tempo's distroless image lacks any HTTP client to
+    # probe its own /ready endpoint on :3200. Sidecar pattern (tempo-healthprobe
+    # below) does the probing via shared network namespace. By-design caveat:
+    # sidecar healthcheck reflects PROBE health, NOT tempo container health
+    # directly — for compose `depends_on: service_healthy` semantics, the
+    # sidecar's healthy state is what downstream sees. Acceptable for dev;
+    # production K8s should use upstream's /ready via livenessProbe HTTP check.
     deploy:
       resources:
         limits:
           cpus: '0.25'
           memory: 512M
+    restart: unless-stopped
+
+  # W137 SW6: distroless healthcheck via curl sidecar pattern.
+  # network_mode: service:tempo shares the network namespace (probes
+  # localhost:3200/ready directly). curl base image is ~5MB so overhead is
+  # small. Sidecar keeps running via `sleep infinity` so its healthcheck
+  # has a stable container to attach to.
+  tempo-healthprobe:
+    image: curlimages/curl:8.10.1
+    network_mode: "service:tempo"
+    depends_on:
+      - tempo
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   loki:
@@ -596,14 +626,28 @@ services:
       - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
     networks:
       - internal
-    # W136 SW7: same as tempo — grafana/loki image is distroless.
-    # /ready endpoint exists on :3100 but no in-container HTTP client.
-    # Filed as W137+ candidate.
+    # W136 SW7 → W137 SW6: same sidecar pattern as tempo — see loki-healthprobe.
+    # /ready endpoint on :3100 probed via curlimages/curl through shared
+    # network_mode. Same by-design caveat about sidecar-vs-container health.
     deploy:
       resources:
         limits:
           cpus: '0.25'
           memory: 512M
+    restart: unless-stopped
+
+  loki-healthprobe:
+    image: curlimages/curl:8.10.1
+    network_mode: "service:loki"
+    depends_on:
+      - loki
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   caddy:
