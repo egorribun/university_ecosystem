@@ -321,13 +321,24 @@ async function step4_swBundle() {
   // PRESERVED in the output — workbox-build.injectManifest in step 5
   // replaces it with the actual precache manifest array.
   //
-  // platform: "browser" + format: "esm" matches the W134 baseline output
-  // shape. minify on; sourcemap off (matches Vite's "hidden" mode for prod
-  // — no sourceMappingURL comment in JS).
+  // platform: "browser" + format: "iife" produces a classic-script-compatible
+  // bundle. Wave 138 SW2 fix: pre-fix `format: "esm"` emitted `export{...}`
+  // at end of sw.js (from sw.ts test-compatibility re-exports at lines 17-37).
+  // `navigator.serviceWorker.register()` in `frontend/src/push/register-sw.ts:49`
+  // does NOT pass `{ type: "module" }`, so the browser parses sw.js as
+  // a classic script. Classic-script + `export` keyword =
+  // `SyntaxError: Unexpected token 'export'` → "ServiceWorker script
+  // evaluation failed" (1 console error per route in W137 SW4 smoke).
+  // Switching to IIFE makes esbuild drop the `export` statements; the
+  // re-export consts become local-IIFE consts assigned to `self.__SW_TESTING__`
+  // in bootstrap() (which is the only runtime consumer). Tests that
+  // import the helpers from sw.ts source TS continue working.
+  // minify on; sourcemap off (matches Vite's "hidden" mode for prod — no
+  // sourceMappingURL comment in JS).
   const result = await esbuild.build({
     entryPoints: [swSrc],
     bundle: true,
-    format: "esm",
+    format: "iife",
     platform: "browser",
     target: "es2022",
     outfile: swDest,
