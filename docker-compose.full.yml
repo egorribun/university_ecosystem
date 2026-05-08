@@ -16,6 +16,21 @@ services:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
       FRONTEND_ORIGIN: http://localhost:8081
       FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
+      # Wave 137 SW4: TrustedHostMiddleware allowlist. Default in dev is
+      # "localhost,127.0.0.1,testserver" which rejects requests from inside
+      # the docker network whose Host header is the docker-compose service-name
+      # DNS (e.g. frontend SSR fetches backend:8000/.well-known/jwks.json with
+      # Host: backend:8000 → 400 Bad Request). Adding `backend` so JWKS
+      # endpoint reachable from frontend, gateway, ws-hub via service-DNS.
+      # NOTE: middleware reads ALLOWED_HOSTS (not TRUSTED_HOSTS) — see
+      # app/core/middleware/setup.py:154 + cors_settings.py:25 + 154 (the
+      # `trusted_hosts_list` property is a separate read-only computation,
+      # `allowed_hosts_list` is what TrustedHostMiddleware consumes).
+      ALLOWED_HOSTS: "localhost,127.0.0.1,backend,caddy,0.0.0.0,testserver"
+      # Wave 137 SW4: dev-only — bump max sessions per user from 5 to 50 so
+      # repeated smoke runs during diagnostic don't hit the per-user cap.
+      # Production K8s should keep default (5) for credential-stuffing defense.
+      MAX_SESSIONS_PER_USER: "50"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/0"
       RATE_LIMIT_STORAGE_BACKEND: redis
