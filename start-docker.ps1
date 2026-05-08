@@ -314,6 +314,33 @@ if (Test-Path $EnvFile) {
 # Volume-mounted into container at /app/.secrets/jwt_rs256.pem.
 New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem"
 
+# ── Wave 137 SW2: SECRET_KEY drift detection .env ↔ .env.docker ───────────────
+# Closes W136 polish-v2 finding: gateway's JWT_SECRET env reads from .env via
+# compose's ${SECRET_KEY} substitution, while backend's env_file reads .env.docker.
+# If .env's SECRET_KEY drifts (e.g. stale Pydantic placeholder), gateway HS256
+# fallback path validates against the wrong secret → 401 on every request.
+# Less critical post-W137 SW1 RS256 (gateway uses JWKS path) but kept for
+# defense-in-depth: fallback HS256 path must remain coherent.
+if ((Test-Path $EnvFile) -and (Test-Path $EnvCompose)) {
+    $envDockerSecret = (Select-String -Path $EnvFile -Pattern "^SECRET_KEY=(.+)$" -ErrorAction SilentlyContinue).Matches.Groups[1].Value
+    $envComposeSecret = (Select-String -Path $EnvCompose -Pattern "^SECRET_KEY=(.+)$" -ErrorAction SilentlyContinue).Matches.Groups[1].Value
+
+    if ($envDockerSecret -and $envComposeSecret -and $envDockerSecret -ne $envComposeSecret) {
+        Write-Warn "SECRET_KEY drift detected between .env and .env.docker"
+        Write-Status "Syncing .env SECRET_KEY to match .env.docker (canonical source)..."
+
+        # Line-based replacement avoids regex special-char hazards in the
+        # secret value (which is alphanumeric per New-Secret but defensive).
+        $newLine = "SECRET_KEY=$envDockerSecret"
+        $envComposeContent = (Get-Content $EnvCompose -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_ -match "^SECRET_KEY=") { $newLine } else { $_ }
+        }) -join "`n"
+
+        Write-Utf8NoBom $EnvCompose $envComposeContent.TrimEnd()
+        Write-Ok "Synced .env SECRET_KEY (defense-in-depth for HS256 fallback path)"
+    }
+}
+
 # ── Build ────────────────────────────────────────────────────────────────────
 
 if ($Rebuild) {
