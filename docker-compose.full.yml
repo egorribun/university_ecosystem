@@ -417,6 +417,25 @@ services:
     # distroless runtime (services/file-processor/Dockerfile health-probe stage).
     # main.go:277-280 already registers grpc_health_v1.HealthCheckResponse_SERVING
     # for the FileProcessingService at :50051. Same pattern as authzed/spicedb.
+    #
+    # § Honesty caveat (W137 SW5 verification finding): in this dev compose
+    # this healthcheck reports "unhealthy" because file-processor's startup
+    # waits indefinitely for temporal:7233 connection (Temporal::Connect retry
+    # loop in main.go) before binding the gRPC server. Temporal's dev compose
+    # config binds to 127.0.0.1 only (intentional per P0-03 audit 2026-03-06
+    # — Temporal dev-server has NO auth, exposing it on the internal docker
+    # network = full code-execution vector). So file-processor cannot reach
+    # temporal → never starts gRPC server → grpc_health_probe times out.
+    #
+    # In PRODUCTION K8s where temporal IS reachable (separate cluster with
+    # auth + mTLS), this healthcheck works correctly. The infrastructure
+    # (binary in image, healthcheck spec) is structurally correct + ready.
+    # Pre-W137 there was simply no healthcheck so the lack of file-processor
+    # functionality was invisible in `docker compose ps`.
+    #
+    # W138+ candidate: either rebind temporal to 0.0.0.0 with auth (changes
+    # P0-03 trade-off), OR move file-processor → host network for dev,
+    # OR accept dev-stack limitation + document.
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]
       interval: 10s
