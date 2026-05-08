@@ -115,18 +115,28 @@ Chromatic activation status: still requires user-side
 repo variable. Workflow file `.github/workflows/chromatic.yml` exists
 + guarded; no code changes needed.
 
-### SW7 — Upstream issues (deferred to user)
+### SW7 — Upstream issues (rolldown FILED post-W138 close)
 
-Status: 3 issue body templates ready in `memory/wave138_upstream_issue_*.md`.
+Status: 3 issue body templates prepared in `memory/wave138_upstream_issue_*.md`.
 User chose "Yes — file rolldown only (most actionable)" via
-AskUserQuestion at SW7. Execution blocked by `gh auth status: not logged
-in`. User can complete via:
+AskUserQuestion at SW7.
 
-```bash
-gh auth login
-gh issue create --repo rolldown/rolldown \
-  --title "Build hangs post-prerender on Windows: dangling MessagePort + Worker thread" \
-  --body-file memory/wave138_upstream_issue_rolldown.md
+**FILED 2026-05-08 post-W138 close**:
+- ✅ rolldown/rolldown — **https://github.com/rolldown/rolldown/issues/9327**
+  (filed by user from `C:\Users\egorribun\Documents\university_ecosystem`
+  via `gh issue create --repo rolldown/rolldown --title "..." --body-file
+  memory/wave138_upstream_issue_rolldown.md` after `gh auth login`)
+
+**Remaining (templates ready, not filed per user choice)**:
+- chromedevtools/chrome-devtools-mcp — `memory/wave138_upstream_issue_chromedevtools.md`
+- grafana/tempo + grafana/loki — `memory/wave138_upstream_issue_tempo_loki.md`
+
+User can file the remaining 2 if needed via same pattern (single-line PS):
+
+```powershell
+gh issue create --repo chromedevtools/chrome-devtools-mcp --title "Accessibility.getFullAXTree + Runtime.evaluate timeout on Windows headless heavy DOM" --body-file memory/wave138_upstream_issue_chromedevtools.md
+gh issue create --repo grafana/tempo --title "Add CLI subcommand for --check-ready to support distroless healthcheck" --body-file memory/wave138_upstream_issue_tempo_loki.md
+gh issue create --repo grafana/loki --title "Add CLI subcommand for --check-ready to support distroless healthcheck" --body-file memory/wave138_upstream_issue_tempo_loki.md
 ```
 
 ### SW8 — Audit + memory + N+3 rotation (this commit)

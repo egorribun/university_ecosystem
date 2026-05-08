@@ -214,24 +214,28 @@ annotations under permissive parent `_auth.tsx ssr: true` W128 SW2).
 - **/admin polish arc** (~3-5 waves). Admin tooling depth audit + UX
   polish. Lower-traffic page. Pursue OR punt.
 
-### Filed upstream issues (W138 SW7 — gh auth blocker)
+### Filed upstream issues (W138 SW7)
 
-- rolldown/rolldown — build hangs post-prerender (MessagePort + Worker)
+- ✅ **rolldown/rolldown** — [#9327](https://github.com/rolldown/rolldown/issues/9327)
+  (FILED 2026-05-08 post-W138 close; build hangs post-prerender, MessagePort + Worker)
 - chromedevtools/chrome-devtools-mcp — Windows headless heavy-DOM
   Accessibility.getFullAXTree + Runtime.evaluate timeout (NOW also
-  affecting AxeBuilder per W138 SW3+SW4 finding)
+  affecting AxeBuilder per W138 SW3+SW4 finding) — TEMPLATE READY
 - grafana/tempo + grafana/loki — distroless `--check-ready` CLI
-  subcommand request
+  subcommand request — TEMPLATE READY
 
-User chose "Yes — file rolldown only (most actionable)" via SW7
-AskUserQuestion but `gh auth status: not logged in` blocked execution.
-Templates remain at `memory/wave138_upstream_issue_*.md`. User can run:
+Resolution timeline outside our control. Monitor rolldown#9327 quarterly
+for upstream activity; if maintainers fix the worker-pool cleanup,
+`frontend/scripts/build-orchestrated.mjs` watch+kill workaround can be
+retired (vite build subprocess would exit cleanly without SIGKILL).
 
-```bash
-gh auth login
-gh issue create --repo rolldown/rolldown \
-  --title "Build hangs post-prerender on Windows: dangling MessagePort + Worker thread" \
-  --body-file memory/wave138_upstream_issue_rolldown.md
+If W139+ hits the chrome-devtools or tempo/loki walls again, file the
+remaining templates via:
+
+```powershell
+gh issue create --repo chromedevtools/chrome-devtools-mcp --title "Accessibility.getFullAXTree + Runtime.evaluate timeout on Windows headless heavy DOM" --body-file memory/wave138_upstream_issue_chromedevtools.md
+gh issue create --repo grafana/tempo --title "Add CLI subcommand for --check-ready to support distroless healthcheck" --body-file memory/wave138_upstream_issue_tempo_loki.md
+gh issue create --repo grafana/loki --title "Add CLI subcommand for --check-ready to support distroless healthcheck" --body-file memory/wave138_upstream_issue_tempo_loki.md
 ```
 
 ---
