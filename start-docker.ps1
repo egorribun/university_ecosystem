@@ -59,6 +59,66 @@ function Write-Utf8NoBom {
     )
 }
 
+# Wave 137 SW1: Generate RSA-2048 keypair for backend JWT RS256 signing.
+# Idempotent — skips generation if key file already exists.
+# Uses .NET 8 native PEM export (PowerShell 7+ ships .NET 8 with
+# RSA.ExportPkcs8PrivateKeyPem). Falls back to OpenSSL if available.
+# Closes W135 §Honesty #9 SSR auth-at-edge layer (jose.createRemoteJWKSet
+# requires RS256; pre-W137 dev backend signed HS256).
+function New-JwtRs256Key {
+    param([string]$OutputPath = ".secrets/jwt_rs256.pem")
+
+    $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
+    if (Test-Path $absoluteOutputPath) {
+        Write-Ok "RSA-2048 keypair already exists at $OutputPath (idempotent skip)"
+        return
+    }
+
+    Write-Status "Generating RSA-2048 keypair for JWT RS256 signing..."
+
+    $secretsDir = Split-Path $absoluteOutputPath -Parent
+    if (-not (Test-Path $secretsDir)) {
+        New-Item -ItemType Directory -Path $secretsDir -Force | Out-Null
+    }
+
+    $pem = $null
+    try {
+        # Path A: .NET 8 native PEM export (preferred, no external deps)
+        $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+        try {
+            $pem = $rsa.ExportPkcs8PrivateKeyPem()
+        } finally {
+            $rsa.Dispose()
+        }
+    } catch {
+        Write-Warn ".NET 8 RSA.ExportPkcs8PrivateKeyPem unavailable; falling back to openssl"
+        # Path B: openssl fallback (requires openssl in PATH)
+        $tempKey = [System.IO.Path]::GetTempFileName()
+        try {
+            $null = openssl genrsa -out $tempKey 2048 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Remove-Item $tempKey -ErrorAction SilentlyContinue
+                throw "openssl genrsa failed (exit $LASTEXITCODE). Install OpenSSL or upgrade to PowerShell 7.4+ (.NET 8)."
+            }
+            $pem = Get-Content $tempKey -Raw
+        } finally {
+            Remove-Item $tempKey -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not $pem) {
+        throw "Failed to generate RSA private key — neither .NET nor openssl path succeeded."
+    }
+
+    [System.IO.File]::WriteAllText(
+        $absoluteOutputPath,
+        $pem,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    Write-Ok "Generated RSA-2048 keypair at $OutputPath"
+}
+
 function Test-ServiceHttp {
     param([string]$Url, [int]$Timeout = 2)
     try { (Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $Timeout).StatusCode -eq 200 }
@@ -128,7 +188,8 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
-ALGORITHM=HS256
+ALGORITHM=RS256
+JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=$minioPassword
@@ -214,6 +275,44 @@ if (-not $generated) {
         }
     }
 }
+
+# ── Wave 137 SW1: Migrate existing .env.docker to RS256 ──────────────────────
+# Pre-W137 .env.docker has ALGORITHM=HS256 (no JWT_PRIVATE_KEY_PATH).
+# Post-W137 expects ALGORITHM=RS256 + JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem.
+# Auto-patch existing files for seamless upgrade.
+if (Test-Path $EnvFile) {
+    $envDockerContent = Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue
+    $needsAlgorithmFlip = $envDockerContent -match "(?m)^ALGORITHM=HS256\s*$"
+    $needsKeyPath = $envDockerContent -notmatch "(?m)^JWT_PRIVATE_KEY_PATH="
+
+    if ($needsAlgorithmFlip -or $needsKeyPath) {
+        Write-Status "Migrating $EnvFile to RS256 (Wave 137 SW1)..."
+
+        if ($needsAlgorithmFlip) {
+            $envDockerContent = $envDockerContent -replace "(?m)^ALGORITHM=HS256\s*$", "ALGORITHM=RS256"
+            Write-Ok "Flipped ALGORITHM=HS256 → ALGORITHM=RS256"
+        }
+
+        if ($needsKeyPath) {
+            # Insert JWT_PRIVATE_KEY_PATH after ALGORITHM line (or after SECRET_KEY if ALGORITHM missing)
+            if ($envDockerContent -match "(?m)^ALGORITHM=") {
+                $envDockerContent = $envDockerContent -replace `
+                    "((?m)^ALGORITHM=[^\r\n]*)", `
+                    "`$1`nJWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem"
+            } else {
+                $envDockerContent += "`nJWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem"
+            }
+            Write-Ok "Added JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem"
+        }
+
+        Write-Utf8NoBom $EnvFile $envDockerContent.TrimEnd()
+    }
+}
+
+# ── Wave 137 SW1: Generate RSA-2048 keypair for JWT RS256 signing ─────────────
+# Backend reads .secrets/jwt_rs256.pem at startup (jwt_settings.py:202-205).
+# Volume-mounted into container at /app/.secrets/jwt_rs256.pem.
+New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem"
 
 # ── Build ────────────────────────────────────────────────────────────────────
 

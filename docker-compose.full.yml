@@ -40,6 +40,10 @@ services:
       ENABLE_OTEL_METRICS: "false"
     volumes:
       - static-data:/app/app/static
+      # Wave 137 SW1: RS256 private key mount (read-only).
+      # start-docker.ps1's New-JwtRs256Key generates ./.secrets/jwt_rs256.pem on host.
+      # Backend reads it at startup via jwt_settings.py:202-205 when ALGORITHM=RS256.
+      - ./.secrets:/app/.secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -309,7 +313,15 @@ services:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
       REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/3"
+      # JWT_SECRET kept for defense-in-depth: gateway falls back to HS256 if RS256
+      # verify fails. Pre-W137 in-flight HS256 tokens decode via this until expiry.
       JWT_SECRET: ${SECRET_KEY}
+      # Wave 137 SW1: enable RS256 verification via JWKS hot-reload (MOD-W17-03).
+      # Gateway polls backend's /.well-known/jwks.json every JWKS_REFRESH_INTERVAL
+      # seconds; atomic public-key swap on rotation. ws-hub already uses JWKS_URL
+      # default http://backend:8000/.well-known/jwks.json (no compose change needed).
+      JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
+      JWKS_REFRESH_INTERVAL: "60"
       # AUDIT-INFRA-05: explicit opt-out for local dev — production K8s must NOT set this
       GRPC_USE_TLS: "false"
     depends_on:
