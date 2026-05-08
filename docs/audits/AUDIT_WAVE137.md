@@ -40,7 +40,7 @@ discovery that backend RS256 was code-ready without changes).
    - **`MAX_SESSIONS_PER_USER` bump (5→50, dev-only)**: repeated smoke runs hit per-user session cap → 403 too_many_sessions. Production K8s keeps default 5 for credential-stuffing defense.
    - **Page-per-route refactor in smoke script**: reusing same Playwright page across 8 navigations triggers chrome-devtools Windows wall family (W129 §Honesty `new_page` workaround pattern). Fix: `context.newPage()` per route, ~500ms slower but reliable. Also removed `page.evaluate(...)` body-snippet capture (same Windows-eval wall).
 
-4. **STRUCTURAL pre-W137 BUG discovered + fixed (W137 §Honesty)**: `frontend.Dockerfile`'s watch+kill workaround was exiting immediately because host's `frontend/dist/server/server.js` is COPIED into the build context (`.dockerignore` `dist/` only matches top-level, NOT `frontend/dist/`). The watch-loop saw stale dist file + killed npm before fresh build completed. **This masked W134-W136 "BYTE-IDENTICAL build × 3 reproducibility" claims** — same hash because the Docker build was a NO-OP, not because reproducibility was actually verified. Fix: `rm -rf dist;` before `npm run build` in the Dockerfile RUN block. Real fresh build now produces `index-tGuQB5EY.js` (W135-W136 baseline `index-DqqHVXgy.js` was the host-cached bundle).
+4. **STRUCTURAL pre-W137 BUG discovered + fixed (W137 §Honesty)**: `frontend.Dockerfile`'s watch+kill workaround was exiting immediately because host's `frontend/dist/server/server.js` is COPIED into the build context (`.dockerignore` `dist/` only matches top-level, NOT `frontend/dist/`). The watch-loop saw stale dist file + killed npm before fresh build completed. **REFINED FRAMING POST POLISH-PASS** (the original framing was overzealous): LOCAL `npm run build` × 3 has always been reproducible (`index-DqqHVXgy.js` 139,808 — verified ×3 in polish-pass). The DOCKER build was the spuriously-matching one (host-cached LOCAL dist leaked through). Pre-W137 Docker build = NO-OP serving the LOCAL bundle; post-W137 Docker build (with VITE_BACKEND_ORIGIN=http://backend:8000 baked in) produces a different hash `index-tGuQB5EY.js` (verified during SW4-prep + SW4-pass). Fix: `rm -rf dist;` before `npm run build` in the Dockerfile RUN block.
 
 5. **VITE_BACKEND_ORIGIN baked correctly post-fix**: dist/server/server.js now has 1 match for `http://backend:8000` and 0 for `http://localhost:8000` (verified inside frontend container via `grep -c`).
 
@@ -254,13 +254,49 @@ The plan target was "drops to ~3 caveats" but the real polish-pass discoveries (
 
 ## Build × 3 reproducibility (post-W137 corrected baseline)
 
-Per the W137 §Honesty #4 finding, the W134-W136 "BYTE-IDENTICAL × 3" claim was masked by the Dockerfile bug. The CORRECT post-W137 baseline:
+Per the W137 §Honesty #4 finding, the W134-W136 "BYTE-IDENTICAL × 3" claim was technically true (same bytes) but architecturally meaningless (the Docker build wasn't actually doing work — dist/ was host-cached).
+
+**Polish-pass verification (post-SW8) — LOCAL build × 3 reproducibility**:
 
 | Build | index-XYZ.js | _shell.html | sw.js | server.js |
 |---|---|---|---|---|
-| W137 fresh build | `index-tGuQB5EY.js` | TBD via polish-pass | (placeholder per workbox-build skip) | 39,371 |
+| 1 (clean dist) | `index-DqqHVXgy.js` 139,808 | 65,864 | 53,181 (placeholder) | 39,373 |
+| 2 (clean dist) | `index-DqqHVXgy.js` 139,808 | 65,864 | 53,181 | 39,373 |
+| 3 (clean dist) | `index-DqqHVXgy.js` 139,808 | 65,864 | 53,181 | 39,373 |
 
-Polish-pass to verify build × 3 BYTE-IDENTICAL with the corrected Dockerfile + W137 changes baked in. Pending.
+**LOCAL build × 3 BYTE-IDENTICAL** ✓ — the `npm run build` (build-orchestrated.mjs) IS reproducible at the local level + always was (W134-W136 reports' claim that "build × 3 BYTE-IDENTICAL" is correct for the LOCAL path).
+
+**§Honesty #4 refined framing (post polish-pass)**: the LOCAL bundle hash has been consistent across W134-W137 (always `index-DqqHVXgy.js` with same sizes). The DOCKER bundle hash was the spuriously-matching one — pre-W137 Docker build was actually serving the host-cached LOCAL dist (because of `.dockerignore` `dist/` not matching `frontend/dist/` + watch+kill exiting on the stale file). Post-W137:
+- LOCAL build × 3: `index-DqqHVXgy.js` (verified ×3 BYTE-IDENTICAL post polish-pass) — VITE_BACKEND_ORIGIN unset → fallback localhost:8000 baked
+- DOCKER build (post-W137 fixed Dockerfile + VITE_BACKEND_ORIGIN=http://backend:8000): `index-tGuQB5EY.js` 39,371 server.js — different hash because origin is baked-in. Docker × 1 verified (ALL 8 SSR routes 200 + AUTHED via real chain proves the Docker build works correctly). Docker × 3 BYTE-IDENTICAL invariant DEFERRED to W138 (~30 min — `start-docker.ps1 -Build` × 3 from clean state with `rm -rf frontend/dist` between).
+
+The closure of W137 §Honesty #4 is therefore **partial**: LOCAL reproducibility was always correct + now verified ×3; the Dockerfile bug that masked Docker-vs-Local divergence is fixed; the actual Docker × 3 reproducibility post-fix waits for W138 first task (kept on critical path because it's quick).
+
+## Polish-pass invariant table
+
+Per `feedback_perfectionism.md` "безупречно?" probe response template. ~75 min budget actual.
+
+| Gate | Pre-polish status | Post-polish |
+|------|-------------------|-------------|
+| Full vitest single run | NOT RUN | ✓ **1052p / 12s / 0f** (W136 baseline preserved exactly) |
+| Full pytest backend slice | partial (255p in SW1) | ✓ **255p / 0f** (extended slice + 5 new W137 SW1 RS256 contract tests) |
+| `npm run lint` full | NOT RUN | ✓ 0 errors / 0 warnings (max-warnings=0) |
+| `npx tsc --noEmit` | NOT RUN | ✓ 0 errors |
+| Build × 3 LOCAL reproducibility | NOT VERIFIED post W137 changes | ✓ ×3 BYTE-IDENTICAL (139,808 + 65,864 + 39,373) |
+| `npm audit` | claimed but not re-run | ✓ 0 vulnerabilities |
+| Cargo.lock no drift | implicit | ✓ working tree clean |
+| i18n parity | NOT RUN | ✓ 18p (translationParity.test.ts) |
+| Tree-shake invariant | NOT CHECKED | ✓ 0 matches for `lhci-mock-user` in PROD `dist/client/assets/*.js` |
+| Commit-stat cross-check | NOT VERIFIED | ✓ 10/10 W137 commits match AUDIT_WAVE137 claims via `git show --shortstat` |
+| Memory link resolution | NOT CHECKED | ✓ 27/27 from `.claude/memory` (auto-load source) |
+| Active waves W135/W136/W137 | claimed | ✓ verified (3 active + 23 archive) |
+| Docker × 3 reproducibility | NOT VERIFIED | ⚠ deferred to W138 (~30 min — quick win for first task) |
+
+### Real polish-pass discoveries
+
+**§Honesty #4 framing nuance** (above): LOCAL build × 3 has always been reproducible (the W134-W136 claim was correct for the LOCAL path). The DOCKER claim was the spuriously-matching one (host-cached dist). Refined audit framing post polish-pass.
+
+The polish-pass took ~75 min total. Net 13 verifications (vitest, pytest, tsc, lint, npm audit, Cargo, i18n, tree-shake, build × 3 local, memory links, commit-stat, active-waves, Docker reproducibility deferred) — all green except the deferred Docker × 3 (kept on W138 critical path).
 
 ## N+3 rotation
 
