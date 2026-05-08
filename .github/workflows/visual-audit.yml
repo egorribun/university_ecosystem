@@ -85,6 +85,10 @@ jobs:
       OTEL_SDK_DISABLED: "true"
       ALGORITHM: "RS256"
       JWT_PRIVATE_KEY_PATH: ".secrets/jwt_rs256.pem"
+      # W139 SW3 iter2: explicit NATS_URL pointing at the localhost NATS
+      # service (no auth — matches backend default nats_url config). Without
+      # this, backend's NatsTaskBroker hangs at lifespan.
+      NATS_URL: "nats://127.0.0.1:4222"
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -105,6 +109,23 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # W139 SW3 iter2: NATS service added after iter1 confirmed backend
+      # lifespan hangs on `nats.aio.client._connect_to_server` with
+      # `ConnectionRefusedError: [Errno 111] Connection refused` (NATS
+      # server not running). Backend's `NatsTaskBroker` (app/core/nats_broker.py)
+      # has NO env-flag to skip; lifespan unconditionally awaits the broker
+      # via Dishka container. CI workflow must provide NATS for backend to
+      # converge. Default port 4222, no auth (matches backend default
+      # nats_url "nats://127.0.0.1:4222").
+      nats:
+        image: nats:2.10.25-alpine
+        ports:
+          - 4222:4222
+        options: >-
+          --health-cmd "wget -q -O - http://localhost:8222/varz || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
