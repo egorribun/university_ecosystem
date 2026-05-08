@@ -29,6 +29,15 @@
         -Server
     }
 
+    # Wave 137 SW4: backend's RFC 8615 well-known endpoints (JWKS, OpenID
+    # configuration, etc.) must be publicly reachable for ssrAuth.ts +
+    # external clients. Pre-W137 these fell through to the default handle
+    # (frontend SSR shell). Backend mounts the JWKS endpoint at
+    # /.well-known/jwks.json (app/api/well_known.py).
+    handle /.well-known/* {
+        reverse_proxy backend:8000
+    }
+
     # API Gateway (Go)
     handle /api/* {
         reverse_proxy gateway:8080

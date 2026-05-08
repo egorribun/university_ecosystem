@@ -56,6 +56,13 @@ COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 # but browser dedupes by href — safe.
 RUN set -e; \
     echo "=== Build with watch+kill workaround (vite-plugin-pwa hang mitigation) ==="; \
+    # Wave 137 SW4 fix: clear dist/ before build so watch+kill detects FRESH
+    # artifacts (not stale copy from host frontend/dist/). The .dockerignore
+    # `dist/` pattern only matches top-level, not `frontend/dist/`, so stale
+    # host dist/ leaks into the build context via `COPY frontend ./`.
+    # Pre-W137 SW4 this masked W134-W136 "byte-identical reproducibility"
+    # claims because the watch+kill exited immediately on the copied dist.
+    rm -rf dist; \
     npm run build > /tmp/build.log 2>&1 & \
     BUILD_PID=$!; \
     i=0; \
