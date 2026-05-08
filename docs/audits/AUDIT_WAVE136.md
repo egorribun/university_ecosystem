@@ -436,16 +436,135 @@ Carry-forward + new from W136:
 
 ## Build × 3 reproducibility re-verification (post-SW8)
 
-To be re-verified at SW8 commit (this audit + memory updates are docs-only;
-bundle should be IDENTICAL to SW6 baseline). Expected:
-- `index-DqqHVXgy.js` 139,808 × 3 (BYTE-IDENTICAL invariant per W134 polish
-  lesson)
-- `_shell.html` 65,864 × 3
-- `sw.js` 53,181 × 3
-- `server.js` 39,373 × 3
-- Workbox precache 209 files / 4.80 MB
+**VERIFIED in polish pass** (post-SW8 docs-only commits). Build × 3 with
+mtime fix from SW5 active produced identical hash + sizes across all 3
+runs:
 
-Done at end of SW8 implementation (after this audit + memory commits).
+| Build | index-DqqHVXgy.js | _shell.html | sw.js | server.js |
+|---|---|---|---|---|
+| 1 | 139,808 | 65,864 | 53,181 | 39,373 |
+| 2 | 139,808 | 65,864 | 53,181 | 39,373 |
+| 3 | 139,808 | 65,864 | 53,181 | 39,373 |
+
+**BYTE-IDENTICAL across × 3** ✓. Matches W134/W135 baseline exactly (same
+139,808 main + 65,864 shell across 3 waves).
+
+## Polish pass (post-SW8 invariant verifications)
+
+Per `feedback_perfectionism.md` "безупречно?" probe response template.
+~30-45 min budget actual.
+
+### Closed gaps (polish-pass closures)
+
+1. ✅ **Full vitest run** — **1052p / 12s / 0f** (W135 baseline preserved
+   exactly; W136 added 0 frontend tests since all 15 new tests are backend).
+2. ✅ **Cross-session vitest 5-run** — **5/5 × 1052p / 12s / 0f**. Flake
+   band = 0. Matches W135 polish baseline.
+3. ✅ **Full pytest backend slice** — **90 passed / 0 failed** (auth slice
+   + user slice + login_service + auth_concurrency + W131 cookie migration
+   + W136 SW1+SW2+SW4). Cumulative pass count W131-W136 maintained.
+4. ✅ **`npm run lint` full** — 0 errors / 0 warnings (max-warnings=0
+   enforced; broader src/ + tests/ scan including eslint-plugin-react-
+   compiler at error level + eslint-plugin-security + eslint-plugin-i18next).
+5. ✅ **Build × 3 reproducibility post-SW8** — BYTE-IDENTICAL × 3 (table
+   above). Confirmed mtime fix from SW5 + Workbox single-source from SW6
+   produce stable artifacts.
+6. ✅ **`npm audit`** — 0 vulnerabilities (W119 SW5 + W130 SW4 baseline
+   preserved through W136).
+7. ✅ **Cargo.lock no drift** — working tree clean post-build × 3
+   (idempotent ≥ 26 waves; W113 SW6 baseline preserved).
+8. ✅ **i18n parity** — `translationParity.test.ts` 18 tests passed
+   (CLDR-aware EN/RU; W136 added no user-facing strings).
+9. ✅ **Tree-shake invariant** — `find dist/client/assets -name "*.js"
+   -exec grep -l "lhci-mock-user" {} +` returns **0 matches**. PROD build
+   correctly tree-shakes VITE_LHCI auth bypass.
+10. ✅ **AUDIT_WAVE136 commit-stat cross-check** — all 9 W136 commits match
+    audit doc claims exactly via `git show --shortstat`:
+    - SW0 `3fb5451cc`: 1 file +209 ✓
+    - SW1 `b37e827e4`: 2 files +232 ✓
+    - SW2 `6989637f0`: 2 files +325 ✓
+    - SW3 `7bccb5ee7`: 2 files +392 ✓
+    - SW4 `938c797a6`: 3 files +255 ✓
+    - SW5 `c67ac5cce`: 3 files +240/-9 ✓
+    - SW6 `3314364bd`: 4 files +251/-44 ✓
+    - SW7 `51139c2e7`: 2 files +34/-148 ✓
+    - SW8 `db1377adb`: 6 files +1158/-1 ✓
+11. ✅ **Memory link resolution** — **40/40 references resolve** in
+    MEMORY.md after polish-pass fix. Pre-polish: 6 stale references
+    pointed to `docs/audits/AUDIT_WAVE12{5,6,7,8,9}.md` +
+    `docs/audits/AUDIT_WAVE130.md` — all should have pointed to
+    `docs/audits/archive/...` after their respective N+3 rotations
+    (W128 SW7 → W133 SW7). Polish-pass `sed` fix on BOTH USER `.claude` +
+    REPO `memory/` MEMORY.md copies. Re-verified all 40 links now resolve.
+12. ✅ **Active waves verification** — W134/W135/W136 ✓. Archive directory
+    has 22 entries W112-W133 (W133 newly added in W136 SW8).
+
+### Polish-pass invariant table
+
+| Gate | Pre-polish status | Post-polish |
+|------|-------------------|-------------|
+| Full vitest single run | NOT RUN | ✓ 1052p/12s/0f |
+| Cross-session vitest 5-run | NOT RUN | ✓ 5/5 × 1052p |
+| Full pytest backend slice | partial (28p in SW4) | ✓ 90p/0f |
+| `npm run lint` full | NOT RUN | ✓ 0 errors |
+| Build × 3 BYTE-IDENTICAL | × 1 only | ✓ × 3 |
+| `npm audit` | claimed but not re-run | ✓ 0 vulnerabilities |
+| Cargo.lock no drift | implicit | ✓ working tree clean |
+| i18n parity | NOT RUN | ✓ 18p |
+| Tree-shake invariant | NOT CHECKED | ✓ 0 matches |
+| Commit-stat cross-check | NOT VERIFIED | ✓ 9/9 match |
+| Memory link resolution | implicit (broken) | ✓ 40/40 (after sed fix) |
+| Active waves W134/W135/W136 | claimed | ✓ verified |
+
+### Real polish-pass discovery
+
+**Memory link rot**: 6 of 40 MEMORY.md references were stale, pointing to
+W125-W130 audit files at `docs/audits/...` instead of
+`docs/audits/archive/...`. These should have been updated when each wave
+was rotated to archive (W128 SW7 → W133 SW7 over 6 wave-closes), but the
+`sed` fix in W135 polish (which normalised
+`../../../../docs/audits/...` paths) didn't catch them. Polish-pass `sed`
+in W136 polish closes all 6.
+
+This is a **real polish-pass closure** — not "documented & deferred", but
+"actively fixed". Per `feedback_perfectionism.md` "I didn't measure / I
+didn't verify" pattern: pre-polish I claimed memory link resolution
+implicitly without verifying; polish-pass uncovered the rot + fixed it.
+
+## § Honesty probe — FINAL post-polish-pass
+
+**Pre-polish**: 12 caveats listed (6 closed via implementation; 3 W135
+carry; 3 NEW from W136 SW5+SW7).
+
+**Post-polish state**: 12 caveats → **6 CLOSED via implementation + 1 NEW
+closed via polish (memory links) = 7 closed; 5 remain**.
+
+### Closed via implementation (Tier 1 + Tier 2)
+
+(unchanged from pre-polish — see SW1-SW6 narratives above)
+
+### NEWLY closed via polish pass
+
+13. ✅ **Memory link resolution** (was implicit claim) — 6 stale
+    references fixed via `sed`. 40/40 resolve.
+
+### REMAINING (5 of 12, all structural / by-design / W137+)
+
+1. **W134 §Honesty #2 (bundle delta carry-forward)** — honest framing.
+   W136 BYTE-IDENTICAL to W135 (139,808 + 65,864). Not a fix target.
+2. **W134 §Honesty #10 (/messenger Phase 5 punted)** — no-deploy decision.
+3. **W135 §Honesty #9 (curl-only verification, not authed browser)** —
+   STILL deferred. NOW FEASIBLE via W136 SW1+SW2+SW3+SW4 infrastructure;
+   polish-pass did NOT execute the smoke (would need ~10-15 min real
+   Docker chain + Playwright authed run; deferred to W137 first task).
+4. **build-orchestrated upstream hang fix** — SW5 diagnosed; structural
+   fix is upstream (vitejs/rolldown Worker thread termination). W137+.
+5. **Tier 3 housekeeping partial** — 3 of 6 healthchecks done (SW7).
+   3 distroless services need Dockerfile changes. W137+.
+6. **Playwright /login screenshot fragility** — ParticleAuthBackground
+   canvas blocks Playwright stability check. Sidecar JSON captures the
+   diagnostic value. Acceptable trade-off; not a fix target without
+   VITE_E2E_MODE-style flag refactor. W137+.
 
 ## N+3 rotation
 
