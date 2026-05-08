@@ -370,3 +370,15 @@ native/rust_ext/fuzz/artifacts/
 *.Trashes
 ._*
 .wave136-trace/
+
+# Wave 138 polish-followup (post-2026-05-08): memory/ moved to .claude profile only.
+# Auto-load source: C:\Users\egorribun\.claude\projects\C--<repo-slug>\memory\
+# Repo `memory/` directory removed entirely — single source of truth in .claude profile.
+# This eliminates dual-location drift risk (W138 polish discovered 5 missing files
+# pre-existed in .claude but NOT in repo) + sensitive-data exposure (test creds in
+# wave-specific files required pragma:allowlist) + maintenance overhead (~25 wave-
+# specific files no longer mirrored). AUDIT_WAVE*.md remain canonical for wave history
+# in docs/audits/. CLAUDE.md ## Audit Trail rows reference memory files as plain text
+# (clickable repo links would dangle). Future memory file additions stay in .claude
+# profile only; do NOT re-create memory/ in repo.
+memory/
