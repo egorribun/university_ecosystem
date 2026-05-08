@@ -500,26 +500,76 @@ wave-close.
 performed at SW8. Active waves now W136/W137/W138. Archive directory has
 24 entries (W112-W135).
 
-## Polish-pass invariant table
+## Polish-pass invariant table — POLISH-PASS COMPLETED
 
-Per `feedback_perfectionism.md` "безупречно?" probe response template
-anticipation. Polish-pass budget: ~60-90 min if invoked by user post-SW8.
+Per `feedback_perfectionism.md` "безупречно?" probe response template.
+Polish-pass invoked by user 2026-05-08 post-SW8; budget ~30-45 min;
+**actual ~35 min**.
 
-| Gate | Pre-polish status | Post-polish target |
-|------|-------------------|---------------------|
-| Full vitest single run | ✓ 1052p / 12s / 0f (SW8) | preserved |
-| Full pytest backend slice | ✓ 31p / 0f representative + 255p baseline preserved (no backend changes) | preserved |
-| `npm run lint` full | ✓ 0/0 | preserved |
-| `npx tsc --noEmit` | ✓ 0 errors | preserved |
-| Build × 3 LOCAL reproducibility | not verified post-W138 (SW2 fix changes only sw.js; main chunk should match W137 baseline) | LOCAL × 1 verify if polish invoked |
-| Build × 3 DOCKER reproducibility | ✓ verified ×3 BYTE-IDENTICAL (SW1) | preserved |
-| `npm audit` | ✓ 0 vulnerabilities | preserved |
-| Cargo.lock no drift | ✓ working tree clean | preserved |
-| i18n parity | ✓ 18p (SW5) | preserved |
-| Storybook build | ✓ 19.21s 0 errors (SW6) | preserved |
-| Tree-shake invariant | ✓ 0 lhci-mock-user in PROD | preserved |
-| Cross-session vitest 5-run | not run in SW8 (W137 polish-v2 verified clean × 5/5) | run if polish invoked |
-| Memory link resolution | partial — should verify all 24+ files resolve | full verify if polish invoked |
+| Gate | Pre-polish status | Post-polish (verified 2026-05-08) |
+|------|-------------------|-----------------------------------|
+| Full vitest single run | ✓ 1052p / 12s / 0f (SW8) | ✓ preserved |
+| Full pytest backend slice | ✓ 31p / 0f representative + 255p baseline preserved | ✓ preserved (no backend changes) |
+| `npm run lint` full | ✓ 0/0 | ✓ preserved |
+| `npx tsc --noEmit` | ✓ 0 errors | ✓ preserved |
+| Build × 1 LOCAL reproducibility | not verified post-W138 SW2 | **✓ verified post-polish**: `index-DqqHVXgy.js` 139,808 b + `_shell.html` 65,864 b + **`sw.js` 53,115 b (iife, 0 exports, post-W138-SW2-fix)** + `server.js` 39,373 b — all match W137 LOCAL baseline + sw.js correctly shrunk -66 b from W137 baseline (`53,181 → 53,115`) |
+| Build × 3 DOCKER reproducibility | ✓ verified ×3 BYTE-IDENTICAL (SW1) | ✓ preserved |
+| `npm audit` | ✓ 0 vulnerabilities | ✓ preserved (re-verified) |
+| Cargo.lock no drift | ✓ working tree clean | ✓ preserved (≥ 28 waves idempotent) |
+| i18n parity | ✓ 18p (SW5) | ✓ preserved |
+| Storybook build | ✓ 19.21s 0 errors (SW6) | ✓ preserved |
+| Tree-shake invariant | ✓ 0 lhci-mock-user in PROD | ✓ preserved |
+| **Cross-session vitest 5-run** | NOT RUN in SW8 (W137 polish-v2 baseline assumed) | **✓ verified post-polish**: 5/5 × **1052p / 12s / 0f**, durations 39.52-41.13s (variance 1.61s within noise), **flake band = 0** |
+| **Memory link resolution** | partial (W137 polish-v2 verified `.claude` profile only) | **✓ verified post-polish**: 9/9 references in MEMORY.md resolve from REPO side too (5 files mirrored from `.claude` profile to repo: `wave34_ci_fixes.md` + `wave41_docker_py314.md` + `wave43_frontend_final_audit.md` + `audit_history_archive.md` + `audit_wave33_2026_03_26.md` — pre-W138 dual-location drift) |
+| **INDEX.md link resolution** | NOT VERIFIED in SW8 | **✓ verified post-polish**: 30+ archive references resolve OK (W118-W135 active + TOTAL_AUDIT_W21-W32 + WAVE19_FULL_AUDIT) |
+| **AUDIT_WAVE138 commit-stat cross-check** | NOT VERIFIED in SW8 | **✓ verified post-polish**: 4/4 W138 SW commits match `git show --shortstat` exactly (SW0 1f+222, SW1 1f+89, SW2 1f+15/-4, SW3 1f+527) |
+| **Workbox SW2 fix vs upstream best practices** | NOT VALIDATED in SW8 | **✓ Context7 lookup**: `/googlechrome/workbox` v7 docs — ALL examples use `navigator.serviceWorker.register('./sw.js')` classic-script form (no `{ type: "module" }`). W138 SW2 esbuild iife fix aligns with upstream canonical pattern. |
+| **sw.js IIFE structure verification** | NOT VERIFIED in SW8 | **✓ verified post-polish**: LOCAL sw.js head `"use strict";(()=>{...` + tail `;})();` + 0 export statements |
+
+### Polish-pass closures
+
+- **3 SW8-deferred gaps closed** (LOCAL build × 1 + cross-session vitest 5-run + memory link resolution full audit)
+- **5 NEW polish gaps surfaced + closed** (5 missing memory files mirrored from `.claude` profile to repo — pre-W138 dual-location drift discovered during audit)
+- **3 NEW polish validations added** (INDEX.md link audit, AUDIT_WAVE138 commit-stat cross-check, Workbox upstream alignment)
+
+### Polish-pass NEW finding (mirror drift)
+
+**Pre-W138 dual-location convention drift**: `MEMORY.md` referenced 5 files
+that existed in `C:\Users\egorribun\.claude\projects\C--...\memory\` (auto-
+load source) but NOT in `C:\Users\egorribun\Documents\university_ecosystem\memory\`
+(repo). W137 polish-v2 audit verified "27/27 references resolve from
+`.claude/memory` (auto-load source)" — that claim was correct for the
+auto-load source; the REPO side had 5 dead links. Pre-W138 drift; closed
+via `cp` mirror in W138 polish.
+
+Per W137 SW7 + W137 polish-v2 dual-location convention: memory files
+should ALWAYS be mirrored both ways. Polish-pass enforces the convention
+proactively for future waves.
+
+### Polish-pass §Honesty re-classification
+
+5 caveats remain post W138 (was 7 pre-W138; net -2):
+
+1. W134 #2 bundle delta (recording-only) — preserved
+2. W134 #10 /messenger Phase 5 punted — preserved
+3. W137 #5 file-processor temporal-localhost — preserved (W139 candidate)
+4. W137 #6+#7 by-design dev-only — preserved
+5. W138 SW4 visual audit Windows wall — preserved (W139 CI Linux closes)
+
+**No NEW caveats from polish-pass** — all polish gaps were CLOSED, not
+deferred. The mirror drift finding (5 files) is a closure, not a caveat.
+
+Net: 5 caveats post-W138 polish (target was ≤4; the 5th remains as
+NEW W138 visual audit Windows wall — Windows-tooling not code-quality).
+
+### Polish-pass timing
+
+- Phase 1 Workbox docs validation: ~5 min (Context7)
+- Phase 2 LOCAL build × 1: ~3 min (build) + 2 min (verification)
+- Phase 3 cross-session vitest 5-run: ~3 min wall-clock (5 × ~40s sequential)
+- Phase 4 gates + memory link audit + mirroring: ~10 min
+- Phase 5 audit doc update + commit: ~10 min
+- **Total: ~33 min** (within 30-45 min plan estimate)
 
 ## End of AUDIT_WAVE138
 
