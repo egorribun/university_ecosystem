@@ -136,7 +136,7 @@ Path          HTTP    Auth      Console err   Hydr err    Body chars  Net req   
 exit=0
 ```
 
-The 1 console error per route is the expected Service Worker registration failure (vite-plugin-pwa workbox-build not run in watch+kill workaround per CLAUDE.md gotcha — sw.js placeholder unresolved). Filed for W138+ under build-orchestrated upstream hang fix scope.
+The 1 console error per route is `ServiceWorker script evaluation failed` — but the underlying cause is NOT what the original audit framing claimed. Polish-v2 verification: sw.js IS correctly compiled in BOTH local + Docker builds (53,181 bytes, Workbox 7.4.0, `__WB_MANIFEST` placeholder replaced — precache manifest is WIRED). The "evaluation failed" error happens during browser-side SW registration AFTER the script is delivered + parsed. Specific root cause NOT investigated in W137 (could be: CSP-related, runtime dependency missing in SW context, or headless-Chrome-specific quirk). Filed as W138 candidate (~1h investigation). Original audit framing "(placeholder per workbox-build skip)" was incorrect and refined here.
 
 ## SW5-honesty (`c95acfe8a`)
 
