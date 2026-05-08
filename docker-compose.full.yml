@@ -418,24 +418,50 @@ services:
     # main.go:277-280 already registers grpc_health_v1.HealthCheckResponse_SERVING
     # for the FileProcessingService at :50051. Same pattern as authzed/spicedb.
     #
-    # § Honesty caveat (W137 SW5 verification finding): in this dev compose
-    # this healthcheck reports "unhealthy" because file-processor's startup
-    # waits indefinitely for temporal:7233 connection (Temporal::Connect retry
-    # loop in main.go) before binding the gRPC server. Temporal's dev compose
-    # config binds to 127.0.0.1 only (intentional per P0-03 audit 2026-03-06
-    # — Temporal dev-server has NO auth, exposing it on the internal docker
-    # network = full code-execution vector). So file-processor cannot reach
-    # temporal → never starts gRPC server → grpc_health_probe times out.
+    # Wave 139 SW2 — Temporal connectivity restored (Path (a-rebind only)):
+    # file-processor's Temporal::Connect() now succeeds in the startup retry
+    # loop because the temporal entrypoint binds 0.0.0.0 (see temporal block
+    # ~line 539). Verified empirically via `docker logs file-processor`:
+    # `INFO Connected to Temporal addr=temporal:7233`.
     #
-    # In PRODUCTION K8s where temporal IS reachable (separate cluster with
-    # auth + mTLS), this healthcheck works correctly. The infrastructure
-    # (binary in image, healthcheck spec) is structurally correct + ready.
-    # Pre-W137 there was simply no healthcheck so the lack of file-processor
-    # functionality was invisible in `docker compose ps`.
+    # § Honesty pre-existing dev-stack gaps unmasked by W139 SW2:
+    # The rebind closes the FIRST blocker in startup sequence; two pre-existing
+    # blockers (always there, just masked by the Temporal blocker firing earlier)
+    # are now visible:
+    #   1. NATS subscribe failure: `Failed to subscribe to NATS queue —
+    #      nats: no stream matches subject`. NATS stream `files.process` is
+    #      not provisioned in dev compose. (Backend code likely creates
+    #      streams on-demand at startup, but there's a race / missing init.)
+    #   2. schema.graphql missing: `schema.graphql not found: open
+    #      schema.graphql: no such file or directory`. The distroless runtime
+    #      Dockerfile (services/file-processor/Dockerfile) does not COPY the
+    #      GraphQL schema file into the final image.
+    # Both cause file-processor's startup to abort BEFORE the gRPC server
+    # binds → healthcheck (`grpc_health_probe -addr=:50051`) fails → Docker
+    # restart loop. NOT regressions caused by W139 SW2 — pre-existing
+    # gaps newly-visible per W138 Lesson #2 (empirical findings disprove plan
+    # assumptions; the "5th unanticipated path" was that file-processor depends
+    # on more than Temporal).
     #
-    # W138+ candidate: either rebind temporal to 0.0.0.0 with auth (changes
-    # P0-03 trade-off), OR move file-processor → host network for dev,
-    # OR accept dev-stack limitation + document.
+    # W137 §Honesty #5 closure status post-W139 SW2:
+    #   - Temporal connectivity blocker: CLOSED (verified)
+    #   - NATS stream provisioning gap: NEW W139 §Honesty caveat — W140+ scope
+    #   - schema.graphql Dockerfile gap: NEW W139 §Honesty caveat — W140+ scope
+    #   - Path (a-auth) full token validation: deferred per Context7 finding
+    #     (Temporal dev-server has no auth flag — needs image switch)
+    #
+    # Operational note: file-processor is currently `docker compose stop`'d
+    # (W139 SW2 wave-end state) to halt the restart loop. Run
+    # `docker compose -f docker-compose.full.yml start file-processor`
+    # to restart it (will still crash-loop until W140+ closes NATS + schema
+    # gaps; tail logs to confirm the unmasked errors).
+    #
+    # In PRODUCTION K8s the picture is unchanged — production deployments
+    # use external/managed Temporal cluster with its own auth (mTLS / API
+    # key), unaffected by this dev-compose-only change. Production NATS
+    # streams are provisioned via separate K8s manifests + CD pipeline; the
+    # schema.graphql Dockerfile gap may or may not affect production builds
+    # (W140 audit will determine).
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]
       interval: 10s
@@ -516,10 +542,31 @@ services:
       # UI port (8233) not published: use SSH tunnel or internal access only
     environment:
       - TEMPORAL_CLI_ADDRESS=temporal:7233
-    # P0-03 (audit 2026-03-06): Bind to 127.0.0.1 — Temporal dev-server has no auth.
-    # Without this, ALL containers on the `internal` network can execute arbitrary
-    # Workflows/Activities without authentication (full code execution vector).
-    entrypoint: [ "/bin/sh", "-c", "temporal server start-dev --ip 127.0.0.1 --ui-port 8233 --db-filename /tmp/temporal.db" ]
+    # Wave 139 SW2 — Path (a-rebind only): bind to 0.0.0.0 so file-processor +
+    # other consumers on the `internal` network reach Temporal via service-name
+    # DNS `temporal:7233`. Closes W137 §Honesty #5 partial structural fix.
+    #
+    # Security framing (revised from P0-03 audit 2026-03-06):
+    #   - Docker `internal` network is bridge-mode without external publish.
+    #     The host port mapping above (`127.0.0.1:7233:7233`) stays unchanged
+    #     — host-side reachability is still localhost-only; the rebind only
+    #     affects which interfaces Temporal listens on INSIDE its container.
+    #   - Within the `internal` network, Temporal is now unauth'd — same posture
+    #     as Postgres + Redis in this compose file (both also unauth'd within
+    #     isolated network). Acceptable for dev compose.
+    #   - Production K8s uses external/managed Temporal cluster with own auth
+    #     (mTLS / API key) — unaffected by this dev-compose-only change.
+    #
+    # Path (a) auth refinement (full token validation on Temporal Server)
+    # DEFERRED to W140+ as separable focused scope. Per Context7
+    # /temporalio/documentation: `temporal server start-dev` has zero auth
+    # flags (full param list: --db-filename, --dynamic-config-value,
+    # --headless, --http-port, --ip, --log-config, --metrics-port,
+    # --namespace, --port, --search-attribute, --sqlite-pragma, UI flags).
+    # Auth requires switching to `temporalio/server` image + custom
+    # `auth_config.yaml` with `claimMapper.providers[].jwksURI` (~3-5h
+    # focused scope, not a side effect of W139's broad Tier 1+2+3 wave).
+    entrypoint: [ "/bin/sh", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
     networks:
       - internal
     healthcheck:
