@@ -1,0 +1,384 @@
+# Wave 139 SW1 — Linux on-demand visual a11y audit (axe-core via wave138-visual-audit.mjs).
+#
+# ## Why this exists
+#
+# Wave 138 SW3 created `frontend/scripts/wave138-visual-audit.mjs` (~527 LoC),
+# the first per-page visual a11y audit infra feasible since the SSR migration
+# arc started in W125. SW3+SW4 hit the W137 SW7 Windows heavy-DOM wall family:
+# AxeBuilder.analyze() injects axe-core via page.evaluate, which hangs on
+# /dashboard's heavy SSR-rendered DOM in Chrome on Windows headless mode.
+#
+# Linux runners do NOT have this wall — same script, different OS = works.
+# This workflow is the Linux execution path that closes W138 §Honesty #4.
+#
+# ## Triggers
+#
+# `workflow_dispatch` only — manual run via Actions UI or `gh workflow run`.
+# Triggering on PR/push is intentionally NOT done. Visual a11y audits are
+# investigative, not blocking gates. `ci.yml`'s e2e + LHCI matrix already
+# covers blocking gates; this is for on-demand deep-dives + violation
+# triage during W139 SW3+SW4 + future per-page polish arcs.
+#
+# ## Architecture (no Docker compose — uses runner-host services pattern)
+#
+# wave138-visual-audit.mjs requires a SINGLE ORIGIN that serves both
+# backend (/.well-known/jwks.json, /api/v1/auth/*) and frontend (/dashboard
+# SSR + others). In dev compose, Caddy is the unified ingress. Reproducing
+# that on a Linux runner without docker-compose-ing the full stack:
+#
+#   - backend: `uv run uvicorn` on :8000 (mirrors reusable-e2e-tests.yml)
+#   - frontend Node SSR: `npm run start` on :3000 (W131 SW1 server-prod.mjs)
+#   - Caddy ingress: `docker run caddy --network host` on :80 with minimal
+#     Caddyfile that routes /api/v1/* + /.well-known/* → :8000, default → :3000
+#   - postgres + redis: GitHub Actions `services:` (mirrors reusable-e2e-tests.yml)
+#
+# Trade-off vs full Docker compose: simpler, faster, fewer secrets needed,
+# matches the existing reusable-e2e-tests pattern. Skips ws-hub, file-processor,
+# Temporal, MinIO, Elasticsearch — none needed for the visual audit on the
+# 8 SSR routes (all read-only renders).
+#
+# ## RS256 keypair
+#
+# Mirrors start-docker.ps1 New-JwtRs256Key (.NET 8 PowerShell-only). Linux
+# uses openssl genpkey + standard PKCS#8 PEM. Same key shape; backend reads
+# via JWT_PRIVATE_KEY_PATH env, JWKS endpoint serves public key derivation.
+#
+# ## Test user
+#
+# Visual audit script logs in as test@university.dev / TestPass@2024x (per
+# CLAUDE.md test user convention). Workflow registers this user via
+# /api/v1/auth/register POST (idempotent — 409 OK if exists).
+#
+# ## Carries forward
+#
+# When file-processor Path (a-rebind only) lands in W139 SW2, this workflow
+# will need to add file-processor + Temporal services if visual audit ever
+# needs to test image-resize-dependent flows. Out of scope for W139 visual
+# audit (read-only routes don't trigger file-processor).
+name: Visual Audit (Linux On-Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      routes:
+        description: "Comma-separated route subset (empty = full 8-SSR-route sweep). Example: `/dashboard` or `dashboard,events`."
+        required: false
+        type: string
+        default: ""
+
+permissions: read-all
+
+concurrency:
+  group: visual-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual-audit:
+    name: Axe a11y audit on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Backend env (mirrors reusable-e2e-tests.yml + adds RS256)
+      SECRET_KEY: "dummy_secret_key_for_visual_audit_ci_at_least_32_chars"  # pragma: allowlist secret
+      ENVIRONMENT: testing
+      DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_visual_audit"  # pragma: allowlist secret
+      OTEL_SDK_DISABLED: "true"
+      ALGORITHM: "RS256"
+      JWT_PRIVATE_KEY_PATH: ".secrets/jwt_rs256.pem"
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test  # pragma: allowlist secret
+          POSTGRES_DB: test_visual_audit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install backend dependencies
+        run: uv sync --frozen
+
+      # P0-01 (audit 2026-03-06): SHA-pinned to prevent supply chain attack
+      # via mutable @v2 tag. Equivalent to taiki-e/install-action@v2.75.22.
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2.75.22
+        with:
+          tool: wasm-pack
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build WASM modules
+        working-directory: frontend
+        run: |
+          wasm-pack build rust-crypto --target web
+          wasm-pack build wasm-sanitizer --target web
+
+      - name: Generate RS256 keypair
+        # Mirrors start-docker.ps1 New-JwtRs256Key (W137 SW1):
+        # RSA-2048 PKCS#8 PEM at .secrets/jwt_rs256.pem. Backend reads via
+        # JWT_PRIVATE_KEY_PATH; /.well-known/jwks.json endpoint derives
+        # public key from this private key + serves it as JWK.
+        run: |
+          mkdir -p .secrets
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/jwt_rs256.pem
+          ls -la .secrets/jwt_rs256.pem
+          echo "OK: RS256 keypair generated"
+
+      - name: Run database migrations
+        run: uv run alembic upgrade head
+
+      - name: Build frontend (production, NOT VITE_LHCI bypass)
+        # Visual audit needs the REAL authed flow, not the VITE_LHCI mock-user
+        # bypass. Production build path is the same one prod-deploy uses.
+        # Tree-shake invariant verified post-build (zero `lhci-mock-user` in
+        # PROD assets — would indicate the bypass leaked, which is a
+        # prod-security regression per CLAUDE.md gotcha).
+        working-directory: frontend
+        env:
+          VITE_BACKEND_ORIGIN: http://localhost
+        run: |
+          npm run build
+          if find dist/client/assets -name "*.js" -exec grep -l "lhci-mock-user" {} + 2>/dev/null | grep -q .; then
+            echo "::error::VITE_LHCI tree-shake invariant violated — non-LHCI build contains mock-user reference"
+            exit 1
+          fi
+          echo "OK: production frontend build tree-shakes VITE_LHCI bypass cleanly"
+
+      - name: Install Playwright bundled chromium
+        # Wave 138 SW3 explicitly uses bundled Chromium (NOT real Chrome via
+        # `channel: "chrome"`). AxeBuilder injects axe-core via page.evaluate;
+        # real Chrome path hits the Windows heavy-DOM eval wall family. Bundled
+        # Chromium matches a11y-public.spec.ts working pattern (W113 SW1).
+        # On Linux this distinction is moot for the wall (Linux doesn't have
+        # the wall) but we keep bundled chromium for consistency with W138 SW3.
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start backend
+        # uvicorn on 127.0.0.1:8000 — same as reusable-e2e-tests.yml.
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for backend health
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:8000/health > /dev/null; then
+              echo "OK: backend ready"
+              exit 0
+            fi
+            echo "Waiting for backend... ($i/30)"
+            sleep 2
+          done
+          echo "::error::Backend failed to start within 60s"
+          exit 1
+
+      - name: Verify JWKS endpoint
+        # JWKS endpoint MUST serve at least 1 RS256 key. wave138-visual-audit.mjs
+        # checks both /api/v1/.well-known/jwks.json and /.well-known/jwks.json
+        # paths (W137 SW4 pattern). Linux backend serves at the same paths
+        # as Caddy-fronted dev compose.
+        run: |
+          if ! curl -sf http://127.0.0.1:8000/.well-known/jwks.json | python -c "import sys, json; d = json.load(sys.stdin); keys = d.get('keys', []); assert len(keys) > 0, 'JWKS empty'; print(f'OK: JWKS has {len(keys)} key(s)')"; then
+            echo "::error::JWKS endpoint not serving keys (RS256 backend setup broken)"
+            exit 1
+          fi
+
+      - name: Seed test user
+        # Idempotent registration: 409 means user exists from prior run reuse.
+        # The visual audit script logs in as test@university.dev / TestPass@2024x
+        # — these are the CLAUDE.md-documented test credentials.
+        run: |
+          STATUS=$(curl -s -o /tmp/register.json -w "%{http_code}" -X POST http://127.0.0.1:8000/api/v1/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"email": "test@university.dev", "password": "TestPass@2024x", "full_name": "Visual Audit User"}' || echo "ERROR")
+          echo "Register response: HTTP $STATUS"
+          cat /tmp/register.json || true
+          echo ""
+          # 200/201 = created; 409 = exists; anything else fails the workflow
+          case "$STATUS" in
+            200|201) echo "OK: test user created" ;;
+            409) echo "OK: test user already exists (idempotent)" ;;
+            *) echo "::error::Test user registration failed: HTTP $STATUS"; exit 1 ;;
+          esac
+
+      - name: Start frontend Node SSR
+        # W131 SW1 server-prod.mjs: bare Node SSR on :3000 (NOT Caddy ingress).
+        # /healthz fast-path returns <10ms (W131 SW2). VITE_BACKEND_ORIGIN baked
+        # at build time = http://localhost (matches Caddy ingress below).
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+          PORT: "3000"
+          HOST: "0.0.0.0"
+        run: |
+          npm run start &
+          echo "FRONTEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for frontend Node SSR health
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:3000/healthz > /dev/null; then
+              echo "OK: frontend Node SSR ready"
+              exit 0
+            fi
+            echo "Waiting for frontend... ($i/30)"
+            sleep 2
+          done
+          echo "::error::Frontend Node SSR failed to start within 60s"
+          exit 1
+
+      - name: Start Caddy ingress
+        # Caddy on :80 (host network) routes:
+        #   /api/v1/*           → backend :8000
+        #   /.well-known/*      → backend :8000
+        #   default (frontend)  → Node SSR :3000
+        # Mirrors infrastructure/Caddyfile dev pattern minus TLS (HTTP only on CI).
+        # docker run with `--network host` so caddy can reach 127.0.0.1:8000 +
+        # 127.0.0.1:3000 directly — simpler than mapping individual ports.
+        run: |
+          cat > /tmp/Caddyfile <<'EOF'
+          {
+            auto_https off
+            admin off
+          }
+          :80 {
+            handle /api/v1/* {
+              reverse_proxy 127.0.0.1:8000
+            }
+            handle /.well-known/* {
+              reverse_proxy 127.0.0.1:8000
+            }
+            handle {
+              reverse_proxy 127.0.0.1:3000
+            }
+          }
+          EOF
+          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.2-alpine
+          # Wait for Caddy proxy chain
+          for i in {1..15}; do
+            if curl -sf http://localhost/healthz > /dev/null && curl -sf http://localhost/.well-known/jwks.json > /dev/null; then
+              echo "OK: Caddy ingress reachable + proxying correctly"
+              exit 0
+            fi
+            echo "Waiting for Caddy proxy... ($i/15)"
+            sleep 2
+          done
+          echo "::error::Caddy proxy chain not reachable"
+          docker logs caddy || true
+          exit 1
+
+      - name: Run visual audit script
+        # ORIGIN=http://localhost — Caddy on :80 fronts backend + frontend Node SSR.
+        # ROUTES env from workflow_dispatch input (empty = full sweep).
+        # `continue-on-error: true` so artifact upload always runs (script exit
+        # codes 1-5 indicate violations or setup issues; we want the sidecar JSON).
+        working-directory: frontend
+        env:
+          ORIGIN: http://localhost
+          ROUTES: ${{ inputs.routes }}
+          TEST_EMAIL: test@university.dev
+          TEST_PASSWORD: TestPass@2024x  # pragma: allowlist secret
+        run: node ./scripts/wave138-visual-audit.mjs
+        continue-on-error: true
+
+      - name: Print summary table
+        # Reads .screenshots/wave138-visual-audit/*.json sidecar files + emits
+        # markdown to $GITHUB_STEP_SUMMARY for at-a-glance review without
+        # artifact download (mirrors lhci-linux.yml summary pattern).
+        if: always()
+        working-directory: frontend
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const dir = ".screenshots/wave138-visual-audit";
+            if (!fs.existsSync(dir)) {
+              console.log("No sidecar JSONs to summarize (script may have failed before producing reports)");
+              process.exit(0);
+            }
+            const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+            if (files.length === 0) {
+              console.log("No JSON sidecars found");
+              process.exit(0);
+            }
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            const lines = [];
+            lines.push("## Visual Audit Results (Linux On-Demand)");
+            lines.push("");
+            lines.push("| Route | HTTP | Auth | Hydr err | Console err | Axe critical/serious | Net req |");
+            lines.push("|---|---|---|---|---|---|---|");
+            for (const f of files.sort()) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+                const route = r.route ?? f.replace(/\.json$/, "");
+                const http = r.httpStatus ?? "-";
+                const authed = r.authed === false ? "NO" : "AUTHED";
+                const hyd = r.hydrationErrorCount ?? 0;
+                const cons = (r.consoleMessages ?? []).filter((m) => m.type === "error" || m.type === "pageerror").length;
+                const axe = r.axeViolationCount ?? (r.axeViolations ?? []).length;
+                const net = (r.networkRequests ?? []).length;
+                lines.push(`| ${route} | ${http} | ${authed} | ${hyd} | ${cons} | ${axe} | ${net} |`);
+              } catch (e) {
+                lines.push(`| (${f}) | - | - | - | - | parse-error | - |`);
+              }
+            }
+            const out = lines.join("\n");
+            console.log(out);
+            if (summary) {
+              fs.appendFileSync(summary, out + "\n");
+            }
+          '
+
+      - name: Terminate background processes
+        if: always()
+        run: |
+          if [ -n "$BACKEND_PID" ]; then kill "$BACKEND_PID" 2>/dev/null || true; fi
+          if [ -n "$FRONTEND_PID" ]; then kill "$FRONTEND_PID" 2>/dev/null || true; fi
+          docker rm -f caddy 2>/dev/null || true
+
+      - name: Upload audit reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: visual-audit-reports
+          path: frontend/.screenshots/wave138-visual-audit
+          retention-days: 14
+          if-no-files-found: warn
