@@ -192,22 +192,37 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Start backend
-        # uvicorn on 127.0.0.1:8000 — same as reusable-e2e-tests.yml.
+        # uvicorn on 127.0.0.1:8000 with --log-level debug + redirect to log file
+        # so the next "Wait for backend health" step can tail it on timeout.
+        # W139 SW3 first-run discovery: backend lifespan calls
+        # _startup_background_workers which connects to NATS/ES/SpiceDB (services
+        # NOT running on CI Linux runner — only postgres + redis from
+        # `services:` block). Without log capture, lifespan hang produces NO
+        # diagnostic output. Adding `> /tmp/backend.log 2>&1` surfaces the
+        # actual hang point.
         run: |
-          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level debug > /tmp/backend.log 2>&1 &
           echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
 
       - name: Wait for backend health
+        # 180s timeout (90 × 2s) — extended from 60s in W139 SW3 first-run iter.
+        # Backend startup on CI Linux includes lifespan with potential service
+        # discovery delays (NATS/ES/SpiceDB connect attempts may have long
+        # default timeouts before erroring + continuing). On timeout, tail
+        # backend log for diagnostic visibility.
         run: |
-          for i in {1..30}; do
+          for i in {1..90}; do
             if curl -sf http://127.0.0.1:8000/health > /dev/null; then
-              echo "OK: backend ready"
+              echo "OK: backend ready after $i attempts (~$(( i * 2 ))s)"
               exit 0
             fi
-            echo "Waiting for backend... ($i/30)"
             sleep 2
           done
-          echo "::error::Backend failed to start within 60s"
+          echo "::error::Backend failed to start within 180s"
+          echo "---backend-log-tail---"
+          tail -200 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
+          echo "---ps-aux-uvicorn---"
+          ps aux | grep -i uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
           exit 1
 
       - name: Verify JWKS endpoint
