@@ -4,6 +4,7 @@
 // (Wave 120 SW1, default since Wave 121 SW2) is what reads LHR fields —
 // see that file's `parseLhr()` JSDoc for the property-path dependencies
 // that have been verified compatible with Lighthouse 13.1.0.
+import { existsSync } from "node:fs"
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -136,7 +137,16 @@ async function createConfig() {
   }
 
   if (!useRemotePreview) {
-    collect.staticDistDir = path.resolve(frontendRoot, "dist")
+    // W139 SW5 fix — post-W125 SSR migration, dist/ is split into dist/client/
+    // (browser bundle + index.html) + dist/server/ (SSR handler). Lighthouse
+    // staticDistDir must point at dist/client/ for index.html-driven routes.
+    // Pre-W125 the file was at dist/index.html. Defensive detection.
+    const distClientDir = path.resolve(frontendRoot, "dist", "client")
+    const distLegacyDir = path.resolve(frontendRoot, "dist")
+    const distDir = existsSync(path.join(distClientDir, "index.html"))
+      ? distClientDir
+      : distLegacyDir
+    collect.staticDistDir = distDir
     collect.isSinglePageApplication = true
   } else {
     collect.startServerCommand = "node scripts/lhci-preview.mjs"

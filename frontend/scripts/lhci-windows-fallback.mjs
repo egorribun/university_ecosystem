@@ -102,7 +102,15 @@ if (process.platform !== "win32") {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
-const distDir = path.join(frontendRoot, "dist")
+// W139 SW5 fix — post-W125 SSR migration, dist/ split into dist/client/ +
+// dist/server/. Lighthouse must serve from dist/client/ where index.html
+// lives. Pre-W125 it was dist/index.html. Defensive detection (matches
+// prepare-lhci-routes.mjs + run-lhci.mjs).
+const distClientDir = path.join(frontendRoot, "dist", "client")
+const distLegacyDir = path.join(frontendRoot, "dist")
+const distDir = existsSync(path.join(distClientDir, "index.html"))
+  ? distClientDir
+  : distLegacyDir
 const lhrDir = path.join(frontendRoot, ".lighthouseci")
 
 // CRITICAL: set VITE_LHCI BEFORE any build invocation so Rolldown DCE
