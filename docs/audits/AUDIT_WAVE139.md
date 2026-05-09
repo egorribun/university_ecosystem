@@ -95,9 +95,23 @@ surprises consumed time but did not exceed envelope).
 
 ---
 
-## §3. (z) Path discovery list (W139 = highest (z) count of any wave to date)
+## §3. (z) Path discovery list (W139 = highest documented count under formal naming)
 
 Per W138 Lesson #2 pattern — empirical findings disprove plan assumptions.
+
+**Comparative count caveat (added in polish-pass)**: The formal `(z) Path`
+naming convention was introduced in W138 polish-pass (per W138 design doc
++ Lesson #2 quote: "include '(z) something we haven't thought of' as
+explicit hypothesis path in future investigation plans"). Pre-W138 audit
+docs do NOT use the `(z)` label — `grep -F "(z)"` against
+`docs/audits/AUDIT_WAVE137.md` returns 0 matches. So claims like "W137 had
+3 (z) Path discoveries" are **comparatively incorrect** when measured by
+formal naming; W137 had structural surprises (e.g. VITE_BACKEND_ORIGIN
+build-time baking, ALLOWED_HOSTS env var, Dockerfile dist-clear masking
+reproducibility) but they weren't categorised under the `(z)` umbrella.
+W138 had 1 formal `(z)` (esbuild format mismatch). W139 documents 10 here.
+The correct framing: **W139 surfaced 10 (z) findings under formal naming;
+prior waves' structural surprises pre-date the (z) framing convention.**
 
 ### (z) #1 — Temporal dev-server has zero auth flags (PRE-impl Context7)
 
@@ -169,12 +183,19 @@ Phase 1 Explore Agent 2 found it IS invoked at ci.yml:426. Polish
 discovers PRIOR-wave audit-claim drift. Documented as new gotcha for
 future polish-passes.
 
-**Total: 9 (z) discoveries this wave** — the largest (z) count of any
-documented wave. Per W138 Lesson #2 + `feedback_perfectionism.md`,
-each is a structural surprise documented honestly rather than papered
-over. W138 had 1 (z) (esbuild format mismatch); W137 had 3 (z)
-(VITE_BACKEND_ORIGIN baking, ALLOWED_HOSTS env var, file-processor
-host-cached dist masking reproducibility); W139 sets a new bar.
+**Total: 10 (z) discoveries this wave** (corrected from "9" in original
+audit framing — (z) #10 PAGE_HUNG surfaced post-iter3 fix is included
+when counting empirical findings honestly). Per W138 Lesson #2 +
+`feedback_perfectionism.md`, each is a structural surprise documented
+honestly rather than papered over. **Comparative caveat (polish-pass
+finding)**: pre-W138 waves do NOT use formal `(z)` labelling so
+counting comparison is apples-to-oranges; W137 had structural surprises
+without (z) labels (VITE_BACKEND_ORIGIN baking, ALLOWED_HOSTS env var,
+file-processor host-cached dist masking) that would qualify as (z)
+findings retroactively but weren't categorised that way. W138 had 1
+formal (z) (esbuild format mismatch). W139 sets a new bar **under
+formal (z) naming convention**, not necessarily under raw structural-
+surprise counting.
 
 ---
 
@@ -359,7 +380,7 @@ decision. W140+ has a clearer baseline to start from.
 | `npx tsc --noEmit` | 0 errors | ✓ 0 |
 | `npm run lint` (max-warnings=0) | 0 errors / 0 warnings | ✓ 0/0 |
 | `npx vitest run` (full single) | 1052p / 12s / 0f | ✓ **1052p / 12s / 0f** |
-| Cross-session vitest 5-run | 5/5 × 1052p flake band = 0 | ✓ **5/5 × 1052p**, durations 27.76-33.30s (variance 5.54s, FASTER than W138 39.52-41.13s baseline by ~6-12s/run) |
+| Sequential vitest 5-run (single bash session) | 5/5 × 1052p flake band = 0 | ✓ **5/5 × 1052p**, durations 27.76-33.30s (variance 5.54s, FASTER than W138 39.52-41.13s baseline by ~6-12s/run). **Polish-pass framing caveat**: this is sequential `npx vitest run` × 5 in ONE bash session, NOT strict cross-session per W124 SW4 methodology (which requires SEPARATE Node processes / separate shell sessions). The faster durations (vs W138) may partially reflect warm Node.js/disk caches across sequential runs in same session. Strict cross-session verification = W140+ candidate. |
 | pytest backend slice | 31p / 0f representative + 255p baseline | ✓ preserved (no backend changes in W139 — only docker-compose comments + entrypoint flag) |
 | `npm run i18n:check` | 18p | ✓ 18p / 1.38s |
 | `npm run build-storybook` | 0 errors | ✓ 18.14s 0 errors |
@@ -368,7 +389,7 @@ decision. W140+ has a clearer baseline to start from.
 | LOCAL bundle baseline | `index-DqqHVXgy.js` 139,808 b + `_shell.html` 65,864 b + `sw.js` 53,115 b + `server.js` 39,373 b | ✓ preserved EXACTLY (no frontend code changes in W139) |
 | Tree-shake invariant | 0 `lhci-mock-user` matches in PROD `dist/client/assets/*.js` | ✓ 0 matches |
 | SW IIFE invariant | 0 `export{` in sw.js + head `"use strict";(()=>{...` + tail `;})();` | ✓ |
-| `docker compose ps file-processor` | `(healthy)` | ⚠ **STILL `(unhealthy)` post-W139 SW2** — Temporal connectivity blocker CLOSED, but pre-existing NATS + schema.graphql gaps unmasked → file-processor `docker compose stop`'d at SW2 wave-end. NEW W139 §Honesty caveats. |
+| `docker compose ps file-processor` | `(healthy)` | ⚠ **`Exited (1)` post-W139 SW2 wave-end** — Temporal connectivity blocker CLOSED, but pre-existing NATS + schema.graphql gaps unmasked → file-processor `docker compose stop`'d to halt restart loop. Polish-pass verified state via `docker ps -a`: `Exited (1) 8 hours ago` (NOT "unhealthy" — original audit framing was inaccurate; polish-pass corrected). NEW W139 §Honesty caveats. |
 | Active waves N+3 | W137/W138/W139 | ✓ post-rotation |
 | Archive directory | 25 entries (W112-W136) | ✓ post-rotation |
 | MEMORY.md size | < 24,400 bytes | ✓ within budget post-update |
@@ -394,6 +415,48 @@ W139 closures + new + carry:
    actually run on CI Linux; cascading first-run issues identified
    structural infra debt as the blocker → SW3 DEFERRED to W140+ as
    focused scope ("CI infra completion for visual-audit.yml").
+
+### Polish-pass added findings (no new caveats; framing corrections)
+
+- **(z) #11 (post-polish)**: GitHub Actions branch protection warning on
+  push to `main` for `4db94fb5a` cherry-pick — push succeeded but
+  remote stderr emitted `remote: - Changes must be made through a
+  pull request.`. Push went through (likely admin-override OR soft
+  rule), but this indicates a branch-protection rule is configured.
+  Future cherry-picks to main may fail under stricter enforcement;
+  W140+ should consider PR-based merge for any further main pushes.
+  This finding does NOT add a §Honesty caveat (push succeeded; rule
+  was advisory) but is documented for transparency.
+
+- **A1+A2 commit-stat verification** (polish-pass): all 9 W139 commits
+  on egorribun + 1 on main verified against `git show --shortstat`.
+  ALL match audit doc claims EXACTLY (no inflation, no understatement).
+  Specifically: SW0 (1 file +223), SW1 (1 file +384), SW2 (2 files
+  +75/-20), SW3 iter1 (1 file +21/-6), SW3 iter2 (1 file +21), SW5
+  path (3 files +30/-3), SW5 hardcode (1 file +12/-8), SW6 (1 file
+  +6/-6), SW7 (4 files +618/-3), main cherry-pick (1 file +384).
+
+- **A4 file:line citation drift** (polish-pass): `docker-compose.full.yml:539`
+  citation in CLAUDE.md gotcha + audit doc was inaccurate — line
+  expanded to 569 due to comment-block additions in W139 SW2 itself.
+  Fixed in polish-pass commit. Other citations (`register-sw.ts:49`,
+  `services/file-processor/cmd/file-processor/main.go:159-161`,
+  `services/file-processor/internal/config/config.go:48`,
+  `app/core/middleware/setup.py:154`, `ci.yml:426`) all verified
+  accurate post-fix.
+
+- **A5 defensive bundle rebuild × 1** (polish-pass): `BUILD_SKIP_PWA=true
+  npm run build` (per W135 SW3 Windows hang workaround) produced
+  `index-DqqHVXgy.js` **139,808 bytes**, `_shell.html` 65,864 bytes,
+  `sw.js` 53,115 bytes, `server.js` 39,373 bytes — **EXACTLY matches
+  W138 close baseline**. "Bundle baseline preserved EXACTLY" claim
+  CONFIRMED via empirical rebuild (W138 polish invariant).
+
+- **A6 LHCI iter3 artifacts unavailable** (polish-pass): `gh run download
+  25588904029` returned "no valid artifacts found to download" —
+  Lighthouse failed at navigation (PAGE_HUNG) BEFORE producing LHR
+  JSON. No (z) #12+ surfaced via this mechanism; investigation would
+  require headless Chrome with local serve.
 
 ### NEW W139 §Honesty caveats (3)
 
