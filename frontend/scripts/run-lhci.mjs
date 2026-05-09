@@ -139,14 +139,18 @@ async function createConfig() {
   if (!useRemotePreview) {
     // W139 SW5 fix — post-W125 SSR migration, dist/ is split into dist/client/
     // (browser bundle + index.html) + dist/server/ (SSR handler). Lighthouse
-    // staticDistDir must point at dist/client/ for index.html-driven routes.
-    // Pre-W125 the file was at dist/index.html. Defensive detection.
-    const distClientDir = path.resolve(frontendRoot, "dist", "client")
-    const distLegacyDir = path.resolve(frontendRoot, "dist")
-    const distDir = existsSync(path.join(distClientDir, "index.html"))
-      ? distClientDir
-      : distLegacyDir
-    collect.staticDistDir = distDir
+    // staticDistDir MUST point at dist/client/ for index.html-driven routes.
+    //
+    // First-attempt fix used existsSync defensive detection but that was
+    // BROKEN due to call-order: createConfig() runs BEFORE `npm run build`,
+    // so existsSync(dist/client/index.html) returned false on clean runs →
+    // fell back to dist/ → 404 on Lighthouse navigation.
+    //
+    // Post-W125 is the canonical state. Hardcoding dist/client/ avoids the
+    // ordering bug. Pre-W125 SPA layout is no longer supported by this
+    // codebase; if reverted, this path would clearly fail at lhci collect
+    // rather than silently fall through to wrong dir.
+    collect.staticDistDir = path.resolve(frontendRoot, "dist", "client")
     collect.isSinglePageApplication = true
   } else {
     collect.startServerCommand = "node scripts/lhci-preview.mjs"
