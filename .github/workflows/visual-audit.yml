@@ -167,13 +167,20 @@ jobs:
       - name: Install backend dependencies
         run: uv sync --frozen
 
-      # P0-01 (audit 2026-03-06): SHA-pinned to prevent supply chain attack
-      # via mutable @v2 tag. Equivalent to taiki-e/install-action@v2.77.5
-      # (synced with origin/main during egorribun→main merge resolution).
+      # Wave 141 polish-v2 (post-wave-close): switched from
+      # taiki-e/install-action@v2.77.5 (which hardcodes drager/wasm-pack
+      # releases URL → 404 as of 2026-05-11; rustwasm/wasm-pack is the
+      # canonical repo, drager redirects 301 but GitHub asset URLs don't
+      # auto-follow) to the official wasm-pack curl installer from
+      # rustwasm.github.io. Reliable + reproducible across CI runs.
+      # P0-01 (audit 2026-03-06) supply-chain note: curl installer comes
+      # from rustwasm-canonical infrastructure; equivalent trust level to
+      # the action since both ultimately fetch from rustwasm/wasm-pack
+      # GitHub release assets.
       - name: Install wasm-pack
-        uses: taiki-e/install-action@fa0dd4cd0a40696e6f9766370614a5ce482e6aa8 # v2.77.5
-        with:
-          tool: wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Install frontend dependencies
         working-directory: frontend
