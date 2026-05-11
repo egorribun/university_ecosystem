@@ -8,14 +8,26 @@
 
 ## Headlines
 
-1. **Tier 1 #1 axe coverage CLOSED** via SW1 — added `VITE_E2E_MODE=1` to
+1. **Tier 1 #1 axe coverage SW1 hypothesis DISPROVED by CI verification
+   (polish-v3 honest revision)** — SW1 added `VITE_E2E_MODE=1` to
    `.github/workflows/visual-audit.yml` Build step. W116 SW1 reduced
-   MainLayout pattern activates: Navbar / Footer / BackToTop /
-   MobileBottomNav replaced with landmark stubs in the visual-audit build.
-   Local build verified `data-e2e-stub` strings present in dist; VITE_LHCI
-   bypass invariant preserved. Closes W140 NEW §Honesty caveat #5
-   (axe-core analyze() hangs on heavy authed-route DOM on Linux CI too).
-   CI run deferred to wave-end push + workflow_dispatch trigger.
+   MainLayout pattern activated as designed: Navbar / Footer / BackToTop /
+   MobileBottomNav replaced with landmark stubs (local build verified
+   `data-e2e-stub` strings present in dist; VITE_LHCI invariant preserved).
+   **BUT** CI run `25698785125` (12m23s success, completed 2026-05-11T21:50Z)
+   produced 8 sidecar JSONs with `axeError: "axe-analyze-timeout-60s"`
+   on ALL 8 SSR routes (/activity, /dashboard, /events, /map, /news,
+   /profile, /schedule, /settings) — **same coverage as W140 baseline:
+   0/8**. The reduced MainLayout addresses CHROME weight but route CONTENT
+   (DashboardHero + cards + maplibre-gl + charts + lists + Framer Motion)
+   still triggers the 60s timeout. W140 NEW §Honesty caveat #5 stays OPEN
+   as W142+ structural (more aggressive measures: mini-axe via
+   `page.addScriptTag` with WCAG-AA tag-filtered bundle; `.include("main")`
+   + extensive `.disableRules`; even-more-reduced content render under
+   VITE_E2E_MODE; OR axe-core LITE preset). Per W141 anti-pattern #4
+   ("don't claim closure pre-implementation") — local build verification
+   confirmed flag PROPAGATION; CI ran the actual timeout test; honest
+   disproof recorded.
 
 2. **Tier 1 #2 Path (a-auth) DEFERRED to W142+ structural scope** after 5+
    (z) discoveries during SW5 runtime swap revealed bootstrap-time auth
@@ -117,36 +129,53 @@ against current code at SW execution time.
 
 ---
 
-## Honest §Honesty caveat trajectory (revised post-W141)
+## Honest §Honesty caveat trajectory (revised post-polish-v3 CI disproof)
 
-| # | Caveat | Pre-W141 | Post-W141 |
-|---|--------|----------|-----------|
+| # | Caveat | Pre-W141 | Post-W141 (polish-v3 revised) |
+|---|--------|----------|--------------------------------|
 | 1 | W134 #2 bundle delta (recording-only) | OPEN | UNCHANGED |
 | 2 | W134 #10 /messenger Phase 5 punted | OPEN | UNCHANGED (Tier 5) |
 | 3 | W137 #5 file-processor temporal-localhost | PARTIAL | PARTIAL (Path a-auth deferred to W142+; W139 SW2 connectivity preserved) |
 | 4 | W137 #6+#7 by-design dev-only | OPEN | UNCHANGED |
-| 5 | W140 NEW axe wall on Linux | OPEN | ✅ **CLOSED** via SW1 (CI verification pending push) |
+| 5 | W140 NEW axe wall on Linux | OPEN | **OPEN** — SW1 VITE_E2E_MODE hypothesis DISPROVED by CI run 25698785125 (0/8 routes still timeout). W142+ structural per `feedback_perfectionism.md` "structural deferrals acceptable" — needs mini-axe injection / scope-narrowing / content-render-reduction beyond chrome stripping. |
 | 6 | W140 NEW SW5 Path (a-auth) deferred | OPEN | RECLASSIFIED to W142+ ~10-15h structural |
 | 7 | W140 NEW healthcheck override dev-only | OPEN | UNCHANGED (by-design) |
 | 8 (NEW) | W141 (z) #1 — auto-setup tag drift | — | OPEN (documented; informational) |
 | 9 (NEW) | W141 (z) #2 — USE_INTERNAL_FRONTEND required | — | OPEN (Temporal arch constraint; W142+ scope) |
 | 10 (NEW) | W141 (z) #3 — auto-setup namespace auth incompat | — | OPEN (structural; W142+ scope) |
 | 11 (NEW) | W141 (z) #4 — worker SDK internal addr | — | OPEN (structural; W142+ scope) |
+| 12 (NEW) | W141 (z) #8 (polish-v3) — VITE_E2E_MODE alone insufficient for axe coverage | — | OPEN (W142+ — more aggressive measures needed) |
 
-**Net post-W141**:
-- 1 CLOSED (W140 #5 via SW1)
+**Net post-W141 (polish-v3 honest revision)**:
+- **0 CLOSED** (SW1 hypothesis disproved by CI; W140 #5 stays OPEN)
 - 1 RECLASSIFIED to structural W142+ (W140 #6 → W142+ scope)
-- 4 NEW (z) discoveries (informational; collapsed into W137 #5 + W140 #6
-  W142+ scope tracking)
+- 5 NEW (z) discoveries (#1-#4 from SW3-SW5 cascade + #8 polish-v3 axe
+  hypothesis disproof; informational; collapsed into W142+ scope tracking)
 - 4 UNCHANGED carries
 
-**Effective caveat count post-W141**: **6-7** (depending on how we count
-the 4 NEW (z) discoveries — they're sub-aspects of the W142+ Path
-(a-auth) structural work, not independent open issues). The headline
-projection of "7 → 4-5" from the W141 plan was based on Scenario A
-runtime success; Scenario A partial-runtime (SW2 verified YAML,
-SW3-SW5 runtime exposed bootstrap conflict) gives 7 → 6-7 with deeper
-structural framing.
+**Effective caveat count post-W141 (polish-v3 revised)**: **7-8**
+(depending on how we count the 5 NEW (z) discoveries — they're
+sub-aspects of W137 #5 + W140 #5 + W140 #6 W142+ scope tracking, not
+independent open issues). The headline projection of "7 → 4-5" from the
+W141 plan was based on Scenario A + SW1 success. Both turned out
+PARTIAL/disproved at runtime:
+- SW1 (axe coverage): hypothesis disproved by CI — chrome stripping
+  alone insufficient. **Need additional measures in W142+.**
+- SW3-SW5 (Path a-auth): scaffolding committed, runtime cascade exposed
+  auto-setup auth-bootstrap conflict. **Need structural rework in W142+.**
+
+Net: W141 produced **0 caveats closed + 5 NEW (z) discoveries** + 4
+unchanged carries. The wave's actual value: (a) **scaffolding preserved**
+for W142+ pickup (PowerShell New-TemporalServiceToken + Go credentials
++ .secrets/ mount + visual-audit.yml VITE_E2E_MODE=1 step still active),
+(b) **honest documentation** of which hypotheses worked vs didn't via
+runtime/CI verification, (c) **6 polish-v2 wasm-pack 404 fix** unblocks
+future visual-audit.yml CI runs.
+
+Per W138 Lesson #8 "§Honesty caveat counting is dynamic" + W141
+anti-pattern #4 vindicated — this is honest unmasking, NOT regression.
+W141's TRUE value was establishing the runtime/CI verification discipline
+that caught both hypothesis disproofs.
 
 Per `feedback_perfectionism.md` "user accepts deferrals when they're
 structural" + W138 Lesson #8 "§Honesty caveat counting is dynamic" —
