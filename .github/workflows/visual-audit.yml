@@ -89,6 +89,19 @@ jobs:
       # service (no auth — matches backend default nats_url config). Without
       # this, backend's NatsTaskBroker hangs at lifespan.
       NATS_URL: "nats://127.0.0.1:4222"
+      # W140 SW4 iter6: explicit Redis URLs. Login flow goes through
+      # `redis_session.create_session()` → `_get_shared_client(redis_url)` →
+      # `Redis.from_url(url, ...)`. The `redis_url` is sourced from
+      # `settings.rate_limit_storage_uri` which DEFAULTS to "memory://" if
+      # the env var is absent (per app/core/config/mixins/rate_limit_settings.py:45).
+      # "memory://" is not a valid Redis URL scheme, so Redis.from_url raises
+      # ValueError → HTTP 500 on /api/v1/auth/login/json. Pre-W140 this was
+      # masked because the visual audit script never reached the login step
+      # (CSRF dance was missing + earlier blockers fired). After SW4 iter4
+      # unblocked CSRF, login now reaches Redis URL parsing and 500s.
+      CACHE_REDIS_URL: "redis://127.0.0.1:6379/0"
+      RATE_LIMIT_STORAGE_BACKEND: redis
+      RATE_LIMIT_STORAGE_URI: "redis://127.0.0.1:6379/1"
     services:
       postgres:
         image: pgvector/pgvector:pg17
