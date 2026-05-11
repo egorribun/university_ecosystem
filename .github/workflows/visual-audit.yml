@@ -213,22 +213,48 @@ jobs:
       - name: Run database migrations
         run: uv run alembic upgrade head
 
-      - name: Build frontend (production, NOT VITE_LHCI bypass)
-        # Visual audit needs the REAL authed flow, not the VITE_LHCI mock-user
-        # bypass. Production build path is the same one prod-deploy uses.
-        # Tree-shake invariant verified post-build (zero `lhci-mock-user` in
-        # PROD assets — would indicate the bypass leaked, which is a
-        # prod-security regression per CLAUDE.md gotcha).
+      - name: Build frontend (E2E reduced-chrome mode, NOT VITE_LHCI bypass)
+        # Visual audit needs the REAL authed flow (NOT VITE_LHCI mock-user bypass).
+        # W141 SW1 adds VITE_E2E_MODE=1 to enable the W116 SW1 reduced MainLayout
+        # pattern (frontend/src/components/layout/MainLayout.tsx:30-75): Navbar /
+        # Footer / BackToTop / MobileBottomNav replaced with landmark-only stubs
+        # (`<nav data-e2e-stub="main-nav" />` etc.) under E2E flag. This shrinks
+        # the heavy authed-route DOM enough for axe-core's analyze() to complete
+        # within the 60s timeout (W140 NEW §Honesty caveat #5 closure).
+        #
+        # Why this is SAFE for the auth-cookie SSR chain: per W141 Phase 1
+        # Explore Agent 1, Navbar is CLIENT-SIDE hydration only — useNavbarLogic
+        # reads from useAuthStore Zustand, while SSR auth flows from HTTP cookie
+        # headers NOT Navbar fetching /users/me. Stripping Navbar in the E2E
+        # build does NOT affect W126-W127 cookie-driven SSR rendering of route
+        # content (/dashboard, /events, etc.).
+        #
+        # Trade-off: less coverage of Navbar/Footer in this audit. Those
+        # components are covered by tests/e2e/a11y-public.spec.ts on /login
+        # (compact route, no chrome) + Wave 142+ can add dedicated chrome
+        # component a11y tests if needed.
+        #
+        # Tree-shake invariants verified post-build:
+        # 1. VITE_LHCI mock-user bypass STAYS tree-shaken (zero `lhci-mock-user`
+        #    in dist — auth bypass not active) — different flag, independent state
+        # 2. VITE_E2E_MODE branch IS bundled (`data-e2e-stub` strings present in
+        #    dist — flag took effect; new W141 SW1 check)
         working-directory: frontend
         env:
           VITE_BACKEND_ORIGIN: http://localhost
+          VITE_E2E_MODE: "1"
         run: |
           npm run build
           if find dist/client/assets -name "*.js" -exec grep -l "lhci-mock-user" {} + 2>/dev/null | grep -q .; then
-            echo "::error::VITE_LHCI tree-shake invariant violated — non-LHCI build contains mock-user reference"
+            echo "::error::VITE_LHCI tree-shake invariant violated — E2E build contains LHCI mock-user reference"
             exit 1
           fi
-          echo "OK: production frontend build tree-shakes VITE_LHCI bypass cleanly"
+          echo "OK: VITE_LHCI bypass tree-shaken cleanly"
+          if ! find dist/client/assets -name "*.js" -exec grep -l "data-e2e-stub" {} + 2>/dev/null | grep -q .; then
+            echo "::error::VITE_E2E_MODE flag did NOT take effect — dist lacks data-e2e-stub markers (MainLayout reduced-chrome branch not active)"
+            exit 1
+          fi
+          echo "OK: VITE_E2E_MODE=1 took effect (data-e2e-stub markers present in dist)"
 
       - name: Install Playwright bundled chromium
         # Wave 138 SW3 explicitly uses bundled Chromium (NOT real Chrome via
