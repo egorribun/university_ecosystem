@@ -49,6 +49,13 @@ COPY --from=builder /app/services/file-processor/file-processor .
 # Wave 137 SW5: copy grpc_health_probe for compose-level healthcheck.
 COPY --from=health-probe /grpc_health_probe /usr/local/bin/grpc_health_probe
 
+# Wave 140 SW2: copy GraphQL schema. main.go:286 reads it via
+# os.ReadFile("schema.graphql") relative to WORKDIR /app. Without this COPY
+# the runtime exits at step 9 with "schema.graphql not found", which blocks
+# the gRPC bind in step 10 → healthcheck fails → restart loop
+# (W139 §Honesty #7). Mirrors the binary + grpc_health_probe COPY pattern.
+COPY --from=builder /app/services/file-processor/schema.graphql ./schema.graphql
+
 USER nonroot:nonroot
 
 CMD ["/app/file-processor"]
