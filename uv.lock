@@ -2274,15 +2274,15 @@ wheels = [
 
 [[package]]
 name = "pact-python"
-version = "3.3.1"
+version = "3.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pact-python-ffi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "yarl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/0e/9d6c50a19684c4e2ee82455315c9d58661ad3c5ab1c46bfcce3a7cd251cd/pact_python-3.3.1.tar.gz", hash = "sha256:c842f073bd143adfb67f11cb2f42b14752907f98e4fc0870bbf6ad9bdd4e9585", size = 81684, upload-time = "2026-04-22T07:09:23.463Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/d0/0f7b44586c232e86383a6224eb9f6bfb511d2c9630b692312506a879ac40/pact_python-3.4.0.tar.gz", hash = "sha256:e4a500fa00e1fd586cecf473a74db1e604af5e1be97a312d88eced46c25395c0", size = 82088, upload-time = "2026-05-04T09:40:06.947Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/61/08ad4e44ed0c838b8d8715a8ba63018c86fcabf468f8e159024b79b800dd/pact_python-3.3.1-py3-none-any.whl", hash = "sha256:e3bbae8398326eaa08521ecdca94fc7d54a5506c442320ca555fbc252aea87b5", size = 97246, upload-time = "2026-04-22T07:09:21.918Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/63/fb5c76d6c23504d5838f4da4219c81399b68211735939d1657ad568a016b/pact_python-3.4.0-py3-none-any.whl", hash = "sha256:76e8fb55c403c2c87d45052b270535cd88af2cd4b60d7d17ae5714eb9d8a872a", size = 97691, upload-time = "2026-05-04T09:40:05.502Z" },
 ]
 
 [[package]]
@@ -3896,7 +3896,7 @@ requires-dist = [
     { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.314.3,<0.316.0" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "typer", specifier = ">=0.24.1" },
-    { name = "urllib3", specifier = ">=2.6.3,<2.7" },
+    { name = "urllib3", specifier = ">=2.6.3,<2.8" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1" },
     { name = "webauthn", specifier = ">=2.7.1" },
@@ -3910,8 +3910,8 @@ dev = [
     { name = "fakeredis", specifier = ">=2.35.1" },
     { name = "hypothesis", specifier = ">=6.151.12" },
     { name = "maturin", specifier = ">=1.13.1,<2" },
-    { name = "mypy", specifier = ">=1.20.1,<1.21" },
-    { name = "pact-python", specifier = "==3.3.1" },
+    { name = "mypy", specifier = ">=1.20.1,<2.1" },
+    { name = "pact-python", specifier = "==3.4.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pyo3-sanitizer", editable = "crates/pyo3-sanitizer" },
     { name = "pyright", specifier = ">=1.1.408" },
