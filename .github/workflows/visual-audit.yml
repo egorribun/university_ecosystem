@@ -285,9 +285,30 @@ jobs:
         # Idempotent registration: 409 means user exists from prior run reuse.
         # The visual audit script logs in as test@university.dev / TestPass@2024x
         # — these are the CLAUDE.md-documented test credentials.
+        #
+        # W140 SW4 CSRF dance: CSRFMiddleware (app/core/csrf.py + middleware/setup.py:47-60)
+        # is enabled in `testing` env too and requires both csrf_token cookie
+        # AND X-CSRF-Token header on POST. /api/v1/auth/register is NOT in
+        # exempt_prefixes. Pre-W140 the workflow's plain curl POST got 403
+        # (z) discovery surfaced after backend health was fixed.
+        # Mitigation: GET /api/v1/auth/csrf-cookie to set the cookie, extract
+        # the token, then POST register with both cookie + matching header.
         run: |
+          # Step 1: Get CSRF cookie. /api/v1/auth/csrf-cookie sets the cookie.
+          curl -s -c /tmp/cookies.txt http://127.0.0.1:8000/api/v1/auth/csrf-cookie > /dev/null
+          CSRF=$(awk '/csrf_token/ {print $7}' /tmp/cookies.txt)
+          if [ -z "$CSRF" ]; then
+            echo "::error::Failed to obtain CSRF token from /api/v1/auth/csrf-cookie"
+            cat /tmp/cookies.txt
+            exit 1
+          fi
+          echo "OK: obtained CSRF token (len=${#CSRF})"
+
+          # Step 2: POST /register with the cookie + header.
           STATUS=$(curl -s -o /tmp/register.json -w "%{http_code}" -X POST http://127.0.0.1:8000/api/v1/auth/register \
+            -b /tmp/cookies.txt \
             -H "Content-Type: application/json" \
+            -H "X-CSRF-Token: $CSRF" \
             -d '{"email": "test@university.dev", "password": "TestPass@2024x", "full_name": "Visual Audit User"}' || echo "ERROR")
           echo "Register response: HTTP $STATUS"
           cat /tmp/register.json || true
