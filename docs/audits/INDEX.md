@@ -18,7 +18,7 @@ Recent audits (last 3 waves) — referenced from `CLAUDE.md ## Audit Trail` and 
 
 Older waves (W112-W122 + W21-W32 in `TOTAL_AUDIT_*` legacy format) — moved to `archive/` for repo-root cleanliness. Still tracked in git, still searchable via `grep -r "X" docs/audits/archive/`.
 
-### Frontend audit era (W112-W130)
+### Frontend audit era (W112-W139)
 
 | Wave | Date | Audit file | Theme |
 |------|------|-----------|-------|

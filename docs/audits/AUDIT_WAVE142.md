@@ -44,16 +44,26 @@
 3. **Tier 2 #2 (build-infra non-determinism THE FLOOR) — DIAGNOSED but NOT CLOSED**.
    SW6 empirical diff verification produced a DEEPER finding than Agent 3
    Phase 1 hypothesis (workbox-build manifest order). NEW (z) #11 W142:
-   **Rolldown/Vite chunk filename hashing is NON-DETERMINISTIC**. Two clean
-   `npm run build` runs produce `dist/client/assets/index-DqqHVXgy.js`
-   (build1) vs `dist/client/assets/index-CQ-5oXj0.js` (build2) — same SIZE
-   (139,808 bytes) but DIFFERENT FILENAME HASH AND DIFFERENT CONTENT. Cascades
-   through `_shell.html`'s `<script src="/assets/index-*.js">` ref (36 byte
-   diff offset 1583), `sw.js` precache manifest revision hash (302 byte diff
-   offset 31480), and `server.js` TanStack Start manifest ref (16 byte diff
-   offset 8155). Adding post-process manifest sort would NOT fix this. SW6
-   ships a diagnostic comment block in `build-orchestrated.mjs` documenting
-   the finding. W143+ structural fix scope ~5-9h.
+   **Build pipeline has TWO non-determinism sources at different layers**.
+   Layer 1 (intermittent, Rolldown-side): chunk filename hashing CAN differ
+   between clean builds — build1 produced `index-DqqHVXgy.js` (sha256
+   634d406d...), build2 + build3 BOTH produced `index-CQ-5oXj0.js` (sha256
+   9f7cd496...) and server.js BYTE-IDENTICAL across build2+build3. So
+   Rolldown intermittency happens but isn't always present.
+   Layer 2 (consistent, post-build/prerender-side): `_shell.html` + `sw.js`
+   produce 3 DIFFERENT sha256 hashes across 3 builds (each pair differs
+   pairwise — build1≠build2≠build3 sha256, all 65,864 + 53,115 byte counts
+   identical). _shell.html source diff cascades through sw.js workbox
+   precache manifest revision hash (302 byte diff at offset 31480 in build2
+   vs build3 case; offset varies per-build pair). Polish-v2 refined the
+   original W142 SW6 framing which overclaimed "Rolldown chunk filename
+   hashing is non-deterministic" as the sole source — build3 verification
+   proved post-build/prerender layer ALSO contributes consistently. Adding
+   post-process workbox manifest sort would NOT fix EITHER layer.
+   Build-orchestrated.mjs `injectManifest` call at line ~428 (post-SW6
+   comment block; was at line 373-378 in the design plan reference).
+   W143+ structural fix scope ~5-9h (TanStack Start prerender + Rolldown
+   determinism flags).
 
 4. **W142 trajectory mirror of W141**: 0 caveats CLOSED at runtime, 6 NEW (z)
    discoveries documented, all 3 wave goals diagnosed/scaffolded honestly,
@@ -142,31 +152,58 @@ mitigation → SW5b honest rollback"). W143+ scope estimate: ~3-5h debug
 + ~2-5h fix attempt; OR pivot to plain `temporalio/server` + custom YAML
 auth config instead of auto-setup.
 
-### (z) #11 W142 NEW — Rolldown chunk filename hash non-determinism (DEEPER than Agent 3 hypothesis)
+### (z) #11 W142 NEW — Build-pipeline non-determinism at TWO layers (refined polish-v2)
 
-Empirical `npm run build` × 2 produces:
-- `dist/client/assets/index-DqqHVXgy.js` (build1, 139,808 bytes)
-- `dist/client/assets/index-CQ-5oXj0.js` (build2, 139,808 bytes)
+**Layer 1 (intermittent, Rolldown chunk filename hashing)**:
+- Build1 produced `index-DqqHVXgy.js` (sha256 634d406d...)
+- Build2 + Build3 BOTH produced `index-CQ-5oXj0.js` (sha256 9f7cd496...)
 
-Same SIZE, DIFFERENT FILENAME HASH AND DIFFERENT CONTENT (sha256 mismatch).
-Other route chunks (Dashboard-*, dashboard-*) similarly differ. Cascade
-through references:
-- `_shell.html` main JS script src ref (36 byte diff offset 1583)
-- `sw.js` precache manifest revision for `_shell.html` (302 byte diff offset
-  31480) — because _shell.html content changed upstream
-- `server.js` TanStack Start manifest ref (16 byte diff offset 8155)
+So Rolldown chunking IS sometimes non-deterministic (build1→build2 differed
+filename hash AND content sha256) but NOT consistently — build2→build3 was
+deterministic (same filename + same sha256). server.js similarly: build2 +
+build3 BYTE-IDENTICAL sha256 (61709961...) but build1 differed.
 
-Agent 3 Phase 1 hypothesis was workbox-build manifest order; W142 SW6 diff
-DISPROVED this. Real source is in Rolldown's chunking layer:
-- Parallel module processing order (Rolldown uses Rust threading)
-- Module dependency graph traversal order (filesystem-dependent)
-- Intermediate hash inputs (timestamps, mtimes, parallel ID assignment)
+**Layer 2 (consistent, post-build/prerender-side)**:
+- `_shell.html`: 3 unique sha256 across 3 builds (each pair differs pairwise),
+  all 65,864 bytes
+- `sw.js`: 3 unique sha256 across 3 builds (each pair differs pairwise),
+  all 53,115 bytes
+- This layer is CONSISTENTLY non-deterministic — every clean build produces
+  different `_shell.html` + `sw.js` content even when `index-*.js` +
+  `server.js` are byte-identical (e.g., build2→build3 case)
+
+The cascade pattern is:
+- _shell.html: differs in some byte range, possibly TanStack Start prerender
+  output OR post-build-shell.mjs CSP nonce / font preload injection ordering
+- sw.js: workbox precache manifest's revision hash for `_shell.html` cascades
+  → sw.js sha256 differs whenever _shell.html content differs (302 byte
+  diff at offset 31480 in build2 vs build3 case; offset varies per-build pair)
+
+**Polish-v2 framing correction**: The original W142 SW6 audit framing
+"Rolldown chunk filename hashing is NON-DETERMINISTIC" was over-claiming
+Rolldown as the sole source. Build3 evidence proved post-build/prerender
+layer ALSO contributes — and consistently. W141 polish A3's framing ("main
+JS + server.js BYTE-IDENTICAL × 2 sha256; _shell.html + sw.js byte-count
+match but sha256 differs") was actually MORE accurate than W142 SW6's
+initial framing — it captured the consistent Layer 2 pattern but missed
+the intermittent Layer 1 pattern that builds 1→2 surfaced.
+
+Agent 3 Phase 1 hypothesis (workbox-build `fs.readdir` manifest order) was
+DISPROVED at both layers. Real sources:
+- Layer 1: Rolldown chunking parallelism (Rust threading) OR module
+  dependency graph traversal order
+- Layer 2: TanStack Start prerender output OR post-build-shell.mjs ordering
+  OR workbox revision hash computation cascade
 
 **NOT mitigated** — `build-orchestrated.mjs` ships a diagnostic comment
-block documenting the finding + W143+ scope (~2-4h diagnosis + ~3-5h fix).
+block at the `injectManifest` call site (line ~428 post-SW6, was line
+~373 in the original plan reference before the comment block expanded
+the file) documenting the finding + W143+ scope (~2-4h diagnosis at each
+layer + ~3-5h fix per layer = ~5-9h total).
+
 This IS honest progress vs W141 polish A3 ("source not yet identified" →
-now "Rolldown chunk filename hash non-determinism, propagates via _shell.html
-main-JS ref + sw.js precache revision + server.js manifest ref").
+now "two layers identified, cascade pattern documented, build × 3 evidence
+captured").
 
 ---
 
@@ -309,16 +346,50 @@ sha256 verification). W141 polish A3's "main JS + server.js BYTE-IDENTICAL
 × 2 sha256" was either a transient match OR W141 polish A3's verification
 methodology had a flaw.
 
-**Updated baseline (W142)**:
+**Updated baseline (W142 + polish-v2 build3 evidence)**:
 ```
-dist/client/assets/index-DqqHVXgy.js   139,808 bytes (build1)  sha256 differs
-dist/client/assets/index-CQ-5oXj0.js   139,808 bytes (build2)  per build
-dist/client/_shell.html                 65,864 bytes  sha256 differs (36 byte cascade)
-dist/client/sw.js                       53,115 bytes  sha256 differs (302 byte cascade)
-dist/server/server.js                   39,373 bytes  sha256 differs (16 byte cascade)
+Across 3 clean builds (build1 + build2 + build3):
+
+dist/client/assets/index-DqqHVXgy.js  build1: sha256 634d406d... (only build1)
+dist/client/assets/index-CQ-5oXj0.js  build2 + build3: sha256 9f7cd496... (IDENTICAL)
+  → Layer 1 INTERMITTENT non-determinism (build1 → build2 changed, build2 → build3 stable)
+  → 139,808 bytes consistent across all 3
+
+dist/server/server.js  build1: differs (per SW6 diff finding)
+                       build2 + build3: sha256 61709961... (IDENTICAL)
+  → Layer 1 INTERMITTENT (same cascade as index main JS)
+  → 39,373 bytes consistent across all 3
+
+dist/client/_shell.html  build1: differs from build2+3
+                         build2: sha256 2dde15dd... (unique)
+                         build3: sha256 2b62a2a1... (unique, differs from build2)
+  → Layer 2 CONSISTENT non-determinism (each build produces unique sha256)
+  → 65,864 bytes consistent across all 3
+
+dist/client/sw.js  build1: differs from build2+3
+                   build2: sha256 0972b6b6... (unique)
+                   build3: sha256 c266cff6... (unique, differs from build2)
+  → Layer 2 CONSISTENT cascade from _shell.html revision in workbox manifest
+  → 53,115 bytes consistent across all 3
 ```
 
-W143+ Tier 2 #2 candidate fixes this structurally.
+**Polish-v2 refinement**: W142 SW6's original framing said "Rolldown chunk
+filename hashing is NON-DETERMINISTIC" — proven OVERCLAIMING by build3
+evidence. The accurate framing:
+- Sizes are reproducible across all 3 builds for all 4 artifacts
+- main JS + server.js have INTERMITTENT non-determinism (Rolldown layer)
+- _shell.html + sw.js have CONSISTENT non-determinism (post-build/prerender
+  layer; cascades into workbox manifest revision hash for sw.js)
+
+W141 polish A3's "main JS + server.js BYTE-IDENTICAL × 2 sha256; _shell.html
++ sw.js byte-count match but sha256 differs" was MORE accurate than W142
+SW6's initial framing — it captured the Layer 2 consistency but missed
+Layer 1 intermittent (W141 likely got lucky × 2 in the same Rolldown state).
+
+W143+ Tier 2 #2 candidate fixes both layers structurally (~5-9h):
+1. Layer 1 (intermittent): Rolldown determinism flags + parallelism config
+2. Layer 2 (consistent): TanStack Start prerender determinism + post-build
+   ordering + workbox revision hash stability
 
 ---
 
