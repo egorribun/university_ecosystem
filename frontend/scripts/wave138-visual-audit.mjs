@@ -89,7 +89,12 @@ function normalizeRoute(p) {
   if (!trimmed) return null
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`
 }
-const ROUTES = (process.env.ROUTES ?? DEFAULT_ROUTES.join(","))
+// W140 SW4 iter7 fix: env ROUTES="" (workflow_dispatch with empty input)
+// must fall through to DEFAULT_ROUTES. `??` treats "" as a real value
+// (not nullish), so we explicitly check for trimmed-empty too. Same
+// concern as W120 SW5 MSYS empty-string handling in run-lhci.mjs.
+const routesEnv = process.env.ROUTES?.trim()
+const ROUTES = (routesEnv ? routesEnv : DEFAULT_ROUTES.join(","))
   .split(",")
   .map(normalizeRoute)
   .filter(Boolean)
