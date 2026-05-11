@@ -599,3 +599,150 @@ git mv docs/audits/AUDIT_WAVE137.md docs/audits/archive/AUDIT_WAVE137.md
 ```
 
 Active waves after rotation: W138/W139/W140.
+
+---
+
+## §13. Polish-pass (post-SW7, "безупречно?" probe)
+
+User invoked "безупречно?" probe post-SW7. Single-round polish per
+`feedback_perfectionism.md` "honest self-audit, not reassurance":
+
+### A1 — commit shortstats cross-check (all 12 W140 commits)
+
+`git show --shortstat` for `4181ff1da`, `ceaae7ef7`, `fb56b0fb9`,
+`7a7b43cf6`, `ce7f5cca7`, `796966b4b`, `c965ac32b`, `8bb0cb270`,
+`a8ad749fa`, `0424af375`, `4c5125b45`, `b6fc5e179` all MATCH the audit
+doc §2 claims EXACTLY. Zero drift.
+
+### A2 — vitest 5-run (honest framing: sequential single-session)
+
+5 sequential `npm test -- --run` invocations in ONE bash session
+(matching W139 polish framing — NOT strict cross-session per W124 SW4
+which requires separate shell sessions). Durations: 32.57s / 29.48s /
+29.57s / 29.15s / 29.10s. Run 1 = cold cache outlier; runs 2-5 cluster
+within 0.5s (warm cache). Final explicit count check: **1052 passed /
+12 skipped / 0 failed**. Cross-session-with-cold-cache-per-run methodology
+deferred to W141+ if needed.
+
+### A3 — npm audit re-verify
+
+`cd frontend && npm audit --omit=dev` → **0 vulnerabilities**. W139
+SW6 baseline preserved post-W140.
+
+### A4 — memory file references resolution (FINDING)
+
+`wave141_opening_prompt.md` lines 146-151 (W140 SW7) referenced
+`memory/wave138_upstream_issue_chromedevtools.md` +
+`memory/wave138_upstream_issue_tempo_loki.md`. **NEITHER FILE EXISTS**
+in `.claude` profile. The actual file is `wave137_upstream_issues.md`
+(258 lines, single consolidated file with Issue 1 / Issue 2 / Issue 3
+sections written by W137 SW7). This drift was inherited from W139's
+W140 opening prompt; the same drift exists in the W138 audit row of
+CLAUDE.md (line 694, pre-existing).
+
+**This is a recurring "W122 §Honesty-correction class" pattern** per
+W139 (z) #9 / W138 Lesson #9 — polish-passes find prior-wave audit-
+claim drift. Polish-pass fix: corrected wave141_opening_prompt.md to
+reference `memory/wave137_upstream_issues.md` + extract-via-awk
+pattern; documented Issue 1 (rolldown #9327) as already filed; Issue 2
++ Issue 3 still pending external filing.
+
+**Did NOT modify W138 audit row in CLAUDE.md** (closed/historical
+wave; rewriting risks scope creep). Future polish-passes should
+re-verify memory references per opening prompt.
+
+### A5 — file:line citation drift (FINDING — 4 sites)
+
+SW3-fix's selectiveAuth interceptor insertion (~44 lines into main.go)
++ SW1's new init fields + extended comment block in nats_broker.py
+shifted line numbers for code AFTER the insertions. Audit doc + CLAUDE.md
+SW7 gotchas had pre-edit line citations:
+
+| Pre-edit citation | Actual post-W140 line | File |
+|-------------------|----------------------|------|
+| `nats_broker.py:128` | 134 (TASK_QUEUE) / 141 (NEW FILES_PROCESS) | app/core/nats_broker.py |
+| `main.go:286` (os.ReadFile schema.graphql) | 330 | services/file-processor/cmd/file-processor/main.go |
+| `main.go:277-280` (grpc_health_v1 RegisterHealthServer) | 322-324 | services/file-processor/cmd/file-processor/main.go |
+| `Dockerfile:55` (schema.graphql COPY) | 57 | services/file-processor/Dockerfile |
+
+Polish-pass fix: CLAUDE.md SW7 gotcha lines for SW1 + SW2 updated with
+correct post-W140 line numbers + explanatory note about line-shift
+provenance. Audit doc §1+§5 references to these citations remain
+intact (the citations were correct at SW commit time; post-SW3-fix
+shift was inherent to the wave). Future polish-passes should
+verify line citations at audit-write time + final commit time.
+
+### A6 — file-processor still (healthy) (no drift)
+
+`docker ps --filter "name=file-processor"` → `Up 2 hours (healthy)`.
+file-processor remains stable over the elapsed time since SW3-fix
+verification. NATS streams `TASK_QUEUE` + `FILES_PROCESS` both still
+provisioned (verified via `docker exec backend python -c ...
+streams_info()...`).
+
+### A7 — bundle baseline defensive rebuild #2 (BYTE-IDENTICAL confirmed)
+
+Second `BUILD_SKIP_PWA=true npm run build` invocation produced:
+- `index-DqqHVXgy.js` 139,808 b ✓
+- `_shell.html` 65,864 b ✓
+- `sw.js` 53,115 b ✓
+- `server.js` 39,373 b ✓
+
+**BYTE-IDENTICAL** to rebuild #1 from SW7. Bundle reproducibility now
+confirmed across 2 rebuilds (audit doc §1 claimed "BYTE-IDENTICAL post
+defensive rebuild × 1" — polish strengthens to × 2 evidence).
+
+### A8 — INDEX.md + MEMORY.md sanity (no drift)
+
+`docs/audits/INDEX.md` 93 lines (well under any threshold). MEMORY.md
+24,379 bytes (under 24,400 auto-load threshold). Both healthy.
+
+### A9 — "ZERO frontend code changes" framing correction (FINDING)
+
+The audit doc §1+§6 + CLAUDE.md SW7 row claim "W140 had ZERO frontend
+code changes" is **strictly imprecise**. `git log --name-only` for
+W140 commits across `frontend/*` shows ONE file modified:
+- `frontend/scripts/wave138-visual-audit.mjs` (modified in SW4 iter7 +
+  iter8: ROUTES `?.trim()` fallback + `Promise.race` axe timeout)
+
+This is a Node.js Playwright runner / CI tooling script, NOT
+React/TypeScript app code. It is NOT compiled into the React app
+bundle — which is why BYTE-IDENTICAL bundle invariant still holds.
+
+**Corrected framing**: "ZERO `frontend/src/` changes (React/TS app
+code); 1 CI tooling script in `frontend/scripts/` modified in SW4 iter7
++ iter8." The bundle BYTE-IDENTICAL claim is fully correct (script is
+not bundled).
+
+### A10 — §Honesty caveats re-classification (post-polish)
+
+No NEW caveats from polish-pass. The 4 A-findings (A4 memory ref drift
++ A5 file:line drift × 4 + A9 framing imprecision) are all
+**documentation-quality** issues fixed inline in polish commit, NOT
+new structural caveats. The 7 caveats from SW7 stand:
+
+- Unchanged carries: W134 #2, W134 #10, W137 #5 (PARTIAL — auth
+  deferred to W141+), W137 #6+#7
+- NEW W140: axe wall on Linux (#9), SW5 deferred (#10), healthcheck
+  override dev-only (#11)
+
+Plus 3 polish-pass-documented findings (now CLOSED via polish):
+- Memory reference drift (corrected wave141_opening_prompt.md)
+- File:line citation drift (corrected 4 sites in CLAUDE.md)
+- Framing imprecision ("ZERO frontend code" → "ZERO frontend/src/")
+
+### Polish wall-clock
+
+~30-40 min single round. No second round needed. Polish surfaced 3 doc
+findings + 6 verifications (A1-A3 + A6-A8 PASS clean). Standard W139
+polish-pass pattern matched.
+
+### Honest answer template
+
+"3 doc-quality findings closed via polish (A4 + A5 + A9); 7 caveats
+remain as structural / by-design / W141+ scope (#1-#4 unchanged
+carries + #9-#11 NEW W140 honest deferrals). Real 'безупречно'
+requires W141+ Tier 1 closures (axe-core Linux coverage + Path (a-auth)
+full Temporal Server image switch, ~6-10h focused scope). Polish-pass
+matches W139 single-round duration (~30-40 min) and W139 documentation-
+drift pattern (A4 recurring W122 §Honesty correction class)."
