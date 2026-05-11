@@ -400,6 +400,18 @@ jobs:
         run: node ./scripts/wave138-visual-audit.mjs
         continue-on-error: true
 
+      - name: Backend log diagnostic dump
+        # W140 SW4 iter5 diagnostic: visual audit script's login step may
+        # return HTTP 500 (or other server-side errors) that don't surface
+        # backend-side via the script's `loginResp.text()` slice. Tail the
+        # last 300 lines of /tmp/backend.log unconditionally after the
+        # visual audit run for triage. `always()` so this runs even if a
+        # prior step failed.
+        if: always()
+        run: |
+          echo "---backend-log-tail---"
+          tail -300 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
+
       - name: Print summary table
         # Reads .screenshots/wave138-visual-audit/*.json sidecar files + emits
         # markdown to $GITHUB_STEP_SUMMARY for at-a-glance review without
