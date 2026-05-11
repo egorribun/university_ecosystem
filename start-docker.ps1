@@ -119,6 +119,104 @@ function New-JwtRs256Key {
     Write-Ok "Generated RSA-2048 keypair at $OutputPath"
 }
 
+# Wave 141 SW4: helper for base64url encoding (JWT spec). Used by
+# New-TemporalServiceToken below. Generic enough to share with future helpers.
+function ConvertTo-Base64Url {
+    param([Parameter(Mandatory=$true)][byte[]]$Bytes)
+    return [System.Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+# Wave 141 SW4: mint long-lived service token (~1 year exp) signed with the
+# same RSA private key backend uses for its JWTs. Token has sub=
+# file-processor-service + aud=temporal claims so Temporal's default JWT claim
+# mapper (W141 SW2 verified — common/authorization/default_jwt_claim_mapper.go)
+# recognizes it via the JWKS endpoint at /.well-known/jwks.json.
+#
+# Closes W137 §Honesty #5 + W140 NEW #6 (joined with SW3 image swap + SW5 Go
+# credentials attach to form the full Path (a-auth) chain).
+#
+# Idempotent: skips minting if .secrets/temporal_api_key already exists. To
+# regenerate (e.g., changed audience), delete the file and re-run.
+#
+# Security framing: this is a STATIC long-lived service token (no rotation).
+# Acceptable for dev compose where the threat model is "anyone with host
+# filesystem access". Production K8s deployments use managed Temporal Cloud /
+# Helm chart with proper rotation infrastructure — this token NEVER ships to
+# production.
+#
+# Issue temporalio/temporal#8218 mitigation: subject claim name is hardcoded
+# as "sub" in default_jwt_claim_mapper.go:19. We mint with sub=
+# file-processor-service to match this hardcoded expectation.
+function New-TemporalServiceToken {
+    param(
+        [string]$PrivateKeyPath = ".secrets/jwt_rs256.pem",
+        [string]$OutputPath = ".secrets/temporal_api_key",
+        [string]$Subject = "file-processor-service",
+        [string]$Audience = "temporal",
+        [int]$ExpirationSeconds = 31536000  # 1 year (dev-only)
+    )
+
+    $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
+    if (Test-Path $absoluteOutputPath) {
+        Write-Ok "Temporal service token already exists at $OutputPath (idempotent skip)"
+        return
+    }
+
+    $absolutePrivateKeyPath = Join-Path $ProjectRoot $PrivateKeyPath
+    if (-not (Test-Path $absolutePrivateKeyPath)) {
+        throw "Cannot mint Temporal service token: private key not found at $PrivateKeyPath. Run New-JwtRs256Key first."
+    }
+
+    $days = [Math]::Round($ExpirationSeconds / 86400)
+    Write-Status "Minting Temporal service token (sub=$Subject, aud=$Audience, $days days valid)..."
+
+    $pem = Get-Content $absolutePrivateKeyPath -Raw
+    $rsa = [System.Security.Cryptography.RSA]::Create()
+    try {
+        $rsa.ImportFromPem($pem)
+
+        $now = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+        $exp = $now + $ExpirationSeconds
+        $jti = [Guid]::NewGuid().ToString('N')
+
+        $headerObj  = [PSCustomObject]@{ alg = 'RS256'; typ = 'JWT' }
+        $payloadObj = [PSCustomObject]@{
+            sub = $Subject
+            aud = $Audience
+            iat = $now
+            exp = $exp
+            jti = $jti
+        }
+
+        $headerJson  = $headerObj  | ConvertTo-Json -Compress
+        $payloadJson = $payloadObj | ConvertTo-Json -Compress
+
+        $headerB64  = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($headerJson))
+        $payloadB64 = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($payloadJson))
+
+        $signingInput      = "$headerB64.$payloadB64"
+        $signingInputBytes = [System.Text.Encoding]::UTF8.GetBytes($signingInput)
+        $signatureBytes    = $rsa.SignData(
+            $signingInputBytes,
+            [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+            [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+        )
+        $signatureB64 = ConvertTo-Base64Url $signatureBytes
+
+        $token = "$signingInput.$signatureB64"
+    } finally {
+        $rsa.Dispose()
+    }
+
+    [System.IO.File]::WriteAllText(
+        $absoluteOutputPath,
+        $token,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    Write-Ok "Generated Temporal service token at $OutputPath ($days days valid)"
+}
+
 function Test-ServiceHttp {
     param([string]$Url, [int]$Timeout = 2)
     try { (Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $Timeout).StatusCode -eq 200 }
@@ -313,6 +411,13 @@ if (Test-Path $EnvFile) {
 # Backend reads .secrets/jwt_rs256.pem at startup (jwt_settings.py:202-205).
 # Volume-mounted into container at /app/.secrets/jwt_rs256.pem.
 New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem"
+
+# ── Wave 141 SW4: Mint Temporal service token (RS256 JWT) ─────────────────────
+# file-processor (W141 SW5) reads .secrets/temporal_api_key and attaches it to
+# Temporal client via client.NewAPIKeyStaticCredentials(token). Temporal's
+# default JWT claim mapper (W141 SW2 verified) validates via the JWKS endpoint
+# at /.well-known/jwks.json. Idempotent — skips if file exists.
+New-TemporalServiceToken
 
 # ── Wave 137 SW2: SECRET_KEY drift detection .env ↔ .env.docker ───────────────
 # Closes W136 polish-v2 finding: gateway's JWT_SECRET env reads from .env via
