@@ -411,6 +411,20 @@ services:
         condition: service_healthy
       temporal:
         condition: service_healthy
+      # Wave 140 SW3: backend MUST be healthy before file-processor starts.
+      # Architectural contract per W140 Q2 (production parity):
+      #   - Backend's NatsTaskBroker.connect() (called via app/core/lifespan.py
+      #     Stage 5 _startup_background_workers → dishka_container.get(
+      #     NatsTaskBroker)) creates both TASK_QUEUE and FILES_PROCESS streams
+      #     (W140 SW1).
+      #   - Backend's `/healthz` (Dockerfile HEALTHCHECK at backend.Dockerfile:97-98
+      #     using Python stdlib urllib) only returns 200 after the lifespan
+      #     startup completes (FastAPI doesn't accept HTTP traffic until lifespan
+      #     finishes), so `service_healthy` means streams have been provisioned.
+      #   - file-processor's NATS QueueSubscribe at main.go:214 then finds the
+      #     stream and subscribes successfully (closes the chain W139 §Honesty #6).
+      backend:
+        condition: service_healthy
     networks:
       - internal
     # Wave 137 SW5: gRPC healthcheck via grpc_health_probe binary baked into
