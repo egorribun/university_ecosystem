@@ -80,7 +80,7 @@ dependencies = [
   "strawberry-graphql[fastapi]>=0.314.3,<0.316.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
   "structlog>=25.5.0",
   "typer>=0.24.1",
-  "urllib3>=2.6.3,<2.7",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
+  "urllib3>=2.6.3,<2.8",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
   "uvicorn[standard]>=0.44.0",
   "uvloop>=0.22.1 ; sys_platform != 'win32'",
   "webauthn>=2.7.1",
@@ -394,7 +394,7 @@ dev = [
   "fakeredis>=2.35.1",
   "hypothesis>=6.151.12",
   "maturin>=1.13.1,<2",
-  "mypy>=1.20.1,<1.21",
+  "mypy>=1.20.1,<2.1",
   "pyright>=1.1.408",
   "pre-commit>=4.5.1",
   "bandit[toml]>=1.9.4",
@@ -417,7 +417,7 @@ dev = [
   # MOD-07 (audit 2026-03-16 Wave 10): Consumer-driven contract tests for the
   # Python backend → ws-hub NATS message boundary.  pact-python v2 wraps the
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
-  "pact-python==3.3.1",
+  "pact-python==3.4.0",
 ]
 
 # MOD-06 (audit Wave 11): dedicated security scanning group.
