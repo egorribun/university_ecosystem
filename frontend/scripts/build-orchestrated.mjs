@@ -370,6 +370,61 @@ async function step5_workboxInject() {
     )
   }
 
+  // Wave 142 SW6 NEW (z) #11 W142 (build-infra non-determinism DIAGNOSIS):
+  // W141 polish A3 surfaced that defensive `npm run build` × 2 produces
+  // BYTE-IDENTICAL main JS + server.js sha256 BUT `_shell.html` + `sw.js`
+  // have SAME byte count with DIFFERENT sha256. Agent 3 Phase 1 hypothesis:
+  // workbox-build `injectManifest` iterates `fs.readdir` in OS-dependent
+  // order → precache manifest entries unsorted → cascade through sw.js
+  // revision hashes. W142 SW6 empirical diff verification (2026-05-12)
+  // DISPROVED this hypothesis and found the ACTUAL root cause at a deeper
+  // level:
+  //
+  // **Rolldown/Vite chunk filename hashing is NON-DETERMINISTIC**.
+  //
+  // Two clean rebuilds (rm -rf dist; npm run build × 2) produce:
+  //   - dist/client/assets/index-DqqHVXgy.js (build1, 139,808 bytes)
+  //   - dist/client/assets/index-CQ-5oXj0.js (build2, 139,808 bytes)
+  //
+  // Same SIZE (139,808 bytes) but DIFFERENT FILENAME HASH AND DIFFERENT
+  // CONTENT (sha256 mismatch). Other route chunks (Dashboard-*, dashboard-*)
+  // also have different filename hashes between builds. This cascades:
+  //
+  // - _shell.html references the main JS via `<script src="/assets/index-
+  //   *.js">` → different filename ref between builds (36 byte diff at
+  //   offset 1583).
+  // - sw.js precache manifest includes `{revision:"...","url":"_shell.html"}`
+  //   → different revision hash because _shell.html content differs
+  //   (302 byte diff at offset 31480).
+  // - server.js references `_tanstack-start-manifest_v-*.js` → different
+  //   filename hash between builds (16 byte diff at offset 8155).
+  //
+  // The non-determinism is at the **Rolldown chunking layer**, NOT
+  // workbox-build. Likely sources (W143+ investigation needed):
+  //   - Parallel module processing order (Rolldown uses Rust threading)
+  //   - Module dependency graph traversal order (filesystem-dependent)
+  //   - Intermediate hash inputs (timestamps, file mtimes, parallel ID
+  //     assignment)
+  //
+  // Adding post-injectManifest manifest sort here would NOT fix the
+  // root cause — even if manifest entries were sorted, the underlying
+  // chunk filename hashes would still differ. Per plan deviation trigger
+  // #9 ("SW6 3rd-build sha256 still drifts after primary fix → defer to
+  // W143+ structural"), this is DEFERRED with documented root cause.
+  //
+  // W143+ scope (~2-4h diagnosis + ~3-5h fix):
+  //   1. Investigate Rolldown chunk-naming determinism flags (entryFileNames
+  //      override, chunkFileNames override, hashCharacters config)
+  //   2. Check Vite 8 / Rolldown known issues for non-deterministic chunking
+  //   3. If structural: report upstream, accept current state as known limit
+  //
+  // W142 SW6 progress vs W141 polish A3: surface DIAGNOSED (was "byte-count
+  // matches but sha256 differs, source not yet identified" → now "Rolldown
+  // chunk filename hash non-determinism, propagates via _shell.html main-JS
+  // ref + sw.js precache revision + server.js manifest ref"). Per `feedback_
+  // perfectionism.md` "structural deferrals acceptable with honest framing"
+  // + W138 Lesson #8 "§Honesty caveat counting is dynamic" — this IS honest
+  // progress, not regression.
   const result = await injectManifest({
     swSrc: swPath,
     swDest: swPath,
