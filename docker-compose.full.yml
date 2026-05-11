@@ -567,45 +567,82 @@ services:
     restart: unless-stopped
 
   temporal:
-    image: temporalio/admin-tools:1.30.2
+    # Wave 141 SW3 (closes W137 §Honesty #5 + W140 NEW #6): switched from
+    # temporalio/admin-tools:1.30.2 (start-dev, NO auth — W139 SW2 baseline)
+    # to temporalio/auto-setup:1.30.2 (full server binary + auth via env vars
+    # rendered through canonical config_template.yaml).
+    #
+    # Per W141 SW2 empirical verification (commit 6a7d0e260):
+    #   - temporalio/server's canonical docker/config_template.yaml supports
+    #     cassandra/mysql8/postgres12/postgres12_pgx only — NOT SQLite.
+    #   - auto-setup bundles schema migration + namespace bootstrap, so we
+    #     leverage the existing `postgres` service in this compose file
+    #     instead of bringing up a sidecar Postgres for Temporal.
+    #   - Authorization YAML schema exists at Config.Global.Authorization with
+    #     jwtKeyProvider.keySourceURIs[], authorizer, claimMapper, etc., all
+    #     env-var-substituted in the rendered docker.yaml.
+    #
+    # Security posture:
+    #   - JWT auth REQUIRED for all Temporal Frontend gRPC calls from this
+    #     point forward. file-processor (W141 SW5) attaches
+    #     client.NewAPIKeyStaticCredentials(serviceToken) to its client.Dial.
+    #   - Service token minted by backend in W141 SW4 with RS256, sub=
+    #     file-processor-service, aud=temporal — backend's existing JWKS
+    #     endpoint at /.well-known/jwks.json serves the public key Temporal
+    #     fetches to verify.
+    #   - Production K8s deployments use managed Temporal Cloud / Helm chart
+    #     with own auth config — unaffected by this dev-compose-only change.
+    image: temporalio/auto-setup:1.30.2
     container_name: temporal
     ports:
       - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
       # UI port (8233) not published: use SSH tunnel or internal access only
     environment:
-      - TEMPORAL_CLI_ADDRESS=temporal:7233
-    # Wave 139 SW2 — Path (a-rebind only): bind to 0.0.0.0 so file-processor +
-    # other consumers on the `internal` network reach Temporal via service-name
-    # DNS `temporal:7233`. Closes W137 §Honesty #5 partial structural fix.
-    #
-    # Security framing (revised from P0-03 audit 2026-03-06):
-    #   - Docker `internal` network is bridge-mode without external publish.
-    #     The host port mapping above (`127.0.0.1:7233:7233`) stays unchanged
-    #     — host-side reachability is still localhost-only; the rebind only
-    #     affects which interfaces Temporal listens on INSIDE its container.
-    #   - Within the `internal` network, Temporal is now unauth'd — same posture
-    #     as Postgres + Redis in this compose file (both also unauth'd within
-    #     isolated network). Acceptable for dev compose.
-    #   - Production K8s uses external/managed Temporal cluster with own auth
-    #     (mTLS / API key) — unaffected by this dev-compose-only change.
-    #
-    # Path (a) auth refinement (full token validation on Temporal Server)
-    # DEFERRED to W140+ as separable focused scope. Per Context7
-    # /temporalio/documentation: `temporal server start-dev` has zero auth
-    # flags (full param list: --db-filename, --dynamic-config-value,
-    # --headless, --http-port, --ip, --log-config, --metrics-port,
-    # --namespace, --port, --search-attribute, --sqlite-pragma, UI flags).
-    # Auth requires switching to `temporalio/server` image + custom
-    # `auth_config.yaml` with `claimMapper.providers[].jwksURI` (~3-5h
-    # focused scope, not a side effect of W139's broad Tier 1+2+3 wave).
-    entrypoint: [ "/bin/sh", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
+      # Database (reuses existing postgres service)
+      DB: postgres12
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PWD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required for Temporal auto-setup}"
+      DB_PORT: "5432"
+      DBNAME: temporal
+      VISIBILITY_DBNAME: temporal_visibility
+      # W141 SW3 Path (a-auth): JWT auth via canonical config_template.yaml
+      # env-var substitution path. Backend's RS256 JWKS endpoint at
+      # /.well-known/jwks.json serves the public key Temporal uses to verify
+      # service tokens minted by backend (W141 SW4) and presented by
+      # file-processor (W141 SW5).
+      #
+      # Issue temporalio/temporal#8218 (open feature-request): subject claim
+      # name is hardcoded as "sub" in common/authorization/
+      # default_jwt_claim_mapper.go:19. Backend mints service tokens with
+      # sub=file-processor-service to match this hardcoded expectation.
+      #
+      # Issue temporalio/temporal#2134 (CLOSED v1.12.2): the KEY_SOURCE2
+      # empty-value bug ("unsupported protocol scheme") is RESOLVED in
+      # current main via `{{- if }}` guards in config_template.yaml — a
+      # single SOURCE1 is now safe.
+      TEMPORAL_JWT_KEY_SOURCE1: http://backend:8000/.well-known/jwks.json
+      TEMPORAL_AUTH_AUTHORIZER: default
+      TEMPORAL_AUTH_CLAIM_MAPPER: default
+      TEMPORAL_JWT_KEY_REFRESH: "1h"
     networks:
       - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 || exit 1" ]
+      # W141 SW3: simple TCP port probe via netcat (nc / busybox) — works
+      # under auth-enabled mode where `temporal operator cluster health`
+      # would require a service token (and is not in auto-setup image
+      # anyway; that CLI lives in admin-tools).
+      # start_period: 90s gives auto-setup time to migrate the schema +
+      # bootstrap the default namespace before healthcheck failures count.
+      # Schema migration typically takes ~30-60s; +30s safety margin.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 7233 || exit 1"]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 10
+      start_period: 90s
     deploy:
       resources:
         limits:
