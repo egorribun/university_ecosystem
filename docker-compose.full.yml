@@ -641,11 +641,17 @@ services:
       # handles authed namespace create via --grpc-meta Bearer token.
       SKIP_DEFAULT_NAMESPACE_CREATION: "true"
       SKIP_ADD_CUSTOM_SEARCH_ATTRIBUTES: "true"
-      # Wave 142 SW3 — internal worker bypass (W141 (z) #2 closure):
-      # scanner/history/visibility workflows reach Frontend via
-      # internal-frontend service on port 7236 (no auth) instead of public
-      # auth-gated frontend on 7233.
+      # Wave 142 SW3 mitigation v2 (post-runtime-swap finding 2026-05-12) —
+      # internal worker bypass (W141 (z) #2 closure). Setting
+      # USE_INTERNAL_FRONTEND alone is NOT sufficient — the config_template
+      # renders the internal-frontend section, but `temporal-server start`
+      # only starts services listed in --service flag (default: frontend,
+      # history, matching, worker — NOT internal-frontend). Auto-setup's
+      # start-temporal.sh converts the SERVICES env var (colon/comma
+      # separated) to --service=X flags. Setting SERVICES explicitly
+      # includes internal-frontend.
       USE_INTERNAL_FRONTEND: "true"
+      SERVICES: "frontend,history,matching,worker,internal-frontend"
       # JWT auth via canonical config_template.yaml env substitution:
       # auth.frontend.authorization section (lines 256-269 of template).
       # SW2 verification: SKIP_DEFAULT_NAMESPACE_CREATION + SKIP_ADD_CUSTOM_
@@ -655,17 +661,32 @@ services:
       # parse JWT from gRPC metadata Authorization header.
       TEMPORAL_AUTH_AUTHORIZER: default
       TEMPORAL_AUTH_CLAIM_MAPPER: default
-      TEMPORAL_JWT_KEY_SOURCE1: file:///app/.secrets/jwt_rs256.pub.pem
+      # Wave 142 SW3 mitigation v2 — switched from file:// to http:// JWKS.
+      # NEW (z) #6 W142 finding: Temporal's default_token_key_provider.go
+      # uses http.Get() which REJECTS file:// scheme ("unsupported protocol
+      # scheme"). Switching to http:// requires backend running when
+      # temporal starts (depends_on: backend below). Acceptable trade-off
+      # — backend's /.well-known/jwks.json endpoint serves the public key
+      # derived from .secrets/jwt_rs256.pem at request time.
+      TEMPORAL_JWT_KEY_SOURCE1: http://backend:8000/.well-known/jwks.json
       TEMPORAL_JWT_KEY_REFRESH: "1h"
       # Misc
       LOG_LEVEL: info
     volumes:
-      # Wave 142 SW3 — mount .secrets/ read-only so Temporal can read the
-      # public key file. Same pattern as backend (line 61) + file-processor
-      # (line 440) — single .secrets/ directory shared across services.
+      # Wave 142 SW3 — mount .secrets/ read-only. Originally for file:// JWT
+      # key but kept after switching to http:// JWKS in case future need
+      # arises (e.g., admin-tools sidecar SW4 reads .secrets/temporal_api_key
+      # for the authed namespace create call).
       - ./.secrets:/app/.secrets:ro
     depends_on:
       postgres:
+        condition: service_healthy
+      # Wave 142 SW3 mitigation v2 — backend's /.well-known/jwks.json must
+      # be reachable when Temporal initializes its JWT verifier at startup
+      # (NEW (z) #6 W142 fix). No cyclic dependency: backend doesn't depend
+      # on temporal (only file-processor uses temporal). Adds ~5-10s to
+      # temporal startup wait time.
+      backend:
         condition: service_healthy
     networks:
       - internal
