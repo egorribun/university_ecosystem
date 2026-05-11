@@ -285,11 +285,30 @@ async function auditRoute(page, routePath, outDir) {
     // `axe.run()` instead of dual page injection + finishRun chunking) —
     // helps even on chromium for heavy authed-route DOM. Same pattern
     // a11y-public.spec.ts uses for WebKit.
+    //
+    // W140 SW4 iter8 ((z) #8): AxeBuilder.analyze() has NO built-in timeout.
+    // On heavy authed-route DOM (e.g. /dashboard SSR-rendered with all
+    // dash-tilt-cards + DashboardHero + InstallPrompt + stories), axe
+    // injection + WCAG 2.0/2.1/2.2 AA rule evaluation can hang indefinitely.
+    // Pre-W140 this was assumed to be Windows-only per W138 SW3 + W139 SW1
+    // narrative, but iter7 (first successful CI run reaching /dashboard
+    // audit) hung 26 minutes on Linux runners too — closing the assumption.
+    // Mitigation: Promise.race with a 60s timeout per route. Routes that
+    // exceed the cap get axeError = "timeout" sidecar entry instead of
+    // hanging the entire workflow.
     try {
       const builder = new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
         .setLegacyMode(true)
-      const results = await builder.analyze()
+      const results = await Promise.race([
+        builder.analyze(),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("axe-analyze-timeout-60s")),
+            60_000,
+          ),
+        ),
+      ])
       axeViolations = results.violations.filter(
         (v) => v.impact === "critical" || v.impact === "serious"
       )
