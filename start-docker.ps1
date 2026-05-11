@@ -244,7 +244,16 @@ function New-TemporalServiceToken {
         $exp = $now + $ExpirationSeconds
         $jti = [Guid]::NewGuid().ToString('N')
 
-        $headerObj  = [PSCustomObject]@{ alg = 'RS256'; typ = 'JWT' }
+        # Wave 142 SW3 mitigation v3 — add kid (key ID) header so Temporal's
+        # JWT verifier can match against the corresponding key in the JWKS
+        # endpoint. NEW (z) #8 W142 finding: backend's /.well-known/jwks.json
+        # serves the key with kid="primary" (per app/api/well_known.py). Without
+        # kid in the token header, Temporal's default_token_key_provider.go
+        # rejects with "malformed token - no \"kid\" header" (interceptor.go:145).
+        # Note: ConvertTo-Json on PSCustomObject preserves property order — kid
+        # is placed BETWEEN alg and typ for readability; order doesn't affect
+        # JWT validation but matches conventional kid placement.
+        $headerObj  = [PSCustomObject]@{ alg = 'RS256'; kid = 'primary'; typ = 'JWT' }
         $payloadObj = [PSCustomObject]@{
             sub = $Subject
             aud = $Audience
