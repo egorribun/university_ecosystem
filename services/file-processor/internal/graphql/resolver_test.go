@@ -3,6 +3,7 @@ package graphql
 import (
 	"testing"
 
+	gql "github.com/graph-gophers/graphql-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,11 +22,12 @@ func TestResolver_File_ReturnsFileResolver(t *testing.T) {
 		MinioBucket: "uploads",
 	}
 
-	args := struct{ ID string }{ID: "test-file-123"}
+	// W140 (z) #1: args.ID is gql.ID (not string) per schema `file(id: ID!)`.
+	args := struct{ ID gql.ID }{ID: gql.ID("test-file-123")}
 	result := resolver.File(args)
 
 	assert.NotNil(t, result)
-	assert.Equal(t, "test-file-123", result.ID())
+	assert.Equal(t, gql.ID("test-file-123"), result.ID())
 	assert.Contains(t, result.URL(), "uploads")
 	assert.Contains(t, result.URL(), "test-file-123")
 }
@@ -36,7 +38,8 @@ func TestFileResolver_ID_ReturnsID(t *testing.T) {
 		url: "http://example.com/file",
 	}
 
-	assert.Equal(t, "file-abc", resolver.ID())
+	// W140 (z) #1: return type is gql.ID (not string).
+	assert.Equal(t, gql.ID("file-abc"), resolver.ID())
 }
 
 func TestFileResolver_URL_ReturnsURL(t *testing.T) {
@@ -73,7 +76,8 @@ func TestFileJobResolver_JobId_ReturnsJobID(t *testing.T) {
 		resultURL: "http://result.com",
 	}
 
-	assert.Equal(t, "job-123", resolver.JobID())
+	// W140 (z) #1: return type is gql.ID (not string) per schema FileJob.jobId ID!.
+	assert.Equal(t, gql.ID("job-123"), resolver.JobID())
 }
 
 func TestFileJobResolver_Status_ReturnsStatus(t *testing.T) {

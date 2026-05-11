@@ -257,16 +257,60 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 	}()
 }
 
+// W140 (z) #2: gRPC health probe (grpc.health.v1.Health) must be exempt
+// from auth interceptors. grpc-health-probe binary used in compose-level
+// healthcheck (W137 SW5) does not supply bearer tokens, matching the
+// standard Kubernetes gRPC health check protocol convention. Pre-W140 the
+// healthcheck was unreachable because file-processor never bound the gRPC
+// server (schema.graphql + GraphQL ID typing bugs blocked startup at
+// step 6), so this auth-blocked-health-probe bug was latent.
+const healthMethodPrefix = "/grpc.health.v1.Health/"
+
+func selectiveUnaryAuth(authFn auth.AuthFunc) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
+			return handler(ctx, req)
+		}
+		newCtx, err := authFn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return handler(newCtx, req)
+	}
+}
+
+func selectiveStreamAuth(authFn auth.AuthFunc) grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
+			return handler(srv, ss)
+		}
+		newCtx, err := authFn(ss.Context())
+		if err != nil {
+			return err
+		}
+		wrapped := &authedServerStream{ServerStream: ss, ctx: newCtx}
+		return handler(srv, wrapped)
+	}
+}
+
+type authedServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *authedServerStream) Context() context.Context { return s.ctx }
+
 func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *grpc.Server {
+	authFn := authFunc(cfg.JWTSecret, rsaPub, logger)
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainStreamInterceptor(
 			grpc_prometheus.StreamServerInterceptor,
-			auth.StreamServerInterceptor(authFunc(cfg.JWTSecret, rsaPub, logger)),
+			selectiveStreamAuth(authFn),
 		),
 		grpc.ChainUnaryInterceptor(
 			grpc_prometheus.UnaryServerInterceptor,
-			auth.UnaryServerInterceptor(authFunc(cfg.JWTSecret, rsaPub, logger)),
+			selectiveUnaryAuth(authFn),
 		),
 	)
 

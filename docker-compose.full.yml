@@ -72,6 +72,24 @@ services:
     networks:
       - internal
       - public
+    # Wave 140 SW3-fix: override Dockerfile HEALTHCHECK (which uses /healthz Full
+    # Check requiring ES/SpiceDB/Tempo all reachable) with /health/ready (Lean
+    # readiness probe: just DB connectivity + not shutting down). Two reasons:
+    #   1. file-processor depends_on backend: service_healthy (W140 SW3) must
+    #      resolve reliably. `/healthz` returns 503 in dev compose when any of
+    #      ES/SpiceDB/Tempo is slow to start (W139 (z) #4 backend lifespan
+    #      blocker family), which prevents file-processor from ever starting
+    #      even though backend's lifespan startup (including NATS broker
+    #      connect + stream creation per W140 SW1) is fully complete.
+    #   2. `/health/ready` matches the K8s readinessProbe pattern (production
+    #      uses K8s readiness probes from manifest, not Docker HEALTHCHECK).
+    # Python stdlib urllib (same as Dockerfile pattern) — no curl/wget needed.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
     deploy:
       resources:
         limits:
