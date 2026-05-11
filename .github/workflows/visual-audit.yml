@@ -167,10 +167,24 @@ jobs:
         run: npm ci
 
       - name: Build WASM modules
+        # W139 (z) #5: WASM binaryen download flake — wasm-pack downloads
+        # binaryen on first invocation from GitHub releases CDN. Transient
+        # 404/timeout failures are observed (rate-limiting or release flake).
+        # W140 SW4 mitigation: retry up to 3 times with 10s backoff. Each
+        # build is idempotent (binaryen cache reused on retry).
         working-directory: frontend
         run: |
-          wasm-pack build rust-crypto --target web
-          wasm-pack build wasm-sanitizer --target web
+          for attempt in 1 2 3; do
+            if wasm-pack build rust-crypto --target web && \
+               wasm-pack build wasm-sanitizer --target web; then
+              echo "OK: WASM modules built (attempt $attempt)"
+              exit 0
+            fi
+            echo "WASM build failed on attempt $attempt; retrying after 10s..."
+            sleep 10
+          done
+          echo "::error::WASM build failed after 3 attempts"
+          exit 1
 
       - name: Generate RS256 keypair
         # Mirrors start-docker.ps1 New-JwtRs256Key (W137 SW1):
@@ -229,12 +243,21 @@ jobs:
       - name: Wait for backend health
         # 180s timeout (90 × 2s) — extended from 60s in W139 SW3 first-run iter.
         # Backend startup on CI Linux includes lifespan with potential service
-        # discovery delays (NATS/ES/SpiceDB connect attempts may have long
+        # discovery delays (NATS/SpiceDB/ES connect attempts may have long
         # default timeouts before erroring + continuing). On timeout, tail
         # backend log for diagnostic visibility.
+        #
+        # W140 SW4 path fix: `/health` returns 404 (no such route exists).
+        # The actual routes are /health/live, /healthz, /health/ready
+        # (+ legacy /ready). For CI readiness polling we use /health/ready
+        # which is the lean Readiness Probe (just DB connectivity + not
+        # shutting down). Matches the backend Dockerfile HEALTHCHECK pattern
+        # in W140 SW3-fix (docker-compose.full.yml override). Pre-W140
+        # `/health` 404 silently turned this loop into a 180s wait → timeout,
+        # masked by the parallel NATS hang issue (W139 (z) #4).
         run: |
           for i in {1..90}; do
-            if curl -sf http://127.0.0.1:8000/health > /dev/null; then
+            if curl -sf http://127.0.0.1:8000/health/ready > /dev/null; then
               echo "OK: backend ready after $i attempts (~$(( i * 2 ))s)"
               exit 0
             fi
