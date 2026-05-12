@@ -197,7 +197,7 @@ jobs:
           echo '{}' > bundle-report.json
           total_size=0
           main_chunk_size=0
-          for f in dist/assets/*.js; do
+          for f in dist/client/assets/*.js; do
             size=$(wc -c < "$f")
             name=$(basename "$f")
             total_size=$((total_size + size))
