@@ -422,14 +422,26 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
       MINIO_BUCKET: uploads
-      # Wave 141 SW4 -> SW5 partial defer: env var unset (empty string) so
-      # file-processor's Go connectTemporal logs "No FP_TEMPORAL_API_KEY_FILE
-      # set; connecting to Temporal without auth" + skips the credentials
-      # attachment. Temporal runs in no-auth mode (W139 SW2 baseline; admin
-      # -tools start-dev) so this works. W142+ Path (a-auth) full will set
-      # this env to /app/.secrets/temporal_api_key (which the volume mount
-      # below already provides).
-      FP_TEMPORAL_API_KEY_FILE: ""
+      # Wave 144 SW2 Step 3 — Path (a-auth) full ACTIVATION.
+      # W141 SW5 Go credentials chain (config.go TemporalAPIKeyFile field +
+      # main.go connectTemporal reading token from this path then attaching
+      # via `client.NewAPIKeyStaticCredentials(token)` + `ConnectionOptions.
+      # TLSDisabled: true` for plaintext dev gRPC) was scaffolded but kept
+      # disabled (empty env) through W141-W143 while temporal auth was
+      # blocked by (z) #10 root cause investigation.
+      #
+      # W143 SW2 contract test DISPROVED crypto root cause (Temporal uses
+      # go-jose/v4 + golang-jwt/jwt/v4 v4.5.2; encoding canonical; Python
+      # end-to-end verify passes). W144 SW2 plain temporalio/server:1.30.2
+      # + config.yaml JWT auth is the runtime verification step per W141
+      # anti-pattern #2.
+      #
+      # Token at .secrets/temporal_api_key (W141 SW4 minted with kid='primary'
+      # header) is mounted r/o via the volume below. If file-processor's
+      # connectTemporal logs "Using Temporal credentials from file" + then
+      # "Connected to Temporal addr=temporal:7233", W137 §Honesty #5 +
+      # W140 NEW #6 CLOSE.
+      FP_TEMPORAL_API_KEY_FILE: "/app/.secrets/temporal_api_key"
     volumes:
       # Wave 141 SW4 scaffolding preserved: read-only mount of .secrets/
       # for the Temporal service token (and any future file-based credentials).
@@ -445,6 +457,11 @@ services:
         condition: service_healthy
       temporal:
         condition: service_healthy
+      # Wave 144 SW2: default namespace must be registered before file-processor
+      # connects (Temporal SDK uses namespace="default" by default; if it
+      # doesn't exist the client.Connect call fails with "namespace not found").
+      temporal-namespace-init:
+        condition: service_completed_successfully
       # Wave 140 SW3: backend MUST be healthy before file-processor starts.
       # Architectural contract per W140 Q2 (production parity):
       #   - Backend's NatsTaskBroker.connect() (called via app/core/lifespan.py
@@ -582,82 +599,128 @@ services:
           memory: 256M
     restart: unless-stopped
 
-  temporal:
-    # Wave 142 SW5b — Path A pre-bootstrap RUNTIME CASCADE → honest rollback
-    # to W139 SW2 admin-tools baseline (per W141 SW5b pattern + plan trigger
-    # "cumulative SW3-SW5 wall-clock > limit without Connected to Temporal").
-    #
-    # W142 SW3 + SW3-fix v2 + v3 attempted Path A via temporalio/auto-setup:
-    # 1.29.6.1 + JWT auth + SKIP_DEFAULT_NAMESPACE_CREATION + USE_INTERNAL_
-    # FRONTEND + SERVICES list + bash /dev/tcp healthcheck. 5 NEW (z)
-    # discoveries (post-W141 inventory) surfaced via runtime verification:
-    #
-    #   (z) #6 W142 NEW: TEMPORAL_JWT_KEY_SOURCE1 file:// scheme REJECTED
-    #     by default_token_key_provider.go ("unsupported protocol scheme
-    #     \"file\""). Mitigated by switching to http://backend:8000/.well-
-    #     known/jwks.json (W141 SW3 approach was actually correct here).
-    #   (z) #7 W142 NEW: USE_INTERNAL_FRONTEND=true env var renders the
-    #     internal-frontend YAML section in docker.yaml but is NOT enough
-    #     — `temporal-server start` only starts services in --service flag
-    #     list (default 4: frontend, history, matching, worker). The auto-
-    #     setup start-temporal.sh script reads SERVICES env to build the
-    #     flag list. Mitigated by setting SERVICES=frontend,history,
-    #     matching,worker,internal-frontend.
-    #   (z) #8 W142 NEW: temporal_api_key (W141 SW4 minted) lacked `kid`
-    #     header field → "malformed token - no kid header" error from
-    #     interceptor.go:145. JWKS endpoint serves keys with kid="primary"
-    #     (per app/api/well_known.py). Mitigated: added kid='primary' to
-    #     JWT header in start-docker.ps1 New-TemporalServiceToken function.
-    #   (z) #9 W142 NEW: busybox `nc -z` in alpine auto-setup image returns
-    #     non-zero even when port IS listening (netstat shows 7233 listen,
-    #     but `nc -z 127.0.0.1 7233` exits 1). Possibly -z flag
-    #     incompatibility with busybox netcat. Mitigated: switched
-    #     healthcheck to bash /dev/tcp builtin.
-    #   (z) #10 W142 NEW: After all mitigations 6-9, token has valid kid
-    #     header + matches JWKS key + Python cryptography lib VERIFIES the
-    #     signature as cryptographically valid using the JWKS pub key
-    #     served by backend — BUT Temporal STILL rejects with "crypto/rsa:
-    #     verification error" (interceptor.go:145). Root cause unidentified;
-    #     likely structural Temporal JWX library handling difference vs
-    #     standard Go crypto/rsa OR JWKS cache/refresh timing. This (z) is
-    #     beyond reasonable wave scope to diagnose.
-    #
-    # Per plan deviation trigger #5 ("SW3-SW5 cumulative wall-clock > 6h
-    # OR new (z) discovery beyond <1h mitigation budget → SW5b honest
-    # rollback"), reverted to W139 SW2 baseline (admin-tools start-dev,
-    # no auth). file-processor returns to W139 SW2 baseline behavior
-    # (connecting to Temporal WITHOUT auth via service-name DNS).
-    #
-    # W142 SW3-SW5 SCAFFOLDING PRESERVED for W143+ pickup (per W141 pattern):
-    #   - start-docker.ps1 New-JwtRs256PublicKey function (RSA-2048 public
-    #     key derivation, idempotent)
-    #   - start-docker.ps1 New-TemporalServiceToken updated with kid header
-    #     ('primary' to match backend JWKS endpoint)
-    #   - file-processor Go credentials attach (UNCHANGED from W141 SW5):
-    #     config.go TemporalAPIKeyFile field + main.go connectTemporal
-    #   - file-processor docker-compose .secrets/ mount + FP_TEMPORAL_API_
-    #     KEY_FILE env (currently empty; W143+ activates)
-    #
-    # W143+ scope for axe + Path (a-auth) Path A full closure:
-    #   - W142 (z) #10 — Temporal Server JWX vs Go crypto/rsa signature
-    #     verification disagreement. May need to investigate JWX library
-    #     source OR try alternative claim mapper (custom Go plugin) OR
-    #     switch to plain temporalio/server (NOT auto-setup) with custom
-    #     YAML auth config.
-    #
-    # W137 §Honesty #5 + W140 NEW #6 stay open as W143+ structural.
-    # W139 SW2 0.0.0.0 rebind preserved.
+  # ─── Temporal admin-tools schema bootstrap (W144 SW2 Step 2 sidecar) ───────
+  #
+  # One-shot sidecar that runs `temporal-sql-tool` to create the `temporal`
+  # and `temporal_visibility` PostgreSQL databases + schema. Required before
+  # the plain `temporalio/server:1.30.2` can connect.
+  #
+  # Schema files ship in the temporalio/admin-tools image at
+  # /etc/temporal/schema/postgresql/v12/{temporal,visibility}/versioned/.
+  # Schema bootstrap is idempotent — running again on an already-bootstrapped
+  # DB is a no-op (per `temporal-sql-tool create-database` semantics; falls
+  # through cleanly if database exists).
+  #
+  # `restart: "no"` — this is a one-shot container; once the schema exists,
+  # exit 0 + Docker reports `Exited (0)`. file-processor's
+  # `depends_on: temporal-admin-tools: service_completed_successfully` waits
+  # for clean exit before starting.
+  temporal-admin-tools:
     image: temporalio/admin-tools:1.30.2
+    container_name: temporal-admin-tools
+    environment:
+      SQL_PLUGIN: postgres12
+      SQL_HOST: postgres
+      SQL_PORT: "5432"
+      SQL_USER: "${POSTGRES_USER:-postgres}"
+      SQL_PASSWORD: "${POSTGRES_PASSWORD}"
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -e
+        echo "[temporal-admin-tools] Bootstrapping temporal + temporal_visibility schemas..."
+        # temporal DB
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal create-database || true
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal setup-schema -v 0.0
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
+        # temporal_visibility DB
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility create-database || true
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility setup-schema -v 0.0
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+        echo "[temporal-admin-tools] Schema bootstrap complete."
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+
+  # ─── Temporal Server (plain image, W144 SW2 Path B) ────────────────────────
+  #
+  # W144 SW2 — Path B plain `temporalio/server:1.30.2` runtime swap.
+  #
+  # Previous history preserved:
+  #   - W139 SW2 baseline: `temporalio/admin-tools:1.30.2` + `temporal server
+  #     start-dev --ip 0.0.0.0 --db-filename /tmp/temporal.db` (SQLite, no
+  #     auth). file-processor connected via service-name DNS without JWT.
+  #   - W142 SW3-SW5 Path A (auto-setup with JWT) attempted + (z) #6-#10
+  #     cascade + SW5b honest rollback to W139 baseline.
+  #   - W143 SW2 contract test (tests/test_wave143_jwks_roundtrip.py) DISPROVED
+  #     Agent 2 "JWKS byte-encoding mismatch" hypothesis: Temporal uses
+  #     go-jose/v4 + golang-jwt/jwt/v4 v4.5.2 (NOT lestrrat-go/jwx); encoding
+  #     IS canonical RFC 7518 § 6.3.1.1; end-to-end Python verify of real
+  #     .secrets/temporal_api_key PASSES against both PEM-derived AND JWKS-
+  #     reconstructed pub keys.
+  #
+  # W144 SW2 strategy (W141 anti-pattern #2 — runtime swap IS verification):
+  #   - Replace admin-tools start-dev with plain `temporalio/server:1.30.2`
+  #   - Mount services/temporal/config.yaml — VERIFIED schema per upstream
+  #     development-postgres12.yaml + common/config/config.go Authorization
+  #     struct YAML tags (jwtKeyProvider, claimMapper, authorizer, audience)
+  #   - Schema bootstrap via temporal-admin-tools sidecar (above)
+  #   - Default namespace registration via temporal-namespace-init sidecar
+  #     (below)
+  #   - JWT auth wired via config.yaml global.authorization.jwtKeyProvider.
+  #     keySourceURIs pointing at backend's /.well-known/jwks.json (RS256
+  #     pub key fetch via go-jose; refresh interval 1m).
+  #
+  # If (z) #10 "crypto/rsa: verification error" re-appears post-runtime-swap,
+  # walk the 6-phase diagnostic decision tree per W144 Phase 1 Agent 2 report:
+  #   1. Token structure (kid='primary', alg=RS256, decoded payload)
+  #   2. JWKS endpoint reachability from temporal container
+  #   3. JWKS content match (kid='primary', kty=RSA, n+e present)
+  #   4. Temporal JWKS cache refresh timing
+  #   5. Audience claim validation (aud="temporal")
+  #   6. NEW (z) discovery + escalation
+  #
+  # W141/W142 scaffolding PRESERVED (config.yaml is additive, not subtractive):
+  #   - start-docker.ps1 New-JwtRs256Key (RSA-2048 private key, .NET 8 PSx7)
+  #   - start-docker.ps1 New-JwtRs256PublicKey (W142 SW3 scaffolding)
+  #   - start-docker.ps1 New-TemporalServiceToken (W141 SW4; kid='primary' header)
+  #   - file-processor Go credentials chain (W141 SW5; config.go +
+  #     main.go connectTemporal)
+  temporal:
+    image: temporalio/server:1.30.2
     container_name: temporal
     ports:
       - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
-      # UI port (8233) not published: use SSH tunnel or internal access only
+      - "127.0.0.1:7243:7243"  # frontend HTTP (Temporal Web UI etc)
     environment:
-      - TEMPORAL_CLI_ADDRESS=temporal:7233
-    entrypoint: [ "/bin/sh", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
+      TEMPORAL_CONFIG_DIR: /etc/temporal/config
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PWD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
+      # Defensive .secrets/ mount for any future file-based key import. The
+      # primary auth path uses HTTP JWKS via global.authorization.jwtKeyProvider
+      # in config.yaml (W142 (z) #6 disproved file:// URL scheme).
+      - ./.secrets:/app/.secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal-admin-tools:
+        condition: service_completed_successfully
     networks:
       - internal
     healthcheck:
+      # `temporal` CLI is bundled in the temporalio/server image and exposes
+      # gRPC health probe via `operator cluster health`. Per W139 SW2 +
+      # W141 SW5b: works on plain server image too.
       test: [ "CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 || exit 1" ]
       interval: 10s
       timeout: 10s
@@ -668,6 +731,42 @@ services:
           cpus: '0.50'
           memory: 1G
     restart: unless-stopped
+
+  # ─── Temporal namespace init (W144 SW2 Step 2 sidecar) ─────────────────────
+  #
+  # One-shot sidecar that registers the `default` namespace via the
+  # `temporal operator namespace create` CLI. Required because plain
+  # `temporalio/server:1.30.2` does NOT auto-create namespaces (unlike
+  # `temporalio/auto-setup` which does so via env vars).
+  #
+  # `default` namespace is what the file-processor Go client connects to
+  # (default value in Temporal SDK is "default" if not specified).
+  #
+  # `restart: "no"` — one-shot. Once namespace exists, exit 0.
+  # `--retention 1` — 1-day workflow history retention (dev-sized).
+  temporal-namespace-init:
+    image: temporalio/admin-tools:1.30.2
+    container_name: temporal-namespace-init
+    environment:
+      TEMPORAL_CLI_ADDRESS: "temporal:7233"
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -e
+        echo "[temporal-namespace-init] Registering 'default' namespace..."
+        temporal operator namespace create --namespace default --retention 24h || echo "[temporal-namespace-init] 'default' namespace already exists; continuing."
+        echo "[temporal-namespace-init] Default namespace ready."
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 128M
 
   imgproxy:
     image: darthsim/imgproxy:v3.28.0
