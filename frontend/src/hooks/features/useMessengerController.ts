@@ -26,7 +26,11 @@ const formatMessageTime = (dateString: string) => {
 export const useMessengerController = () => {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
-  const { chatId } = useParams({ strict: false }) as { chatId?: string }
+  // W145 SW2 — `as` cast removed; TanStack v1 `useParams({ strict: false })`
+  // returns the union of all route params, so destructured `chatId` is
+  // `string | undefined` natively. Matches NewsDetail.tsx + EventDetail.tsx +
+  // ResetPassword.tsx codebase convention (4 callsites; all use strict:false).
+  const { chatId } = useParams({ strict: false })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { presenceMap } = useMessenger()
