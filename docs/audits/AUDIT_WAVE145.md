@@ -1,7 +1,8 @@
 # Wave 145 Audit — Tier 1 axe step-diagnostic + Tier 5 /messenger × 2 polish (W141 anti-pattern #3 quintuple-vindicated at code-write time)
 
 **Branch**: `egorribun`
-**HEAD at close**: (SW7 commit hash — populated during finalization)
+**HEAD at close**: `b597f23cd docs(wave145-sw7): audit + CLAUDE.md row + INDEX.md + N+3 rotation (W142 -> archive) + npm audit fix` (pushed to origin/egorribun; polish-v1 applies further docs updates)
+**HEAD post-polish-v1**: (polish commit hash — populated after polish commit)
 **Scope**: NO-DEPLOY continued (W125–W144 SSR migration arc + local + structural)
 **Wall-clock**: ~3-4h core + ~30 min docs (matches Q1 estimate; Q3 open-ended budget UNUSED — no (z) cascade absorbed; SW1 fast-fail injection wrapper resolved (z) #21 cleanly in iter 1)
 **(z) Path discoveries / diagnostic refinements**: **0 NEW W145** (SW1 outcome empirically determined as Outcome A per source-analysis prediction; SW2+SW3 mechanical; W144 NEW (z) #21 RESOLVED via fast-fail)
@@ -99,7 +100,7 @@
   - `dist/client/assets/index-BxOLtIf2.js` **139,808 bytes** — BYTE-IDENTICAL size to W144 PROD baseline `index-DqqHVXgy.js`; hash differs due to module identity reorg
   - `dist/client/_shell.html` 65,864 bytes (UNCHANGED from W144)
   - `dist/client/sw.js` 53,115 bytes (UNCHANGED from W144)
-  - Messenger chunk: `Messenger-Bi5yNe6U.js` 42.65 kB / gzip 14.40 kB
+  - Messenger chunks: client `NhTnXv3u.js` 58.98 kB / gzip 18.89 kB + server `Bi5yNe6U.js` 42.65 kB / gzip 14.40 kB (different chunks by design — client renders interactive UI; server SSR handles minimal pre-paint shell since route is ssr:false). Polish-v1 verified both reproduce identically across build × 2.
 - Workbox precached 209 files (4.80 MB) — unchanged from W144
 - 2 font preloads injected via post-build-shell.mjs — unchanged from W144
 
@@ -200,7 +201,7 @@ No new housekeeping surfaced during SW0-SW3 execution. SW6 NO-OP per plan.
 | pytest backend slice | 255p (no backend changes) | preserved (no SW touched backend) |
 | npm audit | 0 vulnerabilities | **REGRESSION detected during SW7 pre-commit gate re-run** (2 vulns / 1 high + 1 moderate; transitive protobufjs CVEs disclosed upstream same-day as W145; advisories GHSA-75px-5xx7-5xc7 + GHSA-jvwf-75h9-cwgg + GHSA-685m-2w69-288q via `@opentelemetry/exporter-trace-otlp-http@0.55.0 → otlp-transformer@0.55.0 → protobufjs@7.5.5`). **MITIGATED in SW7 via `npm audit fix` (non-force; 5 transitive bumps in package-lock.json; package.json UNCHANGED).** Final: **0 vulnerabilities** ✓ (W144 baseline restored). Per W119 SW5 / W121 polish A1 / W130 SW4 precedent. |
 | Cargo.lock | no drift (≥ 34 waves) | preserved (no Rust changes) |
-| Build × 1 reproducibility | `index-DqqHVXgy.js` 139,808 bytes (W144 PROD) | `index-BxOLtIf2.js` **139,808 bytes (BYTE-IDENTICAL SIZE)** ✓ |
+| Build × 2 reproducibility (polish-v1 verified) | `index-DqqHVXgy.js` 139,808 bytes (W144 PROD) | `index-BxOLtIf2.js` **139,808 bytes (BYTE-IDENTICAL SIZE to W144 main chunk)** ✓ + reproducibility verified by build × 2 producing identical hashes for all chunks (client Messenger `NhTnXv3u.js` 58.98 kB × 2 + server Messenger `Bi5yNe6U.js` 42.65 kB × 2). Note: client Messenger chunk hash + size differ from server Messenger chunk (different code-split targets), NOT a regression. |
 | `_shell.html` | 65,864 bytes | 65,864 bytes ✓ (UNCHANGED) |
 | `sw.js` | 53,115 bytes | 53,115 bytes ✓ (UNCHANGED) |
 | Docker stack | temporal + file-processor `(healthy) × 2` | preserved (no infra changes) |
