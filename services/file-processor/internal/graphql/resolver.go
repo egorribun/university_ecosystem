@@ -7,8 +7,8 @@ import (
 	"path"
 	"strings"
 
-	gql "github.com/graph-gophers/graphql-go"
 	"github.com/google/uuid"
+	gql "github.com/graph-gophers/graphql-go"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"go.temporal.io/sdk/client"
 )

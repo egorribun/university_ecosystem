@@ -19,12 +19,12 @@ type Config struct {
 	// token mint).
 	TemporalAPIKeyFile string `mapstructure:"temporal_api_key_file"`
 	MinioBucket        string `mapstructure:"minio_bucket"`
-	MinioEndpoint  string `mapstructure:"minio_endpoint"`
-	MinioAccessKey string `mapstructure:"minio_access_key"`
-	MinioSecretKey string `mapstructure:"minio_secret_key"`
-	MinioSecure    bool   `mapstructure:"minio_secure"`
-	GraphQLPort    string `mapstructure:"graphql_port"`
-	JWTSecret      string `mapstructure:"jwt_secret"`
+	MinioEndpoint      string `mapstructure:"minio_endpoint"`
+	MinioAccessKey     string `mapstructure:"minio_access_key"`
+	MinioSecretKey     string `mapstructure:"minio_secret_key"`
+	MinioSecure        bool   `mapstructure:"minio_secure"`
+	GraphQLPort        string `mapstructure:"graphql_port"`
+	JWTSecret          string `mapstructure:"jwt_secret"`
 	// TD-W18-01 (audit 2026-03-23 Wave 18): RSA public key PEM for RS256 verification.
 	// When set, both RS256 and HS256 tokens are accepted (RS256 preferred).
 	// This brings file-processor into parity with ws-hub and gateway.
