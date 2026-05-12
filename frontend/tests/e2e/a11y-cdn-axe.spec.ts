@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test"
+import { readFile } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
 
 /**
- * CDN-injected `axe-core` regression test — Wave 115 SW3.
+ * Local-injected `axe-core` regression test — Wave 115 SW3 / Wave 146 SW1.
  *
  * `@axe-core/playwright@4.11.2` bundles `axe-core@4.11.3` internally (see
  * `node_modules/@axe-core/playwright/dist/index.mjs` — it imports the
@@ -15,21 +18,39 @@ import { expect, test } from "@playwright/test"
  * NOT catch it — rule-engine delta between 4.11.2 and 4.11.3 or a
  * Playwright-specific rendering quirk, not instrumented further.
  *
- * This spec loads `axe-core@4.11.2` from the jsdelivr CDN via
- * `page.addScriptTag` and runs `axe.run(document, ...)` directly. That
- * reproduces the Wave 114 polish-v2 finding inside the e2e harness and
- * creates a CI regression guard that fires if the forgot-password link (or
- * any other WCAG 2.2 AA surface on /login) regresses to a sub-24 px hit
- * box. Chromium-only — WebKit projects already have memory-envelope
- * constraints from SW1, and the CDN inject adds payload that would
- * exacerbate them.
+ * Originally this spec loaded `axe-core@4.11.2` from the jsdelivr CDN via
+ * `page.addScriptTag`. Wave 146 SW1 replaces that with the npm-bundled
+ * version injected via `page.evaluate(eval(src))` — production CSP
+ * `script-src 'self' 'strict-dynamic'` (see `app/core/policies/csp.py:39`)
+ * silently blocks CDN script-tag loads in `npm run preview` (the same
+ * VITE_LHCI build that auto-bypasses auth via `_auth.tsx` `beforeLoad`),
+ * making the `page.addScriptTag` `load` event never fire and the test
+ * hit its 90 s timeout. The same fix is documented at
+ * `frontend/scripts/wave138-visual-audit.mjs:401-433` (Wave 144 SW1 iter 2
+ * + Wave 145 SW1 Promise.race(30s) ceiling — the latter resolves W144
+ * NEW (z) #21 24-min unbounded hang).
+ *
+ * Chromium-only — WebKit projects already have memory-envelope
+ * constraints from SW1, and the eval inject is structurally identical
+ * to the CDN script-tag path from a renderer-memory standpoint (the
+ * 550 KB source still has to land in the page's JS context).
  */
 
 type AxeNode = { target: string[]; html: string; failureSummary?: string }
 type AxeViolation = { id: string; impact: string; nodes: AxeNode[]; help: string }
 type AxeResult = { violations: AxeViolation[] }
 
-test.describe("@a11y CDN-injected axe-core regression", () => {
+// W146 SW1 — Path resolution from `frontend/tests/e2e/a11y-cdn-axe.spec.ts`
+// up to `frontend/node_modules/axe-core/axe.min.js`. Three levels up
+// (file → e2e → tests → frontend) then descend. Mirrors
+// `wave138-visual-audit.mjs:87-91` resolution pattern (which goes two
+// levels because that script is in `frontend/scripts/`).
+const AXE_SOURCE_PATH = path.resolve(
+  fileURLToPath(import.meta.url),
+  "../../../node_modules/axe-core/axe.min.js"
+)
+
+test.describe("@a11y local-injected axe-core regression", () => {
   test("/login — no WCAG 2.2 AA target-size violations", async ({ page }, testInfo) => {
     // Wave 115 polish — standardised on `testInfo.project.name` across both
     // `a11y-public.spec.ts` and this spec so skip conditions stay consistent
@@ -38,7 +59,7 @@ test.describe("@a11y CDN-injected axe-core regression", () => {
     // the same browser binary — only `project.name` distinguishes them).
     test.skip(
       testInfo.project.name !== "chromium",
-      "CDN axe injection compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)"
+      "axe-core eval inject compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)"
     )
 
     await page.emulateMedia({ reducedMotion: "reduce" })
@@ -48,9 +69,50 @@ test.describe("@a11y CDN-injected axe-core regression", () => {
     // flush and MotionConfig snap Framer Motion to resting state.
     await page.waitForTimeout(300)
 
-    await page.addScriptTag({
-      url: "https://cdn.jsdelivr.net/npm/axe-core@4.11.2/axe.min.js",
-    })
+    // Wave 146 SW1 — npm-bundled axe-core injected via eval (CSP-agnostic).
+    //
+    // Why this replaced the pre-W146 `page.addScriptTag({ url: CDN })`:
+    //
+    // Production CSP `script-src 'self' 'strict-dynamic'` (see
+    // `app/core/policies/csp.py:39` + per-request nonce at
+    // `app/core/security_headers.py:76`) blocks the jsdelivr CDN URL
+    // because Playwright's `addScriptTag` can't attach a per-request
+    // nonce → browser silently blocks → `load` event never fires →
+    // indefinite wait → 90 s test timeout. Identical CSP-block pattern
+    // resolved by W144 SW1 iter 2 (`wave138-visual-audit.mjs` A2 pivot)
+    // and bounded by W145 SW1 30 s Promise.race ceiling.
+    //
+    // eval inside `page.evaluate` is CSP-agnostic: no `<script>` tag is
+    // created → `script-src` is not evaluated against this code path.
+    // Source is the npm-pinned `axe-core@4.11.2` minified bundle
+    // (~270 KB after compression, ~550 KB raw — `node_modules/axe-core/
+    // axe.min.js`). Read once per test (single test, single worker
+    // — no warm-cache savings to be had vs module-scope load).
+    //
+    // Promise.race(30 s) provides defensive ceiling — mirrors
+    // `wave138-visual-audit.mjs:418-432` pattern that resolved W144 NEW
+    // (z) #21 24-min unbounded hang on the visual-audit script. If the
+    // 30 s ceiling fires here, the failure is in `page.evaluate` IPC
+    // serialization of the 550 KB source OR eval() under Chromium memory
+    // pressure — same diagnostic dichotomy.
+    const AXE_SOURCE = await readFile(AXE_SOURCE_PATH, "utf-8")
+    const INJECT_TIMEOUT_MS = 30_000
+    await Promise.race([
+      page.evaluate((src) => {
+        // npm-pinned axe-core@4.11.2 .min.js, intentional + audited;
+        // eval inside browser-context page.evaluate is CSP-agnostic +
+        // no user input flows here (source is from node_modules pin).
+        // eslint-disable-next-line security/detect-eval-with-expression
+        eval(src)
+      }, AXE_SOURCE),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(new Error(`axe-inject-timeout-${INJECT_TIMEOUT_MS / 1000}s`)),
+          INJECT_TIMEOUT_MS
+        )
+      ),
+    ])
 
     const results = await page.evaluate<AxeResult>(async () => {
       type AxeWindow = {
