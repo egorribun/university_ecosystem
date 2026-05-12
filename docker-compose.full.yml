@@ -701,11 +701,18 @@ services:
       - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
       - "127.0.0.1:7243:7243"  # frontend HTTP (Temporal Web UI etc)
     environment:
-      TEMPORAL_CONFIG_DIR: /etc/temporal/config
+      # W144 SW2 NEW (z) #17: Temporal v1.30.2 plain server does NOT do env-var
+      # substitution in YAML config (unlike auto-setup which renders via
+      # envsubst). Custom entrypoint at services/temporal/entrypoint.sh does
+      # sed-based substitution of ${POSTGRES_USER} + ${POSTGRES_PWD} before
+      # exec'ing temporal-server. POSTGRES_USER + POSTGRES_PWD are passed
+      # through here as the entrypoint's required inputs.
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PWD: "${POSTGRES_PASSWORD}"
+    entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
     volumes:
       - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
+      - ./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro
       # Defensive .secrets/ mount for any future file-based key import. The
       # primary auth path uses HTTP JWKS via global.authorization.jwtKeyProvider
       # in config.yaml (W142 (z) #6 disproved file:// URL scheme).
@@ -718,13 +725,19 @@ services:
     networks:
       - internal
     healthcheck:
-      # `temporal` CLI is bundled in the temporalio/server image and exposes
-      # gRPC health probe via `operator cluster health`. Per W139 SW2 +
-      # W141 SW5b: works on plain server image too.
-      test: [ "CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 || exit 1" ]
+      # W144 SW2 NEW (z) #19: `temporalio/server:1.30.2` image ships only
+      # `temporal-server` binary (no `temporal` CLI, no `grpc_health_probe`),
+      # and busybox sh lacks /dev/tcp + busybox `nc -z` returns spurious
+      # non-zero exit codes even when the port is listening (W142 (z) #9
+      # repeat). gRPC port 7233 is bound to the container IP (not 127.0.0.1)
+      # so wget against localhost fails too. Workaround: probe Prometheus
+      # metrics endpoint which IS bound on 0.0.0.0:8000 and responds with
+      # metrics text when the server is healthy.
+      test: [ "CMD-SHELL", "wget -q --spider --timeout=3 http://127.0.0.1:8000/metrics || exit 1" ]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 10
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -748,14 +761,34 @@ services:
     image: temporalio/admin-tools:1.30.2
     container_name: temporal-namespace-init
     environment:
+      # W144 SW2 NEW (z) #20: `TEMPORAL_CLI_ADDRESS` is the v1 CLI env name;
+      # the v2 `temporal` CLI uses `TEMPORAL_ADDRESS` (no _CLI infix). Set
+      # both for cross-version compatibility + pass --address explicitly to
+      # eliminate any env-var-precedence ambiguity.
       TEMPORAL_CLI_ADDRESS: "temporal:7233"
+      TEMPORAL_ADDRESS: "temporal:7233"
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
         set -e
         echo "[temporal-namespace-init] Registering 'default' namespace..."
-        temporal operator namespace create --namespace default --retention 24h || echo "[temporal-namespace-init] 'default' namespace already exists; continuing."
-        echo "[temporal-namespace-init] Default namespace ready."
+        # Wait briefly for the frontend service to be fully accepting traffic
+        # (healthcheck reports healthy on metrics port 8000 but the gRPC
+        # frontend may need a few more seconds for first-RPC readiness).
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          if temporal operator namespace create --address temporal:7233 --namespace default --retention 24h; then
+            echo "[temporal-namespace-init] Default namespace registered."
+            exit 0
+          fi
+          if temporal operator namespace describe --address temporal:7233 --namespace default >/dev/null 2>&1; then
+            echo "[temporal-namespace-init] Default namespace already exists."
+            exit 0
+          fi
+          echo "[temporal-namespace-init] attempt $i: waiting 3s for frontend RPC..."
+          sleep 3
+        done
+        echo "[temporal-namespace-init] FAILED to register default namespace after 10 attempts."
+        exit 1
     depends_on:
       temporal:
         condition: service_healthy

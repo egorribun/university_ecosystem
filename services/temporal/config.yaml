@@ -67,7 +67,13 @@ persistence:
 global:
   membership:
     maxJoinDuration: 30s
-    broadcastAddress: "0.0.0.0"
+    # W144 SW2 NEW (z) #18: broadcastAddress must match an address that's
+    # reachable from within the membership ring. Upstream dev config uses
+    # "127.0.0.1" (single-node loopback), but our cross-container setup needs
+    # the container's actual bridge-network IP so file-processor can reach
+    # temporal:7233. The custom entrypoint.sh substitutes ${BROADCAST_ADDRESS}
+    # here with `getent hosts $(hostname)` output at start time.
+    broadcastAddress: "${BROADCAST_ADDRESS}"
   pprof:
     port: 7936
   metrics:
