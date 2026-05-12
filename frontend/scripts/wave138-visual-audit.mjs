@@ -102,6 +102,16 @@ const OUT_DIR = path.resolve(
   process.env.OUT_DIR ?? ".screenshots/wave138-visual-audit"
 )
 
+// W145 SW3 — added /messenger + /messenger/placeholder-chat-id for messenger
+// × 2 polish arc baseline coverage. Both routes are `ssr: false` (W128 SW2
+// opt-down — chat is WebSocket-driven; SSR brings no LCP benefit). Empty-state
+// DOM (no real chat data without ws-hub) is still good a11y scope target.
+//
+// Per SW1 Outcome A (CI run 25747112501 axeError=axe-inject-timeout-30s),
+// these routes will deterministically hit the same fast-fail at 30s.
+// Sidecar JSON captures HTTP 200 + AUTHED + 0 hydration errors as structural
+// verification baseline. Full axe coverage pending W146+ injection strategy
+// pivot (page.addInitScript() / chunked / different bundle).
 const DEFAULT_ROUTES = [
   "/dashboard",
   "/events",
@@ -111,6 +121,8 @@ const DEFAULT_ROUTES = [
   "/settings",
   "/map",
   "/activity",
+  "/messenger",
+  "/messenger/placeholder-chat-id",
 ]
 
 // Normalize each route — accept both "/dashboard" and "dashboard" forms.
