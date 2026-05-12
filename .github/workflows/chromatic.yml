@@ -89,9 +89,15 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@fa0dd4cd0a40696e6f9766370614a5ce482e6aa8 # v2.77.5
-        with:
-          tool: wasm-pack
+        # W142 polish-v3 fix (replicates W141 polish-v2 from visual-audit.yml):
+        # taiki-e/install-action@v2.77.5 hardcodes drager/wasm-pack releases
+        # URL → 404 as of 2026-05-11; rustwasm/wasm-pack is the canonical
+        # repo since v0.14.0 (2026-01-20) but install-action doesn't auto-
+        # follow. Replaced with the official wasm-pack curl installer from
+        # rustwasm.github.io (same fix already in visual-audit.yml line 180).
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Build WASM modules
         run: |
