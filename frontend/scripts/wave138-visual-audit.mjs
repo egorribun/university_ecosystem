@@ -468,12 +468,13 @@ async function auditRoute(page, routePath, outDir) {
           return await window.axe.run(scopeContext, options)
         }, axeRunOptions),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`axe-analyze-timeout-${axeTimeoutMs / 1000}s`)), axeTimeoutMs)
+          setTimeout(
+            () => reject(new Error(`axe-analyze-timeout-${axeTimeoutMs / 1000}s`)),
+            axeTimeoutMs
+          )
         ),
       ])
-      console.log(
-        `[${routePath}] after-axeRun violations=${results?.violations?.length ?? 0}`
-      )
+      console.log(`[${routePath}] after-axeRun violations=${results?.violations?.length ?? 0}`)
       axeViolations = results.violations.filter(
         (v) => v.impact === "critical" || v.impact === "serious"
       )
