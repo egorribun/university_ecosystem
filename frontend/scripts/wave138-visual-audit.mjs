@@ -333,16 +333,25 @@ async function auditRoute(page, routePath, outDir) {
   await page.emulateMedia({ reducedMotion: "reduce" })
 
   try {
+    // W145 SW1 — per-step console.log markers (with route prefix) around
+    // each blocking step. Captured in workflow stdout via Playwright's
+    // process stdout. Diagnostic for (z) #21 — the 24-min CI hang in W144
+    // SW1 iter 2 CI run 25739831369 on /login. The marker that DOESN'T
+    // log identifies the exact unbounded-wait step.
+    console.log(`[${routePath}] before-goto`)
     const resp = await page.goto(targetUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     })
     httpStatus = resp?.status() ?? null
     finalUrl = page.url()
+    console.log(`[${routePath}] after-goto status=${httpStatus} url=${finalUrl}`)
 
     // 1500ms hydration + Framer Motion + React Query observers settle.
     // Same buffer wave137 uses; axe-core needs final-state DOM.
+    console.log(`[${routePath}] before-waitTimeout`)
     await page.waitForTimeout(1500)
+    console.log(`[${routePath}] after-waitTimeout`)
 
     // W144 SW1 iter 2 — Path A2 npm-bundled axe-core + page.evaluate(eval(src)).
     //
@@ -381,13 +390,35 @@ async function auditRoute(page, routePath, outDir) {
       // Source is the bundled axe-core@4.11.2 minified (~270 KB), audited
       // npm dep at frontend/node_modules/axe-core/axe.min.js, read once at
       // module load.
-      await page.evaluate((src) => {
-        // Inject window.axe global via eval — no <script> tag → CSP-agnostic.
-        // The eslint no-eval rule is not enabled for this script's lint scope
-        // (eval inside browser-context page.evaluate is intentional + audited
-        // — source is npm-pinned axe-core@4.11.2 .min.js, not user input).
-        eval(src)
-      }, AXE_SOURCE)
+      //
+      // W145 SW1 — Promise.race wrapper added to bound this injection step.
+      // W144 SW1 iter 2 CI run 25739831369 HUNG 24 min on /login at this
+      // step (no timeout was wrapping page.evaluate). Most plausible root
+      // cause per source analysis: 550 KB AXE_SOURCE Playwright IPC
+      // serialization cost OR eval() under headless Chromium memory
+      // pressure. Either way, 30s ceiling closes the unbounded-wait
+      // failure mode structurally — mirrors axe.run() Promise.race
+      // pattern at lines ~440-460 below.
+      const INJECT_TIMEOUT_MS = 30_000
+      console.log(
+        `[${routePath}] before-evalInject src-bytes=${AXE_SOURCE.length} timeout-ms=${INJECT_TIMEOUT_MS}`
+      )
+      await Promise.race([
+        page.evaluate((src) => {
+          // Inject window.axe global via eval — no <script> tag → CSP-agnostic.
+          // The eslint no-eval rule is not enabled for this script's lint scope
+          // (eval inside browser-context page.evaluate is intentional + audited
+          // — source is npm-pinned axe-core@4.11.2 .min.js, not user input).
+          eval(src)
+        }, AXE_SOURCE),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`axe-inject-timeout-${INJECT_TIMEOUT_MS / 1000}s`)),
+            INJECT_TIMEOUT_MS
+          )
+        ),
+      ])
+      console.log(`[${routePath}] after-evalInject`)
 
       const axeRunOptions = {
         runOnly: {
@@ -410,6 +441,7 @@ async function auditRoute(page, routePath, outDir) {
         },
       }
 
+      console.log(`[${routePath}] before-axeRun timeout-ms=${axeTimeoutMs}`)
       const results = await Promise.race([
         page.evaluate(async (options) => {
           // `window.axe` is the eval-injected global from the page.evaluate
@@ -427,6 +459,9 @@ async function auditRoute(page, routePath, outDir) {
           setTimeout(() => reject(new Error(`axe-analyze-timeout-${axeTimeoutMs / 1000}s`)), axeTimeoutMs)
         ),
       ])
+      console.log(
+        `[${routePath}] after-axeRun violations=${results?.violations?.length ?? 0}`
+      )
       axeViolations = results.violations.filter(
         (v) => v.impact === "critical" || v.impact === "serious"
       )
