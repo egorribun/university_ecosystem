@@ -31,7 +31,7 @@ describe("ssrAuth.parseCookie", () => {
 
   it("extracts a value when surrounded by other cookies", () => {
     expect(
-      parseCookie("csrf_token=tok; access_token_v2=abc123; ue-mode=dark", "access_token_v2"),
+      parseCookie("csrf_token=tok; access_token_v2=abc123; ue-mode=dark", "access_token_v2")
     ).toBe("abc123")
   })
 
@@ -51,9 +51,7 @@ describe("ssrAuth.parseCookie", () => {
   it("does not match a name that is a prefix of another cookie", () => {
     // "access_token_v2_OTHER=..." should not match name "access_token_v2".
     // Our regex requires the next char to be `=`.
-    expect(
-      parseCookie("access_token_v2_legacy=legacy_value; csrf=x", "access_token_v2"),
-    ).toBeNull()
+    expect(parseCookie("access_token_v2_legacy=legacy_value; csrf=x", "access_token_v2")).toBeNull()
   })
 
   it("escapes regex metacharacters in the name", () => {

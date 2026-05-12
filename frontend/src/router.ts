@@ -46,8 +46,7 @@ const createAppRouter = () => {
   // Read SSR-injected auth state if running under server.ts; falls through to
   // DEFAULT_AUTH on the client (where App.tsx's RouterProvider context prop
   // overrides the value at mount anyway).
-  const ssrAuth =
-    typeof globalThis !== "undefined" ? globalThis.__ssrAuthGetter__?.() : undefined
+  const ssrAuth = typeof globalThis !== "undefined" ? globalThis.__ssrAuthGetter__?.() : undefined
 
   return createRouter({
     routeTree,

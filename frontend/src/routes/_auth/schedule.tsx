@@ -1,10 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { lazy } from "react"
 import * as v from "valibot"
-import {
-  scheduleGroupsQueryOptions,
-  pageScheduleQueryOptions,
-} from "@/api/hooks/schedule"
+import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "@/api/hooks/schedule"
 import { currentUserQueryOptions } from "@/api/hooks/users"
 import { scheduleSearchSchema } from "@/features/schedule/schema"
 

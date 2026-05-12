@@ -108,9 +108,7 @@ const frontendRoot = path.resolve(__dirname, "..")
 // prepare-lhci-routes.mjs + run-lhci.mjs).
 const distClientDir = path.join(frontendRoot, "dist", "client")
 const distLegacyDir = path.join(frontendRoot, "dist")
-const distDir = existsSync(path.join(distClientDir, "index.html"))
-  ? distClientDir
-  : distLegacyDir
+const distDir = existsSync(path.join(distClientDir, "index.html")) ? distClientDir : distLegacyDir
 const lhrDir = path.join(frontendRoot, ".lighthouseci")
 
 // CRITICAL: set VITE_LHCI BEFORE any build invocation so Rolldown DCE

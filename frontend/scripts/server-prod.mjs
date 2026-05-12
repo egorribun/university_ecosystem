@@ -68,7 +68,7 @@ const handler = handlerModule.default ?? handlerModule
 if (typeof handler?.fetch !== "function") {
   console.error(
     `server-prod: imported module from ${handlerEntryPath} does not expose .fetch handler. ` +
-      `Run 'npm run build' first to produce dist/server/server.js.`,
+      `Run 'npm run build' first to produce dist/server/server.js.`
   )
   process.exit(1)
 }

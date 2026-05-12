@@ -7,10 +7,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  pageScheduleQueryOptions,
-  scheduleGroupsQueryOptions,
-} from "@/api/hooks/schedule"
+import { pageScheduleQueryOptions, scheduleGroupsQueryOptions } from "@/api/hooks/schedule"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   type Lesson,

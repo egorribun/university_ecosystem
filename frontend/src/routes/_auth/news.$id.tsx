@@ -32,9 +32,7 @@ export const Route = createFileRoute("/_auth/news/$id")({
     // with normal error handling (hard-coded 304/no-data throws are
     // swallowed by the catch since this is best-effort, not authoritative).
     await Promise.allSettled([
-      context.queryClient.ensureQueryData(
-        newsDetailQueryOptions(params.id, resolveLoaderLang()),
-      ),
+      context.queryClient.ensureQueryData(newsDetailQueryOptions(params.id, resolveLoaderLang())),
     ])
   },
   component: NewsDetailRoute,

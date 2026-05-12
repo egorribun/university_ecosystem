@@ -349,10 +349,7 @@ async function auditRoute(page, routePath, outDir) {
       const results = await Promise.race([
         builder.analyze(),
         new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error("axe-analyze-timeout-60s")),
-            60_000,
-          ),
+          setTimeout(() => reject(new Error("axe-analyze-timeout-60s")), 60_000)
         ),
       ])
       axeViolations = results.violations.filter(

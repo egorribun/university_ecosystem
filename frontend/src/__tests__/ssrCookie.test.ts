@@ -88,7 +88,7 @@ describe("Wave 133 SW1 — globalThis.__ssrCookieGetter__ typing + roundtrip", (
     globalThis.__ssrCookieGetter__ = () => storage.getStore()
     storage.run("access_token_v2=jwt.value.here; ue-mode=dark", () => {
       expect(globalThis.__ssrCookieGetter__?.()).toBe(
-        "access_token_v2=jwt.value.here; ue-mode=dark",
+        "access_token_v2=jwt.value.here; ue-mode=dark"
       )
     })
   })
@@ -124,10 +124,10 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
     const headers = record.config?.headers
     expect(headers).toBeTruthy()
     const cookieHeader =
-      headers instanceof AxiosHeaders ? headers.get("Cookie") : (headers as Record<string, string>)?.Cookie
-    expect(cookieHeader).toBe(
-      "access_token_v2=jwt.value.here; csrf_token=tok; ue-mode=dark",
-    )
+      headers instanceof AxiosHeaders
+        ? headers.get("Cookie")
+        : (headers as Record<string, string>)?.Cookie
+    expect(cookieHeader).toBe("access_token_v2=jwt.value.here; csrf_token=tok; ue-mode=dark")
   })
 
   it("does NOT set Cookie header when getter returns empty string", async () => {
@@ -135,7 +135,9 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
     await api.get("/users/me", { skipRateLimitQueue: true } as ApiRequestConfig)
     const headers = record.config?.headers
     const cookieHeader =
-      headers instanceof AxiosHeaders ? headers.get("Cookie") : (headers as Record<string, string>)?.Cookie
+      headers instanceof AxiosHeaders
+        ? headers.get("Cookie")
+        : (headers as Record<string, string>)?.Cookie
     expect(cookieHeader).toBeFalsy()
   })
 
@@ -144,7 +146,9 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
     await api.get("/users/me", { skipRateLimitQueue: true } as ApiRequestConfig)
     const headers = record.config?.headers
     const cookieHeader =
-      headers instanceof AxiosHeaders ? headers.get("Cookie") : (headers as Record<string, string>)?.Cookie
+      headers instanceof AxiosHeaders
+        ? headers.get("Cookie")
+        : (headers as Record<string, string>)?.Cookie
     expect(cookieHeader).toBeFalsy()
   })
 
@@ -153,7 +157,9 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
     await api.get("/users/me", { skipRateLimitQueue: true } as ApiRequestConfig)
     const headers = record.config?.headers
     const cookieHeader =
-      headers instanceof AxiosHeaders ? headers.get("Cookie") : (headers as Record<string, string>)?.Cookie
+      headers instanceof AxiosHeaders
+        ? headers.get("Cookie")
+        : (headers as Record<string, string>)?.Cookie
     expect(cookieHeader).toBeFalsy()
   })
 
@@ -169,7 +175,9 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
     const headers = record.config?.headers
     expect(headers).toBeTruthy()
     const cookieHeader =
-      headers instanceof AxiosHeaders ? headers.get("Cookie") : (headers as Record<string, string>)?.Cookie
+      headers instanceof AxiosHeaders
+        ? headers.get("Cookie")
+        : (headers as Record<string, string>)?.Cookie
     const authHeader =
       headers instanceof AxiosHeaders
         ? headers.get("Authorization")

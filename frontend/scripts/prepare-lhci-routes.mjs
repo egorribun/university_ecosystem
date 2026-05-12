@@ -13,9 +13,7 @@ const frontendRoot = path.resolve(__dirname, "..")
 // LHCI route preparation works regardless of build pipeline variant.
 const distClientDir = path.join(frontendRoot, "dist", "client")
 const distLegacyDir = path.join(frontendRoot, "dist")
-const distDir = existsSync(path.join(distClientDir, "index.html"))
-  ? distClientDir
-  : distLegacyDir
+const distDir = existsSync(path.join(distClientDir, "index.html")) ? distClientDir : distLegacyDir
 const entryFile = path.join(distDir, "index.html")
 
 // Wave 112 — LHCI covers all 6 target pages for baseline measurement.

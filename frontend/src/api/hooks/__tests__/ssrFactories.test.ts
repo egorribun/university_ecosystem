@@ -29,10 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { eventDetailQueryOptions } from "../events"
 import { newsDetailQueryOptions, prefetchNewsListQuery } from "../news"
-import {
-  scheduleGroupsQueryOptions,
-  pageScheduleQueryOptions,
-} from "../schedule"
+import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "../schedule"
 import { sessionsQueryKey, sessionsQueryOptions } from "../sessions"
 import { currentUserQueryOptions, currentUserQueryKey } from "../users"
 import { weatherQueryOptions, weatherQueryKey } from "../weather"

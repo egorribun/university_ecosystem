@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest"
 import * as v from "valibot"
 
-import {
-  SETTINGS_TAB,
-  settingsSearchSchema,
-  type SettingsSearch,
-} from "../schema"
+import { SETTINGS_TAB, settingsSearchSchema, type SettingsSearch } from "../schema"
 
 /**
  * Wave 134 SW2 — settingsSearchSchema unit tests.

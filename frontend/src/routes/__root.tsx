@@ -223,10 +223,8 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // route + any nested routes (via TanStack Router's head merging).
   // `<Scripts />` injects the bundle entry script tags + modulepreload
   // links produced by Vite + tanstackStart.
-  const ssrTheme =
-    typeof globalThis !== "undefined" ? globalThis.__ssrThemeGetter__?.() : undefined
-  const ssrLang =
-    typeof globalThis !== "undefined" ? globalThis.__ssrLangGetter__?.() : undefined
+  const ssrTheme = typeof globalThis !== "undefined" ? globalThis.__ssrThemeGetter__?.() : undefined
+  const ssrLang = typeof globalThis !== "undefined" ? globalThis.__ssrLangGetter__?.() : undefined
   const isDark = ssrTheme === "dark"
   const lang = ssrLang ?? "ru"
 

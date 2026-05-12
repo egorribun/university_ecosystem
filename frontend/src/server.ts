@@ -128,9 +128,9 @@ export default createServerEntry({
     return requestAuthStorage.run(auth, () =>
       requestCookieStorage.run(cookie, () =>
         requestThemeStorage.run(theme, () =>
-          requestLangStorage.run(lang, () => handler.fetch(request)),
-        ),
-      ),
+          requestLangStorage.run(lang, () => handler.fetch(request))
+        )
+      )
     )
   },
 })

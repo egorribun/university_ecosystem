@@ -28,18 +28,11 @@
 //      `npx serve dist/client -s` for local SPA-style preview) finds
 //      the shell at the conventional `index.html` path.
 
-import {
-  copyFileSync,
-  existsSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs"
+import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
 
-const FONT_PRELOAD_PATTERN =
-  /^(inter-cyrillic-wght-normal-|outfit-latin-wght-normal-)[^/]*\.woff2$/
+const FONT_PRELOAD_PATTERN = /^(inter-cyrillic-wght-normal-|outfit-latin-wght-normal-)[^/]*\.woff2$/
 
 const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
 
@@ -106,13 +99,9 @@ function applyLhciReplacements(html, isLHCI) {
       "html, body, #root { background: #FFFFFF !important; color: #000000 !important; " +
       "opacity: 1 !important; visibility: visible !important; } " +
       "#lhci-marker { display: flex !important; }"
-    return html
-      .replace("/* LHCI_CSS_PLACEHOLDER */", lhciStyles)
-      .replace(/%VITE_LHCI%/g, "true")
+    return html.replace("/* LHCI_CSS_PLACEHOLDER */", lhciStyles).replace(/%VITE_LHCI%/g, "true")
   }
-  return html
-    .replace("/* LHCI_CSS_PLACEHOLDER */", "")
-    .replace(/%VITE_LHCI%/g, "false")
+  return html.replace("/* LHCI_CSS_PLACEHOLDER */", "").replace(/%VITE_LHCI%/g, "false")
 }
 
 function main() {
@@ -148,13 +137,9 @@ function main() {
     copyFileSync(shellPath, mirrorPath)
   }
 
-  console.log(
-    `Post-build: shell ${shellPath} processed (${originalSize} -> ${html.length} bytes)`
-  )
+  console.log(`Post-build: shell ${shellPath} processed (${originalSize} -> ${html.length} bytes)`)
   if (fontFiles.length > 0) {
-    console.log(
-      `Post-build: injected ${fontFiles.length} font preload(s): ${fontFiles.join(", ")}`
-    )
+    console.log(`Post-build: injected ${fontFiles.length} font preload(s): ${fontFiles.join(", ")}`)
   }
   if (mirrorPath) {
     console.log(`Post-build: mirrored to ${mirrorPath} for static-serve compat`)

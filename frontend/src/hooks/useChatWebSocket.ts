@@ -143,11 +143,7 @@ export function useChatWebSocket({
   // AppProviders chain in __root.tsx RootComponent) see disconnected state.
   // Without this arg, React 19 throws "Missing getServerSnapshot, which is
   // required for server-rendered content" at module evaluation time.
-  const isConnected = useSyncExternalStore(
-    wsStore.subscribe,
-    wsStore.getSnapshot,
-    () => false,
-  )
+  const isConnected = useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot, () => false)
 
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()

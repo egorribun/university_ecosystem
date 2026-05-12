@@ -87,9 +87,7 @@ const retryDelay = (attempt: number) => Math.min(1_000 * 2 ** attempt, 10_000)
  */
 export const sessionsQueryOptions = (userId: string) => ({
   queryKey: sessionsQueryKey(userId),
-  queryFn: async ({
-    signal,
-  }: QueryFunctionContext<SessionsQueryKey>): Promise<ActiveSession[]> => {
+  queryFn: async ({ signal }: QueryFunctionContext<SessionsQueryKey>): Promise<ActiveSession[]> => {
     const { data } = await api.get<ActiveSession[]>("/auth/sessions", { signal })
     return data
   },
@@ -116,13 +114,10 @@ export const updateSessionInCache = (
   userId: string,
   updated: ActiveSession
 ) => {
-  queryClient.setQueryData<ActiveSession[] | undefined>(
-    sessionsQueryKey(userId),
-    (previous) => {
-      if (!Array.isArray(previous)) return previous
-      return previous.map((session) => (session.id === updated.id ? updated : session))
-    }
-  )
+  queryClient.setQueryData<ActiveSession[] | undefined>(sessionsQueryKey(userId), (previous) => {
+    if (!Array.isArray(previous)) return previous
+    return previous.map((session) => (session.id === updated.id ? updated : session))
+  })
 }
 
 /**

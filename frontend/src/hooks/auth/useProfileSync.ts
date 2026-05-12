@@ -582,9 +582,7 @@ const KNOWN_USER_ROLES: ReadonlyArray<UserRole> = [
   "anonymous",
 ]
 const coerceUserRole = (role: string): UserRole => {
-  return (KNOWN_USER_ROLES as ReadonlyArray<string>).includes(role)
-    ? (role as UserRole)
-    : "student"
+  return (KNOWN_USER_ROLES as ReadonlyArray<string>).includes(role) ? (role as UserRole) : "student"
 }
 
 export const buildSsrStubUser = (role: string): User => ({
