@@ -63,11 +63,20 @@ test.describe("@a11y local-injected axe-core regression", () => {
     )
 
     await page.emulateMedia({ reducedMotion: "reduce" })
-    await page.goto("/login", { waitUntil: "domcontentloaded" })
-    await page.waitForLoadState("networkidle").catch(() => {})
-    // Same settle buffer as a11y-public.spec.ts — let React Query observers
-    // flush and MotionConfig snap Framer Motion to resting state.
-    await page.waitForTimeout(300)
+    await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    // Wave 146 polish-v2 — removed `page.waitForLoadState("networkidle")` which
+    // hung the test under W146 SW1 CSP-block elimination. Pre-W146 the test
+    // never reached `waitForLoadState` because `addScriptTag(CDN)` hit its 90s
+    // timeout first; post-W146 SW1, the test reaches the next step and the
+    // `networkidle` wait hangs indefinitely when /login has pending API
+    // requests (backend unavailable in CI E2E env → 404s + retries keep the
+    // network active). Default Playwright `waitForLoadState` ignores the
+    // `.catch(() => {})` because it uses an internal navigation timeout that
+    // doesn't fire promptly. Pattern verified working in
+    // `frontend/scripts/wave138-visual-audit.mjs:355-366` (W145 SW1 baseline):
+    // skip networkidle entirely + use a fixed 1500ms settle for Framer Motion
+    // + React Query observers + MotionConfig `reducedMotion="user"` to snap.
+    await page.waitForTimeout(1500)
 
     // Wave 146 SW1 — npm-bundled axe-core injected via eval (CSP-agnostic).
     //
