@@ -207,6 +207,32 @@ captured").
 
 ---
 
+## Polish-v3 — CI gate closures (NEW post-SW7)
+
+After SW7 closed Wave 142 base scope, the user invoked the "безупречно?"
+polish-pass probe (per `feedback_perfectionism.md`). PR #1114 CI surfaced
+8 distinct gate failures, ALL pre-existing inherited debt OR fresh-disclosure
+events unrelated to W142 wave goals. Polish-v3 closed 8 of them via 8 commits.
+
+| # | Commit | Closure | Type |
+|---|--------|---------|------|
+| 1 | `41b23506f` | uv.lock refresh — Dependabot pip-deps cascade (pact-python 3.3.1→3.4.0 + urllib3/mypy constraint widening) | Pre-commit / MOD-W5-03 |
+| 2 | `c7af69080` | gofmt drift in `services/file-processor/internal/{config,resolver}.go` — carried W140 SW3-fix + W141 SW5 changes that needed `gofmt -w` | Lint file-processor |
+| 3 | `3111393c5` | chromatic.yml wasm-pack 404 — replaced taiki-e/install-action with rustwasm curl (W141 polish-v2 pattern extended) | Chromatic — install step |
+| 4 | `690236bc9` | Same wasm-pack fix in 4 more workflows: `build-orchestrated-linux.yml`, `lhci-linux.yml`, `reusable-e2e-tests.yml`, `reusable-frontend-tests.yml` (latter via replace_all × 4 instances) | Multiple CI gates |
+| 5 | `c054ed58f` | `npm run format` (prettier --write) on 23 src/ files — drift accumulated since W125-W128 SSR migration | Frontend Tests / Lint & Format |
+| 6 | `bad621d0c` | `app/models/auth.py:204` `# type: ignore[assignment]` on UserFK.user_id intentional override (W136 SW4 added nullable=True+SET NULL but mypy flagged the type widening) | Backend Type Check |
+| 7 | `a59dfddbb` | `.github/workflows/reusable-frontend-tests.yml` Bundle Analysis path `dist/assets/*.js → dist/client/assets/*.js` — W125 SSR migration debt (dist now split into dist/client + dist/server) | Frontend Tests / Bundle Analysis |
+| 8 | `76da0ebc9` | `security/audit-allowlist.yaml` — 13 IDs for GHSA-rmmr-r34h-pfm5 @tanstack supply-chain advisory cascade (published 2026-05-11; installed @tanstack/history@1.161.6 predates flagged malware versions 1.161.9 + 1.161.12; advisory `>= 0` range overly broad — Shai-Hulud-class pattern, mirrors existing 1115588-1116720 allowlist entries; expires 2026-06-15 forcing revisit) | Security Audit / Node.js Dependency Audit |
+
+**Pre-existing failures NOT addressed by polish-v3** (structural, out of W142 scope):
+- Chromatic Visual Regression "Invalid Storybook build" — known W120-W123 Storybook+Vite8/Rolldown bug; W123 SW1 unblocked Storybook BUILD but Chromatic story-collection mode still hits `__STORYBOOK_MODULE_*` injection (4 upstream tracking issues per `memory/wave122_chromatic_upstream.md`, quarterly review). Not actionable in-wave.
+- Frontend Tests / Lighthouse Audit `LighthouseError: PAGE_HUNG` on `http://localhost:35223/` (redirects to `/dashboard` under VITE_LHCI mock-user bypass; page then hangs). This is **W139 (z) #10** documented in [AUDIT_WAVE139.md](archive/AUDIT_WAVE139.md) as deferred to W140+. The failure was masked in W140 + W141 because earlier polish-v3 gates (wasm-pack 404, prettier drift, etc.) failed at the `build` step, and Lighthouse Audit (which `needs: build`) was skipped. Once polish-v3 commits #3-#7 unblocked the build, Lighthouse Audit ran for the first time on this branch since W139 and surfaced the pre-existing PAGE_HUNG. NOT a W142 regression — same structural Chrome-headless behavior on Linux CI that affects /dashboard rendering. W143+ structural scope (~3-5h): investigate via headless Chrome flags (`--no-sandbox`, `--disable-gpu`, `--disable-dev-shm-usage`), or alternative throttling settings, or local `npm run lhci:windows` wrapper port (W120 SW1 pattern).
+
+**Net polish-v3**: 8 CI gates closed via 8 commits (~1.5h wall-clock). Pattern matches W138 polish (~30 min) + W141 polish-v3 (~90 min) — small focused commits per gate, each verified locally before push. Total post-W142-base wave + polish-v3: ~7.5h.
+
+---
+
 ## Honest §Honesty caveat trajectory (post-W142)
 
 | # | Caveat | Pre-W142 | Post-W142 |
