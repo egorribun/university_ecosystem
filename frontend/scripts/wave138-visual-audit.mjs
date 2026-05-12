@@ -49,17 +49,46 @@
  */
 
 import { Buffer } from "node:buffer"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
-// W143 SW1 — Path A mini-axe injection via CDN script tag (W115 SW3 pattern).
-// Replaces `@axe-core/playwright` AxeBuilder block to bypass dual-injection
-// finishRun chunking. See `auditRoute` body for full rationale + composition
-// with preserved W142 SW1 Path C + Path B scaffolding.
-const AXE_CDN_URL = "https://cdn.jsdelivr.net/npm/axe-core@4.11.2/axe.min.js"
+// W144 SW1 iter 2 — Path A2 npm-bundled axe-core + page.evaluate(eval(source)).
+//
+// Replaces the W143 SW1 / W142 SW1 Path A CDN script tag (`page.addScriptTag`
+// + `https://cdn.jsdelivr.net/npm/axe-core@4.11.2/axe.min.js`) which hung
+// structurally in CI under production CSP `script-src 'self' 'strict-dynamic'`.
+//
+// Source verification (W141 anti-pattern #3 — verified refs > hypothesis):
+//   - app/core/policies/csp.py:39 — prod CSP includes 'strict-dynamic'
+//   - app/core/security_headers.py:76 — per-request nonce gen
+//   - frontend/scripts/post-build-shell.mjs:67-79 — nonce placeholder injection
+//   - Playwright's `addScriptTag` cannot pass a CSP nonce → CDN script silently
+//     blocked → no load/error event → indefinite wait
+//
+// W144 SW1 iter 1 (commit b2c3036a5) added a `page.on("requestfailed")`
+// diagnostic listener to confirm the CSP-block hypothesis empirically. The
+// iter 1 CI run was invalidated by a Windows-side MSYS path-mangle of the
+// `gh -f routes=/login` input (W120 SW1 known issue resurfaced; the
+// `gh` CLI arg is mangled BEFORE submission, distinct from the ROUTES
+// env-var path which `normalizeRoute()` already workarounds). The hang
+// pattern reproduced regardless (9.5 min on a mangled route URL), but
+// REQUEST-BLOCKED never logged — suggesting CSP violations may not propagate
+// to Playwright's `requestfailed` event at all (browser drops the script at
+// HTML-parser level silently, no network-layer signal).
+//
+// Either way A2 is structurally CSP-agnostic — no <script> tag is created.
+// `page.evaluate(eval(source))` executes axe-core directly inside the page's
+// trusted JS context, bypassing all script-src restrictions. Source is read
+// once at module load (axe.min.js is ~550 KB at version 4.11.2) and reused
+// across all routes.
+const AXE_SOURCE_PATH = path.resolve(
+  fileURLToPath(import.meta.url),
+  "../../node_modules/axe-core/axe.min.js"
+)
+const AXE_SOURCE = await readFile(AXE_SOURCE_PATH, "utf-8")
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -286,20 +315,11 @@ async function auditRoute(page, routePath, outDir) {
     const idx = networkRequests.findLastIndex((r) => r.url === res.url() && !("status" in r))
     if (idx >= 0) networkRequests[idx].status = res.status()
   }
-  // W144 SW1 iter 1 diagnostic — confirms CSP-block hypothesis for the
-  // jsdelivr.net CDN axe.min.js injection before W144 SW1 iter 2 commits the
-  // A2 pivot (npm-bundled axe-core + page.evaluate(eval(source))).
-  const requestFailedHandler = (req) => {
-    if (req.url().includes("cdn.jsdelivr.net/npm/axe-core")) {
-      console.log(`REQUEST-BLOCKED: ${req.url()} — ${req.failure()?.errorText ?? "unknown"}`)
-    }
-  }
 
   page.on("console", consoleHandler)
   page.on("pageerror", pageErrorHandler)
   page.on("request", requestHandler)
   page.on("response", responseHandler)
-  page.on("requestfailed", requestFailedHandler)
 
   const targetUrl = `${ORIGIN}${routePath}`
   let httpStatus = null
@@ -324,48 +344,47 @@ async function auditRoute(page, routePath, outDir) {
     // Same buffer wave137 uses; axe-core needs final-state DOM.
     await page.waitForTimeout(1500)
 
-    // W143 SW1 — Path A mini-axe injection via CDN script tag.
+    // W144 SW1 iter 2 — Path A2 npm-bundled axe-core + page.evaluate(eval(src)).
     //
-    // W142 SW1 iter 1 (Path C: Dashboard.tsx VITE_E2E_MODE content
-    // reduction) + iter 2 (Path B: AxeBuilder.include("main") +
-    // .disableRules × 12) BOTH disproved at CI level via runs 25701743572
-    // + 25702079799 — /dashboard still axeError "axe-analyze-timeout-60s".
-    // Root cause per Agent 1 Phase 1 finding: @axe-core/playwright's
-    // AxeBuilder.analyze() does dual page injection + finishRun result
-    // chunking (heavy serialization across browser↔Node boundary) which
-    // pushes heavy-DOM authed routes past the 60s timeout even with
-    // engine optimization + content reduction.
+    // Composes ON TOP of W142 SW1 Path C content gates (Dashboard.tsx
+    // VITE_E2E_MODE — preserved) + Path B-equivalent rule disabling
+    // (axe.run() options.rules shape, same list as W142 SW1 iter 2) + scope
+    // narrowing via context arg (`document.querySelector("#main-content")`).
     //
-    // Path A bypasses the chunking layer entirely via the proven W115 SW3
-    // `a11y-cdn-axe.spec.ts` pattern: load axe.min.js@4.11.2 from CDN once
-    // per page via `addScriptTag`, then invoke `axe.run()` directly inside
-    // `page.evaluate()`. Single injection, no chunking, no Playwright
-    // serialization. Composes ON TOP of W142 SW1 Path C content gates
-    // (Dashboard.tsx VITE_E2E_MODE) + Path B-equivalent rule disabling
-    // (translated to axe.run() options.rules shape) + scope narrowing
-    // (translated from AxeBuilder .include() to context arg).
+    // Pattern:
+    //   1. `page.evaluate((src) => { eval(src) }, AXE_SOURCE)` injects
+    //      window.axe global into the page's JS sandbox via eval. No <script>
+    //      tag is created → CSP `script-src 'self' 'strict-dynamic'` is not
+    //      evaluated against this code path → no silent block possible.
+    //   2. `page.evaluate(async (options) => window.axe.run(...))` invokes
+    //      the in-page axe global. Single Playwright↔browser round-trip
+    //      (the axe.run promise is awaited in-page, only the final result
+    //      structure crosses the boundary).
     //
-    // Scope arg: axe.run() takes context as the 1st positional argument.
-    // We pass `document.querySelector("#main-content")` to scope the DOM
-    // walk to MainLayout's <main id="main-content"> element (line 57-58
-    // of MainLayout.tsx). The id is stable across both prod AND E2E_MODE
-    // builds — VITE_E2E_MODE only swaps Navbar/Footer/etc to landmark
-    // stubs, NOT the main element. Defensive fallback to `document` if
-    // the element is missing (unexpected; would indicate routing or layout
-    // bug, surfaced via violations rather than crash).
+    // Scope arg: scope to MainLayout's <main id="main-content"> element
+    // (MainLayout.tsx line 57-58). The id is stable across both prod AND
+    // VITE_E2E_MODE builds — E2E mode only swaps Navbar/Footer/BackToTop/
+    // MobileBottomNav to landmark stubs, NOT the main element. Defensive
+    // fallback to `document` if missing (would indicate a routing or
+    // layout bug, surfaced via violations rather than crash).
     //
-    // Rule disabling: AxeBuilder `.disableRules([])` translates to
-    // `axe.run()` options.rules: { ruleId: { enabled: false } } map.
-    // Identical rule list as W142 SW1 iter 2 Path B (same rationale per
-    // rule — see W142 SW1 commit 48d13a061 for details).
-    //
-    // Promise.race 60s timeout preserved as defense-in-depth. Path A's
-    // lighter memory profile should bring authed-route analyze() under
-    // 60s, but the timeout protects against runaway in case any (z)
-    // discovery surfaces during CI verification (e.g., heavy /map maplibre
-    // canvas + WeatherParticles + 4 orbs may still exceed 60s).
+    // Timeout: 60s for compact routes (/login, /404, /events, /news,
+    // /schedule, /profile, /settings), 90s for heavy routes (/dashboard,
+    // /map, /activity) which carry larger SSR-rendered DOM + canvas
+    // backdrops. Per W144 Phase 1 Agent 1 risk #5: even with E2E-reduced
+    // chrome + scope narrowing, heavy routes may need extra budget.
+    const HEAVY_ROUTES = new Set(["/dashboard", "/map", "/activity"])
+    const axeTimeoutMs = HEAVY_ROUTES.has(routePath) ? 90_000 : 60_000
+
     try {
-      await page.addScriptTag({ url: AXE_CDN_URL })
+      // Inject window.axe via eval — no <script> tag, no CSP path.
+      // Source is the bundled axe-core@4.11.2 minified (~270 KB), audited
+      // npm dep at frontend/node_modules/axe-core/axe.min.js, read once at
+      // module load.
+      await page.evaluate((src) => {
+        // eslint-disable-next-line no-eval
+        eval(src)
+      }, AXE_SOURCE)
 
       const axeRunOptions = {
         runOnly: {
@@ -390,9 +409,10 @@ async function auditRoute(page, routePath, outDir) {
 
       const results = await Promise.race([
         page.evaluate(async (options) => {
-          // `window.axe` is the CDN-injected global from addScriptTag.
-          // Evaluated inside browser context; ESLint Node-side `no-undef`
-          // doesn't apply because Playwright stringifies + ships this fn.
+          // `window.axe` is the eval-injected global from the page.evaluate
+          // above. Evaluated inside browser context; ESLint Node-side
+          // `no-undef` doesn't apply because Playwright stringifies + ships
+          // this fn to the page.
           // eslint-disable-next-line no-undef
           const mainEl = document.querySelector("#main-content")
           // eslint-disable-next-line no-undef
@@ -401,7 +421,7 @@ async function auditRoute(page, routePath, outDir) {
           return await window.axe.run(scopeContext, options)
         }, axeRunOptions),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("axe-analyze-timeout-60s")), 60_000)
+          setTimeout(() => reject(new Error(`axe-analyze-timeout-${axeTimeoutMs / 1000}s`)), axeTimeoutMs)
         ),
       ])
       axeViolations = results.violations.filter(
@@ -418,7 +438,6 @@ async function auditRoute(page, routePath, outDir) {
   page.off("pageerror", pageErrorHandler)
   page.off("request", requestHandler)
   page.off("response", responseHandler)
-  page.off("requestfailed", requestFailedHandler)
 
   // Sidecar JSON
   const sidecarPath = path.join(outDir, `${safeFilename(routePath)}.json`)
