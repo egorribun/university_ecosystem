@@ -286,11 +286,20 @@ async function auditRoute(page, routePath, outDir) {
     const idx = networkRequests.findLastIndex((r) => r.url === res.url() && !("status" in r))
     if (idx >= 0) networkRequests[idx].status = res.status()
   }
+  // W144 SW1 iter 1 diagnostic — confirms CSP-block hypothesis for the
+  // jsdelivr.net CDN axe.min.js injection before W144 SW1 iter 2 commits the
+  // A2 pivot (npm-bundled axe-core + page.evaluate(eval(source))).
+  const requestFailedHandler = (req) => {
+    if (req.url().includes("cdn.jsdelivr.net/npm/axe-core")) {
+      console.log(`REQUEST-BLOCKED: ${req.url()} — ${req.failure()?.errorText ?? "unknown"}`)
+    }
+  }
 
   page.on("console", consoleHandler)
   page.on("pageerror", pageErrorHandler)
   page.on("request", requestHandler)
   page.on("response", responseHandler)
+  page.on("requestfailed", requestFailedHandler)
 
   const targetUrl = `${ORIGIN}${routePath}`
   let httpStatus = null
@@ -409,6 +418,7 @@ async function auditRoute(page, routePath, outDir) {
   page.off("pageerror", pageErrorHandler)
   page.off("request", requestHandler)
   page.off("response", responseHandler)
+  page.off("requestfailed", requestFailedHandler)
 
   // Sidecar JSON
   const sidecarPath = path.join(outDir, `${safeFilename(routePath)}.json`)
