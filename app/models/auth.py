@@ -201,7 +201,14 @@ class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
     # reconcile migration 202603280001 inadvertently inherited the model-side
     # NOT NULL through UserFK. Wave 136 SW4 restores nullability via override
     # + new alembic migration alter_failed_login_attempts_user_id_nullable.
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
+    # W142 polish-v3: mypy[assignment] override — UserFK mixin's user_id is
+    # Mapped[uuid.UUID] (non-nullable), but failed_login_attempts INTENTIONALLY
+    # overrides with `Mapped[uuid.UUID | None]` per W136 SW4 (failed login
+    # attempts must INSERT even when email maps to no user — credential-
+    # stuffing on harvested email lists). Existing W136 SW4 commit landed
+    # without this annotation; W142 CI surfaced the lint after pre-commit
+    # fix (commit 41b23506f) unlocked downstream type-check.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(  # type: ignore[assignment]
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
