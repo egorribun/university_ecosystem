@@ -107,8 +107,7 @@ test.describe("@a11y local-injected axe-core regression", () => {
       }, AXE_SOURCE),
       new Promise<never>((_, reject) =>
         setTimeout(
-          () =>
-            reject(new Error(`axe-inject-timeout-${INJECT_TIMEOUT_MS / 1000}s`)),
+          () => reject(new Error(`axe-inject-timeout-${INJECT_TIMEOUT_MS / 1000}s`)),
           INJECT_TIMEOUT_MS
         )
       ),

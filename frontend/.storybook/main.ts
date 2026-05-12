@@ -186,9 +186,7 @@ const config: StorybookConfig = {
     return {
       ...viteConfig,
       plugins: [
-        ...allPlugins.filter(
-          (p) => !isPwaPlugin(p) && !isStorybookIncompatibleTanstackPlugin(p)
-        ),
+        ...allPlugins.filter((p) => !isPwaPlugin(p) && !isStorybookIncompatibleTanstackPlugin(p)),
         clearTanStackEnvironmentsPlugin,
       ],
       build: {
