@@ -8,21 +8,31 @@
 
 ## Headlines
 
-1. **Tier 1 #1 (axe coverage Path A) — STRUCTURALLY DEFERRED via CI verification**.
+1. **Tier 1 #1 (axe coverage Path A) — STRUCTURAL HANG identified, W144+ pivot needed**.
    SW1 implemented Path A mini-axe injection via Playwright `page.addScriptTag`
    CDN-axe pattern (proven on /login per W115 SW3) + W142 SW1 Path C content
-   reduction scaffolding (preserved + functional). CI run `25732174008` HIT THE
-   30-MIN WORKFLOW TIMEOUT — step 22 "Run visual audit script" CANCELLED with
-   NO per-route sidecars written. Path A throughput is **structurally worse** than
-   W142 Paths C+B (which at least completed in 12 min, returning axeError for
-   /dashboard). Per Agent 1's cascade-risk inventory item #2 (per-route timeout
-   variance), the heavy authed-route DOM walk by axe-core takes >60s regardless
-   of injection method when combined with CDN load overhead (~5-45s for `addScriptTag`).
-   Per W143 plan deviation trigger ("iter 1 < 6/8 valid AND specific scope-mismatch
-   identified → iter 2 mitigate" + "iter count > 3 total → defer remaining routes
-   to W144+"): defer remaining routes to W144+. **Scaffolding preserved**: SW1
-   Path A code at `wave138-visual-audit.mjs:299-368` + W142 SW1 Path C E2E
-   gates + Path B engine optimization scaffolding all preserved.
+   reduction scaffolding (preserved + functional). CI run `25732174008` HIT
+   30-MIN WORKFLOW TIMEOUT with NO per-route sidecars. Polish-v2 P5 CI run
+   `25735582483` (cancelled at 14m6s) narrowed the failure mode further:
+   Path A **hangs structurally on /login alone** (a compact route with NO
+   heavy DOM). The hang is between `→ /login` log line and the next expected
+   log line — i.e., somewhere inside `auditRoute()` BEFORE the sidecar write
+   at lines 372-404. **Most plausible root cause** (UNVERIFIED): frontend's
+   CSP `script-src 'self' 'strict-dynamic'` blocks the CDN script-tag
+   injection (`https://cdn.jsdelivr.net/.../axe.min.js` lacks the per-request
+   nonce required by `strict-dynamic`). Browser silently blocks the script
+   → no `load` event → Playwright's `addScriptTag` waits indefinitely.
+   W115 SW3 a11y-cdn-axe.spec.ts works locally because @playwright/test's
+   webServer config may differ on CSP enforcement vs the W139 SW1 CI infra.
+   **W144+ pivot options**:
+   - Path A1: serve `axe.min.js` as a same-origin static asset (bypasses CSP)
+   - Path A2: bundle `axe-core` as npm dep + `page.evaluate(axe-core-source-string)`
+   - Path A3: CSP-bypass nonce per E2E_MODE route (security risk if mis-deployed)
+   - PRE-FIX: add `page.on("requestfailed", ...)` listener to CONFIRM the CSP-block
+     hypothesis before investing in any of the pivot paths
+   **Scaffolding preserved**: SW1 Path A code at `wave138-visual-audit.mjs:299-368`
+   + W142 SW1 Path C E2E gates + Path B engine optimization scaffolding all
+   preserved (no revert; W144+ pivot composes on top).
 
 2. **Tier 1 #2 Path (a-auth) (z) #10 — STRUCTURALLY DEFERRED via SW2 disproof of crypto root cause**.
    SW2 wrote a JWKS cryptographic round-trip contract test ([test_wave143_jwks_roundtrip.py](../../tests/test_wave143_jwks_roundtrip.py)
@@ -117,9 +127,35 @@ The script at [wave138-visual-audit.mjs:135-157](../../frontend/scripts/wave138-
 
 W142 Agent 3 Phase 1 hypothesized Layer 1 fix via `build.rolldownOptions.experimental.parallelism: 1`. W143 SW4 investigation searched the Rolldown 1.0.0-rc.15 type definitions + npm package source — NO `parallelism` config option exists. Only `hashCharacters: "base64"|"base36"|"hex"` is exposed (affects alphabet, not determinism). Layer 1 fix structurally requires upstream Rolldown changes. **Not mitigated** — W144+ scope: file Rolldown upstream issue OR accept as known limitation until Rolldown 1.0 stable adds determinism support.
 
-### (z) #14 W143 NEW — Path A (CDN-axe injection) throughput WORSE than Paths C+B
+### (z) #14 W143 NEW — Path A hangs on /login (compact route, NOT heavy-DOM issue) — likely CSP blocks CDN axe injection
 
-W142 SW1 paths C (content reduction) + B (engine optimization) at least completed the audit script in ~12 min, returning `axeError: "axe-analyze-timeout-60s"` for /dashboard. W143 SW1 Path A hit the 30-min workflow timeout with NO per-route sidecars written. Per Agent 1 Phase 1 cascade-risk #2 (per-route timeout variance), the CDN script-tag load (~5-45s per route via `addScriptTag` default 30s timeout) + axe.run() Promise.race (60s) + heavy DOM walk genuinely needs more than 92s/route × 8 = 12 min. Path A is structurally MORE expensive than AxeBuilder.analyze() due to per-page CDN fetch overhead. **Not mitigated** — W144+ scope: reduced route subset OR step-level timeout OR chunked per-route artifact upload to allow partial progress.
+**Framing v1 (commit `c6dbb3c72`)**: "Path A throughput WORSE than Paths C+B".
+
+**Framing v2 polish-v2 P2 (file edits before SW1-fu CI run)**: "Path A throughput APPEARS WORSE per INDIRECT evidence" — softened because I had no per-route timing measurements; could be all-routes-slow OR single-route hang.
+
+**Framing v3 (CORRECTED post polish-v2 P5 CI verification)**: Path A hangs **structurally** on /login alone — a single COMPACT route with NO heavy-DOM. This is NOT a throughput issue at all.
+
+CI evidence (`gh run view 25735582483` cancelled at 14 min 6 sec into /login):
+```
+12:55:45.9268864Z  → JWKS pre-check: GET http://localhost/.well-known/jwks.json
+12:55:45.9941662Z  ✓ JWKS healthy: 1 RS256 key(s) with n+e material  (← SW1-fu fix confirmed)
+12:55:47.1330218Z  → API login: POST .../auth/login/json
+12:55:47.2758064Z  ✓ Login OK; injected 2 cookies
+12:55:47.2803001Z  → /login        ← script entered route loop
+13:09:53.5814407Z  ##[error]The operation was canceled.   ← my cancel fired here (14m6s hang)
+```
+
+The hang is between line `→ /login` (route start) and the next expected log line which would have been the close-route success/failure. No sidecar for /login was written → `auditRoute()` hung BEFORE `writeFile` at lines 372-404.
+
+**Most plausible root cause** (UNVERIFIED — W144+ diagnostic scope): frontend's CSP header `script-src 'self' 'strict-dynamic'` blocks the CDN script tag injected by `page.addScriptTag({ url: "https://cdn.jsdelivr.net/.../axe.min.js" })`. The script never loads → browser fires neither `load` nor `error` event → Playwright's `addScriptTag` waits indefinitely. The W115 SW3 a11y-cdn-axe.spec.ts works locally because dev preview / @playwright/test webServer may not enforce CSP or may use a different policy. Playwright's `setDefaultTimeout(45_000)` set at line 547 of `wave138-visual-audit.mjs` SHOULD bound `addScriptTag` at 45s but did NOT in this CI environment — possibly Playwright `addScriptTag` URL injection bypasses the default timeout.
+
+**W144+ scope: structural pivot needed for Path A**:
+- Path A1: serve `axe.min.js` as a same-origin static asset (bypasses CSP entirely)
+- Path A2: include axe-core as an `npm` dependency + `page.evaluate(axe-core-as-string)` (no script-tag injection)
+- Path A3: inject CSP-bypass `nonce` per route OR set `Content-Security-Policy` override headers for E2E mode (defensive — security risk if mis-deployed)
+- W144+ pre-fix MUST add `page.on("requestfailed")` listener to confirm CSP-block hypothesis BEFORE pivoting
+
+**Polish-v2 P5 also CONFIRMED SW1-fu fix works**: log line `✓ JWKS healthy: 1 RS256 key(s) with n+e material` (NEW post-W143 SW1-fu wording) replaces pre-W143 `✓ JWKS healthy: 1 RS256 key(s)` — confirms the validation now requires `kty=RSA + n + e`. JWKS sidecar shows full RSA shape (256-byte `n` modulus + `e: "AQAB"`) instead of pre-fix HMAC stub.
 
 ---
 
@@ -141,7 +177,7 @@ W142 SW1 paths C (content reduction) + B (engine optimization) at least complete
 | 15 (NEW W142) | (z) #11 STRUCTURAL Rolldown non-determinism | OPEN structural | **DEEPENED** — W143 SW4 confirmed no in-repo fix path; needs upstream Rolldown |
 | 16 (NEW W143) | (z) #12 wave138-visual-audit.mjs JWKS pre-check script bug | — | **MITIGATED in W143 SW1-fu** — script now prefers correct RSA endpoint + validates n+e material |
 | 17 (NEW W143) | (z) #13 Rolldown 1.0.0-rc.15 API gap | — | OPEN structural (W144+ upstream-blocked) |
-| 18 (NEW W143) | (z) #14 Path A throughput WORSE than Paths C+B | — | OPEN (W144+: reduced route subset OR step timeout OR chunked artifacts) |
+| 18 (NEW W143) | (z) #14 Path A STRUCTURAL HANG on /login (compact route, NOT heavy-DOM) — polish-v2 P5 CI run 25735582483 hung 14m6s at `→ /login` before `auditRoute` could write sidecar; most plausible cause CSP `script-src 'self' 'strict-dynamic'` blocks CDN injection | — | OPEN structural (W144+ pivot to same-origin axe asset OR npm-bundled axe-core + page.evaluate; ADD `page.on("requestfailed")` to confirm CSP-block hypothesis pre-fix) |
 
 **Net post-W143**:
 - **0 CLOSED at runtime** in W143 (matches W141 + W142 pattern)
