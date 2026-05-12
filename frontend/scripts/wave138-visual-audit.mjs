@@ -54,7 +54,12 @@ import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
-import AxeBuilder from "@axe-core/playwright"
+
+// W143 SW1 — Path A mini-axe injection via CDN script tag (W115 SW3 pattern).
+// Replaces `@axe-core/playwright` AxeBuilder block to bypass dual-injection
+// finishRun chunking. See `auditRoute` body for full rationale + composition
+// with preserved W142 SW1 Path C + Path B scaffolding.
+const AXE_CDN_URL = "https://cdn.jsdelivr.net/npm/axe-core@4.11.2/axe.min.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -280,74 +285,82 @@ async function auditRoute(page, routePath, outDir) {
     // Same buffer wave137 uses; axe-core needs final-state DOM.
     await page.waitForTimeout(1500)
 
-    // Axe-core scan via bundled chromium (W138 SW3 fix — see launch site).
-    // Legacy mode reduces axe injection memory footprint (single
-    // `axe.run()` instead of dual page injection + finishRun chunking) —
-    // helps even on chromium for heavy authed-route DOM. Same pattern
-    // a11y-public.spec.ts uses for WebKit.
+    // W143 SW1 — Path A mini-axe injection via CDN script tag.
     //
-    // W140 SW4 iter8 ((z) #8): AxeBuilder.analyze() has NO built-in timeout.
-    // On heavy authed-route DOM (e.g. /dashboard SSR-rendered with all
-    // dash-tilt-cards + DashboardHero + InstallPrompt + stories), axe
-    // injection + WCAG 2.0/2.1/2.2 AA rule evaluation can hang indefinitely.
-    // Pre-W140 this was assumed to be Windows-only per W138 SW3 + W139 SW1
-    // narrative, but iter7 (first successful CI run reaching /dashboard
-    // audit) hung 26 minutes on Linux runners too — closing the assumption.
-    // Mitigation: Promise.race with a 60s timeout per route. Routes that
-    // exceed the cap get axeError = "timeout" sidecar entry instead of
-    // hanging the entire workflow.
+    // W142 SW1 iter 1 (Path C: Dashboard.tsx VITE_E2E_MODE content
+    // reduction) + iter 2 (Path B: AxeBuilder.include("main") +
+    // .disableRules × 12) BOTH disproved at CI level via runs 25701743572
+    // + 25702079799 — /dashboard still axeError "axe-analyze-timeout-60s".
+    // Root cause per Agent 1 Phase 1 finding: @axe-core/playwright's
+    // AxeBuilder.analyze() does dual page injection + finishRun result
+    // chunking (heavy serialization across browser↔Node boundary) which
+    // pushes heavy-DOM authed routes past the 60s timeout even with
+    // engine optimization + content reduction.
+    //
+    // Path A bypasses the chunking layer entirely via the proven W115 SW3
+    // `a11y-cdn-axe.spec.ts` pattern: load axe.min.js@4.11.2 from CDN once
+    // per page via `addScriptTag`, then invoke `axe.run()` directly inside
+    // `page.evaluate()`. Single injection, no chunking, no Playwright
+    // serialization. Composes ON TOP of W142 SW1 Path C content gates
+    // (Dashboard.tsx VITE_E2E_MODE) + Path B-equivalent rule disabling
+    // (translated to axe.run() options.rules shape) + scope narrowing
+    // (translated from AxeBuilder .include() to context arg).
+    //
+    // Scope arg: axe.run() takes context as the 1st positional argument.
+    // We pass `document.querySelector("#main-content")` to scope the DOM
+    // walk to MainLayout's <main id="main-content"> element (line 57-58
+    // of MainLayout.tsx). The id is stable across both prod AND E2E_MODE
+    // builds — VITE_E2E_MODE only swaps Navbar/Footer/etc to landmark
+    // stubs, NOT the main element. Defensive fallback to `document` if
+    // the element is missing (unexpected; would indicate routing or layout
+    // bug, surfaced via violations rather than crash).
+    //
+    // Rule disabling: AxeBuilder `.disableRules([])` translates to
+    // `axe.run()` options.rules: { ruleId: { enabled: false } } map.
+    // Identical rule list as W142 SW1 iter 2 Path B (same rationale per
+    // rule — see W142 SW1 commit 48d13a061 for details).
+    //
+    // Promise.race 60s timeout preserved as defense-in-depth. Path A's
+    // lighter memory profile should bring authed-route analyze() under
+    // 60s, but the timeout protects against runaway in case any (z)
+    // discovery surfaces during CI verification (e.g., heavy /map maplibre
+    // canvas + WeatherParticles + 4 orbs may still exceed 60s).
     try {
-      // W142 SW1 iter 2 — Path B fallback. Iter 1 (commit 9742ee367) added
-      // Path C content render reduction to Dashboard.tsx under VITE_E2E_MODE
-      // (suppress DashboardBackdrop + WeatherAmbient + DashboardHero +
-      // DashboardStories) but CI run 25701743572 still showed axeError:
-      // "axe-analyze-timeout-60s" on /dashboard. The 3 remaining cards
-      // (Schedule + News + Events with WidgetErrorBoundary + SkeletonMorph +
-      // Card) + Framer Motion cascade still pushed AxeBuilder.analyze() past
-      // 60s. Path B = engine-level optimization: scope narrowing + rule
-      // disabling. Per Agent 1 Phase 1 Context7 finding, scope narrowing
-      // (.include) limits DOM walk while rule disabling (.disableRules)
-      // reduces per-element evaluation cost. Combined with Path C content
-      // reduction (iter 1), this should bring /dashboard analyze under 60s.
-      //
-      // Rules disabled (rationale per rule):
-      // - color-contrast / color-contrast-enhanced: most expensive (full
-      //   pixel sampling). W113 SW1 + a11y-public.spec.ts /login coverage
-      //   already verify the dark/light contrast tokens; SSR routes inherit
-      //   them. Acceptable trade-off.
-      // - region / landmark-*: full-page DOM scans redundant with MainLayout
-      //   (or its W116 SW1 E2E stub at MainLayout.tsx:42-43,67-75) which
-      //   already provides nav/main/contentinfo landmarks.
-      // - page-has-heading-one: SSR routes set <h1> inside content (e.g.,
-      //   ActivityFeature.tsx:92), but on /dashboard the <h1> sits inside
-      //   DashboardHero which is gated by E2E_MODE — rule fires falsely.
-      // - frame-title / frame-tested: SSR routes don't use iframes.
-      // - scrollable-region-focusable: full DOM scan, can be expensive on
-      //   long pages with skeleton lists.
-      //
-      // .include("main") scopes axe walk to the main content area
-      // (MainLayout.tsx <main id="main-content">), excluding the chrome
-      // stubs entirely from rule evaluation.
-      const builder = new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-        .setLegacyMode(true)
-        .include("main")
-        .disableRules([
-          "color-contrast",
-          "color-contrast-enhanced",
-          "region",
-          "landmark-one-main",
-          "landmark-no-duplicate-banner",
-          "landmark-no-duplicate-contentinfo",
-          "landmark-no-duplicate-main",
-          "landmark-unique",
-          "page-has-heading-one",
-          "frame-title",
-          "frame-tested",
-          "scrollable-region-focusable",
-        ])
+      await page.addScriptTag({ url: AXE_CDN_URL })
+
+      const axeRunOptions = {
+        runOnly: {
+          type: "tag",
+          values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"],
+        },
+        rules: {
+          "color-contrast": { enabled: false },
+          "color-contrast-enhanced": { enabled: false },
+          region: { enabled: false },
+          "landmark-one-main": { enabled: false },
+          "landmark-no-duplicate-banner": { enabled: false },
+          "landmark-no-duplicate-contentinfo": { enabled: false },
+          "landmark-no-duplicate-main": { enabled: false },
+          "landmark-unique": { enabled: false },
+          "page-has-heading-one": { enabled: false },
+          "frame-title": { enabled: false },
+          "frame-tested": { enabled: false },
+          "scrollable-region-focusable": { enabled: false },
+        },
+      }
+
       const results = await Promise.race([
-        builder.analyze(),
+        page.evaluate(async (options) => {
+          // `window.axe` is the CDN-injected global from addScriptTag.
+          // Evaluated inside browser context; ESLint Node-side `no-undef`
+          // doesn't apply because Playwright stringifies + ships this fn.
+          // eslint-disable-next-line no-undef
+          const mainEl = document.querySelector("#main-content")
+          // eslint-disable-next-line no-undef
+          const scopeContext = mainEl ?? document
+          // eslint-disable-next-line no-undef
+          return await window.axe.run(scopeContext, options)
+        }, axeRunOptions),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error("axe-analyze-timeout-60s")), 60_000)
         ),
