@@ -382,7 +382,10 @@ async function auditRoute(page, routePath, outDir) {
       // npm dep at frontend/node_modules/axe-core/axe.min.js, read once at
       // module load.
       await page.evaluate((src) => {
-        // eslint-disable-next-line no-eval
+        // Inject window.axe global via eval — no <script> tag → CSP-agnostic.
+        // The eslint no-eval rule is not enabled for this script's lint scope
+        // (eval inside browser-context page.evaluate is intentional + audited
+        // — source is npm-pinned axe-core@4.11.2 .min.js, not user input).
         eval(src)
       }, AXE_SOURCE)
 

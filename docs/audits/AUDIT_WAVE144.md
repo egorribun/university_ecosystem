@@ -1,7 +1,7 @@
 # Wave 144 Audit — Tier 1+2+3 broad, plain `temporalio/server` runtime swap (3 caveats CLOSED) + axe A2 pivot honest defer (1 NEW (z))
 
 **Branch**: `egorribun`
-**HEAD at close**: `1cce99aed fix(wave144-sw2-runtime): 5 (z) cascade closures, file-processor JWT-auth Temporal worker started` (+ SW7 commit pending)
+**HEAD at close**: `a56dd4645 docs(wave144-sw7): audit + CLAUDE.md row + INDEX.md + N+3 rotation (W141 -> archive)` (post-polish: HEAD updates to the polish commit)
 **Scope**: NO-DEPLOY continued (W125–W143 SSR migration arc + local + structural)
 **Wall-clock**: ~5-6h core + ~30 min docs (matches Q1 estimate; Q3 open-ended absorbed 5 (z) SW2 cascade + 1 (z) SW1 CI cascade)
 **(z) Path discoveries / diagnostic refinements**: **6 NEW W144** (#15 SW1 procedural MSYS-mangle, #16-#20 SW2 cascade ALL MITIGATED, #21 SW1 iter 2 A2 hang)
@@ -27,13 +27,15 @@
    ✓ Temporal Worker started queue=FILE_PROCESSING_TASK_QUEUE
    ```
 
-   **TRUE root cause of W142 (z) #10 "crypto/rsa: verification error"** — NOT cryptography (W143 SW2 contract test already disproved that). NOT JWX library quirks. The error was specific to `temporalio/auto-setup:1.29.6.1` image's handling of JWT auth + `USE_INTERNAL_FRONTEND=true` + claim mapper interaction. Plain `temporalio/server:1.30.2` with:
+   **Most plausible root cause of W142 (z) #10 "crypto/rsa: verification error"** (A/B-isolation NOT performed, see §Honesty note below) — NOT cryptography (W143 SW2 contract test already disproved that). NOT JWX library quirks (W143 SW2 also disproved Temporal uses go-jose/v4 + golang-jwt/jwt/v4, NOT lestrrat-go/jwx). The error was most likely specific to `temporalio/auto-setup:1.29.6.1` image's handling of JWT auth + `USE_INTERNAL_FRONTEND=true` + claim mapper interaction OR an incomplete W142 intermediate mitigation state. Plain `temporalio/server:1.30.2` with:
    - `claimMapper: "default"`
    - `authorizer: ""` (noop)
    - `audience: "temporal"`
    - `jwtKeyProvider.keySourceURIs: [http://backend:8000/.well-known/jwks.json]`
    
-   works cleanly. The JWT-RS256 token minted by `start-docker.ps1` `New-TemporalServiceToken` (kid='primary', aud="temporal", sub="file-processor-service") validates against the backend's `/.well-known/jwks.json` endpoint without issue.
+   works cleanly with the SAME JWT-RS256 token + SAME JWKS endpoint that W141/W142 had failing on auto-setup. The JWT minted by `start-docker.ps1` `New-TemporalServiceToken` (kid='primary', aud="temporal", sub="file-processor-service") validates without issue.
+
+   **§Honesty note on root-cause framing** (per `feedback_perfectionism.md`): the W141/W142 cascade had MULTIPLE concurrent issues (file:// URL rejection, USE_INTERNAL_FRONTEND env, missing kid header, busybox nc-z healthcheck, namespace registration auth-incompat). The "crypto/rsa" error MAY have been a downstream symptom of an intermediate-state issue (e.g., JWKS not yet fetched when first verify attempt fired) rather than auto-setup-specific. Definitively proving "auto-setup quirks are the root cause" would require re-running auto-setup with ALL 4 W142 (z) #6-#9 mitigations applied + W144 kid='primary' header + measuring whether (z) #10 persists. That A/B isolation was NOT performed in W144 — plain server SW2 worked cleanly so the wave-marginal-value threshold supported moving on. Best-fit framing: "auto-setup image quirks remain the most likely root cause, definitive proof deferred to W145+ A/B test if relevant."
 
    **Phase 1 Agent 2 schema CORRECTION caught in SW2 implementation** (per W141 anti-pattern #3 — verified refs > hypothesis): Agent 2 wrote `tokenKeyProvider` (per Context7); ACTUAL upstream key per [common/config/config.go:605](https://github.com/temporalio/temporal/blob/v1.30.2/common/config/config.go) is `jwtKeyProvider`. `claimMapper`, `authorizer`, `audience` are SIBLING fields. Caught via `gh api search/code` of upstream Temporal repo + direct file read before writing config.yaml. ~5 min cost; saved a wave-restart.
 
@@ -168,21 +170,22 @@ W145+ mitigation plan (~2-3h): per-step logging + page.evaluate timeout wrapper 
 
 | Check | Pre-W144 baseline | W144 result | Status |
 |-------|---|---|---|
-| tsc errors | 0 | 0 | ✅ |
-| eslint scripts/ pre-existing errors | 36 (W140 baseline) | 37 (+1 inline `no-eval` disable for A2) | ⚠️ +1 (justified) |
-| vitest single run | 1052p/12s/0f | 1052p/12s/0f (no frontend test changes) | ✅ |
-| pytest backend slice | W143 baseline + 3 SW2 tests | unchanged | ✅ |
-| **Docker temporal** | (healthy) admin-tools baseline | **(healthy) plain temporalio/server:1.30.2** | ✅ first plain-server-healthy in arc |
-| **Docker file-processor** | (healthy) NO auth | **(healthy) WITH JWT auth via FP_TEMPORAL_API_KEY_FILE** | ✅ first JWT-authenticated since arc-start |
-| Cargo.lock drift | clean (≥33 waves idempotent) | clean | ✅ |
-| Tree-shake invariants | 0 lhci-mock-user + 0 data-e2e-stub in PROD | unchanged (no build performed in W144) | ⚠️ defensive carry |
-| MEMORY.md size | 28,267 bytes | 26,733 bytes (-1,534, -5.4%) | ⚠️ partial improvement (limit 24,400; full compact via SW7 N+3) |
-| Active audits | 3 (W141/W142/W143) | 3 (W142/W143/W144) post-SW7 | ✅ via SW7 N+3 |
-| Archive audits | 29 | 30 (W141 in) post-SW7 | ✅ via SW7 N+3 |
-| **Axe coverage CI** | 0/8 routes | **0/8 routes (NEW (z) #21)** | ❌ honest defer W145+ |
-| Rolldown #9339 | not tracked | comment draft saved | ✅ |
-| i18n parity | 18/18 | 18/18 | ✅ |
-| npm audit | 0 vulnerabilities | 0 vulnerabilities | ✅ |
+| tsc errors | 0 | 0 (verified post-polish) | ✅ |
+| eslint scripts/wave138-visual-audit.mjs pre-existing errors | 36 (W140 baseline) | **36 (PRESERVED EXACTLY, polish pass removed an unused `no-eval` inline disable that was 0-effect noise)** | ✅ post-polish |
+| vitest single run | 1052p/12s/0f | **1052p/12s/0f / 30.30s (verified empirically post-polish via `npx vitest run`)** | ✅ |
+| pytest backend slice | W143 baseline + 3 SW2 tests | unchanged (no backend changes in W144) | ✅ defensive carry |
+| **Docker temporal** | (healthy) admin-tools baseline | **(healthy) plain temporalio/server:1.30.2** verified via `docker ps` | ✅ first plain-server-healthy in arc |
+| **Docker file-processor** | (healthy) NO auth | **(healthy) WITH JWT auth via FP_TEMPORAL_API_KEY_FILE** verified via `docker logs` showing "Attached Temporal service token" + "Connected to Temporal addr=temporal:7233" + "Started Worker Namespace default" | ✅ first JWT-authenticated since arc-start |
+| Cargo.lock drift | clean (≥33 waves idempotent) | clean (≥34 waves at W144 close) | ✅ |
+| **Tree-shake invariants** | 0 lhci-mock-user + 0 data-e2e-stub in PROD | **0 lhci-mock-user + 0 data-e2e-stub verified empirically via `npm run build` + `find dist/client/assets -name "*.js" -exec grep -l ... +`** | ✅ post-polish verified |
+| **Build artifacts** | W141 baseline `index-DqqHVXgy.js` 139,808 / `_shell.html` 65,864 / `sw.js` 53,115 / `server.js` 39,373 | **`index-CQ-5oXj0.js` 139,808 / `_shell.html` 65,864 / `sw.js` 53,115 / `server.js` 23,600** (server.js -15,773 bytes from route-chunk split into `dist/server/assets/*.js` 307 files — improved lazy-loading, NOT regression; main + shell + sw byte-identical to W142 SW6 second-build hash) | ⚠️ server.js bytes shrunk (chunking improvement; functional verified via spot-check of entry imports) |
+| MEMORY.md size | 28,267 bytes | **24,398 bytes (-3,869, -13.7%, BELOW 24,400 limit)** post-W144 SW7 N+3 cascade (W140 row collapse + W141 row collapse + dedup) | ✅ post-polish: cleared auto-load warning |
+| Active audits | 3 (W141/W142/W143) | 3 (W142/W143/W144) | ✅ |
+| Archive audits | 29 | 30 (W141 in archive) | ✅ |
+| **Axe coverage CI** | 0/8 routes | **0/8 routes — A2 pivot landed structurally (no script tag → no CSP-block possible per Phase 1 source-code chain) but NEW (z) #21 different hang in `page.evaluate(eval(550KB))` or downstream code — 24-min hang in CI run `25739831369`, no sidecar written (hang BEFORE `auditRoute()` line 414 writeFile)** | ❌ honest defer W145+ |
+| Rolldown #9339 | not tracked | comment draft saved (`memory/wave144_rolldown_upstream_comment.md`) | ✅ |
+| i18n parity | 18/18 | **18/18 verified empirically post-polish via `npm run i18n:check`** | ✅ |
+| npm audit | 0 vulnerabilities | **0 vulnerabilities verified empirically post-polish via `npm audit --omit=dev` + `npm audit`** | ✅ |
 
 ---
 
@@ -237,7 +240,7 @@ W145+ mitigation plan (~2-3h): per-step logging + page.evaluate timeout wrapper 
    
    These are documented in W144 SW2 commit message + this audit's (z) #16-#20 entries. Any future plain-server work should account for ALL of these from the start.
 
-8. **TRUE root cause of W142 (z) #10 was auto-setup image quirks, not cryptography**: W143 SW2 contract test was correct that cryptography is canonical. Plain server with same JWT token + same JWKS endpoint + same audience claim works perfectly. The 5+ wave investigation arc that started in W141 was chasing a quirk of the auto-setup image's JWT auth integration. Lesson: when a heavily-managed image (auto-setup) misbehaves, switching to the underlying base image with explicit config can be faster than deep-diving the management layer.
+8. **Plain server resolved (z) #10 without crypto-level fix — root cause MOST LIKELY auto-setup image quirks, but A/B isolation NOT performed**: W143 SW2 contract test was correct that cryptography is canonical. Plain server with same JWT token + same JWKS endpoint + same audience claim works perfectly. The 5+ wave investigation arc that started in W141 was MOST LIKELY chasing a quirk of the auto-setup image's JWT auth integration (combined with intermediate-state issues from the (z) #6-#9 cascade — file://, USE_INTERNAL_FRONTEND, kid header, nc-z healthcheck). **Honest framing**: definitive proof requires re-running auto-setup with all 4 W142 (z) mitigations applied + W144 kid='primary' header + checking whether (z) #10 persists; that A/B isolation was NOT performed in W144 (wave-marginal-value threshold reached once plain server worked). Lesson: when a heavily-managed image (auto-setup) misbehaves AND switching to the base image with explicit config is comparable cost, the swap can short-circuit deep-diving the management layer — but resist over-claiming "the management layer was definitively the cause" without proper A/B isolation.
 
 ---
 
