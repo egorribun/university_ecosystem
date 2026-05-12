@@ -100,17 +100,22 @@ for (const route of PUBLIC_ROUTES) {
       )
 
       await page.emulateMedia({ colorScheme: theme.scheme, reducedMotion: "reduce" })
-      await page.goto(route.path, { waitUntil: "domcontentloaded" })
-      // Give the SPA shell a beat to mount + i18n to apply.
-      await page.waitForLoadState("networkidle").catch(() => {})
-      // `<MotionConfig reducedMotion="user">` at AppProviders (Wave 114 SW2b)
-      // snaps Framer Motion to end state under the emulateMedia directive
-      // above. A small settle buffer still pays for itself: Login mounts a
-      // handful of React Query observers that briefly render their loading
-      // state, and axe sampling pre-settle surfaces flicker-state colour
-      // violations that don't exist at rest. 300ms is ~2× the queue flush
-      // measured locally — shorter than the 900ms Wave 113 workaround.
-      await page.waitForTimeout(300)
+      await page.goto(route.path, { waitUntil: "domcontentloaded", timeout: 30_000 })
+      // Wave 146 polish-v4 — removed `page.waitForLoadState("networkidle")`
+      // which hung /404 tests deterministically in CI run 25757691651 after
+      // polish-v3 unblocked the /login fixme. Same root cause as polish-v2
+      // fixed in a11y-cdn-axe: backend is up post-W146 polish-v2 → /404
+      // page makes pending API requests (e.g. CSP error reporter, analytics,
+      // OTEL telemetry) that don't resolve before 90s test timeout fires →
+      // `.catch(() => {})` doesn't help because Playwright's internal nav
+      // timeout doesn't fire promptly. Mirrors W145 SW1 proven pattern at
+      // `frontend/scripts/wave138-visual-audit.mjs:355-366` — skip networkidle
+      // entirely + fixed 1500ms settle for Framer Motion + React Query +
+      // MotionConfig `reducedMotion="user"` to snap. The 1500ms wait covers
+      // both /login (auth form mount) and /404 (route-not-found shell mount)
+      // — slightly longer than the prior 300ms to be conservative across
+      // route variants.
+      await page.waitForTimeout(1500)
 
       // Wave 115 SW1 — `setLegacyMode(true)` on WebKit projects halves axe's
       // memory footprint: default `.analyze()` injects axe into the page AND
