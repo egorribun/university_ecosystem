@@ -87,63 +87,73 @@ test.describe("URL-state persistence (Wave 120 SW7)", () => {
   // HTML/JS even after a fresh `VITE_LHCI=true npm run build`.
   test.use({ baseURL: BASE, serviceWorkers: "block" })
 
-  // W147 SW5 — /events tab + /events search are HONEST-DEFERRED to W148+.
+  // W148 SW3 — /events x 2 HONEST DEFERRED to W149+ after Scope A attempt.
   //
-  // Local repro post-W147 SW1+SW2 axe-injection structural closure surfaces
-  // these as pre-existing hydration-timing issues distinct from schema or
-  // selector bugs:
+  // Attempts in W148 (3 iters per anti-pattern #1, all failed):
+  //   1. waitForFunction(window.__APP_HYDRATED) alone (W148 SW2's sentinel
+  //      approach). Failed: sentinel never observable on /events page in 15s.
+  //   2. + `page.route("**/api/v1/**", abort)` BEFORE goto (W147 SW1
+  //      axe-fix pattern). Failed: waitForFunction still times out 15s.
+  //   3. Empirical diagnostic via `page.evaluate` to check window state
+  //      directly: ALSO times out 90s. Event-loop starvation on /events page
+  //      blocks even Playwright's polling — same class as W147 axe-injection
+  //      wall but with NO known mitigation that's worked on /events.
   //
-  //   - SSR HTML renders `#events-tab-archive` button + visible search input
-  //     immediately. Playwright's `toBeVisible` succeeds. Click/fill fires.
-  //     URL doesn't update via useURLState. Failure mode: "3 × unexpected
-  //     value 'http://127.0.0.1:4175/events'" (URL stays /events).
+  // What W148 closed: SW2 added `window.__APP_HYDRATED` sentinel
+  // infrastructure in AppProviders.tsx (W148 polish §Honesty CLOSED for the
+  // sentinel itself — verified present in dist + the useEffect IS wired
+  // correctly per compiled bundle inspection). Sentinel observable on /map +
+  // /activity (which pass). NOT observable on /events specifically.
   //
-  //   - Root cause is post-W125 SSR migration's `createRoot().render()`
-  //     pattern (SPA mount, not React `hydrateRoot`). `#root.ready` class is
-  //     added synchronously after `root.render()` returns — BEFORE React
-  //     commits + binds onClick. Playwright clicks the SSR'd button before
-  //     React hydration completes.
+  // (z) discoveries documented in W148 SW3:
+  //   - SW1's initial waitForResponse pattern was a lucky-race fix (4 passed
+  //     in 11.4s was misleading; subsequent runs hit 90s timeout — SW1
+  //     pattern replaced with page.route abort for /schedule + /news, which
+  //     now passes reliably).
+  //   - /events specifically suffers from a sentinel-not-observable issue
+  //     EVEN WITH API routes blocked. Suspect classes (UNVERIFIED, W149+
+  //     scope): Suspense boundary timing (Events route uses lazy()),
+  //     EventsHeader rendering blocks main thread on init, React Compiler
+  //     memoization interaction with the AppProviders useEffect deps,
+  //     event-loop starvation from non-API sources (chunks, fontsource,
+  //     workbox even though SW is blocked at test level).
   //
-  //   - W147 SW5 attempted `page.waitForTimeout(2_000)` post-goto. Result
-  //     was WORSE (failure mode changed from "click-no-effect" to
-  //     "locator-undefined" — see W147 audit §Honesty probe). 2s wait
-  //     didn't help; possibly competing with React Query / Suspense /
-  //     dynamic chunk fetch loops.
-  //
-  //   - W148+ structural fix paths (~3-5h focused scope):
-  //       (a) Add explicit hydration sentinel (e.g. `window.__APP_HYDRATED`
-  //           set by useEffect in AppProviders) + Playwright waitForFunction
-  //       (b) Switch main.tsx to React `hydrateRoot` (Phase 5 SSR completion;
-  //           bigger arc per W125 design doc)
-  //       (c) Use `page.dispatchEvent("click", ...)` workaround
-  //       (d) Block API + chunk routes to free event loop (same pattern as
-  //           W147 SW1 axe fix) — but breaks Events page content rendering
-  //
-  // Continuing to skip via `continue-on-error: true` in CI workflow until
-  // structural fix lands.
-  test.skip("/events tab persists across reload — W148+ hydration sentinel", async () => {})
-  test.skip("/events search query persists across reload — W148+ hydration sentinel", async () => {})
+  // W149+ structural fix paths (~3-5h focused scope, NEW after W148):
+  //   (a) Live diagnostic via `page.on("console")` + temp `console.log` in
+  //       AppProviders useEffect → rebuild → run /events test → confirm if
+  //       effect fires at all OR is preempted.
+  //   (b) Bypass Suspense — switch main.tsx to React `hydrateRoot` (Phase 5
+  //       SSR completion per W125 design doc).
+  //   (c) Move sentinel to a dedicated `<HydrationSentinel />` child mounted
+  //       as LAST sibling in __root.tsx RootComponent (avoids Suspense scope).
+  //   (d) Track from useEffect with `setTimeout(setHydrated, 0)` to push
+  //       past microtask queue.
+  //   (e) Accept events × 2 as W125-SSR-migration-debt that closes naturally
+  //       when hydrateRoot is adopted in Phase 5+.
+  test.skip("/events tab persists across reload — W149+ /events sentinel-not-observable", async () => {})
+  test.skip("/events search query persists across reload — W149+ /events sentinel-not-observable", async () => {})
 
-  // W148 SW1 — Scope B-/news closure (fix path (a) from W147 polish-v3
-  // backlog, identical pattern to /schedule above): wait for SSR loader's
-  // prefetchInfiniteQuery(/news) to settle BEFORE page.reload to avoid the
-  // environment-flaky race documented across CI runs 25811218164 +
-  // 25814514269 (Test timeout 90s on page.reload — full hang, not
-  // net::ERR_ABORTED).
+  // W148 SW1 + SW3 polish — Scope B-/news closure via page.route abort
+  // pattern (W147 SW1 axe-fix pattern applied to URL-state tests).
   //
-  // The loader (routes/_auth/news.index.tsx, W129 SW4) calls
-  // prefetchNewsListQuery(queryClient) which hits newsListApiV1NewsGet() —
-  // full URL /api/v1/news. waitForResponse + .catch(undefined) keep the wait
-  // best-effort like /schedule above.
+  // SW1's initial fix used `page.waitForResponse(/api/v1/news).catch()` but
+  // W148 SW3 (z) #1 controlled experiment proved this was unreliable —
+  // SW1's local 11.4s pass was a lucky-race outcome. Subsequent runs hit
+  // 90s page.reload timeout because React Query retry storms against
+  // unreachable /api/v1/* under VITE_LHCI preview starve the main thread,
+  // blocking page.reload's "load" event. waitForResponse padded runtime but
+  // didn't free the event loop.
+  //
+  // Fix: register `page.route("**/api/v1/**", abort)` BEFORE goto. React
+  // Query gets instant network errors → gives up after retry budget without
+  // queuing pending promises → event loop stays free → page.reload completes
+  // reliably. Same mechanism W147 SW1+SW2 used for axe-injection structural
+  // closure (W140 NEW #5 chronic since Wave 140).
   test("/news category + sort persist across reload", async ({ page }) => {
+    await page.route("**/api/v1/**", (route) => route.abort("internetdisconnected"))
     await page.goto("/news?cat=academic&sort=popular")
     await expect(page).toHaveURL(/[?&]cat=academic/, { timeout: 15_000 })
     await expect(page).toHaveURL(/[?&]sort=popular/)
-    await page
-      .waitForResponse((response) => response.url().includes("/api/v1/news"), {
-        timeout: 10_000,
-      })
-      .catch(() => undefined)
     await page.reload()
     await expect(page).toHaveURL(/[?&]cat=academic/)
     await expect(page).toHaveURL(/[?&]sort=popular/)
@@ -175,26 +185,16 @@ test.describe("URL-state persistence (Wave 120 SW7)", () => {
     await expect(page).toHaveURL(/[?&]p=90d/)
   })
 
-  // W148 SW1 — Scope B-/schedule closure (fix path (a) from W147 polish-v1
-  // backlog): wait for SSR loader's ensureQueryData(scheduleGroupsQueryOptions)
-  // to settle BEFORE page.reload to avoid the net::ERR_ABORTED race.
+  // W148 SW1 + SW3 polish — Scope B-/schedule closure via page.route abort
+  // pattern (W147 SW1 axe-fix pattern applied to URL-state tests).
   //
-  // The loader (routes/_auth/schedule.tsx, W130 SW2) hits api.get("/groups")
-  // which axios prefixes with baseURL "/api/v1" → full URL is /api/v1/groups.
-  // page.waitForResponse matches the full URL Playwright sees over the wire.
-  // .catch(undefined) makes the wait best-effort: if the loader's promise
-  // already resolved from queryClient cache during initial nav, no new
-  // request fires and waitForResponse would hang to its timeout — that's
-  // fine, we just want to ensure no in-flight request remains when reload
-  // commits.
+  // SW1's initial fix used `page.waitForResponse(/api/v1/groups).catch()`
+  // but W148 SW3 (z) #1 controlled experiment proved this unreliable. See
+  // /news comment above for the full root-cause analysis. Same fix here.
   test("/schedule week offset persists across reload", async ({ page }) => {
+    await page.route("**/api/v1/**", (route) => route.abort("internetdisconnected"))
     await page.goto("/schedule?w=1")
     await expect(page).toHaveURL(/[?&]w=1/, { timeout: 15_000 })
-    await page
-      .waitForResponse((response) => response.url().includes("/api/v1/groups"), {
-        timeout: 10_000,
-      })
-      .catch(() => undefined)
     await page.reload()
     await expect(page).toHaveURL(/[?&]w=1/)
   })
