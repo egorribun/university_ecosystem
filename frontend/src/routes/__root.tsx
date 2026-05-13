@@ -15,6 +15,13 @@ import { SearchDialog } from "@/components/search/SearchDialog"
 import { AppProviders } from "@/AppProviders"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { QueryClientProvider } from "@tanstack/react-query"
+// W149 SW2 — PersistQueryClientProvider + singleton queryClient + idbPersister
+// moved here from main.tsx so the client RootComponent provider tree matches
+// SsrRoot's structurally for hydrateRoot reconciliation. SsrRoot (line 305)
+// continues to use per-request QueryClient from routerContext — IndexedDB is
+// browser-only, so server CANNOT use PersistQueryClientProvider regardless.
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
+import { queryClient, idbPersister } from "@/app/queryClient"
 
 // Wave 125 Phase 2 — pre-paint inline scripts. These run in the document
 // scaffold BEFORE any React code or bundle JS evaluates, so they avoid
@@ -284,21 +291,34 @@ function RootComponent() {
   if (import.meta.env.SSR) {
     return <SsrRoot />
   }
+  // W149 SW2 — PersistQueryClientProvider wraps RootComponent so the client
+  // tree matches SsrRoot's structure (QueryClientProvider wraps everything)
+  // for hydrateRoot reconciliation. SsrRoot uses per-request QueryClient
+  // from routerContext (W128 SW3); RootComponent uses the singleton from
+  // @/app/queryClient + idbPersister which hydrates the cache from
+  // IndexedDB post-mount asynchronously. The provider itself emits no DOM
+  // so the SSR HTML doesn't carry it — hydration compares only the
+  // rendered children, which ARE identical between SsrRoot + RootComponent.
   return (
-    <ThemeProvider>
-      <AppProviders>
-        <MainLayout>
-          <PageErrorBoundary>
-            <Outlet />
-          </PageErrorBoundary>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{ persister: idbPersister }}
+    >
+      <ThemeProvider>
+        <AppProviders>
+          <MainLayout>
+            <PageErrorBoundary>
+              <Outlet />
+            </PageErrorBoundary>
 
-          <SearchDialog />
-          <LivePushToasts />
-          <OfflineIndicator />
-          <InstallPrompt />
-        </MainLayout>
-      </AppProviders>
-    </ThemeProvider>
+            <SearchDialog />
+            <LivePushToasts />
+            <OfflineIndicator />
+            <InstallPrompt />
+          </MainLayout>
+        </AppProviders>
+      </ThemeProvider>
+    </PersistQueryClientProvider>
   )
 }
 

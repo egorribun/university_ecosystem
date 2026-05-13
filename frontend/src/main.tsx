@@ -1,13 +1,15 @@
 import { StrictMode } from "react"
-import { createRoot } from "react-dom/client"
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
+import { hydrateRoot } from "react-dom/client"
 // dayjs removed
 
 import App from "./App"
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
-import { queryClient, idbPersister } from "./app/queryClient"
+// W149 SW2 — PersistQueryClientProvider + queryClient + idbPersister moved to
+// __root.tsx RootComponent (client branch) to match SsrRoot's provider tree
+// for hydrateRoot reconciliation. createRoot → hydrateRoot reuses the
+// SSR-rendered HTML instead of discarding + re-rendering.
 import "@fontsource-variable/inter"
 import "@fontsource-variable/outfit"
 import "./styles/tailwind.css"
@@ -97,14 +99,21 @@ if (!rootElement) throw new Error("Root element not found")
 
 const bootstrapStart = performance.now()
 
-const root = createRoot(rootElement)
-root.render(
+// W149 SW2 — hydrateRoot replaces createRoot to complete W125 Phase 5 SSR
+// migration. SSR-rendered HTML emitted by server.ts (via tanstackStart's
+// handler.fetch — see frontend/src/server.ts) is now REUSED by the client
+// instead of being discarded + re-rendered. PersistQueryClientProvider moved
+// to __root.tsx RootComponent (client branch) so the SSR tree (SsrRoot wraps
+// per-request QueryClientProvider) and client tree match structurally for
+// hydration reconciliation. PersistQueryClientProvider's IndexedDB persister
+// hydrates the singleton queryClient cache POST-mount (async); this stays
+// CLIENT-ONLY by design (server uses per-request QueryClient via routerContext).
+hydrateRoot(
+  rootElement,
   <StrictMode>
-    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: idbPersister }}>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </PersistQueryClientProvider>
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>
 )
 
