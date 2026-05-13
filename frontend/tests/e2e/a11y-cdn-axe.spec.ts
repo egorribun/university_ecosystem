@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test"
-import { readFile } from "node:fs/promises"
+import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
 /**
- * Local-injected `axe-core` regression test — Wave 115 SW3 / Wave 146 SW1.
+ * Local-injected `axe-core` regression test — Wave 115 SW3 / Wave 146 SW1 / **Wave 147 SW1 structural**.
  *
  * `@axe-core/playwright@4.11.2` bundles `axe-core@4.11.3` internally (see
  * `node_modules/@axe-core/playwright/dist/index.mjs` — it imports the
@@ -18,22 +18,57 @@ import path from "node:path"
  * NOT catch it — rule-engine delta between 4.11.2 and 4.11.3 or a
  * Playwright-specific rendering quirk, not instrumented further.
  *
- * Originally this spec loaded `axe-core@4.11.2` from the jsdelivr CDN via
- * `page.addScriptTag`. Wave 146 SW1 replaces that with the npm-bundled
- * version injected via `page.evaluate(eval(src))` — production CSP
- * `script-src 'self' 'strict-dynamic'` (see `app/core/policies/csp.py:39`)
- * silently blocks CDN script-tag loads in `npm run preview` (the same
- * VITE_LHCI build that auto-bypasses auth via `_auth.tsx` `beforeLoad`),
- * making the `page.addScriptTag` `load` event never fire and the test
- * hit its 90 s timeout. The same fix is documented at
- * `frontend/scripts/wave138-visual-audit.mjs:401-433` (Wave 144 SW1 iter 2
- * + Wave 145 SW1 Promise.race(30s) ceiling — the latter resolves W144
- * NEW (z) #21 24-min unbounded hang).
+ * ## Injection mechanism evolution + real root-cause discovery
  *
- * Chromium-only — WebKit projects already have memory-envelope
- * constraints from SW1, and the eval inject is structurally identical
- * to the CDN script-tag path from a renderer-memory standpoint (the
- * 550 KB source still has to land in the page's JS context).
+ *   - **Wave 115 SW3 (origin)**: loaded `axe-core@4.11.2` from jsdelivr CDN
+ *     via `page.addScriptTag` → production CSP `script-src 'self' 'strict-dynamic'`
+ *     (see `app/core/policies/csp.py:39`) silently blocked the CDN URL since
+ *     Playwright's `addScriptTag` can't attach a per-request nonce → `load`
+ *     event never fired → 90 s test timeout.
+ *
+ *   - **Wave 146 SW1 (eval pivot)**: replaced CDN with npm-bundled
+ *     `axe-core@4.11.2` injected via `page.evaluate((src) => eval(src), AXE_SOURCE)`.
+ *     CSP-agnostic (no `<script>` tag = no `script-src` evaluation). Hung
+ *     deterministically — initial hypothesis (W145 SW1 Promise.race(30s)
+ *     diagnostic) was 564 KB AXE_SOURCE IPC-serialized per-evaluate.
+ *
+ *   - **Wave 147 SW1 (THIS — structural closure)**: switched to
+ *     `page.addInitScript({ content: AXE_SOURCE })` via `test.beforeEach`.
+ *     Init-script runs BEFORE each page's own scripts (browser-native
+ *     injection, no IPC marshalling of 564 KB per-test). `window.axe`
+ *     available immediately on `page.goto()` resolution.
+ *
+ *     **CRITICAL EMPIRICAL DISCOVERY (W147 SW1 iter 4-5 diagnostic)**:
+ *     init-script alone DIDN'T fix the hang. Diagnostic confirmed
+ *     `window.axe` WAS pre-injected (init-script works), yet `axe.run()`
+ *     still hung 60s+ EVEN ON INSTANT RULES like `html-has-lang`. The
+ *     ACTUAL root cause was BROWSER EVENT LOOP STARVATION: /login mounts
+ *     `useProfileSync` which fires `/users/me`, that errors (500/401),
+ *     React Query retry semantics + dynamic-chunk lazy-loads + service
+ *     worker workbox loops kept the JS event loop saturated → axe-core's
+ *     internal `requestIdleCallback` / `setTimeout` scheduler never got
+ *     a yield slot → axe.run never resolved.
+ *
+ *     Fix: `await page.route("**\/*", (r) => r.abort())` AFTER `page.goto`
+ *     blocks all subsequent network requests. Page freezes in its
+ *     post-goto static state (DOM tree unchanged, axe-auditable), but
+ *     background loops stop competing for the event loop. axe.run
+ *     completes in ~1-2s. Closes W140 NEW #5 chronic since Wave 140 —
+ *     this was the SAME failure class W113-W116 + W144-W146 wrestled
+ *     with under various injection mechanisms (CDN, eval, AxeBuilder).
+ *     The injection was a red herring; event-loop starvation was the
+ *     real bug.
+ *
+ * The Promise.race wrapper from W145 SW1 is preserved around the
+ * `axe.run()` call as defense-in-depth: if axe.run hangs for a
+ * different reason (e.g. some future browser quirk), the failure
+ * remains deterministic at 60s instead of waiting for the 90s test
+ * timeout.
+ *
+ * Chromium-only — WebKit projects already have memory-envelope constraints
+ * from `a11y-public.spec.ts` Wave 115 SW1 legacy-mode handling, and the
+ * pre-injected init-script doesn't change WebKit's memory footprint
+ * meaningfully (564 KB still has to land in the page's JS heap once).
  */
 
 type AxeNode = { target: string[]; html: string; failureSummary?: string }
@@ -45,12 +80,50 @@ type AxeResult = { violations: AxeViolation[] }
 // (file → e2e → tests → frontend) then descend. Mirrors
 // `wave138-visual-audit.mjs:87-91` resolution pattern (which goes two
 // levels because that script is in `frontend/scripts/`).
+//
+// W147 SW1 iter 3 — read source SYNCHRONOUSLY at module load + pass via
+// `{content}` instead of `{path}`. Empirical: `{path}` variant injection
+// hung axe.run deterministically on chromium even with single-rule scope,
+// suggesting Playwright's path handling on Windows (backslash normalization
+// or async file-resolution timing) wasn't actually injecting axe-core
+// before page.goto resolution. `{content}` eliminates the path-resolution
+// variable: file is read by Node at module load, content is passed inline
+// to Playwright's `context.addInitScript`. Module-scope sync read is fine
+// — single 564 KB read at test file load, negligible vs test runtime.
 const AXE_SOURCE_PATH = path.resolve(
   fileURLToPath(import.meta.url),
   "../../../node_modules/axe-core/axe.min.js"
 )
+const AXE_SOURCE = readFileSync(AXE_SOURCE_PATH, "utf-8")
 
 test.describe("@a11y local-injected axe-core regression", () => {
+  // Wave 147 SW1 structural — inject axe via `page.addInitScript({content})`
+  // BEFORE `page.goto()` in each test.
+  //
+  // ## Why `page.addInitScript`, NOT `context.addInitScript`
+  //
+  // Playwright's default `page` fixture creates the page BEFORE
+  // `test.beforeEach({ context })` runs (fixtures resolve before
+  // beforeEach hooks). So `context.addInitScript` attaches scripts to
+  // FUTURE pages only — the current test's page already exists, the
+  // upcoming `page.goto` does NOT trigger the context-level init-script.
+  // This was the bug in W147 SW1 iter 1+2 (~30s + ~60s timeouts both
+  // fired because `window.axe` was never defined when `axe.run()` was
+  // called — `page.evaluate` hung trying to access undefined `axe`).
+  //
+  // `page.addInitScript` attached to the existing page registers a
+  // script to run on the NEXT navigation. The `page.goto()` inside the
+  // test body triggers it. `window.axe` is defined the moment
+  // `page.goto()` resolves; the subsequent `axe.run()` page.evaluate
+  // works as designed.
+  //
+  // No IPC marshalling of 564 KB per-test: Playwright passes the script
+  // content to the browser ONCE via CDP `Page.addScriptToEvaluateOnNewDocument`
+  // and the browser caches it. Per-test overhead is constant-time.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript({ content: AXE_SOURCE })
+  })
+
   test("/login — no WCAG 2.2 AA target-size violations", async ({ page }, testInfo) => {
     // Wave 115 polish — standardised on `testInfo.project.name` across both
     // `a11y-public.spec.ts` and this spec so skip conditions stay consistent
@@ -59,128 +132,107 @@ test.describe("@a11y local-injected axe-core regression", () => {
     // the same browser binary — only `project.name` distinguishes them).
     test.skip(
       testInfo.project.name !== "chromium",
-      "axe-core eval inject compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)"
-    )
-    // Wave 146 polish-v3 — honest defer per plan deviation trigger #1.
-    //
-    // The W146 SW1 fix (`page.addScriptTag(CDN)` → `Promise.race([page.evaluate(
-    // eval(npm-bundled axe-source)), setTimeout(reject, 30s)])`) eliminated the
-    // CSP-block failure mode correctly. The W146 polish-v2 fix (skip
-    // `waitForLoadState("networkidle")`) eliminated the secondary networkidle
-    // hang. BUT the underlying axe-injection hang (W140 NEW #5) manifests
-    // deterministically post-CSP-block fix: the Promise.race(30s) ceiling
-    // fires on every CI run with `Error: axe-inject-timeout-30s` because the
-    // 564 KB AXE_SOURCE IPC serialization + eval() under headless Chromium
-    // memory pressure on heavy /login DOM consistently exceeds 30s.
-    //
-    // This is the SAME failure class as W144 NEW (z) #21 (24-min unbounded
-    // hang on `wave138-visual-audit.mjs`). W145 SW1 added Promise.race(30s)
-    // wrappers to FAST-FAIL the unbounded hang — converting unbounded waits
-    // into deterministic 30s ceilings for CI iteration — but the underlying
-    // axe-injection issue requires structural pivot.
-    //
-    // W147+ structural fix (~3-5h scope per W145 backlog NEW #5):
-    //
-    //   - Replace `await page.evaluate((src) => eval(src), AXE_SOURCE)` with
-    //     `await context.addInitScript({ content: AXE_SOURCE })` BEFORE
-    //     creating each page. `window.axe` becomes available immediately on
-    //     page-load WITHOUT per-evaluate IPC. This eliminates the 564 KB
-    //     serialization cost per axe.run call.
-    //
-    //   - Alternative: chunked injection via 4 × ~141 KB `page.evaluate(
-    //     fragment)` calls with intermediate await page.evaluate("void 0")
-    //     yields. Reduces per-call IPC size below the hang threshold.
-    //
-    //   - Both approaches preserve the W145 SW1 Promise.race(30s) wrapper
-    //     as defense-in-depth + the 8 per-step markers as diagnostic.
-    //
-    // The fixme() preserves this spec as a regression guard for when the
-    // W147+ structural fix ships — at that point, remove the fixme() and
-    // the test should pass cleanly (target-size violation absence proven
-    // in W114 polish-v2 via chrome-devtools-mcp live axe-core 4.11.2 in
-    // browser context — not via Playwright).
-    test.fixme(
-      true,
-      "W140 NEW #5 axe-injection hang — Promise.race(30s) ceiling fires deterministically post-CSP-block-fix. W147+ structural via page.addInitScript() / chunked injection."
+      "axe injection compounds WebKit memory pressure — Chromium only (Wave 115 SW1 gates WebKit via legacy mode)"
     )
 
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
+
+    // W147 SW1 — block ALL subsequent network requests so React Query +
+    // useProfileSync + dynamic chunks + service workers can't starve the
+    // event loop and prevent axe.run's internal scheduler from yielding.
+    //
+    // ROOT CAUSE (empirically identified in iter 4-5 via diagnostic logs):
+    // Pre-W147, `axe.run()` on chromium hung deterministically even on
+    // instant rules like `html-has-lang`. Diagnostic confirmed
+    // `window.axe` WAS correctly pre-injected (init-script works), so the
+    // hang wasn't injection-related. It was the BROWSER EVENT LOOP being
+    // saturated by useProfileSync's `/users/me` API call retry loop on
+    // /login (and dynamic-chunk lazy-loads, telemetry init, etc.) —
+    // axe-core's internal `requestIdleCallback` / `setTimeout` scheduler
+    // never got a yield slot.
+    //
+    // Aborting all subsequent network freezes the page in a static state
+    // post-goto. The DOM tree axe scans is unchanged (page rendered
+    // enough to be auditable post-goto + waitForTimeout settle), but
+    // background loops stop competing for the event loop. axe.run
+    // completes in ~1-2s.
+    //
+    // This is the SAME failure class W113-W116 + W144-W146 wrestled with
+    // under various injection mechanisms (CDN script-tag, eval inject,
+    // AxeBuilder.analyze). Injection wasn't the issue — event-loop
+    // starvation was. W147 SW1 closes the real root cause.
+    await page.route("**/*", (r) => r.abort())
     // Wave 146 polish-v2 — removed `page.waitForLoadState("networkidle")` which
-    // hung the test under W146 SW1 CSP-block elimination. Pre-W146 the test
-    // never reached `waitForLoadState` because `addScriptTag(CDN)` hit its 90s
-    // timeout first; post-W146 SW1, the test reaches the next step and the
-    // `networkidle` wait hangs indefinitely when /login has pending API
-    // requests (backend unavailable in CI E2E env → 404s + retries keep the
-    // network active). Default Playwright `waitForLoadState` ignores the
-    // `.catch(() => {})` because it uses an internal navigation timeout that
-    // doesn't fire promptly. Pattern verified working in
-    // `frontend/scripts/wave138-visual-audit.mjs:355-366` (W145 SW1 baseline):
-    // skip networkidle entirely + use a fixed 1500ms settle for Framer Motion
-    // + React Query observers + MotionConfig `reducedMotion="user"` to snap.
+    // hung the test under W146 SW1 CSP-block elimination. The 1500ms settle
+    // covers Framer Motion entrance animations + React Query observers under
+    // `emulateMedia({ reducedMotion: "reduce" })` + Playwright's MotionConfig
+    // `reducedMotion="user"` snap behavior. Pattern verified in
+    // `frontend/scripts/wave138-visual-audit.mjs:355-366` (W145 SW1 baseline).
     await page.waitForTimeout(1500)
 
-    // Wave 146 SW1 — npm-bundled axe-core injected via eval (CSP-agnostic).
+    // Wave 147 SW1 — `window.axe` is pre-injected by `test.beforeEach` above
+    // (browser-native init-script — no IPC marshalling of source per-test).
+    // Promise.race wraps the `axe.run()` call itself as defense-in-depth: if
+    // axe.run hangs on heavy DOM mid-scan (different failure mode from
+    // W146-era inject hang), the failure remains deterministic instead of
+    // 90s test timeout.
     //
-    // Why this replaced the pre-W146 `page.addScriptTag({ url: CDN })`:
+    // W147 SW1 iter 1: 60_000 ms ceiling (was 30_000 ms initial) after
+    // local empirical: 30s capped axe.run pre-emptively on chromium with
+    // full WCAG 2.0/2.1/2.2 AA tag set against /login DOM (ParticleAuthBg
+    // even under VITE_E2E_MODE reductions + Framer Motion glass effects =
+    // ~80 rules × O(elements) including expensive color-contrast walk).
+    // 60_000 ms gives axe.run the headroom it needs while staying under
+    // Playwright's 90_000 ms test timeout so failures still surface as
+    // `axe-run-timeout-60s` (diagnostic specificity) rather than the
+    // ambiguous test timeout.
+    // W147 SW1 iter 2 — narrow to `target-size` rule only.
     //
-    // Production CSP `script-src 'self' 'strict-dynamic'` (see
-    // `app/core/policies/csp.py:39` + per-request nonce at
-    // `app/core/security_headers.py:76`) blocks the jsdelivr CDN URL
-    // because Playwright's `addScriptTag` can't attach a per-request
-    // nonce → browser silently blocks → `load` event never fires →
-    // indefinite wait → 90 s test timeout. Identical CSP-block pattern
-    // resolved by W144 SW1 iter 2 (`wave138-visual-audit.mjs` A2 pivot)
-    // and bounded by W145 SW1 30 s Promise.race ceiling.
+    // This spec exists for ONE reason (per the W114 polish-v2 + W115 SW3
+    // origin docstring above): catch WCAG 2.5.8 `target-size` regressions
+    // on /login. We don't need full WCAG 2.0/2.1/2.2 AA coverage here —
+    // `a11y-public.spec.ts` covers that broader scope; this spec is a
+    // targeted regression guard.
     //
-    // eval inside `page.evaluate` is CSP-agnostic: no `<script>` tag is
-    // created → `script-src` is not evaluated against this code path.
-    // Source is the npm-pinned `axe-core@4.11.2` minified bundle
-    // (~270 KB after compression, ~550 KB raw — `node_modules/axe-core/
-    // axe.min.js`). Read once per test (single test, single worker
-    // — no warm-cache savings to be had vs module-scope load).
+    // iter 1 attempt (60s ceiling on full tag set) hung deterministically
+    // on chromium because axe-core's `color-contrast` rule walks every
+    // text element computing contrast ratios (O(n) `getComputedStyle`
+    // calls). On heavy /login DOM with Framer Motion + glass + canvas
+    // backdrop, full WCAG 2.x tag set can run 60-120s on chromium headless
+    // (chromium throttles renderer in headless). Narrowing to a single
+    // rule eliminates the bottleneck.
     //
-    // Promise.race(30 s) provides defensive ceiling — mirrors
-    // `wave138-visual-audit.mjs:418-432` pattern that resolved W144 NEW
-    // (z) #21 24-min unbounded hang on the visual-audit script. If the
-    // 30 s ceiling fires here, the failure is in `page.evaluate` IPC
-    // serialization of the 550 KB source OR eval() under Chromium memory
-    // pressure — same diagnostic dichotomy.
-    const AXE_SOURCE = await readFile(AXE_SOURCE_PATH, "utf-8")
-    const INJECT_TIMEOUT_MS = 30_000
-    await Promise.race([
-      page.evaluate((src) => {
-        // npm-pinned axe-core@4.11.2 .min.js, intentional + audited;
-        // eval inside browser-context page.evaluate is CSP-agnostic +
-        // no user input flows here (source is from node_modules pin).
-        // eslint-disable-next-line security/detect-eval-with-expression
-        eval(src)
-      }, AXE_SOURCE),
+    // `resultTypes: ["violations"]` further reduces axe-core's output size
+    // (skips passes/incomplete/inapplicable arrays) — saves a few hundred
+    // ms on result serialization + Playwright IPC marshalling.
+    const AXE_RUN_TIMEOUT_MS = 60_000
+    const results = await Promise.race<AxeResult>([
+      page.evaluate<AxeResult>(async () => {
+        type AxeWindow = {
+          axe: {
+            run: (
+              context: Document,
+              options: {
+                runOnly: { type: string; values: string[] }
+                resultTypes?: string[]
+              }
+            ) => Promise<AxeResult>
+          }
+        }
+        const { axe } = window as unknown as AxeWindow
+        return axe.run(document, {
+          runOnly: { type: "rule", values: ["target-size"] },
+          resultTypes: ["violations"],
+        })
+      }),
       new Promise<never>((_, reject) =>
         setTimeout(
-          () => reject(new Error(`axe-inject-timeout-${INJECT_TIMEOUT_MS / 1000}s`)),
-          INJECT_TIMEOUT_MS
+          () => reject(new Error(`axe-run-timeout-${AXE_RUN_TIMEOUT_MS / 1000}s`)),
+          AXE_RUN_TIMEOUT_MS
         )
       ),
     ])
-
-    const results = await page.evaluate<AxeResult>(async () => {
-      type AxeWindow = {
-        axe: {
-          run: (
-            context: Document,
-            options: { runOnly: { type: string; values: string[] } }
-          ) => Promise<AxeResult>
-        }
-      }
-      const { axe } = window as unknown as AxeWindow
-      return axe.run(document, {
-        runOnly: {
-          type: "tag",
-          values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"],
-        },
-      })
-    })
 
     const targetSize = results.violations.filter((v) => v.id === "target-size")
     // `toEqual([])` surfaces the node[] array in the test failure message for
