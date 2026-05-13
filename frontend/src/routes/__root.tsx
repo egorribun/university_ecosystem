@@ -300,10 +300,7 @@ function RootComponent() {
   // so the SSR HTML doesn't carry it — hydration compares only the
   // rendered children, which ARE identical between SsrRoot + RootComponent.
   return (
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{ persister: idbPersister }}
-    >
+    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: idbPersister }}>
       <ThemeProvider>
         <AppProviders>
           <MainLayout>

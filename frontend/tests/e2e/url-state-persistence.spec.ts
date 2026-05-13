@@ -121,7 +121,6 @@ test.describe("URL-state persistence (Wave 120 SW7)", () => {
     await expect(page).toHaveURL(/[?&]q=test/)
   })
 
-
   // W148 SW1 + SW3 polish — Scope B-/news closure via page.route abort
   // pattern (W147 SW1 axe-fix pattern applied to URL-state tests).
   //
