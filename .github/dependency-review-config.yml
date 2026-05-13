@@ -30,6 +30,19 @@ allow-licenses:
 
 allow-ghsas: []
 
+# W149 SW4 — per-package allow for pact-python 3.4.0+.
+# Bot reports "We could not detect a license" because the package's
+# metadata uses PEP 621 free-text `License: MIT License` instead of PEP
+# 639 canonical `License-Expression: MIT`. GitHub Advisory DB cannot
+# parse the free-text form. METADATA file at
+# .venv/Lib/site-packages/pact_python-3.4.0.dist-info/METADATA confirms
+# the actual license is MIT. Inherited from W146 polish-v3 → W147 →
+# W148; pre-W149 NOT a CI blocker (severity = warn), but the bot ran
+# `:warning:` on every PR — closed here via per-package allowlist
+# (purl spec, dependency-review-action v4+).
+allow-dependencies-licenses:
+  - "pkg:pypi/pact-python"
+
 vulnerability-check: true
 license-check: true
 
