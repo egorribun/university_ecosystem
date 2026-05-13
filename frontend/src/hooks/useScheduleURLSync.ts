@@ -26,8 +26,13 @@ import { useScheduleUIStore } from "@/stores/scheduleUIStore"
  * Mount this hook once at the top of the Schedule page/feature.
  */
 export function useScheduleURLSync(): void {
-  const { params, setParam } = useURLState<{ w?: string }>()
-  const urlWeek = params.w ?? ""
+  // W147 SW5 — `w` is now `number` (Valibot v.transform converts the URL
+  // string to number at parse time per W120 SW5 mapSearchSchema pattern, so
+  // TanStack Router's number-coercion of `?w=1` doesn't trip Valibot type
+  // validation). useURLState's generic accepts the new shape; consumer logic
+  // below already coerces via Number.parseInt + Number.isFinite guards.
+  const { params, setParam } = useURLState<{ w?: number }>()
+  const urlWeek = params.w !== undefined ? String(params.w) : ""
 
   const weekOffset = useScheduleUIStore((state) => state.weekOffset)
   const setWeekOffset = useScheduleUIStore((state) => state.setWeekOffset)
@@ -45,9 +50,14 @@ export function useScheduleURLSync(): void {
   }, [urlWeek, weekOffset, setWeekOffset])
 
   // Store → URL. Write the current offset (absent when 0 for clean URLs).
+  // W147 SW5 — setParam now takes `number` for `w` (was `string` pre-W147
+  // before the schema's v.transform converted parsed strings to numbers).
+  // Use empty string to clear the param when offset is 0 (useURLState's
+  // sentinel for removal); otherwise pass the number directly.
   useEffect(() => {
-    const expected = weekOffset === 0 ? "" : String(weekOffset)
-    if (expected !== urlWeek) {
+    const expected: number | "" = weekOffset === 0 ? "" : weekOffset
+    const expectedURL = expected === "" ? "" : String(expected)
+    if (expectedURL !== urlWeek) {
       setParam("w", expected)
     }
   }, [weekOffset, urlWeek, setParam])
