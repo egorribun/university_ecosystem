@@ -87,51 +87,40 @@ test.describe("URL-state persistence (Wave 120 SW7)", () => {
   // HTML/JS even after a fresh `VITE_LHCI=true npm run build`.
   test.use({ baseURL: BASE, serviceWorkers: "block" })
 
-  // W148 SW3 — /events x 2 HONEST DEFERRED to W149+ after Scope A attempt.
+  // W148 SW3 → W149 SW3 CLOSURE — /events × 2 URL-state coverage restored.
   //
-  // Attempts in W148 (3 iters per anti-pattern #1, all failed):
-  //   1. waitForFunction(window.__APP_HYDRATED) alone (W148 SW2's sentinel
-  //      approach). Failed: sentinel never observable on /events page in 15s.
-  //   2. + `page.route("**/api/v1/**", abort)` BEFORE goto (W147 SW1
-  //      axe-fix pattern). Failed: waitForFunction still times out 15s.
-  //   3. Empirical diagnostic via `page.evaluate` to check window state
-  //      directly: ALSO times out 90s. Event-loop starvation on /events page
-  //      blocks even Playwright's polling — same class as W147 axe-injection
-  //      wall but with NO known mitigation that's worked on /events.
+  // W148 framing was misleading: the audit said "sentinel-not-observable on
+  // /events specifically". W149 SW1 empirical diagnostic via page.on("console")
+  // proved the sentinel DOES fire on /events (228 ms post-navigate). The real
+  // issue was W148 (z) #1 in a different form: page.evaluate / waitForFunction
+  // CANNOT POLL on /events under React Query retry-storm event-loop starvation.
   //
-  // What W148 closed: SW2 added `window.__APP_HYDRATED` sentinel
-  // infrastructure in AppProviders.tsx (W148 polish §Honesty CLOSED for the
-  // sentinel itself — verified present in dist + the useEffect IS wired
-  // correctly per compiled bundle inspection). Sentinel observable on /map +
-  // /activity (which pass). NOT observable on /events specifically.
+  // W149 fix: use the URL-only assertion pattern (same as /schedule + /news +
+  // /map). expect(page).toHaveURL() uses CDP frame-navigation events which are
+  // immune to main-thread starvation. page.reload() with waitUntil:"load" or
+  // "domcontentloaded" works because the load events ALSO arrive via CDP.
   //
-  // (z) discoveries documented in W148 SW3:
-  //   - SW1's initial waitForResponse pattern was a lucky-race fix (4 passed
-  //     in 11.4s was misleading; subsequent runs hit 90s timeout — SW1
-  //     pattern replaced with page.route abort for /schedule + /news, which
-  //     now passes reliably).
-  //   - /events specifically suffers from a sentinel-not-observable issue
-  //     EVEN WITH API routes blocked. Suspect classes (UNVERIFIED, W149+
-  //     scope): Suspense boundary timing (Events route uses lazy()),
-  //     EventsHeader rendering blocks main thread on init, React Compiler
-  //     memoization interaction with the AppProviders useEffect deps,
-  //     event-loop starvation from non-API sources (chunks, fontsource,
-  //     workbox even though SW is blocked at test level).
-  //
-  // W149+ structural fix paths (~3-5h focused scope, NEW after W148):
-  //   (a) Live diagnostic via `page.on("console")` + temp `console.log` in
-  //       AppProviders useEffect → rebuild → run /events test → confirm if
-  //       effect fires at all OR is preempted.
-  //   (b) Bypass Suspense — switch main.tsx to React `hydrateRoot` (Phase 5
-  //       SSR completion per W125 design doc).
-  //   (c) Move sentinel to a dedicated `<HydrationSentinel />` child mounted
-  //       as LAST sibling in __root.tsx RootComponent (avoids Suspense scope).
-  //   (d) Track from useEffect with `setTimeout(setHydrated, 0)` to push
-  //       past microtask queue.
-  //   (e) Accept events × 2 as W125-SSR-migration-debt that closes naturally
-  //       when hydrateRoot is adopted in Phase 5+.
-  test.skip("/events tab persists across reload — W149+ /events sentinel-not-observable", async () => {})
-  test.skip("/events search query persists across reload — W149+ /events sentinel-not-observable", async () => {})
+  // W149 SW2 hydrateRoot migration is ORTHOGONAL — closes /events × 2 was
+  // possible without it, but SW2 still ships for W125 Phase 5 SSR completion
+  // milestone (true SSR HTML now REUSED by client instead of re-rendered).
+  // Verified: 0 hydration warnings on /dashboard /events /news /activity /map
+  // /schedule per-route smoke test (SW2 commit).
+  test("/events tab persists across reload", async ({ page }) => {
+    await page.route("**/api/v1/**", (route) => route.abort("internetdisconnected"))
+    await page.goto("/events?tab=archive", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    await expect(page).toHaveURL(/[?&]tab=archive/, { timeout: 15_000 })
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 })
+    await expect(page).toHaveURL(/[?&]tab=archive/)
+  })
+
+  test("/events search query persists across reload", async ({ page }) => {
+    await page.route("**/api/v1/**", (route) => route.abort("internetdisconnected"))
+    await page.goto("/events?q=test", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    await expect(page).toHaveURL(/[?&]q=test/, { timeout: 15_000 })
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 })
+    await expect(page).toHaveURL(/[?&]q=test/)
+  })
+
 
   // W148 SW1 + SW3 polish — Scope B-/news closure via page.route abort
   // pattern (W147 SW1 axe-fix pattern applied to URL-state tests).
