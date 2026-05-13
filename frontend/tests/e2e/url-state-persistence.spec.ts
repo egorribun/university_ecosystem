@@ -124,38 +124,30 @@ test.describe("URL-state persistence (Wave 120 SW7)", () => {
   test.skip("/events tab persists across reload — W148+ hydration sentinel", async () => {})
   test.skip("/events search query persists across reload — W148+ hydration sentinel", async () => {})
 
-  // W147 polish-v3 — /news HONEST-DEFERRED to W148+ post second CI verification.
+  // W148 SW1 — Scope B-/news closure (fix path (a) from W147 polish-v3
+  // backlog, identical pattern to /schedule above): wait for SSR loader's
+  // prefetchInfiniteQuery(/news) to settle BEFORE page.reload to avoid the
+  // environment-flaky race documented across CI runs 25811218164 +
+  // 25814514269 (Test timeout 90s on page.reload — full hang, not
+  // net::ERR_ABORTED).
   //
-  // Same race-condition class as /schedule (deferred in polish-v1): the /news
-  // SSR loader (W129 SW4 `prefetchInfiniteQuery(/api/v1/news)`) is in-flight
-  // when `page.reload()` fires in CI with real backend on :8000. Different
-  // failure manifestation depending on backend response timing:
-  //
-  //   - CI run 25811218164 (post-SW6, real backend): FLAKY — passed on retry
-  //   - CI run 25812676665 (post-polish-v1): PASSED
-  //   - CI run 25814514269 (post-polish-v2): page.reload Test timeout 90s
-  //     exceeded (full hang, not net::ERR_ABORTED like /schedule)
-  //
-  // /news race "wins" or "loses" depending on /api/v1/news response timing
-  // vs page.reload commit timing — environment-flaky. Local SKIP_WEBSERVER
-  // mode passes deterministically because no backend → loader Promise resolves
-  // quickly.
-  //
-  // Honest defer alongside /schedule + /events × 2 + /map for consistent
-  // treatment. The W147 SW5 /activity test fix (?p=month → ?p=90d) and
-  // /schedule schema fix (v.union number|string-transform) STAY — those are
-  // real app-correctness improvements independent of e2e test deferrals.
-  //
-  // W148+ fix paths (~1-2h, identical to /schedule polish-v1 fix paths):
-  //   (a) RECOMMENDED: `page.waitForResponse(url =>
-  //       url.includes("/api/v1/news"))` before `page.reload()` — explicit
-  //       wait for in-flight SSR loader request to settle
-  //   (b) Mock /api/v1/news via `page.route` to respond synchronously
-  //   (c) Use `page.goto("/news?sort=popular")` again instead of
-  //       `page.reload()` — different navigation path may bypass the race
-  //   (d) Simplest: drop the reload assertion entirely (test's actual W120
-  //       SW7 goal is URL preservation, not reload-resilience)
-  test.skip("/news category + sort persist across reload — W148+ page.reload race", async () => {})
+  // The loader (routes/_auth/news.index.tsx, W129 SW4) calls
+  // prefetchNewsListQuery(queryClient) which hits newsListApiV1NewsGet() —
+  // full URL /api/v1/news. waitForResponse + .catch(undefined) keep the wait
+  // best-effort like /schedule above.
+  test("/news category + sort persist across reload", async ({ page }) => {
+    await page.goto("/news?cat=academic&sort=popular")
+    await expect(page).toHaveURL(/[?&]cat=academic/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/[?&]sort=popular/)
+    await page
+      .waitForResponse((response) => response.url().includes("/api/v1/news"), {
+        timeout: 10_000,
+      })
+      .catch(() => undefined)
+    await page.reload()
+    await expect(page).toHaveURL(/[?&]cat=academic/)
+    await expect(page).toHaveURL(/[?&]sort=popular/)
+  })
 
   test("/activity period persists across reload", async ({ page }) => {
     // W147 SW5 — TWO fixes:
@@ -183,63 +175,50 @@ test.describe("URL-state persistence (Wave 120 SW7)", () => {
     await expect(page).toHaveURL(/[?&]p=90d/)
   })
 
-  // W147 polish-v1 — /schedule HONEST-DEFERRED to W148+ post CI verification.
+  // W148 SW1 — Scope B-/schedule closure (fix path (a) from W147 polish-v1
+  // backlog): wait for SSR loader's ensureQueryData(scheduleGroupsQueryOptions)
+  // to settle BEFORE page.reload to avoid the net::ERR_ABORTED race.
   //
-  // Locally the test passes in 296ms under SKIP_WEBSERVER mode (no backend).
-  // CI run 25811218164 (auto-managed webServer + real backend on :8000) hit
-  // `page.reload: net::ERR_ABORTED; maybe frame was detached?` deterministically
-  // on both retry attempts (Playwright retries: 2 in CI).
-  //
-  // Hypothesis (UNVERIFIED — W148+ scope): the schedule route's SSR loader
-  // does `Promise.allSettled([context.queryClient.ensureQueryData(
-  // scheduleGroupsQueryOptions())])` (W130 SW2). With real backend in CI
-  // serving /api/v1/groups, the ensureQueryData call is in-flight when
-  // page.reload fires — the navigation gets canceled (ERR_ABORTED) because
-  // the loader's pending promise blocks reload commit. Local SKIP_WEBSERVER
-  // mode passes because /api/v1/groups returns no response → loader
-  // Promise.allSettled resolves with rejection quickly → reload completes.
-  //
-  // The W147 SW5 /schedule schema fix (v.string() → v.union(number,
-  // string-transform)) STAYS — that's a real user-impact 500 bug closure for
-  // any user navigating "next week" via ScheduleWeekNav. The TEST is the
-  // honest deferral, not the schema fix.
-  //
-  // W148+ fix paths (~1-2h):
-  //   (a) Wait for SSR loader to settle: `page.waitForResponse(url =>
-  //       url.includes("/api/v1/groups"))` before page.reload
-  //   (b) Mock /api/v1/groups via `page.route` to respond synchronously
-  //   (c) Use page.goto with cache-bypass instead of page.reload
-  //   (d) Drop the reload assertion; only verify initial URL load (the test's
-  //       actual W120 SW7 goal is URL preservation, not reload-resilience)
-  test.skip("/schedule week offset persists across reload — W148+ page.reload race", async () => {})
+  // The loader (routes/_auth/schedule.tsx, W130 SW2) hits api.get("/groups")
+  // which axios prefixes with baseURL "/api/v1" → full URL is /api/v1/groups.
+  // page.waitForResponse matches the full URL Playwright sees over the wire.
+  // .catch(undefined) makes the wait best-effort: if the loader's promise
+  // already resolved from queryClient cache during initial nav, no new
+  // request fires and waitForResponse would hang to its timeout — that's
+  // fine, we just want to ensure no in-flight request remains when reload
+  // commits.
+  test("/schedule week offset persists across reload", async ({ page }) => {
+    await page.goto("/schedule?w=1")
+    await expect(page).toHaveURL(/[?&]w=1/, { timeout: 15_000 })
+    await page
+      .waitForResponse((response) => response.url().includes("/api/v1/groups"), {
+        timeout: 10_000,
+      })
+      .catch(() => undefined)
+    await page.reload()
+    await expect(page).toHaveURL(/[?&]w=1/)
+  })
 
-  // W147 SW5 — /map viewport is HONEST-DEFERRED to W148+.
+  // W148 SW1 — Scope C-/map closure (fix path (a) from W147 SW5 backlog,
+  // RECOMMENDED): drop the `.maplibregl-canvas` visibility assertion that
+  // W120 SW7 originally included. The test's stated goal in url-state-
+  // persistence.spec.ts header is "control state restored from URL" — canvas
+  // mount was an over-reaching assertion (flaky under chromium headless
+  // without GPU). URL-only check aligns the test with its actual purpose.
   //
-  // Local repro post-W147 SW1+SW2: `.maplibregl-canvas` never becomes
-  // visible within 15s on chromium headless under VITE_LHCI=true preview.
-  // /map HTTP status is 200 (route mounts SSR), but the MapLibre canvas
-  // doesn't initialize in the test environment.
-  //
-  // Probable causes (UNVERIFIED — W148+ investigation scope):
-  //   - MapLibre needs tile fetches from `https://tiles.openfreemap.org`
-  //     which may be blocked by Playwright test environment OR mock-user
-  //     auth headers OR CORS preflight
-  //   - WebGL context creation fails in chromium headless without --use-gl
-  //     flag (Playwright launches chromium without GPU acceleration)
-  //   - The `<MapLibreMap>` component uses `React.lazy` (W116 INFRA-100-04);
-  //     dynamic chunk fetch race with React Query retry loops
-  //
-  // W148+ structural fix paths (~2-4h focused scope):
-  //   (a) Mock MapLibre tile fetches via Playwright's `page.route` returning
-  //       small static tile responses
-  //   (b) Launch chromium with `--use-gl=swiftshader` for WebGL software
-  //       rendering
-  //   (c) Skip `.maplibregl-canvas` visibility assertion + only check URL
-  //       persistence (the actual W120 SW5 goal — viewport state in URL)
-  //
-  // Continuing to skip via `continue-on-error: true` in CI workflow until
-  // structural fix lands. URL-only persistence of /map?z=...&lat=... etc.
-  // works correctly per `useURLState` semantics — only the canvas mount
-  // assertion fails in the test environment.
-  test.skip("/map viewport persists across reload — W148+ MapLibre headless canvas", async () => {})
+  // Coverage note: MapLibre canvas mount is no longer covered here. If
+  // MapLibre breaks (e.g. tile-CDN config drift, react-map-gl/maplibre
+  // version regression), this test won't catch it. W150+ candidate: separate
+  // `tests/e2e/map-canvas.spec.ts` with --use-gl=swiftshader for software
+  // WebGL, OR mock tile fetches via page.route. For now, URL persistence is
+  // what useURLState contract guarantees.
+  test("/map viewport persists across reload", async ({ page }) => {
+    const viewport = "?z=18&lat=55.71440&lng=37.81600&p=30&b=90"
+    await page.goto(`/map${viewport}`)
+    await expect(page).toHaveURL(/[?&]z=18/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/[?&]lat=55\.71440/)
+    await page.reload()
+    await expect(page).toHaveURL(/[?&]z=18/)
+    await expect(page).toHaveURL(/[?&]lat=55\.71440/)
+  })
 })
