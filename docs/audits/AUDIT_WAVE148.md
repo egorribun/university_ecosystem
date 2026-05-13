@@ -209,12 +209,15 @@ CI run `25820038217` on commit `ff1931e54` (W148 SW3 close, off W147 polish-v3 `
 
 ---
 
-## Bundle invariant
+## Bundle invariant (verified post-W148-SW5)
 
-PROD `index-<hash>.js`: W148 has SW2 src changes (+72 LoC: useEffect import + sentinel useEffect block + comment block + Window declaration). Expected delta vs W147 baseline (139,897 bytes): +50 to +120 bytes (useEffect is already imported in 100+ files; the additional sentinel logic is ~70 bytes minified after Rolldown DCE). Verification post-CI.
+PROD bundle: **`index-BO6bjoME.js` 140,053 bytes** vs W147 baseline `index-DAORMsCZ.js` 139,897 bytes = **+156 bytes delta**. SW2 src changes (+72 LoC: useEffect import + sentinel useEffect block + comment block + Window declaration) consume ~156 b after Rolldown DCE — slightly above plan estimate of +50 to +120 b (useEffect import was already in tree per 100+ existing consumers, but the inline JSDoc + use-comment block carried ~80 b that didn't tree-shake). Honest framing: not a regression but not as tight as estimated.
 
 SW IIFE invariant: preserved (`head -c 25 dist/client/sw.js` → `"use strict";(()=>{`).
-Tree-shake invariant: SW2 sentinel ships in BOTH PROD + VITE_LHCI builds (intentional per W148 SW2 design — no env-flag gate).
+sw.js size: 53,115 bytes (unchanged from W147 baseline).
+Tree-shake invariant: PROD has 0 `lhci-mock-user` matches; SW2 sentinel ships in BOTH PROD + VITE_LHCI builds (intentional per W148 SW2 design — no env-flag gate).
+Cargo.lock: no drift (preserved invariant ≥36 waves).
+routeTree.gen.ts: drift fired again on post-W148-SW5 build (recurring W147 SW6 gotcha). Mitigated via `npx prettier --write src/routeTree.gen.ts` in polish-v1. W149+ structural fix candidate: add to `.prettierignore` OR adjust prettier config.
 
 ---
 
