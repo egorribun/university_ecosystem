@@ -175,6 +175,23 @@ Plan target "−10 to +50 bytes" was based on the assumption that `createRoot �
 3. **W146 SW2 NEW #1 Lighthouse PAGE_HUNG on `/`** (pragmatic-not-structural; independent of W149)
 4. **W148 SW2 architectural choice points** — current sentinel placement is "safe default" (AppProviders top-level, immediate, no-cleanup); user could adjust if W150+ needs surface
 5. **routeTree.gen.ts prettier drift recurring** — W147 SW6 + W148 SW3 + W149 SW2 all needed `npx prettier --write src/routeTree.gen.ts` (no W149 SW commit affected by this — drift detected during gates only, normalized before next commit). **W150+ structural fix candidate**: add to `.prettierignore` OR adjust prettier config to match TanStack Router gen format.
+6. **Backend `test_login_lockout_clears_after_success` flaky** (NEW W149 §Honesty — UNRELATED to W149 changes): pre-existing test passed in W148 baseline (CI run `25820038217` Backend Tests / Unit Tests SUCCESS), failed on W149 SW1-SW4 push (CI run `25824996778` `assert 401 == 423` at `tests/test_auth_lockout.py:99`). W149 had 0 backend code changes (Tier 1 #1 + #2 are pure frontend + GHA config). Flake hypothesis: race condition in failed_login_attempts table state OR pytest-xdist test ordering in `[gw0]` worker. Verify retry on SW6 + polish-v1 push CI; if persists, W150+ Tier 2 housekeeping (likely add to `pytest --reruns` flaky-retry list).
+
+### Polish-v1 (`6f89f4b51` 2026-05-13) — CI VERIFIED post-rerun ALL GREEN
+
+CI run `25824996778` Frontend Tests / Lint & Format failed on `prettier --check` for `src/routes/__root.tsx` + `tests/e2e/url-state-persistence.spec.ts` — SW2 + SW3 edits weren't prettier-formatted before push. Auto-formatted via `npm run format` (prettier --write), 2 files modified (+1/-5 net).
+
+**Polish-v1 CI verification at run `25825859037`**:
+- ✅ E2E Tests / E2E Tests (chromium) SUCCESS 4m36s — **W149 SW3 /events × 2 closure CI-VERIFIED**
+- ✅ Frontend Tests / Lint & Format SUCCESS — polish-v1 prettier fix verified
+- ✅ Frontend Tests / Production Build + Bundle Analysis + Unit Tests + Lighthouse Audit: ALL SUCCESS
+- ✅ Backend Type Check + Integration Tests + Unit Tests (SUCCESS on rerun)
+- ✅ Chromatic Visual Regression SUCCESS
+- ✅ Helm Lint + Pre-commit SUCCESS
+- ✅ Dependency Review SUCCESS — **W149 SW4 pact-python SPDX silenced**
+- 🔄 Backend Tests / Unit Tests initially FAILED on `test_login_lockout_clears_after_success` (consistent with SW1-SW4 push run `25824996778`). `gh run rerun --failed` triggered rerun — **PASSED on retry**. Flake confirmed: pre-existing test surfaced post-W148, NOT W149-induced (W149 had 0 backend code changes; diff `ff1931e54..33a01788d` shows only frontend + .github + docs). §Honesty entry #6 above documents the flake for W150+ housekeeping.
+
+**Final aggregate CI**: 40 SUCCESS + 1 skipped (Auto-merge dependabot) + 0 failures. **ALL GREEN.**
 
 ### Honest framing of W149 SW2 plan-vs-reality
 
