@@ -5,7 +5,7 @@
 **Branch**: `egorribun`, HEAD `13099df12` at SW6 close (off `2b62dcc3b` W146 close).
 **Commits**: 3 W147 SW commits + 1 SW8 audit commit (this one).
 **Wall-clock**: ~5-7h core + 0-2h W147 polish/audit (within Q3 budget).
-**§Honesty trajectory**: 4-12 pre-W147 → estimated 4-10 post-W147-polish-v1 (2 closed + 10 NEW (z) + 4 deferrals to W148+).
+**§Honesty trajectory**: 4-12 pre-W147 → **4-10 post-W147-polish-v2** (2 closed: W140 NEW #5 axe + W120 SW5 /schedule schema; 4 W148+ deferrals: /events × 2 + /schedule + /map; 1 inherited bot warning: pact-python SPDX to W148+ Tier 2; 3 carry-forward: 2 W134 + 1 W146 SW2). 10 NEW (z) discoveries documented (largest batch since W139=9). **3 NEW anti-patterns** added to risk register (#12 + #13 + #14).
 
 ---
 
@@ -76,7 +76,9 @@ W146 URL-state 5 failures **PARTIALLY CLOSED** via SW5 — empirical local repro
 3. /events tab+search hydration timing — DEFERRED to W148+ via test.skip (~3-5h W148+ scope)
 4. /map MapLibre canvas headless mount — DEFERRED to W148+ via test.skip (~2-4h W148+ scope)
 
-Net change in active test count: was 1 passing + 5 continue-on-error'd → 3 passing + 3 test.skip'd. W146 deferral of 5 tests now reduced to 3 W148+-deferred tests with documented structural paths.
+Net change in active test count (post-polish-v1): was 1 passing + 5 continue-on-error'd → 2 passing + 4 test.skip'd. W146 deferral of 5 tests now reduced to 4 W148+-deferred tests (added /schedule via polish-v1) with documented structural paths.
+
+**Note on polish-v1**: this section (the original SW8 audit text) described "3 passing" before polish-v1 honestly deferred /schedule. The Polish-v1 update section at the end of this document reflects the FINAL post-CI-verification state (2 active + 4 deferred). Reading order: this section narrates SW1-SW8 work as-of SW8 commit (`e4e95a9d2`); Polish-v1 section below documents the honest correction post-CI verification of SW8 push (CI run `25811218164`).
 
 ---
 
@@ -266,7 +268,7 @@ Consumer `frontend/src/hooks/useScheduleURLSync.ts` updated:
 
 `SKIP_WEBSERVER=true URL_STATE_E2E=true URL_STATE_E2E_BASE=http://127.0.0.1:4175 npx playwright test --project=chromium tests/e2e/url-state-persistence.spec.ts`:
 
-- **3 passed** (news + activity + schedule) / **3 skipped** (events × 2 + map W148+) / **0 failed** in **1.4s** (was 2 passed / 4 failed / 0 skipped pre-W147)
+- **2 passed** (news + activity) / **4 skipped** (events × 2 + schedule + map W148+) / **0 failed** in **1.2s** post-polish-v1 (intermediate SW5 state was 3 passed / 3 skipped — /schedule deferred to W148+ via polish-v1 after CI revealed deterministic page.reload race; was 2 passed / 4 failed / 0 skipped pre-W147)
 - /schedule?w=1: 500 → 200 (schema fix worked)
 - /activity?p=90d: 200 (was /activity?p=month → 500 due to spec value bug)
 
@@ -274,7 +276,7 @@ Consumer `frontend/src/hooks/useScheduleURLSync.ts` updated:
 
 ## SW6 workflow change + prettier fix (committed `13099df12`)
 
-`.github/workflows/reusable-e2e-tests.yml`: removed `continue-on-error: true` from "Run URL-state e2e (cross-env auto-managed)" step. Now CI URL-state step exits 0 cleanly (3 active passed + 3 skipped; Playwright `test.skip` doesn't fail the step).
+`.github/workflows/reusable-e2e-tests.yml`: removed `continue-on-error: true` from "Run URL-state e2e (cross-env auto-managed)" step. Post-polish-v1 CI URL-state step exits 0 cleanly (2 active passed + 4 skipped; Playwright `test.skip` doesn't fail the step). Pre-polish-v1 SW5 expected 3 active passed + 3 skipped — see polish-v1 section below for the CI-discovered /schedule race + honest deferral.
 
 Also included: `npx prettier --write src/routeTree.gen.ts` formatting fix (closes the SW3 CI Lint & Format failure).
 
@@ -353,7 +355,8 @@ Per `feedback_perfectionism.md` — enumerate every caveat empirically.
 | `npx prettier --check "src/**/*.{ts,tsx,...}"` | All matched files use Prettier code style |
 | `npx playwright test --project=chromium tests/e2e/a11y-cdn-axe.spec.ts tests/e2e/a11y-public.spec.ts` | 5 passed / 1.8s each / 0 failed |
 | Full 4-project a11y suite | 17 passed / 3 skipped / 0 failed |
-| `SKIP_WEBSERVER=true URL_STATE_E2E=true ... url-state-persistence.spec.ts` | 3 passed (news+activity+schedule) / 3 skipped (events × 2 + map) / 0 failed / 1.4s |
+| `SKIP_WEBSERVER=true URL_STATE_E2E=true ... url-state-persistence.spec.ts` (post-polish-v1) | **2 passed (news + activity) / 4 skipped (events × 2 + schedule + map W148+) / 0 failed / 1.2s** |
+| `gh pr checks 1114` post-polish-v1 (CI run `25812676665`) | **CI Success ✓**, E2E (chromium) PASS 6m24s, Lighthouse Audit PASS 7m13s, Frontend Unit Tests PASS 3m27s, Backend Unit + Integration + Type Check PASS, Chromatic PASS, Lint & Format PASS, Go + Helm all PASS |
 | VITE_LHCI=true `npm run build` | Successful, sw.js 53KB, _shell.html 65KB, dist/server/server.js generated |
 | `curl localhost:4175/schedule?w=1` | 200 (was 500 pre-SW5) |
 | `curl localhost:4175/activity?p=90d` | 200 |
