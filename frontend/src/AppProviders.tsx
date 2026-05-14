@@ -3,8 +3,17 @@ import type { ReactNode } from "react"
 import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
-import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
-import { AppShellProvider } from "./contexts/AppShellContext"
+// W153 SW3 iter 3 — LiveRegionProvider, AppShellProvider, MessengerProvider,
+// GlobalHapticsListener imports dropped because all are stripped in
+// ProvidersInner. Outer LanguageProvider + LazyMotion + MotionConfig kept
+// (load-bearing for Login's useTranslation + framer-motion). ErrorBoundary
+// kept as safety net. Inner stubs from iter 1+2 stay. Restore when SW3
+// revert lands.
+//
+// import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
+// import { AppShellProvider } from "./contexts/AppShellContext"
+// import { MessengerProvider } from "./contexts/MessengerContext"
+// import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
 // W153 SW3 iter 2 — `AuthProvider` import dropped because the real provider
 // is stripped in ProvidersInner below (replaced with `AuthContext.Provider`
 // + stub value). Restore when SW3 revert lands.
@@ -16,9 +25,7 @@ import { resetEtagCache } from "@/api/client"
 // when SW3 revert lands. The hook itself stays imported elsewhere via
 // MessengerContext.tsx so the real provider lifecycle is unchanged.
 import { WebSocketStoreContext, WebSocketStore } from "./hooks/useChatWebSocket"
-import { MessengerProvider } from "./contexts/MessengerContext"
 import { LanguageProvider } from "./contexts/LanguageContext"
-import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
 
 // W153 SW3 iter 1 — module-level no-op WebSocketStore singleton for the
 // WebSocketProvider component-strip diagnostic. Matches the
@@ -64,26 +71,28 @@ interface AppProvidersProps {
 }
 
 function ProvidersInner({ children }: AppProvidersProps) {
+  // W153 SW3 iter 3 (LAST allowed under STRICT 3-iter cap) — max-strip:
+  // LiveRegionProvider, AppShellProvider, MessengerProvider,
+  // GlobalHapticsListener ALL stripped. Inner stubs (AuthContext +
+  // WebSocketStoreContext) preserve context shape so any deep consumer
+  // (e.g. useAuth() inside Login) still gets a valid value. ErrorBoundary
+  // kept as safety net.
+  //
+  // Iter 1 (WebSocketProvider strip) FAILED.
+  // Iter 2 (AuthProvider stub overlaid) FAILED.
+  // Iter 3 (max-strip): if PASS → wedge in LiveRegion/AppShell/Messenger/
+  // Haptics; if FAIL → wedge upstream (LanguageProvider/LazyMotion/
+  // MotionConfig/PersistQueryClientProvider/ThemeProvider/StartClient/
+  // main.tsx/module-init) → MANDATORY honest defer to W154+ per W141
+  // anti-pattern #1.
+  //
+  // REVERT BEFORE MAIN MERGE.
   return (
-    <LiveRegionProvider>
-      <AppShellProvider>
-        {/* W153 SW3 iter 2 — AuthProvider STRIPPED (overlays iter 1 WebSocket
-            strip). Iter 1 alone (WebSocketProvider only) FAILED — /login still
-            blank. This iter 2 tests AuthProvider's useProfileSync as next
-            suspect. REVERT before main merge. Real provider at:
-            frontend/src/contexts/AuthContext.tsx:71 AuthProvider */}
-        <AuthContext.Provider value={W153_NO_OP_AUTH}>
-          {/* W153 SW3 iter 1 — WebSocketProvider STRIPPED for /login wedge diagnostic.
-              REVERT before main merge. Real provider at:
-              frontend/src/hooks/useChatWebSocket.ts:117 WebSocketProvider */}
-          <WebSocketStoreContext.Provider value={W153_NO_OP_WS_STORE}>
-            <MessengerProvider>
-              <ErrorBoundary>{children}</ErrorBoundary>
-            </MessengerProvider>
-          </WebSocketStoreContext.Provider>
-        </AuthContext.Provider>
-      </AppShellProvider>
-    </LiveRegionProvider>
+    <AuthContext.Provider value={W153_NO_OP_AUTH}>
+      <WebSocketStoreContext.Provider value={W153_NO_OP_WS_STORE}>
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </WebSocketStoreContext.Provider>
+    </AuthContext.Provider>
   )
 }
 
@@ -164,10 +173,10 @@ export function AppProviders({ children }: AppProvidersProps) {
     <LanguageProvider>
       <LazyMotion strict features={domAnimation}>
         <MotionConfig reducedMotion={LHCI_REDUCED_MOTION}>
-          <ProvidersInner>
-            <GlobalHapticsListener />
-            {children}
-          </ProvidersInner>
+          {/* W153 SW3 iter 3 — GlobalHapticsListener removed (it's a side-effect-only
+              listener for touch events; not load-bearing for /login render).
+              ProvidersInner kept but its middle layer is stripped — see ProvidersInner. */}
+          <ProvidersInner>{children}</ProvidersInner>
         </MotionConfig>
       </LazyMotion>
     </LanguageProvider>
