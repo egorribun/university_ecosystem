@@ -5,7 +5,11 @@ import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
-import { AuthProvider } from "./contexts/AuthContext"
+// W153 SW3 iter 2 — `AuthProvider` import dropped because the real provider
+// is stripped in ProvidersInner below (replaced with `AuthContext.Provider`
+// + stub value). Restore when SW3 revert lands.
+import { AuthContext } from "./contexts/AuthContext"
+import { resetEtagCache } from "@/api/client"
 // W153 SW3 iter 1 — `WebSocketProvider` import dropped because the real
 // provider is stripped in ProvidersInner below (replaced with stub
 // `<WebSocketStoreContext.Provider value={W153_NO_OP_WS_STORE}>`). Restore
@@ -33,6 +37,28 @@ import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
 // REVERT BEFORE MAIN MERGE. This commit is diagnostic-only.
 const W153_NO_OP_WS_STORE = new WebSocketStore()
 
+// W153 SW3 iter 2 — module-level no-op AuthContext value mirrors the
+// existing default at frontend/src/contexts/AuthContext.tsx:33-43. The
+// real AuthProvider runs `useProfileSync` (auto /users/me fetch +
+// localStorage cache hydration). Stripping it tests whether
+// useProfileSync's render-loop or queryClient.fetchQuery interaction is
+// the /login wedge source. With this stub, `useAuth()` returns
+// no-op actions + Zustand store defaults (user=null, loading=false)
+// — fine for /login which is unauth anyway.
+//
+// REVERT BEFORE MAIN MERGE.
+const W153_NO_OP_AUTH = {
+  login: async () => null,
+  logout: async () => {},
+  setUser: () => {},
+  refresh: async () => {},
+  submitMfaChallenge: async () => {},
+  requireMfa: async () => null,
+  loginWithPasskey: async () => {},
+  resetEtagCache,
+  authOperation: false,
+} as unknown as React.ContextType<typeof AuthContext>
+
 interface AppProvidersProps {
   children: ReactNode
 }
@@ -41,7 +67,12 @@ function ProvidersInner({ children }: AppProvidersProps) {
   return (
     <LiveRegionProvider>
       <AppShellProvider>
-        <AuthProvider>
+        {/* W153 SW3 iter 2 — AuthProvider STRIPPED (overlays iter 1 WebSocket
+            strip). Iter 1 alone (WebSocketProvider only) FAILED — /login still
+            blank. This iter 2 tests AuthProvider's useProfileSync as next
+            suspect. REVERT before main merge. Real provider at:
+            frontend/src/contexts/AuthContext.tsx:71 AuthProvider */}
+        <AuthContext.Provider value={W153_NO_OP_AUTH}>
           {/* W153 SW3 iter 1 — WebSocketProvider STRIPPED for /login wedge diagnostic.
               REVERT before main merge. Real provider at:
               frontend/src/hooks/useChatWebSocket.ts:117 WebSocketProvider */}
@@ -50,7 +81,7 @@ function ProvidersInner({ children }: AppProvidersProps) {
               <ErrorBoundary>{children}</ErrorBoundary>
             </MessengerProvider>
           </WebSocketStoreContext.Provider>
-        </AuthProvider>
+        </AuthContext.Provider>
       </AppShellProvider>
     </LiveRegionProvider>
   )
