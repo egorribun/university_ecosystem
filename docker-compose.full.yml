@@ -127,12 +127,14 @@ services:
         # bypass React #418 hydration mismatch on local Docker stack. Production
         # CI deploys should leave this unset for full SSR LCP wins.
         DEV_NO_SSR_SHELL: "1"
-        # W153 SW1 — unminified dev build with source maps for /login wedge
+        # W153 SW1 — unminified bundle + linked source maps for /login wedge
         # diagnosis (W150-polish-followup caveat #14, W152 iter-5 honest defer).
-        # Strip this line + rebuild to return to production-mode output.
-        # NEVER set in production compose / CI deploy configs (would expose
-        # source maps + ship unminified bundle).
-        FRONTEND_BUILD_MODE: "development"
+        # KEEPS mode=production so JSX transform stays at production runtime
+        # (jsx not jsxDEV) — SSR-compatible. Strip this line + rebuild to
+        # return to production-minified output. NEVER set in production
+        # compose / CI deploy configs (would expose source maps + ship
+        # unminified bundle).
+        FRONTEND_BUILD_UNMINIFIED: "true"
     ports:
       - "8081:3000"
     networks:

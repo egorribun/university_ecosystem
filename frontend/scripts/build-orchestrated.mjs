@@ -145,23 +145,29 @@ async function step3_viteBuild() {
   const traceAgentPath = path.resolve(cwd, "scripts/wave136-hang-trace-agent.cjs")
   const useIpc = traceEnabled
 
-  // W153 SW1 — opt-in unminified dev build with source maps for the /login
+  // W153 SW1 — opt-in unminified bundle + linked source maps for the /login
   // wedge diagnostic (W150-polish-followup caveat #14, W152 iter-5 honest
-  // defer). Setting FRONTEND_BUILD_MODE=development (dev compose only,
-  // never CI / prod) propagates `--mode development` to the vite subprocess
-  // + NODE_ENV=development to esbuild + import.meta.env.{DEV,PROD,MODE}.
-  // Default empty string falls through to production-equivalent behavior.
-  const buildMode = process.env.FRONTEND_BUILD_MODE === "development" ? "development" : "production"
-  const modeArgs = buildMode === "development" ? ["--mode", "development"] : []
+  // defer). Setting FRONTEND_BUILD_UNMINIFIED=true (dev compose only, never
+  // CI / prod) propagates to vite.config.mts so build.minify=false +
+  // build.sourcemap=true. Mode STAYS at "production" so the JSX transform
+  // continues to emit `jsx()` calls (NOT `jsxDEV()`), keeping SSR runtime
+  // compatible with the production react-dom-server.node.production.js
+  // loaded at runtime (Dockerfile:NODE_ENV=production in runtime stage).
+  // SW1 fixup history: initial attempt set NODE_ENV=development + passed
+  // `--mode development` arg. This broke SSR with `TypeError: jsxDEV is not
+  // a function` at RootShell because the server bundle was compiled with
+  // jsxDEV calls but Node loads the production react-dom runtime.
+  const isUnminified = process.env.FRONTEND_BUILD_UNMINIFIED === "true"
 
   await new Promise((resolve, reject) => {
     const env = {
       ...process.env,
       ...(wantsReport ? { BUILD_REPORT: "1", ANALYZE: process.env.ANALYZE ?? "1" } : {}),
       BUILD_SKIP_PWA: "true",
-      // W153 SW1 — propagate to React + Vite + downstream tooling so DEV-mode
-      // warnings + readable error messages are emitted in the bundle.
-      NODE_ENV: buildMode,
+      // W153 SW1 — propagate unminified flag to vite subprocess. NODE_ENV
+      // is intentionally NOT set to development — that would force React +
+      // JSX transform to dev runtime which breaks SSR (see comment above).
+      FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
       ...(traceEnabled
         ? {
             NODE_OPTIONS:
@@ -170,7 +176,7 @@ async function step3_viteBuild() {
         : {}),
     }
 
-    const child = spawn("node", [viteBinPath, "build", ...modeArgs, ...sanitizedArgs], {
+    const child = spawn("node", [viteBinPath, "build", ...sanitizedArgs], {
       stdio: useIpc ? ["inherit", "inherit", "inherit", "ipc"] : "inherit",
       cwd: path.resolve(cwd),
       env,
@@ -348,11 +354,14 @@ async function step4_swBundle() {
   // minify on; sourcemap off (matches Vite's "hidden" mode for prod — no
   // sourceMappingURL comment in JS).
   //
-  // W153 SW1 — mode-gate matches the vite subprocess block above. When
-  // FRONTEND_BUILD_MODE=development, the service worker bundle ships
+  // W153 SW1 — gate matches the vite subprocess block above. When
+  // FRONTEND_BUILD_UNMINIFIED=true, the service worker bundle ships
   // unminified with inline source maps so SW errors are readable in
-  // Chrome DevTools alongside the main client bundle.
-  const isDev = process.env.FRONTEND_BUILD_MODE === "development"
+  // Chrome DevTools alongside the main client bundle. import.meta.env.*
+  // defines STAY at production values — sw.ts production-mode runtime is
+  // fine even when unminified, and this avoids any chance of conditionally
+  // compiled production-vs-dev code paths breaking at runtime.
+  const swIsUnminified = process.env.FRONTEND_BUILD_UNMINIFIED === "true"
   const result = await esbuild.build({
     entryPoints: [swSrc],
     bundle: true,
@@ -360,13 +369,13 @@ async function step4_swBundle() {
     platform: "browser",
     target: "es2022",
     outfile: swDest,
-    minify: !isDev,
-    sourcemap: isDev ? "inline" : false,
+    minify: !swIsUnminified,
+    sourcemap: swIsUnminified ? "inline" : false,
     tsconfig: path.join(cwd, "tsconfig.json"),
     define: {
-      "import.meta.env.DEV": isDev ? "true" : "false",
-      "import.meta.env.PROD": isDev ? "false" : "true",
-      "import.meta.env.MODE": isDev ? '"development"' : '"production"',
+      "import.meta.env.DEV": "false",
+      "import.meta.env.PROD": "true",
+      "import.meta.env.MODE": '"production"',
     },
     legalComments: "none",
     write: true,

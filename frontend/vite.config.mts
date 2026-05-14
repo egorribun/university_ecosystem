@@ -215,6 +215,12 @@ export default defineConfig(({ mode }) => {
   const disableProxy = backendOrigin === ""
   const buildReport = process.env.BUILD_REPORT === "1"
   const analyze = mode === "analyze" || process.env.ANALYZE === "1" || buildReport
+  // W153 SW1 — opt-in flag to disable minify + emit linked source maps while
+  // KEEPING mode=production (so JSX transform stays at production runtime
+  // and SSR works correctly). Set via dev compose build arg only; CI / prod
+  // omit it. See `build.minify` + `build.sourcemap` blocks below for usage.
+  const isUnminified =
+    env.FRONTEND_BUILD_UNMINIFIED === "true" || process.env.FRONTEND_BUILD_UNMINIFIED === "true"
   const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
@@ -444,17 +450,25 @@ export default defineConfig(({ mode }) => {
         mode === "production" ? { "console.log": "(() => {})", "console.debug": "(() => {})" } : {},
     },
     build: {
-      // W153 SW1 — minify is mode-conditional so an opt-in `vite build --mode development`
-      // produces an unminified bundle with readable React errors. Default
-      // `mode === "production"` path (CI/prod compose) is unchanged: minify:true +
-      // sourcemap:"hidden". Dev-only `vite.config.mts` plumbing for /login wedge
-      // diagnosis (W150-polish-followup caveat #14 / W152 iter-5 honest defer); see
-      // `frontend.Dockerfile:FRONTEND_BUILD_MODE` ARG + dev compose build arg.
-      minify: mode === "production",
+      // W153 SW1 — opt-in unminified bundle + linked source maps for /login
+      // wedge diagnosis. FRONTEND_BUILD_UNMINIFIED=true (dev compose only):
+      //   - minify: false
+      //   - sourcemap: true (with //# sourceMappingURL= trailer)
+      //   - mode STAYS at "production" so JSX transform emits `jsx()` calls
+      //     (NOT `jsxDEV()`), keeping SSR runtime compatible with the
+      //     production react-dom-server.node.production.js loaded at runtime
+      //     (Dockerfile:NODE_ENV=production baked in runtime stage).
+      // SW1 fixup history: initial attempt used `--mode development` which
+      // broke SSR with `TypeError: jsxDEV is not a function` at RootShell —
+      // see post-build-shell.mjs:126 + this comment block. Keeping
+      // mode=production trades React DEV warnings for SSR-correctness; the
+      // unminified bundle + source maps remain useful for client-side stack
+      // trace resolution.
+      minify: isUnminified ? false : mode === "production",
       // P0-05 (audit 2026-03-06): "hidden" generates .map files for Sentry
       // symbolication but does NOT add //# sourceMappingURL= to .js bundles,
       // so browsers and attackers cannot download the full TypeScript source.
-      sourcemap: mode === "production" ? "hidden" : true,
+      sourcemap: isUnminified ? true : mode === "production" ? "hidden" : true,
       chunkSizeWarningLimit: 768,
       // Wave 122 SW2: Vite auto-injects `<link rel="modulepreload">` for every
       // chunk reachable from the entry import graph — including chunks loaded
