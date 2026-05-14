@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { m, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Info, Percent } from "lucide-react"
 import api from "@/api/client"
@@ -11,6 +11,7 @@ export default function AdminFeatureFlags() {
   const [flags, setFlags] = useState<FeatureFlag[]>([])
   const [loading, setLoading] = useState(true)
   const { t } = useTranslation("admin")
+  const reducedMotion = useReducedMotion()
 
   const fetchFlags = useCallback(async () => {
     try {
@@ -65,9 +66,9 @@ export default function AdminFeatureFlags() {
       <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <m.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={reducedMotion ? false : { opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            transition={reducedMotion ? { duration: 0 } : { duration: 0.5 }}
             className="mb-8"
           >
             <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
@@ -115,9 +116,9 @@ export default function AdminFeatureFlags() {
                     {flags.map((flag, index) => (
                       <m.tr
                         key={flag.name}
-                        initial={{ opacity: 0, x: -10 }}
+                        initial={reducedMotion ? false : { opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
+                        transition={reducedMotion ? { duration: 0 } : { delay: index * 0.05 }}
                         className="transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
                       >
                         <td className="px-6 py-5">

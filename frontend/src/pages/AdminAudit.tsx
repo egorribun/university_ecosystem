@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { m, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
 import {
@@ -21,6 +21,7 @@ import { AuditLog, AuditLogList } from "@/types/Admin"
 function Row({ log }: { log: AuditLog }) {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation("admin")
+  const reducedMotion = useReducedMotion()
 
   const getActionColor = (action: string) => {
     if (action.includes("delete"))
@@ -125,10 +126,10 @@ function Row({ log }: { log: AuditLog }) {
           <tr>
             <td colSpan={6} className="p-0 border-none">
               <m.div
-                initial={{ height: 0, opacity: 0 }}
+                initial={reducedMotion ? false : { height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                exit={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                transition={reducedMotion ? { duration: 0 } : { duration: 0.2 }}
                 className="overflow-hidden"
               >
                 <div className="mx-4 mb-4 mt-2 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-sm">
@@ -207,6 +208,7 @@ export default function AdminAudit() {
   const [filters, setFilters] = useState({ resource_type: "", action: "" })
 
   const { t } = useTranslation("admin")
+  const reducedMotion = useReducedMotion()
 
   const fetchLogs = useCallback(async () => {
     setLoading(true)
@@ -234,7 +236,12 @@ export default function AdminAudit() {
     <Layout>
       <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <m.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+          <m.div
+            initial={reducedMotion ? false : { opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={reducedMotion ? { duration: 0 } : undefined}
+            className="mb-8"
+          >
             <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
               {t("audit.title")}
             </h1>
