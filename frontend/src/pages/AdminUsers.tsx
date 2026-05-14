@@ -190,11 +190,11 @@ export default function AdminUsers() {
               <button
                 type="button"
                 onClick={() => void handleDelete(row.original.id)}
-                className="inline-flex items-center rounded-lg p-2 text-error transition-colors hover:bg-error/(--opacity-subtle)"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-error transition-colors hover:bg-error/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
                 aria-label={t("users.table.deleteUser")}
                 title={t("users.table.deleteUser")}
               >
-                <Trash2 className="h-5 w-5" />
+                <Trash2 className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
           )

@@ -258,7 +258,7 @@ export default function AdminNotifications() {
           >
             <thead>
               <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
@@ -267,25 +267,46 @@ export default function AdminNotifications() {
                     aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
                   />
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                >
                   {t("admin:notifications.table.columns.kind")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                >
                   {t("admin:notifications.table.columns.record")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                >
                   {t("admin:notifications.table.columns.locale")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                >
                   {t("admin:notifications.table.columns.enqueued")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                >
                   {t("admin:notifications.table.columns.attempts")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                >
                   {t("admin:notifications.table.columns.lastError")}
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                <th
+                  scope="col"
+                  className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                >
                   {t("admin:notifications.table.columns.actions")}
                 </th>
               </tr>
@@ -338,19 +359,21 @@ export default function AdminNotifications() {
                           type="button"
                           onClick={() => retryMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          className="p-1.5 text-brand hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium"
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-brand hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.retry")}
+                          aria-label={t("admin:notifications.actions.retry")}
                         >
-                          <RotateCcw className="h-4 w-4" />
+                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
                         </button>
                         <button
                           type="button"
                           onClick={() => purgeMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          className="p-1.5 text-error hover:bg-error/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium"
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-error hover:bg-error/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.purge")}
+                          aria-label={t("admin:notifications.actions.purge")}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </button>
                       </div>
                     </td>

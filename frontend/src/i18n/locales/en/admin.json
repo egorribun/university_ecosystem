@@ -83,6 +83,10 @@
       "action": "Action"
     },
     "table": {
+      "aria": "Audit log",
+      "expandColumn": "Expand",
+      "expandRow": "Expand audit entry",
+      "collapseRow": "Collapse audit entry",
       "time": "Time",
       "actor": "Actor",
       "action": "Action",
@@ -113,6 +117,7 @@
     "title": "Dynamic Feature Flags",
     "subtitle": "Real-time control over application features and rollout strategies.",
     "table": {
+      "aria": "Feature flags",
       "flag": "Feature Flag",
       "status": "Status",
       "rollout": "Rollout",
@@ -122,6 +127,9 @@
       "range": "Rollout Percentage",
       "percentage": "{{value}}% of users",
       "global": "Global toggle active"
+    },
+    "actions": {
+      "viewMetadata": "View flag metadata"
     }
   }
 }

@@ -78,19 +78,34 @@ export default function AdminFeatureFlags() {
 
           <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table
+                className="w-full text-left border-collapse"
+                aria-label={t("featureFlags.table.aria")}
+              >
                 <thead>
                   <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium">
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
+                    >
                       {t("featureFlags.table.flag", "Feature Flag")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium">
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
+                    >
                       {t("featureFlags.table.status", "Status")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium">
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
+                    >
                       {t("featureFlags.table.rollout", "Rollout")}
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                    >
                       {t("featureFlags.table.details", "Details")}
                     </th>
                   </tr>
@@ -164,10 +179,12 @@ export default function AdminFeatureFlags() {
                         </td>
                         <td className="px-6 py-5 text-right">
                           <button
+                            type="button"
                             title={JSON.stringify(flag.metadata, null, 2)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:text-brand"
+                            aria-label={t("featureFlags.actions.viewMetadata")}
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           >
-                            <Info className="h-4 w-4" />
+                            <Info className="h-4 w-4" aria-hidden="true" />
                           </button>
                         </td>
                       </m.tr>

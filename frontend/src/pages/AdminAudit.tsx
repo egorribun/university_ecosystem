@@ -45,11 +45,18 @@ function Row({ log }: { log: AuditLog }) {
       >
         <td className="px-4 py-4">
           <button
+            type="button"
             id={`audit-row-toggle-${log.id}`}
             onClick={() => setOpen(!open)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim)"
+            aria-expanded={open}
+            aria-label={open ? t("audit.table.collapseRow") : t("audit.table.expandRow")}
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
           >
-            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {open ? (
+              <ChevronUp className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            )}
           </button>
         </td>
         <td className="px-4 py-4">
@@ -270,23 +277,43 @@ export default function AdminAudit() {
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table
+                    className="w-full text-left border-collapse"
+                    aria-label={t("audit.table.aria")}
+                  >
                     <thead>
                       <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
-                        <th className="w-12 px-4 py-4" />
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                        <th scope="col" className="w-12 px-4 py-4">
+                          <span className="sr-only">{t("audit.table.expandColumn")}</span>
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                        >
                           {t("audit.table.time")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                        <th
+                          scope="col"
+                          className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                        >
                           {t("audit.table.actor")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                        <th
+                          scope="col"
+                          className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                        >
                           {t("audit.table.action")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                        <th
+                          scope="col"
+                          className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                        >
                           {t("audit.table.target")}
                         </th>
-                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
+                        <th
+                          scope="col"
+                          className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                        >
                           {t("audit.table.integrity")}
                         </th>
                       </tr>
