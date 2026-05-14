@@ -62,39 +62,50 @@ const createAppRouter = () => {
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
     defaultViewTransition: LHCI_VIEW_TRANSITION,
-    // Wave 152 Phase 1.5 — provide a visible default pending UI for ANY
-    // suspending route. Pre-W152, TanStack Router's internal <Matches>
+    // Wave 152 Phase 1.5 + Wave 153 SW2 — provide a visible default pending
+    // UI for ANY suspending route on the CLIENT, but return null during SSR.
+    //
+    // W152 Phase 1.5 history: pre-W152, TanStack Router's internal <Matches>
     // Suspense defaulted to `fallback={null}` → indefinite suspension =
     // silent blank screen (the W150 polish-followup-v2 user-facing bug).
-    // A simple skeleton screen is observably better than blank: if a route
-    // is genuinely loading slowly, the user sees a placeholder; if it's
-    // suspending indefinitely, they see the placeholder forever (which is
-    // still better than blank, because we know SOMETHING is loading).
-    // Defense-in-depth: even if the actual root cause of W150 polish-
-    // followup-v2 is elsewhere (e.g. provider init hang), this turns the
-    // observable failure from "blank screen with no clue" into "visible
-    // loading state that exposes the stuck transition".
+    // W152 added a visible "Loading…" placeholder via defaultPendingComponent
+    // as defense-in-depth — observably better than blank.
+    //
+    // W153 SW2 fix: but the unconditional fallback rendered DOM inside the
+    // SSR'd Suspense boundary (`<div id="root"><!--$--><div ...>Loading…</div>`),
+    // and `main.tsx:121-127` `hasRealSsrContent` detection picked up that
+    // ELEMENT_NODE → forced hydrateRoot path → client tree (Login form) vs
+    // server tree (Loading fallback) → React error #418 hydration mismatch →
+    // blank screen on /login in real Chrome since W150-polish-followup-v2.
+    //
+    // The fix is SSR-aware via `import.meta.env.SSR` (Vite literal: `true`
+    // in server bundle, `false` in client bundle — DCE eliminates the unused
+    // branch entirely). Server bundle returns `null` → Suspense emits only
+    // marker comments → main.tsx takes createRoot path. Client bundle keeps
+    // the visible Loading… UX for in-flight route transitions.
     defaultPendingMs: 0,
     defaultPendingComponent: () =>
-      createElement(
-        "div",
-        {
-          style: {
-            minHeight: "100dvh",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "var(--bg-page, var(--initial-bg, #060b14))",
-            color: "var(--text-primary, #f8fafc)",
-            fontFamily: "system-ui, -apple-system, sans-serif",
-            fontSize: "0.9rem",
-            opacity: 0.7,
-          },
-          role: "status",
-          "aria-live": "polite",
-        },
-        createElement("span", null, "Loading…")
-      ),
+      import.meta.env.SSR
+        ? null
+        : createElement(
+            "div",
+            {
+              style: {
+                minHeight: "100dvh",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "var(--bg-page, var(--initial-bg, #060b14))",
+                color: "var(--text-primary, #f8fafc)",
+                fontFamily: "system-ui, -apple-system, sans-serif",
+                fontSize: "0.9rem",
+                opacity: 0.7,
+              },
+              role: "status",
+              "aria-live": "polite",
+            },
+            createElement("span", null, "Loading…")
+          ),
     // Wave 125 Phase 2 — `defaultSsr: false` is part of TanStack
     // Router's separate `RouterConfig` (`createRouterConfig`), NOT of
     // `RouterConstructorOptions` (omitted via Omit). For SPA mode the
