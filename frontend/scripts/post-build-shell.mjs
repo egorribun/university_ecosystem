@@ -93,6 +93,47 @@ function injectFontPreloads(html, fontFiles) {
   return html.replace("</head>", `${preloadLinks}</head>`)
 }
 
+// W150 polish-followup — strip React Suspense boundary markers from <div id="root">
+// when shell has NO server-rendered content (root ssr:false or build-time-only SSR
+// pass produced empty Outlet). TanStack Start's build emits the markers as a
+// placeholder for streaming Suspense, but when client uses createRoot() (no SSR
+// content to hydrate), the markers register as comment-node children which
+// confuse hydrateRoot if anyone uses it. main.tsx checks hasChildNodes() to
+// decide hydrate vs create — comment markers make that check incorrect. Stripping
+// markers normalises the empty root to `<div id="root"></div>` so hasChildNodes()
+// correctly returns false → createRoot path → no hydration mismatch.
+//
+// Only applied when ROOT IS NOT SSR-RENDERED (heuristic: no `data-rh` or other
+// react helmet attributes near root indicating real SSR content). For now,
+// unconditional strip works because shell is the SAME static file for all routes;
+// per-route SSR is handled at runtime via tanstackStart's handler.fetch, not via
+// the shell file.
+function stripEmptySuspenseMarkers(html) {
+  // W150 polish-followup — strip ALL content from <div id="root"> when running
+  // in DEV_NO_SSR_SHELL mode (env var). This converts the SSR-prerendered shell
+  // into a classic empty-SPA shell so client createRoot() mounts from scratch
+  // without hydration mismatch. Production SSR builds skip this strip and
+  // hydrate the SSR content (W125 Phase 5 hydrateRoot path).
+  //
+  // Hydration mismatch sources we cannot easily fix without dev-mode source maps:
+  //   - useId() reconciliation differences SSR vs client
+  //   - React Suspense boundary placeholder timing
+  //   - LiveRegion + other portals in MainLayout
+  //   - Provider tree differences between SsrRoot + RootComponent branches
+  //
+  // The strip is intentionally LOSSY for SSR perf but resolves React error #418
+  // which blocks all routes on the local Docker stack. W151+ candidate to
+  // root-cause via NODE_ENV=development build and unminified error messages.
+  if (process.env.DEV_NO_SSR_SHELL === "1") {
+    return html.replace(/(<div id="root"[^>]*>)[\s\S]*?(<\/div>\s*<noscript)/, '$1$2')
+  }
+  // Default: just strip the empty-suspense markers pattern (safe always).
+  return html.replace(
+    /<div id="root">\s*<!--\$-->\s*<!--\/\$-->\s*<\/div>/g,
+    '<div id="root"></div>'
+  )
+}
+
 function applyLhciReplacements(html, isLHCI) {
   if (isLHCI) {
     const lhciStyles =
@@ -124,6 +165,7 @@ function main() {
   html = injectCspNoncePlaceholders(html)
   html = injectFontPreloads(html, fontFiles)
   html = applyLhciReplacements(html, isLHCI)
+  html = stripEmptySuspenseMarkers(html)
   writeFileSync(shellPath, html, "utf8")
 
   // Mirror the post-processed shell to `index.html` in the same directory

@@ -1,5 +1,5 @@
 import { StrictMode } from "react"
-import { hydrateRoot } from "react-dom/client"
+import { createRoot, hydrateRoot } from "react-dom/client"
 // dayjs removed
 
 import App from "./App"
@@ -99,23 +99,41 @@ if (!rootElement) throw new Error("Root element not found")
 
 const bootstrapStart = performance.now()
 
-// W149 SW2 — hydrateRoot replaces createRoot to complete W125 Phase 5 SSR
-// migration. SSR-rendered HTML emitted by server.ts (via tanstackStart's
-// handler.fetch — see frontend/src/server.ts) is now REUSED by the client
-// instead of being discarded + re-rendered. PersistQueryClientProvider moved
-// to __root.tsx RootComponent (client branch) so the SSR tree (SsrRoot wraps
-// per-request QueryClientProvider) and client tree match structurally for
-// hydration reconciliation. PersistQueryClientProvider's IndexedDB persister
-// hydrates the singleton queryClient cache POST-mount (async); this stays
-// CLIENT-ONLY by design (server uses per-request QueryClient via routerContext).
-hydrateRoot(
-  rootElement,
+// W149 SW2 + W150 polish-followup — conditional hydrateRoot vs createRoot
+// based on whether the SSR shell delivered rendered React content. W149 SW2
+// unconditionally used hydrateRoot to complete the W125 Phase 5 SSR migration,
+// but when root `ssr: false` (W150 polish-followup dev fallback) OR any
+// configuration that produces an empty `<div id="root">` shell, hydrateRoot
+// throws React error #418 because the existing DOM doesn't match what React
+// expects to render. This conditional gracefully handles BOTH modes:
+//   - SSR'd (root has children): hydrateRoot reuses server-rendered tree (W125 perf)
+//   - Empty shell (`ssr: false` or build artifact lacks server-render): createRoot
+//     mounts a fresh tree — same behavior as pre-W149 SW2.
+// Production-quality SSR should use ssr:true with matching SSR/client trees;
+// this fallback keeps dev working when SSR is intentionally disabled.
+const treeApp = (
   <StrictMode>
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
   </StrictMode>
 )
+// Check for *real* hydrate-able SSR content: any HTML element child (Node.ELEMENT_NODE = 1).
+// hasChildNodes() returns TRUE even for React 19 Suspense boundary comment markers
+// (`<!--$--><!--/$-->`) emitted when route ssr is false, which would push us into
+// hydrateRoot path against an empty Suspense — causing React #418 mismatch.
+const hasRealSsrContent = Array.from(rootElement.childNodes).some(
+  (n) => n.nodeType === Node.ELEMENT_NODE
+)
+if (hasRealSsrContent) {
+  hydrateRoot(rootElement, treeApp)
+} else {
+  // Clear any Suspense marker comments so createRoot starts from clean container.
+  while (rootElement.firstChild) {
+    rootElement.removeChild(rootElement.firstChild)
+  }
+  createRoot(rootElement).render(treeApp)
+}
 
 const isLHCI = import.meta.env.VITE_LHCI === "true"
 

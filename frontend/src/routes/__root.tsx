@@ -44,15 +44,19 @@ const THEME_INIT_SCRIPT = `;(function () {
   var html = document.documentElement
   if (dark) html.classList.add("dark")
 
-  // 2. Language Detection
+  // 2. Language Detection — MUST match SSR's extractLangFromRequest (ssrTheme.ts:resolveLang)
+  // which reads only the "ue:language" cookie (or localStorage mirror) and defaults to "ru".
+  // W150 polish-followup: REMOVED navigator.language fallback. SSR cannot read
+  // navigator.language (server-side), so if client did and switched to "en" while
+  // SSR stayed "ru", every i18n string mismatched -> React error #418 hydration
+  // failure -> renderer hang. Per W127 SW4 design: cookie-mirror + localStorage
+  // are the canonical sources; explicit language toggle in UI is the only way
+  // to switch from default Russian.
   var lang = "ru"
   try {
     var storedLang = localStorage.getItem("ue:language")
     if (storedLang === "en" || storedLang === "ru") {
       lang = storedLang
-    } else {
-      var browser = (navigator.language || "").toLowerCase()
-      if (browser.indexOf("en") === 0) lang = "en"
     }
   } catch (error) {}
   html.setAttribute("lang", lang)
@@ -127,19 +131,21 @@ body::after {
 /* LHCI_CSS_PLACEHOLDER */`
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  // Wave 126 polish — root opts INTO SSR so per-route SSR enablement
-  // can override more restrictively (per TanStack Start v1 docs:
-  // "Child routes inherit the Selective SSR configuration from their
-  // parent routes. However, an inherited SSR value can only be made
-  // MORE restrictive."). With `ssr: true` here, child layouts under
-  // `_auth.tsx` + `_admin.tsx` set `ssr: false` to preserve their
-  // client-only behavior (provider chain not yet hoisted for SSR);
-  // routes under `_public.tsx` inherit `ssr: true` which means
-  // `/login` can render server-side via `RootComponent`'s
-  // `import.meta.env.SSR` branch (returns minimal `<Outlet />` on
-  // SSR — Phase 5 will hoist providers so MainLayout becomes
-  // SSR-safe and full route SSR delivers the LCP win).
-  ssr: true,
+  // W150 polish-followup — root flipped to `ssr: false` to immediately resolve
+  // React error #418 hydration mismatch that blocks ALL routes (including /login
+  // with `_public.tsx ssr:false`) on local Docker stack. Hydration mismatch root
+  // cause not isolatable from production-minified bundle without source maps;
+  // suspected candidates: useId() reconciliation, MainLayout SSR-vs-client
+  // provider tree subtle differences, ParticleAuthBackground canvas ref timing.
+  //
+  // SSR opt-in is W128-W133 work. With `ssr: false` here, EVERY route renders
+  // client-side regardless of per-route `ssr: true` annotations (TanStack Start
+  // inheritance: child can only be MORE restrictive). The SSR LCP win for
+  // /dashboard + /events + /news + /schedule + /profile + /settings + /events.$id
+  // + /news.$id (W128-W133 enabled) is bypassed in this dev config. Production
+  // deploys should re-enable `ssr: true` here once the hydration mismatch is
+  // root-caused via dev build with source maps (W151+ structural investigation).
+  ssr: false,
   // Wave 125 Phase 2 — head() registers metadata that TanStack Router's
   // `<HeadContent />` injects into `<head>` during SSR + client. Mirrors
   // the meta + link tags that lived in `frontend/index.html` pre-W125.

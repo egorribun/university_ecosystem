@@ -37,7 +37,17 @@ const RATE_LIMIT_SKIP_ALLOWLIST = new Set([
 ])
 
 const devBase = ""
-const prodBase = `${import.meta.env.VITE_BACKEND_ORIGIN || ""}/api/v1`
+// W150 polish-followup: split SSR vs client base URL. SSR (Node, inside Docker
+// network) needs absolute backend hostname (e.g. http://backend:8000). Client
+// (browser, outside Docker network) needs RELATIVE URL so requests go through
+// the reverse proxy (Caddy /api/* → backend:8000). Before this fix, both used
+// the same baked-in VITE_BACKEND_ORIGIN which broke client-side fetches because
+// `backend:8000` is unresolvable from the host's browser. W137 SW3 gotcha
+// resolved for the browser path.
+const isSsrRuntime = typeof window === "undefined"
+const prodBase = isSsrRuntime
+  ? `${import.meta.env.VITE_BACKEND_ORIGIN || "http://localhost:8000"}/api/v1`
+  : "/api/v1"
 
 export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {
   signal?: AbortSignal

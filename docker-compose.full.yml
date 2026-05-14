@@ -123,6 +123,10 @@ services:
         # Production CI overrides via deploy-time arg pointing at real backend
         # hostname (e.g. https://api.example.com); compose value is dev-only.
         VITE_BACKEND_ORIGIN: "http://backend:8000"
+        # W150 polish-followup — strip SSR shell content for dev compose to
+        # bypass React #418 hydration mismatch on local Docker stack. Production
+        # CI deploys should leave this unset for full SSR LCP wins.
+        DEV_NO_SSR_SHELL: "1"
     ports:
       - "8081:3000"
     networks:

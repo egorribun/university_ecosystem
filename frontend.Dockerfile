@@ -24,6 +24,11 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM base AS builder
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
+# W150 polish-followup — pass DEV_NO_SSR_SHELL through to post-build-shell.mjs
+# so the dev compose can opt into stripping <div id="root"> SSR content, which
+# unblocks local Docker stack hit by React error #418 hydration mismatch.
+ARG DEV_NO_SSR_SHELL=""
+ENV DEV_NO_SSR_SHELL=$DEV_NO_SSR_SHELL
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
