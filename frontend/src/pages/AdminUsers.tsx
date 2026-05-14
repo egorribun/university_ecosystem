@@ -331,9 +331,7 @@ export default function AdminUsers() {
       <ConfirmDialog
         open={userToDelete !== null}
         title={t("users.confirmDelete")}
-        message={t("users.confirmDeleteDescription", {
-          defaultValue: "Are you sure you want to delete this user? This action cannot be undone.",
-        })}
+        message={t("users.confirmDeleteDescription")}
         confirmText={t("common:buttons.delete")}
         cancelText={t("common:buttons.cancel")}
         variant="danger"
