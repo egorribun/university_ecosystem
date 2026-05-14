@@ -3,96 +3,31 @@ import type { ReactNode } from "react"
 import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
-// W153 SW3 iter 3 — LiveRegionProvider, AppShellProvider, MessengerProvider,
-// GlobalHapticsListener imports dropped because all are stripped in
-// ProvidersInner. Outer LanguageProvider + LazyMotion + MotionConfig kept
-// (load-bearing for Login's useTranslation + framer-motion). ErrorBoundary
-// kept as safety net. Inner stubs from iter 1+2 stay. Restore when SW3
-// revert lands.
-//
-// import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
-// import { AppShellProvider } from "./contexts/AppShellContext"
-// import { MessengerProvider } from "./contexts/MessengerContext"
-// import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
-// W153 SW3 iter 2 — `AuthProvider` import dropped because the real provider
-// is stripped in ProvidersInner below (replaced with `AuthContext.Provider`
-// + stub value). Restore when SW3 revert lands.
-import { AuthContext } from "./contexts/AuthContext"
-import { resetEtagCache } from "@/api/client"
-// W153 SW3 iter 1 — `WebSocketProvider` import dropped because the real
-// provider is stripped in ProvidersInner below (replaced with stub
-// `<WebSocketStoreContext.Provider value={W153_NO_OP_WS_STORE}>`). Restore
-// when SW3 revert lands. The hook itself stays imported elsewhere via
-// MessengerContext.tsx so the real provider lifecycle is unchanged.
-import { WebSocketStoreContext, WebSocketStore } from "./hooks/useChatWebSocket"
+import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
+import { AppShellProvider } from "./contexts/AppShellContext"
+import { AuthProvider } from "./contexts/AuthContext"
+import { WebSocketProvider } from "./hooks/useChatWebSocket"
+import { MessengerProvider } from "./contexts/MessengerContext"
 import { LanguageProvider } from "./contexts/LanguageContext"
-
-// W153 SW3 iter 1 — module-level no-op WebSocketStore singleton for the
-// WebSocketProvider component-strip diagnostic. Matches the
-// `useMemo(() => new WebSocketStore(), [])` stable-identity contract of the
-// real WebSocketProvider (useChatWebSocket.ts:117-120) so
-// `useSyncExternalStore` doesn't churn its subscription on parent re-renders.
-//
-// Purpose: temporarily replace `<WebSocketProvider>` with a context provider
-// stub to test whether WebSocketProvider's mount-time side effects are the
-// source of the /login V8 wedge (W152 §Honesty #19 unidentified cause +
-// W153 SW2 React #418 fix didn't resolve user-facing blank). If /login
-// renders content with the stub in place, wedge is isolated to
-// WebSocketProvider; pivot to SW4 targeted fix. If still blank, proceed to
-// SW3 iter 2 (AuthProvider stub).
-//
-// REVERT BEFORE MAIN MERGE. This commit is diagnostic-only.
-const W153_NO_OP_WS_STORE = new WebSocketStore()
-
-// W153 SW3 iter 2 — module-level no-op AuthContext value mirrors the
-// existing default at frontend/src/contexts/AuthContext.tsx:33-43. The
-// real AuthProvider runs `useProfileSync` (auto /users/me fetch +
-// localStorage cache hydration). Stripping it tests whether
-// useProfileSync's render-loop or queryClient.fetchQuery interaction is
-// the /login wedge source. With this stub, `useAuth()` returns
-// no-op actions + Zustand store defaults (user=null, loading=false)
-// — fine for /login which is unauth anyway.
-//
-// REVERT BEFORE MAIN MERGE.
-const W153_NO_OP_AUTH = {
-  login: async () => null,
-  logout: async () => {},
-  setUser: () => {},
-  refresh: async () => {},
-  submitMfaChallenge: async () => {},
-  requireMfa: async () => null,
-  loginWithPasskey: async () => {},
-  resetEtagCache,
-  authOperation: false,
-} as unknown as React.ContextType<typeof AuthContext>
+import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
 
 interface AppProvidersProps {
   children: ReactNode
 }
 
 function ProvidersInner({ children }: AppProvidersProps) {
-  // W153 SW3 iter 3 (LAST allowed under STRICT 3-iter cap) — max-strip:
-  // LiveRegionProvider, AppShellProvider, MessengerProvider,
-  // GlobalHapticsListener ALL stripped. Inner stubs (AuthContext +
-  // WebSocketStoreContext) preserve context shape so any deep consumer
-  // (e.g. useAuth() inside Login) still gets a valid value. ErrorBoundary
-  // kept as safety net.
-  //
-  // Iter 1 (WebSocketProvider strip) FAILED.
-  // Iter 2 (AuthProvider stub overlaid) FAILED.
-  // Iter 3 (max-strip): if PASS → wedge in LiveRegion/AppShell/Messenger/
-  // Haptics; if FAIL → wedge upstream (LanguageProvider/LazyMotion/
-  // MotionConfig/PersistQueryClientProvider/ThemeProvider/StartClient/
-  // main.tsx/module-init) → MANDATORY honest defer to W154+ per W141
-  // anti-pattern #1.
-  //
-  // REVERT BEFORE MAIN MERGE.
   return (
-    <AuthContext.Provider value={W153_NO_OP_AUTH}>
-      <WebSocketStoreContext.Provider value={W153_NO_OP_WS_STORE}>
-        <ErrorBoundary>{children}</ErrorBoundary>
-      </WebSocketStoreContext.Provider>
-    </AuthContext.Provider>
+    <LiveRegionProvider>
+      <AppShellProvider>
+        <AuthProvider>
+          <WebSocketProvider>
+            <MessengerProvider>
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </MessengerProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </AppShellProvider>
+    </LiveRegionProvider>
   )
 }
 
@@ -173,10 +108,10 @@ export function AppProviders({ children }: AppProvidersProps) {
     <LanguageProvider>
       <LazyMotion strict features={domAnimation}>
         <MotionConfig reducedMotion={LHCI_REDUCED_MOTION}>
-          {/* W153 SW3 iter 3 — GlobalHapticsListener removed (it's a side-effect-only
-              listener for touch events; not load-bearing for /login render).
-              ProvidersInner kept but its middle layer is stripped — see ProvidersInner. */}
-          <ProvidersInner>{children}</ProvidersInner>
+          <ProvidersInner>
+            <GlobalHapticsListener />
+            {children}
+          </ProvidersInner>
         </MotionConfig>
       </LazyMotion>
     </LanguageProvider>
