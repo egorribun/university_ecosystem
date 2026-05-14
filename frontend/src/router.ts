@@ -1,3 +1,4 @@
+import { createElement } from "react"
 import { createRouter } from "@tanstack/react-router"
 import { QueryClient } from "@tanstack/react-query"
 import { routeTree } from "./routeTree.gen"
@@ -61,6 +62,39 @@ const createAppRouter = () => {
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
     defaultViewTransition: LHCI_VIEW_TRANSITION,
+    // Wave 152 Phase 1.5 — provide a visible default pending UI for ANY
+    // suspending route. Pre-W152, TanStack Router's internal <Matches>
+    // Suspense defaulted to `fallback={null}` → indefinite suspension =
+    // silent blank screen (the W150 polish-followup-v2 user-facing bug).
+    // A simple skeleton screen is observably better than blank: if a route
+    // is genuinely loading slowly, the user sees a placeholder; if it's
+    // suspending indefinitely, they see the placeholder forever (which is
+    // still better than blank, because we know SOMETHING is loading).
+    // Defense-in-depth: even if the actual root cause of W150 polish-
+    // followup-v2 is elsewhere (e.g. provider init hang), this turns the
+    // observable failure from "blank screen with no clue" into "visible
+    // loading state that exposes the stuck transition".
+    defaultPendingMs: 0,
+    defaultPendingComponent: () =>
+      createElement(
+        "div",
+        {
+          style: {
+            minHeight: "100dvh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--bg-page, var(--initial-bg, #060b14))",
+            color: "var(--text-primary, #f8fafc)",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: "0.9rem",
+            opacity: 0.7,
+          },
+          role: "status",
+          "aria-live": "polite",
+        },
+        createElement("span", null, "Loading…")
+      ),
     // Wave 125 Phase 2 — `defaultSsr: false` is part of TanStack
     // Router's separate `RouterConfig` (`createRouterConfig`), NOT of
     // `RouterConstructorOptions` (omitted via Omit). For SPA mode the
