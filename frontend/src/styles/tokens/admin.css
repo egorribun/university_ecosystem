@@ -68,8 +68,7 @@
       0 4px 12px color-mix(in srgb, black 4%, transparent),
       inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
     --admin-card-shadow-hover:
-      0 2px 4px color-mix(in srgb, black 6%, transparent),
-      0 8px 24px var(--admin-card-glow),
+      0 2px 4px color-mix(in srgb, black 6%, transparent), 0 8px 24px var(--admin-card-glow),
       inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
 
     /* ── Status accent colors ─────────────────────── */
@@ -81,8 +80,16 @@
 
     /* ── Tables ───────────────────────────────────── */
     --admin-table-bg: color-mix(in srgb, var(--bg-surface) 94%, var(--color-indigo-50) 6%);
-    --admin-table-header-bg: color-mix(in srgb, var(--bg-surface-hover) 90%, var(--color-indigo-100) 10%);
-    --admin-table-row-hover: color-mix(in srgb, var(--bg-surface-hover) 70%, var(--color-indigo-50) 30%);
+    --admin-table-header-bg: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 90%,
+      var(--color-indigo-100) 10%
+    );
+    --admin-table-row-hover: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 70%,
+      var(--color-indigo-50) 30%
+    );
     --admin-table-border: color-mix(in srgb, var(--color-indigo-200) 40%, transparent);
 
     /* ── Badge / Chip / Pill ──────────────────────── */
@@ -125,8 +132,7 @@
       0 4px 12px color-mix(in srgb, black 15%, transparent),
       inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
     --admin-card-shadow-hover:
-      0 2px 4px color-mix(in srgb, black 25%, transparent),
-      0 8px 24px var(--admin-card-glow),
+      0 2px 4px color-mix(in srgb, black 25%, transparent), 0 8px 24px var(--admin-card-glow),
       inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
 
     --admin-accent-line: linear-gradient(
@@ -137,8 +143,16 @@
     );
 
     --admin-table-bg: color-mix(in srgb, var(--bg-surface) 92%, var(--color-indigo-900) 8%);
-    --admin-table-header-bg: color-mix(in srgb, var(--bg-surface-hover) 85%, var(--color-slate-800) 15%);
-    --admin-table-row-hover: color-mix(in srgb, var(--bg-surface-hover) 70%, var(--color-indigo-900) 30%);
+    --admin-table-header-bg: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 85%,
+      var(--color-slate-800) 15%
+    );
+    --admin-table-row-hover: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 70%,
+      var(--color-indigo-900) 30%
+    );
     --admin-table-border: color-mix(in srgb, var(--color-indigo-700) 50%, transparent);
 
     --admin-badge-bg: color-mix(in srgb, var(--bg-surface) 85%, var(--color-slate-700) 15%);
@@ -186,11 +200,7 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 3px;
-  background: linear-gradient(
-    to right,
-    var(--_accent, var(--admin-info-accent)),
-    transparent 80%
-  );
+  background: linear-gradient(to right, var(--_accent, var(--admin-info-accent)), transparent 80%);
   opacity: 0.7;
 }
 

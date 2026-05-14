@@ -23,8 +23,7 @@ export function AdminBackdrop({ isNarrow, prefersReducedMotion }: AdminBackdropP
       <div
         className="absolute -top-20 left-1/2 h-[500px] w-[800px] max-w-full -translate-x-1/2"
         style={{
-          background:
-            "radial-gradient(ellipse at 50% 0%, var(--admin-hero-orb), transparent 72%)",
+          background: "radial-gradient(ellipse at 50% 0%, var(--admin-hero-orb), transparent 72%)",
           filter: "blur(40px)",
         }}
       />
