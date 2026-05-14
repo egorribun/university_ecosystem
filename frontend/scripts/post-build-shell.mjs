@@ -125,7 +125,7 @@ function stripEmptySuspenseMarkers(html) {
   // which blocks all routes on the local Docker stack. W151+ candidate to
   // root-cause via NODE_ENV=development build and unminified error messages.
   if (process.env.DEV_NO_SSR_SHELL === "1") {
-    return html.replace(/(<div id="root"[^>]*>)[\s\S]*?(<\/div>\s*<noscript)/, '$1$2')
+    return html.replace(/(<div id="root"[^>]*>)[\s\S]*?(<\/div>\s*<noscript)/, "$1$2")
   }
   // Default: just strip the empty-suspense markers pattern (safe always).
   return html.replace(
