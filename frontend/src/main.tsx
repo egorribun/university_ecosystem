@@ -137,6 +137,27 @@ if (hasRealSsrContent) {
 
 const isLHCI = import.meta.env.VITE_LHCI === "true"
 
+// Wave 152 Phase 1.6 — apply `.ready` SYNCHRONOUSLY (not via rAF×2) so the
+// `<div id="root">` becomes visible immediately after createRoot.render()
+// returns. Pre-W152, the rAF×2 pattern relied on the browser eventually
+// firing rAF callbacks, but if React's reconciler subsequently wedges (e.g.
+// infinite render loop somewhere in the provider chain or in a Suspense
+// boundary's child), rAF never fires → `.ready` class never added → the
+// root container stays at `opacity: 0` and the page is *literally invisible*
+// even if React committed partial content (including Suspense fallbacks).
+// Synchronous `.classList.add` runs BEFORE the React reconciler's first
+// scheduled work, so the visibility transition is guaranteed regardless of
+// reconciler health.
+//
+// LHCI branch (kept synchronous as before) suppresses the lhci-marker div.
+// Non-LHCI branch now adds `.ready` synchronously instead of via rAF×2.
+// Trade-off: pre-W152 the rAF×2 deferred the visibility transition by ~32 ms
+// so the SSR-hydration flash was less perceptible. Post-W152 the transition
+// fires immediately — for SPA mount with empty shell this is correct (no
+// content was visible before anyway). For genuine SSR routes with rendered
+// content, rAF×2 would still hide content for ~32 ms (current behavior is
+// fine for both paths because the CSS `opacity: 0 → 1` transition itself
+// takes 150 ms).
 if (isLHCI) {
   rootElement.classList.add("ready")
   const lhciMarker = document.getElementById("lhci-marker")
@@ -144,11 +165,7 @@ if (isLHCI) {
     lhciMarker.style.display = "none"
   }
 } else {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      rootElement.classList.add("ready")
-    })
-  })
+  rootElement.classList.add("ready")
 }
 
 if (typeof window !== "undefined") {

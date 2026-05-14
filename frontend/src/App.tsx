@@ -1,7 +1,6 @@
-import { RouterProvider } from "@tanstack/react-router"
-import { router } from "./router"
+import { StartClient } from "@tanstack/react-start/client"
 
-// Wave 127 SW1 — App.tsx is now a thin RouterProvider mount. AppProviders +
+// Wave 127 SW1 — App.tsx is now a thin client-entry mount. AppProviders +
 // ThemeProvider were hoisted to __root.tsx RootComponent so they're available
 // during SSR. Auth context is populated by router.ts createAppRouter() which
 // reads globalThis.__ssrAuthGetter__ on server (W126 SW4 pattern); on client
@@ -28,6 +27,29 @@ import { router } from "./router"
 //       boundaries for `lazy:` routes, and AuthProvider in __root.tsx renders
 //       children unconditionally (AuthContext.tsx:145 — no `initializing` gate).
 //
+// Wave 152 Phase 1.7 — ADOPTED TanStack Start v1's official `<StartClient />`
+// client entry per the W125 design doc deferral: "Phase 3 (W126+) may switch
+// to <StartClient /> + hydrateRoot + auth-at-edge." Pre-W152, main.tsx mounted
+// `<App>` with `<RouterProvider router={router} />` directly. That bypassed
+// TanStack Start's `hydrateStart()` flow which is responsible for aligning
+// the client router state with the server's prerendered TSR stream (the
+// `self.$_TSR.router = ...` payload visible in the production HTML). The
+// bypass produced two consequences traced via the user's reproducible blank
+// /login screen + chrome-devtools-mcp `evaluate_script` timeouts:
+//   • Client router state initialised from a fresh `createRouter()` while the
+//     SSR-emitted `$_TSR.router` manifest entries (`s:"pending"`, `ssr:!1`)
+//     were never consumed — TanStack Router's <Matches> then sat in an
+//     ambiguous pending state.
+//   • The pending state combined with Matches' internal `<Suspense
+//     fallback={null}>` rendered nothing visible, and downstream chunks
+//     (auth provider chain) ran synchronously enough to wedge V8 main thread
+//     before any console/diagnostic output could land — DevTools wouldn't
+//     even open on the wedged renderer.
+// `<StartClient />` internally calls `hydrateStart()` → resolves the router
+// against the SSR stream → renders <Await> → <RouterProvider>. This is the
+// canonical TanStack Start v1 SPA-mode client entry shape; previously the
+// project shipped a hand-rolled equivalent that diverged structurally.
+//
 // Bootstrap-error gate preserved for E2E tests (`__APP_BOOTSTRAP_FORCE_ERROR__`
 // is set by tests/e2e/* fixtures to verify ErrorBoundary mounting).
 export default function App() {
@@ -39,5 +61,5 @@ export default function App() {
     throw new Error("Bootstrap failed")
   }
 
-  return <RouterProvider router={router} />
+  return <StartClient />
 }

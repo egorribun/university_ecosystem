@@ -305,6 +305,15 @@ function RootComponent() {
   // IndexedDB post-mount asynchronously. The provider itself emits no DOM
   // so the SSR HTML doesn't carry it — hydration compares only the
   // rendered children, which ARE identical between SsrRoot + RootComponent.
+  //
+  // Wave 152 Phase 1.8 RAN as a diagnostic swap to vanilla
+  // `<QueryClientProvider>` to test the IDB-hydration-wedge hypothesis
+  // (H4 from opening prompt). RESULT: NEGATIVE — user-facing /login blank
+  // PERSISTED with vanilla provider. IDB hydration is NOT the wedge cause.
+  // Phase 1.8 reverted; PersistQueryClientProvider restored. W153+
+  // investigation should target AuthProvider's useProfileSync render loop,
+  // WebSocketProvider sync init, MessengerProvider, MainLayout, OR
+  // a deeper module-init issue (per W141 anti-pattern #1 iter cap reached).
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: idbPersister }}>
       <ThemeProvider>
