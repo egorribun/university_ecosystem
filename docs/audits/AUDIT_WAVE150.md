@@ -407,9 +407,29 @@ Per `feedback_perfectionism.md`: the «безупречно?» probe surfaced ho
 - **Promise.race wrapper adds a 6 s timeout ceiling on all remaining `/api/*` requests under NetworkFirst**. Acceptable — synthetic 504 is observable + actionable in console; far better than indefinite pending.
 - **Stale SWs in user browsers require a one-time hard-reload (Ctrl+Shift+R)** after this deploys. [`sw.ts:45-46`](../../frontend/src/sw.ts:45) already has `clientsClaim()` + `self.skipWaiting()` so the new SW takes over automatically on next reload — no manual unregister needed.
 
-### §Honesty trajectory update
+### §Honesty trajectory update (HONEST CORRECTION post user-verification)
 
-**Closes 1 caveat from W150 polish-followup unresolved set**: `/users/me Service Worker pending hang` (caveat #16 per W151 opening prompt enumeration). Polish-followup-v2 DOES NOT close caveats #14 (`__root.tsx ssr: false` dev fallback) or #15 (`DEV_NO_SSR_SHELL=1` dev compose hack) — those remain W151 Tier 1 scope per the opening prompt. The W150 audit §Honesty trajectory (13 post-polish-v2) does not increment — polish-followup-v2 is a sub-wave debug fix, not a wave-scoped scope expansion. Net effect: the post-W150-polish-followup §Honesty count goes from 18-22 → 17-21 (with #16 marked CLOSED; #14, #15, #17, #18, #19, #20, #21 polish-followup additions remain open per opening prompt §"W150 polish-followup NEW caveats").
+**Initial claim (pre-user-verification)**: this fix closes §Honesty caveat #16 (`/users/me Service Worker pending hang`). The fix WAS shipped as committed (`a26d1e7da`, pushed to origin/egorribun) and IS byte-verified in the compiled `sw.js`.
+
+**HONEST CORRECTION (post-user-verification, 2026-05-14)**: user reported `/login` STILL BLANK in BOTH regular Chrome AND fresh Chrome Incognito after deploy + cleared site data. This DEFINITIVELY rules out Service Worker / state pollution as the user-facing blocker — Incognito has no SW. The SW fix targeted the WRONG root cause.
+
+Verified from source: [`AuthContext.tsx:145`](../../frontend/src/contexts/AuthContext.tsx:145) renders `<AuthContext.Provider value={value}>{children}</AuthContext.Provider>` UNCONDITIONALLY. There is NO gate on `initializing`. So `/users/me` pending forever does NOT block React from rendering children. The blank screen is caused by something OTHER than the SW intercepting `/users/me`.
+
+**Likely actual root cause** (W150 polish-followup caveat #14, NOT addressed by this fix):
+- [`__root.tsx:148`](../../frontend/src/routes/__root.tsx:148) `ssr: false` + [`_public.tsx:10`](../../frontend/src/routes/_public.tsx:10) `ssr: false` make `/login` 100% client-only with empty SPA shell
+- [`App.tsx:24`](../../frontend/src/App.tsx:24) `<Suspense>` has NO `fallback` prop → defaults to `null` while route's lazy `Login` chunk loads
+- chrome-devtools-mcp diagnostic on the rebuilt dist showed 17 chunks pending (including `Login-DHFvelK1.js` page-component lazy chunk) + V8 main thread wedged (evaluate_script times out — likely ParticleAuthBackground 1000-particle canvas starving CPU OR sync-throw at module init in some chunk OR React render infinite-loop)
+- Or: there's a sync-throwing module init somewhere in the AppProviders / RouterProvider chain
+- W150 polish-followup commit `7c97de583` body explicitly documented: "Hydration mismatch root cause NOT isolatable from production-minified bundle without source maps; suspected candidates: useId() reconciliation, MainLayout SSR-vs-client provider tree subtle differences, ParticleAuthBackground canvas ref timing"
+
+**§Honesty caveat #16 stays OPEN** in the user-facing scope. The SW fix IS valuable as a standalone change:
+- Security correctness — auth-state endpoints should never be cached per OWASP
+- Defense-in-depth — Promise.race wrapper prevents indefinite pending on remaining `/api/*` paths under NetworkFirst
+- Eliminates the workbox NetworkFirst-vs-CacheableResponsePlugin-401 quirk for the high-traffic `/users/me` path
+
+But it does NOT close the user's blank-screen bug. That requires the W151 Tier 1 SSR root-cause investigation per `memory/wave151_opening_prompt.md` — NODE_ENV=development build with source maps to expose the actual React error, then targeted fix at the specific component/import causing it.
+
+**Honest count**: §Honesty trajectory is UNCHANGED at 17-21 polish-followup-unresolved caveats. Caveat #16's framing is REFINED to: "SW NetworkFirst stall is one observable symptom of the broader Service Worker handling architecture, mitigated structurally by route exclusion + Promise.race wrapper. It is NOT the user-facing blank-screen blocker." Caveat #14 (root ssr:false dev fallback bypassing W125-W149 SSR architecture) is the LOAD-BEARING user-facing caveat — W151 Tier 1 scope.
 
 ### Anti-pattern register impact
 
