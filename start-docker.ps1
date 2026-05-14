@@ -613,7 +613,8 @@ $services = @{
     nats     = @{ type = "docker"; ready = $false }
     gateway  = @{ type = "http"; url = "http://localhost:8080/health"; ready = $false }
     wshub    = @{ type = "http"; url = "http://localhost:8083/health"; ready = $false }
-    frontend = @{ type = "http"; url = "http://localhost:8081"; ready = $false }
+    frontend = @{ type = "http"; url = "http://localhost:8081/healthz"; ready = $false }
+    caddy    = @{ type = "http"; url = "http://localhost/healthz"; ready = $false }
 }
 
 do {
@@ -634,7 +635,7 @@ do {
 
     # Status line
     $statParts = @()
-    foreach ($name in @("postgres", "backend", "gateway", "frontend", "nats", "wshub")) {
+    foreach ($name in @("postgres", "backend", "gateway", "caddy", "frontend", "nats", "wshub")) {
         $icon = if ($services[$name].ready) { "+" } else { "." }
         $color = if ($services[$name].ready) { "Green" } else { "DarkGray" }
         $statParts += @{ name = $name; icon = $icon; color = $color }
@@ -666,13 +667,27 @@ if (-not $allReady) {
 Write-Host ""
 Write-Ok "University Ecosystem is running!"
 Write-Host ""
-Write-Host "  Frontend:    http://localhost:8081" -ForegroundColor Yellow
-Write-Host "  Gateway API: http://localhost:8080" -ForegroundColor Yellow
-Write-Host "  Backend API: http://localhost:8000" -ForegroundColor Yellow
-Write-Host "  API Docs:    http://localhost:8000/docs" -ForegroundColor Yellow
-Write-Host "  WS Hub:      http://localhost:8083" -ForegroundColor Yellow
-Write-Host "  MinIO:       http://localhost:9001" -ForegroundColor Yellow
-Write-Host "  Grafana:     http://localhost:3000" -ForegroundColor Yellow
+Write-Host "  >> Site (use this):  http://localhost/" -ForegroundColor Green
+Write-Host "     Caddy reverse proxy routes /api/* -> gateway:8080 -> backend:8000," -ForegroundColor DarkGray
+Write-Host "     /ws/* -> ws-hub:8081, /sw.js -> frontend:3000, default -> frontend:3000." -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  Direct service ports (admin/debug only — browser API calls won't work)" -ForegroundColor Gray
+Write-Host "  Frontend (Node SSR):  http://localhost:8081  (no /api proxy — use http://localhost/)" -ForegroundColor DarkYellow
+Write-Host "  Gateway API:          http://localhost:8080" -ForegroundColor DarkYellow
+Write-Host "  Backend API:          http://localhost:8000  (127.0.0.1 only)" -ForegroundColor DarkYellow
+Write-Host "  API Docs:             http://localhost:8000/docs" -ForegroundColor DarkYellow
+Write-Host "  WS Hub:               http://localhost:8083" -ForegroundColor DarkYellow
+Write-Host "  MinIO Console:        http://localhost:9001" -ForegroundColor DarkYellow
+Write-Host "  Grafana:              http://localhost:3000" -ForegroundColor DarkYellow
+Write-Host ""
+Write-Host "Seed data:" -ForegroundColor Cyan
+Write-Host "  1) Demo content (idempotent — student user + news + events + schedule + stories):"
+Write-Host "       docker exec -w /app university_ecosystem-backend-1 python scripts/seed_demo_data.py"
+Write-Host "       Login: test@university.dev / TestPass@2024x"
+Write-Host "  2) Admin content (idempotent — admin user + 6 users + 12 audit logs + 4 dead-letter jobs):"
+Write-Host "       docker cp scripts/seed_admin_data.py university_ecosystem-backend-1:/app/seed_admin_data.py"
+Write-Host "       docker exec -w /app university_ecosystem-backend-1 python seed_admin_data.py"
+Write-Host "       Login: admin@university.dev / Admin@2024test"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray
 Write-Host "  Stop:      .\start-docker.ps1 -Down"
