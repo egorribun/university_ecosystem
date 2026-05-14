@@ -131,21 +131,32 @@ body::after {
 /* LHCI_CSS_PLACEHOLDER */`
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  // W150 polish-followup — root flipped to `ssr: false` to immediately resolve
-  // React error #418 hydration mismatch that blocks ALL routes (including /login
-  // with `_public.tsx ssr:false`) on local Docker stack. Hydration mismatch root
-  // cause not isolatable from production-minified bundle without source maps;
-  // suspected candidates: useId() reconciliation, MainLayout SSR-vs-client
-  // provider tree subtle differences, ParticleAuthBackground canvas ref timing.
+  // Wave 128 SW2 baseline: root `ssr: true` so per-route `ssr: true` annotations
+  // on /dashboard + /events + /news + /schedule + /profile + /settings + per-page
+  // SSR LCP wins are honored (TanStack Start inheritance: child can only be MORE
+  // restrictive — `_auth.tsx` + `_admin.tsx` opt down to ssr:false; `_public.tsx`
+  // inherits ssr:true).
   //
-  // SSR opt-in is W128-W133 work. With `ssr: false` here, EVERY route renders
-  // client-side regardless of per-route `ssr: true` annotations (TanStack Start
-  // inheritance: child can only be MORE restrictive). The SSR LCP win for
-  // /dashboard + /events + /news + /schedule + /profile + /settings + /events.$id
-  // + /news.$id (W128-W133 enabled) is bypassed in this dev config. Production
-  // deploys should re-enable `ssr: true` here once the hydration mismatch is
-  // root-caused via dev build with source maps (W151+ structural investigation).
-  ssr: false,
+  // Wave 154 SW1 — restored to W128 baseline AFTER W153 SW2 closed the underlying
+  // React #418 hydration mismatch root cause. The W150 polish-followup ssr:false
+  // workaround (commit 7c97de583, 2026-05-14) was a TEMPORARY fix that the author
+  // explicitly noted should be reverted "once the hydration mismatch is root-caused"
+  // (per the original inline comment block, pre-W154). W153 SW2 (commit d931492e3)
+  // IS that root-cause closure: it made `router.ts:78 defaultPendingComponent`
+  // SSR-aware via `import.meta.env.SSR` literal substitution, eliminating the
+  // W152 Phase 1.5 visible Loading… DOM that was tripping `main.tsx:121-127
+  // hasRealSsrContent` ELEMENT_NODE detection into the wrong (`hydrateRoot()`)
+  // branch on ssr:false routes.
+  //
+  // The ssr:false workaround was structurally NECESSARY at W150 (to escape #418)
+  // BUT became actively HARMFUL post-W152 Phase 1.7 `<StartClient />` adoption:
+  // `<StartClient />` reads `self.$_TSR.router` SSR stream to align client router
+  // state with server-emitted manifest entries. With ssr:false, that stream was
+  // minimal/empty → TanStack Router's `<Matches>` sat in ambiguous pending state →
+  // internal `<Suspense fallback={null}>` rendered nothing → V8 main-thread wedge
+  // severe enough to block DevTools attachment (per `App.tsx:30-51` comment block,
+  // user real-Chrome verified W153+W154 Q0).
+  ssr: true,
   // Wave 125 Phase 2 — head() registers metadata that TanStack Router's
   // `<HeadContent />` injects into `<head>` during SSR + client. Mirrors
   // the meta + link tags that lived in `frontend/index.html` pre-W125.
