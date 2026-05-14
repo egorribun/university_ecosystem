@@ -444,7 +444,13 @@ export default defineConfig(({ mode }) => {
         mode === "production" ? { "console.log": "(() => {})", "console.debug": "(() => {})" } : {},
     },
     build: {
-      minify: true,
+      // W153 SW1 — minify is mode-conditional so an opt-in `vite build --mode development`
+      // produces an unminified bundle with readable React errors. Default
+      // `mode === "production"` path (CI/prod compose) is unchanged: minify:true +
+      // sourcemap:"hidden". Dev-only `vite.config.mts` plumbing for /login wedge
+      // diagnosis (W150-polish-followup caveat #14 / W152 iter-5 honest defer); see
+      // `frontend.Dockerfile:FRONTEND_BUILD_MODE` ARG + dev compose build arg.
+      minify: mode === "production",
       // P0-05 (audit 2026-03-06): "hidden" generates .map files for Sentry
       // symbolication but does NOT add //# sourceMappingURL= to .js bundles,
       // so browsers and attackers cannot download the full TypeScript source.

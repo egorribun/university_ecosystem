@@ -145,11 +145,23 @@ async function step3_viteBuild() {
   const traceAgentPath = path.resolve(cwd, "scripts/wave136-hang-trace-agent.cjs")
   const useIpc = traceEnabled
 
+  // W153 SW1 — opt-in unminified dev build with source maps for the /login
+  // wedge diagnostic (W150-polish-followup caveat #14, W152 iter-5 honest
+  // defer). Setting FRONTEND_BUILD_MODE=development (dev compose only,
+  // never CI / prod) propagates `--mode development` to the vite subprocess
+  // + NODE_ENV=development to esbuild + import.meta.env.{DEV,PROD,MODE}.
+  // Default empty string falls through to production-equivalent behavior.
+  const buildMode = process.env.FRONTEND_BUILD_MODE === "development" ? "development" : "production"
+  const modeArgs = buildMode === "development" ? ["--mode", "development"] : []
+
   await new Promise((resolve, reject) => {
     const env = {
       ...process.env,
       ...(wantsReport ? { BUILD_REPORT: "1", ANALYZE: process.env.ANALYZE ?? "1" } : {}),
       BUILD_SKIP_PWA: "true",
+      // W153 SW1 — propagate to React + Vite + downstream tooling so DEV-mode
+      // warnings + readable error messages are emitted in the bundle.
+      NODE_ENV: buildMode,
       ...(traceEnabled
         ? {
             NODE_OPTIONS:
@@ -158,7 +170,7 @@ async function step3_viteBuild() {
         : {}),
     }
 
-    const child = spawn("node", [viteBinPath, "build", ...sanitizedArgs], {
+    const child = spawn("node", [viteBinPath, "build", ...modeArgs, ...sanitizedArgs], {
       stdio: useIpc ? ["inherit", "inherit", "inherit", "ipc"] : "inherit",
       cwd: path.resolve(cwd),
       env,
@@ -335,6 +347,12 @@ async function step4_swBundle() {
   // import the helpers from sw.ts source TS continue working.
   // minify on; sourcemap off (matches Vite's "hidden" mode for prod — no
   // sourceMappingURL comment in JS).
+  //
+  // W153 SW1 — mode-gate matches the vite subprocess block above. When
+  // FRONTEND_BUILD_MODE=development, the service worker bundle ships
+  // unminified with inline source maps so SW errors are readable in
+  // Chrome DevTools alongside the main client bundle.
+  const isDev = process.env.FRONTEND_BUILD_MODE === "development"
   const result = await esbuild.build({
     entryPoints: [swSrc],
     bundle: true,
@@ -342,13 +360,13 @@ async function step4_swBundle() {
     platform: "browser",
     target: "es2022",
     outfile: swDest,
-    minify: true,
-    sourcemap: false,
+    minify: !isDev,
+    sourcemap: isDev ? "inline" : false,
     tsconfig: path.join(cwd, "tsconfig.json"),
     define: {
-      "import.meta.env.DEV": "false",
-      "import.meta.env.PROD": "true",
-      "import.meta.env.MODE": '"production"',
+      "import.meta.env.DEV": isDev ? "true" : "false",
+      "import.meta.env.PROD": isDev ? "false" : "true",
+      "import.meta.env.MODE": isDev ? '"development"' : '"production"',
     },
     legalComments: "none",
     write: true,

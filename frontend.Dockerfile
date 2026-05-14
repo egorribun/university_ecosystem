@@ -29,6 +29,12 @@ ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 # unblocks local Docker stack hit by React error #418 hydration mismatch.
 ARG DEV_NO_SSR_SHELL=""
 ENV DEV_NO_SSR_SHELL=$DEV_NO_SSR_SHELL
+# W153 SW1 — opt-in unminified dev build with source maps so the wedged
+# renderer error becomes readable in Chrome DevTools. Defaults to empty
+# (production minified) so CI / prod deploys are untouched. Only the
+# dev compose (docker-compose.full.yml) should set this to "development".
+ARG FRONTEND_BUILD_MODE=""
+ENV FRONTEND_BUILD_MODE=$FRONTEND_BUILD_MODE
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
