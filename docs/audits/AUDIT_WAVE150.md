@@ -280,4 +280,86 @@ Per the 4-6 wave /admin polish arc trajectory:
 
 ---
 
-**End of AUDIT_WAVE150.md**.
+## Polish-v1 (`f7754b1f6`) — prettier-format SW1 NEW files
+
+**Pushed**: 2026-05-14 post-SW5 CI verification run `25854363896` failure surfaced.
+
+CI Run #1 (post-SW5 push) FAILED on `Frontend Tests / Lint & Format` with prettier `--check` against 2 W150 SW1 NEW files:
+
+```
+[warn] src/features/admin/components/AdminBackdrop.tsx
+[warn] src/styles/tokens/admin.css
+[warn] Code style issues found in 2 files. Run Prettier with --write to fix.
+##[error]Process completed with exit code 1.
+```
+
+**Root cause**: W150 SW1 ran `npx prettier --write src/routeTree.gen.ts` only. The 2 NEW files (AdminBackdrop.tsx + admin.css) were written via Write tool but NEVER explicitly prettier-formatted before commit. Local tsc + eslint passed because prettier is a separate gate not part of eslint config. SW2-SW4 edits got prettier `--write` runs by reflex (W149 polish-v1 muscle memory on modified files) but the foundational SW1 NEW files slipped through.
+
+**Same class of issue as W149 polish-v1 `6f89f4b51`**: prettier-format is a CI gate not yet wired into local pre-commit hook chain. The pattern hit BOTH W149 (modified-file edits) AND W150 (new-file Write outputs) — 2 consecutive waves with the same root cause confirms it's now a register-worthy recurring pattern.
+
+**Fix**: `npx prettier --write src/features/admin/components/AdminBackdrop.tsx src/styles/tokens/admin.css`. Net semantic change ZERO (only whitespace/wrapping/line breaks: `box-shadow: A, B, C` collapsed onto single line where it fit, `color-mix` long-form values multi-line wrapped where they exceed column limit). Public API + behavior unchanged. tsc still 0 errors.
+
+**NEW W150 §Honesty caveat #13** (polish-arc kickoff prettier gap): SW1 NEW file prettier formatting was missed in local verification despite W149 polish-v1 precedent. **§Honesty trajectory revised: 6 → 13 post-W150** (was 12 in SW5 audit, +1 from this polish-v1 finding).
+
+---
+
+## CI verification post-polish-v1 (Run #2 `25854945271`)
+
+**Verified ALL GREEN** via `gh run view 25854945271 --json jobs --jq '.jobs[] | {name, conclusion}'`:
+
+- **40 jobs SUCCESS** + **1 skipped** (Post-fix Formatting Bot Push — by-design skipped on non-bot pushes) + **0 failures**
+- CI - Matrix Expansion: 10m1s SUCCESS
+- Frontend Tests / Lint & Format: SUCCESS (was failing on run #1; polish-v1 closed it)
+- Frontend Tests / Production Build + Bundle Analysis + Unit Tests + Lighthouse Audit + Performance Gate: ALL SUCCESS
+- Backend Tests / Unit + Integration (Python 3.13): ALL SUCCESS — **W149 §Honesty #6 `test_login_lockout` flake DID NOT surface this run** (first-attempt PASS)
+- E2E Tests / E2E Tests (chromium): SUCCESS — W150 admin pages did not introduce e2e regression
+- Backend Type Check + Alembic Migrations + Helm Lint + SBOM + Trivy + SLSA + Pre-commit + Go Lint × 3 + Go Tests × 3 + Go Integration × 3 + Chromatic + Contract Validation + Generate OpenAPI + DB Performance Gate + Verify Runtime + Verify OpenAPI Types + Validate docker-compose + Security Audit × 6 (SBOM/Container/Go-Vuln/detect-secrets/Node-Audit/Python-Audit + Semgrep SAST): ALL SUCCESS
+
+**Annotation honesty**: `gh run view` summary shows X/! annotations on Pre-commit, Semgrep SAST, Lighthouse artifact upload — these are non-blocking soft warnings within otherwise-passing jobs (jq query confirms `"conclusion": "success"` for all). The `X Process completed with exit code 1` annotation on Pre-commit is misleading repository-action display from the Read-only mode runner output; actual job conclusion is success.
+
+**Comparison to W149 final CI**: W149 polish-v1 run `25825859037` was also "ALL 40 SUCCESS + 1 skipped + 0 failures" — W150 polish-v1 hit the same pattern + reached same outcome. Sets up W149→W150 → 2× consecutive waves with identical CI verification trajectory (push → prettier --check fail → polish-v1 → all green).
+
+---
+
+## NEW W150 anti-pattern #15 (recurring prettier polish-v1 pattern)
+
+Per W141 anti-pattern register convention (a pattern hit 2+ times = register entry).
+
+**Pattern**: prettier `--check` CI gate fires on files that bypass local pre-commit prettier ritual. Two failure modes confirmed:
+- **W149 polish-v1**: SW2+SW3 EDITS on existing files via Edit tool — local pre-commit hook doesn't include prettier; routeTree.gen.ts focus mode misses other edited files.
+- **W150 polish-v1**: SW1 NEW FILES via Write tool — explicit prettier-write was applied to routeTree.gen.ts only; new files slipped through.
+
+**Mitigation paths** (W151+ structural fix candidate):
+1. **Husky pre-commit prettier hook** (most thorough): `npx prettier --check` on all staged files via `lint-staged` integration. Closes both W149 + W150 failure modes structurally.
+2. **Pre-commit hook prettier addition**: extend `.pre-commit-config.yaml` to include prettier alongside ruff (currently Python-only in hooks).
+3. **Manual discipline**: explicit `npx prettier --write <all changed files>` step in commit prep — works but relies on memory.
+
+**Cost of W151+ structural fix**: ~30-60 min to wire husky + lint-staged. Closes recurring caveat (W149 + W150 polish-v1 commits).
+
+This NEW anti-pattern #15 brings the register from 14 → **15 patterns** post-W150. The polish-arc cohort (W134-W150) added: #12 empirical diagnostic at first timeout (W147), #13 per-test local repro (W147), #14 waitForTimeout doesn't fix race conditions (W147 + W148 + W149), #15 prettier polish-v1 pattern (W149 + W150).
+
+---
+
+## §Honesty trajectory FINAL (post polish-v1)
+
+**Pre-W150 baseline**: 6 caveats (W134 #2 + #10 + W146 SW2 + W148 SW2 + routeTree drift + W149 #6).
+
+**Realistic W150 closure target** (per SW5 plan): 6 → 3-7 post-W150.
+
+**Actual post-polish-v1**: 6 → **13 post-W150** (carries 6 + 7 NEW W150-introduced):
+1-6. (Carries — see SW5 §Honesty section above)
+7. features/admin/ folder migration deferred → W151+
+8. StoriesAdmin substantive polish deferred → W152+ (705 LoC; only text-white + defaultValue closed)
+9. TanStack Query factory hooks for 4 admin pages deferred → W153+
+10. **REVISED FRAMING (polish-v2)**: admin.css `.dark` variant + AdminBackdrop visual smoke deferred to **W151+ Docker stack visual smoke OR future authed e2e snapshot** (was "or CI verification" — CI doesn't visually render admin routes since they're auth-gated; the "or CI" fig leaf was misleading).
+11. Bundle delta projection +800-1200 b vs actual +106 b (honest framing recording)
+12. server.js W149 audit-claim (39,373 b) vs SW1 actual (23,600 b) — likely prior audit inaccuracy NOT W150 savings (honest framing recording)
+13. **NEW polish-v1**: prettier polish-v1 prettier gap — SW1 NEW file formatting missed in local verification despite W149 precedent. Structural fix candidate: husky pre-commit prettier (NEW anti-pattern #15 above).
+
+**Polish-v2 honesty pass surfaced 6 polish gaps** (documented above): doc lag from SW5 audit being written pre-polish-v1, §Honesty count drift, §Honesty #10 "or CI" fig leaf, missing 15th anti-pattern entry, CLAUDE.md row missing CI verification footer, empirical CI verification depth via jq query. All polish-v2 polish gaps are CLOSED in this audit revision + corresponding CLAUDE.md + memory file updates.
+
+Per `feedback_perfectionism.md`: the «безупречно?» probe surfaced honest gaps; polish-v2 closes them. The 13 post-W150 caveats remain HIGHER than the planned 3-7 ceiling — 4-5 are scope-realistic polish-arc deferrals (load-bearing non-goals), 2 are bundle/audit-honesty recordings, 1 is the polish-v1 gap. Arc trajectory expects W151-W155 to net-close 5-8 caveats.
+
+---
+
+**End of AUDIT_WAVE150.md** (polish-v2 honest gap closure).
