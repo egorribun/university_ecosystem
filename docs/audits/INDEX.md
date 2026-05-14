@@ -1,6 +1,6 @@
 # Audit Trail Index
 
-Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `8eba94352`); rotation history: W123 SW5 (W120→archive), W124 SW6 (W121), W125 SW4 (W122), W126 SW9 (W123), W127 SW8 (W124), W128 SW7 (W125), W129 SW8 (W126), W130 SW5 (W127), W131 SW8 (W128), W132 SW7 (W129), W133 SW7 (W130), W134 SW4 (W131), W135 SW4 (W132), W136 SW8 (W133), W137 SW8 (W134), W138 SW8 (W135), W139 SW7 (W136), W140 SW7 (W137), W141 SW7 (W138), W142 SW7 (W139), W143 SW7 (W140), W144 SW7 (W141), W145 SW7 (W142), **W146 SW7 (W143 → archive)**.
+Reverse-chronological listing of per-wave audit reports. Created in Wave 122 polish-docs-v3 reorganization (commit `8eba94352`); rotation history: W123 SW5 (W120→archive), W124 SW6 (W121), W125 SW4 (W122), W126 SW9 (W123), W127 SW8 (W124), W128 SW7 (W125), W129 SW8 (W126), W130 SW5 (W127), W131 SW8 (W128), W132 SW7 (W129), W133 SW7 (W130), W134 SW4 (W131), W135 SW4 (W132), W136 SW8 (W133), W137 SW8 (W134), W138 SW8 (W135), W139 SW7 (W136), W140 SW7 (W137), W141 SW7 (W138), W142 SW7 (W139), W143 SW7 (W140), W144 SW7 (W141), W145 SW7 (W142), W146 SW7 (W143), W147 SW8 (W144), W148 SW5 (W145), W149 SW6 (W146), **W150 SW5 (W147 → archive)**. (Note: per-wave Active/Archive section catchup for W147-W149 deferred to W151+ housekeeping — the rotation history is authoritative.)
 
 ## Active audits
 
