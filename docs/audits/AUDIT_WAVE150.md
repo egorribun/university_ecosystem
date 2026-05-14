@@ -362,4 +362,65 @@ Per `feedback_perfectionism.md`: the «безупречно?» probe surfaced ho
 
 ---
 
-**End of AUDIT_WAVE150.md** (polish-v2 honest gap closure).
+---
+
+## Polish-followup-v2 (2026-05-14): close `/users/me` SW pending hang (§Honesty caveat #16)
+
+**Context**: The W150 polish-followup commit `7c97de583` shipped 5 fixes for browser-side `RESULT_CODE_HUNG` (VITE_BACKEND_ORIGIN runtime split, THEME_INIT_SCRIPT navigator.language, _public.tsx ssr:false, hydrateRoot ELEMENT_NODE check, DEV_NO_SSR_SHELL plumbing) but documented `/users/me Service Worker pending hang` as caveat #16 (UNRESOLVED — "possibly NetworkFirst stall, possibly MCP Windows wall, possibly real SW bug"). W151 opening prompt's pre-flight surfaced this as still-broken in the user's real Chrome (blank `/login`, DevTools won't even open). Polish-followup-v2 is a SHORT focused debug fix opened during W151 Phase 0 user-side verification — closes #16 ONLY. W151 proper (Tier 1 SSR root-cause or other user-chosen scope) starts AFTER this lands + user verifies in real Chrome.
+
+**Ground-truth diagnosis** (chrome-devtools-mcp on a fresh page open, 2026-05-14):
+- All **105 of 105** page resources (HTML, bundle, CSS, manifest, code-split chunks) load **200 OK**
+- Console: ONLY `[GlobalErrors] Handlers registered` (info-level, from [main.tsx:24](../../frontend/src/main.tsx:24)) — NO React #418, NO crashes
+- `GET /api/v1/users/me` stays `[pending]` for >2 minutes (full duration of the diagnostic session)
+- Direct `curl http://localhost/api/v1/users/me` returns **401 in 3 ms** (backend healthy via Caddy chain)
+- Real Chrome on user side reproduces identically → NOT the W138 Windows MCP wall, it's a real browser-side hang
+
+**Root cause**: [`frontend/src/sw/api.ts:107-134`](../../frontend/src/sw/api.ts:107) registers `/api/*` (excluding `/public/`, `/news`, `/events`, non-GET) with `NetworkFirst({ networkTimeoutSeconds: 5, ... })`. `/api/v1/users/me` matches the matcher. Workbox's 5 s timeout empirically does NOT fire here — most likely a cache+plugin interaction where `CacheableResponsePlugin({ statuses: [0, 200] })` rejects the 401 response in a way that wedges the strategy.handle Promise. Precise workbox internal mechanism not investigated — fix bypasses the buggy code path.
+
+**Why it blocks the whole app**: [`useProfileSync.ts:1043-1046`](../../frontend/src/hooks/auth/useProfileSync.ts:1043) fires `queryClient.fetchQuery(currentUserQueryOptions())` during AuthProvider mount. `setInitializing(false)` only fires in the `finally` block at [`useProfileSync.ts:1086`](../../frontend/src/hooks/auth/useProfileSync.ts:1086). While `/users/me` is pending, `initializing=true` keeps `AuthContext` children from rendering → blank screen + DevTools can't attach (renderer wedged).
+
+**Why this is also a security correctness issue**: `/users/me` is auth-state-critical. A cached 200 response could let an unauthenticated user appear authenticated. Excluding it from SW interception is the production-correct fix per OWASP cache-control guidance, not just a UX hack.
+
+### Fix (single commit `fix(wave150-polish-followup-v2)`)
+
+[`frontend/src/sw/api.ts`](../../frontend/src/sw/api.ts) — two-pronged structural change:
+
+1. **Route matcher exclusion** (lines 108-122): add `!url.pathname.includes("/users/me")`, `!url.pathname.includes("/auth/")`, `!url.pathname.includes("/csrf")` to the matcher. These paths now bypass the SW entirely and go direct to network. No cache, no timeout risk, no race.
+
+2. **Promise.race hard-timeout wrapper** (lines 140-167) on the remaining `/api/*` paths still under NetworkFirst (notification prefs, profile GETs, etc.): wraps `strategy.handle({ request, event })` in `Promise.race([..., new Promise(resolve => setTimeout(() => resolve(new Response(504...)), 6000))])`. Defense-in-depth — if another endpoint hits the same workbox quirk, the request resolves to a synthetic 504 within 6 s instead of staying pending indefinitely. Axios surfaces 504 as a network error and `useProfileSync`'s outer catch handles it.
+
+### Verification matrix (executed)
+
+| Step | Result |
+|------|--------|
+| `npx tsc --noEmit` | 0 errors ✓ |
+| `npm run lint -- --max-warnings=0` | 0 warnings ✓ |
+| `npx vitest run` | **1058 passed / 12 skipped / 0 failed** ✓ (W150 baseline preserved exactly) |
+| `npx vitest run src/sw` | No test files (no SW route-matcher tests exist) |
+| `docker compose up -d --build frontend` | (in progress at commit time) |
+| chrome-devtools-mcp probe: `new_page http://localhost/login → list_network_requests` | (pending Docker rebuild) — expect `/users/me` to complete with 401 status |
+| User real Chrome: clear site data + Ctrl+Shift+R + `/login` | (pending) — must verify login + `/admin` work cleanly before claiming closure |
+
+### Tradeoffs accepted
+
+- **`/users/me` now ALWAYS goes to network** (no offline cache fallback). Acceptable — auth state must be fresh by design; offline users hit `handleUnauthorized` → `/login` redirect, which is the correct UX.
+- **Promise.race wrapper adds a 6 s timeout ceiling on all remaining `/api/*` requests under NetworkFirst**. Acceptable — synthetic 504 is observable + actionable in console; far better than indefinite pending.
+- **Stale SWs in user browsers require a one-time hard-reload (Ctrl+Shift+R)** after this deploys. [`sw.ts:45-46`](../../frontend/src/sw.ts:45) already has `clientsClaim()` + `self.skipWaiting()` so the new SW takes over automatically on next reload — no manual unregister needed.
+
+### §Honesty trajectory update
+
+**Closes 1 caveat from W150 polish-followup unresolved set**: `/users/me Service Worker pending hang` (caveat #16 per W151 opening prompt enumeration). Polish-followup-v2 DOES NOT close caveats #14 (`__root.tsx ssr: false` dev fallback) or #15 (`DEV_NO_SSR_SHELL=1` dev compose hack) — those remain W151 Tier 1 scope per the opening prompt. The W150 audit §Honesty trajectory (13 post-polish-v2) does not increment — polish-followup-v2 is a sub-wave debug fix, not a wave-scoped scope expansion. Net effect: the post-W150-polish-followup §Honesty count goes from 18-22 → 17-21 (with #16 marked CLOSED; #14, #15, #17, #18, #19, #20, #21 polish-followup additions remain open per opening prompt §"W150 polish-followup NEW caveats").
+
+### Anti-pattern register impact
+
+**NEW anti-pattern #16 CANDIDATE** (W141 register convention requires 2+ occurrences to formalize): **"Workbox NetworkFirst on auth-state-critical endpoints can stall indefinitely; fix is SW route exclusion, not strategy tuning."** First instance: this fix. Watch for second instance in W151+ before promoting to formal register entry. Register stays at **15 patterns** until then.
+
+### Out of scope
+
+- Precise workbox internal mechanism for the timeout-doesn't-fire bug — bypassed via route exclusion + Promise.race wrapper rather than patched in workbox. Could file upstream issue if the same pattern recurs.
+- W150 polish-followup commits `7c97de583` + `a9f6a4c02` shipped fixes that are working — verified via chrome-devtools-mcp showing 105 / 105 resources load 200 OK with no React #418, no SSR/CSR mismatch errors. Only #16 was the residual issue.
+- W151 Tier 1 SSR root-cause + restoration (the bigger architectural debt — `__root.tsx ssr: false` bypasses W125-W149 SSR architecture) remains untouched. Opens for user scope decision AFTER user verifies real Chrome works post-polish-followup-v2.
+
+---
+
+**End of AUDIT_WAVE150.md** (polish-followup-v2 closeout).

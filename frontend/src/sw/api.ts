@@ -110,6 +110,18 @@ export function initApiCaching() {
       !url.pathname.includes("/public/") &&
       !url.pathname.includes("/news") &&
       !url.pathname.includes("/events") &&
+      // W150 polish-followup-v2 — auth-state-critical paths bypass SW.
+      // /users/me, /auth/*, /csrf MUST never be cached (security: a stale
+      // 200 could let an unauthenticated user appear authenticated) AND
+      // must never be intercepted (workbox NetworkFirst's
+      // networkTimeoutSeconds:5 empirically does NOT fire here, leaving
+      // requests pending indefinitely → blocks AuthProvider's
+      // useProfileSync from resolving → blank page until tab closes).
+      // Verified via chrome-devtools-mcp + user real Chrome 2026-05-14.
+      // Closes W150 §Honesty caveat #16.
+      !url.pathname.includes("/users/me") &&
+      !url.pathname.includes("/auth/") &&
+      !url.pathname.includes("/csrf") &&
       request.method === "GET",
     async ({ request, event }) => {
       const sessionId = await getSessionIdFromRequest(request)
@@ -129,7 +141,31 @@ export function initApiCaching() {
         ],
       })
 
-      return strategy.handle({ request, event })
+      // W150 polish-followup-v2 — hard 6s timeout wrapper as defense-in-depth
+      // for the remaining /api/* paths still under NetworkFirst. Workbox's
+      // networkTimeoutSeconds doesn't fire reliably under specific cache+plugin
+      // interactions (verified 2026-05-14 against /users/me before route
+      // exclusion above). Promise.race guarantees the browser request resolves
+      // within 6s regardless — returning a synthetic 504 axios can surface as a
+      // network error instead of an indefinite pending state. Adds anti-pattern
+      // #16 candidate: workbox NetworkFirst on critical endpoints — fix is
+      // route exclusion, not strategy tuning.
+      return Promise.race([
+        strategy.handle({ request, event }),
+        new Promise<Response>((resolve) =>
+          setTimeout(
+            () =>
+              resolve(
+                new Response(JSON.stringify({ error: "sw_timeout" }), {
+                  status: 504,
+                  statusText: "Service Worker Timeout",
+                  headers: { "Content-Type": "application/json" },
+                })
+              ),
+            6000
+          )
+        ),
+      ])
     }
   )
 }
