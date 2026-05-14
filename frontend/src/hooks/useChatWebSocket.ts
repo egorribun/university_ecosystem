@@ -88,7 +88,11 @@ interface TypingUser {
  * without complex internal flags and ensures consistent 'isConnected' state
  * across all consuming components.
  */
-class WebSocketStore {
+// W153 SW3 iter 1 — `export` added so AppProviders.tsx can instantiate a
+// stub instance for the WebSocketProvider component-strip diagnostic.
+// REVERT when SW3 is done (this commit is diagnostic-only and stays on
+// `egorribun` branch — SW4 targeted fix is the main merge candidate).
+export class WebSocketStore {
   private isConnected = false
   private listeners: Set<() => void> = new Set()
 

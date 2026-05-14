@@ -6,10 +6,32 @@ import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AuthProvider } from "./contexts/AuthContext"
-import { WebSocketProvider } from "./hooks/useChatWebSocket"
+// W153 SW3 iter 1 — `WebSocketProvider` import dropped because the real
+// provider is stripped in ProvidersInner below (replaced with stub
+// `<WebSocketStoreContext.Provider value={W153_NO_OP_WS_STORE}>`). Restore
+// when SW3 revert lands. The hook itself stays imported elsewhere via
+// MessengerContext.tsx so the real provider lifecycle is unchanged.
+import { WebSocketStoreContext, WebSocketStore } from "./hooks/useChatWebSocket"
 import { MessengerProvider } from "./contexts/MessengerContext"
 import { LanguageProvider } from "./contexts/LanguageContext"
 import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
+
+// W153 SW3 iter 1 — module-level no-op WebSocketStore singleton for the
+// WebSocketProvider component-strip diagnostic. Matches the
+// `useMemo(() => new WebSocketStore(), [])` stable-identity contract of the
+// real WebSocketProvider (useChatWebSocket.ts:117-120) so
+// `useSyncExternalStore` doesn't churn its subscription on parent re-renders.
+//
+// Purpose: temporarily replace `<WebSocketProvider>` with a context provider
+// stub to test whether WebSocketProvider's mount-time side effects are the
+// source of the /login V8 wedge (W152 §Honesty #19 unidentified cause +
+// W153 SW2 React #418 fix didn't resolve user-facing blank). If /login
+// renders content with the stub in place, wedge is isolated to
+// WebSocketProvider; pivot to SW4 targeted fix. If still blank, proceed to
+// SW3 iter 2 (AuthProvider stub).
+//
+// REVERT BEFORE MAIN MERGE. This commit is diagnostic-only.
+const W153_NO_OP_WS_STORE = new WebSocketStore()
 
 interface AppProvidersProps {
   children: ReactNode
@@ -20,11 +42,14 @@ function ProvidersInner({ children }: AppProvidersProps) {
     <LiveRegionProvider>
       <AppShellProvider>
         <AuthProvider>
-          <WebSocketProvider>
+          {/* W153 SW3 iter 1 — WebSocketProvider STRIPPED for /login wedge diagnostic.
+              REVERT before main merge. Real provider at:
+              frontend/src/hooks/useChatWebSocket.ts:117 WebSocketProvider */}
+          <WebSocketStoreContext.Provider value={W153_NO_OP_WS_STORE}>
             <MessengerProvider>
               <ErrorBoundary>{children}</ErrorBoundary>
             </MessengerProvider>
-          </WebSocketProvider>
+          </WebSocketStoreContext.Provider>
         </AuthProvider>
       </AppShellProvider>
     </LiveRegionProvider>
