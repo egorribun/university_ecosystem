@@ -1,5 +1,8 @@
 import { StrictMode } from "react"
-import { createRoot, hydrateRoot } from "react-dom/client"
+// W156 SW3 — `createRoot` no longer needed. SHELL_MODE always emits full HTML
+// scaffold via root route's shellComponent; we hydrate at document level (NOT
+// at #root). Empty-shell fallback path was W150 polish-followup remnant.
+import { hydrateRoot } from "react-dom/client"
 // dayjs removed
 
 import App from "./App"
@@ -99,18 +102,34 @@ if (!rootElement) throw new Error("Root element not found")
 
 const bootstrapStart = performance.now()
 
-// W149 SW2 + W150 polish-followup — conditional hydrateRoot vs createRoot
-// based on whether the SSR shell delivered rendered React content. W149 SW2
-// unconditionally used hydrateRoot to complete the W125 Phase 5 SSR migration,
-// but when root `ssr: false` (W150 polish-followup dev fallback) OR any
-// configuration that produces an empty `<div id="root">` shell, hydrateRoot
-// throws React error #418 because the existing DOM doesn't match what React
-// expects to render. This conditional gracefully handles BOTH modes:
-//   - SSR'd (root has children): hydrateRoot reuses server-rendered tree (W125 perf)
-//   - Empty shell (`ssr: false` or build artifact lacks server-render): createRoot
-//     mounts a fresh tree — same behavior as pre-W149 SW2.
-// Production-quality SSR should use ssr:true with matching SSR/client trees;
-// this fallback keeps dev working when SSR is intentionally disabled.
+// W156 SW3 Tier 1 #1 targeted fix — hydrate at DOCUMENT level (not #root).
+//
+// W155 SW3.A + W156 SW2 Firefox DevTools captured the full React #418 error:
+// server-rendered `<body><div id="lhci-marker">...<div id="root">{children}</div>`
+// vs client tree producing `<html><body><div className="flex min-h-dvh flex-col">`
+// (MainLayout wrapper). Plus warnings "<html> cannot be a child of <div>" and
+// "mounting new head component when previous one has not first unmounted".
+//
+// Root cause: TanStack Start v1 SHELL_MODE renders the FULL `<html>...</html>`
+// scaffold via the root route's `shellComponent` (RootShell in __root.tsx).
+// `<StartClient />` (App.tsx) internally renders `<Await><RouterProvider /></Await>`,
+// and RouterProvider's root-match renders RootShell at runtime BOTH server-side
+// AND client-side. Per `node_modules/@tanstack/react-start-client/dist/esm/StartClient.js`.
+//
+// Pre-W156 SW3 main.tsx mounted at `document.getElementById("root")` — but
+// `<StartClient />` renders `<html>...</html>` as its first DOM output. Nesting
+// `<html>` inside `<div id="root">` = invalid HTML + React #418 hydration mismatch
+// at body level (server's lhci-marker div vs client's RootShell-regenerated tree).
+//
+// Fix: hydrate at `document` (the canonical TanStack Start v1 SHELL_MODE container).
+// React 19's `hydrateRoot(domNode, ...)` accepts Document as container. Components
+// in the tree (StrictMode/ErrorBoundary/StartClient/Await/RouterProvider) emit no
+// DOM themselves — the first DOM emission is RootShell's `<html>`, which is the
+// valid direct child of Document.
+//
+// `<div id="root">` reference preserved for the `.ready` opacity transition class
+// applied below (CSS visibility logic stays unchanged — it operates on #root which
+// is INSIDE the shell tree, not at document level).
 const treeApp = (
   <StrictMode>
     <ErrorBoundary>
@@ -118,22 +137,12 @@ const treeApp = (
     </ErrorBoundary>
   </StrictMode>
 )
-// Check for *real* hydrate-able SSR content: any HTML element child (Node.ELEMENT_NODE = 1).
-// hasChildNodes() returns TRUE even for React 19 Suspense boundary comment markers
-// (`<!--$--><!--/$-->`) emitted when route ssr is false, which would push us into
-// hydrateRoot path against an empty Suspense — causing React #418 mismatch.
-const hasRealSsrContent = Array.from(rootElement.childNodes).some(
-  (n) => n.nodeType === Node.ELEMENT_NODE
-)
-if (hasRealSsrContent) {
-  hydrateRoot(rootElement, treeApp)
-} else {
-  // Clear any Suspense marker comments so createRoot starts from clean container.
-  while (rootElement.firstChild) {
-    rootElement.removeChild(rootElement.firstChild)
-  }
-  createRoot(rootElement).render(treeApp)
-}
+// Production SSR (root ssr: true): server emitted full `<html>...<body><lhci-marker>...
+// <div id="root">{children}</div>...</body></html>`. hydrateRoot reuses this tree
+// via document-level hydration. The conditional check from W149 SW2 + W150
+// polish-followup is moot under current W154 SW1 + W156 architecture (root is
+// always ssr:true; document always has full HTML tree from SSR).
+hydrateRoot(document, treeApp)
 
 const isLHCI = import.meta.env.VITE_LHCI === "true"
 
@@ -149,23 +158,45 @@ const isLHCI = import.meta.env.VITE_LHCI === "true"
 // scheduled work, so the visibility transition is guaranteed regardless of
 // reconciler health.
 //
-// LHCI branch (kept synchronous as before) suppresses the lhci-marker div.
-// Non-LHCI branch now adds `.ready` synchronously instead of via rAF×2.
-// Trade-off: pre-W152 the rAF×2 deferred the visibility transition by ~32 ms
-// so the SSR-hydration flash was less perceptible. Post-W152 the transition
-// fires immediately — for SPA mount with empty shell this is correct (no
-// content was visible before anyway). For genuine SSR routes with rendered
-// content, rAF×2 would still hide content for ~32 ms (current behavior is
-// fine for both paths because the CSS `opacity: 0 → 1` transition itself
-// takes 150 ms).
-if (isLHCI) {
-  rootElement.classList.add("ready")
-  const lhciMarker = document.getElementById("lhci-marker")
-  if (lhciMarker) {
-    lhciMarker.style.display = "none"
+// W156 SW3 — defer `.ready` class addition via requestAnimationFrame.
+//
+// Pre-W156 SW3 added `.ready` synchronously (W152 Phase 1.6 fix for the
+// wedge that prevented rAF callbacks from firing). With W156 SW3's
+// document-level hydrateRoot mount target change, the wedge is fixed AND
+// adding `.ready` synchronously BEFORE hydration completes causes a NEW
+// hydration mismatch: server emits `<div id="root">` (no className from
+// RootShell JSX), but classList.add fires sync after hydrateRoot returns
+// and BEFORE React's hydration comparison completes, so React sees DOM
+// with `class="ready"` vs its component tree (no className) → mismatch
+// → full subtree re-render (LOSES SSR perf benefits).
+//
+// Fix: defer to next animation frame. By the time rAF callback fires,
+// React's hydration has completed (React 19 guarantees hydration
+// finishes BEFORE next paint). The classList mutation then runs without
+// triggering a hydration mismatch.
+//
+// Pre-W152's rAF×2 pattern guarded against wedge-prevents-rAF; W156 SW3
+// uses single rAF since the wedge is now structurally fixed. If
+// hydration ever wedges again, a future wave can either re-introduce
+// rAF×2 OR add `className="ready"` directly to RootShell's JSX (so SSR
+// emits it too — no mismatch but loses opacity transition).
+// Non-null assertion safe: top of file throws if rootElement is null
+// (line ~98 `if (!rootElement) throw new Error("Root element not found")`).
+// TypeScript's control flow analysis doesn't propagate the throw narrowing
+// into closures defined in outer scope, hence the explicit `!` here.
+function applyReadyClass() {
+  rootElement!.classList.add("ready")
+  if (isLHCI) {
+    const lhciMarker = document.getElementById("lhci-marker")
+    if (lhciMarker) {
+      lhciMarker.style.display = "none"
+    }
   }
+}
+if (typeof requestAnimationFrame === "function") {
+  requestAnimationFrame(applyReadyClass)
 } else {
-  rootElement.classList.add("ready")
+  applyReadyClass()
 }
 
 if (typeof window !== "undefined") {
