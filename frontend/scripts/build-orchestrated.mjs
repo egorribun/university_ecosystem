@@ -159,6 +159,15 @@ async function step3_viteBuild() {
   // jsxDEV calls but Node loads the production react-dom runtime.
   const isUnminified = process.env.FRONTEND_BUILD_UNMINIFIED === "true"
 
+  // W156 SW1 Tier 1 #1 — propagate FRONTEND_REACT_DEV_MODE to vite subprocess.
+  // When set (dev compose only), vite.config.mts adds react-dom/client →
+  // development bundle alias + per-environment NODE_ENV=development define
+  // for the client environment. See vite.config.mts isReactDevMode comment
+  // block for full rationale + jsxDEV-trap avoidance (server bundle stays
+  // production via tanstackStart's top-level define + no environments.server
+  // override here).
+  const isReactDevMode = process.env.FRONTEND_REACT_DEV_MODE === "true"
+
   await new Promise((resolve, reject) => {
     const env = {
       ...process.env,
@@ -168,6 +177,8 @@ async function step3_viteBuild() {
       // is intentionally NOT set to development — that would force React +
       // JSX transform to dev runtime which breaks SSR (see comment above).
       FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
+      // W156 SW1 Tier 1 #1 — see isReactDevMode block above.
+      FRONTEND_REACT_DEV_MODE: isReactDevMode ? "true" : "",
       ...(traceEnabled
         ? {
             NODE_OPTIONS:

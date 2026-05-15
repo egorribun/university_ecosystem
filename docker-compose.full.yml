@@ -135,6 +135,14 @@ services:
         # compose / CI deploy configs (would expose source maps + ship
         # unminified bundle).
         FRONTEND_BUILD_UNMINIFIED: "true"
+        # W156 SW1 Tier 1 #1 — opt-in development React for /login wedge
+        # diagnosis (W155 NAMED React #418 + getParentHydrationBoundary
+        # mechanisms but minified error args [text, ""] hide exact mismatch).
+        # Aliases react-dom/client → development cjs bundle + scopes
+        # NODE_ENV=development to client environment only (server stays
+        # production → no W152 SW1 jsxDEV trap). NEVER set in production
+        # compose / CI deploy configs (would ship dev React ~150 KB larger).
+        FRONTEND_REACT_DEV_MODE: "true"
     ports:
       - "8081:3000"
     networks:

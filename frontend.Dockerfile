@@ -39,6 +39,16 @@ ENV DEV_NO_SSR_SHELL=$DEV_NO_SSR_SHELL
 # which broke SSR with jsxDEV runtime mismatch — see commit history.
 ARG FRONTEND_BUILD_UNMINIFIED=""
 ENV FRONTEND_BUILD_UNMINIFIED=$FRONTEND_BUILD_UNMINIFIED
+# W156 SW1 Tier 1 #1 — opt-in development React for /login wedge diagnosis.
+# Aliases react-dom/client → cjs/react-dom-client.development.js +
+# scopes NODE_ENV=development to client environment in vite.config.mts.
+# Captures FULL React #418 error message in Firefox DevTools (Windows
+# wedge persists post-W155 across Chrome regular/Incognito/Firefox).
+# Same scope/safety as FRONTEND_BUILD_UNMINIFIED: dev compose only,
+# NEVER set in CI / production deploys (would ship dev React bundle
+# ~150 KB larger + slower runtime checks).
+ARG FRONTEND_REACT_DEV_MODE=""
+ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)

@@ -47,6 +47,17 @@ import { PWA_INJECT_CONFIG } from "./scripts/workbox-config.mjs"
 
 const srcDir = fileURLToPath(new URL("./src", import.meta.url))
 const publicDir = fileURLToPath(new URL("./public", import.meta.url))
+// W156 SW1 Tier 1 #1 — direct file path to react-dom dev bundle. Package's
+// `exports` field at react-dom/package.json:48-112 does NOT expose `./cjs/*`
+// subpaths under any condition, so a package-style alias
+// (`"react-dom/client": "react-dom/cjs/react-dom-client.development.js"`)
+// gets blocked by rolldown:vite-resolve with "is not exported under the
+// conditions" error. Resolving via absolute file path bypasses the exports
+// field gate — Vite's resolve.alias accepts both package specifiers and
+// absolute paths; the absolute-path branch skips package.json exports check.
+const reactDomDevClient = fileURLToPath(
+  new URL("./node_modules/react-dom/cjs/react-dom-client.development.js", import.meta.url)
+)
 const manifestSourcePath = resolve(publicDir, "manifest.source.json")
 
 const ensureMaskableIcons = () => {
@@ -221,6 +232,28 @@ export default defineConfig(({ mode }) => {
   // omit it. See `build.minify` + `build.sourcemap` blocks below for usage.
   const isUnminified =
     env.FRONTEND_BUILD_UNMINIFIED === "true" || process.env.FRONTEND_BUILD_UNMINIFIED === "true"
+  // W156 SW1 Tier 1 #1 — opt-in development React for /login wedge diagnosis.
+  //
+  // Mirrors W153 SW1 FRONTEND_BUILD_UNMINIFIED pattern. When set,
+  // vite.config.mts adds resolve.alias mapping `react-dom/client` to the
+  // development cjs bundle directly + an environments.client.define for
+  // `process.env.NODE_ENV = "development"` so the dev bundle's internal
+  // IIFE gate at `cjs/react-dom-client.development.js:15`
+  // (`"production" !== process.env.NODE_ENV && (function () { ... })()`)
+  // evaluates true and the React module loads.
+  //
+  // Server bundle is UNAFFECTED: server.ts imports
+  // @tanstack/react-start/server-entry → handler.fetch uses react-dom/server
+  // (NOT aliased), tanstackStart keeps top-level process.env.NODE_ENV at
+  // "production" for server environment, so react-dom-server.node.production.js
+  // loads as today → no jsxDEV trap (W152 SW1 regression history).
+  //
+  // Set ONLY in dev compose (docker-compose.full.yml) via Docker build ARG.
+  // CI / prod builds omit the flag → byte-identical to current production
+  // bundle. Tree-shake-safe at build time (flag read in Node at config-load,
+  // never ships to client bundle).
+  const isReactDevMode =
+    env.FRONTEND_REACT_DEV_MODE === "true" || process.env.FRONTEND_REACT_DEV_MODE === "true"
   const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
@@ -429,6 +462,22 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": srcDir,
+        // W156 SW1 Tier 1 #1 — alias react-dom/client → development cjs
+        // bundle when FRONTEND_REACT_DEV_MODE=true. Bypasses the client.js
+        // module-eval gate (line 31 `if (process.env.NODE_ENV === 'production')`).
+        // main.tsx is the SOLE consumer of react-dom/client; server.ts uses
+        // react-dom/server (NOT aliased). The alias destination is the absolute
+        // file path resolved at config-load time (`reactDomDevClient` constant
+        // above) because react-dom's `exports` field at package.json blocks
+        // `./cjs/*` subpaths under all conditions — package-specifier aliases
+        // fail with "is not exported under the conditions" via rolldown:vite-
+        // resolve. Absolute file paths skip the exports field gate.
+        // See isReactDevMode comment block above for full rationale.
+        ...(isReactDevMode
+          ? {
+              "react-dom/client": reactDomDevClient,
+            }
+          : {}),
       },
     },
     server: {
@@ -442,6 +491,30 @@ export default defineConfig(({ mode }) => {
       headers: { "Service-Worker-Allowed": "/" },
       proxy,
     },
+    // W156 SW1 Tier 1 #1 — scope NODE_ENV=development to CLIENT environment
+    // only. tanstackStart's planning.js writes top-level
+    // process.env.NODE_ENV define globally (as "production" by default). Our
+    // environments.client override layers on top for client bundle ONLY, so
+    // the dev react-dom bundle's internal gate at line 15 evaluates true and
+    // the React module loads. Server environment keeps "production" via
+    // tanstackStart's top-level define + no override here (avoids W152 SW1
+    // jsxDEV trap regression).
+    //
+    // Verification: post-build, `grep -c "process.env.NODE_ENV"`
+    //   dist/client/assets/index-*.js → 0 (replaced with "development" literal)
+    //   dist/server/server.js → 0 (replaced with "production" literal)
+    // If client check shows raw process.env.NODE_ENV → environments override
+    // stomped by tanstackStart; escalate honest defer to W157+ Option D
+    // POST-plugin approach per W141 anti-pattern #1.
+    environments: isReactDevMode
+      ? {
+          client: {
+            define: {
+              "process.env.NODE_ENV": JSON.stringify("development"),
+            },
+          },
+        }
+      : undefined,
     optimizeDeps: {
       exclude: ["qrcode"],
     },
