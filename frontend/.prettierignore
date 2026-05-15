@@ -6,3 +6,10 @@ coverage
 dist-ssr
 root
 *.log
+
+# W158 SW2 — TanStack Router auto-generated; regenerates on tsc/build/test.
+# Format occasionally drifts from prettier's output (import order, trailing
+# commas). Hit `npm run format:check` failures 5 consecutive waves W153-W157.
+# This rule structurally closes the drift — prettier no longer checks the
+# file. Cosmetic-only file consumed by TanStack Router runtime + tsc.
+src/routeTree.gen.ts
