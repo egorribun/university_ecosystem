@@ -258,7 +258,22 @@ function RootShell({ children }: { children: React.ReactNode }) {
         <HeadContent />
         <style dangerouslySetInnerHTML={{ __html: INITIAL_PAINT_CSS }} />
       </head>
-      <body>
+      {/*
+        W156 SW3 polish — `suppressHydrationWarning` on <body> because browser
+        extensions (LastPass / 1Password / Microsoft Bing Copilot / Grammarly /
+        etc.) inject attributes like `__processed_<uuid>__="true"` and
+        `bis_register="<base64 JSON>"` into <body> BEFORE React hydrates. The
+        attributes are not in our SSR HTML, so React 19 detects them as a
+        client-vs-server hydration mismatch and emits "A tree hydrated but
+        some attributes of the server rendered HTML didn't match the client
+        properties" warning. React's hydration-mismatch docs explicitly call
+        out this case: "It can also happen if the client has a browser
+        extension installed which messes with the HTML before React loaded."
+        suppressHydrationWarning targets <body> ONLY (children still get full
+        hydration checks); it's the canonical React 19 fix for extension-
+        injected attributes.
+      */}
+      <body suppressHydrationWarning>
         <div
           id="lhci-marker"
           style={{
@@ -278,7 +293,25 @@ function RootShell({ children }: { children: React.ReactNode }) {
         >
           LHCI RENDER START
         </div>
-        <div id="root">{children}</div>
+        {/*
+          W156 SW3 polish — `className="ready"` rendered server-side via JSX
+          so the opacity-1 state is in the SSR HTML from the start. Pre-W156
+          SW3 main.tsx imperatively added `.ready` via classList.add post-
+          hydrateRoot; React 19 hydration is concurrent + may span multiple
+          frames, so the imperative mutation (even via requestAnimationFrame)
+          races React's hydration comparison → "won't be patched up" warning.
+          Emitting the class via JSX gives both SSR and client the same
+          attribute from the start — no mismatch.
+          Trade-off: the opacity 0 → 1 transition (INITIAL_PAINT_CSS at line ~115)
+          never fires now (#root starts at opacity 1). Acceptable for SSR (content
+          is already rendered, no FOUC to hide); for noscript users, the existing
+          <noscript><style>{`#root { display: block !important; }`}</style></noscript>
+          fallback below preserves visibility independently.
+          main.tsx still hides the lhci-marker on LHCI builds (separate concern).
+        */}
+        <div id="root" className="ready">
+          {children}
+        </div>
         <noscript>
           <style>{`#root { display: block !important; }`}</style>
         </noscript>

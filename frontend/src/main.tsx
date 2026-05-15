@@ -146,57 +146,19 @@ hydrateRoot(document, treeApp)
 
 const isLHCI = import.meta.env.VITE_LHCI === "true"
 
-// Wave 152 Phase 1.6 — apply `.ready` SYNCHRONOUSLY (not via rAF×2) so the
-// `<div id="root">` becomes visible immediately after createRoot.render()
-// returns. Pre-W152, the rAF×2 pattern relied on the browser eventually
-// firing rAF callbacks, but if React's reconciler subsequently wedges (e.g.
-// infinite render loop somewhere in the provider chain or in a Suspense
-// boundary's child), rAF never fires → `.ready` class never added → the
-// root container stays at `opacity: 0` and the page is *literally invisible*
-// even if React committed partial content (including Suspense fallbacks).
-// Synchronous `.classList.add` runs BEFORE the React reconciler's first
-// scheduled work, so the visibility transition is guaranteed regardless of
-// reconciler health.
-//
-// W156 SW3 — defer `.ready` class addition via requestAnimationFrame.
-//
-// Pre-W156 SW3 added `.ready` synchronously (W152 Phase 1.6 fix for the
-// wedge that prevented rAF callbacks from firing). With W156 SW3's
-// document-level hydrateRoot mount target change, the wedge is fixed AND
-// adding `.ready` synchronously BEFORE hydration completes causes a NEW
-// hydration mismatch: server emits `<div id="root">` (no className from
-// RootShell JSX), but classList.add fires sync after hydrateRoot returns
-// and BEFORE React's hydration comparison completes, so React sees DOM
-// with `class="ready"` vs its component tree (no className) → mismatch
-// → full subtree re-render (LOSES SSR perf benefits).
-//
-// Fix: defer to next animation frame. By the time rAF callback fires,
-// React's hydration has completed (React 19 guarantees hydration
-// finishes BEFORE next paint). The classList mutation then runs without
-// triggering a hydration mismatch.
-//
-// Pre-W152's rAF×2 pattern guarded against wedge-prevents-rAF; W156 SW3
-// uses single rAF since the wedge is now structurally fixed. If
-// hydration ever wedges again, a future wave can either re-introduce
-// rAF×2 OR add `className="ready"` directly to RootShell's JSX (so SSR
-// emits it too — no mismatch but loses opacity transition).
-// Non-null assertion safe: top of file throws if rootElement is null
-// (line ~98 `if (!rootElement) throw new Error("Root element not found")`).
-// TypeScript's control flow analysis doesn't propagate the throw narrowing
-// into closures defined in outer scope, hence the explicit `!` here.
-function applyReadyClass() {
-  rootElement!.classList.add("ready")
-  if (isLHCI) {
-    const lhciMarker = document.getElementById("lhci-marker")
-    if (lhciMarker) {
-      lhciMarker.style.display = "none"
-    }
+// W156 SW3 polish — `.ready` class moved to RootShell JSX (`<div id="root"
+// className="ready">`) so server + client both have the attribute from the
+// start. Pre-W156 SW3 imperative `classList.add` here was the source of the
+// "tree hydrated but some attributes... won't be patched up" warning (rAF
+// defer couldn't reliably outrun React 19's concurrent hydration timing).
+// The lhci-marker hide logic stays — it's a LHCI-only DOM mutation that runs
+// AFTER hydration completes (build-time deterministic flow, no hydration
+// mismatch concern).
+if (isLHCI) {
+  const lhciMarker = document.getElementById("lhci-marker")
+  if (lhciMarker) {
+    lhciMarker.style.display = "none"
   }
-}
-if (typeof requestAnimationFrame === "function") {
-  requestAnimationFrame(applyReadyClass)
-} else {
-  applyReadyClass()
 }
 
 if (typeof window !== "undefined") {
