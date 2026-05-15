@@ -1,7 +1,16 @@
-npm --prefix root/frontend run lint-staged
+#!/usr/bin/env sh
+# W156 SW4 Tier 2 — fixed `--prefix root/frontend` → `--prefix frontend`
+# (pre-W156 path was a stale doc placeholder that never resolved → lint-staged
+# silently skipped → anti-pattern #15 prettier-drift recurred 5 consecutive
+# waves W149+W150+W153+W154+W155). lint-staged auto-formats staged JS/TS via
+# prettier --write + eslint --fix per frontend/package.json:184-189 config.
+# W156 SW4 added missing shebang — Windows Git "cannot spawn .husky/pre-commit"
+# without it (pre-W156 file lacked shebang since original `4b51e2169` commit,
+# matching the same chain of broken-but-silent hooks documented above).
+npm --prefix frontend run lint-staged
 if command -v pre-commit >/dev/null 2>&1; then
   pre-commit run --hook-stage pre-commit
 else
-  echo "pre-commit is not installed. Run 'pip install pre-commit' or 'pip install -r root/requirements.txt'." >&2
+  echo "pre-commit is not installed. Run 'pip install pre-commit' or 'pip install -r requirements.txt'." >&2
   exit 1
 fi

@@ -32,7 +32,7 @@
     "lhci:windows": "node ./scripts/lhci-windows-fallback.mjs",
     "analyze": "ANALYZE=1 vite build",
     "lint-staged": "lint-staged",
-    "prepare": "husky ../.husky",
+    "prepare": "node ./scripts/setup-husky.cjs",
     "postinstall": "node ./scripts/setup-lhci-binaries.cjs",
     "generate:api": "openapi-ts",
     "generate:manifests": "node ./scripts/generate-manifests.mjs",
@@ -184,8 +184,8 @@
     "*.{ts,tsx,js,jsx}": [
       "eslint --fix"
     ],
-    "*.{ts,tsx,js,jsx,json,css,scss,md,html}": [
-      "prettier --check"
+    "*.{ts,tsx,js,jsx,json,css,scss,md,html,mjs,cjs}": [
+      "prettier --write"
     ]
   },
   "overrides": {
