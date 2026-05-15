@@ -142,7 +142,13 @@ services:
         # NODE_ENV=development to client environment only (server stays
         # production → no W152 SW1 jsxDEV trap). NEVER set in production
         # compose / CI deploy configs (would ship dev React ~150 KB larger).
-        FRONTEND_REACT_DEV_MODE: "true"
+        #
+        # W157 SW1 — wedge resolved via W156 SW3 hydrateRoot(document) fix;
+        # diagnostic flag now defaults OFF. Flip to "true" + rebuild if
+        # future hydration debugging needs the dev React bundle's full
+        # error messages. Tree-shake invariant verified W157 SW1: PROD
+        # bundle has 0 react-dom-client.development refs.
+        FRONTEND_REACT_DEV_MODE: ""
     ports:
       - "8081:3000"
     networks:
