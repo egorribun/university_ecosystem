@@ -3,7 +3,7 @@
 **Date**: 2026-05-15 → 2026-05-16
 **Branch**: `egorribun`
 **HEAD before**: `675abd646` (W158 polish-followup)
-**HEAD after**: (pending SW4 commit)
+**HEAD after**: `d5932637a` (W159 SW4 audit)
 **Scope (user-approved Q1+Q2)**: 🟡 Medium — Tier 1 + Tier 3 LHCI + Tier 4 housekeeping; STRICT 1-iter per Tier option
 
 ## Headline
@@ -289,5 +289,29 @@ After W159 closes at §Honesty 5-8 OPEN:
 - Memory files: live ONLY in `.claude` profile post-W138 polish-followup
 - Active waves post-W159: **W157/W158/W159**
 - Archive: W156 newly rotated; total 44 archive files
+
+## Polish-pass (post-SW4, «безупречно?» probe response)
+
+Per `feedback_perfectionism.md`-style honest self-audit, polish-pass closed **6 gaps** that the SW1-SW4 sequence missed or left as placeholders:
+
+| Gap | Before | After | Status |
+|-----|--------|-------|--------|
+| 1. `AUDIT_WAVE159.md:6` HEAD placeholder | `(pending SW4 commit)` | `d5932637a` (W159 SW4 audit) | CLOSED |
+| 2. `wave160_opening_prompt.md` HEAD line 37 | `(SW4 audit commit hash filled at push time)` | `d5932637a` | CLOSED |
+| 3. `wave160_opening_prompt.md` Remote line 38 | `(sync state TBD post-push)` | `✓ synced` + push-success details | CLOSED |
+| 4. `wave160_opening_prompt.md` line 532 | `(W159 SW4 audit commit, hash TBD post-commit)` | `d5932637a` | CLOSED |
+| 5. `wave159_backlog.md:10` SW4 placeholder | `(audit commit pending push)` | `d5932637a` + push details | CLOSED |
+| 6. Defensive build × 1 re-verification | unsubstantiated (SW3c ran build × 3) | empirically re-confirmed (main JS `b417bace...c0a2` + server.js `304095c1...4ac` MATCH W158 baseline; W134-W159 ≥25-wave invariant holds × 4 consecutive builds in W159 alone) | CLOSED |
+
+Additional confirmations from polish-pass (verified, no gap):
+- **Vitest re-run**: 1058p/12s/0f in 29.27s (W158 baseline preserved EXACTLY × 2 runs in W159 — SW1 post-delete + polish-pass post-everything).
+- **CI verification**: 7 jobs SUCCESS post-SW4 push (Dependency Review 23s, DB Performance Gate 1m5s, Go Lint & SBOM 1m43s, Generate OpenAPI Spec 1m13s, Contract Validation 1m39s, Chromatic 1m56s, CI - Matrix Expansion 27m24s) + 1 skipped (Auto-merge — correct for non-dependabot push). **0 failures**.
+- **§Honesty number consistency**: 5-8 OPEN consistent across CLAUDE.md ## Audit Trail W159 row + AUDIT_WAVE159.md (× 3 mentions) + wave159_backlog.md (× 3 mentions) + wave160_opening_prompt.md (× 4 mentions). No drift.
+- **Git working tree**: clean post polish-pass commit (modulo this AUDIT_WAVE159.md edit which IS the polish-pass commit).
+- **Build invariant CONFIRMED ≥25 waves**: defensive build × 1 in polish-pass extends SW3c's build × 3 to 4 total consecutive BYTE-IDENTICAL builds in W159, all matching W158 polish A2 baseline.
+
+**Honest framing**: per `feedback_perfectionism.md` "be specific, don't paper over". The 6 gaps closed in polish-pass were all PLACEHOLDERS that could have been filled in SW4 if I had been more disciplined about updating "post-commit" fields immediately after the commit landed. This is a process improvement candidate for future waves — when writing handoff files in SW4, defer the HEAD/commit-hash fields until AFTER the SW4 commit, then fill them in as part of the same SW4 commit OR as a 1-line polish-pass commit.
+
+**Polish-pass scope budget**: ~15-20 min (well under W158 polish-pass's ~60-90 min). Smaller scope because W159 had less structural complexity than W158 (W158 had multiple Phase 3 catches + Docker rebuilds; W159 was a clean cleanup wave).
 
 ## End of audit
