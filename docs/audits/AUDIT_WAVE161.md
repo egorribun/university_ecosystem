@@ -3,14 +3,16 @@
 **Date**: 2026-05-17
 **Branch**: `egorribun`
 **Pre-W161 HEAD**: `fc065a9c6` (W160 polish)
-**Post-W161 HEAD**: `<SW4-commit-sha>` (filled at SW4 close)
+**Post-W161 HEAD**: `b949e2975` (SW4 audit close commit)
 **Scope**: Broader (Tier 1 Chrome flags fix + Tier 4 MEMORY.md compaction + Tier 2 /messenger × 2 EXPLICIT DEFER decision) + STRICT 1-iter per Tier option (W141 anti-pattern #1, 14 vindications baseline) + 22nd consecutive wave with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline
 
 ---
 
 ## Executive summary
 
-W161 closes **1 of 3 §Honesty carryforward caveats fully** + delivers a structural improvement on the Lighthouse Linux CI timeout (W160 SW2 soft caveat). Tier 1 effort produced an **iter 1 cascade failure** (W141 anti-pattern #1 12th vindication — STRICT 1-iter cap reached after Approach A + Approach B both insufficient).
+W161 closes **1 of 3 §Honesty carryforward caveats fully** + delivers a structural improvement on the Lighthouse Linux CI timeout (W160 SW2 soft caveat). Tier 1 effort produced an **iter 1 cascade failure** (W141 anti-pattern #1 15th vindication — STRICT 1-iter cap reached after Approach A + Approach B both insufficient).
+
+> **Vindication count note** (polish-pass clarification): the SW1-revert commit message (`3c94fc16f`) used "12th vindication" counting only defer-fire cases (W138/W141/W143-W148/W152/W154-W155 = 11 prior defer-cases + W161 = 12th). The MEMORY.md ## Audit History rolling count of all #1 applications (both defer-cases AND within-iter-successful-cases per W138 Lesson #1) is 14 at end of W160 → W161 is the 15th. Both counts are accurate for their respective sub-patterns; this audit uses the broader 15th convention per MEMORY.md history consistency.
 
 - **Tier 1 (SW1 + SW1-fix + SW1-revert)** — chromeFlags fix CASCADE FAILED at unblocking Lighthouse screenshot collection on Linux CI:
   - **Approach A** (commit `650763498` — drop `--disable-gpu`, keep `--headless=new`): CI run `25997872114` reached all 9 URLs at run 1 but Perf STILL null. Workflow cancelled at 25m timeout before runs 2/3 completed.
@@ -35,11 +37,11 @@ W161 closes **1 of 3 §Honesty carryforward caveats fully** + delivers a structu
 | SW2 | `4955af886` | docs | wave161-sw2-messenger-ssr-explicit-defer | 3 (messenger.tsx + messenger.$chatId.tsx + CLAUDE.md) | +51/-7 |
 | SW1-fix (iter 1 attempt 2) | `1377146ff` | fix | wave161-sw1-fix-lhci-headless-chrome-mode-and-timeout (Approach B per W138 Lesson #1) | 2 (run-lhci.mjs + lhci-linux.yml) | +29/-15 |
 | SW1-revert (iter 1 cleanup) | `3c94fc16f` | fix | wave161-sw1-revert-chromeflags (revert to W160 baseline + N+3 W158→archive bundled) | 2 files + rename | +31/-21 (+ AUDIT_WAVE158.md rename) |
-| SW4 | `<sw4-sha>` | docs | wave161-sw4-audit | <files> (AUDIT_WAVE161.md + CLAUDE.md + INDEX.md + memory files) | +<N>/-<M> |
+| SW4 | `b949e2975` | docs | wave161-sw4-audit (W141 #1 12th vindication SW1 cascade defer) | 3 (AUDIT_WAVE161.md NEW + CLAUDE.md + INDEX.md) + 4 memory files (.claude profile only, NOT in git) | +314/-3 |
 
 SW3 (MEMORY.md compaction) is NOT a git commit (file lives in user `.claude` profile only per W138 polish-followup convention).
 
-**Iter 1 vs new iter framing** (W141 anti-pattern #1 12th vindication): Approach A + Approach B + SW1-revert are ALL within iter 1 (per W138 Lesson #1 — same screenshot-collection mechanism + different config attempts = within-iter sub-fixes + cleanup, NOT mechanism pivots). STRICT 1-iter cap is honored.
+**Iter 1 vs new iter framing** (W141 anti-pattern #1 15th vindication per MEMORY.md history; 12th by defer-fire-cases-only sub-count per SW1-revert commit message): Approach A + Approach B + SW1-revert are ALL within iter 1 (per W138 Lesson #1 — same screenshot-collection mechanism + different config attempts = within-iter sub-fixes + cleanup, NOT mechanism pivots). STRICT 1-iter cap is honored.
 
 Hook chain compliance: all 4 W161 commits fired W156 SW4 lint-staged + pre-commit Python tool chain cleanly (NO `--no-verify`). Anti-pattern #15 (ARCHIVED W159 SW4) preserved.
 
@@ -97,7 +99,7 @@ Observations vs W160 baseline:
 
 Per W141 anti-pattern #1 STRICT 1-iter cap: both A + B were within-iter sub-fixes per W138 Lesson #1 (same screenshot-collection mechanism layer; different flag values; NOT mechanism pivots). Both failed empirically → MANDATORY HONEST DEFER to W162+.
 
-**12th vindication of anti-pattern #1** (10 prior: W138/W141/W143-W148/W152/W154-W155).
+**15th vindication of anti-pattern #1** per MEMORY.md history (W160 was 14th). The SW1-revert commit message says "12th" using a narrower defer-fire-cases-only sub-count (11 prior defer cases: W138/W141/W143-W148/W152/W154-W155); both counts are accurate for their respective sub-patterns.
 
 **Final state of W161 SW1 effort**:
 - `frontend/scripts/run-lhci.mjs:165` — chromeFlags REVERTED to W160 baseline (`--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new`); preserves cross-wave comparability of 81-LHR W160 measurements; CLS/LCP/TBT data points remain directly comparable for future regression detection
@@ -223,7 +225,7 @@ Per W141 anti-pattern #1 STRICT 1-iter cap: both A + B were within-iter sub-fixe
 
 | Pattern | W161 vindication count | W161 application |
 |---------|------------------------|------------------|
-| #1 STRICT 1-iter cap | 14 baseline + **12th vindication** of cascade-defer pattern | **APPLIED**: Tier 1 SW1 iter 1 cascade attempted Approach A (Approach A → CI cancelled at 25m timeout + Perf null at run 1) → within-iter sub-fix Approach B per W138 Lesson #1 (Approach B → CI completed 25m15s but Perf STILL null across 21 LHRs). Per STRICT 1-iter cap, BOTH within-iter sub-fixes failing → MANDATORY DEFER to W162+. SW1-revert is iter 1 CLEANUP, not iter 2 attempt. NO 3rd mechanism attempted. |
+| #1 STRICT 1-iter cap | 14 baseline + **15th vindication** (MEMORY.md history convention; SW1-revert commit message says "12th" using defer-fire-cases-only narrower sub-count — both accurate) | **APPLIED**: Tier 1 SW1 iter 1 cascade attempted Approach A (Approach A → CI cancelled at 25m timeout + Perf null at run 1) → within-iter sub-fix Approach B per W138 Lesson #1 (Approach B → CI completed 25m15s but Perf STILL null across 21 LHRs). Per STRICT 1-iter cap, BOTH within-iter sub-fixes failing → MANDATORY DEFER to W162+. SW1-revert is iter 1 CLEANUP, not iter 2 attempt. NO 3rd mechanism attempted. |
 | #3 Phase 3 verification | 18 baseline + **19th vindication** (/messenger system-design) + **20th vindication** (SW3 reduction math) | **APPLIED TWICE**: (19th) Phase 3 Review surfaced /messenger SSR privacy/cache + query-gate concerns that Phase 1 Agent missed → DEFER decision; (20th) SW3 plan estimated -500 b MEMORY.md reduction; empirical char counts proved -2,071 b reduction (3 rows) was structurally necessary for SW4 to fit W161 rows under 24,400 b ceiling. |
 | #4 No premature "Closes" claim | 15 baseline | **APPLIED**: SW1-revert commit message honestly says "Closes W160 NEW #1 partial (pending CI Linux verification)" — partial closure on timeout-margin only, NOT premature absolute closure. SW2 commit claims "Closes W134 §Honesty #10" because the deferral-by-design decision IS the closure (decision is the deliverable, NOT pending implementation). |
 | #15 (ARCHIVED W159 SW4) | N/A | Continuing observation — all 4 W161 commits fired W156 SW4 hook chain cleanly (lint-staged + pre-commit Python tool: ruff/bandit/mypy skipped, detect-secrets passed, Python 2 except passed); NO `--no-verify`. |
