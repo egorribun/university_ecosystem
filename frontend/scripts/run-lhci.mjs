@@ -216,10 +216,60 @@ async function createConfig() {
       // Until then, relaxed Perf assertion to `warn@0.40`: keeps the
       // threshold visible in CI summaries but does not block merges.
       // Will re-ratchet to `error@0.40` (or higher) once SSR ships.
+      //
+      // Wave 160 SW2 (2026-05-17) — first 3-session × 3-run methodology
+      // applied on Linux CI post-W149 SSR + W158 canonical minified PROD.
+      // 9 URLs × 3 sessions × 3 runs = 81 LHRs (closes W134 §Honesty #1
+      // + W159 NEW #2). Cross-session medians (extremely tight variance
+      // ±0.01-0.05 across sessions — methodology validates):
+      //   /          CLS 0.001 LCP 2895ms TBT 549ms A11y 1.00
+      //   /login     CLS 0.000 LCP  324ms TBT 272ms A11y 1.00
+      //   /dashboard CLS 0.000 LCP 2857ms TBT 517ms A11y 1.00
+      //   /news      CLS 0.000 LCP  340ms TBT 446ms A11y 1.00
+      //   /schedule  CLS 0.000 LCP  376ms TBT 423ms A11y 1.00
+      //   /events    CLS 0.000 LCP  396ms TBT 454ms A11y 1.00
+      //   /activity  CLS 0.000 LCP  411ms TBT 455ms A11y 1.00
+      //   /map       CLS 0.044 LCP  403ms TBT 466ms A11y 1.00  ← worst CLS
+      //   /404       CLS 0.000 LCP  309ms TBT 425ms A11y 1.00
+      //
+      // Ratchet decisions (data-driven per plan §SW2 step 3 decision tree):
+      //
+      // (1) CLS error@0.10 → error@0.05 — worst cross-session median = 0.044
+      //     on /map; variance ~0.000 across 3 sessions (truly stable); 0.05
+      //     ceiling has 12% margin (0.006 buffer). Tightens WCAG-Good ceiling
+      //     by 50%. SAFE — confirmed all 9 URLs measure ≤ 0.044 across 81
+      //     LHRs (worst single-run value also 0.044).
+      //
+      // (2) Perf HOLD warn@0.40 — STRUCTURAL Linux CI blocker. Chrome flags
+      //     `--headless=new --disable-gpu` (this file lines 130 inline) fail
+      //     to collect screenshots → `categories.performance.score = null`
+      //     for ALL 9 URLs × 81 LHRs. Lighthouse audits `speed-index`,
+      //     `screenshot-thumbnails`, `metrics` all error with "Chrome didn't
+      //     collect any screenshots during the page load". Individual metrics
+      //     (FCP/LCP/TBT/CLS) DO measure — but composite Perf score requires
+      //     all of them including speed-index. Cannot ratchet Perf this wave.
+      //     Routine-e5 calibration drift PARTIALLY closed (acknowledged +
+      //     structurally documented in W160 SW2; full closure pending W161+
+      //     Lighthouse chrome flags investigation — likely drop `--disable-gpu`
+      //     or switch `--headless=chrome` to restore screenshot collection).
+      //
+      // (3) LCP HOLD warn@2500ms — worst cross-session median 2895ms on /
+      //     (above 2500ms ceiling). Mobile devtools throttling on Linux CI
+      //     is harsher than Windows wrapper baselines (W159 SW2 measured
+      //     LCP 2000ms on /; CI Linux measures 2895ms — same dist, different
+      //     throttling environment). Realistic mobile measurement, but
+      //     ratchet warn→error would block merges. Hold until perf work
+      //     lands (W161+ or later).
+      //
+      // (4) TBT HOLD warn@200ms — worst cross-session median 549ms on /
+      //     (above 200ms ceiling). Same mobile throttling reality as LCP.
+      //     Hold.
       assert: {
         assertions: {
           // W125-pending — relaxed from `error@0.40` to `warn@0.40` after
-          // routine-e5 found dev/CI calibration drift. SSR fix is planned.
+          // routine-e5 found dev/CI calibration drift. W160 SW2 confirmed
+          // CI Linux Perf score unmeasurable under current chrome flags;
+          // hold at warn@0.40 pending W161+ Chrome flags fix.
           "categories:performance": ["warn", { minScore: 0.4 }],
           "categories:accessibility": ["error", { minScore: 0.95 }],
           "categories:best-practices": ["error", { minScore: 0.95 }],
@@ -231,7 +281,12 @@ async function createConfig() {
           "total-blocking-time": ["warn", { maxNumericValue: 200, aggregationMethod: "median" }],
           "cumulative-layout-shift": [
             "error",
-            { maxNumericValue: 0.1, aggregationMethod: "median" },
+            // W160 SW2 — ratcheted error@0.10 → error@0.05 after 3-session
+            // × 3-run CI Linux methodology measured worst cross-session
+            // median 0.044 (on /map; 8 of 9 URLs measure CLS ≤ 0.001).
+            // Variance ~0.000 across sessions; 0.05 ceiling has 12% margin
+            // (0.006 buffer). Tightens WCAG-Good ceiling by 50%.
+            { maxNumericValue: 0.05, aggregationMethod: "median" },
           ],
         },
       },
