@@ -370,6 +370,7 @@ native/rust_ext/fuzz/artifacts/
 *.Trashes
 ._*
 .wave136-trace/
+.wave160-lhci/
 
 # Wave 138 polish-followup (post-2026-05-08): memory/ moved to .claude profile only.
 # Auto-load source: C:\Users\egorribun\.claude\projects\C--<repo-slug>\memory\
