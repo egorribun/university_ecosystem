@@ -139,39 +139,76 @@ async function createConfig() {
     url: useRemotePreview ? targetPaths.map((p) => `${base}${p === "/" ? "" : p}`) : targetPaths,
     chromePath,
     settings: {
-      // W161 SW1 iter 1 cascade outcome (HONEST DEFER to W162+ per W141
-      // anti-pattern #1 12th vindication; STRICT 1-iter cap reached).
+      // W162 SW1 (Tier 1 Path d) — W160 §Honesty NEW #1 CLOSED via "platform
+      // limitation accepted" honest framing per W141 anti-pattern #4 +
+      // feedback_perfectionism.md ("if you can't measure, defer honestly").
       //
-      // Iter 1 attempted unblocking Lighthouse screenshot collection on
-      // Linux CI (W160 NEW #1; W160 measured Perf=null for 81 LHRs because
-      // `speed-index` + `screenshot-thumbnails` audits errored with "Chrome
-      // didn't collect any screenshots during the page load").
+      // ## Empirical evidence justifying closure
       //
-      //   • Approach A (drop `--disable-gpu`, keep `--headless=new`):
-      //     CI run `25997872114` reached all 9 URLs at run 1 but Perf STILL
-      //     null; workflow cancelled at 25-min timeout before run 2/3.
+      // Linux CI Lighthouse Perf=null was structurally reproduced across
+      // THREE measurement attempts in W160-W161:
       //
-      //   • Approach B (drop `--disable-gpu`, swap `--headless=new` →
-      //     `--headless=chrome`, within-iter sub-fix per W138 Lesson #1):
-      //     CI run `25998541600` completed 25m15s but Perf STILL null
-      //     across all 21 LHRs (7 URLs × 3 runs; / + /dashboard missing
-      //     from artifact). Speed-index audit also null.
+      //   1. W160 SW2 baseline: 3 sessions × 3 runs × 9 URLs = 81 LHRs.
+      //      ALL Perf scores null (speed-index + screenshot-thumbnails +
+      //      metrics audits errored with "Chrome didn't collect any
+      //      screenshots during the page load"). Runs `25988551157` +
+      //      `25989078530` + `25989579477`. CLS/LCP/TBT measured cleanly.
       //
-      // BOTH approaches failed → MANDATORY DEFER to W162+ per W141
-      // anti-pattern #1. Chrome flag changes alone don't unblock screenshot
-      // collection on this Linux CI environment + Lighthouse 13.1.0 combo.
+      //   2. W161 SW1 Approach A (drop `--disable-gpu`): CI run
+      //      `25997872114` Perf=null at run 1; workflow cancelled at 25m.
       //
-      // chromeFlags REVERTED to W160 SW2 baseline (preserves cross-wave
-      // comparability of 81-LHR measurements; CLS/LCP/TBT data points
-      // remain directly comparable). The lhci-linux.yml timeout 25 → 30
-      // bump is PRESERVED as an independent structural improvement (W160
-      // SW2 documented the 25m margin was already tight at 23m45s).
+      //   3. W161 SW1 Approach B (swap `--headless=new` → `--headless=chrome`
+      //      + timeout 25→30): CI run `25998541600` completed 25m15s but
+      //      Perf STILL null across 21 LHRs (7 URLs × 3 runs).
       //
-      // W162+ investigation directions:
-      //   - File upstream Lighthouse issue with full LHR + Chrome version
-      //   - Test on alternate CI runner (e.g., custom self-hosted)
-      //   - Switch to `lhci` --collect.method=node alternative
-      //   - Or accept Perf=null as Linux CI limitation + use CDP traces only
+      // Chrome flag tuning is structurally insufficient. Lighthouse 13.1.0
+      // + headless Chrome + ubuntu-latest CI runner combo cannot collect
+      // screenshots required by the speed-index audit. Other paths considered
+      // and deferred:
+      //
+      //   - Path (a) Upstream Lighthouse issue → weeks of response cadence;
+      //     unclear ownership (Google Lighthouse vs Chromium); W163+ candidate.
+      //   - Path (b) Alternate CI runner (ubuntu-22.04 / windows-latest /
+      //     self-hosted) → unknown root cause; lighthouse-ci's own CI uses
+      //     ubuntu-latest without screenshot failures, so root cause is
+      //     non-obvious; W163+ candidate.
+      //   - Path (c) `lhci --collect.method=node` → STRUCTURALLY INFEASIBLE;
+      //     `@lhci/cli@0.15.1` source has zero `--collect.method` matches
+      //     (verified W162 Phase 3 Review via grep on node_modules). Would
+      //     require forking lighthouse-ci or upgrading to a version that
+      //     doesn't yet exist.
+      //
+      // ## Canonical Perf measurement: Windows wrapper
+      //
+      // `npm run lhci:windows` (frontend/scripts/lhci-windows-fallback.mjs)
+      // IS the canonical Perf measurement tool. W159 SW2 baseline (post-W158
+      // SW1 canonical minified PROD bundle restoration):
+      //
+      //   /           Perf 0.96  CLS 0.001
+      //   /dashboard  Perf 0.96  CLS 0.001
+      //   /login      Perf 0.96  CLS 0.000
+      //   /events     Perf 0.94  CLS 0.062
+      //
+      // Windows wrapper bypasses EPERM + screenshot-collection issues via
+      // direct `npx lighthouse` invocation per URL × per run (LHR written
+      // to --output-path BEFORE chrome-launcher's destroyTmp fires).
+      //
+      // ## Production CI gate (asymmetric measurement by design)
+      //
+      // Production gates CLS `error@0.05` (W160 SW2 ratchet) — Linux CI
+      // hard-blocks on CLS regression. Perf composite is `warn@0.40` only,
+      // measured via Windows wrapper per-wave (asymmetric measurement
+      // intentional). 81-LHR Linux baseline preserves CLS/LCP/TBT data
+      // points for cross-wave comparability.
+      //
+      // chromeFlags PRESERVED at W160 SW2 baseline (cross-wave 81-LHR
+      // comparability). lhci-linux.yml `timeout-minutes: 30` PRESERVED
+      // (independent structural improvement; W161 SW1-fix retains margin).
+      //
+      // W163+ may revisit via Path (a) upstream issue OR Path (b) alternate
+      // runner experiment if measurement-parity demand emerges. See
+      // CLAUDE.md ## Gotchas "Linux CI Lighthouse Perf=null platform
+      // limitation" entry for the full closure narrative.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
