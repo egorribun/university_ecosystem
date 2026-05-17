@@ -139,22 +139,31 @@ async function createConfig() {
     url: useRemotePreview ? targetPaths.map((p) => `${base}${p === "/" ? "" : p}`) : targetPaths,
     chromePath,
     settings: {
-      // W161 SW1 — dropped `--disable-gpu` to unblock Lighthouse screenshot
-      // collection on Linux CI (closes W160 NEW #1). W160 measured Perf=null
-      // for ALL 81 LHRs across 3 sessions because `speed-index` +
-      // `screenshot-thumbnails` audits errored with "Chrome didn't collect
-      // any screenshots during the page load". `--headless=new` (Chrome 112+)
-      // uses software compositing by default — explicit `--disable-gpu` was
-      // redundant AND conflicted with Lighthouse's internal GPU/graphics
-      // pipeline for rendering screenshot frames. Individual metrics
-      // (CLS/LCP/TBT) measure via CDP traces unaffected by this fix; only
-      // composite Perf needed screenshots (speed-index audit input).
+      // W161 SW1 (+ within-iter sub-fix per W138 Lesson #1) — Lighthouse
+      // screenshot collection on Linux CI to unblock Perf measurement
+      // (closes W160 NEW #1). W160 measured Perf=null for ALL 81 LHRs
+      // because `speed-index` + `screenshot-thumbnails` audits errored
+      // with "Chrome didn't collect any screenshots during the page load".
       //
-      // Alternative if Approach A insufficient (within-iter sub-fix per
-      // W138 Lesson #1, NOT a mechanism pivot): swap `--headless=new` →
-      // `--headless=chrome` (legacy mode with established screenshot support).
+      // Approach A first attempted (dropped `--disable-gpu` to let
+      // `--headless=new` software compositing handle screenshots).
+      // Result: 9 URLs reached at run 1 but Perf STILL null (workflow
+      // cancelled at 25-min timeout before run 2/3 completed). The
+      // dropped flag was necessary but insufficient.
+      //
+      // Approach B applied (within-iter sub-fix, same mechanism + different
+      // flag value, NOT a pivot per W141 anti-pattern #1): swap
+      // `--headless=new` → `--headless=chrome` (legacy mode with
+      // established screenshot collection support). Combined with the
+      // lhci-linux.yml workflow timeout bump 25 → 30 min, this should
+      // give Perf score populated on Linux CI for the first time post-
+      // W160 SW2.
+      //
+      // Individual metrics (CLS/LCP/TBT) measure via CDP traces unaffected
+      // by either approach; only composite Perf needs the screenshots
+      // (speed-index audit input).
       chromeFlags:
-        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=new",
+        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=chrome",
       throttlingMethod: "devtools",
       emulatedFormFactor: "mobile",
       maxWaitForFcp: 45000,

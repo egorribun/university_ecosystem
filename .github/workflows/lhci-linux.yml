@@ -59,7 +59,12 @@ jobs:
   lhci:
     name: Lighthouse on Linux
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # W161 SW1-fix: bumped 25 → 30. W160 SW2 baseline ran 23m45s with Perf=null
+    # (skipping screenshot work shortens runtime). W161 SW1 Approach B applies
+    # `--headless=chrome` which DOES collect screenshots → added screenshot
+    # + speed-index work pushes total runtime past 25m. 30m gives a 5-7 min
+    # margin while keeping the workflow honest about runner cost.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
