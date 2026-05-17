@@ -117,9 +117,22 @@ async function createConfig() {
   // LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading slashes
   // in /-paths are mangled to git-bash absolute paths). Without this map,
   // .filter(Boolean) drops "" and root never gets measured.
-  const overridePaths = process.env.LHCI_URLS?.split(",")
-    .map((p) => p.trim() || "/")
-    .filter(Boolean)
+  // Wave 160 SW1 — distinguish truly-empty LHCI_URLS (the workflow_dispatch
+  // default "" when no override is intended → use defaults) from a non-empty
+  // override with leading comma (`,schedule,404` → measure / + 2 paths).
+  // Pre-W160 `process.env.LHCI_URLS?.split(",")` on `""` returned `[""]` → map
+  // produced `["/"]` (truthy) → overrode the 9-URL default with single root.
+  // `.github/workflows/lhci-linux.yml` sets `LHCI_URLS: ${{ inputs.urls }}`
+  // unconditionally, so an unset workflow input arrived as literal "" — silently
+  // shrinking the sweep. Truthiness gate now distinguishes "" (falsy → defaults)
+  // from any non-empty string (process via the W119 SW2 leading-comma flow).
+  const lhciUrlsEnv = process.env.LHCI_URLS
+  const overridePaths = lhciUrlsEnv
+    ? lhciUrlsEnv
+        .split(",")
+        .map((p) => p.trim() || "/")
+        .filter(Boolean)
+    : undefined
   const targetPaths = overridePaths?.length ? overridePaths : defaultPaths
   const collect = {
     numberOfRuns: 3,
