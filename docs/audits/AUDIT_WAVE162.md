@@ -20,21 +20,23 @@ W162 closes **2 of 3 §Honesty carryforward caveats fully** + delivers structura
 
 - (21st) Phase 1 Agent 1 cited `frontend/scripts/run-lhci.mjs:108` for the `@lhci/cli` invocation; Phase 3 grep proved `:108` is actually a URL string `/dashboard` in the defaultPaths array. The actual `@lhci/cli@^0.15.1` invocation lives in `lhci-windows-fallback.mjs:6` docstring (NOT in run-lhci.mjs which uses programmatic API). Doesn't affect Path (d) closure decision — load-bearing claim was Path (c) infeasibility (verified separately via grep on `node_modules/@lhci/cli` source = 0 matches for `--collect.method`).
 
-**Bundle invariant**: ZERO production-code changes across all 3 SW commits. SW1 + SW2 modify CI-only / dev-only Node scripts (run-lhci.mjs + lhci-windows-fallback.mjs). SW3 modifies user .claude profile (not in repo). SW4 modifies docs only. PROD main JS sha256 `b417bace...c0a2` + server.js sha256 `304095c1...4ac` BYTE-IDENTICAL to W158 SW1 baseline expected by structural argument; **W134-W161 ≥27-wave invariant EXTENDS through W162 → ≥28-wave invariant** pending polish-pass empirical verification via `npm run build` × 3 from clean state.
+**Bundle invariant**: ZERO production-code changes across all SW commits. SW1 + SW2 modify CI-only / dev-only Node scripts (run-lhci.mjs + lhci-windows-fallback.mjs). SW3 modifies user .claude profile (not in repo). SW4 + polish + polish-v2 modify docs only. PROD main JS sha256 `b417bace9893d6f9d61a8e2743a786edc7cc42173fa2a2d5cdc65a47f4e1c0a2` + server.js sha256 `304095c1fa3296583c6edd5db5d70d621b9b8f33fb9b2786ebdbf1ea0cfe34ac` **BYTE-IDENTICAL × 3 fresh runs** (verified post-polish-pass via `cd frontend && rm -rf dist && npm run build && sha256sum dist/client/assets/index-*.js dist/server/server.js` × 3) + MATCH W158 SW1 baseline EXACTLY → **W134-W161 ≥27-wave invariant EXTENDS through W162 → ≥28-wave BYTE-IDENTICAL invariant** CONFIRMED EMPIRICALLY (not just structurally).
 
 ---
 
 ## Commits
 
-| #   | SHA         | Type  | Description                                                                            | Files                                                                        | +/-      |
-| --- | ----------- | ----- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------- |
-| SW1 | `6018a4d11` | chore | wave162-sw1-perf-platform-limitation-defer (Tier 1 Path d)                             | 2 (run-lhci.mjs + CLAUDE.md)                                                 | +113/-70 |
-| SW2 | `20479dc89` | fix   | wave162-sw2-lhci-windows-cleanup-force-exit (Tier 2 Path C refined)                    | 1 (lhci-windows-fallback.mjs)                                                | +37/-5   |
-| SW4 | (pending)   | docs  | wave162-sw4-audit (AUDIT_WAVE162.md NEW + CLAUDE.md row + INDEX.md + N+3 W159→archive) | 4 (audit + CLAUDE.md + INDEX.md + git mv) + 3 memory files (.claude profile) | TBD      |
+| #         | SHA           | Type  | Description                                                                            | Files                                                                                     | +/-      |
+| --------- | ------------- | ----- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
+| SW1       | `6018a4d11`   | chore | wave162-sw1-perf-platform-limitation-defer (Tier 1 Path d)                             | 2 (run-lhci.mjs + CLAUDE.md)                                                              | +113/-70 |
+| SW2       | `20479dc89`   | fix   | wave162-sw2-lhci-windows-cleanup-force-exit (Tier 2 Path C refined)                    | 1 (lhci-windows-fallback.mjs)                                                             | +37/-5   |
+| SW4       | `b4bbfdf38`   | docs  | wave162-sw4-audit (AUDIT_WAVE162.md NEW + CLAUDE.md row + INDEX.md + N+3 W159→archive) | 4 (audit + CLAUDE.md + INDEX.md + git mv) + 3 memory files (.claude profile)              | +306/-78 |
+| polish    | `48e6040e1`   | docs  | wave162-polish (3 new CLAUDE.md ## Gotchas entries closing 3 «безупречно?» gaps)       | 1 (CLAUDE.md)                                                                             | +6/-0    |
+| polish-v2 | (this commit) | docs  | wave162-polish-v2 (closes 6 more «безупречно?» gaps post-«безупречно?» probe)          | 5 (AUDIT_WAVE162.md + CLAUDE.md row + MEMORY.md rows + wave162_backlog + wave163_opening) | TBD      |
 
 SW3 (MEMORY.md compaction) is NOT a git commit (file lives in user `.claude` profile only per W138 polish-followup convention).
 
-Hook chain compliance: all 3 W162 git commits (SW1 + SW2 + future SW4) fired W156 SW4 lint-staged + pre-commit Python tool chain cleanly (NO `--no-verify`). Anti-pattern #15 (ARCHIVED W159 SW4) preserved through W160 + W161 + W162.
+Hook chain compliance: all 4 W162 git commits (SW1 + SW2 + SW4 + polish) fired W156 SW4 lint-staged + pre-commit Python tool chain cleanly (NO `--no-verify`). Anti-pattern #15 (ARCHIVED W159 SW4) preserved through W160 + W161 + W162.
 
 ---
 
@@ -147,29 +149,31 @@ Notable observations that did NOT rise to (z) class:
 
 ## W141 anti-pattern compliance
 
-| Anti-pattern                                      | Pre-W162 vindications                  | W162 vindications                                                                     | Post-W162                 |
-| ------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------- |
-| #1 STRICT 1-iter cap                              | 14 (MEMORY.md history; 12 defer-cases) | **13th defer-case (Tier 1 doc-only vacuous; Tier 2 single-mechanism)**                | 14 defer-cases / 15 total |
-| #3 Phase 3 verification rigor                     | 20                                     | **21st** (line citation correction) + **22nd** (MEMORY.md compaction math correction) | 22                        |
-| #4 No premature "Closes" claims                   | 15                                     | 16 (closures attributed AFTER empirical SW1 doc-only verification + SW2 smoke test)   | 16                        |
-| #5 Opening-prompt assertion reversal              | 15                                     | —                                                                                     | 15                        |
-| #15 husky pre-commit prettier (ARCHIVED W159 SW4) | preserved                              | preserved (all W162 commits fired hook chain cleanly)                                 | preserved                 |
+| Anti-pattern                                      | Pre-W162 vindications                  | W162 vindications                                                                                                                   | Post-W162                           |
+| ------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| #1 STRICT 1-iter cap                              | 15 (MEMORY.md history; 12 defer-cases) | **16th total vindication, NOT a defer-case** (Tier 1 vacuous doc-only + Tier 2 within-iter-successful Promise.race; no defer fired) | 16 total / 12 defer-cases unchanged |
+| #3 Phase 3 verification rigor                     | 20                                     | **21st** (line citation correction) + **22nd** (MEMORY.md compaction math correction)                                               | 22                                  |
+| #4 No premature "Closes" claims                   | 15                                     | **16th** (closures attributed AFTER empirical SW1 doc-only verification + SW2 smoke test)                                           | 16                                  |
+| #5 Opening-prompt assertion reversal              | 15                                     | —                                                                                                                                   | 15                                  |
+| #15 husky pre-commit prettier (ARCHIVED W159 SW4) | preserved                              | preserved (all 4 W162 commits fired hook chain cleanly: SW1 + SW2 + SW4 + polish; polish-v2 also fires)                             | preserved                           |
 
 **Anti-pattern register**: 14 patterns stable (post-W159 #15 archival; #15 infrastructure remains in place as historical reference + structural prevention).
 
 ---
 
-## Verification gates (pre-polish-pass)
+## Verification gates (post-polish-pass — EMPIRICALLY VERIFIED)
 
-- tsc: TBD (pending SW4 commit; expect 0 errors — no .ts/.tsx changes this wave)
-- ESLint --max-warnings=0: TBD (expect 0)
-- Prettier `--check`: clean (SW1 + SW2 + SW4 files all auto-fixed via lint-staged hook chain)
-- Vitest: TBD (expect 1058p / 12s / 0f preserved EXACTLY — no test changes)
-- npm audit: TBD (expect 0 vulnerabilities preserved)
-- Docker stack: 5 services healthy (pre-W162 baseline preserved by structural argument — no Docker changes)
-- /login SSR: 200 / 21,732 b (W160 baseline EXACT preserved by structural argument)
-- /messenger: 307 (W126 auth-at-edge preserved)
-- PROD bundle: main JS 176,625 b + server.js 23,600 b (W158 SW1 baseline preserved; sha256 verification deferred to polish-pass)
+- tsc: **0 errors** ✓ (verified post-polish-pass via `cd frontend && npx tsc --noEmit`; pre-push hook also ran clean)
+- ESLint --max-warnings=0: **0 warnings** ✓ (verified `cd frontend && npm run lint -- --max-warnings=0`)
+- Prettier `--check`: **clean** ✓ (verified `cd frontend && npm run format:check`; all SW1+SW2+SW4+polish+polish-v2 files clean)
+- Vitest: **1058 passed / 12 skipped / 0 failed in 29.26s** ✓ (W160 baseline preserved EXACTLY — no test changes; verified `cd frontend && npm test`)
+- npm audit: **0 vulnerabilities** ✓ (verified `cd frontend && npm audit --audit-level=high`)
+- Docker stack: **5 services healthy** ✓ (verified `docker ps` post-polish: frontend + backend + file-processor + temporal all `(healthy)`; caddy no-healthcheck per W137 design)
+- /login SSR: **200 / 21,732 b** ✓ (W160 baseline EXACT preserved; verified `curl -sS -o /dev/null -w ... /login`)
+- /messenger: **307** ✓ (W126 auth-at-edge preserved; verified `curl -sS -o /dev/null -w ... /messenger`)
+- /404: **404 / 65,157 b** ✓ (verified curl)
+- /healthz: **{"status":"ok"}** ✓ (verified curl)
+- PROD bundle: **main JS 176,625 b + server.js 23,600 b** ✓ — Build × 3 sha256 EMPIRICALLY VERIFIED × 3 fresh runs (main JS `b417bace9893d6f9d61a8e2743a786edc7cc42173fa2a2d5cdc65a47f4e1c0a2` + server.js `304095c1fa3296583c6edd5db5d70d621b9b8f33fb9b2786ebdbf1ea0cfe34ac` BYTE-IDENTICAL × 3 + MATCH W158 SW1 baseline EXACTLY → **W134-W161 ≥27-wave invariant EXTENDS through W162 → ≥28-wave BYTE-IDENTICAL invariant** CONFIRMED EMPIRICALLY, not just structurally)
 - Cargo.lock: no drift (idempotent ≥27 waves; W162 has 0 Rust changes)
 
 ---
@@ -211,16 +215,30 @@ Per `feedback_planning_estimates.md` 3-wave-horizon framework:
 
 ## Wave 162 status
 
-**✅ CLOSED** — Tier 1 Path d + Tier 2 Path C refined + Tier 4 MEMORY.md aggressive compaction all shipped within iter 1 cap. 2 §Honesty caveats closed (W160 NEW #1 + W159 NEW #1). 0 NEW (z), 0 NEW anti-patterns. W141 #1 13th defer-case (14 total) + #3 21st + 22nd vindications + #4 16 + #15 (ARCHIVED) preserved. 23rd consecutive wave with brainstorming + Phase 1 Explore + Phase 3 Review discipline.
+**✅ CLOSED** — Tier 1 Path d + Tier 2 Path C refined + Tier 4 MEMORY.md aggressive compaction all shipped within iter 1 cap. 2 §Honesty caveats closed (W160 NEW #1 + W159 NEW #1). 0 NEW (z), 0 NEW anti-patterns. W141 **#1 16th total vindication, NOT a defer-case** (Tier 1 vacuous + Tier 2 within-iter-successful; 12 defer-cases unchanged) + #3 21st + 22nd vindications + #4 16th vindication + #15 (ARCHIVED) preserved. 23rd consecutive wave with brainstorming + Phase 1 Explore + Phase 3 Review discipline.
 
-Polish-pass deliverables (post-«безупречно?» probe per `feedback_perfectionism.md`):
+**Polish-pass round 1** (post-«безупречно?» probe per `feedback_perfectionism.md`) — COMPLETE (commit `48e6040e1`):
 
-1. Build × 3 sha256 empirical verification of ≥28-wave invariant
-2. Full gate re-run (vitest + tsc + eslint + prettier + npm audit + curl smoke)
-3. 2-3 NEW CLAUDE.md ## Gotchas entries documenting W162-introduced patterns:
-   - Promise.race + process.exit(0) cleanup-hang fast-fail recipe (codebase-canonical pattern)
-   - prettier cosmosconfig cwd resolution (must run from `frontend/`)
-   - Asymmetric Linux CI vs Windows wrapper measurement model (production gate is CLS only)
+1. Build × 3 sha256 empirical verification of ≥28-wave invariant ✓ (main JS `b417bace...c0a2` + server.js `304095c1...4ac` BYTE-IDENTICAL × 3 + match W158 SW1 baseline EXACTLY)
+2. Full gate re-run ✓ (tsc 0 / eslint 0 / prettier clean / vitest 1058p/12s/0f in 29.26s / npm audit 0)
+3. 3 NEW CLAUDE.md ## Gotchas entries documenting W162-introduced patterns ✓:
+   - Promise.race + process.exit(0) cleanup-hang fast-fail recipe (W148 SW3 family extended to cleanup-hang class)
+   - Prettier cosmosconfig cwd resolution (must run from `frontend/` where `.prettierrc` lives)
+   - ≥28-wave BYTE-IDENTICAL bundle invariant empirically extended (Build × 3 verification)
+
+**Polish-pass round 2** (post-second «безупречно?» probe) — COMPLETE (this commit `wave162-polish-v2`):
+
+Self-audit surfaced documentation accuracy gaps that round 1 missed:
+
+1. **W141 anti-pattern #1 count CORRECTED** — initially documented as "13th defer-case" but W162 had ZERO defer-fires (Tier 1 was vacuous doc-only, no mechanism to iterate; Tier 2 was within-iter-successful single-mechanism Promise.race + process.exit). Correct framing: **16th total vindication, 12 defer-cases unchanged**. Per W160 + W161 historical convention (1 wave = 1 vindication). Fixed in: AUDIT_WAVE162.md (this file, multiple sections) + CLAUDE.md row + MEMORY.md rows + wave162_backlog.md + wave163_opening_prompt.md.
+2. **AUDIT_WAVE162.md SW4 commit row "(pending)" → `b4bbfdf38`** (actual commit SHA + file counts +306/-78)
+3. **AUDIT_WAVE162.md commits table — added polish row** `48e6040e1` (+6/-0 in CLAUDE.md)
+4. **AUDIT_WAVE162.md Hook chain compliance line — "all 3 commits" → "all 4 commits"** (SW1 + SW2 + SW4 + polish; polish-v2 also fires hook chain)
+5. **AUDIT_WAVE162.md Verification gates section — "TBD" → actual empirical values** (post-polish-pass verification)
+6. **AUDIT_WAVE162.md Executive Summary bundle invariant — "pending polish-pass empirical verification" → "CONFIRMED EMPIRICALLY × 3"** (round 1 already verified; documentation lagged)
+7. **Docker stack + curl smoke verification ran post-polish-v2** (5 services healthy; /login 200/21,732b; /messenger 307; /404 404; /healthz ok)
+
+**Anti-pattern #4 self-application**: polish-v2 closures attributed AFTER empirical correction-of-documentation pass; no premature closure claims.
 
 ---
 
