@@ -211,9 +211,9 @@ W160 verbose row addition in SW4 (~1,800-2,300 chars expected) will push to ~23,
 | LHCI gate ratcheted | CLS error@0.10 | **error@0.05** | ✅ APPLIED |
 | 81 LHRs captured | N/A | 81 LHRs (9 URLs × 3 runs × 3 sessions) | ✅ COMPLETE |
 | MEMORY.md size | 22,840 b | 21,050 b post-SW3 | ✅ |
-| Build × 3 sha256 | main JS `b417bace...c0a2`, server.js `304095c1...4ac` BYTE-IDENTICAL × 3 (W134-W159 ≥25-wave invariant) | NOT re-verified (W160 changed `run-lhci.mjs` which is NOT in production build path — separate from `npm run build` chain; invariant should hold) | ⚠ structurally-preserved, not re-run |
+| Build × 3 sha256 | main JS `b417bace...c0a2`, server.js `304095c1...4ac` BYTE-IDENTICAL × 3 (W134-W159 ≥25-wave invariant) | **EMPIRICALLY VERIFIED post-SW4 polish-pass**: main JS `b417bace9893d6f9d61a8e2743a786edc7cc42173fa2a2d5cdc65a47f4e1c0a2` + server.js `304095c1fa3296583c6edd5db5d70d621b9b8f33fb9b2786ebdbf1ea0cfe34ac` BYTE-IDENTICAL × 3 runs (`b417bace...c0a2` + `304095c1...4ac` match W159 baseline EXACTLY) | ✅ INVARIANT EXTENDS TO ≥26 WAVES |
 
-**Build × 3 re-verification deferral**: W160 SW2's only build-affecting change was inline LHCI gate assertion thresholds in `frontend/scripts/run-lhci.mjs:289` (from `maxNumericValue: 0.1` → `0.05`). This file is consumed by `npm run lhci` (LHCI assertion phase), NOT by `npm run build` (production build pipeline). The W134-W159 BYTE-IDENTICAL invariant for main JS + server.js sha256 is structurally preserved. Re-verification deferred to W161+ housekeeping if needed; W160 trusts the structural argument.
+**Build × 3 re-verification — polish-pass empirical extension** (2026-05-17 post-«безупречно?» probe): originally deferred per structural argument (W160 SW2 changed only `run-lhci.mjs` assertion thresholds, NOT production build pipeline). Post-SW4 polish-pass executed `BUILD_SKIP_PWA=true npm run build` × 3 anyway as defensive validation per user's "безупречно?" probe. **Result**: main JS sha256 + server.js sha256 BYTE-IDENTICAL across 3 runs AND match W134-W159 baseline EXACTLY (`b417bace...c0a2` + `304095c1...4ac`). The W134 SW3-W159 ≥25-wave invariant **EXTENDS through W160 → ≥26-wave BYTE-IDENTICAL invariant** empirically confirmed (not just structurally preserved). Each build ~22s wall-clock; total polish-pass build budget ~70s.
 
 ---
 
