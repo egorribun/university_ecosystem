@@ -139,8 +139,22 @@ async function createConfig() {
     url: useRemotePreview ? targetPaths.map((p) => `${base}${p === "/" ? "" : p}`) : targetPaths,
     chromePath,
     settings: {
+      // W161 SW1 — dropped `--disable-gpu` to unblock Lighthouse screenshot
+      // collection on Linux CI (closes W160 NEW #1). W160 measured Perf=null
+      // for ALL 81 LHRs across 3 sessions because `speed-index` +
+      // `screenshot-thumbnails` audits errored with "Chrome didn't collect
+      // any screenshots during the page load". `--headless=new` (Chrome 112+)
+      // uses software compositing by default — explicit `--disable-gpu` was
+      // redundant AND conflicted with Lighthouse's internal GPU/graphics
+      // pipeline for rendering screenshot frames. Individual metrics
+      // (CLS/LCP/TBT) measure via CDP traces unaffected by this fix; only
+      // composite Perf needed screenshots (speed-index audit input).
+      //
+      // Alternative if Approach A insufficient (within-iter sub-fix per
+      // W138 Lesson #1, NOT a mechanism pivot): swap `--headless=new` →
+      // `--headless=chrome` (legacy mode with established screenshot support).
       chromeFlags:
-        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
+        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=new",
       throttlingMethod: "devtools",
       emulatedFormFactor: "mobile",
       maxWaitForFcp: 45000,
