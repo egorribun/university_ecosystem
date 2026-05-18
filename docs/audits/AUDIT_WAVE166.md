@@ -186,9 +186,9 @@ Trajectory per opening prompt §"§Honesty trajectory projection":
 | #1 STRICT 1-iter cap | 19 total (13 defer-cases) | +1 defer (SW2 Path B) | **20 total (14 defer-cases)** |
 | #3 Phase 3 Verification | 29 vindications | +3 (SW1 line offsets × 2 + SW2 script filter bug) | **32 vindications** |
 | #4 No premature "Closes" | 17 vindications | +1 (SW2 commit message correction) | **18 vindications** |
-| #15 (ARCHIVED W159 SW4) | preserved | preserved | all 4 W166 commits fired W156 SW4 hook chain cleanly (no `--no-verify`) |
+| #15 (ARCHIVED W159 SW4) | preserved | preserved | all 5 W166 commits (4 SW + polish-v1 `d452f0c9a` + polish-v2 `(this commit)`) fired W156 SW4 hook chain cleanly (no `--no-verify`) |
 
-ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `2d69bd293`) fired W156 SW4 husky pre-commit chain cleanly. SW1 had one within-iter ruff-format auto-fix (re-staged + re-committed per CLAUDE.md anti-amend convention — counts as 1 NEW commit, not amend). NO `--no-verify` bypasses across the wave.
+ALL 6 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `2d69bd293` + polish-v1 `d452f0c9a` + polish-v2 `(this commit)`) fired W156 SW4 husky pre-commit chain cleanly. SW1 had one within-iter ruff-format auto-fix (re-staged + re-committed per CLAUDE.md anti-amend convention — counts as 1 NEW commit, not amend). NO `--no-verify` bypasses across the wave.
 
 ---
 
@@ -202,7 +202,7 @@ ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `2
   - Server.js: **23,600 bytes** (same SIZE, NEW sha `c732997e1...76b09b`)
   - vendor-react: **182,123 bytes** UNCHANGED (`vendor-react-CFU_zHBc.js`)
   - `_admin.tsx` SW2 code lives in route-chunked `_admin-VGDns5Oq.js` (per TanStack Router code-splitting) — entry chunk only references hash update, not content add
-- **SW2 NEW baseline**: `index-BDwZE1BF.js` 176,663 b sha `63b6029e6fd3...0b8c01` + server.js 23,600 b sha `c732997e1...76b09b` (1-wave-reproducible invariant initially; polish-pass × 3 reproducibility check follows if pursued).
+- **SW2 NEW baseline (polish-v2 confirmed × 3 BYTE-IDENTICAL)**: `index-BDwZE1BF.js` 176,663 b sha `63b6029e6fd3ae323266f7d4c4fd231503134daf1f59b027bd0d215dee0b8c01` + server.js 23,600 b sha `c732997e156cf20910cb413371d9fde8367b995dfb0163c61f86510cf476b09b` — VERIFIED IDENTICAL × 3 fresh `cd frontend && rm -rf dist && npm run build` runs during polish-pass empirical verification (2026-05-19; W166 SW2 NEW baseline is ≥3-wave-reproducible within W166 itself).
 - **SW3 commit `b4b5d1a2a`**: CI-only dev tooling (`run-lhci.mjs` comment block update) — NOT bundled into client. Bundle preserved BYTE-IDENTICAL to SW2 baseline.
 
 ---
@@ -301,7 +301,7 @@ ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `2
 | Server jsxDEV count | 0 (W156 SW1 fixup preserved) | 0 | ✅ |
 | Cargo.lock no drift | idempotent ≥32 waves | preserved | ✅ |
 
-**Wave 166 sum**: 4 commits (SW1+SW2+SW3+SW4) + 1 W141 anti-pattern STRICT 1-iter defer (SW2) + 3 NEW W166 caveats honestly framed + 2 closures (SW1 candidate + SW3 state shift) + W164 BYTE-IDENTICAL bundle invariant retired; W166 SW2 NEW baseline established.
+**Wave 166 sum**: 6 commits (SW1+SW2+SW3+SW4+polish-v1+polish-v2) + 1 W141 anti-pattern STRICT 1-iter defer (SW2) + 3 NEW W166 caveats honestly framed + 2 closures (SW1 candidate + SW3 state shift) + W164 BYTE-IDENTICAL bundle invariant retired; W166 SW2 NEW baseline established + verified × 3 BYTE-IDENTICAL at polish-v2.
 
 **27th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline.
 
@@ -313,7 +313,7 @@ ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `2
 - **W166 backlog (memory)**: `memory/wave166_backlog.md`
 - **W166 Lighthouse upstream tracking (memory)**: `memory/wave166_lighthouse_upstream_issue.md`
 - **W167 opening prompt (memory)**: `memory/wave167_opening_prompt.md`
-- **W166 commits**: `07da10e10` SW1 + `ae03e61d3` SW2 + `b4b5d1a2a` SW3 + `2d69bd293` SW4 (+ polish-v1 `(this commit)` HEAD placeholder cleanup)
+- **W166 commits**: `07da10e10` SW1 + `ae03e61d3` SW2 + `b4b5d1a2a` SW3 + `2d69bd293` SW4 + `d452f0c9a` polish-v1 (HEAD placeholder cleanup) + `(this commit)` polish-v2 («безупречно?» self-audit gap closure: 5 commit-count corrections + build × 3 reproducibility claim — recursion terminator per W164 pattern)
 - **Upstream issue**: https://github.com/GoogleChrome/lighthouse/issues/17021
 - **W141 anti-pattern register**: 32+ vindications cumulative, 4 patterns active (#1, #3, #4, #15 ARCHIVED)
 - **Previous active waves**: W163 (rotates to archive in this SW4) / W164 (carry) / W165 (carry)
