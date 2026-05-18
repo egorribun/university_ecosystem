@@ -391,7 +391,8 @@ Per Option B 3-4 wave commitment from W163, **W165 is the final wave in arc**. C
 - SW3 — `3c1a9230d` `fix(wave164-sw3-adminnotifications-signal-propagation)`
 - SW4 — `598277a31` `docs(wave164-sw4-audit)`
 - Polish-v1 — `7782e130f` `docs(wave164-polish-v1)` (replaced `(this commit)` HEAD placeholders with `598277a31` across 5 files: AUDIT_WAVE164.md × 2, CLAUDE.md, INDEX.md, wave164_backlog.md × 2, wave165_opening_prompt.md × 2)
-- Polish-v2 — `(this commit)` `docs(wave164-polish-v2)` (closes 4 «безупречно?» self-audit gaps: CLAUDE.md #4 vindication count 17th→18th; hook chain compliance count 3→4 commits × 3 files; polish-v1 inclusion in AUDIT + backlog commit lists; CI status post-push verified 7 SUCCESS + 1 skipped + Matrix Expansion in_progress)
+- Polish-v2 — `2ecf6653f` `docs(wave164-polish-v2)` (closes 4 «безупречно?» self-audit gaps: CLAUDE.md #4 vindication count 17th→18th; hook chain compliance count 3→4 commits × 4 files; polish-v1 inclusion in AUDIT + backlog commit lists; CI status post-push verified 7 SUCCESS + 1 skipped + Matrix Expansion in_progress)
+- Polish-v3 — `(this commit)` `docs(wave164-polish-v3)` (replaces 3 self-referential `(this commit)` placeholders for polish-v2 with `2ecf6653f` across AUDIT_WAVE164.md + wave164_backlog.md + CLAUDE.md ## Audit Trail row; breaks self-referential recursion)
 
 ---
 
