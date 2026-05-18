@@ -209,6 +209,14 @@ async function createConfig() {
       // runner experiment if measurement-parity demand emerges. See
       // CLAUDE.md ## Gotchas "Linux CI Lighthouse Perf=null platform
       // limitation" entry for the full closure narrative.
+      //
+      // W166 SW3 — Path (a) Lighthouse upstream issue FILED at
+      // https://github.com/GoogleChrome/lighthouse/issues/17021 with 108-LHR
+      // reproducibility evidence (81 LHRs W160 baseline + 27 LHRs W165
+      // ubuntu-22.04 cross-OS + W161 SW1 disproof attempts). State shifts
+      // from "permanent platform limitation accepted" (W162 SW1) to
+      // "tracked-upstream" — see also memory/wave166_lighthouse_upstream_issue.md
+      // for the full draft + anticipated maintainer-response timeline.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
