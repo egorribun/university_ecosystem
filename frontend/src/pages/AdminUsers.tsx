@@ -1,11 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { ColumnDef } from "@tanstack/react-table"
+import { useQueryClient } from "@tanstack/react-query"
 // PERF-20-05 (audit 2026-03-24): Debounce text filters.
 import { useDebounced } from "@/hooks/useDebounced"
 
 import api from "@/api/client"
+// Wave 163 SW3 — TanStack Query factories for the admin users + groups
+// endpoints. Closes W150 §Honesty #3 deferral.
+import {
+  invalidateAllAdminUsers,
+  useAdminGroupsQuery,
+  useAdminUsersQuery,
+  type AdminUser,
+  type AdminUserFilters,
+  type UserRole,
+} from "@/api/hooks/adminUsers"
 import Layout from "@/components/Layout"
 import { useAuth } from "@/contexts/AuthContext"
 import { buildAvatarUrl } from "@/utils/avatar"
@@ -15,31 +26,20 @@ import { DataTable } from "@/components/ui/data-table/DataTable"
 import { DataTableColumnHeader } from "@/components/ui/data-table/DataTableColumnHeader"
 import { ConfirmDialog } from "@/components/ui"
 
-type UserRole = "student" | "teacher" | "admin"
-
-type AdminUser = {
-  id: string
-  full_name: string
-  email: string
-  role: UserRole
-  group_id: string | null
-  avatar_url?: string | null
-}
-
-type Group = { id: string; name: string }
-
-type UserFilters = {
-  full_name: string
-  group_id: string
-  role: "" | UserRole
-}
+type UserFilters = AdminUserFilters
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [groups, setGroups] = useState<Group[]>([])
+  const queryClient = useQueryClient()
   const [filters, setFilters] = useState<UserFilters>({ full_name: "", group_id: "", role: "" })
   // PERF-20-05: Debounce text filter to prevent API spam on every keystroke.
-  const debouncedFilters = useDebounced(filters, "validation") // PERF-23-04: admin filters use validation preset (350ms)
+  // PERF-23-04: admin filters use validation preset (350ms).
+  const debouncedFilters = useDebounced(filters, "validation")
+  // Wave 163 SW3 — useAdminUsersQuery + useAdminGroupsQuery replace pre-W163
+  // useCallback fetchUsers/fetchGroups + useState + useEffect chain. Cache
+  // identity preserved via factory queryKey ["admin", "users", filters] +
+  // ["admin", "groups"]. Mutation paths invalidate via invalidateAllAdminUsers.
+  const { data: users = [] } = useAdminUsersQuery(debouncedFilters)
+  const { data: groups = [] } = useAdminGroupsQuery()
   const { user: userContext } = useAuth()
   const { t } = useTranslation("admin")
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
@@ -54,35 +54,13 @@ export default function AdminUsers() {
     [t]
   )
 
-  const fetchUsers = useCallback(async () => {
-    const queryParameters: Record<string, string> = {}
-    if (debouncedFilters.full_name) queryParameters.full_name = debouncedFilters.full_name
-    if (debouncedFilters.group_id) queryParameters.group_id = debouncedFilters.group_id
-    if (debouncedFilters.role) queryParameters.role = debouncedFilters.role
-    const response = await api.get<AdminUser[]>("/users", { params: queryParameters })
-    setUsers(Array.isArray(response.data) ? response.data : [])
-  }, [debouncedFilters])
-
-  const fetchGroups = useCallback(async () => {
-    const response = await api.get<Group[]>("/groups")
-    setGroups(Array.isArray(response.data) ? response.data : [])
-  }, [])
-
-  useEffect(() => {
-    void fetchUsers()
-  }, [fetchUsers])
-
-  useEffect(() => {
-    void fetchGroups()
-  }, [fetchGroups])
-
   const handleGroupChange = useCallback(
     async (userId: string, groupId: string) => {
       const nextGroup = groupId || null
       await api.patch(`/users/${userId}`, { group_id: nextGroup })
-      void fetchUsers()
+      void invalidateAllAdminUsers(queryClient)
     },
-    [fetchUsers]
+    [queryClient]
   )
 
   const handleDelete = useCallback((userId: string) => {
@@ -94,12 +72,12 @@ export default function AdminUsers() {
     setIsDeleting(true)
     try {
       await api.delete(`/users/${userToDelete}`)
-      void fetchUsers()
+      void invalidateAllAdminUsers(queryClient)
       setUserToDelete(null)
     } finally {
       setIsDeleting(false)
     }
-  }, [userToDelete, fetchUsers])
+  }, [userToDelete, queryClient])
 
   const handleFilterChange = useCallback(
     (field: keyof UserFilters) => (event: React.ChangeEvent<HTMLInputElement>) => {

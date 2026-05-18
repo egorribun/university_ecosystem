@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
@@ -12,11 +12,14 @@ import {
   User,
   Activity,
 } from "lucide-react"
-import api from "@/api/client"
+// Wave 163 SW3 — TanStack Query factory for /admin/audit. Closes W150
+// §Honesty #3 deferral. Pre-W163 used raw api.get in useCallback + useState
+// + useEffect; post-W163 uses useAdminAuditLogsQuery(filters, pagination).
+import { useAdminAuditLogsQuery } from "@/api/hooks/adminAudit"
 import Layout from "@/components/Layout"
 import { cn } from "@/utils/cn"
 import { SectionCard, TextField, Button } from "@/components/settings"
-import { AuditLog, AuditLogList } from "@/types/Admin"
+import { AuditLog } from "@/types/Admin"
 
 function Row({ log }: { log: AuditLog }) {
   const [open, setOpen] = useState(false)
@@ -200,9 +203,6 @@ function Row({ log }: { log: AuditLog }) {
 }
 
 export default function AdminAudit() {
-  const [logs, setLogs] = useState<AuditLog[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
   const rowsPerPage = 50
   const [filters, setFilters] = useState({ resource_type: "", action: "" })
@@ -210,27 +210,13 @@ export default function AdminAudit() {
   const { t } = useTranslation("admin")
   const reducedMotion = useReducedMotion()
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true)
-    try {
-      const queryParameters: Record<string, unknown> = {
-        limit: rowsPerPage,
-        offset: page * rowsPerPage,
-      }
-      if (filters.resource_type) queryParameters.resource_type = filters.resource_type
-      if (filters.action) queryParameters.action = filters.action
-
-      const response = await api.get<AuditLogList>("/admin/audit", { params: queryParameters })
-      setLogs(response.data.items)
-      setTotal(response.data.total)
-    } finally {
-      setLoading(false)
-    }
-  }, [page, rowsPerPage, filters])
-
-  useEffect(() => {
-    void fetchLogs()
-  }, [fetchLogs])
+  // Wave 163 SW3 — useAdminAuditLogsQuery replaces pre-W163 useCallback
+  // fetchLogs + useState(logs/total/loading) + useEffect. Pagination
+  // round-trips don't refetch already-cached pages because filters +
+  // pagination are part of the queryKey.
+  const { data, isPending: loading } = useAdminAuditLogsQuery(filters, { page, rowsPerPage })
+  const logs: AuditLog[] = data?.items ?? []
+  const total = data?.total ?? 0
 
   return (
     <Layout>

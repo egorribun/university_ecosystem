@@ -1,35 +1,27 @@
-import { useCallback, useEffect, useState } from "react"
 import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Info, Percent } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
+// Wave 163 SW3 — TanStack Query factory for /admin/feature-flags.
+// Closes W150 §Honesty #3 deferral.
+import { updateFeatureFlagInCache, useAdminFeatureFlagsQuery } from "@/api/hooks/adminFeatureFlags"
 import Layout from "@/components/Layout"
 import { SwitchControl, Chip } from "@/components/settings"
-import { FeatureFlag, FlagStatus } from "@/types/Admin"
+import type { FlagStatus } from "@/types/Admin"
 
 export default function AdminFeatureFlags() {
-  const [flags, setFlags] = useState<FeatureFlag[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  // Wave 163 SW3 — useAdminFeatureFlagsQuery replaces pre-W163 useCallback
+  // fetchFlags + useState + useEffect. Loading state derived from isPending.
+  const { data: flags = [], isPending: loading } = useAdminFeatureFlagsQuery()
   const { t } = useTranslation("admin")
   const reducedMotion = useReducedMotion()
-
-  const fetchFlags = useCallback(async () => {
-    try {
-      const response = await api.get<FeatureFlag[]>("/admin/feature-flags")
-      setFlags(response.data)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void fetchFlags()
-  }, [fetchFlags])
 
   const handleToggle = async (name: string, currentStatus: FlagStatus) => {
     const nextStatus: FlagStatus = currentStatus === "disabled" ? "enabled" : "disabled"
     await api.patch(`/admin/feature-flags/${name}`, { status: nextStatus })
-    void fetchFlags()
+    updateFeatureFlagInCache(queryClient, name, { status: nextStatus })
   }
 
   const handlePercentageChange = async (name: string, value: number) => {
@@ -37,7 +29,7 @@ export default function AdminFeatureFlags() {
       status: "percentage",
       percentage: value,
     })
-    void fetchFlags()
+    updateFeatureFlagInCache(queryClient, name, { status: "percentage", percentage: value })
   }
 
   const getStatusColor = (status: FlagStatus) => {

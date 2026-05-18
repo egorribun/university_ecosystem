@@ -9,16 +9,20 @@ import { Alert, Button, TextField, SectionCard, CircularProgress } from "@/compo
 
 import {
   fetchAdminUserTopics,
-  fetchDeadLetterQueue,
   purgeDeadLetterJobs,
   retryDeadLetterJobs,
   updateAdminUserTopics,
 } from "@/api/notifications"
+// Wave 163 SW3 — refactor inline ["admin", "notifications", "dead-letter"]
+// queryKey to factory. queryKey shape PRESERVED EXACTLY for cache identity.
+// Closes W150 §Honesty #3 deferral for the AdminNotifications page.
+import {
+  adminDeadLetterQueueQueryKey,
+  adminDeadLetterQueueQueryOptions,
+} from "@/api/hooks/adminNotifications"
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { useLocaleFormatters } from "@/i18n/formatters"
-
-const queryKey = ["admin", "notifications", "dead-letter"] as const
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError(error)) {
@@ -80,10 +84,7 @@ export default function AdminNotifications() {
     []
   )
 
-  const listQuery = useQuery({
-    queryKey,
-    queryFn: () => fetchDeadLetterQueue(),
-  })
+  const listQuery = useQuery(adminDeadLetterQueueQueryOptions())
 
   const resetSelection = () => setSelected(new Set())
 
@@ -100,7 +101,7 @@ export default function AdminNotifications() {
     },
     onSuccess: () => {
       resetSelection()
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ queryKey: adminDeadLetterQueueQueryKey })
     },
     onError: onActionError,
   })
@@ -114,7 +115,7 @@ export default function AdminNotifications() {
     },
     onSuccess: () => {
       resetSelection()
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ queryKey: adminDeadLetterQueueQueryKey })
     },
     onError: onActionError,
   })
