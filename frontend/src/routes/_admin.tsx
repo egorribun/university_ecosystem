@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 import { useReducedMotion } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
@@ -8,12 +9,41 @@ import { AdminBackdrop } from "@/features/admin/components/AdminBackdrop"
 // /admin routes (mirrors W84 ActivityFeature pattern). Indigo/slate palette
 // scoped via tokens/admin.css. `overflow-x-clip` clips backdrop orbs without
 // breaking position: sticky (W77-FIX-77-05 pattern).
+//
+// W166 SW2 — mounted-state pattern (W156 SW3 LiveRegionProvider canonical
+// at frontend/src/components/ui/LiveRegionProvider.tsx:50-115) closes the
+// React #418 hydration mismatch caused by `useReducedMotion()` +
+// `useMediaQuery()` returning SSR defaults (`false` + `false`) vs CSR
+// browser values (e.g., `true` + `true` on mobile). Pre-W166 SW2,
+// AdminBackdrop received divergent props across the SSR→CSR boundary:
+// SSR rendered all 4 orbs (no conditional skips); CSR on mobile rendered
+// only orbs #1 and #3 (skipping #2 highlight + #4 conic drift) → DOM
+// subtree mismatch → React #418 with args[]=HTML&args[]= (verified
+// W165 SW3 sidecar at frontend/.screenshots/wave165-admin-visual-smoke/
+// admin_audit_light.json:24,56 — same error class as W155 SW3.A).
+//
+// Standard pattern: server + client first render both see `mounted=false`
+// → both pass safe defaults (matching DOM output). useEffect fires
+// post-hydration → setMounted(true) triggers re-render with real hook
+// values. Single-frame visual flicker on mobile (~16ms at 60fps) is
+// imperceptible and acceptable per W156 SW3 trade-off.
 function AdminLayout() {
+  const [mounted, setMounted] = useState(false)
   const prefersReducedMotion = useReducedMotion() ?? false
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  // Server + client initial render: pass defaults (mounted=false branch).
+  // After hydration: useEffect → re-render with actual hook values.
+  const ssrSafeIsNarrow = mounted ? isNarrow : false
+  const ssrSafePrefersReducedMotion = mounted ? prefersReducedMotion : false
   return (
     <div className="admin-theme relative overflow-x-clip">
-      <AdminBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+      <AdminBackdrop
+        isNarrow={ssrSafeIsNarrow}
+        prefersReducedMotion={ssrSafePrefersReducedMotion}
+      />
       <div className="relative z-[1]">
         <Outlet />
       </div>
