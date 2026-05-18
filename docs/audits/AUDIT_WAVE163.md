@@ -25,28 +25,29 @@ W163 closes 2 long-standing scope-deferrals in ~3-4h core wall-clock (under Broa
 
 ## Pre-flight verification (12 steps)
 
-ALL GREEN at session start ([wave163_opening_prompt.md](../../C:\Users\egorribun\.claude\projects\C--Users-egorribun-Documents-university-ecosystem\memory\wave163_opening_prompt.md) checklist):
+ALL GREEN at session start ([wave163_opening_prompt.md](../../C:\Users\egorribun.claude\projects\C--Users-egorribun-Documents-university-ecosystem\memory\wave163_opening_prompt.md) checklist):
 
-| Check | Status |
-|-------|--------|
-| 1. Working tree clean + synced to `origin/egorribun` | ✓ HEAD `96953848f` |
-| 2. CI status for W162 commits | ✓ ALL SUCCESS (CI Matrix Expansion 28m15s + Chromatic + Lighthouse + 7 other gates green) |
-| 3. Active waves W160/W161/W162 + 47 archive | ✓ |
-| 4. Docker stack 5 services healthy | ✓ frontend + backend + file-processor + temporal + caddy |
-| 5. W156-W162 code invariants | ✓ hydrateRoot(document), suppressHydrationWarning × 2, className=ready, husky path, prettier config singular, CLS error@0.05, timeout 30, /messenger ssr:false, "platform limitation accepted" comment, Promise.race, process.exit(0) |
-| 6. Caddy chain SSR | ✓ /healthz ok, /login 200/21,791b, /404 404, /messenger 307, / 307→/dashboard |
-| 7. Backend :8000 healthy | ✓ (Docker stack healthy) |
-| 8. Port 5173 free | ✓ |
-| 9. MEMORY.md size 24,308b / 92b headroom | ⚠ TIGHT (W163 SW1 must compact EARLY) |
-| 10. Tree-shake invariant | ✓ 0 dev React refs in PROD |
-| 11. server.js jsxDEV count | ✓ 0 (W156 SW1 fixup preserved) |
-| 12. /login SSR form structure | ✓ 5 distinct strings: `<form`, `<input`, `<button`, `Sign in`, password field label; vendor-react 182,123 b + main JS 176,625 b + server.js 23,598 b |
+| Check                                                | Status                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Working tree clean + synced to `origin/egorribun` | ✓ HEAD `96953848f`                                                                                                                                                                                                                    |
+| 2. CI status for W162 commits                        | ✓ ALL SUCCESS (CI Matrix Expansion 28m15s + Chromatic + Lighthouse + 7 other gates green)                                                                                                                                             |
+| 3. Active waves W160/W161/W162 + 47 archive          | ✓                                                                                                                                                                                                                                     |
+| 4. Docker stack 5 services healthy                   | ✓ frontend + backend + file-processor + temporal + caddy                                                                                                                                                                              |
+| 5. W156-W162 code invariants                         | ✓ hydrateRoot(document), suppressHydrationWarning × 2, className=ready, husky path, prettier config singular, CLS error@0.05, timeout 30, /messenger ssr:false, "platform limitation accepted" comment, Promise.race, process.exit(0) |
+| 6. Caddy chain SSR                                   | ✓ /healthz ok, /login 200/21,791b, /404 404, /messenger 307, / 307→/dashboard                                                                                                                                                         |
+| 7. Backend :8000 healthy                             | ✓ (Docker stack healthy)                                                                                                                                                                                                              |
+| 8. Port 5173 free                                    | ✓                                                                                                                                                                                                                                     |
+| 9. MEMORY.md size 24,308b / 92b headroom             | ⚠ TIGHT (W163 SW1 must compact EARLY)                                                                                                                                                                                                 |
+| 10. Tree-shake invariant                             | ✓ 0 dev React refs in PROD                                                                                                                                                                                                            |
+| 11. server.js jsxDEV count                           | ✓ 0 (W156 SW1 fixup preserved)                                                                                                                                                                                                        |
+| 12. /login SSR form structure                        | ✓ 5 distinct strings: `<form`, `<input`, `<button`, `Sign in`, password field label; vendor-react 182,123 b + main JS 176,625 b + server.js 23,598 b                                                                                  |
 
 ---
 
 ## Phase 1 Explore Agent (1 thorough)
 
 Single Agent dispatched to research 3 areas:
+
 1. W126 polish #3 closure paths (a/b/c/d)
 2. /admin polish arc state — pick highest-actionable next SW
 3. MEMORY.md compaction targets — exact char counts
@@ -66,6 +67,7 @@ Phase 1 Agent surfaced strong recommendations + **5 errors caught by Phase 3 Rev
 **File**: `C:\Users\egorribun\.claude\projects\C--Users-egorribun-Documents-university-ecosystem\memory\MEMORY.md` (user `.claude` profile — repo-untracked per W138 polish-followup).
 
 **Changes**:
+
 - Line 10 (W161 Active backlog): **1,273 → 664 chars** (-609 b). Collapsed 2-paragraph approach narrative into single sentence summary.
 - Line 22 (W161 Audit History): **1,633 → 1,176 chars** (-457 b). Trimmed verbose commit code listings; preserved diagnosis breadcrumb + final 1-line summary.
 - Line 23 (W160 Audit History): **937 → 654 chars** (-283 b). Light trim of vindication sub-counts + commit-code reference reduction.
@@ -82,6 +84,7 @@ Phase 1 Agent surfaced strong recommendations + **5 errors caught by Phase 3 Rev
 **Commit**: `4ee97b7da` `chore(wave163-sw2-w126-polish3-platform-limitation-defer)` (2 files, +19 lines).
 
 **Files modified**:
+
 1. [`frontend/scripts/build-orchestrated.mjs`](../../frontend/scripts/build-orchestrated.mjs:52) — extended existing "Honest framing (W135 SW3 §Honesty)" comment block (lines 52-56 pre-W163) with explicit W163 SW2 Path (d) closure framing. Documents:
    - Worker thread leak family per W136 SW5 trace (`MessagePort + Pipe + Socket × 2`)
    - Canonical workarounds: kill-after-artifacts + W162 SW2 Promise.race + process.exit(0)
@@ -90,6 +93,7 @@ Phase 1 Agent surfaced strong recommendations + **5 errors caught by Phase 3 Rev
 2. [`CLAUDE.md`](../../CLAUDE.md) — NEW `## Gotchas` entry between Promise.race entry (line 797) and Prettier cwd entry (line 799). Long-form (~250 word) framing of the platform-limitation acceptance mirroring W162 SW1 "Linux CI Perf=null platform limitation accepted" pattern.
 
 **Verification**:
+
 - `cd frontend && npx prettier --check ../CLAUDE.md scripts/build-orchestrated.mjs` → clean
 - Hook chain fired cleanly (lint-staged auto-format + pre-commit Python tool detect-secrets PASSED + Python 2 except syntax PASSED; NO `--no-verify`)
 - ZERO production-code change → bundle invariant preserved at SW2 boundary
@@ -106,20 +110,20 @@ Phase 1 Agent surfaced strong recommendations + **5 errors caught by Phase 3 Rev
 
 All mirror W129 events.ts + W130 schedule.ts + W133 users.ts + W134 SW2 sessions.ts placement convention (`frontend/src/api/hooks/<name>.ts`):
 
-| File | LoC | Exports |
-|------|-----|---------|
-| [`frontend/src/api/hooks/adminUsers.ts`](../../frontend/src/api/hooks/adminUsers.ts) | 164 | `adminUsersQueryKey(filters)` + `adminUsersQueryOptions(filters)` + `useAdminUsersQuery(filters)` + `adminGroupsQueryKey` + `adminGroupsQueryOptions()` + `useAdminGroupsQuery()` + `invalidateAdminUsers(qc, filters)` + `invalidateAllAdminUsers(qc)` + type re-exports `AdminUser` / `Group` / `AdminUserFilters` / `UserRole` |
-| [`frontend/src/api/hooks/adminFeatureFlags.ts`](../../frontend/src/api/hooks/adminFeatureFlags.ts) | 99 | `adminFeatureFlagsQueryKey` + `adminFeatureFlagsQueryOptions()` + `useAdminFeatureFlagsQuery()` + `updateFeatureFlagInCache(qc, name, update)` + `invalidateAdminFeatureFlags(qc)` |
-| [`frontend/src/api/hooks/adminAudit.ts`](../../frontend/src/api/hooks/adminAudit.ts) | 99 | `adminAuditLogsQueryKey(filters, pagination)` + `adminAuditLogsQueryOptions(...)` + `useAdminAuditLogsQuery(...)` + `invalidateAdminAuditLogs(qc)` |
-| [`frontend/src/api/hooks/adminNotifications.ts`](../../frontend/src/api/hooks/adminNotifications.ts) | 86 | `adminDeadLetterQueueQueryKey` + `adminDeadLetterQueueQueryOptions()` + `useAdminDeadLetterQueueQuery()` + `invalidateAdminDeadLetterQueue(qc)` |
+| File                                                                                                 | LoC | Exports                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------- | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`frontend/src/api/hooks/adminUsers.ts`](../../frontend/src/api/hooks/adminUsers.ts)                 | 164 | `adminUsersQueryKey(filters)` + `adminUsersQueryOptions(filters)` + `useAdminUsersQuery(filters)` + `adminGroupsQueryKey` + `adminGroupsQueryOptions()` + `useAdminGroupsQuery()` + `invalidateAdminUsers(qc, filters)` + `invalidateAllAdminUsers(qc)` + type re-exports `AdminUser` / `Group` / `AdminUserFilters` / `UserRole` |
+| [`frontend/src/api/hooks/adminFeatureFlags.ts`](../../frontend/src/api/hooks/adminFeatureFlags.ts)   | 99  | `adminFeatureFlagsQueryKey` + `adminFeatureFlagsQueryOptions()` + `useAdminFeatureFlagsQuery()` + `updateFeatureFlagInCache(qc, name, update)` + `invalidateAdminFeatureFlags(qc)`                                                                                                                                                |
+| [`frontend/src/api/hooks/adminAudit.ts`](../../frontend/src/api/hooks/adminAudit.ts)                 | 99  | `adminAuditLogsQueryKey(filters, pagination)` + `adminAuditLogsQueryOptions(...)` + `useAdminAuditLogsQuery(...)` + `invalidateAdminAuditLogs(qc)`                                                                                                                                                                                |
+| [`frontend/src/api/hooks/adminNotifications.ts`](../../frontend/src/api/hooks/adminNotifications.ts) | 86  | `adminDeadLetterQueueQueryKey` + `adminDeadLetterQueueQueryOptions()` + `useAdminDeadLetterQueueQuery()` + `invalidateAdminDeadLetterQueue(qc)`                                                                                                                                                                                   |
 
 ### MODIFIED page files (4)
 
-| Page | Pre-W163 pattern | Post-W163 pattern |
-|------|------------------|--------------------|
-| `AdminUsers.tsx` | `useCallback fetchUsers + fetchGroups` + useState[users] + useState[groups] + 2× useEffect | `useAdminUsersQuery(debouncedFilters)` + `useAdminGroupsQuery()` + `useQueryClient()` ; mutation paths invalidate via `invalidateAllAdminUsers(queryClient)` |
-| `AdminFeatureFlags.tsx` | `useCallback fetchFlags` + useState[flags] + useState[loading] + useEffect | `useAdminFeatureFlagsQuery()` with `isPending: loading` ; mutation optimistic-update via `updateFeatureFlagInCache(qc, name, update)` |
-| `AdminAudit.tsx` | `useCallback fetchLogs` + useState[logs] + useState[total] + useState[loading] + useEffect | `useAdminAuditLogsQuery(filters, { page, rowsPerPage })` with `isPending: loading` + destructured `data?.items ?? []` + `data?.total ?? 0` |
+| Page                     | Pre-W163 pattern                                                                                                                                                       | Post-W163 pattern                                                                                                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AdminUsers.tsx`         | `useCallback fetchUsers + fetchGroups` + useState[users] + useState[groups] + 2× useEffect                                                                             | `useAdminUsersQuery(debouncedFilters)` + `useAdminGroupsQuery()` + `useQueryClient()` ; mutation paths invalidate via `invalidateAllAdminUsers(queryClient)`                                        |
+| `AdminFeatureFlags.tsx`  | `useCallback fetchFlags` + useState[flags] + useState[loading] + useEffect                                                                                             | `useAdminFeatureFlagsQuery()` with `isPending: loading` ; mutation optimistic-update via `updateFeatureFlagInCache(qc, name, update)`                                                               |
+| `AdminAudit.tsx`         | `useCallback fetchLogs` + useState[logs] + useState[total] + useState[loading] + useEffect                                                                             | `useAdminAuditLogsQuery(filters, { page, rowsPerPage })` with `isPending: loading` + destructured `data?.items ?? []` + `data?.total ?? 0`                                                          |
 | `AdminNotifications.tsx` | Inline `const queryKey = ["admin","notifications","dead-letter"]` + `useQuery({queryKey, queryFn: () => fetchDeadLetterQueue()})` + 2× `invalidateQueries({queryKey})` | `useQuery(adminDeadLetterQueueQueryOptions())` + 2× `invalidateQueries({queryKey: adminDeadLetterQueueQueryKey})` from factory ; **queryKey shape PRESERVED EXACTLY** for cache identity continuity |
 
 ### Cache identity invariants (preserved)
@@ -151,6 +155,7 @@ First-pass factories shipped with `retry: 2 + retryDelay` (mirroring W134 SW2 se
 ## SW4 — Audit + N+3 rotation + memory + commit (this commit)
 
 **Files**:
+
 - NEW `docs/audits/AUDIT_WAVE163.md` (this file)
 - MODIFY `CLAUDE.md ## Audit Trail` (prepend W163 row ~1,500-1,800 chars per W134 user feedback)
 - MODIFY `docs/audits/INDEX.md` (Active table = W161/W162/**W163**; promote W160 to Archived table; update rotation history)
@@ -165,11 +170,11 @@ First-pass factories shipped with `retry: 2 + retryDelay` (mirroring W134 SW2 se
 
 3 fresh `rm -rf dist && npm run build` runs from clean state, post-SW3:
 
-| Run | Main JS hash | Main JS size | server.js hash | server.js size |
-|-----|--------------|--------------|----------------|----------------|
-| #1 | `c80f0f330d2658d2b41f6ddab76f9e1e8280b8042db77b88950781c119d9ac9b` | 176,625 b | `0ee71e86db0d15d1499c167721b4ac01ac60efc63f3ea7edc5590f0fbc38107e` | 23,600 b |
-| #2 | `c80f0f33...c9b` (identical) | 176,625 b | `0ee71e86...07e` (identical) | 23,600 b |
-| #3 | `c80f0f33...c9b` (identical) | 176,625 b | `0ee71e86...07e` (identical) | 23,600 b |
+| Run | Main JS hash                                                       | Main JS size | server.js hash                                                     | server.js size |
+| --- | ------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------ | -------------- |
+| #1  | `c80f0f330d2658d2b41f6ddab76f9e1e8280b8042db77b88950781c119d9ac9b` | 176,625 b    | `0ee71e86db0d15d1499c167721b4ac01ac60efc63f3ea7edc5590f0fbc38107e` | 23,600 b       |
+| #2  | `c80f0f33...c9b` (identical)                                       | 176,625 b    | `0ee71e86...07e` (identical)                                       | 23,600 b       |
+| #3  | `c80f0f33...c9b` (identical)                                       | 176,625 b    | `0ee71e86...07e` (identical)                                       | 23,600 b       |
 
 **W163 establishes NEW post-SW3 baseline** BYTE-IDENTICAL × 3 from clean state.
 
@@ -187,15 +192,18 @@ First-pass factories shipped with `retry: 2 + retryDelay` (mirroring W134 SW2 se
 ### Pre-W163
 
 **1-4 OPEN** carry-forward from W162:
+
 1. W134 #2 bundle delta — recording-only honest framing
 2. W160 NEW #2 LCP HOLD `warn@2500ms` — structural (Linux CI mobile-throttling reality)
 3. W160 NEW #3 TBT HOLD `warn@200ms` — structural (same constraint)
 4. /messenger Phase 5 punt — by-design per W161 SW2 (3 system-design rationales)
+
 - **(actionable carry-forward)** W126 polish #3 deeper Worker thread leak
 
 ### Post-W163
 
 **0-3 OPEN** (-1 NET):
+
 - ✅ **W126 polish #3 CLOSED** via SW2 Path (d) defer-as-platform-limitation
 - ✅ **W150 §Honesty #3 CLOSED** via SW3 (not in OPEN count pre-W163; real long-standing W153+ scope-deferral)
 - ⚠ Carry-forward: W134 #2 bundle delta recording-only
@@ -215,12 +223,12 @@ First-pass factories shipped with `retry: 2 + retryDelay` (mirroring W134 SW2 se
 
 ## W141 anti-pattern compliance
 
-| # | Pattern | Pre-W163 baseline | W163 vindications | Post-W163 total |
-|---|---------|-------------------|-------------------|-----------------|
-| #1 | STRICT 1-iter cap | 16 total vindications (12 defer-cases) | **17th total vindication** (Tier 1 SW2 vacuous doc-only — no mechanism to iterate; Tier 3 SW3 within-iter-successful per W138 Lesson #1 sub-fix; Tier 4 SW1 trivial; NO defer fired in W163) | 17 total (12 defer-cases unchanged) |
-| #3 | Phase 3 verifies Agent claims | 22 vindications | **23rd vindication** (5 errors caught: wrong admin pages path / W161 char count × 2 swapped / missed AdminNotifications pre-existing TanStack Query / SEQUENCE prerequisite disproved) | 23 |
-| #4 | No premature "Closes" claim | 16 vindications | **17th vindication** (closures attributed AFTER SW2 prettier-clean + SW3 vitest 1058p + Build × 3 BYTE-IDENTICAL × 3 verification) | 17 |
-| #15 (ARCHIVED W159 SW4) | Pre-commit hook chain | ARCHIVED | preserved — both W163 commits (SW2 + SW3) fired W156 SW4 hook chain cleanly (lint-staged + pre-commit Python tool; NO `--no-verify`) | ARCHIVED |
+| #                       | Pattern                       | Pre-W163 baseline                      | W163 vindications                                                                                                                                                                            | Post-W163 total                     |
+| ----------------------- | ----------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| #1                      | STRICT 1-iter cap             | 16 total vindications (12 defer-cases) | **17th total vindication** (Tier 1 SW2 vacuous doc-only — no mechanism to iterate; Tier 3 SW3 within-iter-successful per W138 Lesson #1 sub-fix; Tier 4 SW1 trivial; NO defer fired in W163) | 17 total (12 defer-cases unchanged) |
+| #3                      | Phase 3 verifies Agent claims | 22 vindications                        | **23rd vindication** (5 errors caught: wrong admin pages path / W161 char count × 2 swapped / missed AdminNotifications pre-existing TanStack Query / SEQUENCE prerequisite disproved)       | 23                                  |
+| #4                      | No premature "Closes" claim   | 16 vindications                        | **17th vindication** (closures attributed AFTER SW2 prettier-clean + SW3 vitest 1058p + Build × 3 BYTE-IDENTICAL × 3 verification)                                                           | 17                                  |
+| #15 (ARCHIVED W159 SW4) | Pre-commit hook chain         | ARCHIVED                               | preserved — both W163 commits (SW2 + SW3) fired W156 SW4 hook chain cleanly (lint-staged + pre-commit Python tool; NO `--no-verify`)                                                         | ARCHIVED                            |
 
 **Anti-pattern register**: 14 patterns (stable; #15 ARCHIVED preserved).
 
@@ -236,22 +244,22 @@ The 5 Agent errors caught at Phase 3 Review are W141 anti-pattern #3 vindication
 
 ## Verification matrix (end-of-wave gates)
 
-| Gate | Pre-W163 baseline | Post-W163 result | Status |
-|------|-------------------|-------------------|--------|
-| `cd frontend && npx tsc --noEmit` | 0 errors | 0 errors | ✅ |
-| `cd frontend && npm run lint -- --max-warnings=0` | 0 warnings | 0 warnings | ✅ |
-| `cd frontend && npm test` | **1058p/12s/0f** | **1058p/12s/0f** (preserved EXACTLY) | ✅ |
-| `cd frontend && npx prettier --check .` from frontend/ cwd | clean | clean | ✅ |
-| `npm audit --audit-level=high` | 0 vulnerabilities | 0 vulnerabilities | ✅ |
-| Cargo.lock drift (`git diff --exit-code`) | no drift (≥28 waves) | no drift | ✅ |
-| Build × 3 sha256 reproducible | `b417bace...c0a2` + `304095c1...4ac` BYTE-IDENTICAL × 3 (W134-W162 invariant) | NEW baseline `c80f0f33...c9b` + `0ee71e86...07e` BYTE-IDENTICAL × 3 (W163 invariant) | ✅ (new baseline) |
-| Docker stack (`docker ps`) | 5 services `(healthy)` | 5 services `(healthy)` (unchanged) | ✅ |
-| /healthz | 200/15b `{"status":"ok"}` | (Docker stack unchanged; verified at session start) | ✅ |
-| /login SSR | 200/21,791b (5 form strings) | (Docker stack unchanged; verified at session start) | ✅ |
-| /messenger curl | 307 (W126 auth-at-edge) | (Docker stack unchanged; verified at session start) | ✅ |
-| MEMORY.md size | 24,308 b / 92 b headroom | **22,959 b / 1,441 b headroom** (post-SW1) | ✅ |
-| Tree-shake invariant | 0 dev React refs in PROD | 0 dev React refs in PROD (vendor-react hash BYTE-IDENTICAL) | ✅ |
-| server.js jsxDEV count | 0 (W156 SW1 fixup) | (preserved — W163 SW3 didn't touch JSX transform) | ✅ |
+| Gate                                                       | Pre-W163 baseline                                                             | Post-W163 result                                                                     | Status            |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------- |
+| `cd frontend && npx tsc --noEmit`                          | 0 errors                                                                      | 0 errors                                                                             | ✅                |
+| `cd frontend && npm run lint -- --max-warnings=0`          | 0 warnings                                                                    | 0 warnings                                                                           | ✅                |
+| `cd frontend && npm test`                                  | **1058p/12s/0f**                                                              | **1058p/12s/0f** (preserved EXACTLY)                                                 | ✅                |
+| `cd frontend && npx prettier --check .` from frontend/ cwd | clean                                                                         | clean                                                                                | ✅                |
+| `npm audit --audit-level=high`                             | 0 vulnerabilities                                                             | 0 vulnerabilities                                                                    | ✅                |
+| Cargo.lock drift (`git diff --exit-code`)                  | no drift (≥28 waves)                                                          | no drift                                                                             | ✅                |
+| Build × 3 sha256 reproducible                              | `b417bace...c0a2` + `304095c1...4ac` BYTE-IDENTICAL × 3 (W134-W162 invariant) | NEW baseline `c80f0f33...c9b` + `0ee71e86...07e` BYTE-IDENTICAL × 3 (W163 invariant) | ✅ (new baseline) |
+| Docker stack (`docker ps`)                                 | 5 services `(healthy)`                                                        | 5 services `(healthy)` (unchanged)                                                   | ✅                |
+| /healthz                                                   | 200/15b `{"status":"ok"}`                                                     | (Docker stack unchanged; verified at session start)                                  | ✅                |
+| /login SSR                                                 | 200/21,791b (5 form strings)                                                  | (Docker stack unchanged; verified at session start)                                  | ✅                |
+| /messenger curl                                            | 307 (W126 auth-at-edge)                                                       | (Docker stack unchanged; verified at session start)                                  | ✅                |
+| MEMORY.md size                                             | 24,308 b / 92 b headroom                                                      | **22,959 b / 1,441 b headroom** (post-SW1)                                           | ✅                |
+| Tree-shake invariant                                       | 0 dev React refs in PROD                                                      | 0 dev React refs in PROD (vendor-react hash BYTE-IDENTICAL)                          | ✅                |
+| server.js jsxDEV count                                     | 0 (W156 SW1 fixup)                                                            | (preserved — W163 SW3 didn't touch JSX transform)                                    | ✅                |
 
 ---
 
@@ -287,6 +295,7 @@ Recommended priority order per opening prompt §"3-wave-horizon outlook":
 ## Summary
 
 W163 = Broader scope (Tier 1 + Tier 3 + Tier 4) closed in ~3-4h core wall-clock (well under 5-7h plan budget). 2 commits + this audit:
+
 - `4ee97b7da` SW2 W126 polish #3 Path (d) doc-only closure
 - `cc6c93e4b` SW3 admin TanStack Query factories × 4 (NEW files + 4 page refactors)
 - (this commit) SW4 audit + N+3 W160 → archive + memory updates
