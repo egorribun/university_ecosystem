@@ -59,20 +59,26 @@ jobs:
   lhci:
     name: Lighthouse on Linux
     # W165 SW2 Tier 1 — Path (b) alternate runner experiment per
-    # frontend/scripts/run-lhci.mjs:171-174 framing. Tests whether mobile-
-    # throttling Linux CI Perf=null + LCP/TBT inflation (W160 NEW #1+#2+#3
-    # per W162 SW1 "platform / limitation accepted" closure at run-lhci.mjs:
-    # 142-211) is reproducible on a DIFFERENT but plausibly-similar runner
-    # OR is structural Lighthouse 13.1.0 issue. W160 SW2 81-LHR baseline on
-    # ubuntu-latest (= ubuntu-24.04): Perf=null all 9 URLs, LCP worst 2895ms
-    # on /, TBT worst 549ms on /. W141 anti-pattern #1 STRICT 1-iter cap:
-    # if ubuntu-22.04 reproduces Perf=null → honest defer + revert to
-    # ubuntu-latest in SW2-revert (preserves 81-LHR cross-wave comparability).
-    # If Perf scores populate → run 2 more sessions for full 81-LHR cross-
-    # session methodology + LCP/TBT ratchet decision tree (closes W160
-    # NEW #2 LCP + #3 TBT). Same `concurrency.group + cancel-in-progress`
-    # gates sequential sessions per W160 SW2 methodology.
-    runs-on: ubuntu-22.04
+    # frontend/scripts/run-lhci.mjs:171-174 framing. **TESTED + REVERTED**.
+    # Experiment ran ubuntu-22.04 vs ubuntu-latest (= ubuntu-24.04 alias).
+    # RESULT (CI run 26039934635 on 2026-05-18, 24m42s, single-session
+    # 9 URLs × 3 runs = 27 LHRs): **Perf=null reproduced for ALL 9 URLs**
+    # (Path B outcome per W141 anti-pattern #1 STRICT 1-iter cap; 19th
+    # total vindication post-W164). ubuntu-22.04 single-session medians:
+    # / LCP 2811ms TBT 493ms (W160 baseline: 2895/549 on ubuntu-latest),
+    # /dashboard LCP 2837/502 (W160: 2857/517) — within ±50-100ms variance.
+    # **Confirms STRUCTURAL Lighthouse 13.1.0 issue, NOT runner-OS-specific**.
+    # Individual metrics (CLS/LCP/TBT) measure cleanly on both runners;
+    # Perf composite needs speed-index audit which requires screenshots
+    # that current chromeFlags `--headless=new --disable-gpu` don't
+    # collect (per W162 SW1 "platform / limitation accepted" closure at
+    # run-lhci.mjs:142-211). SW2-revert restores `runs-on: ubuntu-latest`
+    # to preserve 81-LHR cross-wave comparability per W160 SW2 + W124 SW4
+    # 3-session × 3-run methodology. W160 NEW #2 LCP HOLD + #3 TBT HOLD
+    # stay structural carry-forward to W166+ pending upstream Lighthouse
+    # issue file OR alternate chrome flag (`--headless=chrome` already
+    # tried W161 SW1 Approach B, also failed).
+    runs-on: ubuntu-latest
     # W161 SW1-fix: bumped 25 → 30. W160 SW2 baseline ran 23m45s with Perf=null
     # (skipping screenshot work shortens runtime). W161 SW1 Approach B applies
     # `--headless=chrome` which DOES collect screenshots → added screenshot
