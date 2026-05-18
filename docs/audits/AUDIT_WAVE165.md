@@ -244,7 +244,7 @@ Each admin sidecar JSON shows 8-10 console errors per page (theme-agnostic, cons
 **Files changed**:
 1. NEW `docs/audits/AUDIT_WAVE165.md` (this file)
 2. MODIFIED `CLAUDE.md` (## Audit Trail W165 row addition ≤2 KB per W164 row addition discipline)
-3. MODIFIED `docs/audits/INDEX.md` (Active table now 3 rows + W165 row addition = 4 rows; W162 to be rotated to archive)
+3. MODIFIED `docs/audits/INDEX.md` (Active table: W165 row inserted at top → 4 rows transiently; W162 row removed via N+3 rotation → 3 rows final: W165/W164/W163; W162 archived row added to Archived table in chronological order before W161)
 4. RENAMED `docs/audits/AUDIT_WAVE162.md` → `docs/audits/archive/AUDIT_WAVE162.md` (N+3 rotation per W122 polish-docs-v3 covenant)
 5. MODIFIED `memory/MEMORY.md` (user .claude profile — repo-untracked; W165 Active backlog + Audit History rows)
 6. NEW `memory/wave165_backlog.md` (user .claude profile)
@@ -309,8 +309,8 @@ Each admin sidecar JSON shows 8-10 console errors per page (theme-agnostic, cons
 | Bundle invariant | host `rm -rf dist && npm run build` × 1 | sha256 match W164 baseline EXACTLY | ✓ **`index-tjs3k5Q_.js` sha `2d08a661...4aed1` + server.js sha `40f66610...5c0e1` MATCH W164 baseline EXACTLY** → W134-W164 ≥30-wave invariant EXTENDS through W165 → **≥31-wave BYTE-IDENTICAL invariant** |
 | Tree-shake invariant | `grep -l react-dom-client.development dist/` | EMPTY | ✓ at session start |
 | server.js jsxDEV | grep | 0 | ✓ at session start |
-| Pre-commit hook chain | each commit fires W156 SW4 husky chain cleanly | NO `--no-verify` | ✓ ALL 4 W165 commits (SW1 `673335fe1` + SW2 `9ffd923b5` + SW3 `e2001044d` + SW2-revert `622ca45ae`) fired hook chain cleanly |
-| CI status post-push | `gh run list --branch=egorribun --limit=5` | recent commits triggered CI runs | ✓ LHCI Linux On-Demand `26039934635` SUCCESS 24m42s + pre-push tsc clean × 4 commits |
+| Pre-commit hook chain | each commit fires W156 SW4 husky chain cleanly | NO `--no-verify` | ✓ ALL 6 W165 commits (SW1 `673335fe1` + SW2 `9ffd923b5` + SW3 `e2001044d` + SW2-revert `622ca45ae` + SW4 `765d92688` + polish-v1 `39285fd30`) fired hook chain cleanly; polish-v2 (this commit) = 7th |
+| CI status post-push | `gh run list --branch=egorribun --limit=5` | recent commits triggered CI runs | ✓ LHCI Linux On-Demand `26039934635` SUCCESS 24m42s; CI Matrix Expansion SUCCESS 29m56s on SW3 `e2001044d`; pre-push tsc clean × 7 pushes (SW1+SW2+SW3+SW2-revert+SW4+polish-v1+polish-v2); SW2-revert + SW4 + polish-v1 + polish-v2 are workflow-YAML/docs-only and didn't trigger CI per path filters (expected behavior) |
 
 ---
 
@@ -318,10 +318,10 @@ Each admin sidecar JSON shows 8-10 console errors per page (theme-agnostic, cons
 
 | # | Pattern | Count pre-W165 | W165 occurrence | Count post-W165 |
 |---|---------|----------------|-----------------|-----------------|
-| #1 STRICT 1-iter per Tier option | 18 vindications (12 defer-cases) | Tier 3 honest defer to Path A (Path B structural failure) → **19th total vindication** | 19 (13 defer-cases) |
+| #1 STRICT 1-iter per Tier option | 18 vindications (12 defer-cases) | **Tier 1 Outcome B honest defer + SW2-revert → 19th total vindication (defer-case +1 → 13 defer-cases)**; Tier 3 Path B → Path A close-as-already-resolved was within-iter fallback per plan (NOT additional defer-case; Path A was documented fallback from start, not iter-2 mechanism pivot per W138 Lesson #1 framing) | 19 (13 defer-cases) |
 | #3 Phase 3 verification rigor | 26 vindications post-W164 | Pre-flight grep typo ("platform limitation accepted" wording) + admin route count 4 vs 5 + JWT no role finding → **27th + 28th + 29th vindications** | 29 |
 | #4 No premature "Closes" claim | 17 vindications | Tier 3 Path B failure required Path A pivot BEFORE "Closes" attribution — attribution waited for empirical Path A acceptance + Path B post-mortem | 18 |
-| #15 ARCHIVED (W159 SW4) preserved | ARCHIVED | All 3 W165 commits (SW1 `673335fe1` + SW2 `9ffd923b5` + SW3 `e2001044d`) fired W156 SW4 husky hook chain cleanly (lint-staged + detect-secrets + Python 2 except check). NO `--no-verify` bypasses. | ARCHIVED preserved |
+| #15 ARCHIVED (W159 SW4) preserved | ARCHIVED | ALL 6 W165 commits (SW1 `673335fe1` + SW2 `9ffd923b5` + SW3 `e2001044d` + SW2-revert `622ca45ae` + SW4 `765d92688` + polish-v1 `39285fd30`) fired W156 SW4 husky hook chain cleanly (lint-staged + detect-secrets + Python 2 except check); polish-v2 (this commit) = 7th. NO `--no-verify` bypasses across the wave. | ARCHIVED preserved |
 
 ---
 
@@ -370,7 +370,7 @@ W141 anti-pattern #3 28th vindication. Future opening prompts referencing route 
 ### Carry-forward lessons from W163+W164 still apply
 
 - MEMORY.md SW4 row addition target ~500-800 chars per row (W164 SW4 hit ceiling-overshoot lesson preserved)
-- INDEX.md N+3 rotation hygiene: at SW4, REMOVE rotated wave from active table AND ADD entry to Archived table (W165 SW1 closed W163+W164 inherited debt; W165 SW4 will need to rotate W162 → archive cleanly)
+- INDEX.md N+3 rotation hygiene: at SW4, REMOVE rotated wave from active table AND ADD entry to Archived table (W165 SW1 closed W163+W164 inherited debt; W165 SW4 rotated W162 → archive cleanly per the same Python helper pattern)
 - «безупречно?» × 2-3 polish pattern continues to apply — pre-emptive check at end-of-wave for HEAD placeholders, commit list completeness, hook chain count, W141 vindication counts, MEMORY.md headroom claim, bundle invariant claim, CI status post-push
 
 ---
@@ -395,4 +395,4 @@ These are NEW findings from W165 work that warrant own focused investigation but
 
 ## End of W165 audit
 
-SW4 commit: `765d92688`. Polish-v1 lands HEAD placeholder replacements (this commit's SHA replaces the `(this commit)` reference at SW4 header above). Polish-v2/v3 candidates only fire if user invokes «безупречно?» probe per W164 SW4 pattern.
+SW4 commit: `765d92688`. Polish-v1 (`39285fd30`) lands HEAD placeholder replacements (replaced `(this commit)` reference at SW4 header above with the SW4 SHA). Polish-v2 (this commit) closes 6 «безупречно?» self-audit gaps post-polish-v1: (1) §SW4 active-table row count flow clarified (4 rows transient → 3 rows final); (2) verification matrix hook chain count 4 → 6 commits + polish-v2 as 7th; (3) verification matrix CI post-push narrative clarifies workflow-YAML/docs-only commits don't trigger CI per path filters (SW2-revert + SW4 + polish-v1 + polish-v2); (4) W141 anti-pattern #1 attribution corrected (Tier 1 Outcome B is the defer-case, NOT Tier 3 Path A which was within-iter fallback per plan); (5) W141 #15 ARCHIVED hook chain count 3 → 6 commits + polish-v2 as 7th; (6) lesson #2 past-tense update (W165 SW4 rotated W162 cleanly). Polish-v3 candidate only fires if polish-v2 introduces self-referential placeholders that the user invokes «безупречно?» probe to address (recursion terminator per W164 lesson #6 — polish-vN's own self-references are inherent terminal limitation since each polish-vN can't replace its own SHA until AFTER the commit lands).
