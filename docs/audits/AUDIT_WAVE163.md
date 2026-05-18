@@ -1,6 +1,6 @@
 # AUDIT — Wave 163 (Broader: Tier 1 + Tier 3 + Tier 4)
 
-> **Date**: 2026-05-18 | **Branch**: `egorribun` | **HEAD pre-W163**: `96953848f` (W162 polish-v2) | **HEAD post-W163**: TBD post-SW4
+> **Date**: 2026-05-18 | **Branch**: `egorribun` | **HEAD pre-W163**: `96953848f` (W162 polish-v2) | **HEAD post-W163**: `edfc3f08e` (polish-v1) → `da03b2b16` (SW4 audit) → `cc6c93e4b` (SW3) → `4ee97b7da` (SW2)
 > **Scope**: Option B Pragmatic continue (W163 = first of 3-4 wave arc); Q1 = 🟠 Broader (Tier 1 + Tier 3 + Tier 4 ~5-7h core); Q2 = STRICT 1-iter per Tier option
 > **24th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline
 
@@ -13,7 +13,7 @@ W163 closes 2 long-standing scope-deferrals in ~3-4h core wall-clock (under Broa
 1. **W126 polish #3** (deeper Worker thread leak in `vite-plugin-pwa` + tanstackStart-core post-prerender hang) — CLOSED via SW2 Path (d) "platform limitation accepted" framing matching W162 SW1 pattern. Doc-only ~15-30 min. W135 SW3 kill-after-artifacts + W162 SW2 Promise.race + process.exit(0) ARE canonical workarounds.
 2. **W150 §Honesty #3** (TanStack Query factories for 4 admin pages) — CLOSED via SW3. 4 NEW factories at `frontend/src/api/hooks/admin{Users,FeatureFlags,Audit,Notifications}.ts` + 4 admin page refactors. Vitest **1058p/12s/0f preserved EXACTLY** after within-iter sub-fix (W138 Lesson #1) removed `retry: 2` overrides to match Activity factory pattern.
 
-**Tier 4 MEMORY.md compaction** (SW1 EARLY in wave per opening prompt §9 warning): file 24,308 → **22,959 b** (-1,349 b, exceeds plan target -1,243 b). Headroom 92 → **1,441 b** under 24,400 ceiling.
+**Tier 4 MEMORY.md compaction** (SW1 EARLY in wave per opening prompt §9 warning): file 24,308 → **22,959 b** post-SW1 (-1,349 b, exceeds plan target -1,243 b; SW1 headroom 92 → 1,441 b under 24,400 ceiling). End-of-wave state (post-SW4 row additions + light W162 row compaction during polish-v2 pre-emptive pass): **23,999 b / 401 b headroom** — tight but under ceiling; W164 SW3 may compact W161 row + W162 Audit History row.
 
 **Build × 3 reproducibility**: post-SW3 NEW baseline `index-vHUjb23C.js` 176,625 b (sha `c80f0f33...c9b`) + server.js 23,600 b (sha `0ee71e86...07e`) BYTE-IDENTICAL × 3 fresh `npm run build` runs from clean state. W134-W162 ≥28-wave invariant intentionally retired at W163 (SW3 modified real production code — 4 admin page refactors + 4 factory files). Bundle SIZES preserved EXACTLY (main JS 176,625 + server.js 23,600 + vendor-react 182,123 — IDENTICAL to W162 Docker baseline) but HASHES differ — factories tree-shake into per-route admin chunks (AdminUsers-C-3FD5lo.js 70,317 b + AdminAudit-DNPvi2P3.js 14,572 b + AdminNotifications-Xfo8dB90.js 12,018 b + AdminFeatureFlags-CPTAhmrJ.js 7,463 b) rather than main JS.
 
@@ -152,7 +152,7 @@ First-pass factories shipped with `retry: 2 + retryDelay` (mirroring W134 SW2 se
 
 ---
 
-## SW4 — Audit + N+3 rotation + memory + commit (this commit)
+## SW4 — Audit + N+3 rotation + memory + commit (`da03b2b16`)
 
 **Files**:
 
@@ -223,12 +223,12 @@ First-pass factories shipped with `retry: 2 + retryDelay` (mirroring W134 SW2 se
 
 ## W141 anti-pattern compliance
 
-| #                       | Pattern                       | Pre-W163 baseline                      | W163 vindications                                                                                                                                                                            | Post-W163 total                     |
-| ----------------------- | ----------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| #1                      | STRICT 1-iter cap             | 16 total vindications (12 defer-cases) | **17th total vindication** (Tier 1 SW2 vacuous doc-only — no mechanism to iterate; Tier 3 SW3 within-iter-successful per W138 Lesson #1 sub-fix; Tier 4 SW1 trivial; NO defer fired in W163) | 17 total (12 defer-cases unchanged) |
-| #3                      | Phase 3 verifies Agent claims | 22 vindications                        | **23rd vindication** (5 errors caught: wrong admin pages path / W161 char count × 2 swapped / missed AdminNotifications pre-existing TanStack Query / SEQUENCE prerequisite disproved)       | 23                                  |
-| #4                      | No premature "Closes" claim   | 16 vindications                        | **17th vindication** (closures attributed AFTER SW2 prettier-clean + SW3 vitest 1058p + Build × 3 BYTE-IDENTICAL × 3 verification)                                                           | 17                                  |
-| #15 (ARCHIVED W159 SW4) | Pre-commit hook chain         | ARCHIVED                               | preserved — both W163 commits (SW2 + SW3) fired W156 SW4 hook chain cleanly (lint-staged + pre-commit Python tool; NO `--no-verify`)                                                         | ARCHIVED                            |
+| #                       | Pattern                       | Pre-W163 baseline                      | W163 vindications                                                                                                                                                                                                                                                                                                                                                   | Post-W163 total                     |
+| ----------------------- | ----------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| #1                      | STRICT 1-iter cap             | 16 total vindications (12 defer-cases) | **17th total vindication** (Tier 1 SW2 vacuous doc-only — no mechanism to iterate; Tier 3 SW3 within-iter-successful per W138 Lesson #1 sub-fix; Tier 4 SW1 trivial; NO defer fired in W163)                                                                                                                                                                        | 17 total (12 defer-cases unchanged) |
+| #3                      | Phase 3 verifies Agent claims | 22 vindications                        | **23rd vindication** (5 errors caught: wrong admin pages path / W161 char count × 2 swapped / missed AdminNotifications pre-existing TanStack Query / SEQUENCE prerequisite disproved)                                                                                                                                                                              | 23                                  |
+| #4                      | No premature "Closes" claim   | 16 vindications                        | **17th vindication** (closures attributed AFTER SW2 prettier-clean + SW3 vitest 1058p + Build × 3 BYTE-IDENTICAL × 3 verification)                                                                                                                                                                                                                                  | 17                                  |
+| #15 (ARCHIVED W159 SW4) | Pre-commit hook chain         | ARCHIVED                               | preserved — all 4 W163 commits (SW2 + SW3 + SW4 + polish-v1 `edfc3f08e`) fired W156 SW4 hook chain cleanly. SW4 first attempt hit detect-secrets false-positive on word "Password" in /login form-structure narrative (line 43); resolved same-iter via rewording to "password field label" + retry committed cleanly. NO `--no-verify` bypasses across any commit. | ARCHIVED                            |
 
 **Anti-pattern register**: 14 patterns (stable; #15 ARCHIVED preserved).
 
@@ -244,22 +244,22 @@ The 5 Agent errors caught at Phase 3 Review are W141 anti-pattern #3 vindication
 
 ## Verification matrix (end-of-wave gates)
 
-| Gate                                                       | Pre-W163 baseline                                                             | Post-W163 result                                                                     | Status            |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------- |
-| `cd frontend && npx tsc --noEmit`                          | 0 errors                                                                      | 0 errors                                                                             | ✅                |
-| `cd frontend && npm run lint -- --max-warnings=0`          | 0 warnings                                                                    | 0 warnings                                                                           | ✅                |
-| `cd frontend && npm test`                                  | **1058p/12s/0f**                                                              | **1058p/12s/0f** (preserved EXACTLY)                                                 | ✅                |
-| `cd frontend && npx prettier --check .` from frontend/ cwd | clean                                                                         | clean                                                                                | ✅                |
-| `npm audit --audit-level=high`                             | 0 vulnerabilities                                                             | 0 vulnerabilities                                                                    | ✅                |
-| Cargo.lock drift (`git diff --exit-code`)                  | no drift (≥28 waves)                                                          | no drift                                                                             | ✅                |
-| Build × 3 sha256 reproducible                              | `b417bace...c0a2` + `304095c1...4ac` BYTE-IDENTICAL × 3 (W134-W162 invariant) | NEW baseline `c80f0f33...c9b` + `0ee71e86...07e` BYTE-IDENTICAL × 3 (W163 invariant) | ✅ (new baseline) |
-| Docker stack (`docker ps`)                                 | 5 services `(healthy)`                                                        | 5 services `(healthy)` (unchanged)                                                   | ✅                |
-| /healthz                                                   | 200/15b `{"status":"ok"}`                                                     | (Docker stack unchanged; verified at session start)                                  | ✅                |
-| /login SSR                                                 | 200/21,791b (5 form strings)                                                  | (Docker stack unchanged; verified at session start)                                  | ✅                |
-| /messenger curl                                            | 307 (W126 auth-at-edge)                                                       | (Docker stack unchanged; verified at session start)                                  | ✅                |
-| MEMORY.md size                                             | 24,308 b / 92 b headroom                                                      | **22,959 b / 1,441 b headroom** (post-SW1)                                           | ✅                |
-| Tree-shake invariant                                       | 0 dev React refs in PROD                                                      | 0 dev React refs in PROD (vendor-react hash BYTE-IDENTICAL)                          | ✅                |
-| server.js jsxDEV count                                     | 0 (W156 SW1 fixup)                                                            | (preserved — W163 SW3 didn't touch JSX transform)                                    | ✅                |
+| Gate                                                       | Pre-W163 baseline                                                             | Post-W163 result                                                                                     | Status            |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------- |
+| `cd frontend && npx tsc --noEmit`                          | 0 errors                                                                      | 0 errors                                                                                             | ✅                |
+| `cd frontend && npm run lint -- --max-warnings=0`          | 0 warnings                                                                    | 0 warnings                                                                                           | ✅                |
+| `cd frontend && npm test`                                  | **1058p/12s/0f**                                                              | **1058p/12s/0f** (preserved EXACTLY)                                                                 | ✅                |
+| `cd frontend && npx prettier --check .` from frontend/ cwd | clean                                                                         | clean                                                                                                | ✅                |
+| `npm audit --audit-level=high`                             | 0 vulnerabilities                                                             | 0 vulnerabilities                                                                                    | ✅                |
+| Cargo.lock drift (`git diff --exit-code`)                  | no drift (≥28 waves)                                                          | no drift                                                                                             | ✅                |
+| Build × 3 sha256 reproducible                              | `b417bace...c0a2` + `304095c1...4ac` BYTE-IDENTICAL × 3 (W134-W162 invariant) | NEW baseline `c80f0f33...c9b` + `0ee71e86...07e` BYTE-IDENTICAL × 3 (W163 invariant)                 | ✅ (new baseline) |
+| Docker stack (`docker ps`)                                 | 5 services `(healthy)`                                                        | 5 services `(healthy)` (unchanged)                                                                   | ✅                |
+| /healthz                                                   | 200/15b `{"status":"ok"}`                                                     | (Docker stack unchanged; verified at session start)                                                  | ✅                |
+| /login SSR                                                 | 200/21,791b (5 form strings)                                                  | (Docker stack unchanged; verified at session start)                                                  | ✅                |
+| /messenger curl                                            | 307 (W126 auth-at-edge)                                                       | (Docker stack unchanged; verified at session start)                                                  | ✅                |
+| MEMORY.md size                                             | 24,308 b / 92 b headroom                                                      | **23,999 b / 401 b headroom** end-of-wave (post-SW1 22,959 → SW4 + W162 light trim during polish-v2) | ✅                |
+| Tree-shake invariant                                       | 0 dev React refs in PROD                                                      | 0 dev React refs in PROD (vendor-react hash BYTE-IDENTICAL)                                          | ✅                |
+| server.js jsxDEV count                                     | 0 (W156 SW1 fixup)                                                            | (preserved — W163 SW3 didn't touch JSX transform)                                                    | ✅                |
 
 ---
 
@@ -294,11 +294,12 @@ Recommended priority order per opening prompt §"3-wave-horizon outlook":
 
 ## Summary
 
-W163 = Broader scope (Tier 1 + Tier 3 + Tier 4) closed in ~3-4h core wall-clock (well under 5-7h plan budget). 2 commits + this audit:
+W163 = Broader scope (Tier 1 + Tier 3 + Tier 4) closed in ~3-4h core wall-clock (well under 5-7h plan budget). 4 commits total (2 core + SW4 audit + polish-v1):
 
 - `4ee97b7da` SW2 W126 polish #3 Path (d) doc-only closure
 - `cc6c93e4b` SW3 admin TanStack Query factories × 4 (NEW files + 4 page refactors)
-- (this commit) SW4 audit + N+3 W160 → archive + memory updates
+- `da03b2b16` SW4 audit + N+3 W160 → archive + memory updates
+- `edfc3f08e` polish-v1 prettier auto-fix on INDEX.md + AUDIT_WAVE163.md (lint-staged drift; ZERO semantic change)
 
 Phase 1 Explore Agent + Phase 3 Review caught 5 errors before plan-write time (W141 anti-pattern #3 23rd vindication). Phase 4 plan accurately scoped the work + STRICT 1-iter discipline held per W141 anti-pattern #1 (Tier 3 within-iter sub-fix on `retry: 2` removal mirrored Activity factory pattern; NOT a mechanism pivot).
 
