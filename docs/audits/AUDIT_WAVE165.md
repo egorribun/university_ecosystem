@@ -239,7 +239,7 @@ Each admin sidecar JSON shows 8-10 console errors per page (theme-agnostic, cons
 
 ---
 
-## SW4 — Audit + memory + N+3 rotation (this commit)
+## SW4 — Audit + memory + N+3 rotation (`765d92688`)
 
 **Files changed**:
 1. NEW `docs/audits/AUDIT_WAVE165.md` (this file)
@@ -395,4 +395,4 @@ These are NEW findings from W165 work that warrant own focused investigation but
 
 ## End of W165 audit
 
-**[POST-SW4 SHA REPLACEMENT — polish-v1 candidate]**: `(this commit)` placeholders in commit lists + SW4 description will need replacement after this audit commit lands. Polish-v1 commit per W164 SW4 pattern.
+SW4 commit: `765d92688`. Polish-v1 lands HEAD placeholder replacements (this commit's SHA replaces the `(this commit)` reference at SW4 header above). Polish-v2/v3 candidates only fire if user invokes «безупречно?» probe per W164 SW4 pattern.
