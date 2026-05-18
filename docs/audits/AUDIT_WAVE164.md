@@ -1,6 +1,6 @@
 # AUDIT — Wave 164 (Broader: /admin polish arc continuation; ~3-4h core)
 
-> **Date**: 2026-05-18 | **Branch**: `egorribun` | **HEAD pre-W164**: `64d609576` (W163 polish-v2) | **HEAD post-W164**: `(this commit)` (SW4 audit) → `3c1a9230d` (SW3) → `17de87323` (SW2)
+> **Date**: 2026-05-18 | **Branch**: `egorribun` | **HEAD pre-W164**: `64d609576` (W163 polish-v2) | **HEAD post-W164**: `598277a31` (SW4 audit) → `3c1a9230d` (SW3) → `17de87323` (SW2)
 > **Scope**: Option B Pragmatic continue (W164 = second of 3-4 wave arc from W163); Q1 = 🟠 Broader (Tier 1+2+3+4+5, ~3-4h core post-Phase-3-revision); Q2 = STRICT 1-iter per Tier option
 > **25th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline
 
@@ -389,7 +389,7 @@ Per Option B 3-4 wave commitment from W163, **W165 is the final wave in arc**. C
 - SW1 — no commit (memory-only)
 - SW2 — `17de87323` `feat(wave164-sw2-features-admin)`
 - SW3 — `3c1a9230d` `fix(wave164-sw3-adminnotifications-signal-propagation)`
-- SW4 — `(this commit)` `docs(wave164-sw4-audit)`
+- SW4 — `598277a31` `docs(wave164-sw4-audit)`
 - Polish-v1 — `(if applicable, post-«безупречно?» prettier drift fix)`
 - Polish-v2 — `(if applicable, post-«безупречно?» self-audit gap closure)`
 
