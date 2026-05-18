@@ -292,7 +292,7 @@ W164 outcomes vs Q2 cap:
 - W164 = **17th vindication** — closures attributed AFTER SW2 vitest 1058p preservation + SW3 vitest 1058p preservation + SW4 empirical re-verification + Build × N reproducibility (in progress; polish-v2 will empirically confirm).
 
 **#15 (ARCHIVED W159 SW4) — husky pre-commit prettier discipline preserved**:
-- All 3 W164 commits (SW2, SW3, SW4 audit) fired W156 SW4 husky hook chain cleanly. NO `--no-verify` bypasses. Anti-pattern #15 STRUCTURAL CLOSURE preserved through W164 → register stable at 14 patterns.
+- All 4 W164 commits (SW2, SW3, SW4 audit, polish-v1 `7782e130f`) fired W156 SW4 husky hook chain cleanly. polish-v1 also fired pre-push `tsc --noEmit` cleanly via husky pre-push hook. NO `--no-verify` bypasses. Anti-pattern #15 STRUCTURAL CLOSURE preserved through W164 → register stable at 14 patterns.
 
 ---
 
@@ -390,8 +390,8 @@ Per Option B 3-4 wave commitment from W163, **W165 is the final wave in arc**. C
 - SW2 — `17de87323` `feat(wave164-sw2-features-admin)`
 - SW3 — `3c1a9230d` `fix(wave164-sw3-adminnotifications-signal-propagation)`
 - SW4 — `598277a31` `docs(wave164-sw4-audit)`
-- Polish-v1 — `(if applicable, post-«безупречно?» prettier drift fix)`
-- Polish-v2 — `(if applicable, post-«безупречно?» self-audit gap closure)`
+- Polish-v1 — `7782e130f` `docs(wave164-polish-v1)` (replaced `(this commit)` HEAD placeholders with `598277a31` across 5 files: AUDIT_WAVE164.md × 2, CLAUDE.md, INDEX.md, wave164_backlog.md × 2, wave165_opening_prompt.md × 2)
+- Polish-v2 — `(this commit)` `docs(wave164-polish-v2)` (closes 4 «безупречно?» self-audit gaps: CLAUDE.md #4 vindication count 17th→18th; hook chain compliance count 3→4 commits × 3 files; polish-v1 inclusion in AUDIT + backlog commit lists; CI status post-push verified 7 SUCCESS + 1 skipped + Matrix Expansion in_progress)
 
 ---
 
