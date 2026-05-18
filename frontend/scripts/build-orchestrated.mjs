@@ -54,6 +54,23 @@
 // integrated workbox/sw compile) but does NOT STRUCTURALLY fix the
 // underlying tanstackStart-core post-prerender hang. W136+ candidate:
 // trace which plugin holds the event loop open + file upstream issue.
+//
+// W163 SW2 Path (d) closure (2026-05-18): the deeper Worker thread leak
+// (W136 SW5 trace = MessagePort + Pipe + Socket × 2 family — likely
+// Rolldown native worker pool / @rolldown/plugin-babel) is ACCEPTED as
+// platform limitation. Canonical workarounds:
+//   • This script's kill-after-artifacts pattern (ships artifacts
+//     deterministically; build × 3 BYTE-IDENTICAL × ≥28 waves W134-W162).
+//   • W162 SW2 Promise.race(5s) + process.exit(0) at lhci-windows-fallback.mjs
+//     handles the related LHCI wrapper cleanup-hang class.
+// Production users + CI Linux UNAFFECTED (Linux doesn't trigger this hang).
+// Upstream investigation paths (a) file issue at vite-pwa/vite-plugin-pwa
+// OR rolldown/rolldown OR tanstack/tanstack-start; (b) Rolldown native
+// worker pool config tuning) require ~3-5h focused scope under STRICT
+// 1-iter — deferred to W164+ if measurement-parity demand emerges.
+// Mirrors W162 SW1 "Linux CI Perf=null platform limitation accepted"
+// framing per `feedback_perfectionism.md` "if you can't measure /
+// can't structurally fix in 1-iter, defer honestly".
 
 import { existsSync, statSync } from "node:fs"
 import path from "node:path"
