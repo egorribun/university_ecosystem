@@ -51,20 +51,21 @@ const QUERY_GC_TIME_MS = 5 * 60_000
  * `fetchDeadLetterQueue()` helper in `@/api/notifications` for fetch
  * semantics (route, error shaping, response normalisation).
  *
- * Note: `fetchDeadLetterQueue()` is signal-unaware in the pre-W163
- * implementation, so the AbortSignal forwarded by TanStack Query is
- * currently not propagated to the underlying axios call. This matches
- * pre-W163 behaviour exactly (the inline useQuery also discarded the
- * signal). Tightening signal propagation would be a separate W164+
- * polish — out of scope for the W163 SW3 factory extraction.
+ * Wave 164 SW3 (Tier 4) — AbortSignal propagation NOW closed. Pre-W164 the
+ * queryFn discarded `signal` (underscored unused) because
+ * `fetchDeadLetterQueue()` was signal-unaware. W164 SW3 extended the helper
+ * signature to `(params?, signal?)` (see `@/api/notifications:94-114`) and
+ * the queryFn now forwards the TanStack Query AbortSignal so route unmounts
+ * and refetch-replacement cancel in-flight axios requests cleanly. Closes
+ * W163 SW3 NEW caveat (AdminNotifications signal propagation polish).
  */
 export const adminDeadLetterQueueQueryOptions = () =>
   queryOptions({
     queryKey: adminDeadLetterQueueQueryKey,
     queryFn: async ({
-      signal: _signal,
+      signal,
     }: QueryFunctionContext<AdminDeadLetterQueueQueryKey>): Promise<AdminDeadLetterQueueData> => {
-      return fetchDeadLetterQueue()
+      return fetchDeadLetterQueue(undefined, signal)
     },
     staleTime: QUERY_STALE_TIME_MS,
     gcTime: QUERY_GC_TIME_MS,
