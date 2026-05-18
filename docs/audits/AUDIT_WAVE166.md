@@ -2,7 +2,7 @@
 
 **Wave 166** (Broader pivot, Q0=C, ~2-3h core wall-clock; **27th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline).
 
-**Branch**: `egorribun` (HEAD post-wave: `b4b5d1a2a`, +SW4 audit pending)
+**Branch**: `egorribun` (HEAD post-wave: `2d69bd293` SW4 audit; SW3 `b4b5d1a2a` / SW2 `ae03e61d3` / SW1 `07da10e10` preceded)
 **Plan reference**: `C:\Users\egorribun\.claude\plans\c-users-egorribun-claude-projects-c-use-shimmering-dolphin.md`
 **Predecessor**: AUDIT_WAVE165.md (W165 closed 2 W164 carries + honestly deferred Tier 1 LCP/TBT ubuntu-22.04 Outcome B)
 
@@ -188,7 +188,7 @@ Trajectory per opening prompt §"§Honesty trajectory projection":
 | #4 No premature "Closes" | 17 vindications | +1 (SW2 commit message correction) | **18 vindications** |
 | #15 (ARCHIVED W159 SW4) | preserved | preserved | all 4 W166 commits fired W156 SW4 hook chain cleanly (no `--no-verify`) |
 
-ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `<this commit>`) fired W156 SW4 husky pre-commit chain cleanly. SW1 had one within-iter ruff-format auto-fix (re-staged + re-committed per CLAUDE.md anti-amend convention — counts as 1 NEW commit, not amend). NO `--no-verify` bypasses across the wave.
+ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `2d69bd293`) fired W156 SW4 husky pre-commit chain cleanly. SW1 had one within-iter ruff-format auto-fix (re-staged + re-committed per CLAUDE.md anti-amend convention — counts as 1 NEW commit, not amend). NO `--no-verify` bypasses across the wave.
 
 ---
 
@@ -242,18 +242,18 @@ ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `<
 | memory/wave166_lighthouse_upstream_issue.md exists | Full draft + URL | Created with URL filled post-`gh issue create` | ✅ |
 | W156 SW4 hook chain | All pass | All hooks PASS (no Python files = many skipped, but all clean) | ✅ |
 
-### SW4 verification (this commit)
+### SW4 verification (commit `2d69bd293`)
 
 | Check | Expected | Actual | Status |
 |-------|----------|--------|--------|
 | AUDIT_WAVE166.md created | Comprehensive narrative | This file | ✅ |
-| CLAUDE.md ## Audit Trail W166 row | Concise summary | Added | pending commit |
-| CLAUDE.md ## Gotchas × 2 | SW1 JWT pattern + SW2 structural defense pattern | Added | pending commit |
-| INDEX.md active table updated | W166 inserted, W163 removed | Pending | pending commit |
-| N+3 rotation | `git mv docs/audits/AUDIT_WAVE163.md docs/audits/archive/` | Pending | pending commit |
-| MEMORY.md compaction | <24,400 b with ≥500 b headroom | Pending | pending |
-| memory/wave166_backlog.md created | Close-status entry-point | Pending | pending |
-| memory/wave167_opening_prompt.md created | W167+ handoff document | Pending | pending |
+| CLAUDE.md ## Audit Trail W166 row | Concise summary | Added | ✅ |
+| CLAUDE.md ## Gotchas × 3 | SW1 JWT pattern + SW2 structural defense + smoke filter bug | Added | ✅ |
+| INDEX.md active table updated | W166 inserted, W163 removed | Updated via Python helper | ✅ |
+| N+3 rotation | `git mv docs/audits/AUDIT_WAVE163.md docs/audits/archive/` | Executed in SW4 commit | ✅ |
+| MEMORY.md compaction | <24,400 b with ≥500 b headroom | 24,058 b / 342 b headroom (tight but under ceiling) | ⚠ |
+| memory/wave166_backlog.md created | Close-status entry-point | Created in `.claude` profile | ✅ |
+| memory/wave167_opening_prompt.md created | W167+ handoff document | Created in `.claude` profile | ✅ |
 
 ---
 
@@ -313,7 +313,7 @@ ALL 4 W166 commits (SW1 `07da10e10` + SW2 `ae03e61d3` + SW3 `b4b5d1a2a` + SW4 `<
 - **W166 backlog (memory)**: `memory/wave166_backlog.md`
 - **W166 Lighthouse upstream tracking (memory)**: `memory/wave166_lighthouse_upstream_issue.md`
 - **W167 opening prompt (memory)**: `memory/wave167_opening_prompt.md`
-- **W166 commits**: `07da10e10` SW1 + `ae03e61d3` SW2 + `b4b5d1a2a` SW3 + `<this commit>` SW4
+- **W166 commits**: `07da10e10` SW1 + `ae03e61d3` SW2 + `b4b5d1a2a` SW3 + `2d69bd293` SW4 (+ polish-v1 `(this commit)` HEAD placeholder cleanup)
 - **Upstream issue**: https://github.com/GoogleChrome/lighthouse/issues/17021
 - **W141 anti-pattern register**: 32+ vindications cumulative, 4 patterns active (#1, #3, #4, #15 ARCHIVED)
 - **Previous active waves**: W163 (rotates to archive in this SW4) / W164 (carry) / W165 (carry)
