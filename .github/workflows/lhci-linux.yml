@@ -58,7 +58,21 @@ concurrency:
 jobs:
   lhci:
     name: Lighthouse on Linux
-    runs-on: ubuntu-latest
+    # W165 SW2 Tier 1 — Path (b) alternate runner experiment per
+    # frontend/scripts/run-lhci.mjs:171-174 framing. Tests whether mobile-
+    # throttling Linux CI Perf=null + LCP/TBT inflation (W160 NEW #1+#2+#3
+    # per W162 SW1 "platform / limitation accepted" closure at run-lhci.mjs:
+    # 142-211) is reproducible on a DIFFERENT but plausibly-similar runner
+    # OR is structural Lighthouse 13.1.0 issue. W160 SW2 81-LHR baseline on
+    # ubuntu-latest (= ubuntu-24.04): Perf=null all 9 URLs, LCP worst 2895ms
+    # on /, TBT worst 549ms on /. W141 anti-pattern #1 STRICT 1-iter cap:
+    # if ubuntu-22.04 reproduces Perf=null → honest defer + revert to
+    # ubuntu-latest in SW2-revert (preserves 81-LHR cross-wave comparability).
+    # If Perf scores populate → run 2 more sessions for full 81-LHR cross-
+    # session methodology + LCP/TBT ratchet decision tree (closes W160
+    # NEW #2 LCP + #3 TBT). Same `concurrency.group + cancel-in-progress`
+    # gates sequential sessions per W160 SW2 methodology.
+    runs-on: ubuntu-22.04
     # W161 SW1-fix: bumped 25 → 30. W160 SW2 baseline ran 23m45s with Perf=null
     # (skipping screenshot work shortens runtime). W161 SW1 Approach B applies
     # `--headless=chrome` which DOES collect screenshots → added screenshot
