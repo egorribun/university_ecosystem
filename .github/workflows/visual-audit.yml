@@ -136,7 +136,7 @@ jobs:
       # P0-01 (audit 2026-03-06): SHA-pinned to prevent supply chain attack
       # via mutable @v2 tag. Equivalent to taiki-e/install-action@v2.75.22.
       - name: Install wasm-pack
-        uses: taiki-e/install-action@fa0dd4cd0a40696e6f9766370614a5ce482e6aa8 # v2.77.5
+        uses: taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1 # v2.79.0
         with:
           tool: wasm-pack
 
