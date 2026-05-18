@@ -3910,7 +3910,7 @@ dev = [
     { name = "fakeredis", specifier = ">=2.35.1" },
     { name = "hypothesis", specifier = ">=6.151.12" },
     { name = "maturin", specifier = ">=1.13.1,<2" },
-    { name = "mypy", specifier = ">=1.20.1,<2.1" },
+    { name = "mypy", specifier = ">=1.20.1,<2.2" },
     { name = "pact-python", specifier = "==3.4.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pyo3-sanitizer", editable = "crates/pyo3-sanitizer" },
