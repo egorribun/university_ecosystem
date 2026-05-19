@@ -2,7 +2,7 @@
 
 **Status**: ⚠ PARTIAL CLOSURE — 2 of 3 admin React #418 mismatches closed; 1 honestly defers to W168+
 **Branch**: `egorribun`
-**Wave commits** (4 SW × commits): `b2319b9ab` (SW1) + `a4cc8b1bd` (SW2a) + `d163b80f1` (SW2b) + `e627d9864` (SW2c) + (SW3 verification-only, no commit) + SW4 audit (this commit)
+**Wave commits** (5 commits across 4 SWs): `b2319b9ab` (SW1) + `a4cc8b1bd` (SW2a) + `d163b80f1` (SW2b) + `e627d9864` (SW2c) + (SW3 verification-only, no commit) + `4255893a3` (SW4 audit)
 **Active waves post-W167**: W165/W166/W167 (W164 → archive)
 **28th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline
 
@@ -19,7 +19,7 @@ W167 ran user-approved Q0=C AGGRESSIVE Broader pivot + Q1=Full 5-Tier + Q2=STRIC
 ### Branch + HEAD
 - Branch: `egorribun`
 - HEAD pre-W167: `966f56c92` (W166 polish-v3 — recursion terminator per W164 lesson #6)
-- HEAD post-W167 SW4: (this commit)
+- HEAD post-W167 SW4: `4255893a3`
 
 ### Active waves + N+3 rotation
 - Pre-W167: W164 / W165 / W166
@@ -259,7 +259,7 @@ W141 polish A3 known build-infra non-determinism source: `_shell.html` + `sw.js`
 
 ---
 
-## §SW4 — Tier 5: Audit + N+3 + housekeeping + memory (this commit)
+## §SW4 — Tier 5: Audit + N+3 + housekeeping + memory (commit `4255893a3`)
 
 ### NEW audit file
 - `docs/audits/AUDIT_WAVE167.md` (this file)
