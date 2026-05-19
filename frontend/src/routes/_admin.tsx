@@ -52,10 +52,18 @@ function AdminLayout() {
 }
 
 export const Route = createFileRoute("/_admin")({
-  // Wave 126 polish — `ssr: false` overrides root's `ssr: true` for
-  // admin routes (same rationale as `_auth.tsx`: provider chain
-  // client-only until Phase 5 hoisting).
-  ssr: false,
+  // Wave 168 SW1 — removed Wave 126 polish `ssr: false` override.
+  // _admin now inherits `ssr: true` from _auth.tsx (W128 SW2 baseline)
+  // since W127 SW1 provider hoisting + W128 SW3 SsrRoot + W149 SW2
+  // hydrateRoot + W156 SW3 .ready class + W166 SW2 AdminLayout
+  // mounted-state + W167 SW2 Navbar mounted-state are all in place.
+  // Testing Path C-3 simplest test — does this close admin React #418
+  // Mismatch A (MainLayout structural <main> vs <nav> swap)?
+  //
+  // Outcome handling per W141 anti-pattern #1 STRICT 1-iter cap:
+  //  - Branch A (SSR works + Mismatch A closed): SHIP IT
+  //  - Branch B (SSR works + Mismatch A persists): revert + theory disproved
+  //  - Branch C (SSR crash): revert + W126 polish rationale validated
   beforeLoad: ({ context }) => {
     if (context.auth.loading) return
     if (!context.auth.isAuth) {
