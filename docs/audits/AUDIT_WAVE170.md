@@ -360,4 +360,43 @@ discipline notes, not new structural caveats).
 
 ---
 
+## Polish iteration log
+
+**Polish-v1** (`48baf63eb` — post-SW5 self-audit): closed §Honesty caveat #7
+(Build × 3 reproducibility deferral) via empirical Build × 1 with sha256
+match to W169 polish-v2 baseline; corrected SW5 commit count (2 → 3, due to
+W138 Lesson #1 SAME-mechanism SW5 split); corrected helper script LoC (25/30
+estimate → 34/39 actual). Caught additional NEW (z) discovery during commit
+attempt: cwd drift between bash invocations affects git commands too (not
+just docker compose); documented in polish-v1 commit message.
+
+**Polish-v2** (`751e7f4aa` — post «безупречно?» probe): pre-emptive self-audit
+identified 5 concrete gaps:
+1. Build × 3 (polish-v1 was × 1) — ran 2 more `npm run build` cycles, all
+   3 BYTE-IDENTICAL with same sha256.
+2. 5 stale "23,587 b / 813 b headroom" refs across 4 files — all updated to
+   "24,255 b post-polish-v1 / 145 b headroom".
+3. Build × 1 references in W170-specific contexts — updated to Build × 3.
+4. CLAUDE.md "Build × 3 NOT re-verified" deferral — replaced with empirical
+   verification claim.
+5. CI status snapshot (Matrix Expansion in_progress at polish-v2 commit
+   time) — documented for polish-v3 follow-up.
+
+**Polish-v3** (this commit — recursion terminator per W164-W169 pattern):
+captures **CI Matrix Expansion SUCCESS 29m07s** for polish-v2 HEAD
+`751e7f4aa` run `26118404589` + 7 sub-gates ALL GREEN (Dependency Review
+17s, DB Performance Gate 1m12s, Generate OpenAPI Spec 1m21s, Contract
+Validation 1m35s, Go Lint & SBOM 1m49s, Chromatic 3m02s, Auto-merge
+skipped). Declares **no further polish-vN expected for W170** unless a new
+gap class surfaces. MEMORY.md final headroom = 105 b under 24,400 ceiling
+(tight; W171 SW0 candidate for maintenance compaction — already documented
+in `wave171_opening_prompt.md`).
+
+§Honesty trajectory at W170 final close: **0-2 OPEN unchanged**
+(W134 #2 bundle delta + /messenger Phase 5 punt carry forward as the
+canonical accepted-state residuals). Production deploy is unambiguously
+ready post-W170 close.
+
+---
+
 **End of AUDIT_WAVE170.md.**
