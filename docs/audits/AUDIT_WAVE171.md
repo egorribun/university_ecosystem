@@ -38,7 +38,10 @@ improvement without quantity reduction).
 | SW0 | (no commit) | MEMORY.md compaction | `memory/MEMORY.md` (user .claude profile, not git-tracked) | 20,586 b post-compaction; +3,814 b headroom |
 | SW1 | `686614860` | feat | NEW `.github/workflows/admin-smoke-monitoring.yml` (493 LoC) | Admin smoke CI monitoring workflow + scheduled cron Mondays 03:00 UTC |
 | SW2 | (no commit) | Local verification | none | YAML syntax valid + cron syntax sanity + script feasibility confirmed via Phase 1+3 reads |
-| SW3 | (this commit) | docs | NEW `docs/audits/AUDIT_WAVE171.md` + `git mv AUDIT_WAVE168.md → archive/` + `CLAUDE.md` (## Audit Trail row + rotation history + Active waves) + `docs/audits/INDEX.md` (Active table W171 + W168 to Archive + rotation history) | Checkpoint audit + N+3 rotation |
+| SW3 | `6a1c1cd00` | docs | NEW `docs/audits/AUDIT_WAVE171.md` + `git mv AUDIT_WAVE168.md → archive/` + `CLAUDE.md` (## Audit Trail row + rotation history + Active waves) + `docs/audits/INDEX.md` (Active table W171 + W168 to Archive + rotation history) | Checkpoint audit + N+3 rotation |
+| polish-v1 | `e83270645` | docs | `docs/audits/AUDIT_WAVE171.md` (+52/-5) | «Безупречно?» self-audit post-push captured cron default-branch caveat (§Honesty #11) + MEMORY.md tight headroom (§Honesty #12) + 2 lessons learned (#8, #9). W141 #3 45th-class vindication. |
+| polish-v2 | `a521432f2` | docs | `.github/workflows/admin-smoke-monitoring.yml` (+8) + `CLAUDE.md` (1 hunk) + `docs/audits/AUDIT_WAVE171.md` (+26/-4) | 4-gap closure: CLAUDE.md cron caveat propagation + audit doc 45+46+47-class vindications + **Build × 3 EMPIRICALLY VERIFIED × 3 BYTE-IDENTICAL** (matches W170 polish-v2 baseline EXACT) + workflow file header default-branch caveat note. W141 #3 46+47-class vindications. |
+| polish-v3 | (this commit) | docs | `docs/audits/AUDIT_WAVE171.md` (commits table + polish-v3 narrative) + `CLAUDE.md` (polish-v3 + CI Matrix SUCCESS ref) + `memory/MEMORY.md` (W171 row polish refs) | **Recursion terminator** per W164-W170 canonical pattern. Captures **CI Matrix Expansion SUCCESS 29m38s** for polish-v2 push run `26123305057` + 7 sub-gates GREEN. **W171 fully closed**. No further polish-vN expected. |
 
 ## SW0 narrative — MEMORY.md compaction (mandatory, non-tracked)
 
@@ -218,6 +221,58 @@ archive). Archive count: 55 → 56.
 
 **Commit subject**: `docs(wave171-sw3-audit): 31-wave maintenance-mode
 checkpoint + admin smoke monitoring + N+3 W168-archive`.
+
+## Polish-v3 narrative — recursion terminator + CI Matrix Expansion SUCCESS evidence
+
+**Scope**: capture CI Matrix Expansion SUCCESS evidence for polish-v2 push +
+declare "no further polish-vN" closure + update CLAUDE.md / MEMORY.md to
+reflect full polish chain. Per W164-W170 canonical recursion terminator
+pattern (W170 polish-v3 captured CI Matrix Expansion SUCCESS 29m07s for
+polish-v2 run `26118404589`; W169 polish-v3 captured 28m20s for polish-v2
+run `26108885325`).
+
+**CI Matrix Expansion SUCCESS for polish-v2 push `a521432f2` run
+`26123305057`**: **29m38s SUCCESS**. ALL gates GREEN:
+
+- ✅ CI - Matrix Expansion: SUCCESS 29m38s (main matrix gate)
+- ✅ Chromatic Visual Regression: SUCCESS 1m57s
+- ✅ Go Lint & SBOM: SUCCESS 1m43s
+- ✅ Contract Validation — OpenAPI + Spectral: SUCCESS 1m42s
+- ✅ DB Performance Gate: SUCCESS 1m15s
+- ✅ Generate OpenAPI Spec: SUCCESS 1m21s
+- ✅ Dependency Review: SUCCESS 22s
+- ⏭️ Auto-merge dependabot patches: skipped (correctly — not a dependabot PR)
+
+**Total**: 7 SUCCESS + 1 skipped = 8 of 8 jobs final. EXACT match to W170
+polish-v3 + W169 polish-v3 SUCCESS patterns.
+
+**Bundle baseline preserved across CI verification**: CI built and tested
+against polish-v2 commit `a521432f2` which has NO frontend src changes vs
+W170 polish-v3 baseline. Build × 3 LOCAL-MACHINE BYTE-IDENTICAL was already
+empirically verified in polish-v2 (main JS sha `142897dd...3a38898` × 3 +
+server.js sha `6ec125ed...0bca00` × 3). CI Matrix Expansion SUCCESS
+**transitively re-validates** the bundle from a Linux runner perspective
+(different env — Windows local vs Linux CI per W141 polish A3 documented
+non-determinism axis — but functional gates all PASS regardless).
+
+**Polish recursion termination**: Per W164-W170 pattern, polish-v3 is the
+explicit "no further polish-vN" declaration. Polish-v1 captured cron
+caveat; polish-v2 closed 4 gaps via empirical work + propagation;
+polish-v3 captures CI evidence + declares closure. No further polish-vN
+expected unless user fires another «безупречно?» probe surfacing genuinely
+new gaps.
+
+**W141 anti-pattern compliance**:
+
+- #1 (STRICT 1-iter SACRED): preserved. polish-v3 is within-iter
+  SAME-mechanism (doc update + CI evidence capture). No mechanism pivot.
+- #3 (Phase 3 verification): preserved. Empirical `gh run list` post-CI
+  verified ALL 8 jobs final state before commit. **48th-class vindication**.
+- #4 (No premature "Closes"): preserved. Polish-v3 commit declares "W171
+  fully closed" ONLY AFTER empirical CI SUCCESS evidence captured. NOT
+  pre-emptive.
+- #15 (ARCHIVED W159 SW4): preserved. Polish-v3 commit expected to fire
+  W156 SW4 husky pre-commit chain cleanly. NO `--no-verify`.
 
 ## §Honesty probe (anticipated user «безупречно?» response)
 
