@@ -2,7 +2,7 @@
 
 **Status**: ⚠ PARTIAL CLOSURE — Path C-3 theory PARTIALLY VALIDATED: structural Mismatch A class CLOSED across all 10 admin captures; narrower text-content residual unmasked on `/admin/audit light` only (1 of 10).
 **Branch**: `egorribun`
-**Wave commits** (2 commits across 2 SWs): `b633a5333` (SW1) + (this commit) `<SW4>` (SW2 + SW3 verification-only, no commit per plan)
+**Wave commits** (2 commits across 2 SWs): `b633a5333` (SW1) + `5ddd947b9` (SW4 audit) (SW2 + SW3 verification-only, no commit per plan)
 **Active waves post-W168**: W166/W167/W168 (W165 → archive)
 **29th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline
 
@@ -20,7 +20,7 @@ W168 ran user-approved **Q0=B Path C-3 simplest test** + **Q1=Pure Path C-3 only
 
 - Branch: `egorribun`
 - HEAD pre-W168: `bc8e2f441` (W167 polish-v2 — recursion terminator)
-- HEAD post-W168 SW4: `<this commit>`
+- HEAD post-W168 SW4: `5ddd947b9`
 
 ### Active waves + N+3 rotation
 
