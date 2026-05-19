@@ -141,6 +141,14 @@ services:
         # client-side stack-trace debug needs the unminified bundle + linked
         # source maps. Tree-shake invariants preserved per W157 SW1:
         # 0 react-dom-client.development refs in PROD; 0 jsxDEV in server.js.
+        #
+        # W169 SW1+SW4 — Path D text-content investigation (B-full scope).
+        # SW1 enabled "true" + SW2 ran admin smoke with diagnostic bundle +
+        # SW2 found 0 React #418 firings across all 10 captures (diagnostic
+        # build did NOT reproduce W168 SW2 finding). Per W141 anti-pattern #1
+        # STRICT 1-iter cap, SW3 was a NO-OP (no mismatch to fix). SW4 reverts
+        # to "" + rebuilds for production-minified verification in SW5. Flag
+        # defaults OFF in long-lived branches.
         FRONTEND_BUILD_UNMINIFIED: ""
         # W156 SW1 Tier 1 #1 — opt-in development React for /login wedge
         # diagnosis (W155 NAMED React #418 + getParentHydrationBoundary
@@ -155,6 +163,14 @@ services:
         # future hydration debugging needs the dev React bundle's full
         # error messages. Tree-shake invariant verified W157 SW1: PROD
         # bundle has 0 react-dom-client.development refs.
+        #
+        # W169 SW1+SW4 — Path D paired diagnostic flag. SW1 enabled "true" +
+        # SW2 ran 10-capture admin smoke against dev React bundle; sidecars
+        # contained 0 unminified "Hydration failed because" phrases (dev
+        # React vendor bundle confirmed via grep to ship the phrase × 2
+        # internally). Conclusion: W168 SW2 finding NOT reproducible with
+        # diagnostic build → bundle-mode-dependent OR transient timing fluke.
+        # SW4 reverts to "" + rebuilds production-minified for SW5 verify.
         FRONTEND_REACT_DEV_MODE: ""
     ports:
       - "8081:3000"
