@@ -32,6 +32,14 @@
 #    contention. Could be revisited as monthly (cost concern) or daily (if
 #    React #418 risk perceived higher).
 #
+#    **CRITICAL**: scheduled cron triggers require the workflow file to exist
+#    on the default branch (main) per GitHub Actions limitation. Workflow on
+#    feature branch (egorribun) is INERT — neither cron NOR workflow_dispatch
+#    will fire until: (a) PR #1114 merges to main (automatic activation
+#    Recommended), OR (b) user-authorized cherry-pick to main per W139 SW1
+#    precedent (commit 4db94fb5a cherry-picked visual-audit.yml). See
+#    AUDIT_WAVE171.md §Honesty caveat #11 + Wave 172+ hand-off Path A/B.
+#
 # ## Architecture
 #
 # Mirrors visual-audit.yml infrastructure (W139 SW1 + W140 SW4 iter cycles)

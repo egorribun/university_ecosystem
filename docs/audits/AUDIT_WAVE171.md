@@ -265,6 +265,17 @@ documentation of post-commit empirical findings.
     `include-hidden-files: true` defensive). **44th-class observation**.
   - SW0 empirical `wc -c` post-compaction caught over-target outcome
     (20,586 b vs plan 22,500-23,000 b). Non-blocking but documented honestly.
+  - **Polish-v1** empirical `gh workflow view` post-push caught the cron
+    default-branch limitation (HTTP 404 because workflow on feature branch).
+    Plan §Honesty #3 ("Workflow not actually triggered in W171") was partially
+    correct but understated the GitHub Actions platform constraint. **45th-class
+    vindication** — polish-pass empirical verification is structural discipline
+    that anticipates user «безупречно?» probe.
+  - **Polish-v2** empirical gap audit (this commit) caught 4 internal
+    consistency gaps: (a) audit doc missing #3 45th-class entry; (b) CLAUDE.md
+    W171 row missing cron caveat reference; (c) workflow file header missing
+    default-branch caveat note; (d) Bundle × 3 reproducibility not empirically
+    verified end-of-wave. **46th-class vindication**.
 
 - **#4 (No premature "Closes" attribution)**: **22nd vindication**. SW1 commit
   subject says "for React #418 re-emergence detection" (NOT "Closes React #418
@@ -365,10 +376,17 @@ documentation of post-commit empirical findings.
   can adjust based on empirical CI cost data.
 - `include-hidden-files: true` defensive flag included even though current
   visual-audit.yml omits it and works — zero-cost insurance per W160 SW1 (z).
-- Build × N reproducibility NOT re-verified end-of-wave (W171 has ZERO frontend
-  src changes — structural argument preserves W134-W170 ≥34-wave BYTE-IDENTICAL
-  invariant chain extending to **≥35 waves** through W171). No empirical
-  rebuild needed; honest framing.
+- ~~Build × N reproducibility NOT re-verified end-of-wave~~ → **CLOSED in
+  polish-v2** via empirical Build × 3 BYTE-IDENTICAL verification: all 3
+  fresh `rm -rf dist && npm run build` runs from clean state produce
+  IDENTICAL sha256 (main JS `142897dd32e886903c24b28292f487b9cfbe597cdb7a3b86ca36767a63a38898` ×
+  3 + server.js `6ec125ed1df8310e3d186d4b2065af7e56b6eb154f161f899ac360daad0bca00` ×
+  3 + filename `index-BlWdKfsi.js` × 3) — MATCHES W170 polish-v2 + W169
+  polish-v2 baseline EXACTLY. W134-W170 ≥34-wave LOCAL-MACHINE BYTE-IDENTICAL
+  invariant chain EMPIRICALLY EXTENDS through W171 → **≥35-wave invariant
+  EMPIRICALLY VERIFIED** (not just structural argument). W141 anti-pattern
+  #3 47th-class vindication: empirical verification of structural argument
+  is stronger than structural argument alone.
 
 ## Lessons learned
 
