@@ -2,7 +2,7 @@
 
 **Status**: ✅ CLEAN RECONFIRMATION — Path D B-full investigation found ZERO React #418 firings across 30 captures (3 smoke runs × 10 captures) on byte-equivalent bundle. W168 SW2 `/admin/audit light` finding (2 firings, args=`text&args[]=`) is NON-REPRODUCIBLE in W169 — likely transient timing-race fluke per W141 anti-pattern #4 honest framing.
 **Branch**: `egorribun`
-**Wave commits**: 2 total — SW1 `dXXXXXXXX` (docker-compose.full.yml diagnostic flags +SW1+SW4 cycle comment expansions; flags returned to baseline `""`) + SW6 audit `(this commit)` (SW2 + SW3 + SW4 + SW5 verification-only, no commits per plan)
+**Wave commits**: 2 total — SW6 audit `54cd719fc` (AUDIT_WAVE169.md NEW + N+3 W166→archive rename) + SW6-followup `4acd23cf3` (CLAUDE.md row + 2 Gotchas + INDEX.md + docker-compose.full.yml W169 SW1+SW4 cycle comment expansions; flags restored to baseline `""`). SW1 + SW2 + SW3 + SW4 + SW5 had docker-compose flag changes only — bundled with SW6-followup commit per W157 SW1 + W158 SW1 precedent (single docker-compose change net: comment block expansions only, flag values restored to baseline)
 **Active waves post-W169**: W167/W168/W169 (W166 → archive)
 **30th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline
 
@@ -20,7 +20,7 @@ W169 ran user-approved **Q0=B Path D text-content investigation** + **Q1=B-full 
 
 - Branch: `egorribun`
 - HEAD pre-W169: `85bf4ac87` (W168 polish-v3 recursion terminator)
-- HEAD post-W169 SW6: `(this commit)`
+- HEAD post-W169 SW6-followup: `4acd23cf3` (audit `54cd719fc` + followup `4acd23cf3`)
 
 ### Active waves + N+3 rotation
 
@@ -324,7 +324,7 @@ Local Windows-node filename `DaSJVSyG.js` vs Docker Linux-node `DQhiif0o.js` —
 
 ---
 
-## §SW6 — Audit + memory + N+3 rotation (this commit)
+## §SW6 — Audit + memory + N+3 rotation (`54cd719fc` + `4acd23cf3`)
 
 ### Files created
 
