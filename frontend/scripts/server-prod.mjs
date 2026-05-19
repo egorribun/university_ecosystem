@@ -77,6 +77,12 @@ if (typeof handler?.fetch !== "function") {
 // actually contains; unknown extensions fall through to
 // `application/octet-stream` (browsers handle that gracefully for the
 // few stragglers like .map source-map files).
+// Wave 173 SW1 — added `.wasm` (uni_wasm_crypto + wasm_sanitizer ammonia).
+// Browser requires strictly `application/wasm` for WebAssembly.instantiateStreaming();
+// the previous fallthrough to `application/octet-stream` made crypto.worker fail
+// with "Incorrect response MIME type" + forced regex fallback in sanitize.ts.
+// Closes W131 SW7 omission that lay dormant ≥17 waves because /messenger
+// (chat — the only feature exercising crypto.worker) was Phase 5 punted.
 const CONTENT_TYPES = Object.freeze({
   ".js": "application/javascript; charset=utf-8",
   ".mjs": "application/javascript; charset=utf-8",
@@ -84,6 +90,7 @@ const CONTENT_TYPES = Object.freeze({
   ".html": "text/html; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".wasm": "application/wasm",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",

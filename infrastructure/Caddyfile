@@ -48,7 +48,19 @@
         reverse_proxy gateway:8080
     }
 
-    # WebSocket Hub (Go)
+    # Wave 173 SW1 — /ws/ticket is an HTTP POST endpoint on backend (via gateway)
+    # that issues short-lived OTT (one-time-tickets) for WS upgrade authentication
+    # (RZ-W14-01, see app/api/ws/ticket.py). It MUST precede the general /ws/*
+    # rule because Caddy `handle` blocks are mutually exclusive and matched in
+    # declaration order — without this exception POST /ws/ticket gets routed to
+    # ws-hub:8081 (a Go WS service with no HTTP /ticket endpoint) and returns
+    # 404, breaking ALL chat/messenger functionality. Closes W131 SW4 routing
+    # omission that lay dormant ≥17 waves because /messenger was Phase 5 punted.
+    handle /ws/ticket {
+        reverse_proxy gateway:8080
+    }
+
+    # WebSocket Hub (Go) — WS upgrade endpoint itself
     handle /ws/* {
         reverse_proxy ws-hub:8081
     }
