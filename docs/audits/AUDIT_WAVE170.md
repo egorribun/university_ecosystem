@@ -224,11 +224,11 @@ patterns.
 | `cd frontend && npm test` | 1058p / 12s / 0f | ✅ verified polish-v1: **1058 passed / 12 skipped / 0 failed** in 32.06s (W167 baseline EXACT) |
 | `bash scripts/dc.sh ps` | container table | ✅ verified SW4 + polish-v1 |
 | `pwsh scripts/dc.ps1 ps` | container table | ✅ verified SW4 + polish-v1 |
-| `wc -c memory/MEMORY.md` | < 24,400 b post-SW5 row addition | ✅ 23,587 b final / 813 b headroom (post-W170 row + Active backlog short trim) |
+| `wc -c memory/MEMORY.md` | < 24,400 b post-SW5 row addition | ✅ 23,587 b post-SW5 / 813 b headroom; **24,255 b post-polish-v1 / 145 b headroom** (polish-v1 added ~668 b for commit-count corrections + Build × 1 invariant extension; still under ceiling) |
 | `ls docs/audits/AUDIT_WAVE*.md` | 3 files (W168, W169, W170) | ✅ verified post-SW5 commit |
 | `ls docs/audits/archive/AUDIT_WAVE*.md \| wc -l` | 55 (54 + W167 rotated) | ✅ verified post-SW5 commit |
 | W156 SW4 hook chain clean across W170 commits | NO `--no-verify` | ✅ SW4 + SW5 + SW5-followup all clean |
-| **Build × 1 BYTE-IDENTICAL to W169 polish-v2 baseline** | sha256 match for main JS + server.js | ✅ polish-v1 empirically verified: main JS `index-BlWdKfsi.js` sha `142897dd...3a38898` (177,057 b) + server.js sha `6ec125ed...0bca00` (23,600 b) MATCH W169 polish-v2 EXACT. **W134-W169 ≥33-wave invariant EXTENDS through W170 → ≥34-wave BYTE-IDENTICAL invariant chain** |
+| **Build × 3 BYTE-IDENTICAL to W169 polish-v2 baseline** | sha256 match for main JS + server.js across all 3 runs | ✅ polish-v1 + polish-v2 empirically verified × 3: main JS `index-BlWdKfsi.js` sha `142897dd...3a38898` (177,057 b) + server.js sha `6ec125ed...0bca00` (23,600 b) MATCH W169 polish-v2 EXACT across 3 fresh `npm run build` runs. **W134-W169 ≥33-wave invariant EXTENDS through W170 → ≥34-wave BYTE-IDENTICAL invariant chain × 3 reproducible**. Per W169 (z) #1 lesson — independent sha256 verification, NOT just exit code trust |
 | /healthz | `{"status":"ok"}` | ✅ pre-flight |
 | /login | 200/21,732 b SSR (W167 baseline) | ✅ pre-flight |
 | Docker stack | 5 services healthy | ✅ pre-flight + SW4 |
@@ -243,7 +243,7 @@ patterns.
 | 4 | **MEMORY.md compaction is mechanical not structural** | Honest framing | Convention-compliant maintenance; doesn't change project semantics. Same class as W163 SW1 aggressive compaction precedent. |
 | 5 | **/login = 21,732 b vs opening-prompt 21,791 b** is 59-byte / 0.3% measurement noise | W141 anti-pattern #3 41st-vindication-class | W167 baseline (from W160) was 21,732; opening prompt drifted to 21,791 during W166/W167/W168/W169 row updates. Documented but NOT load-bearing for any W170 SW outcome. |
 | 6 | **SW1 plan-time scope expansion** (W164+W165+W166 → also W167) | W138 Lesson #1 within-iter sub-fix | Within-iter SAME-mechanism sub-fix allowed; plan-time estimate underspecified the needed compaction. Honest framing per `feedback_perfectionism.md`. |
-| 7 | ~~**Build × 3 reproducibility NOT re-verified post-W170**~~ | ✅ CLOSED in polish-v1 | Build × 1 (defensive, since W170 had ZERO frontend src/ changes) empirically verified BYTE-IDENTICAL to W169 polish-v2 baseline — main JS sha `142897dd...3a38898` + server.js sha `6ec125ed...0bca00` match EXACT. **W134-W169 ≥33-wave invariant EXTENDS through W170 → ≥34-wave BYTE-IDENTICAL invariant chain**. Per W169 (z) #1 lesson — independent sha256 verification, NOT just exit code trust (W141 #3 42nd-class). |
+| 7 | ~~**Build × 3 reproducibility NOT re-verified post-W170**~~ | ✅ CLOSED in polish-v1 (Build × 1) + polish-v2 (extended to Build × 3) | Build × 3 (all 3 fresh `npm run build` runs from clean state) empirically verified BYTE-IDENTICAL to W169 polish-v2 baseline — main JS sha `142897dd...3a38898` + server.js sha `6ec125ed...0bca00` match EXACT × 3. **W134-W169 ≥33-wave invariant EXTENDS through W170 → ≥34-wave BYTE-IDENTICAL invariant chain × 3 reproducible**. Per W169 (z) #1 lesson — independent sha256 verification, NOT just exit code trust (W141 #3 42nd-class). |
 | 8 | **Plan-time Lighthouse age "3 weeks" vs empirical "1 day"** | W141 anti-pattern #3 40th-vindication-class | Caught via WebFetch creation date; corrected in `wave170_lighthouse_upstream_check.md` + this audit. Honest documentation of the drift. |
 
 **§Honesty net trajectory**: 0-2 → 0-2 OPEN (count unchanged; W134 #2 bundle
