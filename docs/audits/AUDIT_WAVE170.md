@@ -30,8 +30,9 @@ but honestly framed as "structural mitigation, NOT enforced adoption" — see
 | SW1 | (no commit) | MEMORY.md compaction | `memory/MEMORY.md` (user .claude profile, not git-tracked) | 22,061 b post-compaction; +2,339 b headroom |
 | SW2 | (no commit) | INDEX.md verification | none | Vacuous closure via verification (W141 #3 26th-vindication-class) |
 | SW3 | (no commit) | Lighthouse upstream tick | `memory/wave170_lighthouse_upstream_check.md` (user .claude profile, not git-tracked) | Issue state unchanged; calibration note added |
-| SW4 | `a845ecdf7` | feat | `scripts/dc.sh` + `scripts/dc.ps1` + `CLAUDE.md` (2 hunks ## Gotchas) | NEW helper-script wrappers + Gotcha extension; closes W169 (z) #1 structural |
-| SW5 | (this commit) | docs | `docs/audits/AUDIT_WAVE170.md` + `CLAUDE.md ## Audit Trail` row + `docs/audits/INDEX.md` + `git mv AUDIT_WAVE167.md → archive/` + memory files | Audit + N+3 rotation |
+| SW4 | `a845ecdf7` | feat | `scripts/dc.sh` (34 lines) + `scripts/dc.ps1` (39 lines) + `CLAUDE.md` (2 hunks ## Gotchas) | NEW helper-script wrappers + Gotcha extension; closes W169 (z) #1 structural |
+| SW5 | `c1a194f41` | docs | `git mv docs/audits/AUDIT_WAVE167.md → archive/` | N+3 rotation only (rename-only commit; W138 Lesson #1 split — see SW5 narrative) |
+| SW5-followup | `0cc1b02b8` | docs | NEW `docs/audits/AUDIT_WAVE170.md` + `CLAUDE.md` (## Audit Trail row + rotation history) + `docs/audits/INDEX.md` (Active table W170 + W167 to Archive + rotation history) | Audit doc + Active/Archive table updates per W138 Lesson #1 SAME-mechanism recovery (initial SW5 commit had unstaged M files due to `git add` pathspec error on already-moved file; followup bundled remaining changes per W169 SW6/SW6-followup precedent) |
 
 ## SW1 narrative — MEMORY.md compaction (mandatory, non-tracked)
 
@@ -143,12 +144,13 @@ silent-failure vector via helper-script wrappers.
 **Mechanism**: 2 NEW wrapper scripts that resolve to git repo root via
 `git rev-parse --show-toplevel` regardless of caller cwd:
 
-- `scripts/dc.sh` — POSIX/Git Bash, 25 LoC, `set -e` + `git rev-parse` lookup
-  + `cd $ROOT` + `exec docker compose -f docker-compose.full.yml "$@"`
-- `scripts/dc.ps1` — PowerShell, 30 LoC, `$ErrorActionPreference = "Stop"` +
-  same lookup + POSIX-to-Windows path conversion (`-replace '/', '\'`) +
-  `Set-Location $root` + `& docker compose -f docker-compose.full.yml @args` +
-  `exit $LASTEXITCODE`
+- `scripts/dc.sh` — POSIX/Git Bash, 34 lines (~12 LoC code + comments/doc),
+  `set -e` + `git rev-parse` lookup + `cd $ROOT` +
+  `exec docker compose -f docker-compose.full.yml "$@"`
+- `scripts/dc.ps1` — PowerShell, 39 lines (~13 LoC code + comments/doc),
+  `$ErrorActionPreference = "Stop"` + same lookup + POSIX-to-Windows path
+  conversion (`-replace '/', '\'`) + `Set-Location $root` +
+  `& docker compose -f docker-compose.full.yml @args` + `exit $LASTEXITCODE`
 
 **Empirical verification**:
 - `bash scripts/dc.sh ps` from project root: returns full container table (15
@@ -219,13 +221,14 @@ patterns.
 | `git status --short` clean post-SW5 | clean | (verified at commit time) |
 | `cd frontend && npx tsc --noEmit` | exit 0 | TBD (no frontend src changes — defensive only) |
 | `cd frontend && npm run lint -- --max-warnings=0` | exit 0 | TBD (no frontend src changes — defensive only) |
-| `cd frontend && npm test` | 1058p / 12s / 0f | TBD (no frontend src changes — defensive only) |
-| `bash scripts/dc.sh ps` | container table | ✅ verified SW4 |
-| `pwsh scripts/dc.ps1 ps` | container table | ✅ verified SW4 |
-| `wc -c memory/MEMORY.md` | < 22,500 b pre-SW5 row addition | ✅ 22,061 b (SW1) |
-| `ls docs/audits/AUDIT_WAVE*.md` | 3 files (W168, W169, W170) | TBD post-SW5 commit |
-| `ls docs/audits/archive/AUDIT_WAVE*.md \| wc -l` | 55 (54 + W167 rotated) | TBD post-SW5 commit |
-| W156 SW4 hook chain clean across W170 commits | NO `--no-verify` | ✅ SW4 verified; SW5 TBD |
+| `cd frontend && npm test` | 1058p / 12s / 0f | ✅ verified polish-v1: **1058 passed / 12 skipped / 0 failed** in 32.06s (W167 baseline EXACT) |
+| `bash scripts/dc.sh ps` | container table | ✅ verified SW4 + polish-v1 |
+| `pwsh scripts/dc.ps1 ps` | container table | ✅ verified SW4 + polish-v1 |
+| `wc -c memory/MEMORY.md` | < 24,400 b post-SW5 row addition | ✅ 23,587 b final / 813 b headroom (post-W170 row + Active backlog short trim) |
+| `ls docs/audits/AUDIT_WAVE*.md` | 3 files (W168, W169, W170) | ✅ verified post-SW5 commit |
+| `ls docs/audits/archive/AUDIT_WAVE*.md \| wc -l` | 55 (54 + W167 rotated) | ✅ verified post-SW5 commit |
+| W156 SW4 hook chain clean across W170 commits | NO `--no-verify` | ✅ SW4 + SW5 + SW5-followup all clean |
+| **Build × 1 BYTE-IDENTICAL to W169 polish-v2 baseline** | sha256 match for main JS + server.js | ✅ polish-v1 empirically verified: main JS `index-BlWdKfsi.js` sha `142897dd...3a38898` (177,057 b) + server.js sha `6ec125ed...0bca00` (23,600 b) MATCH W169 polish-v2 EXACT. **W134-W169 ≥33-wave invariant EXTENDS through W170 → ≥34-wave BYTE-IDENTICAL invariant chain** |
 | /healthz | `{"status":"ok"}` | ✅ pre-flight |
 | /login | 200/21,732 b SSR (W167 baseline) | ✅ pre-flight |
 | Docker stack | 5 services healthy | ✅ pre-flight + SW4 |
@@ -240,7 +243,7 @@ patterns.
 | 4 | **MEMORY.md compaction is mechanical not structural** | Honest framing | Convention-compliant maintenance; doesn't change project semantics. Same class as W163 SW1 aggressive compaction precedent. |
 | 5 | **/login = 21,732 b vs opening-prompt 21,791 b** is 59-byte / 0.3% measurement noise | W141 anti-pattern #3 41st-vindication-class | W167 baseline (from W160) was 21,732; opening prompt drifted to 21,791 during W166/W167/W168/W169 row updates. Documented but NOT load-bearing for any W170 SW outcome. |
 | 6 | **SW1 plan-time scope expansion** (W164+W165+W166 → also W167) | W138 Lesson #1 within-iter sub-fix | Within-iter SAME-mechanism sub-fix allowed; plan-time estimate underspecified the needed compaction. Honest framing per `feedback_perfectionism.md`. |
-| 7 | **Build × 3 reproducibility NOT re-verified post-W170** | Defensive deferral | W170 had ZERO frontend src/ changes (only `scripts/` + `CLAUDE.md` + memory + audit docs); bundle invariant preserved by structural argument. Polish-pass may re-verify if «безупречно?» fires. |
+| 7 | ~~**Build × 3 reproducibility NOT re-verified post-W170**~~ | ✅ CLOSED in polish-v1 | Build × 1 (defensive, since W170 had ZERO frontend src/ changes) empirically verified BYTE-IDENTICAL to W169 polish-v2 baseline — main JS sha `142897dd...3a38898` + server.js sha `6ec125ed...0bca00` match EXACT. **W134-W169 ≥33-wave invariant EXTENDS through W170 → ≥34-wave BYTE-IDENTICAL invariant chain**. Per W169 (z) #1 lesson — independent sha256 verification, NOT just exit code trust (W141 #3 42nd-class). |
 | 8 | **Plan-time Lighthouse age "3 weeks" vs empirical "1 day"** | W141 anti-pattern #3 40th-vindication-class | Caught via WebFetch creation date; corrected in `wave170_lighthouse_upstream_check.md` + this audit. Honest documentation of the drift. |
 
 **§Honesty net trajectory**: 0-2 → 0-2 OPEN (count unchanged; W134 #2 bundle
