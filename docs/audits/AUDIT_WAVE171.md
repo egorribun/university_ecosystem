@@ -233,11 +233,16 @@ checkpoint + admin smoke monitoring + N+3 W168-archive`.
 | 8 | **§Honesty 0-2 → 0-2 OPEN count unchanged** | Net trajectory | New monitoring infrastructure improves operational rigor without closing existing carryforward §Honesty caveats (W134 #2 bundle delta + /messenger Phase 5 punt by-design). Net structural improvement without quantity reduction (mirrors W170 SW pattern). |
 | 9 | **`include-hidden-files: true` is defensive** | W160 SW1 (z) hedge | Current visual-audit.yml doesn't set the flag and (presumably) works for `.screenshots/wave138-visual-audit` path. Adding the flag in admin-smoke follows W160 SW1 (z) lesson — `actions/upload-artifact@v7` strips hidden contents by default. Cost: 1 line; Risk: zero. |
 | 10 | **SW0 over-target compaction** | Plan deviation honestly framed | Plan target was 22,500-23,000 b (~1,400 b headroom). Empirical: 20,586 b (~3,814 b headroom). More aggressive collapse than planned. Acceptable per `feedback_perfectionism.md`: more headroom = more room before next compaction, not more work. Documented openly. |
+| 11 | **Workflow scheduled cron will NOT fire until cherry-picked to main OR PR #1114 merged** | Polish-v1 self-audit discovery | GitHub Actions limitation: scheduled triggers require the workflow file on the default branch (main). Empirical check post-push: `gh workflow view admin-smoke-monitoring.yml` returns HTTP 404 because file is on `egorribun` branch only. W139 SW1 precedent: visual-audit.yml was cherry-picked to main as commit `4db94fb5a` for default-branch visibility. Two options for W172+: (a) user-authorized cherry-pick to main (hard-to-reverse — requires explicit authorization per CLAUDE.md "executing actions with care") OR (b) wait for PR #1114 merge to main (scheduled cron activates automatically). The infrastructure IS shipped + correct; activation timing is the deferred aspect. **NOT a regression of W171 work** — the workflow file is structurally complete + ready. Plan §Honesty #3 ("Workflow not actually triggered in W171") was partially correct but understated the limitation (didn't anticipate default-branch requirement for cron).
+| 12 | **MEMORY.md headroom is tight** | Trade-off accepted | Final state 24,335 b / 65 b headroom under 24,400 ceiling. Matches W170 post-state pattern (76 b headroom pre-W171). W172 SW0 will compact again via standard W141 #1 within-iter sub-fix pattern. Acceptable per maintenance-mode workflow — compaction is per-wave routine, not a deferred issue. |
 
 **§Honesty net trajectory**: 0-2 → 0-2 OPEN (count unchanged; W171 adds
 maintenance-enabling infrastructure addressing W169 §Honesty residual
 operationally; carryforward W134 #2 + /messenger by-design preserved
-unchanged).
+unchanged; caveats #1-#12 are honestly-framed scope-deferrals and discipline
+notes, not new structural caveats). Polish-v1 added #11 (scheduled cron
+default-branch requirement) + #12 (MEMORY.md tight headroom) — both honest
+documentation of post-commit empirical findings.
 
 ## W141 anti-pattern compliance summary
 
@@ -288,8 +293,21 @@ unchanged).
    31-wave audit trail (W134-W171) serves as historical learning artifact +
    onboarding documentation for any future maintainer.
 
-2. **First scheduled cron firing** (post-W171 merge + first Monday 03:00 UTC) —
-   operational validation of admin-smoke-monitoring.yml infrastructure.
+2. **First scheduled cron firing** (post-W171 PR merge + first Monday 03:00
+   UTC) — operational validation of admin-smoke-monitoring.yml infrastructure.
+   **CRITICAL**: scheduled cron will NOT fire until workflow file is on the
+   default branch (main). Two activation paths:
+   - **Path A (Recommended)**: Wait for PR #1114 to merge to main →
+     workflow lands on default branch → first cron fires at next Monday
+     03:00 UTC.
+   - **Path B (W139 SW1 precedent)**: User-authorized cherry-pick to main
+     (commit visual-audit.yml-style as `4db94fb5a` was) → workflow
+     immediately registers on default branch → can fire next Monday +
+     workflow_dispatch becomes visible in `gh workflow view`. **Hard-to-
+     reverse — requires explicit user authorization per CLAUDE.md
+     "executing actions with care".**
+
+   Once activated:
    - **If captures pass** (10 × HTTP 200 + 0 hydration errors): W169 §Honesty
      residual "non-reproducible ≠ proven absent" operationally re-confirmed.
      Future weekly firings provide ongoing empirical evidence.
@@ -332,9 +350,17 @@ unchanged).
 
 ### Honest deferrals (W171 specific)
 
+- **Scheduled cron NOT active until workflow on default branch** (Polish-v1
+  discovery): workflow file shipped to egorribun branch via SW1 commit
+  `686614860`, but GitHub Actions scheduled cron only fires for workflows
+  on the default branch (main). Empirical: `gh workflow view
+  admin-smoke-monitoring.yml` returns HTTP 404 post-push. W139 SW1
+  precedent for cherry-picking visual-audit.yml to main; user-decision
+  for admin-smoke. **Most honest path**: wait for PR #1114 merge — workflow
+  activates automatically (Path A above).
 - Workflow YAML structurally validated but NOT actually triggered (no
-  workflow_dispatch invocation in W171; deferred to W171 polish OR W172+).
-  Following W139 SW1 visual-audit.yml precedent.
+  workflow_dispatch invocation in W171). Triggering requires either
+  cherry-pick to main OR PR #1114 merge first.
 - Cron cadence "weekly Mondays 03:00 UTC" is plan-time judgment call; W172+
   can adjust based on empirical CI cost data.
 - `include-hidden-files: true` defensive flag included even though current
@@ -394,3 +420,24 @@ unchanged).
    authoring should apply known-defensive flags by default even when current
    templates omit them. Anti-pattern #3 vindication-class category for "Agent
    missed defensive opportunity" observations.
+
+8. **GitHub Actions scheduled cron triggers require workflow on default branch**
+   (Polish-v1 discovery): scheduled triggers on a workflow file in a feature
+   branch are INERT — they don't fire until the file lands on the default
+   branch (main). W139 SW1 set the precedent via cherry-pick to main (commit
+   `4db94fb5a`); without the cherry-pick, the workflow stays dormant. Future
+   workflow-additions on feature branches should anticipate this — either
+   (a) cherry-pick to main with user authorization, OR (b) accept activation
+   deferral to PR merge as honest framing. W141 anti-pattern #3 lesson: even
+   careful plans miss platform-specific implicit assumptions; polish-pass
+   empirical verification catches them.
+
+9. **«Безупречно?» polish-pass empirical verification is structural
+   discipline** (W171 polish-v1 confirmation): per `feedback_perfectionism.md`,
+   the user's «безупречно?» probe expects honest self-audit, not reassurance.
+   Polish-v1 ran `gh workflow view` AFTER the SW3 commit + push, surfacing the
+   default-branch cron caveat that the original plan missed. Pattern recipe:
+   after declaring "done", run empirical verification commands (gh workflow
+   view, gh run list, curl smoke, etc.) and document any findings as §Honesty
+   additions BEFORE the user fires the «безупречно?» probe — anticipate the
+   gaps the probe would surface.
