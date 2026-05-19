@@ -381,9 +381,25 @@ async function smokeAdminRoute(page, routePath, theme, outDir) {
   )
 
   const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
+  // Wave 167 SW1 (Tier 2) — extend filter to also catch React's minified
+  // hydration error class. Pre-W167 the filter matched only the unminified
+  // English phrases ("Hydration failed because..." / "did not match"), so
+  // production-bundled apps (which is the dev Docker compose default per
+  // FRONTEND_BUILD_UNMINIFIED="" + FRONTEND_REACT_DEV_MODE="" at
+  // docker-compose.full.yml:144 + 158) produced false-negative
+  // hydrationErrorCount=0 even when React #418 fired × 2 per admin page
+  // (W166 §Honesty NEW caveat #2). Regex catches #418-#427 hydration
+  // boundary error class (W155 SW3.B `getParentHydrationBoundary` infinite
+  // loop observed React #419 in the same family). Always cross-verify
+  // with direct `grep -c "React error #" .screenshots/.../*.json` per
+  // CLAUDE.md gotcha — test infrastructure filter bugs hide regression
+  // evidence (W141 anti-pattern #3 32nd vindication at W166).
   const hydrationErrors = consoleMessages.filter(
     (m) =>
-      m.text.includes("hydrat") || m.text.includes("Hydration") || m.text.includes("did not match")
+      m.text.includes("hydrat") ||
+      m.text.includes("Hydration") ||
+      m.text.includes("did not match") ||
+      /Minified React error #\d+/.test(m.text)
   )
 
   const redirectedToLogin =
