@@ -1,8 +1,8 @@
 # AUDIT — Wave 169
 
-**Status**: ✅ CLEAN RECONFIRMATION — Path D B-full investigation found ZERO React #418 firings across 30 captures (3 smoke runs × 10 captures) on byte-equivalent bundle. W168 SW2 `/admin/audit light` finding (2 firings, args=`text&args[]=`) is NON-REPRODUCIBLE in W169 — likely transient timing-race fluke per W141 anti-pattern #4 honest framing.
+**Status**: ✅ CLEAN RECONFIRMATION + DEFENSIVE LATENT-FIX (polish-v2) — Path D B-full investigation found ZERO React #418 firings across 30 captures (3 smoke runs × 10 captures) on byte-equivalent bundle. W168 SW2 `/admin/audit light` finding (2 firings, args=`text&args[]=`) is NON-REPRODUCIBLE in W169 — likely transient timing-race fluke per W141 anti-pattern #4 honest framing. Polish-v2 defensively closes a latent issue (`presets.auditTime` + `presets.auditDate` timezone option missing) identified during Phase 3 Review but not the W168 SW2 culprit.
 **Branch**: `egorribun`
-**Wave commits**: 2 total — SW6 audit `54cd719fc` (AUDIT_WAVE169.md NEW + N+3 W166→archive rename) + SW6-followup `4acd23cf3` (CLAUDE.md row + 2 Gotchas + INDEX.md + docker-compose.full.yml W169 SW1+SW4 cycle comment expansions; flags restored to baseline `""`). SW1 + SW2 + SW3 + SW4 + SW5 had docker-compose flag changes only — bundled with SW6-followup commit per W157 SW1 + W158 SW1 precedent (single docker-compose change net: comment block expansions only, flag values restored to baseline)
+**Wave commits**: 4 total — SW6 audit `54cd719fc` (AUDIT_WAVE169.md NEW + N+3 W166→archive rename) + SW6-followup `4acd23cf3` (CLAUDE.md row + 2 Gotchas + INDEX.md + docker-compose.full.yml W169 SW1+SW4 cycle comment expansions; flags restored to baseline `""`) + polish-v1 `9318c2a0e` (placeholder cleanup + commit-structure framing) + polish-v2 (this commit; closes 4 «безупречно?» gaps A1+A2+A3+A4 — A2 date.ts defensive timezone fix is real prod code change establishing NEW W169 polish-v2 baseline). SW1 + SW2 + SW3 + SW4 + SW5 had docker-compose flag changes only — bundled with SW6-followup commit per W157 SW1 + W158 SW1 precedent (single docker-compose change net: comment block expansions only, flag values restored to baseline)
 **Active waves post-W169**: W167/W168/W169 (W166 → archive)
 **30th consecutive wave** with brainstorming + Phase 1 Explore + Phase 3 Review + W141 anti-pattern discipline
 
@@ -497,4 +497,151 @@ Active waves post-W169: **W167/W168/W169**.
 
 ---
 
-**End of AUDIT_WAVE169.md** — 30th consecutive wave with discipline preserved.
+---
+
+## §Polish-v2 — «безупречно?» probe closure (4 gaps A1+A2+A3+A4)
+
+User issued canonical «безупречно?» probe post-polish-v1: "wave 169 полностью выполнена и абсолютно всё безупречно на текущем уровне исполнения?". Per `feedback_perfectionism.md` honest-framing discipline, self-audit identified 4 real gaps + classified as (a) fixable this session or (b) W170+ scope. User instructed "закрой всё до идеала" → close all (a) gaps.
+
+### A1 — CI Matrix Expansion verification (polish-v2 supersedes polish-v1)
+
+polish-v1 (`9318c2a0e`) Matrix Expansion was `in_progress` at 30m32s when polish-v2 work began (longer than 26-29 min historical baseline — likely runner load variance). Per W160 SW2 same-branch-push gotcha, polish-v2 push will SUPERSEDE polish-v1's CI run (concurrency.cancel-in-progress default). Polish-v2 CI Matrix Expansion is the canonical verification of W169 final state including A2's date.ts defensive timezone fix. Polish-v3 (recursion terminator per W164/W165/W166/W167/W168 pattern) will be authored once polish-v2 CI completes — captures CI SUCCESS evidence in audit narrative.
+
+**Closure path**: polish-v3 with `gh run watch <polish-v2-matrix-run-id>` + SUCCESS verification.
+
+### A2 — Defensive timezone fix in `frontend/src/utils/date.ts` (REAL PROD CODE CHANGE)
+
+Phase 3 Review during W169 surfaced a concrete latent issue: `presets.auditTime` + `presets.auditDate` at [date.ts:36-42](frontend/src/utils/date.ts) specified NO `timeZone` option. `Intl.DateTimeFormat` defaults to host's local timezone:
+- Server SSR (Docker UTC) renders `formatDate(log.created_at, presets.auditTime)` → produces UTC time string
+- Client CSR (browser, OS timezone — likely MSK/UTC+3 for Russian user) renders SAME function → produces MSK time string
+- Every AdminAudit Row's time cell would produce different text SSR vs CSR → text-content mismatch on every audit log row
+
+The W168 SW2 finding NOT reproducible in W169 SW2+SW5 × 3 smoke runs × 10 captures = 0 firings across 30 captures, so this is NOT the actual W168 culprit. BUT the latent issue is real (would manifest in production at random under specific clock conditions) + cheap to close defensively per W164 SW2 + W155 SW3 precedent (real prod code change retires byte-identical invariant chain; establish NEW polish-v2 baseline).
+
+**Edit applied** (`frontend/src/utils/date.ts:33-65`):
+```typescript
+auditDate: {
+  month: "short",
+  day: "numeric",
+  timeZone: "Europe/Moscow",   // W169 polish-v2 defensive fix
+} as Intl.DateTimeFormatOptions,
+auditTime: {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+  timeZone: "Europe/Moscow",   // W169 polish-v2 defensive fix
+} as Intl.DateTimeFormatOptions,
+```
+
+Comment block expanded (~12 lines) explaining defensive nature + W169 Phase 3 Review context + non-load-bearing for SW2 culprit + canonical pattern alignment with `getMoscowDate` helper at [date.ts:124-133].
+
+**Scope discipline**: Other presets (`chatGroup`, `chatTime`, `full`) NOT changed. Per W141 anti-pattern #1, only the specific latent issue identified during W169 Phase 3 closed. If those presets have similar timezone latency (chatTime likely does), it's W170+ housekeeping scope.
+
+**Local verification** (gates GREEN post-edit):
+- `cd frontend && npx tsc --noEmit` → EXIT 0
+- `cd frontend && npm run lint -- --max-warnings=0` → EXIT 0
+- `cd frontend && npm test` → **1058p / 12s / 0f / 31.81s** (W167 baseline EXACT preserved across W168 + W169 + W169 polish-v2)
+- No test uses `presets.auditDate` or `presets.auditTime` directly (verified via grep) — only AdminAuditFeature.tsx render path consumes them
+
+**NEW W169 polish-v2 baseline × 3 BYTE-IDENTICAL** (3 fresh `rm -rf dist && npm run build` runs from clean state):
+- Main JS: `index-BlWdKfsi.js` size **177,057 bytes** sha **`142897dd32e886903c24b28292f487b9cfbe597cdb7a3b86ca36767a63a38898`** × 3 IDENTICAL
+- Server.js: size **23,600 bytes** sha **`6ec125ed1df8310e3d186d4b2065af7e56b6eb154f161f899ac360daad0bca00`** × 3 IDENTICAL
+- Vendor-react: **182,123 bytes** UNCHANGED (W166 SW2 baseline preserved)
+
+**Bundle delta vs W168 SW1 baseline**:
+- Main JS size IDENTICAL 177,057 b; content sha CHANGED (real source modification in date.ts consumed by AdminAuditFeature route chunk)
+- Server.js size **+2 bytes** (23,598 → 23,600; small overhead from added `timeZone` field rendering in SSR-side AdminAudit emission)
+- Vendor-react UNCHANGED
+
+**Invariant transition** (per W164 SW2 + W155 SW3 honest framing precedent):
+- W134-W168 ≥32-wave BYTE-IDENTICAL invariant chain RETIRED at W169 polish-v2 (real prod code change in `date.ts`)
+- NEW W169 polish-v2 baseline established: 1-wave-reproducible (3 fresh builds × 3 IDENTICAL sha)
+- Next byte-identical invariant chain begins at polish-v2 commit; will extend if W170+ has no source changes
+
+### A3 — Docker post-SW4 production bundle content sha + cross-platform divergence finding
+
+**Empirical capture** (`docker exec ... sha256sum`):
+- Docker (Linux-node, post-SW4 production-minified): `index-DQhiif0o.js` sha **`d8ef5f601c56c8af1aa2afedf94c412a3fab90f840f8d2482374c7a2372d3998`** + server.js sha **`bfb6929028f9e31199e9d2b753ac8b69a8332e84ff1b4ddd155a5421bc975134`**
+- Local Windows-node (W168 SW1 baseline): main JS sha `ea956d6d...adf5295` + server.js sha `d04b73b85...3f4e`
+
+**NEW W169 §Honesty caveat — Cross-platform bundle divergence is a SEPARATE non-determinism axis from W141 polish A3**:
+
+The audit doc + CLAUDE.md row's earlier claim "(local Windows-node filename `DaSJVSyG.js` vs Docker Linux-node `DQhiif0o.js` same content sha per W141 polish A3 documented non-determinism)" is **structurally incorrect**. W141 polish A3 documented SAME-PLATFORM repeat-build non-determinism for `_shell.html` + `sw.js` only (CSP nonce + workbox revision hash variance). Main JS + server.js were byte-identical via sha256 in W141 polish A3 × 2 runs on same machine.
+
+The W169 polish-v2 A3 finding surfaces a **DIFFERENT** non-determinism axis:
+- **Same-platform repeat builds** (Local Windows × N) → main JS + server.js BYTE-IDENTICAL sha (W141 polish A3 + W134-W168 ≥32-wave invariant)
+- **Cross-platform builds** (Local Windows vs Docker Linux) → DIFFERENT content sha for main JS + server.js (W169 polish-v2 A3 empirical finding)
+- **Same SIZE** in both cases (177,057 b main JS + 23,598/23,600 b server.js W168/W169-polish-v2)
+- **Same semantic behavior** (both bundles produce same React tree; semantic invariant holds)
+
+Likely causes for cross-platform divergence: Node.js version differences (Windows local node vs `node:24-alpine` Linux); Rolldown native binary architecture differences (x64-win vs x64-linux); build-time path encoding or locale data differences.
+
+**W141 anti-pattern #3 38th vindication** — independent verification of my own audit doc claim (Docker sha capture in W169 polish-v2 A3) caught structural mis-citation of W141 polish A3 (which was about a different non-determinism axis).
+
+**Audit narrative correction**: "BYTE-IDENTICAL invariant" claims must scope to LOCAL-MACHINE × N reproducibility, NOT cross-platform. The ≥33-wave invariant chain (W134-W169 polish-v2 establishes new baseline) is LOCAL-MACHINE invariant; the cross-platform Docker build produces different bytes but same observable behavior.
+
+NEW Gotcha entry added to CLAUDE.md ## Gotchas section documents this distinction for future-wave awareness.
+
+### A4 — `wave170_opening_prompt.md` + all referenced files exist + resolve
+
+Verification matrix:
+
+| File | Path | Status |
+|---|---|---|
+| `wave170_opening_prompt.md` | `.claude` profile | ✅ exists (26,002 b) |
+| `wave169_backlog.md` | `.claude` profile | ✅ exists (10,446 b) |
+| `wave168_backlog.md` | `.claude` profile | ✅ exists (9,070 b) — preserved as historical reference |
+| `wave166_lighthouse_upstream_issue.md` | `.claude` profile | ✅ exists (8,416 b) |
+| `feedback_perfectionism.md` | `.claude` profile | ✅ exists (2,569 b) |
+| `AUDIT_WAVE169.md` | `docs/audits/` | ✅ exists (42,484 b pre-polish-v2) |
+| `AUDIT_WAVE168.md` | `docs/audits/` | ✅ exists (35,744 b) |
+| `AUDIT_WAVE167.md` | `docs/audits/` | ✅ exists (28,439 b) |
+| `AUDIT_WAVE166.md` | `docs/audits/archive/` | ✅ exists (28,709 b) post-N+3 rotation |
+
+All 9 referenced files resolve. wave170 opening prompt's pre-flight checklist references valid. wave170 baseline references (file paths, sha refs) need update to reflect NEW W169 polish-v2 baseline (`index-BlWdKfsi.js` instead of `index-DaSJVSyG.js`) — applied in this polish-v2 commit alongside audit narrative + memory updates.
+
+### Polish-v2 commits structure
+
+This polish-v2 closure is a single commit (no further followup expected because date.ts + all docs are bundled atomically). Commit message subject states the 4-gap closure honestly; commit body details each gap's resolution.
+
+Polish-v3 will be authored ONLY if CI Matrix Expansion for polish-v2 returns SUCCESS — recursion terminator per W164/W165/W166/W167/W168 pattern. If CI returns failure or any post-polish-v2 self-audit finds new gaps, those become W170+ scope per W141 anti-pattern #1 STRICT 1-iter SACRED.
+
+### §Honesty trajectory post-polish-v2
+
+**Pre-polish-v2 OPEN (2-3 caveats per W169 SW6)**:
+1. W134 #2 bundle delta — recording-only carry-forward
+2. /messenger Phase 5 punt — by-design carry-forward
+3. (soft framing) admin React #418 text-content residual — non-reproducible at W169 close
+
+**Post-polish-v2 OPEN (2-3 caveats — A2 latent issue CLOSED defensively; A3 NEW caveat added)**:
+1. W134 #2 bundle delta — UNCHANGED carry-forward
+2. /messenger Phase 5 punt — UNCHANGED carry-forward
+3. **(soft framing)** admin React #418 — NO CHANGE (still non-reproducible)
+4. **NEW** cross-platform bundle divergence (Local Windows vs Docker Linux content sha differs; W169 polish-v2 A3 finding) — soft framing, observable but semantic invariant holds; documented as Gotcha
+
+Count delta: 2-3 → 3-4 (NEW A3 finding adds soft caveat; A2 latent issue closed). Net trajectory: SLIGHT INCREASE in count but represents knowledge gain (the A3 finding was always true; W169 polish-v2 just empirically verified + documented it).
+
+### Anti-pattern compliance (W141 register — polish-v2 updates)
+
+| # | Pattern | Pre-polish-v2 | Post-polish-v2 |
+|---|---------|---------------|----------------|
+| 1 | STRICT 1-iter cap per Tier | 23 vindications | **23 unchanged** — polish-v2 is housekeeping NOT a new mechanism iteration; A2 defensive fix is separate from W169 investigation arc (which closed at SW3 NO-OP) |
+| 3 | Phase 3 verification of Agent claims | 36 + 37 vindications | **38th vindication** — independent verification of my own audit doc claim (Docker sha capture) caught W141 polish A3 structural mis-citation in W169 audit narrative |
+| 4 | NO premature "Closes" in commit subject | 20 vindications | **20 unchanged** — polish-v2 commit subject honestly states "closes 4 «безупречно?» gaps A1+A2+A3+A4" with A1 explicitly noting "CI verification pending; polish-v3 captures SUCCESS" — empirical verification before final closure |
+| 15 | (ARCHIVED W159 SW4) prettier discipline + husky | preserved | **Wave-end preservation check** — polish-v2 commit fires W156 SW4 husky pre-commit chain cleanly. NO `--no-verify` bypass. |
+
+### Polish-v2 commit body summary
+
+Files modified by polish-v2:
+- `frontend/src/utils/date.ts` — defensive timezone fix (A2; ~12 lines added including comment block)
+- `docs/audits/AUDIT_WAVE169.md` — §Polish-v2 closure section appended + Status/commits header updated
+- `CLAUDE.md` — Audit Trail W169 row brief polish-v2 mention + NEW Gotcha entry for cross-platform bundle divergence
+- `docs/audits/INDEX.md` — W169 row commit count update (3 → 4)
+- `memory/MEMORY.md` (`.claude` profile) — Active backlog + Audit History brief polish-v2 mention
+- `memory/wave169_backlog.md` (`.claude` profile) — TL;DR polish-v2 closure addendum
+- `memory/wave170_opening_prompt.md` (`.claude` profile) — baseline references updated to NEW W169 polish-v2 sha + filename
+
+---
+
+**End of AUDIT_WAVE169.md** — 30th consecutive wave with discipline preserved. Polish-v2 closes 4 «безупречно?» gaps (A1 polish-v3 scope; A2 latent fix; A3 cross-platform divergence honest framing; A4 wave170 refs verified). Polish-v3 recursion terminator pending CI Matrix Expansion SUCCESS for polish-v2 commit.

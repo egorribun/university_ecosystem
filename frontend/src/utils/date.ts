@@ -33,12 +33,27 @@ export function formatDate(
 export const presets = {
   chatGroup: { month: "long", day: "numeric", year: "numeric" } as Intl.DateTimeFormatOptions,
   chatTime: { hour: "2-digit", minute: "2-digit", hour12: false } as Intl.DateTimeFormatOptions,
-  auditDate: { month: "short", day: "numeric" } as Intl.DateTimeFormatOptions,
+  // Wave 169 polish-v2 — defensive `timeZone: "Europe/Moscow"` on audit presets
+  // closes a latent SSR/CSR divergence (server Docker UTC vs client browser OS
+  // timezone) per W169 Phase 3 Review finding. AdminAudit Rows render
+  // `formatDate(log.created_at, presets.auditTime/auditDate)` which without
+  // explicit `timeZone` defaults to host timezone — produces different strings
+  // SSR vs CSR. Moscow chosen matching existing `getMoscowDate` helper pattern
+  // (date.ts:124-133) + Russian university user base. Not load-bearing for the
+  // W168 SW2 finding (W169 SW2+SW5 × 3 smoke runs × 10 captures = 0 firings
+  // across 30 captures, ruling out timezone as the actual culprit), but the
+  // latent issue is real + cheap to close defensively.
+  auditDate: {
+    month: "short",
+    day: "numeric",
+    timeZone: "Europe/Moscow",
+  } as Intl.DateTimeFormatOptions,
   auditTime: {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
+    timeZone: "Europe/Moscow",
   } as Intl.DateTimeFormatOptions,
   full: {
     year: "numeric",
