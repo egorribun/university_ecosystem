@@ -141,7 +141,7 @@ services:
         # client-side stack-trace debug needs the unminified bundle + linked
         # source maps. Tree-shake invariants preserved per W157 SW1:
         # 0 react-dom-client.development refs in PROD; 0 jsxDEV in server.js.
-        FRONTEND_BUILD_UNMINIFIED: "true"
+        FRONTEND_BUILD_UNMINIFIED: ""
         # W156 SW1 Tier 1 #1 — opt-in development React for /login wedge
         # diagnosis (W155 NAMED React #418 + getParentHydrationBoundary
         # mechanisms but minified error args [text, ""] hide exact mismatch).
@@ -155,7 +155,7 @@ services:
         # future hydration debugging needs the dev React bundle's full
         # error messages. Tree-shake invariant verified W157 SW1: PROD
         # bundle has 0 react-dom-client.development refs.
-        FRONTEND_REACT_DEV_MODE: "true"
+        FRONTEND_REACT_DEV_MODE: ""
     ports:
       - "8081:3000"
     networks:
