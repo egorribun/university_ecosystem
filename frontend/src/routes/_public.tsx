@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 export const Route = createFileRoute("/_public")({
   // Wave 154 SW1 — removed `ssr: false` workaround (W150 polish-followup commit
@@ -11,9 +12,14 @@ export const Route = createFileRoute("/_public")({
   // re-fire post-revert, W155+ scope can re-add explicit `ssr: false` here OR
   // SSR-suppress the specific offending component via `import.meta.env.SSR`
   // pattern matching W153 SW2.
-  beforeLoad: ({ context }) => {
-    if (context.auth.loading) return
-    if (context.auth.isAuth) {
+  //
+  // Wave 174 SW1 — read live Zustand state via useAuthStore.getState()
+  // instead of stale `context.auth.*`. See _auth.tsx for full rationale
+  // (W152 Phase 1.7 removed the App.tsx reactive context bridge).
+  beforeLoad: () => {
+    const { user, loading } = useAuthStore.getState()
+    if (loading) return
+    if (user) {
       throw redirect({ to: "/dashboard" })
     }
   },

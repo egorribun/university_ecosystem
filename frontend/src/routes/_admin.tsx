@@ -4,6 +4,7 @@ import { useReducedMotion } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { AdminBackdrop } from "@/features/admin/components/AdminBackdrop"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 // Wave 150 SW1 — `.admin-theme` scope wrapper + AdminBackdrop on all
 // /admin routes (mirrors W84 ActivityFeature pattern). Indigo/slate palette
@@ -64,12 +65,16 @@ export const Route = createFileRoute("/_admin")({
   //  - Branch A (SSR works + Mismatch A closed): SHIP IT
   //  - Branch B (SSR works + Mismatch A persists): revert + theory disproved
   //  - Branch C (SSR crash): revert + W126 polish rationale validated
-  beforeLoad: ({ context }) => {
-    if (context.auth.loading) return
-    if (!context.auth.isAuth) {
+  // Wave 174 SW1 — read live Zustand state via useAuthStore.getState()
+  // instead of stale `context.auth.*`. See _auth.tsx for full rationale
+  // (W152 Phase 1.7 removed the App.tsx reactive context bridge).
+  beforeLoad: () => {
+    const { user, loading } = useAuthStore.getState()
+    if (loading) return
+    if (!user) {
       throw redirect({ to: "/login" })
     }
-    if (!context.auth.user || context.auth.user.role !== "admin") {
+    if (user.role !== "admin") {
       throw redirect({ to: "/dashboard" })
     }
   },

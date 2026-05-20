@@ -28,15 +28,30 @@ const LHCI_VIEW_TRANSITION = import.meta.env.VITE_LHCI !== "true"
 // scope. The store is exposed via `globalThis.__ssrAuthGetter__` so the
 // `getRouter()` factory below can read it synchronously while constructing
 // the router for THIS request. On the client side `globalThis.__ssrAuthGetter__`
-// is undefined (set only by server.ts which is server-only) — App.tsx's
-// <RouterProvider context={...}> populates real auth from useAuth() at
-// client mount, fully overriding any default we set here.
+// is undefined (set only by server.ts which is server-only) — the route
+// guards in `_auth.tsx`, `_public.tsx`, and `_admin.tsx` now read live state
+// from `useAuthStore.getState()` (Wave 174 SW1) since W152 Phase 1.7 removed
+// the App.tsx `<RouterProvider context={useAuth()}>` reactive bridge.
+//
+// Wave 174 SW1 — router context `.auth` is NOW SERVER-ONLY:
+//   • On SSR: `globalThis.__ssrAuthGetter__()` returns the per-request auth
+//     state from server.ts's AsyncLocalStorage. TanStack Router uses this
+//     to render the initial server-matched route's authenticated content.
+//   • On client: the route guards' `beforeLoad` reads `useAuthStore.getState()`
+//     directly (a plain JS call, safe outside React render phase). The
+//     useProfileSync hook syncs its internal state INTO Zustand via
+//     `useAuthStore.setState(...)` (useProfileSync.ts:1099-1109), so Zustand
+//     is the single source of truth for client-side auth state.
+//
+// Pre-W174 the route guards read from `context.auth` which got stuck at
+// DEFAULT_AUTH on the client (since W152 Phase 1.7 removed the reactive
+// context bridge in App.tsx). Result: every post-login client-side navigate()
+// re-evaluated beforeLoad against a stale singleton context → user bounced
+// back to /login on every navigation, AND login itself never redirected.
 //
 // The default (`loading: false`, `isAuth: false`) makes route guards behave
-// correctly when context is uninitialized: `_auth.tsx` → redirect to /login,
-// `_public.tsx` → render. The previous W125 stub used the same shape; we
-// just stop calling it "STUB" because in W126+ the value is real per-request
-// when running under server.ts.
+// correctly when context is uninitialized on SERVER (no SSR cookie → unauth →
+// `_auth.tsx` → redirect to /login, `_public.tsx` → render).
 const DEFAULT_AUTH: RouterContext["auth"] = {
   isAuth: false,
   user: null,
@@ -45,8 +60,8 @@ const DEFAULT_AUTH: RouterContext["auth"] = {
 
 const createAppRouter = () => {
   // Read SSR-injected auth state if running under server.ts; falls through to
-  // DEFAULT_AUTH on the client (where App.tsx's RouterProvider context prop
-  // overrides the value at mount anyway).
+  // DEFAULT_AUTH on the client where the value is unused (client-side route
+  // guards read Zustand directly per Wave 174 SW1).
   const ssrAuth = typeof globalThis !== "undefined" ? globalThis.__ssrAuthGetter__?.() : undefined
 
   return createRouter({
